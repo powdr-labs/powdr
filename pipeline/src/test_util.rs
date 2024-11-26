@@ -1,8 +1,6 @@
-use crate::BackendType;
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::{
-    buffered_write_file, BabyBearField, BigInt, Bn254Field, FieldElement, GoldilocksField,
-    KoalaBearField,
+    BabyBearField, BigInt, Bn254Field, FieldElement, GoldilocksField, KoalaBearField,
 };
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use std::env;
@@ -53,13 +51,15 @@ pub fn make_prepared_pipeline<T: FieldElement>(
 pub fn regular_test(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
     let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
-    test_pilcom(pipeline_gl.clone());
-    gen_estark_proof(pipeline_gl.clone());
+
+    test_mock_backend(pipeline_gl.clone());
+    run_pilcom_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite).unwrap();
+    gen_estark_proof_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite);
     test_plonky3_pipeline(pipeline_gl);
 
     let inputs_bn = inputs.iter().map(|x| Bn254Field::from(*x)).collect();
     let pipeline_bn = make_prepared_pipeline(file_name, inputs_bn, vec![]);
-    test_halo2(pipeline_bn);
+    test_halo2_with_backend_variant(pipeline_bn, BackendVariant::Composite);
 
     let inputs_bb = inputs.iter().map(|x| BabyBearField::from(*x)).collect();
     let pipeline_bb = make_prepared_pipeline(file_name, inputs_bb, vec![]);
@@ -73,12 +73,14 @@ pub fn regular_test(file_name: &str, inputs: &[i32]) {
 pub fn regular_test_without_small_field(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
     let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
-    test_pilcom(pipeline_gl.clone());
-    gen_estark_proof(pipeline_gl);
+
+    test_mock_backend(pipeline_gl.clone());
+    run_pilcom_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite).unwrap();
+    gen_estark_proof_with_backend_variant(pipeline_gl, BackendVariant::Composite);
 
     let inputs_bn = inputs.iter().map(|x| Bn254Field::from(*x)).collect();
     let pipeline_bn = make_prepared_pipeline(file_name, inputs_bn, vec![]);
-    test_halo2(pipeline_bn);
+    test_halo2_with_backend_variant(pipeline_bn, BackendVariant::Composite);
 }
 
 pub fn test_pilcom(pipeline: Pipeline<GoldilocksField>) {
@@ -106,6 +108,8 @@ pub fn run_pilcom_with_backend_variant(
     pipeline: Pipeline<GoldilocksField>,
     backend_variant: BackendVariant,
 ) -> Result<(), String> {
+    use powdr_backend::BackendType;
+
     let backend = match backend_variant {
         BackendVariant::Monolithic => BackendType::EStarkDump,
         BackendVariant::Composite => BackendType::EStarkDumpComposite,
@@ -148,13 +152,6 @@ fn should_generate_proofs() -> bool {
     }
 }
 
-pub fn gen_estark_proof(pipeline: Pipeline<GoldilocksField>) {
-    if should_generate_proofs() {
-        gen_estark_proof_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
-        gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Composite);
-    }
-}
-
 #[cfg(not(feature = "estark-starky"))]
 pub fn gen_estark_proof_with_backend_variant(
     _pipeline: Pipeline<GoldilocksField>,
@@ -167,6 +164,13 @@ pub fn gen_estark_proof_with_backend_variant(
     pipeline: Pipeline<GoldilocksField>,
     backend_variant: BackendVariant,
 ) {
+    use powdr_backend::BackendType;
+    use powdr_number::buffered_write_file;
+
+    if !should_generate_proofs() {
+        return;
+    }
+
     let backend = match backend_variant {
         BackendVariant::Monolithic => BackendType::EStarkStarky,
         BackendVariant::Composite => BackendType::EStarkStarkyComposite,
@@ -201,11 +205,6 @@ pub fn gen_estark_proof_with_backend_variant(
     pipeline.verify(&proof, &[publics]).unwrap();
 }
 
-pub fn test_halo2(pipeline: Pipeline<Bn254Field>) {
-    test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
-    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
-}
-
 /// Whether to compute a monolithic or composite proof.
 pub enum BackendVariant {
     Monolithic,
@@ -217,6 +216,8 @@ pub fn test_halo2_with_backend_variant(
     pipeline: Pipeline<Bn254Field>,
     backend_variant: BackendVariant,
 ) {
+    use powdr_backend::BackendType;
+
     let backend = match backend_variant {
         BackendVariant::Monolithic => BackendType::Halo2Mock,
         BackendVariant::Composite => BackendType::Halo2MockComposite,
@@ -249,6 +250,9 @@ pub fn test_halo2_with_backend_variant(
 
 #[cfg(feature = "halo2")]
 pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) {
+    use powdr_backend::BackendType;
+    use powdr_number::buffered_write_file;
+
     let backend = match backend {
         BackendVariant::Monolithic => BackendType::Halo2,
         BackendVariant::Composite => BackendType::Halo2Composite,
@@ -265,7 +269,12 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
     // Setup
     let output_dir = pipeline.output_dir().clone().unwrap();
     let setup_file_path = output_dir.join("params.bin");
-    let max_degree = pil.degrees().into_iter().max().unwrap();
+    let max_degree = pil
+        .degree_ranges()
+        .into_iter()
+        .map(|range| range.max)
+        .max()
+        .unwrap();
     buffered_write_file(&setup_file_path, |writer| {
         powdr_backend::BackendType::Halo2
             .factory::<Bn254Field>()
@@ -307,6 +316,9 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
     inputs: Vec<T>,
     backend: BackendVariant,
 ) {
+    use powdr_backend::BackendType;
+    use powdr_number::buffered_write_file;
+
     let backend = match backend {
         BackendVariant::Monolithic => BackendType::Plonky3,
         BackendVariant::Composite => BackendType::Plonky3Composite,
@@ -346,8 +358,23 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
     }
 }
 
+pub fn test_mock_backend<T: FieldElement>(pipeline: Pipeline<T>) {
+    pipeline
+        .with_backend(
+            powdr_backend::BackendType::Mock,
+            // Some tests have warnings, because they have lookups / permutations within the same namespace
+            // These will be skipped.
+            Some("allow_warnings".to_string()),
+        )
+        .compute_proof()
+        .cloned()
+        .unwrap();
+}
+
 #[cfg(feature = "plonky3")]
 pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
+    use powdr_number::buffered_write_file;
+
     let mut pipeline = pipeline.with_backend(powdr_backend::BackendType::Plonky3, None);
 
     pipeline.compute_witness().unwrap();
@@ -441,6 +468,20 @@ fn convert_witness<T: FieldElement>(witness: &[(String, Vec<u64>)]) -> Vec<(Stri
         .collect()
 }
 
+pub fn assert_proofs_fail_for_invalid_witnesses_mock(
+    file_name: &str,
+    witness: &[(String, Vec<u64>)],
+) {
+    assert!(Pipeline::<GoldilocksField>::default()
+        .with_tmp_output()
+        .from_file(resolve_test_file(file_name))
+        .set_witness(convert_witness(witness))
+        .with_backend(powdr_backend::BackendType::Mock, None)
+        .compute_proof()
+        .is_err());
+}
+
+#[cfg(feature = "estark-starky")]
 pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
@@ -453,6 +494,13 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
 
     assert!(run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic).is_err());
     assert!(run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).is_err());
+}
+
+#[cfg(not(feature = "estark-starky"))]
+pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
+    _file_name: &str,
+    _witness: &[(String, Vec<u64>)],
+) {
 }
 
 #[cfg(not(feature = "estark-starky"))]
@@ -508,6 +556,7 @@ pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
 }
 
 pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(String, Vec<u64>)]) {
+    assert_proofs_fail_for_invalid_witnesses_mock(file_name, witness);
     assert_proofs_fail_for_invalid_witnesses_pilcom(file_name, witness);
     assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness);
     #[cfg(feature = "halo2")]

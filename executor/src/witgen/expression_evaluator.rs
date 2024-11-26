@@ -1,8 +1,9 @@
-use std::marker::PhantomData;
+use std::collections::BTreeMap;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge,
+    AlgebraicReferenceThin, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge,
+    PolynomialType,
 };
 
 use powdr_number::FieldElement;
@@ -23,30 +24,56 @@ pub trait SymbolicVariables<T> {
     }
 }
 
-pub struct ExpressionEvaluator<T, SV> {
+pub struct ExpressionEvaluator<'a, T, SV> {
     variables: SV,
-    marker: PhantomData<T>,
+    intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
+    /// Maps intermediate reference to their evaluation. Updated throughout the lifetime of the
+    /// ExpressionEvaluator.
+    intermediates_cache: BTreeMap<AlgebraicReferenceThin, AffineResult<AlgebraicVariable<'a>, T>>,
 }
 
-impl<T, SV> ExpressionEvaluator<T, SV>
+impl<'a, T, SV> ExpressionEvaluator<'a, T, SV>
 where
     SV: SymbolicVariables<T>,
     T: FieldElement,
 {
-    pub fn new(variables: SV) -> Self {
+    pub fn new(
+        variables: SV,
+        intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
+    ) -> Self {
         Self {
             variables,
-            marker: PhantomData,
+            intermediate_definitions,
+            intermediates_cache: Default::default(),
         }
     }
+
     /// Tries to evaluate the expression to an affine expression in the witness polynomials
     /// or publics, taking their current values into account.
+    /// Might update its cache of evaluations of intermediate polynomials.
     /// @returns an expression affine in the witness polynomials or publics.
-    pub fn evaluate<'a>(&self, expr: &'a Expression<T>) -> AffineResult<AlgebraicVariable<'a>, T> {
+    pub fn evaluate(&mut self, expr: &'a Expression<T>) -> AffineResult<AlgebraicVariable<'a>, T> {
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
-            Expression::Reference(poly) => self.variables.value(AlgebraicVariable::Column(poly)),
+            Expression::Reference(poly) => match poly.poly_id.ptype {
+                PolynomialType::Committed | PolynomialType::Constant => {
+                    self.variables.value(AlgebraicVariable::Column(poly))
+                }
+                PolynomialType::Intermediate => {
+                    let reference = poly.to_thin();
+                    let value = self.intermediates_cache.get(&reference).cloned();
+                    match value {
+                        Some(v) => v,
+                        None => {
+                            let definition = self.intermediate_definitions.get(&reference).unwrap();
+                            let result = self.evaluate(definition);
+                            self.intermediates_cache.insert(reference, result.clone());
+                            result
+                        }
+                    }
+                }
+            },
             Expression::PublicReference(public) => {
                 self.variables.value(AlgebraicVariable::Public(public))
             }
@@ -61,8 +88,8 @@ where
         }
     }
 
-    fn evaluate_binary_operation<'a>(
-        &self,
+    fn evaluate_binary_operation(
+        &mut self,
         left: &'a Expression<T>,
         op: &AlgebraicBinaryOperator,
         right: &'a Expression<T>,
@@ -128,8 +155,8 @@ where
         }
     }
 
-    fn evaluate_unary_operation<'a>(
-        &self,
+    fn evaluate_unary_operation(
+        &mut self,
         op: &AlgebraicUnaryOperator,
         expr: &'a Expression<T>,
     ) -> AffineResult<AlgebraicVariable<'a>, T> {

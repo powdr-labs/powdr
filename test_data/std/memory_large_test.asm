@@ -1,6 +1,9 @@
 use std::machines::range::Byte2;
 use std::machines::large_field::memory::Memory;
 
+let main_degree: int = 2**7;
+let memory_degree: int = 2**5;
+
 machine Main with degree: 65536 {
     reg pc[@pc];
     reg X[<=];
@@ -9,7 +12,7 @@ machine Main with degree: 65536 {
 
     col fixed STEP(i) { i };
     Byte2 byte2;
-    Memory memory(byte2);
+    Memory memory(byte2, memory_degree, memory_degree);
 
     instr mload X -> Y link ~> Y = memory.mload(X, STEP);
     instr mstore X, Y -> link ~> memory.mstore(X, STEP, Y);

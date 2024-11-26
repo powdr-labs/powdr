@@ -1,5 +1,5 @@
 machine Main with degree: 128 {
-    Pow pow;
+    Pow pow(128, 128);
 
     reg pc[@pc];
     reg X[<=];

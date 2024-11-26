@@ -381,7 +381,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                     .witgen_callback
                     .as_ref()
                     .expect("Expected witgen callback!")
-                    .next_stage_witness(witness, challenges, stage);
+                    .next_stage_witness(&self.analyzed, witness, challenges, stage);
             }
         }
 

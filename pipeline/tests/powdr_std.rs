@@ -6,9 +6,10 @@ use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_runner::run_tests,
     test_util::{
-        evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_proof,
-        make_simple_prepared_pipeline, regular_test, regular_test_without_small_field,
-        std_analyzed, test_halo2, test_pilcom, test_plonky3_with_backend_variant, BackendVariant,
+        evaluate_function, evaluate_integer_function, gen_estark_proof_with_backend_variant,
+        gen_halo2_proof, make_simple_prepared_pipeline, regular_test,
+        regular_test_without_small_field, std_analyzed, test_halo2_with_backend_variant,
+        test_mock_backend, test_plonky3_with_backend_variant, BackendVariant,
     },
     Pipeline,
 };
@@ -19,20 +20,22 @@ use test_log::test;
 fn poseidon_bn254_test() {
     let f = "std/poseidon_bn254_test.asm";
     let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2(pipeline.clone());
+    test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Composite);
 
     // `test_halo2` only does a mock proof in the PR tests.
     // This makes sure we test the whole proof generation for one example
     // file even in the PR tests.
-    gen_halo2_proof(pipeline.clone(), BackendVariant::Monolithic);
-    gen_halo2_proof(pipeline, BackendVariant::Composite);
+    gen_halo2_proof(pipeline.clone(), BackendVariant::Composite);
 }
 
 #[test]
 fn poseidon_gl_test() {
     let f = "std/poseidon_gl_test.asm";
-    test_pilcom(make_simple_prepared_pipeline(f));
-    gen_estark_proof(make_simple_prepared_pipeline(f));
+    test_mock_backend(make_simple_prepared_pipeline::<GoldilocksField>(f));
+    gen_estark_proof_with_backend_variant(
+        make_simple_prepared_pipeline(f),
+        BackendVariant::Composite,
+    );
 }
 
 #[test]
@@ -40,8 +43,8 @@ fn poseidon_gl_test() {
 fn poseidon_gl_memory_test() {
     let f = "std/poseidon_gl_memory_test.asm";
     let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
-    gen_estark_proof(pipeline);
+    test_mock_backend(pipeline.clone());
+    gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 #[test]
@@ -86,23 +89,24 @@ fn poseidon2_bb_test() {
 fn poseidon2_gl_test() {
     let f = "std/poseidon2_gl_test.asm";
     let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
-    gen_estark_proof(pipeline);
+    test_mock_backend(pipeline.clone());
+    gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn split_gl_test() {
     let f = "std/split_gl_test.asm";
-    test_pilcom(make_simple_prepared_pipeline(f));
-    gen_estark_proof(make_simple_prepared_pipeline(f));
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline.clone());
+    gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 #[cfg(feature = "plonky3")]
@@ -131,19 +135,37 @@ fn arith_small_test() {
 #[ignore = "Too slow"]
 fn arith_large_test() {
     let f = "std/arith_large_test.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_mock_backend(pipeline.clone());
 
     // Running gen_estark_proof(f, Default::default())
     // is too slow for the PR tests. This will only create a single
     // eStark proof instead of 3.
     #[cfg(feature = "estark-starky")]
     pipeline
-        .with_backend(powdr_backend::BackendType::EStarkStarky, None)
+        .with_backend(powdr_backend::BackendType::EStarkStarkyComposite, None)
         .compute_proof()
         .unwrap();
 
-    test_halo2(make_simple_prepared_pipeline(f));
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn arith256_memory_large_test() {
+    let f = "std/arith256_memory_large_test.asm";
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+
+    // Running gen_estark_proof(f, Default::default())
+    // is too slow for the PR tests. This will only create a single
+    // eStark proof instead of 3.
+    #[cfg(feature = "estark-starky")]
+    pipeline
+        .with_backend(powdr_backend::BackendType::EStarkStarkyComposite, None)
+        .compute_proof()
+        .unwrap();
+
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
 }
 
 #[test]
@@ -177,35 +199,35 @@ fn memory_small_test() {
 #[test]
 fn permutation_via_challenges() {
     let f = "std/permutation_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Monolithic);
     test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
 fn lookup_via_challenges() {
     let f = "std/lookup_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Monolithic);
     test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
 fn lookup_via_challenges_range_constraint() {
     let f = "std/lookup_via_challenges_range_constraint.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Monolithic);
     test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
 fn bus_lookup() {
     let f = "std/bus_lookup.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Monolithic);
     test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
 fn bus_permutation() {
     let f = "std/bus_permutation.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Monolithic);
     test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
@@ -219,30 +241,32 @@ fn write_once_memory_test() {
 #[ignore = "Too slow"]
 fn binary_large_test() {
     let f = "std/binary_large_test.asm";
-    test_pilcom(make_simple_prepared_pipeline(f));
-    test_halo2(make_simple_prepared_pipeline(f));
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline.clone());
+    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn binary_small_8_test() {
     let f = "std/binary_small_8_test.asm";
-    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn binary_small_test() {
     let f = "std/binary_small_test.asm";
-    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn shift_large_test() {
     let f = "std/shift_large_test.asm";
-    test_pilcom(make_simple_prepared_pipeline(f));
-    test_halo2(make_simple_prepared_pipeline(f));
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline.clone());
+    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 #[test]
@@ -256,8 +280,9 @@ fn shift_small_test() {
 #[ignore = "Too slow"]
 fn rotate_large_test() {
     let f = "std/rotate_large_test.asm";
-    test_pilcom(make_simple_prepared_pipeline(f));
-    test_halo2(make_simple_prepared_pipeline(f));
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline.clone());
+    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 #[test]

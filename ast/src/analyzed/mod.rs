@@ -117,6 +117,16 @@ impl<T> Analyzed<T> {
         self.public_declarations.len()
     }
 
+    pub fn name_to_poly_id(&self) -> BTreeMap<String, PolyID> {
+        self.definitions
+            .values()
+            .map(|(symbol, _)| symbol)
+            .filter(|symbol| matches!(symbol.kind, SymbolKind::Poly(_)))
+            .chain(self.intermediate_columns.values().map(|(symbol, _)| symbol))
+            .flat_map(|symbol| symbol.array_elements())
+            .collect()
+    }
+
     pub fn constant_polys_in_source_order(
         &self,
     ) -> impl Iterator<Item = &(Symbol, Option<FunctionValueDefinition>)> {
@@ -129,7 +139,7 @@ impl<T> Analyzed<T> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
-    pub fn intermediate_polys_in_source_order(
+    fn intermediate_polys_in_source_order(
         &self,
     ) -> impl Iterator<Item = &(Symbol, Vec<AlgebraicExpression<T>>)> {
         self.source_order.iter().filter_map(move |statement| {
@@ -393,6 +403,38 @@ impl<T> Analyzed<T> {
         // Sort, so that the order is deterministic
         publics.sort();
         publics
+    }
+}
+
+impl<T: Clone> Analyzed<T> {
+    /// Builds a map from a reference to an intermediate polynomial to the corresponding definition.
+    pub fn intermediate_definitions(
+        &self,
+    ) -> BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>> {
+        self.intermediate_polys_in_source_order()
+            .flat_map(|(symbol, definitions)| symbol.array_elements().zip_eq(definitions))
+            .flat_map(|((_, poly_id), def)| {
+                // A definition for <intermediate>' only exists if no sub-expression in its definition
+                // has the next operator applied to it.
+                let next_definition = def.clone().next().ok().map(|def_next| {
+                    (
+                        AlgebraicReferenceThin {
+                            poly_id,
+                            next: true,
+                        },
+                        def_next,
+                    )
+                });
+
+                next_definition.into_iter().chain(once((
+                    AlgebraicReferenceThin {
+                        poly_id,
+                        next: false,
+                    },
+                    def.clone(),
+                )))
+            })
+            .collect()
     }
 }
 
@@ -796,7 +838,7 @@ pub enum SymbolKind {
     Other(),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
 pub enum FunctionValueDefinition {
     Array(ArrayExpression<Reference>),
     Expression(TypedExpression),
@@ -1152,10 +1194,19 @@ impl<T> SelectedExpressions<T> {
 pub type Expression = parsed::Expression<Reference>;
 pub type TypedExpression = crate::parsed::TypedExpression<Reference, u64>;
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
 pub enum Reference {
     LocalVar(u64, String),
     Poly(PolynomialReference),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+/// Like [[AlgebraicReference]], but without the name.
+pub struct AlgebraicReferenceThin {
+    pub poly_id: PolyID,
+    pub next: bool,
 }
 
 #[derive(Debug, Clone, Eq, Serialize, Deserialize, JsonSchema)]
@@ -1178,6 +1229,13 @@ impl AlgebraicReference {
     #[inline]
     pub fn is_fixed(&self) -> bool {
         self.poly_id.ptype == PolynomialType::Constant
+    }
+
+    pub fn to_thin(&self) -> AlgebraicReferenceThin {
+        AlgebraicReferenceThin {
+            poly_id: self.poly_id,
+            next: self.next,
+        }
     }
 }
 
@@ -1577,7 +1635,9 @@ impl<T> From<T> for AlgebraicExpression<T> {
 /// Reference to a symbol with optional type arguments.
 /// Named `PolynomialReference` for historical reasons, it can reference
 /// any symbol.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
 pub struct PolynomialReference {
     /// Absolute name of the symbol.
     pub name: String,
