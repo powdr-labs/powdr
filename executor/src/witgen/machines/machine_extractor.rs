@@ -13,11 +13,9 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
+use crate::witgen::machines::dynamic_machine::DynamicMachine;
 use crate::witgen::machines::Connection;
-use crate::witgen::{
-    generator::Generator,
-    machines::{write_once_memory::WriteOnceMemory, MachineParts},
-};
+use crate::witgen::machines::{write_once_memory::WriteOnceMemory, MachineParts};
 use crate::Identity;
 
 use powdr_ast::analyzed::{
@@ -25,11 +23,6 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::{self, visitor::AllChildren};
 use powdr_number::FieldElement;
-
-pub struct ExtractionOutput<'a, T: FieldElement> {
-    pub machines: Vec<KnownMachine<'a, T>>,
-    pub base_parts: MachineParts<'a, T>,
-}
 
 pub struct MachineExtractor<'a, T: FieldElement> {
     fixed: &'a FixedData<'a, T>,
@@ -40,12 +33,10 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         Self { fixed }
     }
 
-    /// Finds machines in the witness columns and identities
-    /// and returns a list of machines and the identities
+    /// Finds machines in the witness columns and identities and returns a list of machines and the identities
     /// that are not "internal" to the machines.
-    pub fn split_out_machines(&self, identities: Vec<&'a Identity<T>>) -> ExtractionOutput<'a, T> {
-        let mut machines: Vec<KnownMachine<T>> = vec![];
-
+    /// The first returned machine is the "main machine", i.e. a machine that has no incoming connections.
+    pub fn split_out_machines(&self, identities: Vec<&'a Identity<T>>) -> Vec<KnownMachine<'a, T>> {
         // Ignore prover functions that reference columns of later stages.
         let all_witnesses = self.fixed.witness_cols.keys().collect::<HashSet<_>>();
         let current_stage_witnesses = self
@@ -67,6 +58,30 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                     .any(|n| later_stage_witness_names.contains(n.as_str()))
             })
             .collect::<Vec<&analyzed::Expression>>();
+
+        if self.fixed.stage() > 0 {
+            // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
+            // These don't behave like normal witness columns (e.g. in a block machine), and they might depend
+            // on witness columns of more than one machine.
+            // Therefore, we treat everything as one big machine. Also, we remove lookups and permutations,
+            // as they are assumed to be handled in stage 0.
+            let polynomial_identities = identities
+                .into_iter()
+                .filter(|identity| matches!(identity, Identity::Polynomial(_)))
+                .collect::<Vec<_>>();
+            let machine_parts = MachineParts::new(
+                self.fixed,
+                Default::default(),
+                polynomial_identities,
+                self.fixed.witness_cols.keys().collect::<HashSet<_>>(),
+                prover_functions,
+            );
+
+            return build_main_machine(self.fixed, machine_parts)
+                .into_iter()
+                .collect();
+        }
+        let mut machines: Vec<KnownMachine<T>> = vec![];
 
         let mut publics = PublicsTracker::default();
         let mut remaining_witnesses = current_stage_witnesses.clone();
@@ -197,27 +212,33 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             .collect::<Vec<_>>();
 
         log::trace!(
-        "\nThe base machine contains the following witnesses:\n{}\n identities:\n{}\n and prover functions:\n{}",
-        remaining_witnesses
-            .iter()
-            .map(|s| self.fixed.column_name(s))
-            .sorted()
-            .format(", "),
-        base_identities
-            .iter()
-            .format("\n"),
-        base_prover_functions.iter().format("\n")
-    );
+            "\nThe base machine contains the following witnesses:\n{}\n identities:\n{}\n and prover functions:\n{}",
+            remaining_witnesses
+                .iter()
+                .map(|s| self.fixed.column_name(s))
+                .sorted()
+                .format(", "),
+            base_identities
+                .iter()
+                .format("\n"),
+            base_prover_functions.iter().format("\n")
+        );
 
-        ExtractionOutput {
-            machines,
-            base_parts: MachineParts::new(
-                self.fixed,
-                Default::default(),
-                base_identities,
-                remaining_witnesses,
-                base_prover_functions,
-            ),
+        let base_parts = MachineParts::new(
+            self.fixed,
+            Default::default(),
+            base_identities,
+            remaining_witnesses,
+            base_prover_functions,
+        );
+
+        if let Some(main_machine) = build_main_machine(self.fixed, base_parts) {
+            std::iter::once(main_machine).chain(machines).collect()
+        } else {
+            if !machines.is_empty() {
+                log::error!("No main machine was extracted, but secondary machines were. Does the system have a cycle?");
+            }
+            vec![]
         }
     }
 
@@ -358,6 +379,14 @@ impl<'a> PublicsTracker<'a> {
     }
 }
 
+fn build_main_machine<'a, T: FieldElement>(
+    fixed_data: &'a FixedData<'a, T>,
+    machine_parts: MachineParts<'a, T>,
+) -> Option<KnownMachine<'a, T>> {
+    (!machine_parts.witnesses.is_empty())
+        .then(|| build_machine(fixed_data, machine_parts, |t| format!("Main machine ({t})")))
+}
+
 fn build_machine<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
     machine_parts: MachineParts<'a, T>,
@@ -395,7 +424,9 @@ fn build_machine<'a, T: FieldElement>(
         log::debug!("Detected machine: {machine}");
         KnownMachine::BlockMachine(machine)
     } else {
-        log::debug!("Detected machine: VM.");
+        log::debug!("Detected machine: Dynamic machine.");
+        // If there is a connection to this machine, all connections must have the same latch.
+        // If there is no connection to this machine, it is the main machine and there is no latch.
         let latch = machine_parts.connections
             .values()
             .fold(None, |existing_latch, identity| {
@@ -411,13 +442,12 @@ fn build_machine<'a, T: FieldElement>(
                 } else {
                     Some(current_latch.clone())
                 }
-            })
-            .unwrap();
-        KnownMachine::Vm(Generator::new(
-            name_with_type("Vm"),
+            });
+        KnownMachine::DynamicMachine(DynamicMachine::new(
+            name_with_type("Dynamic"),
             fixed_data,
             machine_parts.clone(),
-            Some(latch),
+            latch,
         ))
     }
 }

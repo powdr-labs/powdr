@@ -102,6 +102,10 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
             return None;
         }
 
+        if parts.connections.is_empty() {
+            return None;
+        }
+
         if !parts.connections.values().all(|i| i.is_permutation()) {
             return None;
         }
