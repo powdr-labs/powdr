@@ -58,6 +58,7 @@ fn keccakf16_test() {
 #[ignore = "Too slow"]
 fn keccakf16_memory_test() {
     let f = "std/keccakf16_memory_test.asm";
+    test_mock_backend(make_simple_prepared_pipeline::<BabyBearField>(f));
     test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
 }
 
