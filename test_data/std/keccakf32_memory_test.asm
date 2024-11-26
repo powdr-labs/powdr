@@ -14,7 +14,7 @@ machine Main with degree: 65536 {
 
     Keccakf32Memory keccakf32_memory(memory);
 
-    col fixed STEP(i) { i };
+    col fixed STEP(i) { i * 2 };
 
     // Big endian.
     // Usage: mstore addr, val;
