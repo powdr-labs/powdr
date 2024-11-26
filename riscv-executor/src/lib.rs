@@ -1819,14 +1819,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.reg_write(3, high_addr, high.into(), 4);
 
                 if let ExecMode::Trace = self.mode {
-                    self.proc
-                        .submachines
-                        .get_mut("split_gl")
-                        .unwrap()
-                        .add_operation(
-                            "split_gl",
-                            &[("output_low", low.into()), ("output_high", high.into())],
-                        );
+                    self.proc.submachine("split_gl").add_operation(
+                        "split_gl",
+                        &[high.into(), low.into()],
+                        Some(0),
+                        &[],
+                    );
                 }
 
                 Vec::new()
