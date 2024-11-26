@@ -3,7 +3,7 @@ mod display;
 use std::{
     collections::{
         btree_map::{IntoIter, Iter, IterMut},
-        BTreeMap, BTreeSet,
+        BTreeMap, BTreeSet, HashSet,
     },
     iter::{once, repeat},
     ops::ControlFlow,
@@ -889,7 +889,7 @@ impl Module {
         self.ordering.push(StatementReference::Module(name));
     }
 
-    pub fn retain_machines(&mut self, names: Vec<String>) {
+    pub fn retain_machines(&mut self, names: HashSet<String>) {
         self.machines.retain(|key, _| names.contains(key));
         self.ordering.retain(|statement| {
             if let StatementReference::MachineDeclaration(decl_name) = statement {

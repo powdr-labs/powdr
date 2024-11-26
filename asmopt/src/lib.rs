@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use powdr_ast::{
     asm_analysis::{AnalysisASMFile, FunctionSymbol, Machine},
-    parsed::NamespacedPolynomialReference,
+    parsed::{asm::AbsoluteSymbolPath, NamespacedPolynomialReference},
 };
 use powdr_pilopt::referenced_symbols::ReferencedSymbols;
 
@@ -26,10 +26,26 @@ pub fn optimize(mut analyzed_asm: AnalysisASMFile) -> AnalysisASMFile {
 fn remove_unreferenced_machines(asm_file: &mut AnalysisASMFile) {
     let deps = build_machine_dependencies(&asm_file);
     let all_machines = collect_all_dependent_machines(&deps, "::Main");
-    asm_file
-        .modules
-        .iter_mut()
-        .for_each(|(_, module)| module.retain_machines(all_machines.clone()));
+
+    asm_file.modules.iter_mut().for_each(|(path, module)| {
+        let machines_in_module = machines_in_module(all_machines.clone(), path);
+        module.retain_machines(machines_in_module);
+    });
+}
+
+fn machines_in_module(all_machines: HashSet<String>, path: &AbsoluteSymbolPath) -> HashSet<String> {
+    // better with symbolpaths inst of string
+    let mut res = HashSet::new();
+    let path_str = path.to_string();
+    for m in all_machines {
+        let m_without_last = m.rsplitn(2, "::").nth(1).unwrap_or("");
+        if m_without_last == path_str {
+            let name = m.rsplit("::").next().unwrap_or("");
+            res.insert(name.to_string());
+        }
+    }
+
+    res
 }
 
 fn build_machine_dependencies(asm_file: &AnalysisASMFile) -> HashMap<String, HashSet<String>> {
@@ -70,8 +86,6 @@ fn build_machine_dependencies(asm_file: &AnalysisASMFile) -> HashMap<String, Has
         dependencies.insert(path.to_string(), submachine_names);
     }
 
-    println!("Dependencies: {:?}", dependencies);
-
     dependencies
 }
 
@@ -88,22 +102,22 @@ fn expr_to_ref(expr: &Expression) -> Option<String> {
 fn collect_all_dependent_machines(
     dependencies: &HashMap<String, HashSet<String>>,
     start: &str,
-) -> Vec<String> {
-    let mut result = Vec::new();
+) -> HashSet<String> {
+    let mut result = HashSet::new();
     let mut to_visit = vec![start.to_string()];
     let mut visited = HashSet::new();
 
     while let Some(machine) = to_visit.pop() {
         if visited.insert(machine.clone()) {
-            result.push(machine.clone());
+            result.insert(machine.clone());
 
             if let Some(submachines) = dependencies.get(&machine) {
                 to_visit.extend(submachines.iter().cloned());
             }
         }
     }
-    println!("Collected machines: {:?}", result);
-    println!("Visited machines: {:?}", visited);
+    //println!("Collected machines: {:?}", result);
+    //println!("Visited machines: {:?}", visited);
 
     result
 }
@@ -123,7 +137,6 @@ fn remove_unused_instructions(asm_file: &mut AnalysisASMFile) {
             let keep = symbols_in_callable.contains(&ins.name);
             if keep {
                 for link in &ins.instruction.links {
-                    println!("{:?}", link);
                     if let Some(submachine) = submachine_to_decl.get(&link.link.instance) {
                         used_submachines.insert(submachine.to_string());
                     }
@@ -136,8 +149,6 @@ fn remove_unused_instructions(asm_file: &mut AnalysisASMFile) {
         used_submachines.extend(symbols_in_links.clone());
 
         machine.submachines.retain(|sub| {
-            println!("{:?}", sub.ty);
-            println!("{:?}", used_submachines);
             used_submachines.contains(&sub.ty.to_string())
             //fix name
         });
