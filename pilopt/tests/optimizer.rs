@@ -31,6 +31,21 @@ fn replace_fixed() {
 }
 
 #[test]
+fn replace_intermediate() {
+    let input = r#"namespace N(65536);
+    col witness X;
+    col intermediate = 1;
+    X' = X + intermediate;
+"#;
+    let expectation = r#"namespace N(65536);
+    col witness X;
+    N::X' = N::X + 1;
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
 fn deduplicate_fixed() {
     let input = r#"namespace N(65536);
     col fixed first = [1, 32]*;
