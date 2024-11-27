@@ -372,7 +372,7 @@ where
 #[instrument(skip_all)]
 pub fn verify<T: FieldElementMap>(
     verifying_key: Option<&StarkVerifyingKey<T::Config>>,
-    split: &BTreeMap<&String, &ConstraintSystem<T>>,
+    split: &BTreeMap<String, ConstraintSystem<T>>,
     challenger: &mut Challenger<T>,
     proof: &Proof<T::Config>,
     // Machine name -> (stage -> public values)
@@ -406,7 +406,7 @@ where
     // with the bus, i.e., are empty.
     let split = split
         .iter()
-        .filter_map(|(k, v)| opened_values.contains_key(*k).then_some((*k, v)))
+        .filter_map(|(k, v)| opened_values.contains_key(k).then_some((k, v)))
         .collect::<BTreeMap<_, _>>();
     let public_inputs = public_inputs
         .iter()

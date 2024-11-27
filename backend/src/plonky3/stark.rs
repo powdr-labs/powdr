@@ -8,8 +8,9 @@ use powdr_executor::constant_evaluator::VariablySizedColumn;
 use serde::{Deserialize, Serialize};
 
 use core::fmt;
-use std::collections::BTreeMap;
+use std::fs::File;
 use std::sync::Arc;
+use std::{collections::BTreeMap, io::BufWriter};
 
 use powdr_ast::analyzed::Analyzed;
 
@@ -263,7 +264,7 @@ where
             &circuit
                 .split
                 .iter()
-                .map(|(name, (_, constraints))| (name, constraints))
+                .map(|(name, (_, constraints))| (name.clone(), constraints.clone()))
                 .collect(),
             &mut challenger,
             &proof,
@@ -276,8 +277,8 @@ where
             .iter()
             .map(|(name, (_, constraints))| (name.clone(), constraints.clone()))
             .collect();
-        let split = bincode::serialize(&split).unwrap();
-        write_binary_file("powdr-target/split.bin", &split).unwrap();
+        let file = BufWriter::new(File::create("powdr-target/split.bin").unwrap());
+        bincode::serialize_into(file, &split).unwrap();
 
         Ok(bincode::serialize(&proof).unwrap())
     }
@@ -316,7 +317,7 @@ where
             &self
                 .split
                 .iter()
-                .map(|(name, (_, constraints))| (name, constraints))
+                .map(|(name, (_, constraints))| (name.clone(), constraints.clone()))
                 .collect(),
             &mut challenger,
             &proof,
@@ -324,14 +325,6 @@ where
         )
         .map_err(|e| format!("Failed to verify proof: {e:?}"))
     }
-}
-
-use std::fs::File;
-use std::io::{self, Write};
-fn write_binary_file(file_path: &str, data: &[u8]) -> io::Result<()> {
-    let mut file = File::create(file_path)?;
-    file.write_all(data)?;
-    Ok(())
 }
 
 #[cfg(test)]
