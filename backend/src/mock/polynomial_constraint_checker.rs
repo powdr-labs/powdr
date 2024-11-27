@@ -23,19 +23,14 @@ impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
 
     pub fn check(&self) -> MachineResult<'a, F> {
         // We'd only expect to see polynomial identities here, because we're only validating one machine.
-        let mut warnings = Vec::new();
+        // But if they do appear (because of a lookup / permutation within a namespace), they are handled
+        // by the ConnectionConstraintChecker.
         let polynomial_identities = self
             .machine
             .pil
             .identities
             .iter()
-            .filter(|identity| match identity {
-                Identity::Polynomial(_) => true,
-                _ => {
-                    warnings.push(format!("Ignoring unexpected identity: {identity}",));
-                    false
-                }
-            })
+            .filter(|identity| matches!(identity, Identity::Polynomial(_)))
             .collect::<Vec<_>>();
 
         let errors = (0..self.machine.size)
@@ -43,11 +38,12 @@ impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
             .flat_map(|row| self.check_row(row, &polynomial_identities))
             .collect();
 
-        MachineResult {
+        let result = MachineResult {
             machine_name: self.machine.machine_name.clone(),
-            warnings,
             errors,
-        }
+        };
+        result.log();
+        result
     }
 
     fn check_row(
@@ -111,7 +107,6 @@ impl<F: fmt::Display> fmt::Display for FailingPolynomialConstraint<'_, F> {
 
 pub struct MachineResult<'a, F> {
     machine_name: String,
-    warnings: Vec<String>,
     errors: Vec<FailingPolynomialConstraint<'a, F>>,
 }
 
@@ -119,30 +114,13 @@ const MAX_ERRORS: usize = 5;
 
 impl<F: fmt::Display> MachineResult<'_, F> {
     pub fn log(&self) {
-        let num_warnings = self.warnings.len();
         let num_errors = self.errors.len();
 
-        if num_errors == 0 && num_warnings == 0 {
+        if num_errors == 0 {
             return;
         }
 
-        let log_level = if num_errors > 0 {
-            log::Level::Error
-        } else {
-            log::Level::Warn
-        };
-
-        log::log!(
-            log_level,
-            "Machine {} has {} errors and {} warnings",
-            self.machine_name,
-            num_errors,
-            num_warnings
-        );
-
-        for warning in &self.warnings {
-            log::warn!("  Warning: {}", warning);
-        }
+        log::error!("Machine {} has {num_errors} errors", self.machine_name);
 
         for error in self.errors.iter().take(MAX_ERRORS) {
             let error_indented = error.to_string().replace("\n", "\n  ");
@@ -155,9 +133,5 @@ impl<F: fmt::Display> MachineResult<'_, F> {
 
     pub fn has_errors(&self) -> bool {
         !self.errors.is_empty()
-    }
-
-    pub fn has_warnings(&self) -> bool {
-        !self.warnings.is_empty()
     }
 }

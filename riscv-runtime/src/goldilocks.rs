@@ -1,7 +1,10 @@
+use core::arch::asm;
+use powdr_riscv_syscalls::Syscall;
+
 pub const PRIME: u64 = 0xffffffff00000001;
 
 #[repr(transparent)]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Goldilocks(
     // TODO: maybe represent this as a u32, which ends up as a full word in Powdr.
     // (the conversion to and from u64 would require ecalls)
@@ -20,11 +23,22 @@ impl Goldilocks {
         Self(value)
     }
 
+    /// Returns the inverse of the field element.
+    pub fn inverse(self) -> Self {
+        let mut low = self.0 as u32;
+        let mut high = (self.0 >> 32) as u32;
+        unsafe {
+            ecall!(Syscall::InvertGL,
+                inout("a0") low,
+                inout("a1") high);
+            Self::new_unchecked((high as u64) << 32 | low as u64)
+        }
+    }
+
     // TODO: maybe add other operations we can accelerate with ecalls:
     // - add
     // - mul
     // - neg
-    // - inv
 }
 
 impl From<Goldilocks> for u64 {

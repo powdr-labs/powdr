@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     fmt::Display,
     fs,
-    io::{self, BufReader},
+    io::{self, BufReader, BufWriter, Write},
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
@@ -1169,14 +1169,15 @@ impl<T: FieldElement> Pipeline<T> {
         self.arguments.query_callback.as_deref()
     }
 
-    pub fn export_proving_key<W: io::Write>(&mut self, mut writer: W) -> Result<(), Vec<String>> {
+    pub fn export_proving_key<W: io::Write>(&mut self, writer: W) -> Result<(), Vec<String>> {
         let backend = self.setup_backend()?;
-        backend
-            .export_proving_key(&mut writer)
-            .map_err(|e| match e {
-                powdr_backend::Error::BackendError(e) => vec![e],
-                _ => panic!(),
-            })
+        let mut bw = BufWriter::new(writer);
+        let res = backend.export_proving_key(&mut bw).map_err(|e| match e {
+            powdr_backend::Error::BackendError(e) => vec![e],
+            _ => panic!(),
+        });
+        bw.flush().unwrap();
+        res
     }
 
     pub fn export_verification_key<W: io::Write>(

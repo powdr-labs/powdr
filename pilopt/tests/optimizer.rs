@@ -11,12 +11,18 @@ fn replace_fixed() {
     col fixed zero = [0]*;
     col witness X;
     col witness Y;
+    query |i| {
+        let _ = one;
+    };
     X * one = X * zero - zero + Y;
     one * Y = zero * Y + 7 * X;
 "#;
     let expectation = r#"namespace N(65536);
     col witness X;
     col witness Y;
+    query |i| {
+        let _: expr = 1_expr;
+    };
     N::X = N::Y;
     N::Y = 7 * N::X;
 "#;

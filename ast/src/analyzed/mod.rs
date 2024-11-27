@@ -360,7 +360,7 @@ impl<T> Analyzed<T> {
             });
     }
 
-    pub fn post_visit_expressions_in_definitions_mut<F>(&mut self, f: &mut F)
+    pub fn post_visit_expressions_mut<F>(&mut self, f: &mut F)
     where
         F: FnMut(&mut Expression),
     {
@@ -368,7 +368,10 @@ impl<T> Analyzed<T> {
         self.definitions
             .values_mut()
             .filter_map(|(_poly, definition)| definition.as_mut())
-            .for_each(|definition| definition.post_visit_expressions_mut(f))
+            .for_each(|definition| definition.post_visit_expressions_mut(f));
+        self.prover_functions
+            .iter_mut()
+            .for_each(|e| e.post_visit_expressions_mut(f));
     }
 
     /// Retrieves (name, col_name, poly_id, offset, stage) of each public witness in the trace.

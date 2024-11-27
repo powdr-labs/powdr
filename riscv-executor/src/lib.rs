@@ -1807,6 +1807,34 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
+            "invert_gl" => {
+                let low_addr = args[0].u();
+                let high_addr = args[1].u();
+                let low = self.reg_read(0, low_addr, 0);
+                let high = self.reg_read(1, high_addr, 1);
+                let inv = F::one() / F::from((high.u() as u64) << 32 | low.u() as u64);
+                let inv_u64 = inv.to_integer().try_into_u64().unwrap();
+                let (low_inv, high_inv) = (inv_u64 as u32, (inv_u64 >> 32) as u32);
+                self.reg_write(2, low_addr, low_inv.into(), 3);
+                self.reg_write(3, high_addr, high_inv.into(), 4);
+
+                set_col!(tmp1_col, low);
+                set_col!(tmp2_col, high);
+                set_col!(tmp3_col, Elem::from_u32_as_fe(low_inv));
+                set_col!(tmp4_col, Elem::from_u32_as_fe(high_inv));
+                set_col!(XX_inv, Elem::Field(inv));
+
+                if let ExecMode::Trace = self.mode {
+                    self.proc.submachine("split_gl").add_operation(
+                        "split_gl",
+                        &[high_inv.into(), low_inv.into()],
+                        Some(0),
+                        &[],
+                    );
+                }
+
+                Vec::new()
+            }
             "split_gl" => {
                 let read_reg = args[0].u();
                 let val1 = self.reg_read(0, read_reg, 0);

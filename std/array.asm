@@ -124,3 +124,9 @@ mod internal {
                 }
         };
 }
+
+/// Applies the next operator to all elements of the array.
+let next: expr[] -> expr[] = query |arr| new(len(arr), |i| arr[i]');
+
+/// Evaluates an array of expressions
+let eval: expr[] -> fe[] = query |arr| new(len(arr), |i| std::prover::eval(arr[i]));
