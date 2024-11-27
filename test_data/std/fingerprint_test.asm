@@ -15,7 +15,7 @@ machine Main with degree: 2048 {
     col witness x(i) query Query::Hint(42);
 
     // Fold tuple [x, x + 1, ..., x + n - 1]
-    // Note that setting a fairly large `n` tests that performance is *not* exponential in `n`.
+    // Note that, by setting a fairly large `n`, we test that performance is not exponential in `n`.
     let n = 100;
     let tuple = array::new(n, |i| x + 1);
 
