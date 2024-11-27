@@ -1,4 +1,4 @@
-use std::{borrow::Cow, iter::once};
+use std::{borrow::Cow, io::empty, iter::once};
 
 use powdr_ast::{
     analyzed::{
@@ -11,13 +11,13 @@ use powdr_ast::{
     },
     parsed::{
         asm::{
-            AssignmentRegister, Instruction, InstructionBody, LinkDeclaration, Param, Params,
-            SymbolPath,
+            AssignmentRegister, CallableRef, Instruction, InstructionBody, LinkDeclaration, Param,
+            Params, SymbolPath,
         },
         types::Type,
         visitor::{AllChildren, Children},
-        EnumDeclaration, NamespacedPolynomialReference, StructDeclaration, TraitImplementation,
-        TypeDeclaration,
+        EnumDeclaration, FunctionDefinition, NamedExpression, NamespacedPolynomialReference,
+        PilStatement, StructDeclaration, TraitImplementation, TypeDeclaration,
     },
 };
 
@@ -72,7 +72,7 @@ impl<'a> From<&'a NamespacedPolynomialReference> for SymbolReference<'a> {
     fn from(poly: &'a NamespacedPolynomialReference) -> Self {
         SymbolReference {
             name: poly.path.to_string().into(),
-            type_args: None, // TODO: Fix before merge
+            type_args: None, //maybe we need ReferencedSymbols for asm?
         }
     }
 }
@@ -103,7 +103,7 @@ impl ReferencedSymbols for FunctionValueDefinition {
     }
 }
 
-impl ReferencedSymbols for TraitImplementation<Expression> {
+impl<E: ReferencedSymbols> ReferencedSymbols for TraitImplementation<E> {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
         Box::new(
             once(SymbolReference::from(&self.name))
@@ -113,7 +113,7 @@ impl ReferencedSymbols for TraitImplementation<Expression> {
     }
 }
 
-impl ReferencedSymbols for TypeDeclaration {
+impl<E> ReferencedSymbols for TypeDeclaration<E> {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
         match self {
             TypeDeclaration::Enum(enum_decl) => enum_decl.symbols(),
@@ -122,7 +122,7 @@ impl ReferencedSymbols for TypeDeclaration {
     }
 }
 
-impl ReferencedSymbols for EnumDeclaration {
+impl<E> ReferencedSymbols for EnumDeclaration<E> {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
         Box::new(
             self.variants
@@ -134,7 +134,7 @@ impl ReferencedSymbols for EnumDeclaration {
     }
 }
 
-impl ReferencedSymbols for StructDeclaration {
+impl<E> ReferencedSymbols for StructDeclaration<E> {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
         Box::new(self.fields.iter().flat_map(|named| named.ty.symbols()))
     }
@@ -182,7 +182,9 @@ fn symbols_in_expression_asm(
 
             Some(Box::new(type_iter.chain(once(SymbolReference::from(pr)))))
         }
-        _ => None,
+        _ => Some(Box::new(
+            e.children().flat_map(symbols_in_expression_asm).flatten(),
+        )),
     }
 }
 
@@ -204,13 +206,12 @@ impl ReferencedSymbols for Instruction {
             self.links
                 .iter()
                 .flat_map(|l| l.symbols())
-                .chain(self.body.symbols())
-                .chain(self.params.symbols()),
+                .chain(self.body.symbols()),
         )
     }
 }
 
-impl ReferencedSymbols for Params<Param> {
+impl<E: ReferencedSymbols> ReferencedSymbols for Params<E> {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
         Box::new(
             self.inputs
@@ -232,7 +233,17 @@ impl ReferencedSymbols for Param {
 
 impl ReferencedSymbols for LinkDeclaration {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
-        Box::new(self.flag.symbols())
+        Box::new(self.flag.symbols().chain(self.link.symbols()))
+    }
+}
+
+impl ReferencedSymbols for CallableRef {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(
+            once(SymbolReference::from(&self.instance))
+                .chain(once(SymbolReference::from(&self.callable)))
+                .chain(self.params.symbols()),
+        )
     }
 }
 
@@ -256,9 +267,68 @@ impl ReferencedSymbols for FunctionSymbol {
 
 impl ReferencedSymbols for InstructionBody {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
-        //Box::new(self.0.iter().flat_map(|e| e.symbols()))
-        //temporaly empty
-        Box::new(std::iter::empty())
+        Box::new(self.0.iter().flat_map(|e| e.symbols()))
+    }
+}
+
+impl ReferencedSymbols for PilStatement {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        match self {
+            PilStatement::Include(_, _) => Box::new(std::iter::empty()),
+            PilStatement::Namespace(_, _, _) => Box::new(std::iter::empty()),
+            PilStatement::LetStatement(_, name, type_scheme, expression) => Box::new(
+                type_scheme
+                    .iter()
+                    .map(|ts| ts.ty.symbols())
+                    .flatten()
+                    .chain(expression.iter().map(|e| e.symbols()).flatten())
+                    .chain(once(SymbolReference::from(name))),
+            ),
+            PilStatement::PolynomialDefinition(_, polynomial_name, expression) => Box::new(
+                expression
+                    .symbols()
+                    .chain(std::iter::once(SymbolReference::from(
+                        &polynomial_name.name,
+                    ))),
+            ),
+            PilStatement::PublicDeclaration(
+                _,
+                _,
+                namespaced_polynomial_reference,
+                expression,
+                expression1,
+            ) => Box::new(Box::new(
+                once(SymbolReference::from(namespaced_polynomial_reference))
+                    .chain(expression.iter().flat_map(|e| e.symbols()))
+                    .chain(expression1.symbols()),
+            )),
+            PilStatement::PolynomialConstantDefinition(_, _, function_definition) => {
+                function_definition.symbols()
+            }
+            PilStatement::PolynomialCommitDeclaration(_, _, _, function_definition) => {
+                Box::new(function_definition.iter().map(|f| f.symbols()).flatten())
+            }
+            PilStatement::EnumDeclaration(_, enum_declaration) => enum_declaration.symbols(),
+            PilStatement::StructDeclaration(_, struct_declaration) => struct_declaration.symbols(),
+            PilStatement::TraitImplementation(_, trait_implementation) => {
+                trait_implementation.symbols()
+            }
+            PilStatement::TraitDeclaration(_, _) => Box::new(std::iter::empty()),
+            PilStatement::Expression(_, expression) => expression.symbols(),
+        }
+    }
+}
+
+impl ReferencedSymbols for FunctionDefinition {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        match self {
+            FunctionDefinition::TypeDeclaration(type_declaration) => type_declaration.symbols(),
+            FunctionDefinition::Array(..)
+            | FunctionDefinition::Expression(..)
+            | FunctionDefinition::TraitDeclaration(..) => {
+                Box::new(self.children().flat_map(|e| e.symbols()))
+            }
+        }
     }
 }
 

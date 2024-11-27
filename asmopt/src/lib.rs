@@ -192,11 +192,7 @@ fn remove_unused_instructions(asm_file: &mut AnalysisASMFile) {
             .retain(|sub| used_submachines.contains(&sub.ty.to_string()));
 
         let mut symbols_in_callable = machine_callable_body_symbols(machine);
-        println!("Symbols in callable body of {pp:?}: {symbols_in_callable:?}",); // a
         let symbols_in_instructions = machine_instructions_symbols(machine);
-
-        println!("Symbols in instructions of {pp:?}: {symbols_in_instructions:?}",); // x y
-        println!("Registers in {pp:?}: {:?}", machine.registers);
 
         symbols_in_callable.insert("pc".to_string());
         symbols_in_callable.extend(symbols_in_instructions);
@@ -223,7 +219,6 @@ fn machine_callable_body_symbols(machine: &Machine) -> HashSet<String> {
 fn machine_instructions_symbols(machine: &Machine) -> HashSet<String> {
     let mut symbols = HashSet::new();
     for ins in machine.instructions.iter() {
-        println!("Instruction: {ins:?}");
         symbols.extend(ins.symbols().map(|s| s.name.to_string()));
     }
 
