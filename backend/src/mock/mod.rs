@@ -79,7 +79,7 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
         let machines = self
             .machine_to_pil
             .iter()
-            .map(|(machine, pil)| Machine::new(machine.clone(), witness, &self.fixed, pil))
+            .filter_map(|(machine, pil)| Machine::try_new(machine.clone(), witness, &self.fixed, pil))
             .map(|machine| (machine.machine_name.clone(), machine))
             .collect::<BTreeMap<_, _>>();
 
