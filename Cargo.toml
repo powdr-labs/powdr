@@ -85,5 +85,3 @@ debug = true
 [workspace.lints.clippy]
 print_stdout = "deny"
 uninlined_format_args = "deny"
-
-
