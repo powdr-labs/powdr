@@ -16,6 +16,9 @@ use std::math::fp2::constrain_eq_ext;
 use std::math::fp2::required_extension_size;
 use std::math::fp2::needs_extension;
 use std::protocols::fingerprint::fingerprint;
+use std::protocols::fingerprint::fingerprint_inter;
+use std::prover::eval;
+use std::array;
 use std::utils::unwrap_or_else;
 use std::constraints::to_phantom_permutation;
 
@@ -42,13 +45,13 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
     
-    let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, fingerprint(lhs, alpha)));
-    let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, fingerprint(rhs, alpha)));
+    let lhs_folded = selected_or_one(eval(lhs_selector), sub_ext(eval_ext(beta), fingerprint(array::eval(lhs), alpha)));
+    let rhs_folded = selected_or_one(eval(rhs_selector), sub_ext(eval_ext(beta), fingerprint(array::eval(rhs), alpha)));
     
     // acc' = acc * lhs_folded / rhs_folded
     let res = mul_ext(
-        eval_ext(mul_ext(acc, lhs_folded)),
-        inv_ext(eval_ext(rhs_folded))
+        mul_ext(eval_ext(acc), lhs_folded),
+        inv_ext(rhs_folded)
     );
 
     unpack_ext_array(res)
@@ -83,8 +86,8 @@ let permutation: Constr -> () = constr |permutation_constraint| {
     // If the selector is 1, contribute a factor of `beta - fingerprint(lhs)` to accumulator.
     // If the selector is 0, contribute a factor of 1 to the accumulator.
     // Implemented as: folded = selector * (beta - fingerprint(values) - 1) + 1;
-    let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, fingerprint(lhs, alpha)));
-    let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, fingerprint(rhs, alpha)));
+    let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, fingerprint_inter(lhs, alpha)));
+    let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, fingerprint_inter(rhs, alpha)));
 
     let acc = std::array::new(required_extension_size(), |i| std::prover::new_witness_col_at_stage("acc", 1));
     let acc_ext = fp2_from_array(acc);

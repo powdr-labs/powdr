@@ -9,11 +9,19 @@ use powdr_pipeline::{
         evaluate_function, evaluate_integer_function, gen_estark_proof_with_backend_variant,
         gen_halo2_proof, make_simple_prepared_pipeline, regular_test,
         regular_test_without_small_field, std_analyzed, test_halo2_with_backend_variant,
-        test_mock_backend, test_plonky3_with_backend_variant, BackendVariant,
+        test_mock_backend, test_plonky3_pipeline, test_plonky3_with_backend_variant,
+        BackendVariant,
     },
     Pipeline,
 };
 use test_log::test;
+
+#[test]
+fn fingerprint_test() {
+    let f = "std/fingerprint_test.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3_pipeline(pipeline);
+}
 
 #[test]
 #[ignore = "Too slow"]

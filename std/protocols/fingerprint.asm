@@ -1,24 +1,51 @@
+use std::array;
 use std::array::len;
-use std::utils::fold;
 use std::math::fp2::Fp2;
 use std::math::fp2::add_ext;
 use std::math::fp2::mul_ext;
 use std::math::fp2::pow_ext;
 use std::math::fp2::from_base;
+use std::math::fp2::eval_ext;
+use std::check::assert;
 
 /// Maps [x_1, x_2, ..., x_n] to its Read-Solomon fingerprint, using a challenge alpha: $\sum_{i=1}^n alpha**{(n - i)} * x_i$
-let<T: Add + Mul + FromLiteral> fingerprint: T[], Fp2<T> -> Fp2<T> = |expr_array, alpha| {
-    let n = len(expr_array);
-    fold(
-        n,
-        |i| mul_ext(pow_ext(alpha, n - i - 1), from_base(expr_array[i])),
-        from_base(0),
-        |sum_acc, el| add_ext(sum_acc, el)
-    )
+/// To generate an expression that computes the fingerprint, use `fingerprint_inter` instead.
+/// Note that alpha is passed as an expressions, so that it is only evaluated if needed (i.e., if len(expr_array) > 1).
+let fingerprint: fe[], Fp2<expr> -> Fp2<fe> = query |expr_array, alpha| if len(expr_array) == 1 {
+    // Base case
+    from_base(expr_array[0])
+} else {
+    assert(len(expr_array) > 1, || "fingerprint requires at least one element");
+
+    // Recursively compute the fingerprint as fingerprint(expr_array[:-1], alpha) * alpha + expr_array[-1]
+    let intermediate_fingerprint = fingerprint(array::sub_array(expr_array, 0, len(expr_array) - 1), alpha);
+    add_ext(mul_ext(eval_ext(alpha), intermediate_fingerprint), from_base(expr_array[len(expr_array) - 1]))
+};
+
+/// Like `fingerprint`, but "materializes" the intermediate results as intermediate columns.
+/// Inlining them would lead to an exponentially-sized expression.
+let fingerprint_inter: expr[], Fp2<expr> -> Fp2<expr> = |expr_array, alpha| if len(expr_array) == 1 {
+    // Base case
+    from_base(expr_array[0])
+} else {
+    assert(len(expr_array) > 1, || "fingerprint requires at least one element");
+
+    // Recursively compute the fingerprint as fingerprint(expr_array[:-1], alpha) * alpha + expr_array[-1]
+    let intermediate_fingerprint = match fingerprint_inter(array::sub_array(expr_array, 0, len(expr_array) - 1), alpha) {
+        Fp2::Fp2(a0, a1) => {
+            let intermediate_fingerprint_0: inter = a0;
+            let intermediate_fingerprint_1: inter = a1;
+            Fp2::Fp2(intermediate_fingerprint_0, intermediate_fingerprint_1)
+        }
+    };
+    add_ext(mul_ext(alpha, intermediate_fingerprint), from_base(expr_array[len(expr_array) - 1]))
 };
 
 /// Maps [id, x_1, x_2, ..., x_n] to its Read-Solomon fingerprint, using a challenge alpha: $\sum_{i=1}^n alpha**{(n - i)} * x_i$
-let<T: Add + Mul + FromLiteral> fingerprint_with_id: T, T[], Fp2<T> -> Fp2<T> = |id, expr_array, alpha| fingerprint([id] + expr_array, alpha);
+let fingerprint_with_id: fe, fe[], Fp2<expr> -> Fp2<fe> = query |id, expr_array, alpha| fingerprint([id] + expr_array, alpha);
+
+/// Maps [id, x_1, x_2, ..., x_n] to its Read-Solomon fingerprint, using a challenge alpha: $\sum_{i=1}^n alpha**{(n - i)} * x_i$
+let fingerprint_with_id_inter: expr, expr[], Fp2<expr> -> Fp2<expr> = |id, expr_array, alpha| fingerprint_inter([id] + expr_array, alpha);
 
 mod test {
     use super::fingerprint;
@@ -27,8 +54,7 @@ mod test {
     use std::math::fp2::from_base;
 
     /// Helper function to assert that the fingerprint of a tuple is equal to the expected value.
-    /// We are working on integers here, wrapping them as Fp2 elements.
-    let assert_fingerprint_equal: int[], int, int -> () = |tuple, challenge, expected| {
+    let assert_fingerprint_equal: fe[], expr, fe -> () = query |tuple, challenge, expected| {
         let result = fingerprint(tuple, from_base(challenge));
         match result {
             Fp2::Fp2(actual, should_be_zero) => {
@@ -38,7 +64,7 @@ mod test {
         }
     };
 
-    let test_fingerprint = || {
+    let test_fingerprint = query || {
         // A tuple t of size n with challenge x should be mapped to:
         // t[0] * x**(n-1) + t[1] * x**(n-2) + ... + t[n-2] * x + t[n-1]
 
