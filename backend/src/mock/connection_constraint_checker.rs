@@ -1,10 +1,9 @@
 use std::collections::BTreeMap;
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::fmt;
-use std::hash::Hash;
 use std::ops::ControlFlow;
 
-use multiset::HashMultiSet;
+use itertools::Itertools;
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_ast::analyzed::Analyzed;
 use powdr_ast::analyzed::{
@@ -190,8 +189,8 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
         match connection.kind {
             ConnectionKind::Lookup => {
                 // Check if $caller \subseteq callee$.
-                let caller_set = caller_set.into_iter().collect::<HashSet<_>>();
-                let callee_set = callee_set.into_iter().collect::<HashSet<_>>();
+                let caller_set = caller_set.into_iter().collect::<BTreeSet<_>>();
+                let callee_set = callee_set.into_iter().collect::<BTreeSet<_>>();
                 let not_in_callee = caller_set
                     .difference(&callee_set)
                     .cloned()
@@ -208,23 +207,21 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
             }
             ConnectionKind::Permutation => {
                 // Check if $caller = callee$ (as multi-set).
-                let caller_set = caller_set.into_iter().collect::<HashMultiSet<_>>();
-                let callee_set = callee_set.into_iter().collect::<HashMultiSet<_>>();
-                let is_equal = caller_set == callee_set;
+                let is_equal = to_multi_set(&caller_set) == to_multi_set(&callee_set);
 
                 // Find the tuples that are in one set, but not in the other.
                 // Note that both `not_in_caller` and `not_in_callee` might actually be empty,
                 // if `caller_set` and `callee_set` are equal as sets but not as multi-sets.
-                let caller_set = caller_set.distinct_elements().collect::<HashSet<_>>();
-                let callee_set = callee_set.distinct_elements().collect::<HashSet<_>>();
+                let caller_set = caller_set.into_iter().collect::<BTreeSet<_>>();
+                let callee_set = callee_set.into_iter().collect::<BTreeSet<_>>();
                 let not_in_caller = callee_set.difference(&caller_set).collect::<Vec<_>>();
                 let not_in_callee = caller_set.difference(&callee_set).collect::<Vec<_>>();
 
                 if !is_equal {
                     Err(FailingConnectionConstraint {
                         connection,
-                        not_in_caller: not_in_caller.into_iter().cloned().cloned().collect(),
-                        not_in_callee: not_in_callee.into_iter().cloned().cloned().collect(),
+                        not_in_caller: not_in_caller.into_iter().cloned().collect(),
+                        not_in_callee: not_in_callee.into_iter().cloned().collect(),
                     })
                 } else {
                     Ok(())
@@ -273,13 +270,23 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
     }
 }
 
+/// Converts a slice to a multi-set, represented as a map from elements to their count.
+fn to_multi_set<T: Ord>(a: &[T]) -> BTreeMap<&T, usize> {
+    a.iter()
+        .sorted()
+        .chunk_by(|&t| t)
+        .into_iter()
+        .map(|(key, group)| (key, group.count()))
+        .collect()
+}
+
 #[derive(Debug, Clone)]
 /// A tuple of field elements.
 pub struct Tuple<F> {
     /// The values of the tuple.
     values: Vec<F>,
     /// The row in the machine where this tuple is located.
-    /// Note that this value is only informational and is *not* used for equality or hashing.
+    /// Note that this value is only informational and is *not* used for equality or ordering.
     row: usize,
 }
 
@@ -291,9 +298,15 @@ impl<F: PartialEq> PartialEq for Tuple<F> {
 
 impl<F: PartialEq> Eq for Tuple<F> {}
 
-impl<F: Hash> Hash for Tuple<F> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.values.hash(state);
+impl<F: PartialOrd> PartialOrd for Tuple<F> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.values.partial_cmp(&other.values)
+    }
+}
+
+impl<F: Ord> Ord for Tuple<F> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.values.cmp(&other.values)
     }
 }
 
