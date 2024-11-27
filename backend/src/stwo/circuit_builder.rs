@@ -17,11 +17,12 @@ use stwo_prover::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use stwo_prover::constraint_framework::{
     EvalAtRow, FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX,
 };
-use stwo_prover::core::backend::ColumnOps;
+use stwo_prover::core::backend::{Column, ColumnOps};
 use stwo_prover::core::fields::m31::{BaseField, M31};
 use stwo_prover::core::fields::{ExtensionOf, FieldExpOps, FieldOps};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use stwo_prover::core::ColumnVec;
 
 pub type PowdrComponent<'a, F> = FrameworkComponent<PowdrEval<F>>;
@@ -40,15 +41,24 @@ where
             .all(|(_name, vec)| vec.len() == witness[0].1.len()),
         "All Vec<T> in witness must have the same length. Mismatch found!"
     );
+
     let domain = CanonicCoset::new(witness[0].1.len().ilog2()).circle_domain();
     witness
         .iter()
         .map(|(_name, values)| {
-            let values = values
-                .iter()
-                .map(|v| v.try_into_i32().unwrap().into())
-                .collect();
-            CircleEvaluation::new(domain, values)
+            let mut column: <B as ColumnOps<M31>>::Column =
+                <B as ColumnOps<M31>>::Column::zeros(values.len());
+            values.iter().enumerate().for_each(|(i, v)| {
+                column.set(
+                    bit_reverse_index(
+                        coset_index_to_circle_domain_index(i, values.len().ilog2()),
+                        values.len().ilog2(),
+                    ),
+                    v.try_into_i32().unwrap().into(),
+                );
+            });
+
+            CircleEvaluation::new(domain, column)
         })
         .collect()
 }
