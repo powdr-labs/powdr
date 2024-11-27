@@ -172,6 +172,8 @@ impl Unifier {
             ));
         }
 
+        #[allow(clippy::iter_over_hash_type)]
+        // TODO: Is this deterministic?
         for bound in self.type_var_bounds(&type_var) {
             self.ensure_bound(&ty, bound)?;
         }

@@ -168,6 +168,8 @@ impl TypeChecker {
 
         // Now we check for all symbols that are not declared as a type scheme that they
         // can resolve to a concrete type.
+        #[allow(clippy::iter_over_hash_type)]
+        // TODO: This is not deterministic, because it returns the first error in an arbitrary order. Source order would be better.
         for (name, (source_ref, declared_type)) in &self.declared_types {
             if declared_type.vars.is_empty() {
                 // It is not a type scheme, see if we were able to derive a concrete type.
@@ -234,6 +236,8 @@ impl TypeChecker {
 
         // Add builtin schemes if they are not already there and also remove them from the definitions
         // (because we ignore the defined value).
+        #[allow(clippy::iter_over_hash_type)]
+        // This is deterministic, because the order does not matter.
         for (name, scheme) in builtin_schemes() {
             self.declared_types
                 .entry(name.clone())

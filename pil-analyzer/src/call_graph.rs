@@ -13,6 +13,7 @@ pub fn sort_called_first<'a, I: Iterator<Item = (&'a str, Option<&'a Expression>
     let graph = call_graph(symbols);
     let mut visited: HashSet<&str> = HashSet::new();
     let mut result: Vec<String> = Vec::new();
+    #[allow(clippy::iter_over_hash_type)]
     for (name, _) in graph.iter() {
         topo_sort_visit(name, &graph, &mut visited, &mut result);
     }
@@ -30,6 +31,7 @@ fn topo_sort_visit<'a, 'b>(
         return;
     }
     if let Some(called) = graph.get(name) {
+        #[allow(clippy::iter_over_hash_type)]
         for c in called {
             topo_sort_visit(c, graph, visited, result);
         }
