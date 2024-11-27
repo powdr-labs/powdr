@@ -137,13 +137,7 @@ where
                                 tree_builder.commit(prover_channel);
                                 let trees = commitment_scheme.trees;
 
-                                (
-                                    size as usize,
-                                    TableProvingKey {
-                                        trees,
-                                        prover_channel: prover_channel.clone(),
-                                    },
-                                )
+                                (size as usize, TableProvingKey { trees })
                             })
                             .collect(),
                     ))
@@ -177,10 +171,12 @@ where
             .and_then(|stark_proving_key| stark_proving_key.preprocessed.values_mut().next())
             .and_then(|table_collection| table_collection.values_mut().next())
             .map(|table_proving_key| {
-                (
-                    std::mem::take(&mut table_proving_key.trees),
-                    std::mem::take(&mut table_proving_key.prover_channel),
-                )
+                let mut prover_channel = <MC as MerkleChannel>::C::default();
+                let trees = std::mem::take(&mut table_proving_key.trees);
+
+                //prover_channel consume the latest merkle tree commitment root.
+                MC::mix_root(&mut prover_channel, trees[0].commitment.root());
+                (trees, prover_channel)
             })
             .unwrap_or_else(|| {
                 let mut prover_channel = <MC as MerkleChannel>::C::default();
