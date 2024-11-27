@@ -468,27 +468,48 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
 
 /// Identifies intermediate columns that are constrained to a single value, replaces every
 /// reference to this column by the value and deletes the column.
+/// This assumes that intermediate columns are defined before they are used in source order.
 fn remove_constant_intermediate_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let intermediate_polys = pil_file
-        .intermediate_columns
-        .iter()
-        .filter(|(_, (symbol, _))| !symbol.is_array())
-        .filter_map(|(poly, (symbol, definitions))| match definitions[0] {
-            AlgebraicExpression::Number(value) => {
-                log::debug!(
-                    "Determined fixed column {} to be constant {value}. Removing.",
-                    poly
-                );
-                Some((
-                    (poly.clone(), symbol.array_elements().next().unwrap().1),
-                    value.to_arbitrary_integer(),
-                ))
-            }
-            _ => None,
-        })
+    let constant_intermediate_polys = pil_file
+        .intermediate_polys_in_source_order()
+        .filter(|(symbol, _)| !symbol.is_array())
+        .fold(
+            BTreeMap::default(),
+            |mut values: BTreeMap<PolyID, (String, BigUint)>, (symbol, definitions)| {
+                let ((name, poly_id), mut definition) = symbol
+                    .array_elements()
+                    .zip_eq(definitions.iter().cloned())
+                    .next()
+                    .unwrap();
+                // replace constant intermediate columns by their value
+                definition.post_visit_expressions_mut(&mut |e| {
+                    if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
+                        if let Some((_, value)) = values.get(poly_id) {
+                            *e = AlgebraicExpression::Number(T::from(value.clone()));
+                        }
+                    }
+                });
+
+                // simplify the expression
+                let definition = simplify_expression(definition.clone());
+
+                // update the known values if we ended up with a constant
+                if let AlgebraicExpression::Number(value) = definition {
+                    log::debug!(
+                        "Determined fixed column {} to be constant {value}. Removing.",
+                        symbol.absolute_name
+                    );
+                    values.insert(poly_id, (name, value.to_arbitrary_integer()));
+                };
+
+                values
+            },
+        )
+        .into_iter()
+        .map(|(id, (name, e))| ((name, id), e))
         .collect::<Vec<((String, PolyID), _)>>();
 
-    substitute_polynomial_references(pil_file, intermediate_polys);
+    substitute_polynomial_references(pil_file, constant_intermediate_polys);
 }
 
 /// Substitutes all references to certain polynomials by the given field elements.
