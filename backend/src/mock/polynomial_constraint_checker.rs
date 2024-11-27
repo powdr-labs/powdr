@@ -38,10 +38,12 @@ impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
             .flat_map(|row| self.check_row(row, &polynomial_identities))
             .collect();
 
-        MachineResult {
+        let result = MachineResult {
             machine_name: self.machine.machine_name.clone(),
             errors,
-        }
+        };
+        result.log();
+        result
     }
 
     fn check_row(
