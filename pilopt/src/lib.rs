@@ -29,6 +29,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     simplify_identities(&mut pil_file);
     extract_constant_lookups(&mut pil_file);
     remove_constant_witness_columns(&mut pil_file);
+    remove_constant_intermediate_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
     remove_trivial_identities(&mut pil_file);
     remove_duplicate_identities(&mut pil_file);
@@ -463,6 +464,31 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     constant_polys.retain(|((_, id), _)| columns.contains(id));
 
     substitute_polynomial_references(pil_file, constant_polys);
+}
+
+/// Identifies intermediate columns that are constrained to a single value, replaces every
+/// reference to this column by the value and deletes the column.
+fn remove_constant_intermediate_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    let intermediate_polys = pil_file
+        .intermediate_columns
+        .iter()
+        .filter(|(_, (symbol, _))| !symbol.is_array())
+        .filter_map(|(poly, (symbol, definitions))| match definitions[0] {
+            AlgebraicExpression::Number(value) => {
+                log::debug!(
+                    "Determined fixed column {} to be constant {value}. Removing.",
+                    poly
+                );
+                Some((
+                    (poly.clone(), symbol.array_elements().next().unwrap().1),
+                    value.to_arbitrary_integer(),
+                ))
+            }
+            _ => None,
+        })
+        .collect::<Vec<((String, PolyID), _)>>();
+
+    substitute_polynomial_references(pil_file, intermediate_polys);
 }
 
 /// Substitutes all references to certain polynomials by the given field elements.
