@@ -87,5 +87,5 @@ powdr-pipeline.workspace = true
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]
 
-[lints.clippy]
-uninlined_format_args = "deny"
+[lints]
+workspace = true

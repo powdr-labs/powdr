@@ -1,4 +1,3 @@
-#![deny(clippy::print_stdout)]
 
 #[cfg(any(feature = "estark-polygon", feature = "estark-starky"))]
 mod estark;
