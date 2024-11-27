@@ -1,4 +1,3 @@
-
 #[cfg(any(feature = "estark-polygon", feature = "estark-starky"))]
 mod estark;
 #[cfg(feature = "halo2")]

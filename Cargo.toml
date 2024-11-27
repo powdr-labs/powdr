@@ -85,5 +85,6 @@ debug = true
 [workspace.lints.clippy]
 print_stdout = "deny"
 uninlined_format_args = "deny"
+iter_over_hash_type = "deny"
 
 

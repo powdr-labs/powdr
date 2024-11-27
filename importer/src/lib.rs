@@ -1,4 +1,3 @@
-
 mod module_loader;
 mod path_canonicalizer;
 mod powdr_std;
