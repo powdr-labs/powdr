@@ -1,6 +1,9 @@
 use std::machines::hash::poseidon_bn254::PoseidonBN254;
 
-machine Main with degree: 512 {
+let main_degree: int = 512;
+let poseidon_degree: int = 512;
+
+machine Main with degree: main_degree {
     reg pc[@pc];
     reg X0[<=];
     reg X1[<=];
@@ -8,7 +11,7 @@ machine Main with degree: 512 {
     reg X3[<=];
     reg A;
 
-    PoseidonBN254 poseidon;
+    PoseidonBN254 poseidon(poseidon_degree, poseidon_degree);
 
     instr poseidon X0, X1, X2 -> X3 link ~> X3 = poseidon.poseidon_permutation(X0, X1, X2);
 

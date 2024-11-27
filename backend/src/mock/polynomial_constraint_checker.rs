@@ -1,8 +1,7 @@
 use std::{collections::BTreeMap, fmt};
 
-use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{AlgebraicExpression, Analyzed, Identity, PolyID, PolynomialIdentity},
+    analyzed::{Identity, PolynomialIdentity},
     parsed::visitor::AllChildren,
 };
 use powdr_executor::witgen::{AffineExpression, AlgebraicVariable, ExpressionEvaluator};
@@ -11,92 +10,40 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::mock::evaluator::Variables;
 
-pub struct ConstraintChecker<'a, F> {
-    machine_name: String,
-    size: usize,
-    columns: BTreeMap<PolyID, &'a [F]>,
-    pil: &'a Analyzed<F>,
-    intermediate_definitions: BTreeMap<PolyID, &'a AlgebraicExpression<F>>,
+use super::machine::Machine;
+
+pub struct PolynomialConstraintChecker<'a, F> {
+    machine: &'a Machine<'a, F>,
 }
 
-impl<'a, F: FieldElement> ConstraintChecker<'a, F> {
-    pub fn new(
-        machine_name: String,
-        witness: &'a [(String, Vec<F>)],
-        fixed: &'a [(String, &'a [F])],
-        pil: &'a Analyzed<F>,
-    ) -> Self {
-        let size = witness
-            .iter()
-            .map(|(_, v)| v.len())
-            .chain(fixed.iter().map(|(_, v)| v.len()))
-            .unique()
-            .exactly_one()
-            .unwrap();
-
-        let intermediate_definitions = pil
-            .intermediate_polys_in_source_order()
-            .flat_map(|(symbol, definitions)| {
-                symbol
-                    .array_elements()
-                    .zip_eq(definitions)
-                    .map(|((_, poly_id), def)| (poly_id, def))
-            })
-            .collect();
-
-        let columns_by_name = witness
-            .iter()
-            .map(|(name, col)| (name, col.as_slice()))
-            .chain(fixed.iter().map(|(name, col)| (name, *col)))
-            .collect::<BTreeMap<_, _>>();
-
-        let columns = pil
-            .committed_polys_in_source_order()
-            .chain(pil.constant_polys_in_source_order())
-            .flat_map(|(symbol, _)| symbol.array_elements())
-            .map(|(name, poly_id)| {
-                let column = columns_by_name
-                    .get(&name)
-                    .unwrap_or_else(|| panic!("Missing column: {name}"));
-                (poly_id, *column)
-            })
-            .collect();
-
-        Self {
-            machine_name,
-            size,
-            columns,
-            pil,
-            intermediate_definitions,
-        }
+impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
+    pub fn new(machine: &'a Machine<'a, F>) -> Self {
+        Self { machine }
     }
 
     pub fn check(&self) -> MachineResult<'a, F> {
         // We'd only expect to see polynomial identities here, because we're only validating one machine.
-        let mut warnings = Vec::new();
+        // But if they do appear (because of a lookup / permutation within a namespace), they are handled
+        // by the ConnectionConstraintChecker.
         let polynomial_identities = self
+            .machine
             .pil
             .identities
             .iter()
-            .filter(|identity| match identity {
-                Identity::Polynomial(_) => true,
-                _ => {
-                    warnings.push(format!("Ignoring unexpected identity: {identity}",));
-                    false
-                }
-            })
+            .filter(|identity| matches!(identity, Identity::Polynomial(_)))
             .collect::<Vec<_>>();
 
-        let errors = (0..self.size)
+        let errors = (0..self.machine.size)
             .into_par_iter()
             .flat_map(|row| self.check_row(row, &polynomial_identities))
             .collect();
 
-        MachineResult {
-            machine_name: self.machine_name.clone(),
-            warnings,
+        let result = MachineResult {
+            machine_name: self.machine.machine_name.clone(),
             errors,
-        }
+        };
+        result.log();
+        result
     }
 
     fn check_row(
@@ -105,10 +52,11 @@ impl<'a, F: FieldElement> ConstraintChecker<'a, F> {
         identities: &[&'a Identity<F>],
     ) -> Vec<FailingPolynomialConstraint<'a, F>> {
         let variables = Variables {
-            columns: &self.columns,
+            machine: self.machine,
             row,
         };
-        let mut evaluator = ExpressionEvaluator::new(&variables, &self.intermediate_definitions);
+        let mut evaluator =
+            ExpressionEvaluator::new(&variables, &self.machine.intermediate_definitions);
         identities
             .iter()
             .filter_map(|identity| {
@@ -159,7 +107,6 @@ impl<F: fmt::Display> fmt::Display for FailingPolynomialConstraint<'_, F> {
 
 pub struct MachineResult<'a, F> {
     machine_name: String,
-    warnings: Vec<String>,
     errors: Vec<FailingPolynomialConstraint<'a, F>>,
 }
 
@@ -167,30 +114,13 @@ const MAX_ERRORS: usize = 5;
 
 impl<F: fmt::Display> MachineResult<'_, F> {
     pub fn log(&self) {
-        let num_warnings = self.warnings.len();
         let num_errors = self.errors.len();
 
-        if num_errors == 0 && num_warnings == 0 {
+        if num_errors == 0 {
             return;
         }
 
-        let log_level = if num_errors > 0 {
-            log::Level::Error
-        } else {
-            log::Level::Warn
-        };
-
-        log::log!(
-            log_level,
-            "Machine {} has {} errors and {} warnings",
-            self.machine_name,
-            num_errors,
-            num_warnings
-        );
-
-        for warning in &self.warnings {
-            log::warn!("  Warning: {}", warning);
-        }
+        log::error!("Machine {} has {num_errors} errors", self.machine_name);
 
         for error in self.errors.iter().take(MAX_ERRORS) {
             let error_indented = error.to_string().replace("\n", "\n  ");
@@ -203,9 +133,5 @@ impl<F: fmt::Display> MachineResult<'_, F> {
 
     pub fn has_errors(&self) -> bool {
         !self.errors.is_empty()
-    }
-
-    pub fn has_warnings(&self) -> bool {
-        !self.warnings.is_empty()
     }
 }

@@ -1,7 +1,10 @@
 use std::machines::split::ByteCompare;
 use std::machines::split::split_bb::SplitBB;
 
-machine Main with degree: 65536 {
+let main_degree: int = 2**16;
+let split_degree: int = 2**16;
+
+machine Main with degree: main_degree {
     reg pc[@pc];
     reg X0[<=];
     reg X1[<=];
@@ -10,7 +13,7 @@ machine Main with degree: 65536 {
     reg high;
 
     ByteCompare byte_compare;
-    SplitBB split_machine(byte_compare);
+    SplitBB split_machine(byte_compare, split_degree, split_degree);
 
     instr split X0 -> X1, X2 link ~> (X1, X2) = split_machine.split(X0);
 

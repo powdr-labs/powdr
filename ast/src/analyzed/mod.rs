@@ -117,6 +117,16 @@ impl<T> Analyzed<T> {
         self.public_declarations.len()
     }
 
+    pub fn name_to_poly_id(&self) -> BTreeMap<String, PolyID> {
+        self.definitions
+            .values()
+            .map(|(symbol, _)| symbol)
+            .filter(|symbol| matches!(symbol.kind, SymbolKind::Poly(_)))
+            .chain(self.intermediate_columns.values().map(|(symbol, _)| symbol))
+            .flat_map(|symbol| symbol.array_elements())
+            .collect()
+    }
+
     pub fn constant_polys_in_source_order(
         &self,
     ) -> impl Iterator<Item = &(Symbol, Option<FunctionValueDefinition>)> {
@@ -129,7 +139,7 @@ impl<T> Analyzed<T> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
-    pub fn intermediate_polys_in_source_order(
+    fn intermediate_polys_in_source_order(
         &self,
     ) -> impl Iterator<Item = &(Symbol, Vec<AlgebraicExpression<T>>)> {
         self.source_order.iter().filter_map(move |statement| {
@@ -350,7 +360,7 @@ impl<T> Analyzed<T> {
             });
     }
 
-    pub fn post_visit_expressions_in_definitions_mut<F>(&mut self, f: &mut F)
+    pub fn post_visit_expressions_mut<F>(&mut self, f: &mut F)
     where
         F: FnMut(&mut Expression),
     {
@@ -358,7 +368,10 @@ impl<T> Analyzed<T> {
         self.definitions
             .values_mut()
             .filter_map(|(_poly, definition)| definition.as_mut())
-            .for_each(|definition| definition.post_visit_expressions_mut(f))
+            .for_each(|definition| definition.post_visit_expressions_mut(f));
+        self.prover_functions
+            .iter_mut()
+            .for_each(|e| e.post_visit_expressions_mut(f));
     }
 
     /// Retrieves (name, col_name, poly_id, offset, stage) of each public witness in the trace.
@@ -393,6 +406,38 @@ impl<T> Analyzed<T> {
         // Sort, so that the order is deterministic
         publics.sort();
         publics
+    }
+}
+
+impl<T: Clone> Analyzed<T> {
+    /// Builds a map from a reference to an intermediate polynomial to the corresponding definition.
+    pub fn intermediate_definitions(
+        &self,
+    ) -> BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>> {
+        self.intermediate_polys_in_source_order()
+            .flat_map(|(symbol, definitions)| symbol.array_elements().zip_eq(definitions))
+            .flat_map(|((_, poly_id), def)| {
+                // A definition for <intermediate>' only exists if no sub-expression in its definition
+                // has the next operator applied to it.
+                let next_definition = def.clone().next().ok().map(|def_next| {
+                    (
+                        AlgebraicReferenceThin {
+                            poly_id,
+                            next: true,
+                        },
+                        def_next,
+                    )
+                });
+
+                next_definition.into_iter().chain(once((
+                    AlgebraicReferenceThin {
+                        poly_id,
+                        next: false,
+                    },
+                    def.clone(),
+                )))
+            })
+            .collect()
     }
 }
 
@@ -1160,6 +1205,13 @@ pub enum Reference {
     Poly(PolynomialReference),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+/// Like [[AlgebraicReference]], but without the name.
+pub struct AlgebraicReferenceThin {
+    pub poly_id: PolyID,
+    pub next: bool,
+}
+
 #[derive(Debug, Clone, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AlgebraicReference {
     /// Name of the polynomial - just for informational purposes.
@@ -1180,6 +1232,13 @@ impl AlgebraicReference {
     #[inline]
     pub fn is_fixed(&self) -> bool {
         self.poly_id.ptype == PolynomialType::Constant
+    }
+
+    pub fn to_thin(&self) -> AlgebraicReferenceThin {
+        AlgebraicReferenceThin {
+            poly_id: self.poly_id,
+            next: self.next,
+        }
     }
 }
 

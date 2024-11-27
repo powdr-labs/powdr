@@ -4,7 +4,12 @@ use std::machines::small_field::add_sub::AddSub;
 use std::machines::range::Byte2;
 use std::machines::range::Bit12;
 
-machine Main with degree: 65536 {
+let main_degree: int = 2**7;
+let add_sub_degree: int = 2**9;
+let memory_degree: int = 2**9;
+let keccakf_memory_degree: int = 2**7;
+
+machine Main with degree: main_degree {
     reg pc[@pc];
 
     reg X1[<=];
@@ -15,12 +20,13 @@ machine Main with degree: 65536 {
 
     Byte2 byte2;
     Bit12 bit12;
-    AddSub add_sub(byte2);
-    Memory memory(bit12, byte2);
+    AddSub add_sub(byte2, add_sub_degree, add_sub_degree);
+    Memory memory(bit12, byte2, memory_degree, memory_degree);
 
-    Keccakf16Memory keccakf16_memory(memory, add_sub);
+    Keccakf16Memory keccakf16_memory(memory, add_sub, keccakf_memory_degree, keccakf_memory_degree);
 
-    col fixed STEP(i) { i };
+    // Increase time step by 2 in each row, because keccakf16_memory reads in step `i` and writes in step `i + 1`.
+    col fixed STEP(i) { 2 * i };
 
     // Big endian.
     // Usage: mstore addr_h, addr_l, val_h, val_l

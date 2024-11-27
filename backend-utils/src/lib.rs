@@ -146,7 +146,7 @@ fn extract_namespace(name: &str) -> String {
 }
 
 /// From e.g. an identity or expression, get the namespaces of the symbols it references.
-fn referenced_namespaces_algebraic_expression<F: FieldElement>(
+pub fn referenced_namespaces_algebraic_expression<F: FieldElement>(
     expression_visitable: &impl AllChildren<AlgebraicExpression<F>>,
 ) -> BTreeSet<String> {
     expression_visitable

@@ -51,6 +51,7 @@ machine Main with degree: 8 {
 
 mod my_module {
     machine Other with
+        degree: 8,
         latch: latch,
         operation_id: operation_id
     {

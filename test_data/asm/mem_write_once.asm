@@ -24,7 +24,7 @@ machine Main with degree: 256 {
     reg A;
     reg B;
 
-    WriteOnceMemory memory;
+    WriteOnceMemory memory(256, 256);
     instr mstore X1, X2, Y1, Y2 -> link => memory.access(X1, X2, Y1, Y2);
     instr mload X1, X2 -> Y1, Y2 link => memory.access(X1, X2, Y1, Y2);
 

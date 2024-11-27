@@ -1,7 +1,10 @@
 use std::machines::range::Byte2;
 use std::machines::large_field::memory_with_bootloader_write::MemoryWithBootloaderWrite;
 
-machine Main with degree: 65536 {
+let main_degree: int = 2**16;
+let memory_degree: int = 2**16;
+
+machine Main with degree: main_degree {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -9,7 +12,7 @@ machine Main with degree: 65536 {
 
     col fixed STEP(i) { i };
     Byte2 byte2;
-    MemoryWithBootloaderWrite memory(byte2);
+    MemoryWithBootloaderWrite memory(byte2, memory_degree, memory_degree);
 
     instr mload X -> Y link ~> Y = memory.mload(X, STEP);
     instr mstore X, Y -> link ~> memory.mstore(X, STEP, Y);

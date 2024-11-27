@@ -162,6 +162,8 @@ impl Runtime {
 
         r.add_syscall(Syscall::CommitPublic, ["commit_public 10, 11;"]);
 
+        r.add_syscall(Syscall::InvertGL, ["invert_gl 10, 11;"]);
+
         r.with_poseidon()
     }
 

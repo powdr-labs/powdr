@@ -384,7 +384,7 @@ fn execute_fast<F: FieldElement>(
     profiling: Option<ProfilerOptions>,
 ) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<F>::default()
-        .from_file(file_name.to_path_buf())
+        .from_asm_file(file_name.to_path_buf())
         .with_prover_inputs(inputs)
         .with_output(output_dir.into(), true);
 
@@ -416,7 +416,7 @@ fn execute<F: FieldElement>(
     profiling: Option<ProfilerOptions>,
 ) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<F>::default()
-        .from_file(file_name.to_path_buf())
+        .from_asm_file(file_name.to_path_buf())
         .with_prover_inputs(inputs)
         .with_output(output_dir.into(), true);
 

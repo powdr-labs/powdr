@@ -22,7 +22,7 @@ machine MemoryProxy with
     col fixed latch = [1]*;
 
     Byte2 byte2;
-    Memory mem(byte2);
+    Memory mem(byte2, 8, 8);
 
     col witness addr, step, value;
     

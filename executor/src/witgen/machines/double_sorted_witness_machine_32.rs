@@ -102,6 +102,10 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
             return None;
         }
 
+        if parts.connections.is_empty() {
+            return None;
+        }
+
         if !parts.connections.values().all(|i| i.is_permutation()) {
             return None;
         }
@@ -449,9 +453,11 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
                 )
                 .is_none()
         };
-        if has_side_effect {
-            assignments = assignments.report_side_effect();
-        }
+        assert!(
+            has_side_effect,
+            "Already had a memory access for address 0x{addr:x} and time step {step}!"
+        );
+        assignments = assignments.report_side_effect();
 
         if self.trace.len() > (self.degree as usize) {
             return Err(EvalError::RowsExhausted(self.name.clone()));

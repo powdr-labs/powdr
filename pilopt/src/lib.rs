@@ -258,7 +258,7 @@ fn deduplicate_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     });
 
     // substitute all occurences in definitions.
-    pil_file.post_visit_expressions_in_definitions_mut(&mut |e| {
+    pil_file.post_visit_expressions_mut(&mut |e| {
         if let Expression::Reference(_, Reference::Poly(reference)) = e {
             if let Some((replacement_name, _)) = replacement_by_name.get(&reference.name) {
                 reference.name = replacement_name.clone();
@@ -478,7 +478,7 @@ fn substitute_polynomial_references<T: FieldElement>(
         .into_iter()
         .map(|((name, _), value)| (name, value))
         .collect::<HashMap<String, _>>();
-    pil_file.post_visit_expressions_in_definitions_mut(&mut |e: &mut Expression| {
+    pil_file.post_visit_expressions_mut(&mut |e: &mut Expression| {
         if let Expression::Reference(
             _,
             Reference::Poly(PolynomialReference { name, type_args: _ }),

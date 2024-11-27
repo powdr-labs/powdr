@@ -8,7 +8,7 @@ use powdr_ast::{
         asm::{AbsoluteSymbolPath, Part, SymbolPath},
         build::{index_access, lookup, namespaced_reference, permutation, selected},
         visitor::{ExpressionVisitable, VisitOrder},
-        ArrayLiteral, Expression, FunctionCall, NamespaceDegree, PILFile, PilStatement,
+        ArrayLiteral, Expression, FunctionCall, NamespaceDegree, Number, PILFile, PilStatement,
     },
 };
 use powdr_parser_util::SourceRef;
@@ -18,8 +18,14 @@ use strum::{Display, EnumString, EnumVariantNames};
 const MAIN_OPERATION_NAME: &str = "main";
 
 /// Link the objects into a single PIL file, using the specified mode.
-pub fn link(graph: MachineInstanceGraph, mode: LinkerMode) -> Result<PILFile, Vec<String>> {
-    Linker::new(mode).link(graph)
+pub fn link(graph: MachineInstanceGraph, params: LinkerParams) -> Result<PILFile, Vec<String>> {
+    Linker::new(params).link(graph)
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct LinkerParams {
+    pub mode: LinkerMode,
+    pub degree_mode: DegreeMode,
 }
 
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy, Default)]
@@ -32,27 +38,29 @@ pub enum LinkerMode {
     Bus,
 }
 
-#[derive(Default)]
+#[derive(Clone, EnumString, EnumVariantNames, Display, Copy, Default)]
 /// Whether to align the degrees of all machines to the main machine, or to use the degrees of the individual machines.
 pub enum DegreeMode {
-    Monolithic(MachineDegree),
+    #[strum(serialize = "monolithic")]
+    Monolithic,
     #[default]
+    #[strum(serialize = "vadcop")]
     Vadcop,
 }
 
 #[derive(Default)]
 struct Linker {
-    mode: LinkerMode,
-    degrees: DegreeMode,
+    params: LinkerParams,
+    max_degree: Option<Number>,
     /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
     namespaces: BTreeMap<String, (Vec<PilStatement>, Vec<PilStatement>)>,
     next_interaction_id: u32,
 }
 
 impl Linker {
-    fn new(mode: LinkerMode) -> Self {
+    fn new(params: LinkerParams) -> Self {
         Self {
-            mode,
+            params,
             ..Default::default()
         }
     }
@@ -65,17 +73,15 @@ impl Linker {
 
     fn link(mut self, graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
         let main_machine = graph.main;
-        let main_degree = graph
-            .objects
-            .get(&main_machine.location)
-            .unwrap()
-            .degree
-            .clone();
-
-        // If the main object has a static degree, we use the monolithic mode with that degree.
-        self.degrees = match main_degree.is_static() {
-            true => DegreeMode::Monolithic(main_degree),
-            false => DegreeMode::Vadcop,
+        self.max_degree = match self.params.degree_mode {
+            DegreeMode::Monolithic => Some(graph
+                .objects
+                .iter()
+                .filter_map(|(_, object)| object.degree.max.clone()).map(|e| match e {
+                    Expression::Number(_, n) => n,
+                    _ => unimplemented!("Only constant max degrees are supported when using monolithic degree mode"),
+                }).max().unwrap()),
+            DegreeMode::Vadcop => None,
         };
 
         let common_definitions = process_definitions(graph.statements);
@@ -124,13 +130,15 @@ impl Linker {
     }
 
     fn process_object(&mut self, location: Location, object: Object) {
-        let degree = match &self.degrees {
-            DegreeMode::Monolithic(d) => d.clone(),
-            DegreeMode::Vadcop => object.degree,
+        let namespace_degree = match &self.params.degree_mode {
+            DegreeMode::Monolithic => {
+                Expression::Number(SourceRef::unknown(), self.max_degree.clone().unwrap()).into()
+            }
+            DegreeMode::Vadcop => try_into_namespace_degree(object.degree)
+                .unwrap_or_else(|| panic!("machine at {location} must have an explicit degree")),
         };
 
         let namespace = location.to_string();
-        let namespace_degree = to_namespace_degree(degree);
 
         let (pil, _) = self.namespaces.entry(namespace.clone()).or_default();
 
@@ -235,7 +243,7 @@ impl Linker {
         // get a new unique interaction id
         let interaction_id = self.next_interaction_id();
 
-        match self.mode {
+        match self.params.mode {
             LinkerMode::Native => {
                 self.namespaces.entry(from_namespace).or_default().1.push(
                     PilStatement::Expression(
@@ -343,16 +351,11 @@ fn receive(
     )
 }
 
-/// Convert a [MachineDegree] into a [NamespaceDegree], setting any unset bounds to the relevant default values
-fn to_namespace_degree(d: MachineDegree) -> NamespaceDegree {
-    NamespaceDegree {
-        min: d
-            .min
-            .expect("Either Main or submachine must have explicit degree or min degree"),
-        max: d
-            .max
-            .expect("Either Main or submachine must have explicit degree or max degree"),
-    }
+/// Convert a [MachineDegree] into a [NamespaceDegree]
+fn try_into_namespace_degree(d: MachineDegree) -> Option<NamespaceDegree> {
+    let min = d.min?;
+    let max = d.max?;
+    Some(NamespaceDegree { min, max })
 }
 
 fn namespaced_expression(namespace: String, mut expr: Expression) -> Expression {
@@ -407,11 +410,33 @@ mod test {
     use pretty_assertions::assert_eq;
 
     fn link_native(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
-        super::link(graph, super::LinkerMode::Native)
+        super::link(
+            graph,
+            super::LinkerParams {
+                mode: super::LinkerMode::Native,
+                ..Default::default()
+            },
+        )
     }
 
-    fn link_with_bus(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
-        super::link(graph, super::LinkerMode::Bus)
+    fn link_native_monolithic(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
+        super::link(
+            graph,
+            super::LinkerParams {
+                mode: super::LinkerMode::Native,
+                degree_mode: super::DegreeMode::Monolithic,
+            },
+        )
+    }
+
+    fn link_with_bus_monolithic(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
+        super::link(
+            graph,
+            super::LinkerParams {
+                mode: super::LinkerMode::Bus,
+                degree_mode: super::DegreeMode::Monolithic,
+            },
+        )
     }
 
     fn parse_analyze_and_compile_file<T: FieldElement>(file: &str) -> MachineInstanceGraph {
@@ -442,7 +467,7 @@ mod test {
 
     #[test]
     fn compile_empty_vm() {
-        let native_expectation = r#"namespace main(4 + 4);
+        let native_expectation = r#"namespace main(8);
     let _operation_id;
     query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 2);
     pol constant _block_enforcer_last_step = [0]* + [1];
@@ -458,7 +483,7 @@ mod test {
     pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
     1 $ [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return];
-namespace main__rom(4 + 4);
+namespace main__rom(8);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
     pol constant p_instr__loop = [0, 0, 1] + [1]*;
@@ -468,7 +493,7 @@ namespace main__rom(4 + 4);
     pol constant latch = [1]*;
 "#;
 
-        let bus_expectation = r#"namespace main(4 + 4);
+        let bus_expectation = r#"namespace main(8);
     let _operation_id;
     query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 2);
     pol constant _block_enforcer_last_step = [0]* + [1];
@@ -484,7 +509,7 @@ namespace main__rom(4 + 4);
     pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
     std::protocols::lookup_via_bus::lookup_send(0, 1 $ [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return]);
-namespace main__rom(4 + 4);
+namespace main__rom(8);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
     pol constant p_instr__loop = [0, 0, 1] + [1]*;
@@ -497,9 +522,9 @@ namespace main__rom(4 + 4);
 
         let file_name = "../test_data/asm/empty_vm.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link_native(graph.clone()).unwrap();
+        let pil = link_native_monolithic(graph.clone()).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), native_expectation);
-        let pil = link_with_bus(graph).unwrap();
+        let pil = link_with_bus_monolithic(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), bus_expectation);
     }
 
@@ -624,7 +649,7 @@ namespace main_sub__rom(16);
 "#;
         let file_name = "../test_data/asm/different_signatures.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link_native(graph).unwrap();
+        let pil = link_native_monolithic(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
@@ -877,7 +902,7 @@ namespace main_vm(64..128);
 
     #[test]
     fn permutation_instructions() {
-        let expected = r#"namespace main(128);
+        let expected = r#"namespace main(256);
     let _operation_id;
     query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 9);
     pol constant _block_enforcer_last_step = [0]* + [1];
@@ -933,7 +958,7 @@ namespace main_vm(64..128);
     instr_or $ [0, X, Y, Z] is main_bin::latch * main_bin::sel[0] $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];
     pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
     _linker_first_step * (_operation_id - 2) = 0;
-namespace main__rom(128);
+namespace main__rom(256);
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] + [9]*;
     pol constant p_X_const = [0, 0, 2, 0, 1, 0, 3, 0, 0, 0] + [0]*;
     pol constant p_X_read_free = [0]*;
@@ -964,17 +989,12 @@ namespace main__rom(128);
     pol constant p_reg_write_Z_B = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-namespace main_bin(128);
+namespace main_bin(256);
     pol commit operation_id;
     pol constant latch(i) { if i % 8 == 7 { 1 } else { 0 } };
     let sum_sel = std::array::sum(sel);
     std::utils::force_bool(sum_sel);
     pol constant FACTOR(i) { 1 << (i + 1) % 8 * 4 };
-    let a = |i| i % 16;
-    pol constant P_A(i) { a(i) };
-    let b = |i| (i >> 4) % 16;
-    pol constant P_B(i) { b(i) };
-    pol constant P_C(i) { (a(i) | b(i)) & 15 };
     pol commit A_byte;
     pol commit B_byte;
     pol commit C_byte;
@@ -984,13 +1004,20 @@ namespace main_bin(128);
     A' = A * (1 - latch) + A_byte * FACTOR;
     B' = B * (1 - latch) + B_byte * FACTOR;
     C' = C * (1 - latch) + C_byte * FACTOR;
-    [A_byte, B_byte, C_byte] in [P_A, P_B, P_C];
     pol commit sel[1];
     std::array::map(sel, std::utils::force_bool);
+    1 $ [A_byte, B_byte, C_byte] in main_bin_o::latch $ [main_bin_o::P_A, main_bin_o::P_B, main_bin_o::P_C];
+namespace main_bin_o(256);
+    pol constant latch = [1]*;
+    let a = |i| i % 16;
+    pol constant P_A(i) { a(i) };
+    let b = |i| (i >> 4) % 16;
+    pol constant P_B(i) { b(i) };
+    pol constant P_C(i) { (a(i) | b(i)) & 15 };
 "#;
         let file_name = "../test_data/asm/permutations/vm_to_block.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link_native(graph).unwrap();
+        let pil = link_native_monolithic(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }
 
@@ -1147,7 +1174,7 @@ namespace main_submachine(32);
 "#;
         let file_name = "../test_data/asm/permutations/link_merging.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link_native(graph).unwrap();
+        let pil = link_native_monolithic(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }
 }

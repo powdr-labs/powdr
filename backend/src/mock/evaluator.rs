@@ -1,11 +1,11 @@
-use std::collections::BTreeMap;
-
-use powdr_ast::analyzed::{PolyID, PolynomialType};
+use powdr_ast::analyzed::PolynomialType;
 use powdr_executor::witgen::{AffineResult, AlgebraicVariable, SymbolicVariables};
 use powdr_number::FieldElement;
 
+use super::machine::Machine;
+
 pub struct Variables<'a, F> {
-    pub columns: &'a BTreeMap<PolyID, &'a [F]>,
+    pub machine: &'a Machine<'a, F>,
     pub row: usize,
 }
 
@@ -14,7 +14,7 @@ impl<'a, F: FieldElement> Variables<'a, F> {
         match var {
             AlgebraicVariable::Column(column) => match column.poly_id.ptype {
                 PolynomialType::Committed | PolynomialType::Constant => {
-                    let column_values = self.columns.get(&column.poly_id).unwrap();
+                    let column_values = self.machine.columns.get(&column.poly_id).unwrap();
                     let row = (self.row + column.next as usize) % column_values.len();
                     column_values[row]
                 }

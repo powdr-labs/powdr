@@ -3,7 +3,6 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::iter::{self, once};
-use powdr_backend_utils::machine_witness_columns;
 
 use itertools::Itertools;
 use p3_air::Air;
@@ -399,7 +398,7 @@ where
 pub fn prove<T: FieldElementMap>(
     proving_key: Option<&StarkProvingKey<T::Config>>,
     program: &PowdrCircuit<T>,
-    witness: &mut Vec<(String, Vec<T>)>,
+    witness_by_machine: &mut BTreeMap<String, Vec<(String, Vec<T>)>>,
     challenger: &mut Challenger<T>,
 ) -> Proof<T::Config>
 where
@@ -409,8 +408,8 @@ where
     let (tables, stage_0): (BTreeMap<_, _>, BTreeMap<_, _>) = program
         .split
         .iter()
-        .filter_map(|(name, (pil, constraint_system))| {
-            let columns = machine_witness_columns(witness, pil, name);
+        .filter_map(|(name, (_, constraint_system))| {
+            let columns = witness_by_machine.get(name).unwrap();
             let degree = columns[0].1.len();
 
             if degree == 0 {
@@ -445,7 +444,9 @@ where
                         public_values: constraint_system.publics_by_stage[0]
                             .iter()
                             .map(|(_, column_name, _, row)| {
-                                witness
+                                witness_by_machine
+                                    .get(name)
+                                    .unwrap()
                                     .iter()
                                     .find_map(|(n, v)| (n == column_name).then(|| v[*row]))
                                     .unwrap()
@@ -502,7 +503,7 @@ where
         // get the challenges drawn at the end of the previous stage
         let local_challenges = &state.processed_stages.last().unwrap().challenge_values;
         let CallbackResult { air_stages } =
-            program.compute_stage(stage_id, local_challenges, witness);
+            program.compute_stage(stage_id, local_challenges, witness_by_machine);
 
         assert_eq!(air_stages.len(), multi_table.table_count());
 
