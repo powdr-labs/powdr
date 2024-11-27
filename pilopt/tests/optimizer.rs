@@ -35,7 +35,8 @@ fn replace_intermediate() {
     let input = r#"namespace N(65536);
     col witness X;
     col intermediate = 1;
-    X' = X + intermediate;
+    col other_intermediate = (intermediate - 1) * X;
+    X' = X + intermediate + other_intermediate;
 "#;
     let expectation = r#"namespace N(65536);
     col witness X;
