@@ -1,6 +1,5 @@
 //! Numerical types used across powdr
 
-
 #[macro_use]
 mod macros;
 mod baby_bear;

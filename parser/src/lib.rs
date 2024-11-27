@@ -1,6 +1,5 @@
 //! Parser for powdr assembly and PIL
 
-
 use lalrpop_util::*;
 use powdr_ast::parsed::{
     asm::ASMProgram,
