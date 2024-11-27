@@ -726,9 +726,9 @@ fn process_instruction<A: InstructionArgs>(
                     format!("affine {}, {}, 0xffffffff, 0;", tmp1.addr(), tmp1.addr()),
                     // Here, tmp1 is the full bit mask if rs is negative
                     // and zero otherwise.
-                    format!("xor {}, {}, 0, {};", tmp1.addr(), rs1.addr(), rd.addr()),
-                    format!("and {}, 0, 0x1f, {};", rs2.addr(), tmp2.addr()),
-                    format!("shr {}, {}, 0, 0, {};", rd.addr(), tmp2.addr(), rd.addr()),
+                    format!("xor {}, {}, 0, {};", tmp1.addr(), rs1.addr(), tmp2.addr()),
+                    format!("and {}, 0, 0x1f, {};", rs2.addr(), tmp3.addr()),
+                    format!("shr {}, {}, 0, {};", tmp2.addr(), tmp3.addr(), rd.addr()),
                     format!("xor {}, {}, 0, {};", tmp1.addr(), rd.addr(), rd.addr()),
                 ],
             )
