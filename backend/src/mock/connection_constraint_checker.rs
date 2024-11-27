@@ -236,7 +236,13 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
         machine_name: &str,
         selected_expressions: &SelectedExpressions<F>,
     ) -> Vec<Tuple<F>> {
-        let machine = &self.machines[machine_name];
+        let machine = match self.machines.get(machine_name) {
+            Some(machine) => machine,
+            None => {
+                // The machine is empty, so there are no tuples.
+                return Vec::new();
+            }
+        };
 
         (0..machine.size)
             .into_par_iter()

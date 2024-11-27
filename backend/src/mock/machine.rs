@@ -16,12 +16,13 @@ pub struct Machine<'a, F> {
 }
 
 impl<'a, F: FieldElement> Machine<'a, F> {
-    pub fn new(
+    /// Creates a new machine from a witness, fixed columns, and a PIL - if it is not empty.
+    pub fn try_new(
         machine_name: String,
         witness: &'a [(String, Vec<F>)],
         fixed: &'a [(String, VariablySizedColumn<F>)],
         pil: &'a Analyzed<F>,
-    ) -> Self {
+    ) -> Option<Self> {
         let witness = machine_witness_columns(witness, pil, &machine_name);
         let size = witness
             .iter()
@@ -29,6 +30,11 @@ impl<'a, F: FieldElement> Machine<'a, F> {
             .unique()
             .exactly_one()
             .unwrap();
+
+        if size == 0 {
+            // Empty machines are removed always valid.
+            return None;
+        }
 
         let fixed = machine_fixed_columns(fixed, pil);
         let fixed = fixed.get(&(size as DegreeType)).unwrap();
@@ -53,12 +59,12 @@ impl<'a, F: FieldElement> Machine<'a, F> {
             })
             .collect();
 
-        Self {
+        Some(Self {
             machine_name,
             size,
             columns,
             pil,
             intermediate_definitions,
-        }
+        })
     }
 }
