@@ -123,13 +123,11 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             .map(|machine| (machine.machine_name.clone(), machine))
             .collect::<BTreeMap<_, _>>();
 
-        let mut is_ok = true;
-        for (_, machine) in machines.iter() {
-            let result = PolynomialConstraintChecker::new(machine, &challenges).check();
-            is_ok &= !result.has_errors();
-        }
-
-        is_ok &= ConnectionConstraintChecker {
+        let is_ok = machines.values().all(|machine| {
+            !PolynomialConstraintChecker::new(machine, &challenges)
+                .check()
+                .has_errors()
+        }) && ConnectionConstraintChecker {
             connections: &self.connections,
             machines,
             challenges: &challenges,
