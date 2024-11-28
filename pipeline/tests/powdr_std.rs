@@ -199,6 +199,7 @@ fn memory_small_test() {
 #[test]
 fn permutation_via_challenges() {
     let f = "std/permutation_via_challenges.asm";
+    test_mock_backend(make_simple_prepared_pipeline::<GoldilocksField>(f));
     test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Monolithic);
     test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
@@ -206,6 +207,7 @@ fn permutation_via_challenges() {
 #[test]
 fn lookup_via_challenges() {
     let f = "std/lookup_via_challenges.asm";
+    test_mock_backend(make_simple_prepared_pipeline::<GoldilocksField>(f));
     test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Monolithic);
     test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
@@ -213,6 +215,7 @@ fn lookup_via_challenges() {
 #[test]
 fn lookup_via_challenges_range_constraint() {
     let f = "std/lookup_via_challenges_range_constraint.asm";
+    test_mock_backend(make_simple_prepared_pipeline::<GoldilocksField>(f));
     test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Monolithic);
     test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
@@ -220,6 +223,7 @@ fn lookup_via_challenges_range_constraint() {
 #[test]
 fn bus_lookup() {
     let f = "std/bus_lookup.asm";
+    test_mock_backend(make_simple_prepared_pipeline::<GoldilocksField>(f));
     test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Monolithic);
     test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
@@ -227,6 +231,7 @@ fn bus_lookup() {
 #[test]
 fn bus_permutation() {
     let f = "std/bus_permutation.asm";
+    test_mock_backend(make_simple_prepared_pipeline::<GoldilocksField>(f));
     test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Monolithic);
     test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
