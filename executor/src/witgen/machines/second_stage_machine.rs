@@ -1,22 +1,16 @@
-use powdr_ast::analyzed::AlgebraicExpression as Expression;
+use powdr_ast::analyzed::Identity;
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap};
 
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
-use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::{Machine, MachineParts};
 use crate::witgen::processor::{OuterQuery, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use crate::witgen::vm_processor::VmProcessor;
-use crate::witgen::{AlgebraicVariable, EvalResult, EvalValue, FixedData, QueryCallback};
-
-struct ProcessResult<'a, T: FieldElement> {
-    eval_value: EvalValue<AlgebraicVariable<'a>, T>,
-    updated_data: SolverState<'a, T>,
-}
+use crate::witgen::{EvalResult, FixedData, QueryCallback};
 
 /// A machine responsible for second-phase witness generation.
 /// For example, this might generate the witnesses for a bus accumulator or LogUp argument.
@@ -25,15 +19,13 @@ pub struct SecondStageMachine<'a, T: FieldElement> {
     parts: MachineParts<'a, T>,
     data: FinalizableData<T>,
     publics: BTreeMap<&'a str, T>,
-    latch: Option<Expression<T>>,
     name: String,
     degree: DegreeType,
-    multiplicity_counter: MultiplicityCounter,
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for SecondStageMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
-        self.parts.identity_ids()
+        Vec::new()
     }
 
     fn name(&self) -> &str {
@@ -44,10 +36,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SecondStageMachine<'a, T> {
     fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
         assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self
-            .process(first_row, 0, mutable_state, None, true)
-            .updated_data
-            .block;
+        self.data = self.process(first_row, 0, mutable_state, None, true).block;
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -61,34 +50,37 @@ impl<'a, T: FieldElement> Machine<'a, T> for SecondStageMachine<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b MutableState<'a, T, Q>,
+        _mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         log::debug!("Finalizing VM: {}", self.name());
 
-        self.fill_remaining_rows(mutable_state);
         self.fix_first_row();
 
         self.data
             .take_transposed()
             .map(|(id, (values, _))| (id, values))
-            .chain(
-                self.multiplicity_counter
-                    .generate_columns_single_size(self.degree),
-            )
             .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
 }
 
 impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
-    pub fn new(
-        name: String,
-        fixed_data: &'a FixedData<'a, T>,
-        parts: MachineParts<'a, T>,
-        latch: Option<Expression<T>>,
-    ) -> Self {
+    pub fn new(name: String, fixed_data: &'a FixedData<'a, T>, parts: MachineParts<'a, T>) -> Self {
         let data = FinalizableData::new(&parts.witnesses);
-        let multiplicity_counter = MultiplicityCounter::new(&parts.connections);
+
+        // Only keep polynomial identities. We assume other constraints to be handled in stage 0.
+        let polynomial_identities = parts
+            .identities
+            .into_iter()
+            .filter(|identity| matches!(identity, Identity::Polynomial(_)))
+            .collect::<Vec<_>>();
+        let parts = MachineParts::new(
+            fixed_data,
+            Default::default(),
+            polynomial_identities,
+            parts.witnesses,
+            parts.prover_functions,
+        );
 
         Self {
             degree: parts.common_degree_range().max,
@@ -97,30 +89,6 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
             parts,
             data,
             publics: Default::default(),
-            latch,
-            multiplicity_counter,
-        }
-    }
-
-    fn fill_remaining_rows<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
-        if self.data.len() < self.degree as usize + 1 {
-            assert!(self.latch.is_some());
-
-            let first_row = self.data.pop().unwrap();
-            let ProcessResult {
-                updated_data,
-                eval_value,
-            } = self.process(
-                first_row,
-                self.data.len() as DegreeType,
-                mutable_state,
-                None,
-                false,
-            );
-            assert!(eval_value.is_complete());
-
-            self.data.extend(updated_data.block);
-            self.publics.extend(updated_data.publics);
         }
     }
 
@@ -177,7 +145,7 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
         mutable_state: &MutableState<'a, T, Q>,
         outer_query: Option<OuterQuery<'a, 'c, T>>,
         is_main_run: bool,
-    ) -> ProcessResult<'a, T> {
+    ) -> SolverState<'a, T> {
         log::trace!(
             "Running main machine from row {row_offset} with the following initial values in the first row:\n{}",
             first_row.render_values(false, &self.parts)
@@ -198,16 +166,13 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
         if let Some(outer_query) = outer_query {
             processor = processor.with_outer_query(outer_query);
         }
-        let eval_value = processor.run(is_main_run);
+        processor.run(is_main_run);
         let (updated_data, degree) = processor.finish();
 
         // The processor might have detected a loop, in which case the degree has changed
         self.degree = degree;
 
-        ProcessResult {
-            eval_value,
-            updated_data,
-        }
+        updated_data
     }
 
     /// At the end of the solving algorithm, we'll have computed the first row twice
