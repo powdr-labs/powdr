@@ -24,6 +24,7 @@ use super::rows::RowPair;
 use super::{EvalError, EvalResult, FixedData, QueryCallback};
 
 mod block_machine;
+mod bus_machine;
 mod double_sorted_witness_machine_16;
 mod double_sorted_witness_machine_32;
 mod dynamic_machine;
