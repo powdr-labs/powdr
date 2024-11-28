@@ -20,7 +20,7 @@ struct ProcessResult<'a, T: FieldElement> {
 
 /// A machine responsible for second-phase witness generation.
 /// For example, this might generate the witnesses for a bus accumulator or LogUp argument.
-pub struct BusMachine<'a, T: FieldElement> {
+pub struct SecondStageMachine<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     parts: MachineParts<'a, T>,
     data: FinalizableData<T>,
@@ -31,7 +31,7 @@ pub struct BusMachine<'a, T: FieldElement> {
     multiplicity_counter: MultiplicityCounter,
 }
 
-impl<'a, T: FieldElement> Machine<'a, T> for BusMachine<'a, T> {
+impl<'a, T: FieldElement> Machine<'a, T> for SecondStageMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.parts.identity_ids()
     }
@@ -117,7 +117,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BusMachine<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> BusMachine<'a, T> {
+impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
     pub fn new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
