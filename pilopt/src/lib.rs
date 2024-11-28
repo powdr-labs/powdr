@@ -28,6 +28,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     deduplicate_fixed_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
     extract_constant_lookups(&mut pil_file);
+    simplify_empty_permutations(&mut pil_file);
     remove_constant_witness_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
     remove_trivial_identities(&mut pil_file);
@@ -439,6 +440,39 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     }
 }
 
+/// Simplifies permutations of form `0 $ [...] is S $ [...]` to `S = 0`.
+/// If the LHS sel of a permutation is 0, the LHS is the empty set.
+/// Therefore the RHS must also be the empty set.
+fn simplify_empty_permutations<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    for identity in &mut pil_file.identities.iter_mut() {
+        match identity {
+            Identity::Permutation(PermutationIdentity {
+                id,
+                source,
+                left,
+                right,
+            })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity {
+                id,
+                source,
+                left,
+                right,
+            }) => {
+                if !matches!(&left.selector, AlgebraicExpression::Number(n) if n == &T::zero()) {
+                    continue;
+                }
+
+                let pol = PolynomialIdentity {
+                    id: *id,
+                    expression: right.selector.clone(),
+                    source: source.clone(),
+                };
+                *identity = Identity::Polynomial(pol);
+            }
+            _ => {}
+        }
+    }
+}
 /// Identifies witness columns that are constrained to a single value, replaces every
 /// reference to this column by the value and deletes the column.
 fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
