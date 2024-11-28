@@ -4,6 +4,7 @@ use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 
 use powdr_number::{DegreeType, FieldElement};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::data_structures::mutable_state::MutableState;
@@ -220,7 +221,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
     }
 
     pub fn process_queries(&mut self, row_index: usize) -> Result<bool, EvalError<T>> {
-        let mut query_processor = QueryProcessor::new(
+        let query_processor = QueryProcessor::new(
             self.fixed_data,
             self.mutable_state.query_callback(),
             self.size,
@@ -238,13 +239,31 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
         );
         let mut updates = EvalValue::complete(vec![]);
 
-        for (i, fun) in self.parts.prover_functions.iter().enumerate() {
-            if !self.processed_prover_functions.has_run(row_index, i) {
-                let r = query_processor.process_prover_function(&row_pair, fun)?;
-                if r.is_complete() {
-                    updates.combine(r);
-                    self.processed_prover_functions.mark_as_run(row_index, i);
+        let functions_and_index = self
+            .parts
+            .prover_functions
+            .iter()
+            .enumerate()
+            .collect::<Vec<_>>();
+
+        let results = functions_and_index
+            .into_par_iter()
+            .map(|(i, fun)| {
+                if !self.processed_prover_functions.has_run(row_index, i) {
+                    Ok(Some((
+                        query_processor.process_prover_function(&row_pair, fun)?,
+                        i,
+                    )))
+                } else {
+                    Ok(None)
                 }
+            })
+            .collect::<Result<Vec<_>, EvalError<T>>>()?;
+
+        for (r, i) in results.into_iter().flatten() {
+            if r.is_complete() {
+                updates.combine(r);
+                self.processed_prover_functions.mark_as_run(row_index, i);
             }
         }
 
