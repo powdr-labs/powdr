@@ -1,8 +1,8 @@
 use std::machines::split::ByteCompare;
 use std::machines::split::split_bn254::SplitBN254;
 
-let main_degree: int = 2**16;
-let split_degree: int = 2**16;
+let main_degree: int = 2**10;
+let split_degree: int = 2**12;
 
 machine Main with degree: main_degree {
     reg pc[@pc];

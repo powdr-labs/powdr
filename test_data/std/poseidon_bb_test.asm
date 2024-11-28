@@ -5,12 +5,12 @@ use std::machines::small_field::memory::Memory;
 use std::machines::split::ByteCompare;
 use std::machines::split::split_bb::SplitBB;
 
-let main_degree: int = 2**16;
-let memory_degree: int = 2**16;
-let poseidon2_degree: int = 2**16;
-let split_bb_degree: int = 2**16;
+let main_degree: int = 2**10;
+let memory_degree: int = 2**12;
+let poseidon2_degree: int = 2**12;
+let split_bb_degree: int = 2**12;
 
-machine Main with degree: 65536 {
+machine Main with degree: main_degree {
     reg pc[@pc];
     reg X1[<=];
     reg X2[<=];
