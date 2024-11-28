@@ -7,19 +7,34 @@ use std::math::fp2::pow_ext;
 use std::math::fp2::from_base;
 use std::math::fp2::eval_ext;
 use std::check::assert;
+use std::utils::fold;
+use std::prover::eval;
 
 /// Maps [x_1, x_2, ..., x_n] to its Read-Solomon fingerprint, using a challenge alpha: $\sum_{i=1}^n alpha**{(n - i)} * x_i$
 /// To generate an expression that computes the fingerprint, use `fingerprint_inter` instead.
 /// Note that alpha is passed as an expressions, so that it is only evaluated if needed (i.e., if len(expr_array) > 1).
-let fingerprint: fe[], Fp2<expr> -> Fp2<fe> = query |expr_array, alpha| if len(expr_array) == 1 {
+let fingerprint: fe[], Fp2<expr> -> Fp2<fe> = query |expr_array, alpha| {
+    fingerprint_impl(expr_array, eval_ext(alpha), len(expr_array))
+};
+
+let fingerprint_impl: fe[], Fp2<fe>, int -> Fp2<fe> = query |expr_array, alpha, l| if l == 1 {
     // Base case
     from_base(expr_array[0])
 } else {
-    assert(len(expr_array) > 1, || "fingerprint requires at least one element");
 
     // Recursively compute the fingerprint as fingerprint(expr_array[:-1], alpha) * alpha + expr_array[-1]
-    let intermediate_fingerprint = fingerprint(array::sub_array(expr_array, 0, len(expr_array) - 1), alpha);
-    add_ext(mul_ext(eval_ext(alpha), intermediate_fingerprint), from_base(expr_array[len(expr_array) - 1]))
+    let intermediate_fingerprint = fingerprint_impl(expr_array, alpha, l - 1);
+    add_ext(mul_ext(alpha, intermediate_fingerprint), from_base(expr_array[l - 1]))
+};
+
+let fingerprint2: fe[], Fp2<expr> -> Fp2<fe> = query |expr_array, alpha| {
+    let n = len(expr_array);
+    fold(
+        n,
+        |i| if expr_array[i] == 0 {from_base(0)} else {mul_ext(pow_ext(eval_ext(alpha), n - i - 1), from_base(expr_array[i]))},
+        from_base(0),
+        |sum_acc, el| add_ext(sum_acc, el)
+    )
 };
 
 /// Like `fingerprint`, but "materializes" the intermediate results as intermediate columns.
@@ -43,6 +58,7 @@ let fingerprint_inter: expr[], Fp2<expr> -> Fp2<expr> = |expr_array, alpha| if l
 
 /// Maps [id, x_1, x_2, ..., x_n] to its Read-Solomon fingerprint, using a challenge alpha: $\sum_{i=1}^n alpha**{(n - i)} * x_i$
 let fingerprint_with_id: fe, fe[], Fp2<expr> -> Fp2<fe> = query |id, expr_array, alpha| fingerprint([id] + expr_array, alpha);
+let fingerprint_with_id2: fe, fe[], Fp2<expr> -> Fp2<fe> = query |id, expr_array, alpha| fingerprint2([id] + expr_array, alpha);
 
 /// Maps [id, x_1, x_2, ..., x_n] to its Read-Solomon fingerprint, using a challenge alpha: $\sum_{i=1}^n alpha**{(n - i)} * x_i$
 let fingerprint_with_id_inter: expr, expr[], Fp2<expr> -> Fp2<expr> = |id, expr_array, alpha| fingerprint_inter([id] + expr_array, alpha);
