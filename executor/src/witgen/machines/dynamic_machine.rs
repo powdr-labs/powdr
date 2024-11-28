@@ -51,48 +51,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &MutableState<'a, T, Q>,
-        identity_id: u64,
-        caller_rows: &'b RowPair<'b, 'a, T>,
+        _mutable_state: &MutableState<'a, T, Q>,
+        _identity_id: u64,
+        _caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let identity = *self.parts.connections.get(&identity_id).unwrap();
-        let outer_query = OuterQuery::new(caller_rows, identity);
-
-        log::trace!("Start processing secondary VM '{}'", self.name());
-        log::trace!("Arguments:");
-        for (r, l) in identity.right.expressions.iter().zip(&outer_query.left) {
-            log::trace!("  {r} = {l}");
-        }
-
-        let first_row = self
-            .data
-            .last()
-            .cloned()
-            .unwrap_or_else(|| self.compute_partial_first_row(mutable_state));
-
-        let ProcessResult {
-            eval_value,
-            updated_data,
-        } = self.process(first_row, 0, mutable_state, Some(outer_query), false);
-
-        let eval_value = if eval_value.is_complete() {
-            log::trace!("End processing VM '{}' (successfully)", self.name());
-            // Remove the last row of the previous block, if it exists,
-            // as it is the first row of the current block.
-            self.data.pop();
-            self.data.extend(updated_data.block);
-            self.publics.extend(updated_data.publics);
-
-            let latch_row = self.data.len() - 1;
-            self.multiplicity_counter
-                .increment_at_row(identity_id, latch_row);
-
-            eval_value.report_side_effect()
-        } else {
-            log::trace!("End processing VM '{}' (incomplete)", self.name());
-            eval_value
-        };
-        Ok(eval_value)
+        panic!("SecondStageMachine can't be called by other machines!")
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
