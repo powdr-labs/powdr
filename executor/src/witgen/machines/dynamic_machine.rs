@@ -230,6 +230,8 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
             &self.parts,
             SolverState::new(data, self.publics.clone()),
             mutable_state,
+            self.degree,
+            false,
         );
         if let Some(outer_query) = outer_query {
             processor = processor.with_outer_query(outer_query);
