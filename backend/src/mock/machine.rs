@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, time::Instant};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReferenceThin, Analyzed, PolyID};
@@ -39,9 +39,14 @@ impl<'a, F: FieldElement> Machine<'a, F> {
         }
 
         for stage in 1..pil.stage_count() {
-            log::debug!("Generating stage-{stage} witness for machine {machine_name}");
+            log::info!("Generating stage-{stage} witness for machine {machine_name}");
+            let start_time = Instant::now();
             witness =
                 witgen_callback.next_stage_witness(pil, &witness, challenges.clone(), stage as u8);
+            log::info!(
+                "Generated stage-{stage} witness for machine {machine_name} in {}s",
+                start_time.elapsed().as_secs_f64()
+            );
         }
 
         let fixed = machine_fixed_columns(fixed, pil);
