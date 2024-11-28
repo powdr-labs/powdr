@@ -13,6 +13,7 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
+use crate::witgen::machines::bus_machine::BusMachine;
 use crate::witgen::machines::dynamic_machine::DynamicMachine;
 use crate::witgen::machines::Connection;
 use crate::witgen::machines::{write_once_memory::WriteOnceMemory, MachineParts};
@@ -77,9 +78,12 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 prover_functions,
             );
 
-            return build_main_machine(self.fixed, machine_parts)
-                .into_iter()
-                .collect();
+            return vec![KnownMachine::BusMachine(BusMachine::new(
+                "Bus Machine".to_string(),
+                self.fixed,
+                machine_parts,
+                None,
+            ))];
         }
         let mut machines: Vec<KnownMachine<T>> = vec![];
 

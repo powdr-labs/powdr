@@ -13,6 +13,7 @@ use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::Identity;
 
 use self::block_machine::BlockMachine;
+use self::bus_machine::BusMachine;
 use self::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
 use self::double_sorted_witness_machine_32::DoubleSortedWitnesses32;
 pub use self::fixed_lookup_machine::FixedLookup;
@@ -118,6 +119,7 @@ pub enum LookupCell<'a, T> {
 /// This allows us to treat machines uniformly without putting them into a `Box`,
 /// which requires that all lifetime parameters are 'static.
 pub enum KnownMachine<'a, T: FieldElement> {
+    BusMachine(BusMachine<'a, T>),
     SortedWitnesses(SortedWitnesses<'a, T>),
     DoubleSortedWitnesses16(DoubleSortedWitnesses16<'a, T>),
     DoubleSortedWitnesses32(DoubleSortedWitnesses32<'a, T>),
@@ -130,6 +132,7 @@ pub enum KnownMachine<'a, T: FieldElement> {
 impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
         match self {
+            KnownMachine::BusMachine(m) => m.run(mutable_state),
             KnownMachine::SortedWitnesses(m) => m.run(mutable_state),
             KnownMachine::DoubleSortedWitnesses16(m) => m.run(mutable_state),
             KnownMachine::DoubleSortedWitnesses32(m) => m.run(mutable_state),
@@ -147,6 +150,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
         match self {
+            KnownMachine::BusMachine(m) => {
+                m.process_plookup(mutable_state, identity_id, caller_rows)
+            }
             KnownMachine::SortedWitnesses(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
@@ -173,6 +179,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
 
     fn name(&self) -> &str {
         match self {
+            KnownMachine::BusMachine(m) => m.name(),
             KnownMachine::SortedWitnesses(m) => m.name(),
             KnownMachine::DoubleSortedWitnesses16(m) => m.name(),
             KnownMachine::DoubleSortedWitnesses32(m) => m.name(),
@@ -188,6 +195,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         match self {
+            KnownMachine::BusMachine(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::SortedWitnesses(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::DoubleSortedWitnesses16(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::DoubleSortedWitnesses32(m) => m.take_witness_col_values(mutable_state),
@@ -200,6 +208,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
 
     fn identity_ids(&self) -> Vec<u64> {
         match self {
+            KnownMachine::BusMachine(m) => m.identity_ids(),
             KnownMachine::SortedWitnesses(m) => m.identity_ids(),
             KnownMachine::DoubleSortedWitnesses16(m) => m.identity_ids(),
             KnownMachine::DoubleSortedWitnesses32(m) => m.identity_ids(),

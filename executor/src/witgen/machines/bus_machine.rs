@@ -19,7 +19,7 @@ struct ProcessResult<'a, T: FieldElement> {
 }
 
 /// A machine is generic and can handle lookups that generate a dynamic number of rows.
-pub struct DynamicMachine<'a, T: FieldElement> {
+pub struct BusMachine<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     parts: MachineParts<'a, T>,
     data: FinalizableData<T>,
@@ -30,7 +30,7 @@ pub struct DynamicMachine<'a, T: FieldElement> {
     multiplicity_counter: MultiplicityCounter,
 }
 
-impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
+impl<'a, T: FieldElement> Machine<'a, T> for BusMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.parts.identity_ids()
     }
@@ -116,7 +116,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> DynamicMachine<'a, T> {
+impl<'a, T: FieldElement> BusMachine<'a, T> {
     pub fn new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
