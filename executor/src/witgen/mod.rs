@@ -573,7 +573,9 @@ impl<'a, T> FixedColumn<'a, T> {
         self.values.get_by_size(size).unwrap_or_else(|| {
             panic!(
                 "Fixed column {} does not have a value for size {}. Available sizes: {:?}",
-                self.name, size, self.values.available_sizes()
+                self.name,
+                size,
+                self.values.available_sizes()
             )
         })
     }
