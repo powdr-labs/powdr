@@ -1,20 +1,22 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
 use stwo_prover::core::backend::BackendForChannel;
 use stwo_prover::core::channel::MerkleChannel;
-use stwo_prover::core::pcs::TreeVec;
-use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentTreeProver};
+use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::poly::circle::CircleEvaluation;
+use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::ColumnVec;
 
 /// For each possible size, the commitment and prover data
-pub type TableProvingKeyCollection<'a, B, MC> = BTreeMap<usize, TableProvingKey<'a, B, MC>>;
+pub type TableProvingKeyCollection<B, MC> = BTreeMap<usize, TableProvingKey<B, MC>>;
 
-pub struct TableProvingKey<'a, B: BackendForChannel<MC>, MC: MerkleChannel> {
-    pub commitment_scheme: CommitmentSchemeProver<'a, B, MC>,
+pub struct TableProvingKey<B: BackendForChannel<MC>, MC: MerkleChannel> {
+    pub constant_trace_circle_domain: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+    pub _marker: std::marker::PhantomData<MC>,
 }
 
-pub struct StarkProvingKey<'a, B: BackendForChannel<MC>, MC: MerkleChannel> {
+pub struct StarkProvingKey<B: BackendForChannel<MC>, MC: MerkleChannel> {
     // for each table, the preprocessed data
-    pub preprocessed: BTreeMap<String, TableProvingKeyCollection<'a, B, MC>>,
+    pub preprocessed: BTreeMap<String, TableProvingKeyCollection<B, MC>>,
 }
 
-unsafe impl<'a, B: BackendForChannel<MC>, MC: MerkleChannel> Send for TableProvingKey<'a, B, MC> {}
+unsafe impl<B: BackendForChannel<MC>, MC: MerkleChannel> Send for TableProvingKey<B, MC> {}

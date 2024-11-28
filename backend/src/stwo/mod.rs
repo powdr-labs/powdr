@@ -1,6 +1,5 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use std::collections::BTreeMap;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -42,11 +41,9 @@ impl<F: FieldElement> BackendFactory<F> for RestrictedFactory {
         if pil.degrees().len() > 1 {
             return Err(Error::NoVariableDegreeAvailable);
         }
-        let split: BTreeMap<String, Analyzed<F>> =
-            powdr_backend_utils::split_pil(&pil).into_iter().collect();
-        let twiddle_map = prover::TwiddleMap::new(16, split);
         let mut stwo: Box<StwoProver<F, SimdBackend, Blake2sMerkleChannel, Blake2sChannel>> =
-            Box::new(StwoProver::new(pil, fixed, &twiddle_map)?);
+            Box::new(StwoProver::new(pil, fixed)?);
+        stwo.setup();
 
         Ok(stwo)
     }
@@ -54,8 +51,8 @@ impl<F: FieldElement> BackendFactory<F> for RestrictedFactory {
 
 generalize_factory!(Factory <- RestrictedFactory, [Mersenne31Field]);
 
-impl<'a, T: FieldElement, MC: MerkleChannel + Send, C: Channel + Send> Backend<T>
-    for StwoProver<'a, T, SimdBackend, MC, C>
+impl<T: FieldElement, MC: MerkleChannel + Send, C: Channel + Send> Backend<T>
+    for StwoProver<T, SimdBackend, MC, C>
 where
     SimdBackend: BackendForChannel<MC>,
     MC: MerkleChannel,
