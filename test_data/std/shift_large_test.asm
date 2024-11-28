@@ -1,8 +1,8 @@
 use std::machines::large_field::shift::ByteShift;
 use std::machines::large_field::shift::Shift;
 
-let main_degree: int = 2**16;
-let shift_degree: int = 2**16;
+let main_degree: int = 2**10;
+let shift_degree: int = 2**12;
 
 machine Main with degree: main_degree {
     reg pc[@pc];

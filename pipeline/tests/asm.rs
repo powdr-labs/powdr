@@ -5,10 +5,10 @@ use powdr_linker::LinkerParams;
 use powdr_number::{FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
-        asm_string_to_pil, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
-        make_simple_prepared_pipeline, regular_test, regular_test_without_small_field,
-        resolve_test_file, run_pilcom_with_backend_variant, test_halo2_with_backend_variant,
-        test_pilcom, test_plonky3_pipeline, test_plonky3_with_backend_variant, BackendVariant,
+        asm_string_to_pil, make_prepared_pipeline, make_simple_prepared_pipeline,
+        regular_test_all_fields, regular_test_gl, resolve_test_file,
+        run_pilcom_with_backend_variant, test_mock_backend, test_pilcom, test_plonky3_pipeline,
+        BackendVariant,
     },
     Pipeline,
 };
@@ -22,7 +22,8 @@ fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
 fn sqrt_asm() {
     let f = "asm/sqrt.asm";
     let i = [3];
-    regular_test_without_small_field(f, &i);
+    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    test_mock_backend(pipeline);
 }
 
 #[test]
@@ -30,26 +31,23 @@ fn block_machine_exact_number_of_rows_asm() {
     let f = "asm/block_machine_exact_number_of_rows.asm";
     // This test needs machines to be of unequal length. Also, this is mostly testing witgen, so
     // we just run one backend that supports variable-length machines.
-    test_plonky3_with_backend_variant::<GoldilocksField>(f, Vec::new(), BackendVariant::Monolithic);
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn challenges_asm() {
     let f = "asm/challenges.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2_with_backend_variant(pipeline, BackendVariant::Monolithic);
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    // TODO Mock prover doesn't support this test yet.
+    test_plonky3_pipeline(pipeline);
 }
 
 #[test]
 fn simple_sum_asm() {
     let f = "asm/simple_sum.asm";
     let i = [16, 4, 1, 2, 8, 5];
-    regular_test(f, &i);
-    test_plonky3_with_backend_variant::<GoldilocksField>(
-        f,
-        slice_to_vec(&i),
-        BackendVariant::Monolithic,
-    );
+    regular_test_all_fields(f, &i);
 }
 
 #[test]
@@ -57,26 +55,28 @@ fn simple_sum_asm() {
 fn secondary_machine_plonk() {
     // Currently fails because no copy constraints are expressed in PIL yet.
     let f = "asm/secondary_machine_plonk.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, &[]);
 }
 
 #[test]
 fn secondary_block_machine_add2() {
     let f = "asm/secondary_block_machine_add2.asm";
-    regular_test_without_small_field(f, Default::default());
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn second_phase_hint() {
     let f = "asm/second_phase_hint.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2_with_backend_variant(pipeline, BackendVariant::Monolithic);
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    // TODO Mock prover doesn't support this test yet.
+    test_plonky3_pipeline(pipeline);
 }
 
 #[test]
 fn mem_write_once() {
     let f = "asm/mem_write_once.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, Default::default());
 }
 
 #[test]
@@ -95,69 +95,72 @@ fn mem_write_once_external_write() {
             ..Default::default()
         });
     pipeline.compute_witness().unwrap();
-    test_pilcom(pipeline);
+    test_pilcom(pipeline.clone());
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn block_machine_cache_miss() {
     let f = "asm/block_machine_cache_miss.asm";
-    regular_test_without_small_field(f, Default::default());
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn palindrome() {
     let f = "asm/palindrome.asm";
     let i = [7, 1, 7, 3, 9, 3, 7, 1];
-    regular_test_without_small_field(f, &i);
+    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn single_function_vm() {
     let f = "asm/single_function_vm.asm";
-    regular_test(f, &[]);
+    regular_test_all_fields(f, &[]);
 }
 
 #[test]
 fn empty() {
     let f = "asm/empty.asm";
-    regular_test(f, &[]);
+    regular_test_all_fields(f, &[]);
 }
 
 #[test]
 fn single_operation() {
     let f = "asm/single_operation.asm";
-    regular_test(f, &[]);
+    regular_test_all_fields(f, &[]);
 }
 
 #[test]
 fn empty_vm() {
     let f = "asm/empty_vm.asm";
-    regular_test(f, &[]);
+    regular_test_all_fields(f, &[]);
 }
 
 #[test]
 fn vm_to_block_unique_interface() {
     let f = "asm/vm_to_block_unique_interface.asm";
-    regular_test_without_small_field(f, &[]);
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn vm_to_block_to_block() {
     let f = "asm/vm_to_block_to_block.asm";
-    test_pilcom(make_simple_prepared_pipeline(f));
-    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
+    regular_test_gl(f, &[]);
 }
 
 #[test]
 fn block_to_block() {
     let f = "asm/block_to_block.asm";
-    regular_test(f, &[]);
+    regular_test_all_fields(f, &[]);
 }
 
 #[test]
 fn block_to_block_empty_submachine() {
     let f = "asm/block_to_block_empty_submachine.asm";
-    let mut pipeline = make_simple_prepared_pipeline(f);
+    let mut pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
 
     let witness = pipeline.compute_witness().unwrap();
     let arith_size = witness
@@ -168,25 +171,23 @@ fn block_to_block_empty_submachine() {
         .len();
     assert_eq!(arith_size, 0);
 
-    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
-
-    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
 
 #[test]
 fn block_to_block_with_bus_monolithic() {
     let f = "asm/block_to_block_with_bus.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
-    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    // TODO Mock prover doesn't support this test yet.
     test_plonky3_pipeline(pipeline);
 }
 
 #[test]
 fn block_to_block_with_bus_different_sizes() {
     let f = "asm/block_to_block_with_bus_different_sizes.asm";
-    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    // TODO Mock prover doesn't support this test yet.
     test_plonky3_pipeline(pipeline);
 }
 
@@ -200,52 +201,49 @@ fn block_to_block_with_bus_composite() {
     // - `CompositeBackend::verify` simply verifies each machine proof independently, using the local
     //   challenges. As a result, the challenges during verification differ and the constraints are
     //   not satisfied.
+
+    use powdr_pipeline::test_util::test_halo2_with_backend_variant;
     let f = "asm/block_to_block_with_bus.asm";
     let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Composite);
+    // TODO Mock prover doesn't support this test yet.
+    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 #[test]
 fn vm_instr_param_mapping() {
     let f = "asm/vm_instr_param_mapping.asm";
-    regular_test(f, &[]);
+    regular_test_all_fields(f, &[]);
 }
 
 #[test]
 fn vm_to_block_multiple_interfaces() {
     let f = "asm/vm_to_block_multiple_interfaces.asm";
-    regular_test(f, &[]);
+    regular_test_all_fields(f, &[]);
 }
 
 #[test]
 fn vm_to_vm() {
     let f = "asm/vm_to_vm.asm";
-    regular_test(f, &[]);
+    regular_test_all_fields(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn vm_to_vm_dynamic_trace_length() {
     let f = "asm/vm_to_vm_dynamic_trace_length.asm";
-    run_pilcom_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite)
-        .unwrap();
-    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
-    gen_estark_proof_with_backend_variant(
-        make_simple_prepared_pipeline(f),
-        BackendVariant::Composite,
-    );
+    regular_test_gl(f, &[]);
 }
 
 #[test]
 fn vm_to_vm_to_block() {
     let f = "asm/vm_to_vm_to_block.asm";
-    regular_test(f, &[]);
+    regular_test_all_fields(f, &[]);
 }
 
 #[test]
 fn vm_to_block_array() {
     let f = "asm/vm_to_block_array.asm";
-    regular_test(f, &[]);
+    regular_test_all_fields(f, &[]);
 }
 
 #[test]
@@ -268,115 +266,122 @@ fn dynamic_vadcop() {
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
     run_pilcom_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite).unwrap();
-    gen_estark_proof_with_backend_variant(pipeline_gl, BackendVariant::Composite);
-    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
+    test_mock_backend(pipeline_gl.clone());
+    test_plonky3_pipeline(pipeline_gl);
 }
 
 #[test]
 fn vm_to_vm_to_vm() {
     let f = "asm/vm_to_vm_to_vm.asm";
-    regular_test(f, &[]);
+    regular_test_all_fields(f, &[]);
 }
 
 #[test]
 fn vm_to_block_multiple_links() {
     let f = "asm/permutations/vm_to_block_multiple_links.asm";
-    regular_test(f, &[]);
+    regular_test_all_fields(f, &[]);
 }
 
 #[test]
 fn mem_read_write() {
     let f = "asm/mem_read_write.asm";
-    regular_test_without_small_field(f, Default::default());
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn mem_read_write_no_memory_accesses() {
     let f = "asm/mem_read_write_no_memory_accesses.asm";
-    regular_test_without_small_field(f, Default::default());
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn mem_read_write_with_bootloader() {
     let f = "asm/mem_read_write_with_bootloader.asm";
-    regular_test_without_small_field(f, Default::default());
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn mem_read_write_large_diffs() {
     let f = "asm/mem_read_write_large_diffs.asm";
-    regular_test_without_small_field(f, Default::default());
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn multi_assign() {
     let f = "asm/multi_assign.asm";
     let i = [7];
-    regular_test(f, &i);
+    regular_test_all_fields(f, &i);
 }
 
 #[test]
 fn multi_return() {
     let f = "asm/multi_return.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, Default::default());
 }
 
 #[test]
 #[should_panic = "called `Result::unwrap()` on an `Err` value: [\"Assignment register `Z` is incompatible with `square_and_double(3)`. Try using `<==` with no explicit assignment registers.\", \"Assignment register `Y` is incompatible with `square_and_double(3)`. Try using `<==` with no explicit assignment registers.\"]"]
 fn multi_return_wrong_assignment_registers() {
     let f = "asm/multi_return_wrong_assignment_registers.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, Default::default());
 }
 
 #[test]
 #[should_panic = "Result::unwrap()` on an `Err` value: [\"Mismatched number of registers for assignment A, B <=Y= square_and_double(3);\"]"]
 fn multi_return_wrong_assignment_register_length() {
     let f = "asm/multi_return_wrong_assignment_register_length.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, Default::default());
 }
 
 #[test]
 fn bit_access() {
     let f = "asm/bit_access.asm";
     let i = [20];
-    regular_test_without_small_field(f, &i);
+    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn sqrt() {
     let f = "asm/sqrt.asm";
-    regular_test_without_small_field(f, Default::default());
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn functional_instructions() {
     let f = "asm/functional_instructions.asm";
     let i = [20];
-    regular_test_without_small_field(f, &i);
+    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn full_pil_constant() {
     let f = "asm/full_pil_constant.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, Default::default());
 }
 
 #[test]
 fn intermediate() {
     let f = "asm/intermediate.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, Default::default());
 }
 
 #[test]
 fn intermediate_nested() {
     let f = "asm/intermediate_nested.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, Default::default());
 }
 
 #[test]
 fn pil_at_module_level() {
     let f = "asm/pil_at_module_level.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, Default::default());
 }
 
 #[cfg(feature = "estark-starky")]
@@ -421,37 +426,38 @@ fn read_poly_files() {
 #[test]
 fn enum_in_asm() {
     let f = "asm/enum_in_asm.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, Default::default());
 }
 
 #[test]
 fn pass_range_constraints() {
     let f = "asm/pass_range_constraints.asm";
-    regular_test_without_small_field(f, Default::default());
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn side_effects() {
     let f = "asm/side_effects.asm";
-    regular_test_without_small_field(f, Default::default());
+    regular_test_gl(f, Default::default());
 }
 
 #[test]
 fn multiple_signatures() {
     let f = "asm/multiple_signatures.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, Default::default());
 }
 
 #[test]
 fn permutation_simple() {
     let f = "asm/permutations/simple.asm";
-    regular_test_without_small_field(f, Default::default());
+    regular_test_gl(f, Default::default());
 }
 
 #[test]
 fn permutation_to_block() {
     let f = "asm/permutations/vm_to_block.asm";
-    regular_test_without_small_field(f, Default::default());
+    regular_test_gl(f, Default::default());
 }
 
 #[test]
@@ -459,51 +465,51 @@ fn permutation_to_block() {
 fn permutation_to_vm() {
     // TODO: witgen issue: Machine incorrectly detected as block machine.
     let f = "asm/permutations/vm_to_vm.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, Default::default());
 }
 
 #[test]
 fn permutation_to_block_to_block() {
     let f = "asm/permutations/block_to_block.asm";
-    regular_test_without_small_field(f, Default::default());
+    regular_test_gl(f, Default::default());
 }
 
 #[test]
 #[should_panic = "has incoming permutations but doesn't declare call_selectors"]
 fn permutation_incoming_needs_selector() {
     let f = "asm/permutations/incoming_needs_selector.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, Default::default());
 }
 
 #[test]
 fn call_selectors_with_no_permutation() {
     let f = "asm/permutations/call_selectors_with_no_permutation.asm";
-    regular_test_without_small_field(f, Default::default());
+    regular_test_gl(f, Default::default());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn vm_args() {
     let f = "asm/vm_args.asm";
-    regular_test_without_small_field(f, Default::default());
+    regular_test_gl(f, Default::default());
 }
 
 #[test]
 fn vm_args_memory() {
     let f = "asm/vm_args_memory.asm";
-    regular_test_without_small_field(f, Default::default());
+    regular_test_gl(f, Default::default());
 }
 
 #[test]
 fn vm_args_relative_path() {
     let f = "asm/vm_args_relative_path.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, Default::default());
 }
 
 #[test]
 fn vm_args_two_levels() {
     let f = "asm/vm_args_two_levels.asm";
-    regular_test_without_small_field(f, Default::default());
+    regular_test_gl(f, Default::default());
 }
 
 mod reparse {
@@ -544,16 +550,16 @@ mod book {
 fn hello_world_asm_fail() {
     let f = "asm/book/hello_world.asm";
     let i = [2];
-    let pipeline = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
-    test_pilcom(pipeline);
+    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 #[should_panic = "FailedAssertion(\"This should fail.\")"]
 fn failing_assertion() {
     let f = "asm/failing_assertion.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline);
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline);
 }
 
 #[test]
@@ -749,8 +755,8 @@ fn keccak() {
 #[test]
 fn connect_no_witgen() {
     let f = "asm/connect_no_witgen.asm";
-    let i = [];
-    let pipeline = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    // TODO Mock prover doesn't support this test yet.
     test_pilcom(pipeline);
 }
 
@@ -772,15 +778,15 @@ fn trait_parsing() {
 #[test]
 fn dynamic_fixed_cols() {
     let f = "asm/dynamic_fixed_cols.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline);
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline);
 }
 
 #[test]
 fn type_vars_in_local_decl() {
     let f = "asm/type_vars_in_local_decl.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline);
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline);
 }
 
 #[test]
@@ -810,7 +816,7 @@ fn types_in_expressions() {
 #[test]
 fn set_hint() {
     let f = "asm/set_hint.asm";
-    regular_test(f, Default::default());
+    regular_test_all_fields(f, Default::default());
 }
 
 #[test]
