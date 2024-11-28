@@ -170,7 +170,7 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
             SolverState::new(data, self.publics.clone()),
             mutable_state,
             self.degree,
-            true,
+            false,
         );
         processor.run(true);
         let (updated_data, degree) = processor.finish();
