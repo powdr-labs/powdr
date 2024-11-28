@@ -333,13 +333,35 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
         witnesses: HashSet<PolyID>,
         prover_functions: Vec<&'a analyzed::Expression>,
     ) -> Self {
-        Self {
+        let parts = Self {
             fixed_data,
             connections,
             identities,
             witnesses,
             prover_functions,
-        }
+        };
+
+        log::info!(
+            "Machine '{}' has {} identities, {} witnesses, and {} prover functions.",
+            parts.name(),
+            parts.identities.len(),
+            parts.witnesses.len(),
+            parts.prover_functions.len()
+        );
+
+        parts
+    }
+
+    fn name(&self) -> String {
+        let first_witness = self.witnesses.iter().next().unwrap();
+        let first_witness_name = self.column_name(first_witness);
+        let namespace = first_witness_name
+            .rfind("::")
+            .map(|idx| &first_witness_name[..idx]);
+
+        // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
+        // resort we'll use the first witness name.
+        namespace.unwrap_or(first_witness_name).to_string()
     }
 
     /// Returns a copy of the machine parts but only containing identities that

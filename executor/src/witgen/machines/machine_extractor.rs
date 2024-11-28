@@ -187,7 +187,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 }
             }
 
-            let name = suggest_machine_name(&machine_parts);
+            let name = machine_parts.name();
             let id = id_counter;
             id_counter += 1;
             let name_with_type = |t: &str| format!("Secondary machine {id}: {name} ({t})");
@@ -335,18 +335,6 @@ fn log_extracted_machine<T: FieldElement>(parts: &MachineParts<'_, T>) {
             .iter()
             .format("\n")
     );
-}
-
-fn suggest_machine_name<T: FieldElement>(parts: &MachineParts<'_, T>) -> String {
-    let first_witness = parts.witnesses.iter().next().unwrap();
-    let first_witness_name = parts.column_name(first_witness);
-    let namespace = first_witness_name
-        .rfind("::")
-        .map(|idx| &first_witness_name[..idx]);
-
-    // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
-    // resort we'll use the first witness name.
-    namespace.unwrap_or(first_witness_name).to_string()
 }
 
 #[derive(Default)]

@@ -23,7 +23,7 @@ use super::{Constraints, EvalError, EvalValue, FixedData, QueryCallback};
 /// Maximal period checked during loop detection.
 const MAX_PERIOD: usize = 4;
 
-const REPORT_FREQUENCY: u64 = 1_000;
+const REPORT_FREQUENCY: u64 = 100;
 
 /// A list of identities with a flag whether it is complete.
 struct CompletableIdentities<'a, T: FieldElement> {
