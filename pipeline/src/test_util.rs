@@ -54,13 +54,21 @@ pub fn regular_test_all_fields(file_name: &str, inputs: &[i32]) {
     regular_test_small_field(file_name, inputs);
 }
 
-/// Tests witness generation, mock prover, pilcom and plonky3 with BabyBear and KoalaBear.
 pub fn regular_test_small_field(file_name: &str, inputs: &[i32]) {
+    regular_test_bb(file_name, inputs);
+    regular_test_kb(file_name, inputs);
+}
+
+/// Tests witness generation, mock prover, pilcom and plonky3 with BabyBear.
+pub fn regular_test_bb(file_name: &str, inputs: &[i32]) {
     let inputs_bb = inputs.iter().map(|x| BabyBearField::from(*x)).collect();
     let pipeline_bb = make_prepared_pipeline(file_name, inputs_bb, vec![]);
     test_mock_backend(pipeline_bb.clone());
     test_plonky3_pipeline(pipeline_bb);
+}
 
+/// Tests witness generation, mock prover, pilcom and plonky3 with BabyBear and KoalaBear.
+pub fn regular_test_kb(file_name: &str, inputs: &[i32]) {
     let inputs_kb = inputs.iter().map(|x| KoalaBearField::from(*x)).collect();
     let pipeline_kb = make_prepared_pipeline(file_name, inputs_kb, vec![]);
     test_mock_backend(pipeline_kb.clone());
