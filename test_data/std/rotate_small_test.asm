@@ -1,8 +1,8 @@
 use std::machines::small_field::rotate::ByteRotate;
 use std::machines::small_field::rotate::Rotate;
 
-let main_degree: int = 2**16;
-let rotate_degree: int = 2**16;
+let main_degree: int = 2**10;
+let rotate_degree: int = 2**12;
 
 machine Main with degree: main_degree {
     reg pc[@pc];

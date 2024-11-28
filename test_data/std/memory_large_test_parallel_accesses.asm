@@ -1,8 +1,8 @@
 use std::machines::range::Byte2;
 use std::machines::large_field::memory::Memory;
 
-let main_degree: int = 2**16;
-let memory_degree: int = 2**16;
+let main_degree: int = 2**8;
+let memory_degree: int = 2**8;
 
 machine Main with
     degree: main_degree,
