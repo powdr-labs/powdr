@@ -1,4 +1,4 @@
-use std::{borrow::Cow, io::empty, iter::once};
+use std::{borrow::Cow, iter::once};
 
 use powdr_ast::{
     analyzed::{
@@ -16,8 +16,8 @@ use powdr_ast::{
         },
         types::Type,
         visitor::{AllChildren, Children},
-        EnumDeclaration, FunctionDefinition, NamedExpression, NamespacedPolynomialReference,
-        PilStatement, StructDeclaration, TraitImplementation, TypeDeclaration,
+        EnumDeclaration, FunctionDefinition, NamespacedPolynomialReference, PilStatement,
+        StructDeclaration, TraitImplementation, TypeDeclaration,
     },
 };
 
@@ -182,9 +182,7 @@ fn symbols_in_expression_asm(
 
             Some(Box::new(type_iter.chain(once(SymbolReference::from(pr)))))
         }
-        _ => Some(Box::new(
-            e.children().flat_map(symbols_in_expression_asm).flatten(),
-        )),
+        _ => None,
     }
 }
 
@@ -279,9 +277,8 @@ impl ReferencedSymbols for PilStatement {
             PilStatement::LetStatement(_, name, type_scheme, expression) => Box::new(
                 type_scheme
                     .iter()
-                    .map(|ts| ts.ty.symbols())
-                    .flatten()
-                    .chain(expression.iter().map(|e| e.symbols()).flatten())
+                    .flat_map(|ts| ts.ty.symbols())
+                    .chain(expression.iter().flat_map(|e| e.symbols()))
                     .chain(once(SymbolReference::from(name))),
             ),
             PilStatement::PolynomialDefinition(_, polynomial_name, expression) => Box::new(
@@ -306,7 +303,7 @@ impl ReferencedSymbols for PilStatement {
                 function_definition.symbols()
             }
             PilStatement::PolynomialCommitDeclaration(_, _, _, function_definition) => {
-                Box::new(function_definition.iter().map(|f| f.symbols()).flatten())
+                Box::new(function_definition.iter().flat_map(|f| f.symbols()))
             }
             PilStatement::EnumDeclaration(_, enum_declaration) => enum_declaration.symbols(),
             PilStatement::StructDeclaration(_, struct_declaration) => struct_declaration.symbols(),
@@ -314,7 +311,12 @@ impl ReferencedSymbols for PilStatement {
                 trait_implementation.symbols()
             }
             PilStatement::TraitDeclaration(_, _) => Box::new(std::iter::empty()),
-            PilStatement::Expression(_, expression) => expression.symbols(),
+            PilStatement::Expression(_, expression) => Box::new(
+                expression
+                    .all_children()
+                    .flat_map(symbols_in_expression_asm)
+                    .flatten(),
+            ),
         }
     }
 }
@@ -344,8 +346,6 @@ impl ReferencedSymbols for FunctionStatement {
             FunctionStatement::Assignment(a) => a.symbols(),
             FunctionStatement::Instruction(i) => i.symbols(),
             FunctionStatement::Return(r) => r.symbols(),
-            //FunctionStatement::Label(l) => l.symbols(),
-            //FunctionStatement::DebugDirective(d) => d.symbols(),
             _ => Box::new(std::iter::empty()),
         }
     }

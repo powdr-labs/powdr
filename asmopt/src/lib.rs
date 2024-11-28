@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::iter::once;
 
 use powdr_ast::{
     asm_analysis::{AnalysisASMFile, Machine},
@@ -7,6 +8,9 @@ use powdr_ast::{
 use powdr_pilopt::referenced_symbols::ReferencedSymbols;
 
 type Expression = powdr_ast::asm_analysis::Expression<NamespacedPolynomialReference>;
+
+const MAIN_MACHINE_PATH: &str = "::Main";
+const PC_REGISTER: &str = "pc";
 
 pub fn optimize(mut analyzed_asm: AnalysisASMFile) -> AnalysisASMFile {
     println!(
@@ -24,51 +28,46 @@ pub fn optimize(mut analyzed_asm: AnalysisASMFile) -> AnalysisASMFile {
 }
 
 fn remove_unreferenced_machines(asm_file: &mut AnalysisASMFile) {
-    let deps = build_machine_dependencies(&asm_file);
-    let mut all_machines = collect_all_dependent_machines(&deps, "::Main"); //do it once and remove useless for first deps
-    let machines_with_cols = collect_machine_with_cols(&asm_file); //better names for everything xD
-    all_machines.extend(machines_with_cols);
+    let deps = build_machine_dependencies(asm_file);
+    let mut all_machines = collect_all_dependent_machines(&deps, MAIN_MACHINE_PATH);
+    let constrained_machines = collect_constrained_machines(asm_file);
+    all_machines.extend(constrained_machines);
 
-    //println!("All machines: {:?}", all_machines);
     asm_file.modules.iter_mut().for_each(|(path, module)| {
         let machines_in_module = machines_in_module(all_machines.clone(), path);
-        //println!("Machines in path {:?}: {:?}", path, machines_in_module);
         module.retain_machines(machines_in_module);
     });
 }
 
-fn collect_machine_with_cols(asm_file: &AnalysisASMFile) -> HashSet<String> {
-    let mut res = HashSet::new();
-    for (path, machine) in asm_file.machines() {
-        for pil in machine.pil.iter() {
-            if let PilStatement::LetStatement(_, _, Some(args), _) = pil {
-                if args.ty == Type::Col {
-                    res.insert(path.to_string());
-                }
-            }
-        }
-    }
-    res
+fn collect_constrained_machines(asm_file: &AnalysisASMFile) -> impl Iterator<Item = String> + '_ {
+    asm_file
+        .machines()
+        .filter_map(|(path, machine)| {
+            machine.pil.iter().any(|pil| {
+                matches!(pil, PilStatement::LetStatement(_, _, Some(args), _) if args.ty == Type::Col)
+            })
+            .then(|| path.to_string())
+        })
 }
 
 fn machines_in_module(all_machines: HashSet<String>, path: &AbsoluteSymbolPath) -> HashSet<String> {
-    //this can can be optimized, also
-    // better with symbolpaths inst of string
-    let mut res = HashSet::new();
     let path_str = path.to_string();
-    for m in all_machines {
-        let m_without_last = match m.rsplitn(2, "::").nth(1) {
-            Some("") => "::".to_string(),
-            Some(s) => s.to_string(),
-            None => "::".to_string(),
-        };
-        if m_without_last == path_str {
-            let name = m.rsplit("::").next().unwrap_or("");
-            res.insert(name.to_string());
-        }
-    }
+    let path_prefix = if path_str == "::" {
+        "::".to_string()
+    } else {
+        format!("{}{}", path_str, "::")
+    };
 
-    res
+    all_machines
+        .into_iter()
+        .filter(|machine_path| machine_path.starts_with(&path_prefix))
+        .map(|machine_path| {
+            machine_path
+                .strip_prefix(&path_prefix)
+                .unwrap_or(&machine_path)
+                .to_string()
+        })
+        .collect()
 }
 
 fn build_machine_dependencies(asm_file: &AnalysisASMFile) -> HashMap<String, HashSet<String>> {
@@ -78,7 +77,7 @@ fn build_machine_dependencies(asm_file: &AnalysisASMFile) -> HashMap<String, Has
         let submachine_to_decl: HashMap<String, String> = machine
             .submachines
             .iter()
-            .map(|sub| (sub.name.clone(), sub.ty.to_string())) // TODO full name
+            .map(|sub| (sub.name.clone(), sub.ty.to_string()))
             .collect();
 
         let submachine_names: HashSet<String> = machine
@@ -108,8 +107,6 @@ fn build_machine_dependencies(asm_file: &AnalysisASMFile) -> HashMap<String, Has
             .collect();
         dependencies.insert(path.to_string(), submachine_names);
     }
-
-    //println!("Dependencies: {:?}", dependencies);
 
     dependencies
 }
@@ -141,18 +138,19 @@ fn collect_all_dependent_machines(
             }
         }
     }
-    //println!("Collected machines: {:?}", result);
-    //println!("Visited machines: {:?}", visited);
 
     result
 }
 
 fn remove_unused_instructions(asm_file: &mut AnalysisASMFile) {
-    let machine_with_col = collect_machine_with_cols(&asm_file);
+    let constrained_machines: HashSet<String> = collect_constrained_machines(asm_file).collect();
 
-    for (pp, machine) in asm_file.machines_mut() {
-        let symbols_in_callable = machine_callable_body_symbols(machine);
-        let mut used_submachines: HashSet<String> = HashSet::new();
+    for (_, machine) in asm_file.machines_mut() {
+        let symbols_in_callable: HashSet<_> = machine_callable_body_symbols(machine).collect();
+
+        machine
+            .instructions
+            .retain(|ins| symbols_in_callable.contains(&ins.name));
 
         let submachine_to_decl: HashMap<String, String> = machine
             .submachines
@@ -160,82 +158,76 @@ fn remove_unused_instructions(asm_file: &mut AnalysisASMFile) {
             .map(|sub| (sub.name.clone(), sub.ty.to_string()))
             .collect();
 
-        machine.instructions.retain(|ins| {
-            let keep = symbols_in_callable.contains(&ins.name);
-            if keep {
-                for link in &ins.instruction.links {
-                    if let Some(submachine) = submachine_to_decl.get(&link.link.instance) {
-                        used_submachines.insert(submachine.to_string());
-                    }
-                }
-            }
-            keep
-        });
-
-        let symbols_in_links = machine_in_links(machine);
-        used_submachines.extend(symbols_in_links.clone());
-        used_submachines.extend(machine_with_col.clone());
-
-        let machhines_as_args: Vec<_> = machine
-            .submachines
+        let visited_submachines = machine
+            .instructions
             .iter()
-            .map(|sm| sm.args.iter().filter_map(|arg| expr_to_ref(arg)))
-            .flatten()
-            .filter_map(|ref_name| submachine_to_decl.get(&ref_name))
-            .cloned() //fixme
+            .filter(|ins| symbols_in_callable.contains(&ins.name))
+            .flat_map(|ins| {
+                ins.instruction
+                    .links
+                    .iter()
+                    .filter_map(|link| submachine_to_decl.get(&link.link.instance))
+            })
+            .cloned();
+
+        let mut used_submachines: HashSet<_> = visited_submachines
+            .chain(machine_callable_body_symbols(machine))
+            .chain(machine_in_links(machine, &submachine_to_decl))
+            .chain(machine_in_args(machine, &submachine_to_decl))
             .collect();
 
-        used_submachines.extend(machhines_as_args);
+        used_submachines.extend(constrained_machines.clone().into_iter());
 
         machine
             .submachines
             .retain(|sub| used_submachines.contains(&sub.ty.to_string()));
 
-        let mut symbols_in_callable = machine_callable_body_symbols(machine);
-        let symbols_in_instructions = machine_instructions_symbols(machine);
-
-        symbols_in_callable.insert("pc".to_string());
-        symbols_in_callable.extend(symbols_in_instructions);
-        symbols_in_callable.extend(symbols_in_links);
+        let used_symbols: HashSet<_> = once(PC_REGISTER.to_string())
+            .chain(machine_callable_body_symbols(machine))
+            .chain(machine_in_links(machine, &submachine_to_decl))
+            .chain(machine_instructions_symbols(machine))
+            .collect();
 
         machine
             .registers
-            .retain(|reg| symbols_in_callable.contains(&reg.name));
+            .retain(|reg| used_symbols.contains(&reg.name));
     }
 }
 
-fn machine_callable_body_symbols(machine: &Machine) -> HashSet<String> {
+fn machine_callable_body_symbols(machine: &Machine) -> impl Iterator<Item = String> + '_ {
+    machine.callable.function_definitions().flat_map(|def| {
+        def.symbols()
+            .map(|s| s.name.to_string())
+            .collect::<Vec<_>>()
+    })
+}
+
+fn machine_instructions_symbols(machine: &Machine) -> impl Iterator<Item = String> + '_ {
     machine
-        .callable
-        .function_definitions()
-        .flat_map(|def| {
-            def.symbols()
-                .map(|s| s.name.to_string())
-                .collect::<Vec<_>>()
-        })
-        .collect()
+        .instructions
+        .iter()
+        .flat_map(|ins| ins.symbols().map(|s| s.name.to_string()))
 }
 
-fn machine_instructions_symbols(machine: &Machine) -> HashSet<String> {
-    let mut symbols = HashSet::new();
-    for ins in machine.instructions.iter() {
-        symbols.extend(ins.symbols().map(|s| s.name.to_string()));
-    }
-
-    symbols
-}
-
-fn machine_in_links(machine: &Machine) -> HashSet<String> {
-    let submachine_to_decl: HashMap<String, String> = machine
+fn machine_in_args<'a>(
+    machine: &'a Machine,
+    submachine_to_decl: &'a HashMap<String, String>,
+) -> impl Iterator<Item = String> + 'a {
+    machine
         .submachines
         .iter()
-        .map(|sub| (sub.name.clone(), sub.ty.to_string()))
-        .collect();
+        .flat_map(|sm| sm.args.iter().filter_map(expr_to_ref))
+        .filter_map(|ref_name| submachine_to_decl.get(&ref_name))
+        .cloned()
+}
 
+fn machine_in_links<'a>(
+    machine: &'a Machine,
+    submachine_to_decl: &'a HashMap<String, String>,
+) -> impl Iterator<Item = String> + 'a {
     machine
         .links
         .iter()
-        .filter_map(|ld| submachine_to_decl.get(&ld.to.instance))
-        .cloned() // fix
-        .collect()
+        .filter_map(move |ld| submachine_to_decl.get(&ld.to.instance))
+        .cloned()
 }
