@@ -8,7 +8,7 @@ use powdr_ast::analyzed::{
     Expression, FunctionValueDefinition, PolyID, PolynomialType, Symbol, SymbolKind,
     TypedExpression,
 };
-use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
+use powdr_ast::parsed::visitor::AllChildren;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 use std::iter::once;
@@ -182,35 +182,47 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             self.challenges,
             self.stage,
         );
-        let identities = self
-            .analyzed
-            .identities
-            .clone()
+
+        let identities_by_stage =
+            self.analyzed
+                .identities
+                .clone()
+                .into_iter()
+                .map(|identity| {
+                    let stage =
+                        identity
+                            .all_children()
+                            .map(|child| {
+                                if let AlgebraicExpression::Challenge(challenge) = child {
+                                    challenge.stage
+                                } else {
+                                    0
+                                }
+                            })
+                            .chain(fixed.polynomial_references(&identity).into_iter().map(
+                                |poly_id| {
+                                    if poly_id.ptype == PolynomialType::Committed {
+                                        fixed.witness_cols[&poly_id].stage
+                                    } else {
+                                        0
+                                    }
+                                },
+                            ))
+                            .max()
+                            .unwrap_or(0) as u8;
+                    (stage, identity)
+                })
+                .sorted_by_key(|(stage, _)| *stage)
+                .chunk_by(|(stage, _)| *stage);
+        let mut identities_by_stage = identities_by_stage
             .into_iter()
-            .filter(|identity| {
-                let references_later_stage_challenge = identity.expr_any(|expr| {
-                    if let AlgebraicExpression::Challenge(challenge) = expr {
-                        challenge.stage >= self.stage.into()
-                    } else {
-                        false
-                    }
-                });
-                let references_later_stage_witness = fixed
-                    .polynomial_references(identity)
-                    .into_iter()
-                    .any(|poly_id| {
-                        (poly_id.ptype == PolynomialType::Committed)
-                            && fixed.witness_cols[&poly_id].stage > self.stage as u32
-                    });
-
-                let discard = references_later_stage_challenge || references_later_stage_witness;
-
-                if discard {
-                    log::debug!("Skipping identity that references later-stage items: {identity}",);
-                }
-                !discard
+            .map(|(stage, identities)| {
+                let identities = identities.map(|(_, identity)| identity).collect::<Vec<_>>();
+                (stage, identities)
             })
-            .collect::<Vec<_>>();
+            .collect::<BTreeMap<_, _>>();
+
+        let identities = identities_by_stage.remove(&self.stage).unwrap();
 
         // Removes identities like X * (X - 1) = 0 or [ A ] in [ BYTES ]
         // These are already captured in the range constraints.
