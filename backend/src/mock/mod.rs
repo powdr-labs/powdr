@@ -106,7 +106,7 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
 
         let machines = self
             .machine_to_pil
-            // TODO: We should probably iterate in parallel, because Machine::try_new is might generate
+            // TODO: We should probably iterate in parallel, because Machine::try_new might generate
             // later-stage witnesses, which is expensive.
             // However, for now, doing it sequentially simplifies debugging.
             .iter()
