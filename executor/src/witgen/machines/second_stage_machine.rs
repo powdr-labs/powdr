@@ -6,7 +6,7 @@ use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::{Machine, MachineParts};
-use crate::witgen::processor::{OuterQuery, SolverState};
+use crate::witgen::processor::SolverState;
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use crate::witgen::vm_processor::VmProcessor;
@@ -36,7 +36,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SecondStageMachine<'a, T> {
     fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
         assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self.process(first_row, 0, mutable_state, None, true).block;
+        self.data = self.process(first_row, mutable_state);
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -138,16 +138,13 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
         block.pop().unwrap()
     }
 
-    fn process<'c, Q: QueryCallback<T>>(
+    fn process<Q: QueryCallback<T>>(
         &mut self,
         first_row: Row<T>,
-        row_offset: DegreeType,
         mutable_state: &MutableState<'a, T, Q>,
-        outer_query: Option<OuterQuery<'a, 'c, T>>,
-        is_main_run: bool,
-    ) -> SolverState<'a, T> {
+    ) -> FinalizableData<T> {
         log::trace!(
-            "Running main machine from row {row_offset} with the following initial values in the first row:\n{}",
+            "Running Second-Stage Machine with the following initial values in the first row:\n{}",
             first_row.render_values(false, &self.parts)
         );
         let data = FinalizableData::with_initial_rows_in_progress(
@@ -157,22 +154,19 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
 
         let mut processor = VmProcessor::new(
             self.name().to_string(),
-            RowIndex::from_degree(row_offset, self.degree),
+            RowIndex::from_degree(0, self.degree),
             self.fixed_data,
             &self.parts,
             SolverState::new(data, self.publics.clone()),
             mutable_state,
         );
-        if let Some(outer_query) = outer_query {
-            processor = processor.with_outer_query(outer_query);
-        }
-        processor.run(is_main_run);
+        processor.run(true);
         let (updated_data, degree) = processor.finish();
 
         // The processor might have detected a loop, in which case the degree has changed
         self.degree = degree;
 
-        updated_data
+        updated_data.block
     }
 
     /// At the end of the solving algorithm, we'll have computed the first row twice
