@@ -116,7 +116,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                 )
             })
             .collect();
-        let constant_eval: BTreeMap<PolyID, <E as EvalAtRow>::F> = self
+        let constant_eval: BTreeMap<_, _> = self
             .constant_columns
             .keys()
             .map(|poly_id| {
