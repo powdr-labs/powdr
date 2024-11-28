@@ -171,7 +171,7 @@ fn block_to_block_empty_submachine() {
         .len();
     assert_eq!(arith_size, 0);
 
-    // TODO Mock prover doesn't support this test yet.
+    test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
 
