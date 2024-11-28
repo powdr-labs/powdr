@@ -39,7 +39,7 @@ fn block_machine_exact_number_of_rows_asm() {
 fn challenges_asm() {
     let f = "asm/challenges.asm";
     let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
-    // TODO Mock prover doesn't support this test yet.
+    test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
 
@@ -69,7 +69,7 @@ fn secondary_block_machine_add2() {
 fn second_phase_hint() {
     let f = "asm/second_phase_hint.asm";
     let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
-    // TODO Mock prover doesn't support this test yet.
+    test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
 
@@ -179,7 +179,7 @@ fn block_to_block_empty_submachine() {
 fn block_to_block_with_bus_monolithic() {
     let f = "asm/block_to_block_with_bus.asm";
     let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
-    // TODO Mock prover doesn't support this test yet.
+    test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
 
@@ -187,7 +187,7 @@ fn block_to_block_with_bus_monolithic() {
 fn block_to_block_with_bus_different_sizes() {
     let f = "asm/block_to_block_with_bus_different_sizes.asm";
     let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
-    // TODO Mock prover doesn't support this test yet.
+    test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
 
@@ -205,7 +205,7 @@ fn block_to_block_with_bus_composite() {
     use powdr_pipeline::test_util::test_halo2_with_backend_variant;
     let f = "asm/block_to_block_with_bus.asm";
     let pipeline = make_simple_prepared_pipeline(f);
-    // TODO Mock prover doesn't support this test yet.
+    test_mock_backend(pipeline.clone());
     test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
@@ -756,7 +756,7 @@ fn keccak() {
 fn connect_no_witgen() {
     let f = "asm/connect_no_witgen.asm";
     let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
-    // TODO Mock prover doesn't support this test yet.
+    test_mock_backend(pipeline.clone());
     test_pilcom(pipeline);
 }
 
