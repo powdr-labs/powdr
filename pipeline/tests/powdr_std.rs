@@ -64,6 +64,14 @@ fn keccakf16_memory_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn keccakf32_memory_test() {
+    let f = "std/keccakf32_memory_test.asm";
+    test_mock_backend(make_simple_prepared_pipeline::<GoldilocksField>(f));
+    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn poseidon_bb_test() {
     let f = "std/poseidon_bb_test.asm";
     regular_test_bb(f, &[]);
