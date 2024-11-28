@@ -13,6 +13,14 @@ const MAIN_MACHINE_PATH: &str = "::Main";
 const PC_REGISTER: &str = "pc";
 
 pub fn optimize(mut analyzed_asm: AnalysisASMFile) -> AnalysisASMFile {
+    //hacky temporal way to detect if the asm file has a main machine
+    if build_machine_dependencies(&analyzed_asm)
+        .keys()
+        .all(|m| m != MAIN_MACHINE_PATH)
+    {
+        return analyzed_asm;
+    }
+
     println!(
         "Optimizing machine count: {:?}",
         analyzed_asm.machines().count()
