@@ -18,7 +18,8 @@ struct ProcessResult<'a, T: FieldElement> {
     updated_data: SolverState<'a, T>,
 }
 
-/// A machine is generic and can handle lookups that generate a dynamic number of rows.
+/// A machine responsible for second-phase witness generation.
+/// For example, this might generate the witnesses for a bus accumulator or LogUp argument.
 pub struct BusMachine<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     parts: MachineParts<'a, T>,
