@@ -1,9 +1,19 @@
-use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    hash::{DefaultHasher, Hash, Hasher},
+    io,
+    marker::PhantomData,
+    path::PathBuf,
+    sync::Arc,
+};
 
 use connection_constraint_checker::{Connection, ConnectionConstraintChecker};
 use machine::Machine;
 use polynomial_constraint_checker::PolynomialConstraintChecker;
-use powdr_ast::analyzed::Analyzed;
+use powdr_ast::{
+    analyzed::{AlgebraicExpression, Analyzed},
+    parsed::visitor::AllChildren,
+};
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
 
@@ -70,36 +80,62 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
         &self,
         witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
-        _witgen_callback: WitgenCallback<F>,
+        witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error> {
         if prev_proof.is_some() {
             unimplemented!();
         }
 
+        let challenges = self
+            .machine_to_pil
+            .values()
+            .flat_map(|pil| pil.identities.iter())
+            .flat_map(|identity| identity.all_children())
+            .filter_map(|expr| match expr {
+                AlgebraicExpression::Challenge(challenge) => {
+                    // Use the hash of the ID as the challenge.
+                    // This way, if the same challenge is used by different machines, they will
+                    // have the same value.
+                    let mut hasher = DefaultHasher::new();
+                    challenge.id.hash(&mut hasher);
+                    Some((challenge.id, F::from(hasher.finish())))
+                }
+                _ => None,
+            })
+            .collect::<BTreeMap<_, _>>();
+
         let machines = self
             .machine_to_pil
+            // TODO: We should probably iterate in parallel, because Machine::try_new is might generate
+            // later-stage witnesses, which is expensive.
+            // However, for now, doing it sequentially simplifies debugging.
             .iter()
-            .filter_map(|(machine, pil)| {
-                Machine::try_new(machine.clone(), witness, &self.fixed, pil)
+            .filter_map(|(machine_name, pil)| {
+                Machine::try_new(
+                    machine_name.clone(),
+                    witness,
+                    &self.fixed,
+                    pil,
+                    &witgen_callback,
+                    &challenges,
+                )
             })
             .map(|machine| (machine.machine_name.clone(), machine))
             .collect::<BTreeMap<_, _>>();
 
         let mut is_ok = true;
         for (_, machine) in machines.iter() {
-            let result = PolynomialConstraintChecker::new(machine).check();
+            let result = PolynomialConstraintChecker::new(machine, &challenges).check();
             is_ok &= !result.has_errors();
         }
 
         is_ok &= ConnectionConstraintChecker {
             connections: &self.connections,
             machines,
+            challenges: &challenges,
         }
         .check()
         .is_ok();
-
-        // TODO:
-        // - Check later-stage witness
 
         match is_ok {
             true => Ok(Vec::new()),

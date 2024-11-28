@@ -155,6 +155,7 @@ impl<F: FieldElement> Connection<F> {
 pub struct ConnectionConstraintChecker<'a, F: FieldElement> {
     pub connections: &'a [Connection<F>],
     pub machines: BTreeMap<String, Machine<'a, F>>,
+    pub challenges: &'a BTreeMap<u64, F>,
 }
 
 impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
@@ -247,7 +248,11 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
         (0..machine.size)
             .into_par_iter()
             .filter_map(|row| {
-                let variables = Variables { machine, row };
+                let variables = Variables {
+                    machine,
+                    row,
+                    challenges: self.challenges,
+                };
                 let mut evaluator =
                     ExpressionEvaluator::new(&variables, &machine.intermediate_definitions);
                 let result = evaluator.evaluate(&selected_expressions.selector).unwrap();
