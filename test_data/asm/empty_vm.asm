@@ -1,3 +1,3 @@
-machine VM with degree: 4 + 4 {
+machine VM with degree: 8 {
     reg pc[@pc];
 }

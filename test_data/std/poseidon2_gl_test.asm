@@ -4,7 +4,12 @@ use std::machines::large_field::memory::Memory;
 use std::machines::split::ByteCompare;
 use std::machines::split::split_gl::SplitGL;
 
-machine Main with degree: 65536 {
+let main_degree: int = 2**10;
+let memory_degree: int = 2**12;
+let poseidon2_degree: int = 2**12;
+let split_degree: int = 2**12;
+
+machine Main with degree: main_degree {
     reg pc[@pc];
     reg X1[<=];
     reg X2[<=];
@@ -12,18 +17,18 @@ machine Main with degree: 65536 {
     reg ADDR2[<=];
 
     ByteCompare byte_compare;
-    SplitGL split(byte_compare);
+    SplitGL split(byte_compare, split_degree, split_degree);
 
     // Increase the time step by 2 in each row, so that the poseidon machine
     // can read in the given time step and write in the next time step.
     col fixed STEP(i) { 2 * i };
     Byte2 byte2;
-    Memory memory(byte2);
+    Memory memory(byte2, memory_degree, memory_degree);
     instr mstore_le ADDR1, X1, X2 ->
         link ~> memory.mstore(ADDR1, STEP, X2)
         link ~> memory.mstore(ADDR1 + 4, STEP, X1);
 
-    Poseidon2GL poseidon2(memory, split);
+    Poseidon2GL poseidon2(memory, split, poseidon2_degree, poseidon2_degree);
     instr poseidon2 ADDR1, ADDR2 -> link ~> poseidon2.poseidon2_permutation(ADDR1, ADDR2, STEP);
 
     col witness val_low, val_high;

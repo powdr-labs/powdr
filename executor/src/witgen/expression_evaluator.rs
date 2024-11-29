@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge, PolyID, PolynomialType,
+    AlgebraicReferenceThin, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge,
+    PolynomialType,
 };
 
 use powdr_number::FieldElement;
@@ -25,10 +26,10 @@ pub trait SymbolicVariables<T> {
 
 pub struct ExpressionEvaluator<'a, T, SV> {
     variables: SV,
-    intermediate_definitions: &'a BTreeMap<PolyID, &'a Expression<T>>,
-    /// Maps intermediate polynomial IDs to their evaluation. Updated throughout the lifetime of the
+    intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
+    /// Maps intermediate reference to their evaluation. Updated throughout the lifetime of the
     /// ExpressionEvaluator.
-    intermediates_cache: BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>,
+    intermediates_cache: BTreeMap<AlgebraicReferenceThin, AffineResult<AlgebraicVariable<'a>, T>>,
 }
 
 impl<'a, T, SV> ExpressionEvaluator<'a, T, SV>
@@ -38,7 +39,7 @@ where
 {
     pub fn new(
         variables: SV,
-        intermediate_definitions: &'a BTreeMap<PolyID, &'a Expression<T>>,
+        intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
     ) -> Self {
         Self {
             variables,
@@ -60,15 +61,14 @@ where
                     self.variables.value(AlgebraicVariable::Column(poly))
                 }
                 PolynomialType::Intermediate => {
-                    let value = self.intermediates_cache.get(&poly.poly_id).cloned();
+                    let reference = poly.to_thin();
+                    let value = self.intermediates_cache.get(&reference).cloned();
                     match value {
                         Some(v) => v,
                         None => {
-                            let definition =
-                                self.intermediate_definitions.get(&poly.poly_id).unwrap();
+                            let definition = self.intermediate_definitions.get(&reference).unwrap();
                             let result = self.evaluate(definition);
-                            self.intermediates_cache
-                                .insert(poly.poly_id, result.clone());
+                            self.intermediates_cache.insert(reference, result.clone());
                             result
                         }
                     }
