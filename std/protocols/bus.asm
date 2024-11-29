@@ -92,8 +92,7 @@ let compute_next_z: expr, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<expr> ->
     // acc' = current_acc + multiplicity' / folded'
     let res = if m_next == 0 {
         current_acc
-    }
-    else {
+    } else {
         // Implemented as: folded = (beta - fingerprint(id, tuple...));
         // `multiplicity / (beta - fingerprint(id, tuple...))` to `acc`
         let folded_next = sub_ext(eval_ext(beta), fingerprint_with_id(eval(id'), array::eval(array::next(tuple)), alpha));
