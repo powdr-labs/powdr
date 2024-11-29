@@ -14,6 +14,7 @@ use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
 use crate::witgen::machines::dynamic_machine::DynamicMachine;
+use crate::witgen::machines::second_stage_machine::SecondStageMachine;
 use crate::witgen::machines::Connection;
 use crate::witgen::machines::{write_once_memory::WriteOnceMemory, MachineParts};
 use crate::Identity;
@@ -60,26 +61,19 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             .collect::<Vec<&analyzed::Expression>>();
 
         if self.fixed.stage() > 0 {
-            // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
-            // These don't behave like normal witness columns (e.g. in a block machine), and they might depend
-            // on witness columns of more than one machine.
-            // Therefore, we treat everything as one big machine. Also, we remove lookups and permutations,
-            // as they are assumed to be handled in stage 0.
-            let polynomial_identities = identities
-                .into_iter()
-                .filter(|identity| matches!(identity, Identity::Polynomial(_)))
-                .collect::<Vec<_>>();
             let machine_parts = MachineParts::new(
                 self.fixed,
                 Default::default(),
-                polynomial_identities,
+                identities,
                 self.fixed.witness_cols.keys().collect::<HashSet<_>>(),
                 prover_functions,
             );
 
-            return build_main_machine(self.fixed, machine_parts)
-                .into_iter()
-                .collect();
+            return vec![KnownMachine::SecondStageMachine(SecondStageMachine::new(
+                "Bus Machine".to_string(),
+                self.fixed,
+                machine_parts,
+            ))];
         }
         let mut machines: Vec<KnownMachine<T>> = vec![];
 
