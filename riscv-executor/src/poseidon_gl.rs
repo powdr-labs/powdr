@@ -31,17 +31,29 @@ pub const MDS_MATRIX: [[u64; 12]; 12] = [
     [15, 41, 16, 2, 28, 13, 13, 39, 18, 34, 20, 17],
 ];
 
+/// Poseidon Hash on the Goldilocks field.
+/// See `poseidon_gl_inplace`.
+pub fn poseidon_gl<F: FieldElement>(inputs: &[F]) -> [F; 4] {
+    assert_eq!(inputs.len(), 12);
+    let mut state = [F::zero(); 12];
+    state.copy_from_slice(inputs);
+
+    poseidon_gl_inplace(&mut state);
+
+    let mut result = [F::zero(); 4];
+    result.copy_from_slice(state[0..4].as_ref());
+    result
+}
+
 /// Naive implementation of the Poseidon Hash function on the Goldilocks field.
 /// Ported from:
 /// - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/poseidong.pil
 /// - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/src/sm/sm_poseidong.js
 ///
 /// It's also equivalent to std::machines::hash::poseidon_gl::PoseidonGL from the Powdr standard library.
-pub fn poseidon_gl<F: FieldElement>(inputs: &[F]) -> [F; 4] {
-    assert_eq!(inputs.len(), 12);
-    let mut state = [F::zero(); 12];
-    state.copy_from_slice(inputs);
-
+///
+/// Output is written over the first 4 elements of the input array.
+pub fn poseidon_gl_inplace<F: FieldElement>(state: &mut [F; 12]) {
     for round in 0..30 {
         let is_full = !(4..26).contains(&round);
         for i in 0..12 {
@@ -52,7 +64,7 @@ pub fn poseidon_gl<F: FieldElement>(inputs: &[F]) -> [F; 4] {
                 *s = s.pow(7.into());
             }
         }
-        let mds_input = state;
+        let mds_input = *state;
         for i in 0..12 {
             let mut tmp = F::zero();
             for (j, &input) in mds_input.iter().enumerate() {
@@ -61,10 +73,6 @@ pub fn poseidon_gl<F: FieldElement>(inputs: &[F]) -> [F; 4] {
             state[i] = tmp;
         }
     }
-
-    let mut result = [F::zero(); 4];
-    result.copy_from_slice(state[0..4].as_ref());
-    result
 }
 
 #[cfg(test)]
