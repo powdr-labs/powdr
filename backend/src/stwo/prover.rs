@@ -41,7 +41,7 @@ pub struct StwoProver<T, B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: 
     pub fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
 
     /// Proving key placeholder
-    proving_key: Option<StarkProvingKey<B, MC>>,
+    proving_key: StarkProvingKey<B, MC>,
     /// Verifying key placeholder
     _verifying_key: Option<()>,
     _channel_marker: PhantomData<C>,
@@ -67,7 +67,7 @@ where
             analyzed,
             split,
             fixed,
-            proving_key: None,
+            proving_key: StarkProvingKey { preprocessed: None },
             _verifying_key: None,
             _channel_marker: PhantomData,
         })
@@ -137,49 +137,42 @@ where
                 }
             })
             .collect();
-        let proving_key = StarkProvingKey { preprocessed };
-        self.proving_key = Some(proving_key);
+        let proving_key = StarkProvingKey {
+            preprocessed: Some(preprocessed),
+        };
+        self.proving_key = proving_key;
     }
 
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
         let config = get_config();
         let twiddles_map: BTreeMap<usize, TwiddleTree<B>> = self
             .split
-            .iter()
-            .filter_map(|(_, pil)| {
-                if pil.constant_count() + pil.publics_count() == 0 {
-                    None
-                } else {
-                    // precompute twiddles for all sizes in the PIL
-                    let twiddles_size: Vec<(usize, TwiddleTree<B>)> = pil
-                        .committed_polys_in_source_order()
-                        .flat_map(|(s, _)| {
-                            s.degree.iter().flat_map(|range| {
-                                let min = range.min;
-                                let max = range.max;
+            .values()
+            .flat_map(|pil| {
+                // Precompute twiddles for all sizes in the PIL
+                pil.committed_polys_in_source_order()
+                    .flat_map(|(s, _)| {
+                        s.degree.iter().flat_map(|range| {
+                            let min = range.min;
+                            let max = range.max;
 
-                                // Iterate over powers of 2 from min to max
-                                (min..=max)
-                                    .filter(|&size| size.is_power_of_two()) // Only take powers of 2
-                                    .map(|size| {
-                                        // Compute twiddles for this size
-                                        let twiddles = B::precompute_twiddles(
-                                            CanonicCoset::new(
-                                                size.ilog2() + 1 + FRI_LOG_BLOWUP as u32,
-                                            )
+                            // Iterate over powers of 2 from min to max
+                            (min..=max)
+                                .filter(|&size| size.is_power_of_two()) // Only take powers of 2
+                                .map(|size| {
+                                    // Compute twiddles for this size
+                                    let twiddles = B::precompute_twiddles(
+                                        CanonicCoset::new(size.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
                                             .circle_domain()
                                             .half_coset,
-                                        );
-                                        (size as usize, twiddles)
-                                    })
-                                    .collect::<Vec<_>>()
-                            })
+                                    );
+                                    (size as usize, twiddles)
+                                })
+                                .collect::<Vec<_>>() // Collect results into a Vec
                         })
-                        .collect();
-                    Some(twiddles_size.into_iter())
-                }
+                    })
+                    .collect::<Vec<_>>() // Collect the inner results into a Vec
             })
-            .flatten()
             .collect();
         // Use RefCell to access proving_key mutably
         let prover_channel = &mut <MC as MerkleChannel>::C::default();
@@ -188,25 +181,21 @@ where
 
         let mut tree_builder = commitment_scheme.tree_builder();
 
-        if let Some(proving_key) = &self.proving_key {
-            // Access the proving_key without consuming the Option
-            let preprocessed = &proving_key.preprocessed;
-
-            // Use preprocessed as needed
-            preprocessed
-                .iter()
-                .next()
-                .and_then(|(_, table_collection)| table_collection.iter().next())
-                .map(|(_, table_proving_key)| {
-                    tree_builder
-                        .extend_evals(table_proving_key.constant_trace_circle_domain.clone());
-                    tree_builder.commit(prover_channel);
+        if let Some((_, table_proving_key)) =
+            self.proving_key
+                .preprocessed
+                .as_ref()
+                .and_then(|preprocessed| {
+                    preprocessed
+                        .iter()
+                        .find_map(|(_, table_collection)| table_collection.iter().next())
                 })
-                .unwrap_or_else(|| unimplemented!());
+        {
+            tree_builder.extend_evals(table_proving_key.constant_trace_circle_domain.clone());
         } else {
-            tree_builder.extend_evals([]);
-            tree_builder.commit(prover_channel);
+            tree_builder.extend_evals(Vec::new());
         }
+        tree_builder.commit(prover_channel);
 
         // committed/witness trace
         let trace = gen_stwo_circuit_trace::<F, B, M31>(witness);

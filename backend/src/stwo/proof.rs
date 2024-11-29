@@ -16,7 +16,7 @@ pub struct TableProvingKey<B: BackendForChannel<MC>, MC: MerkleChannel> {
 
 pub struct StarkProvingKey<B: BackendForChannel<MC>, MC: MerkleChannel> {
     // for each table, the preprocessed data
-    pub preprocessed: BTreeMap<String, TableProvingKeyCollection<B, MC>>,
+    pub preprocessed: Option<BTreeMap<String, TableProvingKeyCollection<B, MC>>>,
 }
 
 unsafe impl<B: BackendForChannel<MC>, MC: MerkleChannel> Send for TableProvingKey<B, MC> {}
