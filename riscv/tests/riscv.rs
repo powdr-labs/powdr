@@ -495,7 +495,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
         &from_elf,
         &[expected.into()],
         None,
-        true,
+        false,
     );
 
     // "add_two"
@@ -513,7 +513,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
         &from_elf,
         &[expected.into()],
         None,
-        true,
+        false,
     );
 
     // "add_two" and "add_three"
@@ -531,7 +531,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
         &from_elf,
         &[expected.into()],
         None,
-        true,
+        false,
     );
 }
 
@@ -615,12 +615,12 @@ fn many_chunks_memory() {
 }
 
 fn verify_riscv_crate(case: &str, inputs: &[u64], executor_witgen: bool) {
-    verify_riscv_crate_bb(case, inputs.iter().map(|&x| x.into()).collect());
     verify_riscv_crate_gl(
         case,
         inputs.iter().map(|&x| x.into()).collect(),
         executor_witgen,
     );
+    verify_riscv_crate_bb(case, inputs.iter().map(|&x| x.into()).collect());
 }
 
 fn verify_riscv_crate_bb(case: &str, inputs: Vec<BabyBearField>) {
