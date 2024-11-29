@@ -62,6 +62,9 @@ pub enum BackendType {
     #[cfg(feature = "stwo")]
     #[strum(serialize = "stwo")]
     Stwo,
+    #[cfg(feature = "stwo")]
+    #[strum(serialize = "stwo-composite")]
+    StwoComposite,
 }
 
 pub type BackendOptions = String;
@@ -112,6 +115,10 @@ impl BackendType {
             }
             #[cfg(feature = "stwo")]
             BackendType::Stwo => Box::new(stwo::Factory),
+            #[cfg(feature = "stwo")]
+            BackendType::StwoComposite => {
+                Box::new(composite::CompositeBackendFactory::new(stwo::Factory))
+            }
         }
     }
 }

@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     fmt::Display,
     fs,
-    io::{self, BufReader},
+    io::{self, BufReader, BufWriter, Write},
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
@@ -27,7 +27,7 @@ use powdr_executor::{
         WitgenCallbackContext, WitnessGenerator,
     },
 };
-pub use powdr_linker::LinkerMode;
+pub use powdr_linker::{DegreeMode, LinkerMode, LinkerParams};
 use powdr_number::{write_polys_csv_file, CsvRenderMode, FieldElement, ReadWrite};
 use powdr_schemas::SerializedAnalyzed;
 
@@ -103,8 +103,8 @@ struct Arguments<T: FieldElement> {
     backend: Option<BackendType>,
     /// Backend options
     backend_options: BackendOptions,
-    /// Backend options
-    linker_mode: LinkerMode,
+    /// Linker options
+    linker_params: LinkerParams,
     /// CSV render mode for witness generation.
     csv_render_mode: CsvRenderMode,
     /// Whether to export the witness as a CSV file.
@@ -338,8 +338,8 @@ impl<T: FieldElement> Pipeline<T> {
         self.add_query_callback(Arc::new(dict_data_to_query_callback(inputs)))
     }
 
-    pub fn with_linker_mode(mut self, linker_mode: LinkerMode) -> Self {
-        self.arguments.linker_mode = linker_mode;
+    pub fn with_linker_params(mut self, linker_params: LinkerParams) -> Self {
+        self.arguments.linker_params = linker_params;
         self
     }
 
@@ -842,7 +842,7 @@ impl<T: FieldElement> Pipeline<T> {
                 let graph = self.artifact.linked_machine_graph.take().unwrap();
 
                 self.log("Run linker");
-                let linked = powdr_linker::link(graph, self.arguments.linker_mode)?;
+                let linked = powdr_linker::link(graph, self.arguments.linker_params)?;
                 log::trace!("{linked}");
                 self.maybe_write_pil(&linked, "")?;
 
@@ -1035,13 +1035,12 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn witgen_callback(&mut self) -> Result<WitgenCallback<T>, Vec<String>> {
         let ctx = WitgenCallbackContext::new(
-            self.compute_optimized_pil()?,
             self.compute_fixed_cols()?,
             self.arguments.query_callback.as_ref().cloned(),
         );
         Ok(WitgenCallback::new(Arc::new(
-            move |current_witness, challenges, stage| {
-                ctx.next_stage_witness(current_witness, challenges, stage)
+            move |pil, current_witness, challenges, stage| {
+                ctx.next_stage_witness(pil, current_witness, challenges, stage)
             },
         )))
     }
@@ -1170,14 +1169,15 @@ impl<T: FieldElement> Pipeline<T> {
         self.arguments.query_callback.as_deref()
     }
 
-    pub fn export_proving_key<W: io::Write>(&mut self, mut writer: W) -> Result<(), Vec<String>> {
+    pub fn export_proving_key<W: io::Write>(&mut self, writer: W) -> Result<(), Vec<String>> {
         let backend = self.setup_backend()?;
-        backend
-            .export_proving_key(&mut writer)
-            .map_err(|e| match e {
-                powdr_backend::Error::BackendError(e) => vec![e],
-                _ => panic!(),
-            })
+        let mut bw = BufWriter::new(writer);
+        let res = backend.export_proving_key(&mut bw).map_err(|e| match e {
+            powdr_backend::Error::BackendError(e) => vec![e],
+            _ => panic!(),
+        });
+        bw.flush().unwrap();
+        res
     }
 
     pub fn export_verification_key<W: io::Write>(

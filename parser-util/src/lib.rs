@@ -4,6 +4,7 @@
 
 use std::{
     fmt::{self, Debug, Formatter},
+    hash::Hash,
     sync::Arc,
 };
 
@@ -41,6 +42,10 @@ impl PartialEq for SourceRef {
 }
 
 impl Eq for SourceRef {}
+
+impl Hash for SourceRef {
+    fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
+}
 
 impl SourceRef {
     pub fn unknown() -> Self {

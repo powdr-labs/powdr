@@ -1,6 +1,7 @@
 let identity: expr -> expr = |expr| expr;
+let N: int = 32;
 
-machine Id {
+machine Id with degree: N {
     operation id<0> x, y;
 
     col witness x;
@@ -8,7 +9,7 @@ machine Id {
     x = y;
 }
 
-machine Main {
+machine Main with degree: N {
 
     Id id;
 

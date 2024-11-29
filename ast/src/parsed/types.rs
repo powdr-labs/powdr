@@ -422,7 +422,9 @@ impl From<FunctionType> for Type {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct TypeScheme<E = u64> {
     /// Type variables and their trait bounds.
     pub vars: TypeBounds,
@@ -481,7 +483,7 @@ impl From<Type> for TypeScheme {
 }
 
 #[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default, Serialize, Deserialize, JsonSchema,
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Default, Serialize, Deserialize, JsonSchema, Hash,
 )]
 // TODO bounds should be SymbolPaths in the future.
 pub struct TypeBounds(Vec<(String, BTreeSet<String>)>);

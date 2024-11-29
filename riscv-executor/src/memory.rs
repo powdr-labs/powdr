@@ -17,23 +17,27 @@ struct Op<F: FieldElement> {
 pub struct MemoryMachine<F: FieldElement> {
     pub namespace: String,
     ops: Vec<Op<F>>,
-    // this is the size of the "selector array" for this machine. We deduce it
-    // from the largest idx given in incoming read/write operations. Each
-    // element becomes a column in the final trace.
-    selector_count: usize,
+    witness_cols: Vec<String>,
 }
 
 impl<F: FieldElement> MemoryMachine<F> {
-    pub fn new(namespace: &str) -> Self {
+    pub fn new(namespace: &str, witness_cols: &[String]) -> Self {
+        // filter for the machine columns
+        let prefix = format!("{namespace}::");
+        let witness_cols = witness_cols
+            .iter()
+            .filter(|c| c.starts_with(&prefix))
+            .cloned()
+            .collect();
+
         MemoryMachine {
             namespace: namespace.to_string(),
             ops: Vec::new(),
-            selector_count: 0,
+            witness_cols,
         }
     }
 
     pub fn write(&mut self, step: u32, addr: u32, val: Elem<F>, selector_idx: u32) {
-        self.selector_count = std::cmp::max(self.selector_count, selector_idx as usize + 1);
         self.ops.push(Op {
             addr,
             step,
@@ -44,7 +48,6 @@ impl<F: FieldElement> MemoryMachine<F> {
     }
 
     pub fn read(&mut self, step: u32, addr: u32, val: Elem<F>, selector_idx: u32) {
-        self.selector_count = std::cmp::max(self.selector_count, selector_idx as usize + 1);
         self.ops.push(Op {
             addr,
             step,
@@ -64,7 +67,7 @@ impl<F: FieldElement> MemoryMachine<F> {
             "trying to take less rows than memory ops"
         );
 
-        // order here matters! we use this to index into the columns
+        // order here matters (pil defines the order of witness cols)! we use this to index into the columns
         #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
         #[repr(usize)]
         enum Cols {
@@ -79,45 +82,14 @@ impl<F: FieldElement> MemoryMachine<F> {
         }
         use Cols::*;
 
-        let mut cols = vec![
-            (
-                format!("{}::m_addr", self.namespace),
-                Vec::with_capacity(len as usize),
-            ),
-            (
-                format!("{}::m_step", self.namespace),
-                Vec::with_capacity(len as usize),
-            ),
-            (
-                format!("{}::m_change", self.namespace),
-                Vec::with_capacity(len as usize),
-            ),
-            (
-                format!("{}::m_value", self.namespace),
-                Vec::with_capacity(len as usize),
-            ),
-            (
-                format!("{}::m_is_write", self.namespace),
-                Vec::with_capacity(len as usize),
-            ),
-            (
-                format!("{}::m_diff_lower", self.namespace),
-                Vec::with_capacity(len as usize),
-            ),
-            (
-                format!("{}::m_diff_upper", self.namespace),
-                Vec::with_capacity(len as usize),
-            ),
-        ];
-        for i in 0..self.selector_count as u32 {
-            cols.push((
-                format!("{}::selectors[{}]", self.namespace, i),
-                Vec::with_capacity(len as usize),
-            ));
-        }
-
         // sort ops by (addr, step)
         self.ops.sort_by_key(|op| (op.addr, op.step));
+
+        let mut cols: Vec<_> = std::mem::take(&mut self.witness_cols)
+            .into_iter()
+            .map(|n| (n, vec![]))
+            .collect();
+        let selector_count = cols.len() - Cols::Selectors as usize;
 
         // generate rows from ops
         for (idx, op) in self.ops.iter().enumerate() {
@@ -146,7 +118,7 @@ impl<F: FieldElement> MemoryMachine<F> {
             cols[Addr as usize].1.push(op.addr.into());
             cols[Value as usize].1.push(op.value);
 
-            for i in 0..self.selector_count as u32 {
+            for i in 0..selector_count as u32 {
                 cols[Selectors as usize + i as usize]
                     .1
                     .push(if i == op.selector_idx {
@@ -180,7 +152,7 @@ impl<F: FieldElement> MemoryMachine<F> {
             cols[IsWrite as usize].1.resize(len as usize, 0.into());
             cols[DiffLower as usize].1.resize(len as usize, 0.into());
             cols[DiffUpper as usize].1.resize(len as usize, 0.into());
-            for i in 0..self.selector_count as u32 {
+            for i in 0..selector_count as u32 {
                 cols[Selectors as usize + i as usize]
                     .1
                     .resize(len as usize, 0.into());

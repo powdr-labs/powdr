@@ -13,6 +13,7 @@ use std::math::fp2::needs_extension;
 use std::math::fp2::fp2_from_array;
 use std::math::fp2::constrain_eq_ext;
 use std::protocols::fingerprint::fingerprint_with_id;
+use std::protocols::fingerprint::fingerprint_with_id_inter;
 use std::math::fp2::required_extension_size;
 use std::prover::eval;
 
@@ -35,7 +36,7 @@ let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity|
     let beta = fp2_from_array(array::new(required_extension_size(), |i| challenge(0, i + 3)));
 
     // Implemented as: folded = (beta - fingerprint(id, tuple...));
-    let folded = sub_ext(beta, fingerprint_with_id(id, tuple, alpha));
+    let folded = sub_ext(beta, fingerprint_with_id_inter(id, tuple, alpha));
     let folded_next = next_ext(folded);
 
     let m_ext = from_base(multiplicity);
@@ -83,8 +84,7 @@ let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity|
 let compute_next_z: expr, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<expr> -> fe[] = query |is_first, id, tuple, multiplicity, acc, alpha, beta| {
     // Implemented as: folded = (beta - fingerprint(id, tuple...));
     // `multiplicity / (beta - fingerprint(id, tuple...))` to `acc`
-    let folded = sub_ext(beta, fingerprint_with_id(id, tuple, alpha));
-    let folded_next = next_ext(folded);
+    let folded_next = sub_ext(eval_ext(beta), fingerprint_with_id(eval(id'), array::eval(array::next(tuple)), alpha));
 
     let m_ext = from_base(multiplicity);
     let m_ext_next = next_ext(m_ext);
@@ -95,7 +95,7 @@ let compute_next_z: expr, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<expr> ->
     // acc' = current_acc + multiplicity' / folded'
     let res = add_ext(
         current_acc,
-        mul_ext(eval_ext(m_ext_next), inv_ext(eval_ext(folded_next)))
+        mul_ext(eval_ext(m_ext_next), inv_ext(folded_next))
     );
 
     unpack_ext_array(res)
