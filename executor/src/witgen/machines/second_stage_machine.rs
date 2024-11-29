@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_ast::analyzed::Identity;
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap};
@@ -82,8 +83,17 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
             parts.prover_functions,
         );
 
+        let witness_sizes = fixed_data
+            .witness_cols
+            .values()
+            .filter_map(|w| w.external_values.as_ref())
+            .map(|values| values.len())
+            .unique()
+            .collect::<Vec<_>>();
+        let degree = witness_sizes.into_iter().exactly_one().unwrap() as DegreeType;
+
         Self {
-            degree: parts.common_degree_range().max,
+            degree,
             name,
             fixed_data,
             parts,
@@ -159,6 +169,8 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
             &self.parts,
             SolverState::new(data, self.publics.clone()),
             mutable_state,
+            self.degree,
+            false,
         );
         processor.run(true);
         let (updated_data, degree) = processor.finish();
