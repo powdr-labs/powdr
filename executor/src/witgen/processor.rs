@@ -239,14 +239,12 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
         );
         let mut updates = EvalValue::complete(vec![]);
 
-        let functions_and_index = self
-            .parts
+        self.parts
             .prover_functions
             .iter()
             .enumerate()
-            .collect::<Vec<_>>();
-
-        let results = functions_and_index
+            .collect::<Vec<_>>()
+            // Run all prover functions in parallel
             .into_par_iter()
             .map(|(i, fun)| {
                 if !self.processed_prover_functions.has_run(row_index, i) {
@@ -255,17 +253,21 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
                         i,
                     )))
                 } else {
+                    // No error, but also no result to process later
                     Ok(None)
                 }
             })
-            .collect::<Result<Vec<_>, EvalError<T>>>()?;
-
-        for (r, i) in results.into_iter().flatten() {
-            if r.is_complete() {
-                updates.combine(r);
-                self.processed_prover_functions.mark_as_run(row_index, i);
-            }
-        }
+            // Fail if any of the prover functions failed
+            .collect::<Result<Vec<_>, EvalError<T>>>()?
+            .into_iter()
+            // Filter out `None`s
+            .flatten()
+            .for_each(|(r, i)| {
+                if r.is_complete() {
+                    updates.combine(r);
+                    self.processed_prover_functions.mark_as_run(row_index, i);
+                }
+            });
 
         for poly_id in &self.prover_query_witnesses {
             if let Some(r) = query_processor.process_query(&row_pair, poly_id) {
