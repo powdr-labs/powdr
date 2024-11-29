@@ -531,10 +531,10 @@ mod builder {
             let mut ret = Self {
                 pc_idx,
                 curr_pc: PC_INITIAL_VAL.into(),
+                regs_machine: MemoryMachine::new("main_regs", &witness_cols),
+                memory_machine: MemoryMachine::new("main_memory", &witness_cols),
                 trace: ExecutionTrace::new(witness_cols, reg_map, reg_writes, PC_INITIAL_VAL + 1),
                 submachines,
-                regs_machine: MemoryMachine::new("main_regs"),
-                memory_machine: MemoryMachine::new("main_memory"),
                 next_statement_line: 1,
                 batch_to_line_map,
                 max_rows: max_rows_len,
@@ -777,17 +777,16 @@ mod builder {
             // add submachine traces to main trace
             // ----------------------------
             for mut machine in self.submachines.into_values().map(|m| m.into_inner()) {
-                if machine.len() == 0 {
-                    // ignore empty machines
-                    continue;
-                }
-                machine.final_row_override();
-                let range = namespace_degree_range(pil, machine.namespace());
-                // extend with dummy blocks up to the required machine degree
-                let machine_degree =
-                    std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
-                while machine.len() < machine_degree {
-                    machine.push_dummy_block(machine_degree as usize);
+                // if the machine is not empty, we need to fill it up to the degree
+                if machine.len() > 0 {
+                    machine.final_row_override();
+                    let range = namespace_degree_range(pil, machine.namespace());
+                    // extend with dummy blocks up to the required machine degree
+                    let machine_degree =
+                        std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
+                    while machine.len() < machine_degree {
+                        machine.push_dummy_block(machine_degree as usize);
+                    }
                 }
                 for (col_name, col) in machine.take_cols() {
                     assert!(self.trace.cols.insert(col_name, col).is_none());

@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReferenceThin, Analyzed, PolyID};
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
-use powdr_executor::constant_evaluator::VariablySizedColumn;
+use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
 
 /// A collection of columns with self-contained constraints.
@@ -22,8 +22,10 @@ impl<'a, F: FieldElement> Machine<'a, F> {
         witness: &'a [(String, Vec<F>)],
         fixed: &'a [(String, VariablySizedColumn<F>)],
         pil: &'a Analyzed<F>,
+        witgen_callback: &WitgenCallback<F>,
+        challenges: &BTreeMap<u64, F>,
     ) -> Option<Self> {
-        let witness = machine_witness_columns(witness, pil, &machine_name);
+        let mut witness = machine_witness_columns(witness, pil, &machine_name);
         let size = witness
             .iter()
             .map(|(_, v)| v.len())
@@ -34,6 +36,12 @@ impl<'a, F: FieldElement> Machine<'a, F> {
         if size == 0 {
             // Empty machines are removed always valid.
             return None;
+        }
+
+        for stage in 1..pil.stage_count() {
+            log::debug!("Generating stage-{stage} witness for machine {machine_name}");
+            witness =
+                witgen_callback.next_stage_witness(pil, &witness, challenges.clone(), stage as u8);
         }
 
         let fixed = machine_fixed_columns(fixed, pil);
