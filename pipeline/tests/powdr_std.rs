@@ -181,40 +181,40 @@ fn memory_small_test() {
 fn permutation_via_challenges() {
     let f = "std/permutation_via_challenges.asm";
     let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
-    // TODO Mock prover doesn't support this test yet.
 }
 
 #[test]
 fn lookup_via_challenges() {
     let f = "std/lookup_via_challenges.asm";
     let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
-    // TODO Mock prover doesn't support this test yet.
 }
 
 #[test]
 fn lookup_via_challenges_range_constraint() {
     let f = "std/lookup_via_challenges_range_constraint.asm";
     let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
-    // TODO Mock prover doesn't support this test yet.
 }
 
 #[test]
 fn bus_lookup() {
     let f = "std/bus_lookup.asm";
     let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
-    // TODO Mock prover doesn't support this test yet.
 }
 
 #[test]
 fn bus_permutation() {
     let f = "std/bus_permutation.asm";
     let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
-    // TODO Mock prover doesn't support this test yet.
 }
 
 #[test]
