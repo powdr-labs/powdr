@@ -1,5 +1,3 @@
-#![deny(clippy::print_stdout)]
-
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::{combine_flags, MachineDegree},
