@@ -756,7 +756,7 @@ fn keccak() {
 fn connect_no_witgen() {
     let f = "asm/connect_no_witgen.asm";
     let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
-    test_mock_backend(pipeline.clone());
+    // TODO Mock prover doesn't support this test yet.
     test_pilcom(pipeline);
 }
 
