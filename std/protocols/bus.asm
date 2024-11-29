@@ -13,7 +13,6 @@ use std::math::fp2::needs_extension;
 use std::math::fp2::fp2_from_array;
 use std::math::fp2::constrain_eq_ext;
 use std::protocols::fingerprint::fingerprint_with_id;
-use std::protocols::fingerprint::fingerprint_with_id2;
 use std::protocols::fingerprint::fingerprint_with_id_inter;
 use std::math::fp2::required_extension_size;
 use std::prover::eval;
@@ -97,7 +96,7 @@ let compute_next_z: expr, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<expr> ->
     else {
         // Implemented as: folded = (beta - fingerprint(id, tuple...));
         // `multiplicity / (beta - fingerprint(id, tuple...))` to `acc`
-        let folded_next = sub_ext(eval_ext(beta), fingerprint_with_id2(eval(id'), array::eval(array::next(tuple)), alpha));
+        let folded_next = sub_ext(eval_ext(beta), fingerprint_with_id(eval(id'), array::eval(array::next(tuple)), alpha));
         add_ext(
             current_acc,
             mul_ext(m_ext_next, inv_ext(folded_next))
