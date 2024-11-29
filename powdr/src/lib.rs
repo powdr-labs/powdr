@@ -8,6 +8,7 @@ pub use powdr_pilopt as pilopt;
 pub use powdr_pipeline as pipeline;
 pub use powdr_riscv as riscv;
 pub use powdr_riscv_executor as riscv_executor;
+use powdr_riscv_executor::ProfilerOptions;
 
 pub use powdr_pipeline::Pipeline;
 
@@ -250,7 +251,12 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
         initial_memory,
         pipeline.data_callback().unwrap(),
         &riscv::continuations::bootloader::default_input(&[]),
-        None,
+        Some(ProfilerOptions {
+            output_directory: ".".to_string(),
+            file_stem: Some("recursion".to_string()),
+            flamegraph: true,
+            callgrind: true,
+        }),
     );
 
     let duration = start.elapsed();
