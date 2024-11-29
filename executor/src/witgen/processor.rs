@@ -258,6 +258,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
             })
             // Fail if any of the prover functions failed
             .collect::<Result<Vec<_>, EvalError<T>>>()?
+            // Combine results
             .into_iter()
             .for_each(|(r, i)| {
                 if r.is_complete() {
