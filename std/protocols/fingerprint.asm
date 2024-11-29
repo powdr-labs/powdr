@@ -7,8 +7,6 @@ use std::math::fp2::pow_ext;
 use std::math::fp2::from_base;
 use std::math::fp2::eval_ext;
 use std::check::assert;
-use std::utils::fold;
-use std::prover::eval;
 
 /// Maps [x_1, x_2, ..., x_n] to its Read-Solomon fingerprint, using a challenge alpha: $\sum_{i=1}^n alpha**{(n - i)} * x_i$
 /// To generate an expression that computes the fingerprint, use `fingerprint_inter` instead.
