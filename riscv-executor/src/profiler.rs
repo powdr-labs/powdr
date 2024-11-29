@@ -10,10 +10,10 @@ use itertools::Itertools;
 
 use rustc_demangle::demangle;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Call<'a> {
-    from: Loc<'a>,
-    target: Loc<'a>,
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Call {
+    from: Loc,
+    target: Loc,
 }
 
 /// RISC-V asm profiler.
@@ -23,20 +23,22 @@ pub struct Profiler<'a> {
     options: ProfilerOptions,
     /// file number to (dir,file)
     debug_files: &'a [(&'a str, &'a str)],
+    /// map function names to ids (vec index)
+    functions: Vec<&'a str>,
     /// pc value of function beginnings
-    function_begin: BTreeMap<usize, &'a str>,
+    function_begin: BTreeMap<usize, FuncId>,
     /// pc value of .debug loc statements
     location_begin: BTreeMap<usize, (usize, usize)>,
     /// current call stack, entries include running cost
-    call_stack: Vec<(Call<'a>, usize)>,
+    call_stack: Vec<(Call, usize)>,
     /// saved return address of "jump and link" instructions
     return_pc_stack: Vec<usize>,
     /// cost of each location
-    location_stats: BTreeMap<Loc<'a>, usize>,
+    location_stats: BTreeMap<Loc, usize>,
     /// (count, cumulative cost) of calls
-    call_stats: BTreeMap<Call<'a>, (usize, usize)>,
+    call_stats: BTreeMap<Call, (usize, usize)>,
     /// stack sampling format for FlameGraph
-    folded_stack_stats: BTreeMap<Vec<&'a str>, usize>,
+    folded_stack_stats: BTreeMap<Vec<FuncId>, usize>,
 }
 
 #[derive(Default, Clone)]
@@ -47,12 +49,15 @@ pub struct ProfilerOptions {
     pub callgrind: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Loc<'a> {
-    function: &'a str,
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Loc {
     file: usize,
     line: usize,
+    function: FuncId,
 }
+
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct FuncId(usize);
 
 impl<'a> Profiler<'a> {
     pub fn new(
@@ -61,16 +66,25 @@ impl<'a> Profiler<'a> {
         function_begin: BTreeMap<usize, &'a str>,
         location_begin: BTreeMap<usize, (usize, usize)>,
     ) -> Self {
+        let mut functions = vec![""]; // "" is a placeholder for the initial call to "__runtime_start" which has no .debug loc
+        let mut id_begin = BTreeMap::default();
+        for (begin, func) in function_begin {
+            let id = functions.len();
+            functions.push(func);
+            id_begin.insert(begin, FuncId(id));
+        }
+
         Profiler {
             options,
             debug_files,
-            function_begin,
+            function_begin: id_begin,
             location_begin,
             call_stack: Default::default(),
             return_pc_stack: Default::default(),
             location_stats: Default::default(),
             call_stats: Default::default(),
             folded_stack_stats: Default::default(),
+            functions,
         }
     }
 
@@ -81,22 +95,23 @@ impl<'a> Profiler<'a> {
         writeln!(&mut w, "events: Instructions\n").unwrap();
 
         struct CallCost<'a> {
-            call: &'a Call<'a>,
+            call: &'a Call,
             count: usize,
             cost: usize,
         }
 
-        let mut func_ids = BTreeMap::new();
         let mut loc_stats: BTreeMap<_, Vec<_>> = BTreeMap::new();
         let mut call_stats: BTreeMap<_, Vec<_>> = BTreeMap::new();
+        // we gather the ids here to only includes fns that have been seen at least once
+        let mut func_ids = BTreeMap::new();
 
         // group stats per (function_id, file)
-        for (id, func) in self.function_begin.values().enumerate() {
+        for func in self.function_begin.values() {
             for (loc, cost) in &self.location_stats {
                 if &loc.function == func {
-                    func_ids.entry(func).or_insert(id);
+                    func_ids.entry(func).or_insert(self.functions[func.0]);
                     loc_stats
-                        .entry((id, loc.file))
+                        .entry((func.0, loc.file))
                         .or_default()
                         .push((loc.line, cost));
                 }
@@ -104,9 +119,9 @@ impl<'a> Profiler<'a> {
 
             for (call, (count, cost)) in &self.call_stats {
                 if &call.from.function == func {
-                    assert!(func_ids.contains_key(func));
+                    func_ids.entry(func).or_insert(self.functions[func.0]);
                     call_stats
-                        .entry((id, call.from.file))
+                        .entry((func.0, call.from.file))
                         .or_default()
                         .push(CallCost {
                             call,
@@ -117,9 +132,9 @@ impl<'a> Profiler<'a> {
             }
         }
 
-        // use function name id mapping, without it callgrind was showing duplicate entries
-        for (func, id) in &func_ids {
-            writeln!(&mut w, "fn=({id}) {}", format_function_name(func)).unwrap();
+        // write id mapping for functions we saw
+        for (id, func) in func_ids {
+            writeln!(&mut w, "fn=({}) {}", id.0, format_function_name(func)).unwrap();
         }
         writeln!(w).unwrap();
 
@@ -136,7 +151,7 @@ impl<'a> Profiler<'a> {
             {
                 let (dir, name) = self.debug_files[*file - 1];
                 writeln!(&mut w, "cfl={dir}/{name}").unwrap();
-                writeln!(w, "cfn=({})", func_ids[&call.target.function]).unwrap();
+                writeln!(w, "cfn=({})", call.target.function.0).unwrap();
                 writeln!(w, "calls={count} {}", call.target.line).unwrap();
                 writeln!(w, "{} {cost}", call.from.line).unwrap();
             }
@@ -152,7 +167,7 @@ impl<'a> Profiler<'a> {
             .map(|(stack, count)| {
                 let stack = stack
                     .iter()
-                    .map(|function| format_function_name(function))
+                    .map(|function| format_function_name(self.functions[function.0]))
                     .join(";");
                 format!("{stack} {count}")
             })
@@ -183,12 +198,12 @@ impl<'a> Profiler<'a> {
     }
 
     /// function at the top of the call stack
-    pub fn curr_function(&self) -> Option<&'a str> {
+    fn curr_function(&self) -> Option<FuncId> {
         self.call_stack.last().map(|(c, _)| c.target.function)
     }
 
     /// get the function name and source location for a given pc value
-    pub fn location_at(&self, pc: usize) -> Option<Loc<'a>> {
+    fn location_at(&self, pc: usize) -> Option<Loc> {
         self.function_begin
             .range(..=pc)
             .last()
@@ -201,7 +216,7 @@ impl<'a> Profiler<'a> {
                     // for labels with no .loc above them, just point to main file
                     .unwrap_or((1, 0));
                 Loc {
-                    function,
+                    function: *function,
                     file,
                     line,
                 }
@@ -249,7 +264,7 @@ impl<'a> Profiler<'a> {
                     ..
                 } = self.location_at(curr_pc).unwrap();
                 // ecall handler code doesn't have a ".debug loc", so we keep current file/line
-                if target.function == "__ecall_handler" {
+                if self.functions[target.function.0] == "__ecall_handler" {
                     target.file = curr_file;
                     target.line = curr_line;
                 }
@@ -267,11 +282,11 @@ impl<'a> Profiler<'a> {
                 self.return_pc_stack.push(return_pc);
             } else {
                 // we start profiling on the initial call to "__runtime_start"
-                if target.function == "__runtime_start" {
+                if self.functions[target.function.0] == "__runtime_start" {
                     let call = Call {
                         // __runtime_start does not have a proper ".debug loc", just point to main file
                         from: Loc {
-                            function: "",
+                            function: FuncId(0),
                             file: 1,
                             line: 0,
                         },

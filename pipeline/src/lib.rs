@@ -1,7 +1,5 @@
 //! The main powdr lib, used to compile from assembly to PIL
 
-#![deny(clippy::print_stdout)]
-
 pub mod pipeline;
 pub mod test_runner;
 pub mod test_util;
