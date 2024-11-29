@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
+use bus_accumulator::generate_bus_accumulators;
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
 use powdr_ast::analyzed::{
@@ -27,6 +28,7 @@ use self::machines::profiling::{record_end, record_start, reset_and_print_profil
 mod affine_expression;
 pub(crate) mod analysis;
 mod block_processor;
+mod bus_accumulator;
 mod data_structures;
 mod eval_result;
 mod expression_evaluator;
@@ -97,6 +99,25 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
             .collect()
     }
 
+    pub fn select_fixed_columns2(
+        &self,
+        pil: &Analyzed<T>,
+        size: DegreeType,
+    ) -> Vec<(String, &[T])> {
+        // The provided PIL might only contain a subset of all fixed columns.
+        let fixed_column_names = pil
+            .constant_polys_in_source_order()
+            .flat_map(|(symbol, _)| symbol.array_elements())
+            .map(|(name, _)| name.clone())
+            .collect::<BTreeSet<_>>();
+        // Select the columns in the current PIL and select the right size.
+        self.fixed_col_values
+            .iter()
+            .filter(|(n, _)| fixed_column_names.contains(n))
+            .map(|(n, v)| (n.clone(), v.get_by_size(size).unwrap()))
+            .collect()
+    }
+
     /// Computes the next-stage witness, given the current witness and challenges.
     /// All columns in the provided PIL are expected to have the same size.
     /// Typically, this function should be called once per machine.
@@ -108,11 +129,14 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
         stage: u8,
     ) -> Vec<(String, Vec<T>)> {
         let size = current_witness.iter().next().unwrap().1.len() as DegreeType;
-        let fixed_col_values = self.select_fixed_columns(pil, size);
-        WitnessGenerator::new(pil, &fixed_col_values, &*self.query_callback)
-            .with_external_witness_values(current_witness)
-            .with_challenges(stage, challenges)
-            .generate()
+        let fixed_col_values = self.select_fixed_columns2(pil, size);
+
+        // WitnessGenerator::new(pil, &fixed_col_values, &*self.query_callback)
+        //     .with_external_witness_values(current_witness)
+        //     .with_challenges(stage, challenges)
+        //     .generate()
+        assert_eq!(stage, 1);
+        generate_bus_accumulators(pil, current_witness, fixed_col_values, challenges)
     }
 }
 
