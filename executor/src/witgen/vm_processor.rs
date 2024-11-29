@@ -68,6 +68,8 @@ pub struct VmProcessor<'a, 'c, T: FieldElement, Q: QueryCallback<T>> {
     last_report_time: Instant,
     processor: Processor<'a, 'c, T, Q>,
     progress_bar: ProgressBar,
+    /// If true, we'll periodically check if we are in a loop. If yes, we'll add new rows by
+    /// copying the old ones and check the constraints.
     loop_detection: bool,
 }
 
