@@ -374,16 +374,6 @@ impl<T> Analyzed<T> {
             .for_each(|e| e.post_visit_expressions_mut(f));
     }
 
-    pub fn post_visit_expressions_in_definitions_mut<F>(&mut self, f: &mut F)
-    where
-        F: FnMut(&mut Expression),
-    {
-        self.definitions
-            .values_mut()
-            .filter_map(|(_poly, definition)| definition.as_mut())
-            .for_each(|definition| definition.post_visit_expressions_mut(f));
-    }
-
     /// Retrieves (name, col_name, poly_id, offset, stage) of each public witness in the trace.
     pub fn get_publics(&self) -> Vec<(String, String, PolyID, usize, u8)> {
         let mut publics = self

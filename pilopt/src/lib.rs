@@ -764,7 +764,12 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
         .iter()
         .filter_map(|id| {
             if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
-                equal_constrained(expression, &poly_id_to_array_elem)
+                let r = equal_constrained(expression, &poly_id_to_array_elem);
+                if r.is_some() {
+                    println!("Expr {expression:?} para {:?}", r.clone().unwrap());
+                }
+
+                r
             } else {
                 None
             }
@@ -781,18 +786,34 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
         .map(|((name, _), to_keep)| (name, to_keep))
         .collect();
 
+    println!("Substitutions {substitutions:?}");
+
     pil_file.post_visit_expressions_in_identities_mut(&mut |e: &mut AlgebraicExpression<_>| {
         if let AlgebraicExpression::Reference(ref mut reference) = e {
             if let Some((replacement_name, replacement_id)) = subs_by_id.get(&reference.poly_id) {
+                println!(
+                    "Iden ID: Sale {:?}, entra {:?}",
+                    reference.poly_id, replacement_id
+                );
+                println!(
+                    "Iden Name: Sale {:?}, entra {:?}",
+                    reference.name,
+                    replacement_name.clone()
+                );
                 reference.poly_id = *replacement_id;
                 reference.name = replacement_name.clone();
             }
         }
     });
 
-    pil_file.post_visit_expressions_in_definitions_mut(&mut |e: &mut Expression| {
+    pil_file.post_visit_expressions_mut(&mut |e: &mut Expression| {
         if let Expression::Reference(_, Reference::Poly(reference)) = e {
             if let Some((replacement_name, _)) = subs_by_name.get(&reference.name) {
+                println!(
+                    "Def Name: Sale {:?}, entra {:?}",
+                    reference.name,
+                    replacement_name.clone()
+                );
                 reference.name = replacement_name.clone();
             }
         }
