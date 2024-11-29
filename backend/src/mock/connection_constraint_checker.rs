@@ -282,9 +282,9 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                 let empty_variables = EmptyVariables {};
                 let empty_definitions = BTreeMap::new();
                 let mut evaluator = ExpressionEvaluator::new(empty_variables, &empty_definitions);
-                let result = evaluate_to_fe(&mut evaluator, &selected_expressions.selector);
+                let selector_value = evaluate_to_fe(&mut evaluator, &selected_expressions.selector);
 
-                match result.to_degree() {
+                match selector_value.to_degree() {
                     // Selected expressions is of the form `0 $ [ <constants> ]`
                     // => The tuples is the empty set.
                     0 => Vec::new(),
