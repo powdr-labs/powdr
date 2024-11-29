@@ -75,7 +75,7 @@ fn machine_remove_unused_registers(
 ) {
     let used_symbols: HashSet<_> = once(PC_REGISTER.to_string())
         .chain(machine_callable_body_symbols(machine))
-        .chain(machine_in_links(machine, &submachine_to_decl))
+        .chain(machine_in_links(machine, submachine_to_decl))
         .chain(machine_instructions_symbols(machine))
         .collect();
 
