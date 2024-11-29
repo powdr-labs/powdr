@@ -4,7 +4,7 @@ use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 
 use powdr_number::{DegreeType, FieldElement};
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::iter::{ParallelBridge, ParallelIterator};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::data_structures::mutable_state::MutableState;
@@ -243,25 +243,22 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
             .prover_functions
             .iter()
             .enumerate()
-            .collect::<Vec<_>>()
             // Run all prover functions in parallel
-            .into_par_iter()
-            .map(|(i, fun)| {
+            .par_bridge()
+            .filter_map(|(i, fun)| {
                 if !self.processed_prover_functions.has_run(row_index, i) {
-                    Ok(Some((
-                        query_processor.process_prover_function(&row_pair, fun)?,
-                        i,
-                    )))
+                    query_processor
+                        .process_prover_function(&row_pair, fun)
+                        .map(|result| Some((result, i)))
+                        .transpose()
                 } else {
-                    // No error, but also no result to process later
-                    Ok(None)
+                    // Skip already processed functions
+                    None
                 }
             })
             // Fail if any of the prover functions failed
             .collect::<Result<Vec<_>, EvalError<T>>>()?
             .into_iter()
-            // Filter out `None`s
-            .flatten()
             .for_each(|(r, i)| {
                 if r.is_complete() {
                     updates.combine(r);
