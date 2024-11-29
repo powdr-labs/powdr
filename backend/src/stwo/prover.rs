@@ -8,7 +8,6 @@ use std::collections::BTreeMap;
 use std::io;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use stwo_prover::core::poly::twiddles::TwiddleTree;
 
 use crate::stwo::circuit_builder::{gen_stwo_circuit_trace, PowdrComponent, PowdrEval};
 use crate::stwo::proof::{StarkProvingKey, TableProvingKey, TableProvingKeyCollection};
@@ -25,6 +24,7 @@ use stwo_prover::core::fields::m31::{BaseField, M31};
 use stwo_prover::core::fri::FriConfig;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use stwo_prover::core::poly::twiddles::TwiddleTree;
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use stwo_prover::core::ColumnVec;
@@ -38,9 +38,10 @@ pub struct StwoProver<T, B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: 
     pub analyzed: Arc<Analyzed<T>>,
     /// The split analyzed PIL
     split: BTreeMap<String, Analyzed<T>>,
+    /// The value of the fixed columns
     pub fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
 
-    /// Proving key placeholder
+    /// Proving key
     proving_key: StarkProvingKey<B, MC>,
     /// Verifying key placeholder
     _verifying_key: Option<()>,
@@ -73,7 +74,6 @@ where
         })
     }
     pub fn setup(&mut self) {
-        // commitment_scheme.twiddles is &'a TwiddleTree<B>, in order to pass commitment_scheme to different functions, twiddles connot be owned by a temperary function.
         let preprocessed: BTreeMap<String, TableProvingKeyCollection<B, MC>> = self
             .split
             .iter()
@@ -174,13 +174,14 @@ where
                     .collect::<Vec<_>>() // Collect the inner results into a Vec
             })
             .collect();
-        // Use RefCell to access proving_key mutably
+        // only the frist one is used, machines with varying sizes are not supported yet, and it is checked in backendfactory create function.
         let prover_channel = &mut <MC as MerkleChannel>::C::default();
         let mut commitment_scheme =
             CommitmentSchemeProver::<'_, B, MC>::new(config, twiddles_map.iter().next().unwrap().1);
 
         let mut tree_builder = commitment_scheme.tree_builder();
 
+        // only the frist one is used, machines with varying sizes are not supported yet, and it is checked in backendfactory create function.
         if let Some((_, table_proving_key)) =
             self.proving_key
                 .preprocessed
@@ -193,7 +194,7 @@ where
         {
             tree_builder.extend_evals(table_proving_key.constant_trace_circle_domain.clone());
         } else {
-            tree_builder.extend_evals(Vec::new());
+            tree_builder.extend_evals([]);
         }
         tree_builder.commit(prover_channel);
 

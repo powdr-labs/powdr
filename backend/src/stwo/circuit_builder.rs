@@ -1,6 +1,7 @@
 use num_traits::Zero;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
+use std::sync::Arc;
 
 extern crate alloc;
 use alloc::{collections::btree_map::BTreeMap, string::String, vec::Vec};
@@ -8,7 +9,6 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Analyzed, Identity,
 };
 use powdr_number::{FieldElement, LargeInt};
-use std::sync::Arc;
 
 use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
@@ -120,10 +120,10 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             .constant_columns
             .keys()
             .enumerate()
-            .map(|(i,poly_id)| {
+            .map(|(i, poly_id)| {
                 (
                     *poly_id,
-                    // PreprocessedColumn::Plonk(0) is unused argument in get_preprocessed_column,0 has no meaning
+                    // PreprocessedColumn::Plonk(i) is unused argument in get_preprocessed_column
                     eval.get_preprocessed_column(PreprocessedColumn::Plonk(i)),
                 )
             })
