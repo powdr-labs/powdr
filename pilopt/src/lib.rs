@@ -790,7 +790,7 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
         }
     });
 
-    pil_file.post_visit_expressions_mut(&mut |e: &mut Expression| {
+    pil_file.post_visit_expressions_in_definitions_mut(&mut |e: &mut Expression| {
         if let Expression::Reference(_, Reference::Poly(reference)) = e {
             if let Some((replacement_name, _)) = subs_by_name.get(&reference.name) {
                 reference.name = replacement_name.clone();
