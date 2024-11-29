@@ -119,11 +119,12 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
         let constant_eval: BTreeMap<_, _> = self
             .constant_columns
             .keys()
-            .map(|poly_id| {
+            .enumerate()
+            .map(|(i,poly_id)| {
                 (
                     *poly_id,
                     // PreprocessedColumn::Plonk(0) is unused argument in get_preprocessed_column,0 has no meaning
-                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(0)),
+                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(i)),
                 )
             })
             .collect();
