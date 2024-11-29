@@ -331,7 +331,7 @@ impl Runtime {
             "std::machines::large_field::arith::Arith",
             None,
             "arith",
-            vec![],
+            vec!["MIN_DEGREE", "MAIN_MAX_DEGREE"],
             [
                 format!(
                     "instr affine_256 link ~> {};",
