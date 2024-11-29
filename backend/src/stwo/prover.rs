@@ -74,6 +74,8 @@ where
         })
     }
     pub fn setup(&mut self) {
+        // machines with varying sizes are not supported yet, and it is checked in backendfactory create function.
+        //TODO: support machines with varying sizes
         let preprocessed: BTreeMap<String, TableProvingKeyCollection<B, MC>> = self
             .split
             .iter()
@@ -95,7 +97,7 @@ where
                                         .keys()
                                         .next()
                                         .map(|&first_key| first_key.ilog2())
-                                        .unwrap_or(0),
+                                        .unwrap(),
                                 )
                                 .circle_domain();
 
