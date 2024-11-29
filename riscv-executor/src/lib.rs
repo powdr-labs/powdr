@@ -14,6 +14,7 @@ use std::{
     fmt::{self, Display, Formatter},
     path::Path,
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 use builder::TraceBuilder;
@@ -2454,13 +2455,22 @@ fn execute_inner<F: FieldElement>(
 
     let mut curr_pc = 0u32;
     let mut cycles = 0;
+    let start = Instant::now();
+    let mut prev = Instant::now();
     loop {
         let stm = statements[curr_pc as usize];
 
         log::trace!("l {curr_pc}: {stm}",);
 
-        if cycles % 10000000 == 0 {
-            log::info!("Executing instruction {cycles}");
+        if cycles % 1000 == 0 {
+            let now = Instant::now();
+            if now - prev > Duration::from_secs(1) {
+                println!(
+                    "Executing instruction number {cycles}. Instructions/sec: {}",
+                    cycles as f32 / (now - start).as_secs_f32(),
+                );
+                prev = now;
+            }
         }
         cycles += 1;
 
