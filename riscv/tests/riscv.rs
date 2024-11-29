@@ -4,7 +4,7 @@ use common::{compile_riscv_asm_file, verify_riscv_asm_file, verify_riscv_asm_str
 use mktemp::Temp;
 use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField};
 use powdr_pipeline::{
-    test_util::{run_pilcom_with_backend_variant, BackendVariant},
+    test_util::{run_pilcom_with_backend_variant, test_mock_backend, BackendVariant},
     Pipeline,
 };
 use powdr_riscv_executor::ProfilerOptions;
@@ -237,36 +237,62 @@ fn function_pointer() {
     verify_riscv_crate(case, &[2734, 735, 1999], true);
 }
 
+// Temporary function to run the mock prover for cases where
+// we can't use P3 yet.
+fn run_mock_prover_for_arith(case: &str) {
+    let temp_dir = Temp::new_dir().unwrap();
+    let executable = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        None,
+    );
+
+    let options = CompilerOptions::new(
+        KnownField::GoldilocksField,
+        RuntimeLibs::new().with_arith(),
+        false,
+    );
+    let asm = powdr_riscv::elf::translate(&executable, options);
+
+    let temp_dir = mktemp::Temp::new_dir().unwrap().release();
+    let file_name = format!("{case}.asm");
+    let pipeline = Pipeline::<GoldilocksField>::default()
+        .with_output(temp_dir.to_path_buf(), false)
+        .from_asm_string(asm, Some(PathBuf::from(file_name)));
+
+    test_mock_backend(pipeline);
+}
+
 #[test]
 #[ignore = "Too slow"]
 fn runtime_ec_double() {
     let case = "ec_double";
-    let options = CompilerOptions::new_gl().with_arith();
-    verify_riscv_crate_gl_with_options(case, vec![], options, false);
+    run_mock_prover_for_arith(case);
+    // TODO We can't use P3 yet for this test because of degree 4 constraints.
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn runtime_ec_add() {
     let case = "ec_add";
-    let options = CompilerOptions::new_gl().with_arith();
-    verify_riscv_crate_gl_with_options(case, vec![], options, false);
+    run_mock_prover_for_arith(case);
+    // TODO We can't use P3 yet for this test because of degree 4 constraints.
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn runtime_affine_256() {
     let case = "affine_256";
-    let options = CompilerOptions::new_gl().with_arith();
-    verify_riscv_crate_gl_with_options(case, vec![], options, false);
+    run_mock_prover_for_arith(case);
+    // TODO We can't use P3 yet for this test because of degree 4 constraints.
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn runtime_modmul_256() {
     let case = "modmul_256";
-    let options = CompilerOptions::new_gl().with_arith();
-    verify_riscv_crate_gl_with_options(case, vec![], options, false);
+    run_mock_prover_for_arith(case);
+    // TODO We can't use P3 yet for this test because of degree 4 constraints.
 }
 
 /*
