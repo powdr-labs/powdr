@@ -14,6 +14,9 @@ const MAIN_MACHINE_STR: &str = "::Main";
 const PC_REGISTER: &str = "pc";
 
 pub fn optimize(mut analyzed_asm: AnalysisASMFile) -> AnalysisASMFile {
+    // Optimizations assume the existence of a Main machine as an entry point.
+    // If it doesn't exist, return the ASM as-is to prevent removing all machines,
+    // which would break some examples from the book.
     let main_machine_path = parse_absolute_path(MAIN_MACHINE_STR);
     if analyzed_asm
         .machines()
@@ -43,7 +46,7 @@ fn asm_remove_unreferenced_machines(asm_file: &mut AnalysisASMFile) {
     });
 }
 
-/// Analyzes each machine and successively removes unnecessary components to optimize the system:
+/// Analyzes each machine and successively removes unnecessary components:
 /// 1. Removes declarations of instructions that are never used.
 /// 2. Removes instances of submachines that are never used, including those that became unused in the previous step.
 /// 3. Removes unused registers.
