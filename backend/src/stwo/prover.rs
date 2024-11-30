@@ -212,12 +212,16 @@ where
             PowdrEval::new(self.analyzed.clone()),
         );
 
-        let proof = stwo_prover::core::prover::prove::<B, MC>(
+        let proof_result = stwo_prover::core::prover::prove::<B, MC>(
             &[&component],
             prover_channel,
             &mut commitment_scheme,
-        )
-        .unwrap();
+        );
+
+        let proof = match proof_result {
+            Ok(value) => value,
+            Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
+        };
 
         Ok(bincode::serialize(&proof).unwrap())
     }
