@@ -716,7 +716,6 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 fn equal_constrained<T: FieldElement>(
     expression: &AlgebraicExpression<T>,
     poly_id_to_array_elem: &BTreeMap<PolyID, (&String, bool)>,
-    cols_in_lookups: &HashSet<String>,
 ) -> Option<((String, PolyID), (String, PolyID))> {
     match expression {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
@@ -735,10 +734,8 @@ fn equal_constrained<T: FieldElement>(
                     && poly_id_to_array_elem
                         .get(&r.poly_id)
                         .map_or(false, |&(_, b)| !b);
-                let not_in_lookups =
-                    !cols_in_lookups.contains(&l.name) && !cols_in_lookups.contains(&r.name);
 
-                if l_valid && r_valid && not_in_lookups {
+                if l_valid && r_valid {
                     Some(if l.poly_id > r.poly_id {
                         ((l.name.clone(), l.poly_id), (r.name.clone(), r.poly_id))
                     } else {
@@ -756,13 +753,12 @@ fn equal_constrained<T: FieldElement>(
 
 fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let poly_id_to_array_elem = build_poly_id_to_definition_name_lookup(pil_file);
-    let cols_in_lookups = cols_in_identity_lookup(pil_file);
     let substitutions: Vec<_> = pil_file
         .identities
         .iter()
         .filter_map(|id| {
             if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
-                equal_constrained(expression, &poly_id_to_array_elem, &cols_in_lookups)
+                equal_constrained(expression, &poly_id_to_array_elem)
             } else {
                 None
             }
@@ -796,27 +792,27 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
         }
     });
 }
-fn cols_in_identity_lookup<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<String> {
-    pil_file
-        .identities
-        .iter()
-        .filter_map(|id| match id {
-            Identity::Lookup(LookupIdentity { left, right, .. }) => {
-                Some(extract_references(left).chain(extract_references(right)))
-            }
-            _ => None,
-        })
-        .flatten()
-        .collect()
-}
-fn extract_references<T: FieldElement>(
-    selected_expr: &SelectedExpressions<T>,
-) -> impl Iterator<Item = String> + '_ {
-    selected_expr.expressions.iter().flat_map(|expr| {
-        expr.all_children().filter_map(|child| match child {
-            AlgebraicExpression::Reference(reference) => Some(reference.name.clone()),
-            AlgebraicExpression::PublicReference(preference) => Some(preference.clone()),
-            _ => None,
-        })
-    })
-}
+// fn cols_in_identity_lookup<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<String> {
+//     pil_file
+//         .identities
+//         .iter()
+//         .filter_map(|id| match id {
+//             Identity::Lookup(LookupIdentity { left, right, .. }) => {
+//                 Some(extract_references(left).chain(extract_references(right)))
+//             }
+//             _ => None,
+//         })
+//         .flatten()
+//         .collect()
+// }
+// fn extract_references<T: FieldElement>(
+//     selected_expr: &SelectedExpressions<T>,
+// ) -> impl Iterator<Item = String> + '_ {
+//     selected_expr.expressions.iter().flat_map(|expr| {
+//         expr.all_children().filter_map(|child| match child {
+//             AlgebraicExpression::Reference(reference) => Some(reference.name.clone()),
+//             AlgebraicExpression::PublicReference(preference) => Some(preference.clone()),
+//             _ => None,
+//         })
+//     })
+// }

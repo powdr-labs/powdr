@@ -425,21 +425,3 @@ fn equal_constrained_array_elements() {
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
-
-#[test]
-fn equal_constrained_identity() {
-    let input = r#"namespace N(65536);
-        col witness w;
-        col witness v;
-        w = v;
-        [w] in [v];
-    "#;
-    let expectation = r#"namespace N(65536);
-    col witness w;
-    col witness v;
-    N::w = N::v;
-    [N::w] in [N::v];
-"#;
-    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-    assert_eq!(optimized, expectation);
-}
