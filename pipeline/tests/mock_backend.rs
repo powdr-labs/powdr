@@ -9,7 +9,7 @@ fn col<const N: usize>(name: &str, values: [u64; N]) -> (String, Vec<GoldilocksF
 }
 
 fn init_logger() {
-    env_logger::builder().is_test(true).init();
+    env_logger::builder().is_test(true);
 }
 
 #[test]
