@@ -556,6 +556,8 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 left.expressions.is_empty().then_some(index)
             }
             Identity::Connect(..) => None,
+            // TODO: This is the analog of a permutation, but I don't think this is correct? When is this actually needed?
+            Identity::PhantomBusInteraction(id) => id.tuple.0.is_empty().then_some(index),
         })
         .collect();
     pil_file.remove_identities(&to_remove);
@@ -576,6 +578,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 Identity::Permutation(..) => 3,
                 Identity::PhantomPermutation(..) => 4,
                 Identity::Connect(..) => 5,
+                Identity::PhantomBusInteraction(..) => 6,
             };
 
             discriminant(self)

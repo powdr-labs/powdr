@@ -41,7 +41,9 @@ enum Constr {
     PhantomPermutation((Option<expr>, Option<expr>), (expr, expr)[]),
 
     /// A connection constraint (copy constraint), result of the "connect" operator.
-    Connection((expr, expr)[])
+    Connection((expr, expr)[]),
+
+    PhantomBusInteraction(expr, expr[])
 }
 
 /// This is the result of the "$" operator. It can be used as the left and
