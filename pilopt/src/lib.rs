@@ -638,19 +638,17 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                             left: c, right: d, ..
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
-                    // TODO: I don't think it is correct to remove duplicate bus interactions?
+                    // Duplicate bus interactions can't (easily) be removed, so we compare them by id.
                     (
                         Identity::PhantomBusInteraction(PhantomBusInteractionIdentity {
-                            multiplicity: a,
-                            tuple: b,
+                            id: id1,
                             ..
                         }),
                         Identity::PhantomBusInteraction(PhantomBusInteractionIdentity {
-                            multiplicity: c,
-                            tuple: d,
+                            id: id2,
                             ..
                         }),
-                    ) => a.cmp(c).then_with(|| b.cmp(d)),
+                    ) => id1.cmp(id2),
                     _ => {
                         unreachable!("Different identity types would have different discriminants.")
                     }
