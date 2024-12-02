@@ -20,22 +20,25 @@ use super::cell::Cell;
 
 pub struct JitProcessor<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
+    machine_name: String,
     parts: MachineParts<'a, T>,
     block_size: usize,
     latch_row: usize,
     // TODO also cache negative results?
-    witgen_functions: RwLock<HashMap<Option<(u64, BitVec)>, (WitgenFunction, Vec<Cell>)>>,
+    witgen_functions: RwLock<HashMap<(Option<u64>, BitVec), (WitgenFunction, Vec<Cell>)>>,
 }
 
 impl<'a, T: FieldElement> JitProcessor<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
+        machine_name: String,
         parts: MachineParts<'a, T>,
         block_size: usize,
         latch_row: usize,
     ) -> Self {
         JitProcessor {
             fixed_data,
+            machine_name,
             parts,
             block_size,
             latch_row,
@@ -95,7 +98,10 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         if !inference.run() {
             return false;
         }
-        log::info!("Successfully generated witgen code for some machine.");
+        log::info!(
+            "Successfully generated witgen code machine {}.",
+            self.machine_name
+        );
         let (code, known_after) = inference.code_and_known_cells("witgen");
         log::trace!("Generated code:\n{code}");
 

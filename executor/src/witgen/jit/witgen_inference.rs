@@ -131,6 +131,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
                     }))
                     .format("\n")
             );
+            panic!();
             false
         }
     }
@@ -353,9 +354,15 @@ struct WitgenFunctionParams {{
                     acc
                 });
         // TODO we should also check that the known cells per column are consecutive.
-        known_per_column
+        self.parts
+            .witnesses
             .iter()
-            .filter_map(|(id, count)| (*count < self.block_size).then_some(*id))
+            .map(|id| id.id)
+            .filter(move |id| {
+                known_per_column
+                    .get(id)
+                    .map_or(true, |count| *count < self.block_size)
+            })
             .sorted()
     }
 
@@ -369,9 +376,10 @@ struct WitgenFunctionParams {{
                     *acc.entry(cell.id).or_default() += 1;
                     acc
                 });
-        known_per_column
-            .values()
-            .all(|count| *count >= self.block_size)
+        known_per_column.len() == self.parts.witnesses.len()
+            && known_per_column
+                .values()
+                .all(|count| *count >= self.block_size)
     }
 
     /// Sets all unreferenced cells to zero. Columns can be unreferenced

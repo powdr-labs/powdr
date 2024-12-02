@@ -121,7 +121,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         data.finalize_range(0..data.len());
 
         Some(BlockMachine {
-            name,
+            name: name.clone(),
             degree_range,
             degree,
             block_size,
@@ -138,7 +138,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 latch_row,
                 parts.identities.len(),
             ),
-            jit_processer: JitProcessor::new(fixed_data, parts.clone(), block_size, latch_row),
+            jit_processer: JitProcessor::new(
+                fixed_data,
+                name,
+                parts.clone(),
+                block_size,
+                latch_row,
+            ),
         })
     }
 }

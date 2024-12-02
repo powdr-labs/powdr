@@ -125,6 +125,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
         let jit_processor = JitProcessor::new(
             fixed_data,
+            name.clone(),
             parts.clone(),
             1, // block size
             0, // latch row
@@ -146,12 +147,12 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn run<'b, Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, 'b, T, Q>) {
         record_start(self.name());
         assert!(self.data.is_empty());
-        if self.jit_processor.can_run() {
+        let first_row = self.compute_partial_first_row(mutable_state);
+        if self.jit_processor.can_run(Default::default()) {
             // TODO run it on every row.
             //self.jit_processor.run();
             unimplemented!()
         } else {
-            let first_row = self.compute_partial_first_row(mutable_state);
             self.data = self
                 .process(first_row, 0, mutable_state, None, true)
                 .updated_data
