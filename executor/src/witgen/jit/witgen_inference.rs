@@ -31,9 +31,6 @@ pub struct WitgenInference<'a, T: FieldElement> {
     latch_row: usize,
     lookup_rhs: Option<&'a SelectedExpressions<T>>,
     inputs: Vec<Cell>,
-    /// These columns are initially known and need one additional
-    /// known row for the computation to be succesful.
-    columns_to_extend: HashSet<u64>,
     range_constraints: HashMap<Cell, RangeConstraint<T>>,
     known_cells: HashSet<Cell>,
     code: Vec<String>, // TODO make this a proper expression
@@ -44,15 +41,6 @@ pub enum Effect<T: FieldElement> {
     Code(String),
 }
 
-pub enum ComputationType {
-    /// Computation is complete when each column has
-    /// `block_size` known values.
-    FullBlock,
-    /// Computation is complete, when each column has
-    /// `block_size` known values, excluding the ones already known on the latch row.
-    Progress,
-}
-
 impl<'a, T: FieldElement> WitgenInference<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
@@ -60,7 +48,6 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
         block_size: usize,
         latch_row: usize,
         initially_known_on_latch: impl IntoIterator<Item = PolyID>,
-        computation_type: ComputationType,
         lookup_rhs: Option<&'a SelectedExpressions<T>>,
     ) -> Self {
         let inputs = initially_known_on_latch
@@ -73,17 +60,12 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
             .sorted()
             .collect_vec();
         let known_cells = inputs.iter().cloned().collect();
-        let columns_to_extend = match computation_type {
-            ComputationType::FullBlock => Default::default(),
-            ComputationType::Progress => inputs.iter().map(|c| c.id).collect(),
-        };
         Self {
             fixed_data,
             parts,
             block_size,
             latch_row,
             inputs,
-            columns_to_extend,
             lookup_rhs,
             range_constraints: Default::default(),
             known_cells,
@@ -149,6 +131,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
                     }))
                     .format("\n")
             );
+            log::trace!("Code genereated so far:\n{}", self.code.iter().format("\n"));
             panic!();
             false
         }
@@ -351,7 +334,12 @@ struct WitgenFunctionParams {{
 
     fn considered_row_range(&self) -> std::ops::RangeInclusive<i32> {
         //(-(self.block_size as i32) - 4)..=(self.block_size as i32 + 4)
-        (-(self.block_size as i32))..=0
+        // TODO this is weird, we have to improve the detection of this.
+        if self.latch_row == 0 {
+            0..=(self.block_size as i32 - 2)
+        } else {
+            -(self.block_size as i32)..=0
+        }
     }
 
     fn minimum_range_around_latch(&self) -> std::ops::RangeInclusive<i32> {
@@ -376,14 +364,9 @@ struct WitgenFunctionParams {{
             .iter()
             .map(|id| id.id)
             .filter(move |id| {
-                known_per_column.get(id).map_or(true, |count| {
-                    let required = if self.columns_to_extend.contains(id) {
-                        self.block_size + 1
-                    } else {
-                        self.block_size
-                    };
-                    *count < required
-                })
+                known_per_column
+                    .get(id)
+                    .map_or(true, |count| *count < self.block_size)
             })
             .sorted()
     }

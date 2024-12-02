@@ -127,7 +127,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             fixed_data,
             name.clone(),
             parts.clone(),
-            1, // block size
+            2, // block size
             0, // latch row
         );
         Self {

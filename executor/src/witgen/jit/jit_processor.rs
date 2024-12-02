@@ -10,7 +10,7 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     data_structures::finalizable_data::CompactDataRef,
-    jit::witgen_inference::{ComputationType, WitgenInference},
+    jit::witgen_inference::WitgenInference,
     machines::{LookupCell, MachineParts},
     util::try_to_simple_poly,
     EvalError, FixedData, MutableState, QueryCallback,
@@ -57,6 +57,19 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         //
         // These columns are determined eihter through a connection or through evaluating
         // the last row once.
+        //
+        // TODO although this is also kind of wrong: The columns known on the first row
+        // might be different from the ones that can be transferred on every row.
+        // So two-step approach:
+        // 1. mark every columns known on some row (no particular row).
+        // Check which columns can be computed in the next now.
+        // Now only mark those known and check that the rest can be computed fully.
+        // But this is essentially just a condition that we can always go from a full row to a full next row.
+        // How do we ensur ethat the first row is full to begin with?
+        // -> of course! Either use the interpreter or run the algorithm on a specific row.
+        //
+
+        // So we call `can_hanndle` with "all columns known on the latch row".
         self.can_handle(None)
     }
 
@@ -85,12 +98,19 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
                 "Trying to auto-generate witgen code for known inputs: {}",
                 known_input_cols.iter().format(", ")
             );
-            (known_input_cols, Some(right))
+            (
+                known_input_cols
+                    .into_iter()
+                    .map(|p| p.poly_id)
+                    .collect_vec(),
+                Some(right),
+            )
         } else {
             log::debug!(
                     "Trying to auto-generate witgen code for free-running machine without known inputs.",
                 );
-            (vec![], None)
+            // All columns are known on the latch row.
+            (self.parts.witnesses.iter().cloned().collect_vec(), None)
         };
 
         let mut inference = WitgenInference::new(
@@ -98,8 +118,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
             &self.parts,
             self.block_size,
             self.latch_row,
-            known_input_cols.into_iter().map(|p| p.poly_id),
-            ComputationType::FullBlock, // TODO
+            known_input_cols,
             right,
         );
         if !inference.run() {
