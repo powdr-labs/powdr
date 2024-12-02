@@ -16,7 +16,7 @@ const PC_REGISTER: &str = "pc";
 pub fn optimize(mut analyzed_asm: AnalysisASMFile) -> AnalysisASMFile {
     // Optimizations assume the existence of a Main machine as an entry point.
     // If it doesn't exist, return the ASM as-is to prevent removing all machines,
-    // which would break some examples from the book.
+    // which would break some examples.
     let main_machine_path = parse_absolute_path(MAIN_MACHINE_STR);
     if analyzed_asm
         .machines()
@@ -36,12 +36,11 @@ pub fn optimize(mut analyzed_asm: AnalysisASMFile) -> AnalysisASMFile {
 /// This function traverses the dependency graph starting from ::Main to identify all reachable machines.
 fn asm_remove_unreferenced_machines(asm_file: &mut AnalysisASMFile) {
     let deps = build_machine_dependencies(asm_file);
-    let mut all_machines = collect_all_dependent_machines(&deps, MAIN_MACHINE_STR);
-    let constrained_machines = collect_constrained_machines(asm_file);
-    all_machines.extend(constrained_machines);
-
+    let all_machines = collect_all_dependent_machines(&deps, MAIN_MACHINE_STR).into_iter()
+        .chain(collect_constrained_machines(asm_file))
+        .collect::<HashSet<_>>();
     asm_file.modules.iter_mut().for_each(|(path, module)| {
-        let machines_in_module = machines_in_module(all_machines.clone(), path);
+        let machines_in_module = machines_in_module(&all_machines, path);
         module.retain_machines(machines_in_module);
     });
 }
@@ -140,7 +139,7 @@ fn collect_constrained_machines(asm_file: &AnalysisASMFile) -> impl Iterator<Ite
 /// This function filters the provided set of all machine paths to include only those machines
 /// that are defined within the module specified by `path`. It then strips the module path prefix from each
 /// machine path to return the machine names relative to that module.
-fn machines_in_module(all_machines: HashSet<String>, path: &AbsoluteSymbolPath) -> HashSet<String> {
+fn machines_in_module(all_machines: &HashSet<String>, path: &AbsoluteSymbolPath) -> HashSet<String> {
     let path_str = path.to_string();
     let path_prefix = if path_str == "::" {
         "::".to_string()
