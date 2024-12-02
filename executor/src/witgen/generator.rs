@@ -148,7 +148,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         record_start(self.name());
         assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
-        if self.jit_processor.can_run(Default::default()) {
+        if self.jit_processor.can_run() {
             // TODO run it on every row.
             //self.jit_processor.run();
             unimplemented!()

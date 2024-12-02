@@ -10,7 +10,7 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     data_structures::finalizable_data::CompactDataRef,
-    jit::witgen_inference::WitgenInference,
+    jit::witgen_inference::{ComputationType, WitgenInference},
     machines::{LookupCell, MachineParts},
     util::try_to_simple_poly,
     EvalError, FixedData, MutableState, QueryCallback,
@@ -25,7 +25,7 @@ pub struct JitProcessor<'a, T: FieldElement> {
     block_size: usize,
     latch_row: usize,
     // TODO also cache negative results?
-    witgen_functions: RwLock<HashMap<(Option<u64>, BitVec), (WitgenFunction, Vec<Cell>)>>,
+    witgen_functions: RwLock<HashMap<Option<(u64, BitVec)>, (WitgenFunction, Vec<Cell>)>>,
 }
 
 impl<'a, T: FieldElement> JitProcessor<'a, T> {
@@ -51,6 +51,12 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
     }
 
     pub fn can_run(&self) -> bool {
+        // TODO we need which columns are already known on the current row.
+        // For these, we have to create new values on the next row.
+        // for all others, we have to create values on the current row.
+        //
+        // These columns are determined eihter through a connection or through evaluating
+        // the last row once.
         self.can_handle(None)
     }
 
@@ -93,6 +99,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
             self.block_size,
             self.latch_row,
             known_input_cols.into_iter().map(|p| p.poly_id),
+            ComputationType::FullBlock, // TODO
             right,
         );
         if !inference.run() {

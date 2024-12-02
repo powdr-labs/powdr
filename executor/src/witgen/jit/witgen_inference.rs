@@ -31,6 +31,9 @@ pub struct WitgenInference<'a, T: FieldElement> {
     latch_row: usize,
     lookup_rhs: Option<&'a SelectedExpressions<T>>,
     inputs: Vec<Cell>,
+    /// These columns are initially known and need one additional
+    /// known row for the computation to be succesful.
+    columns_to_extend: HashSet<u64>,
     range_constraints: HashMap<Cell, RangeConstraint<T>>,
     known_cells: HashSet<Cell>,
     code: Vec<String>, // TODO make this a proper expression
@@ -41,6 +44,15 @@ pub enum Effect<T: FieldElement> {
     Code(String),
 }
 
+pub enum ComputationType {
+    /// Computation is complete when each column has
+    /// `block_size` known values.
+    FullBlock,
+    /// Computation is complete, when each column has
+    /// `block_size` known values, excluding the ones already known on the latch row.
+    Progress,
+}
+
 impl<'a, T: FieldElement> WitgenInference<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
@@ -48,6 +60,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
         block_size: usize,
         latch_row: usize,
         initially_known_on_latch: impl IntoIterator<Item = PolyID>,
+        computation_type: ComputationType,
         lookup_rhs: Option<&'a SelectedExpressions<T>>,
     ) -> Self {
         let inputs = initially_known_on_latch
@@ -60,12 +73,17 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
             .sorted()
             .collect_vec();
         let known_cells = inputs.iter().cloned().collect();
+        let columns_to_extend = match computation_type {
+            ComputationType::FullBlock => Default::default(),
+            ComputationType::Progress => inputs.iter().map(|c| c.id).collect(),
+        };
         Self {
             fixed_data,
             parts,
             block_size,
             latch_row,
             inputs,
+            columns_to_extend,
             lookup_rhs,
             range_constraints: Default::default(),
             known_cells,
@@ -343,8 +361,7 @@ struct WitgenFunctionParams {{
         -reach..=0
     }
 
-    /// Returns an iterator over all columns whose values are not known
-    /// in a range of size `self.block_size`.
+    /// Returns an iterator over all columns whose values are not fully known.
     fn unknown_columns(&self) -> impl Iterator<Item = u64> + '_ {
         let known_per_column: HashMap<u64, usize> =
             self.known_cells
@@ -359,9 +376,14 @@ struct WitgenFunctionParams {{
             .iter()
             .map(|id| id.id)
             .filter(move |id| {
-                known_per_column
-                    .get(id)
-                    .map_or(true, |count| *count < self.block_size)
+                known_per_column.get(id).map_or(true, |count| {
+                    let required = if self.columns_to_extend.contains(id) {
+                        self.block_size + 1
+                    } else {
+                        self.block_size
+                    };
+                    *count < required
+                })
             })
             .sorted()
     }
@@ -369,17 +391,7 @@ struct WitgenFunctionParams {{
     fn all_cells_known(&self) -> bool {
         // TODO we should also check that the known cells per column are consecutive.
         // TODO iterate starting from self.parts.witness_columns!
-        let known_per_column: HashMap<u64, usize> =
-            self.known_cells
-                .iter()
-                .fold(HashMap::new(), |mut acc, cell| {
-                    *acc.entry(cell.id).or_default() += 1;
-                    acc
-                });
-        known_per_column.len() == self.parts.witnesses.len()
-            && known_per_column
-                .values()
-                .all(|count| *count >= self.block_size)
+        self.unknown_columns().count() == 0
     }
 
     /// Sets all unreferenced cells to zero. Columns can be unreferenced
