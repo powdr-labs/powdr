@@ -148,12 +148,12 @@ fn machines_in_module(all_machines: &HashSet<String>, path: &AbsoluteSymbolPath)
     };
 
     all_machines
-        .into_iter()
+        .iter()
         .filter(|machine_path| machine_path.starts_with(&path_prefix))
         .map(|machine_path| {
             machine_path
                 .strip_prefix(&path_prefix)
-                .unwrap_or(&machine_path)
+                .unwrap_or(machine_path)
                 .to_string()
         })
         .collect()
