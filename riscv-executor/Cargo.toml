@@ -20,9 +20,9 @@ itertools = "0.13"
 num-bigint = "0.4.3"
 num-traits = "0.2.15"
 k256 = { version = "0.13.3", features = [] }
-p3-field = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
-p3-goldilocks = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
-p3-symmetric = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
+p3-field = { git = "https://github.com/pacheco/Plonky3.git", branch = "powdr-accel" }
+p3-goldilocks = { git = "https://github.com/pacheco/Plonky3.git", branch = "powdr-accel" }
+p3-symmetric = { git = "https://github.com/pacheco/Plonky3.git", branch = "powdr-accel" }
 rustc-demangle = "0.1"
 inferno = "0.11.19"
 

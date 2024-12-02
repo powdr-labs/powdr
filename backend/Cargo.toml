@@ -57,11 +57,11 @@ halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-
 ], optional = true }
 rayon = "1.7.0"
 
-p3-commit = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", features = [
+p3-commit = { git = "https://github.com/pacheco/Plonky3.git", branch = "powdr-accel", features = [
   "test-utils",
 ], optional = true }
-p3-matrix = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", optional = true }
-p3-uni-stark = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", optional = true }
+p3-matrix = { git = "https://github.com/pacheco/Plonky3.git", branch = "powdr-accel", optional = true }
+p3-uni-stark = { git = "https://github.com/pacheco/Plonky3.git", branch = "powdr-accel", optional = true }
 # TODO: Change this to main branch when the `andrew/dev/update-toolchain` branch is merged,the main branch is using "nightly-2024-01-04", not compatiable with plonky3
 stwo-prover = { git = "https://github.com/starkware-libs/stwo.git", optional = true, rev = "e6d10bc107c11cce54bb4aa152c3afa2e15e92c1" }
 
