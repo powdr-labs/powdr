@@ -34,6 +34,12 @@ impl HostContext {
         (ctx, cb)
     }
 
+    pub fn clear_outputs(&mut self) {
+        let mut fs = self.file_data.lock().unwrap();
+        fs.insert(1, vec![]);
+        fs.insert(2, vec![]);
+    }
+
     pub fn read<T: DeserializeOwned>(&self, fd: u32) -> Result<T, String> {
         let fs = self.file_data.lock().unwrap();
         if let Some(data) = fs.get(&fd) {
@@ -59,7 +65,7 @@ impl HostContext {
                         as char;
                     match fd {
                         // stdin, stdout and stderr are supported by the default callback
-                        0..=2 => return Err(format!("Unsupported file descriptor: {fd}")),
+                        0 => return Err(format!("Unsupported file descriptor: {fd}")),
                         _ => {
                             let mut map = fs.lock().unwrap();
                             map.entry(fd).or_default().push(byte as u8);
@@ -169,22 +175,6 @@ pub fn handle_simple_queries_callback<'a, T: FieldElement>() -> impl QueryCallba
         let (id, data) = parse_query(query)?;
         match id {
             "None" => Ok(None),
-            "Output" => {
-                assert_eq!(data.len(), 2);
-                let fd = data[0]
-                    .parse::<u32>()
-                    .map_err(|e| format!("Invalid fd: {e}"))?;
-                let byte = data[1]
-                    .parse::<u8>()
-                    .map_err(|e| format!("Invalid char to print: {e}"))?
-                    as char;
-                match fd {
-                    1 => print!("{byte}"),
-                    2 => eprint!("{byte}"),
-                    _ => return Err(format!("Unsupported file descriptor: {fd}")),
-                }
-                Ok(Some(0.into()))
-            }
             "Hint" => {
                 assert_eq!(data.len(), 1);
                 Ok(Some(T::from_str(data[0]).unwrap()))

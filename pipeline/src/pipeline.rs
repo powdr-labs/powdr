@@ -974,6 +974,8 @@ impl<T: FieldElement> Pipeline<T> {
             return Ok(witness.clone());
         }
 
+        self.clear_outputs();
+
         let pil = self.compute_optimized_pil()?;
         let fixed_cols = self.compute_fixed_cols()?;
 
@@ -1236,6 +1238,10 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn host_context(&self) -> &HostContext {
         &self.host_context
+    }
+
+    pub fn clear_outputs(&mut self) {
+        self.host_context.clear_outputs();
     }
 }
 
