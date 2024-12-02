@@ -360,7 +360,8 @@ fn build_cargo_command(
     let mut cmd = Command::new("cargo");
     cmd.env(
         "RUSTFLAGS",
-        "-g -C link-arg=-Tpowdr.x -C link-arg=--emit-relocs -C passes=lower-atomic -C panic=abort",
+        // "-g -C link-arg=-Tpowdr.x -C link-arg=--emit-relocs -C passes=lower-atomic -C panic=abort",
+        "-g -C link-arg=-Tpowdr.x -C link-arg=--emit-relocs -C passes=lower-atomic -C panic=abort -C llvm-args=--inline-threshold=0",
     );
     // keep debug info for the profiler (callgrind/flamegraph)
     cmd.env("CARGO_PROFILE_RELEASE_DEBUG", "true");
