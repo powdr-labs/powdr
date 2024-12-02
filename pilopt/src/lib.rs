@@ -716,7 +716,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 fn equal_constrained<T: FieldElement>(
     expression: &AlgebraicExpression<T>,
     poly_id_to_array_elem: &BTreeMap<PolyID, (&String, bool)>,
-    imported_columns: &HashSet<String>,
+    cols_in_lookups: &HashSet<String>,
 ) -> Option<((String, PolyID), (String, PolyID))> {
     match expression {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
@@ -724,32 +724,26 @@ fn equal_constrained<T: FieldElement>(
             op: AlgebraicBinaryOperator::Sub,
             right,
         }) => match (left.as_ref(), right.as_ref()) {
-            (
-                AlgebraicExpression::Reference(left_ref),
-                AlgebraicExpression::Reference(right_ref),
-            ) => {
-                if left_ref.is_witness()
-                    && !left_ref.next
-                    && right_ref.is_witness()
-                    && !right_ref.next
-                    && poly_id_to_array_elem.contains_key(&left_ref.poly_id)
-                    && poly_id_to_array_elem.contains_key(&right_ref.poly_id)
-                    && !poly_id_to_array_elem.get(&right_ref.poly_id).unwrap().1
-                    && !poly_id_to_array_elem.get(&left_ref.poly_id).unwrap().1
-                    && !imported_columns.contains(&left_ref.name)
-                    && !imported_columns.contains(&right_ref.name)
-                {
-                    if left_ref.poly_id > right_ref.poly_id {
-                        Some((
-                            (left_ref.name.clone(), left_ref.poly_id),
-                            (right_ref.name.clone(), right_ref.poly_id),
-                        ))
+            (AlgebraicExpression::Reference(l), AlgebraicExpression::Reference(r)) => {
+                let l_valid = l.is_witness()
+                    && !l.next
+                    && poly_id_to_array_elem
+                        .get(&l.poly_id)
+                        .map_or(false, |&(_, b)| !b);
+                let r_valid = r.is_witness()
+                    && !r.next
+                    && poly_id_to_array_elem
+                        .get(&r.poly_id)
+                        .map_or(false, |&(_, b)| !b);
+                let not_in_lookups =
+                    !cols_in_lookups.contains(&l.name) && !cols_in_lookups.contains(&r.name);
+
+                if l_valid && r_valid && not_in_lookups {
+                    Some(if l.poly_id > r.poly_id {
+                        ((l.name.clone(), l.poly_id), (r.name.clone(), r.poly_id))
                     } else {
-                        Some((
-                            (right_ref.name.clone(), right_ref.poly_id),
-                            (left_ref.name.clone(), left_ref.poly_id),
-                        ))
-                    }
+                        ((r.name.clone(), r.poly_id), (l.name.clone(), l.poly_id))
+                    })
                 } else {
                     None
                 }
@@ -762,13 +756,13 @@ fn equal_constrained<T: FieldElement>(
 
 fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let poly_id_to_array_elem = build_poly_id_to_definition_name_lookup(pil_file);
-    let imported_columns = cols_in_identity_lookup(pil_file);
+    let cols_in_lookups = cols_in_identity_lookup(pil_file);
     let substitutions: Vec<_> = pil_file
         .identities
         .iter()
         .filter_map(|id| {
             if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
-                equal_constrained(expression, &poly_id_to_array_elem, &imported_columns)
+                equal_constrained(expression, &poly_id_to_array_elem, &cols_in_lookups)
             } else {
                 None
             }
@@ -807,25 +801,22 @@ fn cols_in_identity_lookup<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<S
         .identities
         .iter()
         .filter_map(|id| match id {
-            Identity::Lookup(LookupIdentity { left, .. }) => {
-                let SelectedExpressions { expressions, .. } = left;
-                Some(expressions.iter().flat_map(|expr| {
-                    expr.all_children()
-                        .filter_map(|child| match child {
-                            AlgebraicExpression::Reference(reference) => {
-                                Some(reference.name.clone())
-                            }
-                            AlgebraicExpression::PublicReference(preference) => {
-                                Some(preference.clone())
-                            }
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                }))
+            Identity::Lookup(LookupIdentity { left, right, .. }) => {
+                Some(extract_references(left).chain(extract_references(right)))
             }
-            // Identity::Permutation(PermutationIdentity { left, .. }) => { }
             _ => None,
         })
         .flatten()
         .collect()
+}
+fn extract_references<T: FieldElement>(
+    selected_expr: &SelectedExpressions<T>,
+) -> impl Iterator<Item = String> + '_ {
+    selected_expr.expressions.iter().flat_map(|expr| {
+        expr.all_children().filter_map(|child| match child {
+            AlgebraicExpression::Reference(reference) => Some(reference.name.clone()),
+            AlgebraicExpression::PublicReference(preference) => Some(preference.clone()),
+            _ => None,
+        })
+    })
 }
