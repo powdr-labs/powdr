@@ -1,6 +1,5 @@
 use powdr_analysis::analyze;
 use powdr_asmopt::optimize;
-//use powdr_importer::load_dependencies_and_resolve_str;
 use powdr_parser::parse_asm;
 
 #[test]
