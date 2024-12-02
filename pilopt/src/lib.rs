@@ -762,7 +762,7 @@ fn equal_constrained<T: FieldElement>(
 
 fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let poly_id_to_array_elem = build_poly_id_to_definition_name_lookup(pil_file);
-    let imported_columns = vars_in_identities(pil_file);
+    let imported_columns = cols_in_identity_lookup(pil_file);
     let substitutions: Vec<_> = pil_file
         .identities
         .iter()
@@ -802,34 +802,30 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
         }
     });
 }
-fn vars_in_identities<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<String> {
+fn cols_in_identity_lookup<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<String> {
     pil_file
         .identities
         .iter()
         .filter_map(|id| match id {
-            Identity::Lookup(LookupIdentity { left, right, .. }) => Some(
-                vars_in_selected_expressions(left)
-                    .chain(vars_in_selected_expressions(right))
-                    .collect::<Vec<_>>(),
-            ),
+            Identity::Lookup(LookupIdentity { left, .. }) => {
+                let SelectedExpressions { expressions, .. } = left;
+                Some(expressions.iter().flat_map(|expr| {
+                    expr.all_children()
+                        .filter_map(|child| match child {
+                            AlgebraicExpression::Reference(reference) => {
+                                Some(reference.name.clone())
+                            }
+                            AlgebraicExpression::PublicReference(preference) => {
+                                Some(preference.clone())
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>()
+                }))
+            }
+            // Identity::Permutation(PermutationIdentity { left, .. }) => { }
             _ => None,
         })
         .flatten()
         .collect()
-}
-
-fn vars_in_selected_expressions<T: FieldElement>(
-    selected_expr: &SelectedExpressions<T>,
-) -> impl Iterator<Item = String> + '_ {
-    let SelectedExpressions { expressions, .. } = selected_expr;
-
-    expressions.iter().flat_map(|expr| {
-        expr.all_children()
-            .filter_map(|child| match child {
-                AlgebraicExpression::Reference(reference) => Some(reference.name.clone()),
-                AlgebraicExpression::PublicReference(preference) => Some(preference.clone()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-    })
 }
