@@ -9,7 +9,7 @@ use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
     FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
     PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialReference, PolynomialType,
-    Reference, Symbol, SymbolKind,
+    Reference, SelectedExpressions, Symbol, SymbolKind,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
@@ -716,6 +716,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 fn equal_constrained<T: FieldElement>(
     expression: &AlgebraicExpression<T>,
     poly_id_to_array_elem: &BTreeMap<PolyID, (&String, bool)>,
+    imported_columns: &HashSet<String>,
 ) -> Option<((String, PolyID), (String, PolyID))> {
     match expression {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
@@ -735,6 +736,8 @@ fn equal_constrained<T: FieldElement>(
                     && poly_id_to_array_elem.contains_key(&right_ref.poly_id)
                     && !poly_id_to_array_elem.get(&right_ref.poly_id).unwrap().1
                     && !poly_id_to_array_elem.get(&left_ref.poly_id).unwrap().1
+                    && !imported_columns.contains(&left_ref.name)
+                    && !imported_columns.contains(&right_ref.name)
                 {
                     if left_ref.poly_id > right_ref.poly_id {
                         Some((
@@ -759,12 +762,13 @@ fn equal_constrained<T: FieldElement>(
 
 fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let poly_id_to_array_elem = build_poly_id_to_definition_name_lookup(pil_file);
+    let imported_columns = vars_in_identities(pil_file);
     let substitutions: Vec<_> = pil_file
         .identities
         .iter()
         .filter_map(|id| {
             if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
-                equal_constrained(expression, &poly_id_to_array_elem)
+                equal_constrained(expression, &poly_id_to_array_elem, &imported_columns)
             } else {
                 None
             }
@@ -797,4 +801,43 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
             }
         }
     });
+}
+fn vars_in_identities<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<String> {
+    pil_file
+        .identities
+        .iter()
+        .filter_map(|id| match id {
+            Identity::Lookup(LookupIdentity {
+                id,
+                source,
+                left,
+                right,
+            }) => Some(
+                vars_in_selected_expressions(left)
+                    .chain(vars_in_selected_expressions(right))
+                    .collect::<Vec<_>>(),
+            ),
+            _ => None,
+        })
+        .flatten()
+        .collect()
+}
+
+fn vars_in_selected_expressions<T: FieldElement>(
+    selected_expr: &SelectedExpressions<T>,
+) -> impl Iterator<Item = String> + '_ {
+    let SelectedExpressions {
+        selector,
+        expressions,
+    } = selected_expr;
+
+    expressions.iter().flat_map(|expr| {
+        expr.all_children()
+            .filter_map(|child| match child {
+                AlgebraicExpression::Reference(reference) => Some(reference.name.clone()),
+                AlgebraicExpression::PublicReference(preference) => Some(preference.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+    })
 }
