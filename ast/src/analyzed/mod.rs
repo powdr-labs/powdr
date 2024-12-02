@@ -1073,7 +1073,7 @@ impl<T> Children<AlgebraicExpression<T>> for ConnectIdentity<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema, PartialOrd, Ord)]
 pub struct ExpressionList<T>(pub Vec<AlgebraicExpression<T>>);
 
 impl<T> Children<AlgebraicExpression<T>> for ExpressionList<T> {

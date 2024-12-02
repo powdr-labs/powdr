@@ -7,9 +7,9 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
-    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialReference, PolynomialType,
-    Reference, Symbol, SymbolKind,
+    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity,
+    PhantomBusInteractionIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolyID,
+    PolynomialIdentity, PolynomialReference, PolynomialType, Reference, Symbol, SymbolKind,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
@@ -636,6 +636,19 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                         }),
                         Identity::Connect(ConnectIdentity {
                             left: c, right: d, ..
+                        }),
+                    ) => a.cmp(c).then_with(|| b.cmp(d)),
+                    // TODO: I don't think it is correct to remove duplicate bus interactions?
+                    (
+                        Identity::PhantomBusInteraction(PhantomBusInteractionIdentity {
+                            multiplicity: a,
+                            tuple: b,
+                            ..
+                        }),
+                        Identity::PhantomBusInteraction(PhantomBusInteractionIdentity {
+                            multiplicity: c,
+                            tuple: d,
+                            ..
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
                     _ => {
