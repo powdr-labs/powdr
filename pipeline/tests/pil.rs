@@ -1,4 +1,3 @@
-#[cfg(feature = "halo2")]
 use powdr_number::GoldilocksField;
 use powdr_pipeline::{
     test_util::{
