@@ -13,18 +13,6 @@ fn init_logger() {
 }
 
 #[test]
-fn fibonacci_correct_witness() {
-    init_logger();
-    let f = "pil/fibonacci.pil";
-    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
-    let pipeline = pipeline.set_witness(vec![
-        col("Fibonacci::x", [1, 1, 2, 3]),
-        col("Fibonacci::y", [1, 2, 3, 5]),
-    ]);
-    test_mock_backend(pipeline);
-}
-
-#[test]
 #[should_panic(expected = "Constraint check failed")]
 fn fibonacci_wrong_initialization() {
     // Initializes y with 2 instead of 1
@@ -33,17 +21,13 @@ fn fibonacci_wrong_initialization() {
     let f = "pil/fibonacci.pil";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
     let pipeline = pipeline.set_witness(vec![
+        // This would be the correct witness:
+        // col("Fibonacci::x", [1, 1, 2, 3]),
+        // col("Fibonacci::y", [1, 2, 3, 5]),
+        // This satisfies the constraints, except the initialization of y:
         col("Fibonacci::x", [1, 2, 3, 5]),
         col("Fibonacci::y", [2, 3, 5, 8]),
     ]);
-    test_mock_backend(pipeline);
-}
-
-#[test]
-fn block_to_block_correct_witness() {
-    init_logger();
-    let f = "asm/block_to_block.asm";
-    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
     test_mock_backend(pipeline);
 }
 
@@ -56,7 +40,11 @@ fn block_to_block_wrong_connection() {
     init_logger();
     let f = "asm/block_to_block.asm";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
+
+    // Get the correct witness
     let witness = pipeline.witness().unwrap();
+
+    // Multiply all values in main_arith with 42
     let witness = witness
         .iter()
         .map(|(name, values)| {
@@ -71,6 +59,7 @@ fn block_to_block_wrong_connection() {
             }
         })
         .collect::<Vec<_>>();
+
     let pipeline = pipeline.set_witness(witness);
     test_mock_backend(pipeline);
 }
