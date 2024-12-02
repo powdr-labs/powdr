@@ -20,7 +20,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
     data: Option<&[(u32, S)]>,
     executor_witgen: bool,
 ) {
-    let temp_dir = mktemp::Temp::new_dir().unwrap().release();
+    let temp_dir = mktemp::Temp::new_dir().unwrap();
 
     let mut pipeline = Pipeline::default()
         .with_prover_inputs(inputs.to_vec())
