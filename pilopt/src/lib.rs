@@ -807,12 +807,7 @@ fn vars_in_identities<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<String
         .identities
         .iter()
         .filter_map(|id| match id {
-            Identity::Lookup(LookupIdentity {
-                id,
-                source,
-                left,
-                right,
-            }) => Some(
+            Identity::Lookup(LookupIdentity { left, right, .. }) => Some(
                 vars_in_selected_expressions(left)
                     .chain(vars_in_selected_expressions(right))
                     .collect::<Vec<_>>(),
@@ -826,10 +821,7 @@ fn vars_in_identities<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<String
 fn vars_in_selected_expressions<T: FieldElement>(
     selected_expr: &SelectedExpressions<T>,
 ) -> impl Iterator<Item = String> + '_ {
-    let SelectedExpressions {
-        selector,
-        expressions,
-    } = selected_expr;
+    let SelectedExpressions { expressions, .. } = selected_expr;
 
     expressions.iter().flat_map(|expr| {
         expr.all_children()
