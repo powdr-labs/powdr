@@ -38,7 +38,6 @@ fn asm_remove_unreferenced_machines(asm_file: &mut AnalysisASMFile) {
     let deps = build_machine_dependencies(asm_file);
     let all_machines = collect_all_dependent_machines(&deps, MAIN_MACHINE_STR)
         .into_iter()
-        //.chain(collect_constrained_machines(asm_file))
         .collect::<HashSet<_>>();
     asm_file.modules.iter_mut().for_each(|(path, module)| {
         let machines_in_module = machines_in_module(&all_machines, path);
@@ -51,8 +50,6 @@ fn asm_remove_unreferenced_machines(asm_file: &mut AnalysisASMFile) {
 /// 2. Removes instances of submachines that are never used, including those that became unused in the previous step.
 /// 3. Removes unused registers.
 fn asm_remove_unused_machine_components(asm_file: &mut AnalysisASMFile) {
-    //let constrained_machines: HashSet<_> = collect_constrained_machines(asm_file).collect();
-    let constrained_machines = HashSet::new();
     for (_, machine) in asm_file.machines_mut() {
         let submachine_to_decl: HashMap<String, String> = machine
             .submachines
@@ -63,12 +60,7 @@ fn asm_remove_unused_machine_components(asm_file: &mut AnalysisASMFile) {
         let symbols_in_callable: HashSet<String> = machine_callable_body_symbols(machine).collect();
 
         machine_remove_unused_instructions(machine, &symbols_in_callable);
-        machine_remove_unused_submachines(
-            machine,
-            &symbols_in_callable,
-            &submachine_to_decl,
-            &constrained_machines,
-        );
+        machine_remove_unused_submachines(machine, &symbols_in_callable, &submachine_to_decl);
         machine_remove_unused_registers(machine, &submachine_to_decl);
     }
 }
@@ -92,7 +84,6 @@ fn machine_remove_unused_submachines(
     machine: &mut Machine,
     symbols: &HashSet<String>,
     submachine_to_decl: &HashMap<String, String>,
-    constrained_machines: &HashSet<String>,
 ) {
     let visited_submachines = machine
         .instructions
@@ -106,13 +97,11 @@ fn machine_remove_unused_submachines(
         })
         .cloned();
 
-    let mut used_submachines: HashSet<_> = visited_submachines
-        .chain(machine_callable_body_symbols(machine))
+    let used_submachines: HashSet<_> = visited_submachines
         .chain(machine_in_links(machine, submachine_to_decl))
         .chain(machine_in_args(machine, submachine_to_decl))
+        .chain(symbols.iter().cloned())
         .collect();
-
-    used_submachines.extend(constrained_machines.iter().cloned());
 
     machine
         .submachines
@@ -124,17 +113,6 @@ fn machine_remove_unused_instructions(machine: &mut Machine, symbols: &HashSet<S
         .instructions
         .retain(|ins| symbols.contains(&ins.name));
 }
-
-// fn collect_constrained_machines(asm_file: &AnalysisASMFile) -> impl Iterator<Item = String> + '_ {
-//     asm_file
-//         .machines()
-//         .filter_map(|(path, machine)| {
-//             machine.pil.iter().any(|pil| {
-//                 matches!(pil, PilStatement::LetStatement(_, _, Some(args), _) if args.ty == Type::Col)
-//             })
-//             .then(|| path.to_string())
-//         })
-// }
 
 /// Retrieves all machines defined within a specific module, relative to the given module path.
 ///
