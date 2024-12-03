@@ -20,4 +20,13 @@ fn main() {
 
     let r: u32 = session.stdout();
     assert_eq!(r, 89);
+
+    let publics = session.publics();
+    assert_eq!(
+        publics,
+        [
+            555233681, 1854640251, 3298928347, 2857173302, 2660189392, 1608424695, 543896544,
+            3870154745
+        ]
+    );
 }
