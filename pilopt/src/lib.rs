@@ -638,17 +638,11 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                             left: c, right: d, ..
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
-                    // Duplicate bus interactions can't (easily) be removed, so we compare them by id.
-                    (
-                        Identity::PhantomBusInteraction(PhantomBusInteractionIdentity {
-                            id: id1,
-                            ..
-                        }),
-                        Identity::PhantomBusInteraction(PhantomBusInteractionIdentity {
-                            id: id2,
-                            ..
-                        }),
-                    ) => id1.cmp(id2),
+                    (Identity::PhantomBusInteraction(_), Identity::PhantomBusInteraction(_)) => {
+                        unimplemented!(
+                            "Bus interactions should have been removed before this point."
+                        )
+                    }
                     _ => {
                         unreachable!("Different identity types would have different discriminants.")
                     }
@@ -676,11 +670,13 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .identities
         .iter()
         .enumerate()
-        .filter_map(|(index, identity)| {
-            match identity_expressions.insert(CanonicalIdentity(identity)) {
+        .filter_map(|(index, identity)| match identity {
+            // Duplicate bus interactions should not be removed, because that changes the statement.
+            Identity::PhantomBusInteraction(_) => None,
+            _ => match identity_expressions.insert(CanonicalIdentity(identity)) {
                 false => Some(index),
                 true => None,
-            }
+            },
         })
         .collect();
     pil_file.remove_identities(&to_remove);
