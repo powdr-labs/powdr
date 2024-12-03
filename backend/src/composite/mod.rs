@@ -174,18 +174,7 @@ fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
     let max_identity_degree = pil
         .identities_with_inlined_intermediate_polynomials()
         .iter()
-        .map(|i| {
-            let d = i.degree();
-            if d > 3 {
-                log::warn!(
-                    "Identity with degree {} in machine {} is higher than 3: {}",
-                    d,
-                    machine_name,
-                    i,
-                );
-            }
-            d
-        })
+        .map(|i| i.degree())
         .max()
         .unwrap_or(0);
     let uses_next_operator = pil.identities.iter().any(|i| i.contains_next_ref());
