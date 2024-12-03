@@ -142,7 +142,7 @@ fn machines_in_module(
         .collect()
 }
 
-/// Builds a HashMap that maps the name of each machine to a set of paths of the submachines instantiated within it.
+/// Creates a mapping between machine names and sets of paths for their instantiated submachines.
 fn build_machine_dependencies(asm_file: &AnalysisASMFile) -> HashMap<String, HashSet<String>> {
     let mut dependencies = HashMap::new();
 
