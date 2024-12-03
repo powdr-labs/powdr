@@ -882,6 +882,8 @@ impl Module {
         self.ordering.push(StatementReference::Module(name));
     }
 
+    /// Retains only the machines with the specified names.
+    /// Ordering is preserved.
     pub fn retain_machines(&mut self, names: HashSet<String>) {
         self.machines.retain(|key, _| names.contains(key));
         self.ordering.retain(|statement| {
