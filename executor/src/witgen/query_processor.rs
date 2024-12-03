@@ -33,9 +33,9 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         }
     }
 
-    pub fn process_prover_function(
-        &self,
-        rows: &RowPair<'_, 'a, T>,
+    pub fn process_prover_function<'c>(
+        &'c mut self,
+        rows: &'c RowPair<'c, 'a, T>,
         fun: &'a Expression,
     ) -> EvalResult<'a, T> {
         let arguments = vec![Arc::new(Value::Integer(BigInt::from(u64::from(
@@ -77,7 +77,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
     /// Panics if the column does not have a query attached.
     /// @returns None if the value for that column is already known.
     pub fn process_query(
-        &self,
+        &mut self,
         rows: &RowPair<'_, 'a, T>,
         poly_id: &PolyID,
     ) -> Option<EvalResult<'a, T>> {
@@ -91,7 +91,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
     }
 
     fn process_witness_query(
-        &self,
+        &mut self,
         query: &'a Expression,
         poly: &'a AlgebraicReference,
         rows: &RowPair<'_, 'a, T>,
@@ -129,7 +129,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
     }
 
     fn interpolate_query(
-        &self,
+        &mut self,
         query: &'a Expression,
         rows: &RowPair<'_, 'a, T>,
     ) -> Result<String, EvalError> {
