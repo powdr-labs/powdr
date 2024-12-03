@@ -365,6 +365,6 @@ fn format_function_name(name: &str) -> String {
         .replace("$GT$", ">")
         .replace("$RF$", "&")
         .replace("$C$", ",")
-        .replace("$u20", " ")
+        .replace("$u20$", " ")
         .replace("_dot__dot_", "::")
 }
