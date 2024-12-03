@@ -4,7 +4,7 @@ use std::iter::once;
 use powdr_ast::parsed::asm::parse_absolute_path;
 use powdr_ast::{
     asm_analysis::{AnalysisASMFile, Machine},
-    parsed::{asm::AbsoluteSymbolPath, types::Type, NamespacedPolynomialReference, PilStatement},
+    parsed::{asm::AbsoluteSymbolPath, NamespacedPolynomialReference},
 };
 use powdr_pilopt::referenced_symbols::ReferencedSymbols;
 
@@ -125,16 +125,16 @@ fn machine_remove_unused_instructions(machine: &mut Machine, symbols: &HashSet<S
         .retain(|ins| symbols.contains(&ins.name));
 }
 
-fn collect_constrained_machines(asm_file: &AnalysisASMFile) -> impl Iterator<Item = String> + '_ {
-    asm_file
-        .machines()
-        .filter_map(|(path, machine)| {
-            machine.pil.iter().any(|pil| {
-                matches!(pil, PilStatement::LetStatement(_, _, Some(args), _) if args.ty == Type::Col)
-            })
-            .then(|| path.to_string())
-        })
-}
+// fn collect_constrained_machines(asm_file: &AnalysisASMFile) -> impl Iterator<Item = String> + '_ {
+//     asm_file
+//         .machines()
+//         .filter_map(|(path, machine)| {
+//             machine.pil.iter().any(|pil| {
+//                 matches!(pil, PilStatement::LetStatement(_, _, Some(args), _) if args.ty == Type::Col)
+//             })
+//             .then(|| path.to_string())
+//         })
+// }
 
 /// Retrieves all machines defined within a specific module, relative to the given module path.
 ///
