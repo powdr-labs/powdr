@@ -9,7 +9,7 @@ use powdr_pipeline::{
         evaluate_function, evaluate_integer_function, gen_estark_proof_with_backend_variant,
         gen_halo2_proof, make_simple_prepared_pipeline, regular_test_bb, regular_test_gl,
         regular_test_small_field, std_analyzed, test_halo2_with_backend_variant, test_mock_backend,
-        test_plonky3_pipeline, BackendVariant,
+        test_plonky3_pipeline, test_plonky3_with_backend_variant, BackendVariant,
     },
     Pipeline,
 };
@@ -131,8 +131,7 @@ fn arith_large_test() {
     let f = "std/arith_large_test.asm";
     let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
     test_mock_backend(pipeline);
-    // TODO We can't use P3 yet for this test because of degree 4 constraints.
-    //test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
+    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
@@ -141,8 +140,7 @@ fn arith256_memory_large_test() {
     let f = "std/arith256_memory_large_test.asm";
     let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
     test_mock_backend(pipeline);
-    // TODO We can't use P3 yet for this test because of degree 4 constraints.
-    //test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
+    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
