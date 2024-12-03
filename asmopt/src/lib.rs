@@ -73,6 +73,7 @@ fn machine_remove_unused_registers(
         .chain(machine_callable_body_symbols(machine))
         .chain(machine_in_links(machine, submachine_to_decl))
         .chain(machine_instructions_symbols(machine))
+        .chain(machine_links_symbols(machine))
         .collect();
 
     machine
@@ -242,6 +243,13 @@ fn machine_instructions_symbols(machine: &Machine) -> impl Iterator<Item = Strin
         .instructions
         .iter()
         .flat_map(|ins| ins.symbols().map(|s| s.name.to_string()))
+}
+
+fn machine_links_symbols(machine: &Machine) -> impl Iterator<Item = String> + '_ {
+    machine
+        .links
+        .iter()
+        .flat_map(|ld| ld.symbols().map(|s| s.name.to_string()))
 }
 
 fn machine_in_args<'a>(

@@ -309,3 +309,52 @@ machine Helper with degree: 8 {
     let optimized = optimize(analyzed).to_string();
     assert_eq!(optimized, expectation);
 }
+
+#[test]
+fn keep_linked_submachine() {
+    let input = r#"
+    machine Main with degree: 8 {
+        Helper helper;
+        reg pc[@pc];
+        reg X[<=];
+    
+        link => X = helper.check(X);
+
+        function main {
+            return;
+        }
+    }
+
+    machine Helper with degree: 8 {
+        reg pc[@pc];
+        
+        function check x: field -> field {
+            return x + x;
+        }
+    }
+    "#;
+
+    let expectation = r#"machine Main with degree: 8 {
+    ::Helper helper
+    reg pc[@pc];
+    reg X[<=];
+    function main {
+        return;
+        // END BATCH
+    }
+    link => X = helper.check(X);
+}
+machine Helper with degree: 8 {
+    reg pc[@pc];
+    function check x: field -> field {
+        return x + x;
+        // END BATCH
+    }
+}
+"#;
+
+    let parsed = parse_asm(None, input).unwrap();
+    let analyzed = analyze(parsed).unwrap();
+    let optimized = optimize(analyzed).to_string();
+    assert_eq!(optimized, expectation);
+}

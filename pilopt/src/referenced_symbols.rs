@@ -247,7 +247,12 @@ impl ReferencedSymbols for CallableRef {
 
 impl ReferencedSymbols for LinkDefinition {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
-        Box::new(self.link_flag.symbols())
+        Box::new(
+            self.link_flag
+                .symbols()
+                .chain(self.instr_flag.iter().flat_map(|f| f.symbols()))
+                .chain(self.to.symbols()),
+        )
     }
 }
 
