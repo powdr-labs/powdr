@@ -221,10 +221,13 @@ machine Arith with
     let dot_prod = |n, a, b| sum(n, |i| a(i) * b(i));
     /// returns |n| a(0) * b(n) + ... + a(n) * b(0)
     let product = constr |a, b| constr |n| {
+        // TODO: To reduce the degree of the constraints, we materialize the intermediate result here.
+        // this introduces ~256 additional witness columns & constraints.
         let product_res;
         product_res = dot_prod(n + 1, a, |i| b(n - i));
         product_res
     };
+    // Same as `product`, but does not materialize the result. Use this to multiply by constants (like `p`).
     let product_inline = |a, b| |n| dot_prod(n + 1, a, |i| b(n - i));
     /// Converts array to function, extended by zeros.
     let array_as_fun: expr[] -> (int -> expr) = |arr| |i| if 0 <= i && i < array::len(arr) {
@@ -338,6 +341,9 @@ machine Arith with
     *
     *******/
     
+    // TODO: To reduce the degree of the constraints, these intermediate columns should be materialized.
+    // However, witgen doesn't work currently if we do, likely because for some operations, not all inputs are
+    // available.
     col eq0_sum = sum(32, |i| eq0(i) * CLK32[i]);
     col eq1_sum = sum(32, |i| eq1(i) * CLK32[i]);
     col eq2_sum = sum(32, |i| eq2(i) * CLK32[i]);
