@@ -29,7 +29,6 @@ members = [
     "riscv-executor",
     "riscv-syscalls",
     "schemas",
-    "asmopt",
     "backend-utils",
     "executor-utils",
 ]

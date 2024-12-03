@@ -72,7 +72,7 @@ impl<'a> From<&'a NamespacedPolynomialReference> for SymbolReference<'a> {
     fn from(poly: &'a NamespacedPolynomialReference) -> Self {
         SymbolReference {
             name: poly.path.to_string().into(),
-            type_args: None, //maybe we need ReferencedSymbols for asm?
+            type_args: None,
         }
     }
 }

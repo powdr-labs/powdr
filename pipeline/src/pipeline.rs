@@ -776,7 +776,6 @@ impl<T: FieldElement> Pipeline<T> {
 
                 self.log("Run analysis");
                 let analyzed_asm = powdr_analysis::analyze(resolved)?;
-                self.maybe_write_pil(&analyzed_asm, "_asm")?;
                 self.log("Analysis done");
                 log::trace!("{analyzed_asm}");
 
@@ -791,9 +790,9 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.analyzed_asm.as_ref().unwrap())
     }
 
-    pub fn compute_optimized_asm(&mut self) -> Result<AnalysisASMFile, Vec<String>> {
+    pub fn compute_optimized_asm(&mut self) -> Result<&AnalysisASMFile, Vec<String>> {
         if let Some(ref optimized_asm) = self.artifact.optimized_asm {
-            return Ok(optimized_asm.clone());
+            return Ok(optimized_asm);
         }
 
         self.compute_analyzed_asm()?;
@@ -801,15 +800,13 @@ impl<T: FieldElement> Pipeline<T> {
 
         self.log("Optimizing asm...");
         let optimized = powdr_asmopt::optimize(analyzed_asm);
-        self.maybe_write_pil(&optimized, "_asm_opt")?;
-
         self.artifact.optimized_asm = Some(optimized);
 
-        Ok(self.artifact.optimized_asm.as_ref().unwrap().clone())
+        Ok(self.artifact.optimized_asm.as_ref().unwrap())
     }
 
-    pub fn optimized_asm(&self) -> Result<AnalysisASMFile, Vec<String>> {
-        Ok(self.artifact.optimized_asm.as_ref().unwrap().clone())
+    pub fn optimized_asm(&self) -> Result<&AnalysisASMFile, Vec<String>> {
+        Ok(self.artifact.optimized_asm.as_ref().unwrap())
     }
 
     pub fn compute_constrained_machine_collection(
