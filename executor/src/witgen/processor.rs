@@ -4,7 +4,6 @@ use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 
 use powdr_number::{DegreeType, FieldElement};
-use rayon::iter::{ParallelBridge, ParallelIterator};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::data_structures::mutable_state::MutableState;
@@ -221,7 +220,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
     }
 
     pub fn process_queries(&mut self, row_index: usize) -> Result<bool, EvalError<T>> {
-        let query_processor = QueryProcessor::new(
+        let mut query_processor = QueryProcessor::new(
             self.fixed_data,
             self.mutable_state.query_callback(),
             self.size,
@@ -239,33 +238,15 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
         );
         let mut updates = EvalValue::complete(vec![]);
 
-        self.parts
-            .prover_functions
-            .iter()
-            .enumerate()
-            // Run all prover functions in parallel
-            .par_bridge()
-            .filter_map(|(i, fun)| {
-                if !self.processed_prover_functions.has_run(row_index, i) {
-                    query_processor
-                        .process_prover_function(&row_pair, fun)
-                        .map(|result| Some((result, i)))
-                        .transpose()
-                } else {
-                    // Skip already processed functions
-                    None
-                }
-            })
-            // Fail if any of the prover functions failed
-            .collect::<Result<Vec<_>, EvalError<T>>>()?
-            // Combine results
-            .into_iter()
-            .for_each(|(r, i)| {
+        for (i, fun) in self.parts.prover_functions.iter().enumerate() {
+            if !self.processed_prover_functions.has_run(row_index, i) {
+                let r = query_processor.process_prover_function(&row_pair, fun)?;
                 if r.is_complete() {
                     updates.combine(r);
                     self.processed_prover_functions.mark_as_run(row_index, i);
                 }
-            });
+            }
+        }
 
         for poly_id in &self.prover_query_witnesses {
             if let Some(r) = query_processor.process_query(&row_pair, poly_id) {
