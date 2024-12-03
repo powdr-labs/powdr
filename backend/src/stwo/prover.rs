@@ -176,7 +176,7 @@ where
                     .collect::<Vec<_>>() // Collect the inner results into a Vec
             })
             .collect();
-        // only the frist one is used, machines with varying sizes are not supported yet, and it is checked in backendfactory create function.
+        // only the first one is used, machines with varying sizes are not supported yet, and it is checked in backendfactory create function.
         let prover_channel = &mut <MC as MerkleChannel>::C::default();
         let mut commitment_scheme =
             CommitmentSchemeProver::<'_, B, MC>::new(config, twiddles_map.iter().next().unwrap().1);
