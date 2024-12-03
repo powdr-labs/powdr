@@ -38,7 +38,7 @@ fn asm_remove_unreferenced_machines(asm_file: &mut AnalysisASMFile) {
     let deps = build_machine_dependencies(asm_file);
     let all_machines = collect_all_dependent_machines(&deps, MAIN_MACHINE_STR)
         .into_iter()
-        .chain(collect_constrained_machines(asm_file))
+        //.chain(collect_constrained_machines(asm_file))
         .collect::<HashSet<_>>();
     asm_file.modules.iter_mut().for_each(|(path, module)| {
         let machines_in_module = machines_in_module(&all_machines, path);
@@ -51,7 +51,8 @@ fn asm_remove_unreferenced_machines(asm_file: &mut AnalysisASMFile) {
 /// 2. Removes instances of submachines that are never used, including those that became unused in the previous step.
 /// 3. Removes unused registers.
 fn asm_remove_unused_machine_components(asm_file: &mut AnalysisASMFile) {
-    let constrained_machines: HashSet<_> = collect_constrained_machines(asm_file).collect();
+    //let constrained_machines: HashSet<_> = collect_constrained_machines(asm_file).collect();
+    let constrained_machines = HashSet::new();
     for (_, machine) in asm_file.machines_mut() {
         let submachine_to_decl: HashMap<String, String> = machine
             .submachines
