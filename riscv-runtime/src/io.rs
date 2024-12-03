@@ -51,6 +51,34 @@ pub fn write_slice(fd: u32, data: &[u8]) {
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
+static mut STDOUT: Vec<Vec<u8>> = vec![];
+static mut STDERR: Vec<Vec<u8>> = vec![];
+const STDOUT_FD: u32 = 1;
+const STDERR_FD: u32 = 2;
+
+pub fn write_stdout<T: Serialize>(data: T) {
+    let data = serde_cbor::to_vec(&data).unwrap();
+    unsafe {
+        STDOUT.push(data);
+    }
+}
+
+pub fn write_stderr<T: Serialize>(data: T) {
+    let data = serde_cbor::to_vec(&data).unwrap();
+    unsafe {
+        STDERR.push(data);
+    }
+}
+
+pub fn finalize() {
+    unsafe {
+        let data_stdout = serde_cbor::to_vec(&STDOUT).unwrap();
+        write_slice(STDOUT_FD, &data_stdout);
+        let data_stderr = serde_cbor::to_vec(&STDERR).unwrap();
+        write_slice(STDERR_FD, &data_stderr);
+    }
+}
+
 /// Reads and deserializes a serialized value of type T from the file descriptor fd.
 pub fn read<T: DeserializeOwned>(fd: u32) -> T {
     let l = read_data_len(fd);
