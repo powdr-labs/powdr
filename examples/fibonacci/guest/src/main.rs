@@ -1,4 +1,5 @@
 use powdr_riscv_runtime;
+use powdr_riscv_runtime::commit;
 use powdr_riscv_runtime::io::{read, write};
 
 fn fib(n: u32) -> u32 {
@@ -14,4 +15,6 @@ fn main() {
     let r = fib(n);
     // Write result to stdout.
     write(1, r);
+    // Commit the result as a public.
+    commit::commit(r);
 }
