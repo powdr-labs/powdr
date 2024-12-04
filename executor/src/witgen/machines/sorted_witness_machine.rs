@@ -5,11 +5,10 @@ use super::{Connection, EvalResult, FixedData};
 use super::{Machine, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::evaluators::fixed_evaluator::FixedEvaluator;
+use crate::witgen::evaluators::partial_expression_evaluator::PartialExpressionEvaluator;
+use crate::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use crate::witgen::rows::RowPair;
-use crate::witgen::{
-    expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
-    symbolic_evaluator::SymbolicEvaluator,
-};
 use crate::witgen::{EvalValue, IncompleteCause, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
@@ -138,7 +137,7 @@ fn check_identity<T: FieldElement>(
     for row in 0..(degree as usize) {
         let fixed_evaluator = FixedEvaluator::new(fixed_data, row, degree);
         let mut ev =
-            ExpressionEvaluator::new(fixed_evaluator, &fixed_data.intermediate_definitions);
+            PartialExpressionEvaluator::new(fixed_evaluator, &fixed_data.intermediate_definitions);
         let degree = degree as usize;
         let nl = ev.evaluate(not_last).ok()?.constant_value()?;
         if (row == degree - 1 && !nl.is_zero()) || (row < degree - 1 && !nl.is_one()) {
@@ -159,7 +158,7 @@ fn check_constraint<T: FieldElement>(
     constraint: &Expression<T>,
 ) -> Option<PolyID> {
     let sort_constraint =
-        match ExpressionEvaluator::new(SymbolicEvaluator, &fixed.intermediate_definitions)
+        match PartialExpressionEvaluator::new(SymbolicEvaluator, &fixed.intermediate_definitions)
             .evaluate(constraint)
         {
             Ok(c) => c,
