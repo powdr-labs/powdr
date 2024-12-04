@@ -129,20 +129,14 @@ fn arith_small_test() {
 #[ignore = "Too slow"]
 fn arith_large_test() {
     let f = "std/arith_large_test.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
-    test_mock_backend(pipeline);
-    // TODO We can't use P3 yet for this test because of degree 4 constraints.
-    //test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
+    regular_test_gl(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn arith256_memory_large_test() {
     let f = "std/arith256_memory_large_test.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
-    test_mock_backend(pipeline);
-    // TODO We can't use P3 yet for this test because of degree 4 constraints.
-    //test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
+    regular_test_gl(f, &[]);
 }
 
 #[test]

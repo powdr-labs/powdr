@@ -443,18 +443,28 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     fn common_degree_range<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeRange {
         let ids: HashSet<_> = ids.into_iter().collect();
 
-        self.all_poly_symbols()
-            .flat_map(|symbol| symbol.array_elements().map(|(_, id)| (id, symbol.degree)))
-            // only keep the ones matching our set
-            .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
-            // get the common degree
+        // Iterator of (id, Option<DegreeRange>), with only the requested ids.
+        let filtered_ids_and_degrees = || {
+            self.all_poly_symbols()
+                .flat_map(|symbol| symbol.array_elements().map(|(_, id)| (id, symbol.degree)))
+                .filter_map(|(id, degree)| ids.contains(&id).then_some((id, degree)))
+        };
+
+        filtered_ids_and_degrees()
+            .map(|(_, degree_range)| degree_range)
             .unique()
             .exactly_one()
-            .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
+            .unwrap_or_else(|_| {
+                log::error!("The following columns have different degree ranges:");
+                for (id, degree) in filtered_ids_and_degrees() {
+                    log::error!("  {}: {:?}", self.column_name(&id), degree);
+                }
+                panic!("Expected all columns to have the same degree")
+            })
             .unwrap()
     }
 
-    /// Returns whether all polynomials have the same static degree.
+    /// Returns whether all columns have the same static degree.
     fn is_monolithic(&self) -> bool {
         match self
             .all_poly_symbols()
