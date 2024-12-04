@@ -137,6 +137,14 @@ jobs:
         key: ${{ runner.os }}-cargo-pr-tests
     - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
       run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
+    - name: Install nightly
+      run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
+    - name: Install std source
+      run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
+    - name: Install riscv target
+      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
+    - name: Install test dependencies
+      run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
     - name: Run examples
       run: cargo run --profile pr-tests --example hello_world && cargo run --profile pr-tests --example sqrt_with_publics && cargo run --profile pr-tests --example fibonacci
 
