@@ -13,6 +13,7 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
+use super::Machine;
 use crate::witgen::machines::dynamic_machine::DynamicMachine;
 use crate::witgen::machines::second_stage_machine::SecondStageMachine;
 use crate::witgen::machines::Connection;
@@ -179,8 +180,6 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 prover_functions.iter().map(|&(_, pf)| pf).collect(),
             );
 
-            log_extracted_machine(&machine_parts);
-
             for (i, pf) in &prover_functions {
                 if !extracted_prover_functions.insert(*i) {
                     log::warn!("Prover function was assigned to multiple machines:\n{pf}");
@@ -317,9 +316,25 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
     }
 }
 
-fn log_extracted_machine<T: FieldElement>(parts: &MachineParts<'_, T>) {
-    log::trace!(
-        "\nExtracted a machine with the following witnesses:\n{}\n identities:\n{}\n connecting identities:\n{}\n and prover functions:\n{}",
+fn extract_namespace(name: &str) -> &str {
+    name.split("::").next().unwrap()
+}
+
+fn log_extracted_machine<T: FieldElement>(name: &str, parts: &MachineParts<'_, T>) {
+    let namespaces = parts
+        .witnesses
+        .iter()
+        .map(|s| extract_namespace(parts.column_name(s)))
+        .collect::<BTreeSet<_>>();
+    let exactly_one_namespace = namespaces.len() == 1;
+    let log_level = if exactly_one_namespace {
+        log::Level::Trace
+    } else {
+        log::Level::Warn
+    };
+    log::log!(
+        log_level,
+        "\nExtracted a machine {name} with the following witnesses:\n{}\n identities:\n{}\n connecting identities:\n{}\n and prover functions:\n{}",
         parts.witnesses
             .iter()
             .map(|s|parts.column_name(s))
@@ -335,6 +350,10 @@ fn log_extracted_machine<T: FieldElement>(parts: &MachineParts<'_, T>) {
             .iter()
             .format("\n")
     );
+    if !exactly_one_namespace {
+        log::warn!("The witnesses of the machine are in different namespaces: {namespaces:?}");
+        log::warn!("In theory, witgen ignores namespaces, but in practice, this often means that something has gone wrong with the machine extraction.");
+    }
 }
 
 fn suggest_machine_name<T: FieldElement>(parts: &MachineParts<'_, T>) -> String {
@@ -396,7 +415,7 @@ fn build_machine<'a, T: FieldElement>(
     machine_parts: MachineParts<'a, T>,
     name_with_type: impl Fn(&str) -> String,
 ) -> KnownMachine<'a, T> {
-    if let Some(machine) =
+    let machine = if let Some(machine) =
         SortedWitnesses::try_new(name_with_type("SortedWitness"), fixed_data, &machine_parts)
     {
         log::debug!("Detected machine: sorted witnesses / write-once memory");
@@ -453,7 +472,10 @@ fn build_machine<'a, T: FieldElement>(
             machine_parts.clone(),
             latch,
         ))
-    }
+    };
+
+    log_extracted_machine(machine.name(), &machine_parts);
+    machine
 }
 
 // This only discovers direct references in the expression
