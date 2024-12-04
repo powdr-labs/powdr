@@ -448,7 +448,7 @@ mod builder {
         regs: Vec<Elem<F>>,
 
         /// Current memory.
-        mem: HashMap<u32, u32>,
+        pub mem: HashMap<u32, u32>,
 
         /// Separate register memory, last and second last.
         reg_mem: RegisterMemory<F>,
@@ -2469,6 +2469,14 @@ fn execute_inner<F: FieldElement>(
                     "Executing instruction number {cycles}. Instructions/sec: {}",
                     cycles as f32 / (now - start).as_secs_f32(),
                 );
+                let mem_size = e.proc.mem.len() * 8;
+                if mem_size > 1024 ^ 3 {
+                    println!("Memory size estimate: {}GB", mem_size / (1024 ^ 3));
+                } else if mem_size > 1024 * 1024 {
+                    println!("Memory size estimate: {}MB", mem_size / (1024 * 1024));
+                } else {
+                    println!("Memory size estimate: {}KB", mem_size / 1024);
+                }
                 prev = now;
             }
         }
