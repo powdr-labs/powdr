@@ -2470,7 +2470,7 @@ fn execute_inner<F: FieldElement>(
                     cycles as f32 / (now - start).as_secs_f32(),
                 );
                 let mem_size = e.proc.mem.len() * 8;
-                if mem_size > 1024 ^ 3 {
+                if mem_size > 1024 * 1024 * 1024 {
                     println!("Memory size estimate: {}GB", mem_size / (1024 ^ 3));
                 } else if mem_size > 1024 * 1024 {
                     println!("Memory size estimate: {}MB", mem_size / (1024 * 1024));
