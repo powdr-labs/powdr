@@ -315,7 +315,12 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             }
             Identity::Polynomial(i) => self.fixed.polynomial_references(i),
             Identity::Connect(i) => self.fixed.polynomial_references(i),
-            Identity::PhantomBusInteraction(i) => self.fixed.polynomial_references(&i.tuple),
+            Identity::PhantomBusInteraction(i) => self
+                .fixed
+                .polynomial_references(&i.tuple)
+                .into_iter()
+                .chain(self.fixed.polynomial_references(&i.multiplicity))
+                .collect(),
         }
     }
 }
