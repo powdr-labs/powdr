@@ -29,8 +29,7 @@ pub(crate) mod analysis;
 mod block_processor;
 mod data_structures;
 mod eval_result;
-mod expression_evaluator;
-pub mod fixed_evaluator;
+pub mod evaluators;
 mod global_constraints;
 mod identity_processor;
 mod machines;
@@ -39,13 +38,11 @@ mod query_processor;
 mod range_constraints;
 mod rows;
 mod sequence_iterator;
-pub mod symbolic_evaluator;
-mod symbolic_witness_evaluator;
 mod util;
 mod vm_processor;
 
 pub use affine_expression::{AffineExpression, AffineResult, AlgebraicVariable};
-pub use expression_evaluator::{ExpressionEvaluator, SymbolicVariables};
+pub use evaluators::partial_expression_evaluator::{PartialExpressionEvaluator, SymbolicVariables};
 
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 static RANGE_CONSTRAINT_MULTIPLICITY_WITGEN: &str = "range constraint multiplicity witgen";

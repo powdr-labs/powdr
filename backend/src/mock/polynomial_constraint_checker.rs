@@ -1,14 +1,14 @@
 use std::{collections::BTreeMap, fmt};
 
 use powdr_ast::{
-    analyzed::{Identity, PolynomialIdentity},
+    analyzed::{AlgebraicExpression, Identity, PolynomialIdentity},
     parsed::visitor::AllChildren,
 };
-use powdr_executor::witgen::{AffineExpression, AlgebraicVariable, ExpressionEvaluator};
+use powdr_executor::witgen::{
+    evaluators::expression_evaluator::ExpressionEvaluator, AlgebraicVariable,
+};
 use powdr_number::FieldElement;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
-
-use crate::mock::evaluator::Variables;
 
 use super::machine::Machine;
 
@@ -55,13 +55,11 @@ impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
         row: usize,
         identities: &[&'a Identity<F>],
     ) -> Vec<FailingPolynomialConstraint<'a, F>> {
-        let variables = Variables {
-            machine: self.machine,
-            row,
-            challenges: self.challenges,
-        };
-        let mut evaluator =
-            ExpressionEvaluator::new(&variables, &self.machine.intermediate_definitions);
+        let mut evaluator = ExpressionEvaluator::new(
+            self.machine.trace_values.row(row),
+            &self.machine.intermediate_definitions,
+            self.challenges,
+        );
         identities
             .iter()
             .filter_map(|identity| {
@@ -69,21 +67,24 @@ impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
                     Identity::Polynomial(polynomial_identity) => polynomial_identity,
                     _ => unreachable!("Unexpected identity: {}", identity),
                 };
-                let result = evaluator.evaluate(&identity.expression).unwrap();
-                let result = match result {
-                    AffineExpression::Constant(c) => c,
-                    _ => unreachable!("Unexpected result: {:?}", result),
-                };
+                let result = evaluator.evaluate(&identity.expression);
 
                 if result != F::zero() {
-                    let used_variables = identity
-                        .all_children()
-                        .filter_map(|child| child.try_into().ok());
+                    let used_variables = identity.all_children().filter(|expr| match expr {
+                        AlgebraicExpression::Reference(_)
+                        | AlgebraicExpression::PublicReference(_)
+                        | AlgebraicExpression::Challenge(_) => true,
+                        AlgebraicExpression::Number(_)
+                        | AlgebraicExpression::BinaryOperation(_)
+                        | AlgebraicExpression::UnaryOperation(_) => false,
+                    });
                     Some(FailingPolynomialConstraint {
                         row,
                         identity,
                         assignments: used_variables
-                            .map(|variable| (variable, variables.constant_value(variable)))
+                            .map(|variable| {
+                                (variable.try_into().unwrap(), evaluator.evaluate(variable))
+                            })
                             .collect(),
                     })
                 } else {
