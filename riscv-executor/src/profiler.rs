@@ -360,4 +360,11 @@ fn format_function_name(name: &str) -> String {
     } else {
         format!("{}", demangle(name))
     }
+    // no sure why demangle doesn't properly demangle these
+    .replace("$LT$", "<")
+    .replace("$GT$", ">")
+    .replace("$RF$", "&")
+    .replace("$C$", ",")
+    .replace("$u20$", " ")
+    .replace("_dot__dot_", "::")
 }
