@@ -2317,7 +2317,7 @@ enum ExecMode {
 pub fn execute_fast<F: FieldElement>(
     asm: &AnalysisASMFile,
     initial_memory: MemoryState,
-    inputs: &Callback<F>,
+    prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     profiling: Option<ProfilerOptions>,
 ) -> usize {
@@ -2327,7 +2327,7 @@ pub fn execute_fast<F: FieldElement>(
         None,
         None,
         initial_memory,
-        inputs,
+        prover_ctx,
         bootloader_inputs,
         usize::MAX,
         ExecMode::Fast,
@@ -2343,7 +2343,7 @@ pub fn execute<F: FieldElement>(
     opt_pil: &Analyzed<F>,
     fixed: FixedColumns<F>,
     initial_memory: MemoryState,
-    inputs: &Callback<F>,
+    prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     max_steps_to_execute: Option<usize>,
     profiling: Option<ProfilerOptions>,
@@ -2354,7 +2354,7 @@ pub fn execute<F: FieldElement>(
         Some(opt_pil),
         Some(fixed),
         initial_memory,
-        inputs,
+        prover_ctx,
         bootloader_inputs,
         max_steps_to_execute.unwrap_or(usize::MAX),
         ExecMode::Trace,
@@ -2374,7 +2374,7 @@ fn execute_inner<F: FieldElement>(
     opt_pil: Option<&Analyzed<F>>,
     fixed: Option<FixedColumns<F>>,
     initial_memory: MemoryState,
-    inputs: &Callback<F>,
+    prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     max_steps_to_execute: usize,
     mode: ExecMode,
@@ -2437,11 +2437,11 @@ fn execute_inner<F: FieldElement>(
         .collect();
 
     // We clear the QueryCallback's virtual FS before the execution.
-    (inputs)("Clear").unwrap();
+    (prover_ctx)("Clear").unwrap();
     let mut e = Executor {
         proc,
         label_map,
-        inputs,
+        inputs: prover_ctx,
         bootloader_inputs,
         fixed: fixed.unwrap_or_default(),
         program_cols,
