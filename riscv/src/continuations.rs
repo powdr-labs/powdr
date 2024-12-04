@@ -236,14 +236,13 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
     // TODO: commit to the merkle_tree root in the verifier.
 
-    pipeline.clear_outputs();
     log::info!("Initial execution...");
     let full_exec = powdr_riscv_executor::execute::<F>(
         &asm,
         &pil,
         fixed.clone(),
         initial_memory,
-        pipeline.data_callback().unwrap(),
+        pipeline.data_callback_mut().unwrap(),
         // Run full trace without any accessed pages. This would actually violate the
         // constraints, but the executor does the right thing (read zero if the memory
         // cell has never been accessed). We can't pass the accessed pages here, because
@@ -340,13 +339,12 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         );
 
         log::info!("Simulating chunk execution...");
-        pipeline.clear_outputs();
         let chunk_exec = powdr_riscv_executor::execute::<F>(
             &asm,
             &pil,
             fixed.clone(),
             MemoryState::new(),
-            pipeline.data_callback().unwrap(),
+            pipeline.data_callback_mut().unwrap(),
             &bootloader_inputs,
             Some(num_rows),
             // profiling was done when full trace was generated

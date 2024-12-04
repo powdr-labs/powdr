@@ -191,8 +191,7 @@ where
             arguments: Arguments::default(),
             host_context: ctx,
         }
-        // We add the basic callback functionalities
-        // to support PrintChar and Hint.
+        // We add the basic callback functionalities to support PrintChar and Hint.
         .add_query_callback(Arc::new(handle_simple_queries_callback()))
         .add_query_callback(cb)
     }
@@ -974,7 +973,7 @@ impl<T: FieldElement> Pipeline<T> {
             return Ok(witness.clone());
         }
 
-        self.clear_outputs();
+        self.host_context.clear();
 
         let pil = self.compute_optimized_pil()?;
         let fixed_cols = self.compute_fixed_cols()?;
@@ -1171,6 +1170,12 @@ impl<T: FieldElement> Pipeline<T> {
         self.arguments.query_callback.as_deref()
     }
 
+    // To be used when the data callback is required before execution.
+    pub fn data_callback_mut(&mut self) -> Option<&dyn QueryCallback<T>> {
+        self.host_context.clear();
+        self.arguments.query_callback.as_deref()
+    }
+
     pub fn export_proving_key<W: io::Write>(&mut self, writer: W) -> Result<(), Vec<String>> {
         let backend = self.setup_backend()?;
         let mut bw = BufWriter::new(writer);
@@ -1238,10 +1243,6 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn host_context(&self) -> &HostContext {
         &self.host_context
-    }
-
-    pub fn clear_outputs(&mut self) {
-        self.host_context.clear_outputs();
     }
 }
 

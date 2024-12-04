@@ -253,13 +253,12 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
     println!("Running powdr-riscv executor in fast mode...");
     let start = Instant::now();
 
-    pipeline.clear_outputs();
     let asm = pipeline.compute_analyzed_asm().unwrap().clone();
     let initial_memory = riscv::continuations::load_initial_memory(&asm);
     let trace_len = riscv_executor::execute_fast(
         &asm,
         initial_memory,
-        pipeline.data_callback().unwrap(),
+        pipeline.data_callback_mut().unwrap(),
         &riscv::continuations::bootloader::default_input(&[]),
         None,
     );
