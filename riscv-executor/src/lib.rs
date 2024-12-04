@@ -2436,6 +2436,8 @@ fn execute_inner<F: FieldElement>(
         .map(|v| Elem::try_from_fe_as_bin(v).unwrap_or(Elem::Field(*v)))
         .collect();
 
+    // We clear the QueryCallback's virtual FS before the execution.
+    (inputs)("Clear").unwrap();
     let mut e = Executor {
         proc,
         label_map,

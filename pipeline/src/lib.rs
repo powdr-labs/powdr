@@ -72,6 +72,10 @@ impl HostContext {
                     }
                     Ok(Some(0.into()))
                 }
+                "Clear" => {
+                    fs.lock().unwrap().clear();
+                    Ok(Some(0.into()))
+                }
                 _ => Err(format!("Unsupported query: {query}")),
             }
         })

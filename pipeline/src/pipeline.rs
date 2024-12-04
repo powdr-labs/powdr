@@ -1170,12 +1170,6 @@ impl<T: FieldElement> Pipeline<T> {
         self.arguments.query_callback.as_deref()
     }
 
-    // To be used when the data callback is required before execution.
-    pub fn data_callback_mut(&mut self) -> Option<&dyn QueryCallback<T>> {
-        self.host_context.clear();
-        self.arguments.query_callback.as_deref()
-    }
-
     pub fn export_proving_key<W: io::Write>(&mut self, writer: W) -> Result<(), Vec<String>> {
         let backend = self.setup_backend()?;
         let mut bw = BufWriter::new(writer);

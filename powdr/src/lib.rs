@@ -258,7 +258,7 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
     let trace_len = riscv_executor::execute_fast(
         &asm,
         initial_memory,
-        pipeline.data_callback_mut().unwrap(),
+        pipeline.data_callback().unwrap(),
         &riscv::continuations::bootloader::default_input(&[]),
         None,
     );

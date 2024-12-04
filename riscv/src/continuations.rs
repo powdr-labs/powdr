@@ -242,7 +242,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         &pil,
         fixed.clone(),
         initial_memory,
-        pipeline.data_callback_mut().unwrap(),
+        pipeline.data_callback().unwrap(),
         // Run full trace without any accessed pages. This would actually violate the
         // constraints, but the executor does the right thing (read zero if the memory
         // cell has never been accessed). We can't pass the accessed pages here, because
@@ -344,7 +344,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             &pil,
             fixed.clone(),
             MemoryState::new(),
-            pipeline.data_callback_mut().unwrap(),
+            pipeline.data_callback().unwrap(),
             &bootloader_inputs,
             Some(num_rows),
             // profiling was done when full trace was generated
