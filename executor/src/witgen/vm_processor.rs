@@ -68,6 +68,9 @@ pub struct VmProcessor<'a, 'c, T: FieldElement, Q: QueryCallback<T>> {
     last_report_time: Instant,
     processor: Processor<'a, 'c, T, Q>,
     progress_bar: ProgressBar,
+    /// If true, we'll periodically check if we are in a loop. If yes, we'll add new rows by
+    /// copying the old ones and check the constraints.
+    loop_detection: bool,
 }
 
 impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
@@ -79,10 +82,10 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
         parts: &'c MachineParts<'a, T>,
         mutable_data: SolverState<'a, T>,
         mutable_state: &'c MutableState<'a, T, Q>,
+        degree: DegreeType,
+        loop_detection: bool,
     ) -> Self {
         let degree_range = parts.common_degree_range();
-
-        let degree = degree_range.max;
 
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = parts
             .identities
@@ -118,6 +121,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
             last_report_time: Instant::now(),
             processor,
             progress_bar,
+            loop_detection,
         }
     }
 
@@ -181,7 +185,11 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
             }
 
             // Check if we are in a loop.
-            if looping_period.is_none() && row_index % 100 == 0 && row_index > 0 {
+            if looping_period.is_none()
+                && row_index % 100 == 0
+                && row_index > 0
+                && self.loop_detection
+            {
                 looping_period = self.rows_are_repeating(row_index);
                 if let Some(p) = looping_period {
                     log::log!(

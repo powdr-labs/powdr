@@ -391,7 +391,7 @@ fn fmt_subset_error<F: fmt::Display>(
 ) -> fmt::Result {
     writeln!(
         f,
-        "  The following tuples appear in {machine2}, but not in {machine1}:"
+        "  The following tuples appear in {machine1}, but not in {machine2}:"
     )?;
     for tuple in not_in_machine2.iter().take(MAX_TUPLES) {
         writeln!(f, "    {tuple}")?;

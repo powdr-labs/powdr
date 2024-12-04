@@ -355,16 +355,16 @@ impl<'a> Profiler<'a> {
 }
 
 fn format_function_name(name: &str) -> String {
-    let demangled = if let Some(prefix) = name.find("___ZN") {
+    if let Some(prefix) = name.find("___ZN") {
         format!("{}", demangle(&name[prefix + 2..]))
     } else {
         format!("{}", demangle(name))
-    };
-    demangled
-        .replace("$LT$", "<")
-        .replace("$GT$", ">")
-        .replace("$RF$", "&")
-        .replace("$C$", ",")
-        .replace("$u20$", " ")
-        .replace("_dot__dot_", "::")
+    }
+    // no sure why demangle doesn't properly demangle these
+    .replace("$LT$", "<")
+    .replace("$GT$", ">")
+    .replace("$RF$", "&")
+    .replace("$C$", ",")
+    .replace("$u20$", " ")
+    .replace("_dot__dot_", "::")
 }

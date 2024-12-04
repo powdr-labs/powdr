@@ -11,7 +11,7 @@ env:
 
 jobs:
   check_if_needs_running:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     outputs:
       status: ${{ steps.count.outputs.status }}
 
@@ -43,7 +43,7 @@ jobs:
           args: '--all-targets'
 
   test_release:
-    runs-on: ubuntu-22.04
+    runs-on: warp-ubuntu-2404-x64-4x
     needs: check_if_needs_running
     if: needs.check_if_needs_running.outputs.status > 0
 
@@ -51,14 +51,17 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
-    - name: ⚡ Cache rust
-      uses: actions/cache@v4
+    - name: ⚡ Restore rust cache
+      id: cache
+      uses: WarpBuilds/cache/restore@v1
       with:
         path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-        key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+          Cargo.lock
+        key: ${{ runner.os }}-cargo-nightly-tests
     - name: ⚡ Cache nodejs
       uses: actions/cache@v4
       with:
@@ -73,8 +76,10 @@ jobs:
       run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install riscv target
       run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
+    - name: Install test dependencies
+      run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
     - name: Install EStarkPolygon prover dependencies
-      run: sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm
+      run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc uuid-dev build-essential cmake pkg-config git
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Check without Halo2
@@ -82,8 +87,6 @@ jobs:
     - name: Build
       run: cargo build --all --release --all-features
     - name: Run tests
-      # Number threads is set to 1 because the runner does not have enough memeory for more.
-      run: PILCOM=$(pwd)/pilcom/ cargo test --all --release --verbose --all-features -- --include-ignored --nocapture --test-threads=1
+      run: PILCOM=$(pwd)/pilcom/ cargo test --all --release --verbose --all-features -- --include-ignored --nocapture
     - name: Run benchmarks
-      run: cargo bench
-      working-directory: compiler
+      run: cargo bench --workspace --all-features

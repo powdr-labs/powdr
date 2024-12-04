@@ -376,7 +376,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     // Jump to the address in register XL and store the return program counter in register WL.
     instr jump_dyn XL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
-        link ~> regs.mstore(0, WL, STEP, tmp2_h, tmp2_l)
+        link ~> regs.mstore(0, WL, STEP + 3, tmp2_h, tmp2_l)
         // pc is capped at 24 bits, so for this instruction 
         // we restrict the higher limbs to 1 byte
         link => byte.check(tmp1_h)
@@ -568,7 +568,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     // Stores 1 in register WL if val(XL) == val(YL), otherwise stores 0.
     instr is_not_equal XL, YL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
-        link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP)
+        link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
         link ~> (tmp3_h, tmp3_l) = add_sub.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
         link ~> regs.mstore(0, WL, STEP + 2, 0, 1 - XXIsZero)
     {
