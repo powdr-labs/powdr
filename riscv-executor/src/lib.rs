@@ -699,28 +699,30 @@ mod builder {
             self.set_next_pc().and(Some(st_line))
         }
 
-        pub(crate) fn set_mem(&mut self, addr: u32, val: u32) {
+        pub(crate) fn set_mem(&mut self, addr: u32, val: u32, step: u32, selector: u32) {
             if let ExecMode::Trace = self.mode {
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Write,
                     address: addr,
                 });
+                self.memory_machine.write(step, addr, val.into(), selector);
             }
 
             self.mem.insert(addr, val);
         }
 
-        pub(crate) fn get_mem(&mut self, addr: u32) -> u32 {
+        pub(crate) fn get_mem(&mut self, addr: u32, step: u32, selector: u32) -> u32 {
+            let val = *self.mem.get(&addr).unwrap_or(&0);
             if let ExecMode::Trace = self.mode {
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Read,
                     address: addr,
                 });
+                self.memory_machine.read(step, addr, val.into(), selector);
             }
-
-            *self.mem.get(&addr).unwrap_or(&0)
+            val
         }
 
         pub(crate) fn set_reg_mem(&mut self, addr: u32, val: Elem<F>) {
@@ -1021,9 +1023,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     /// read register value, updating the register memory machine
     fn reg_read(&mut self, step_offset: u32, reg: u32, selector_idx: u32) -> Elem<F> {
         let val = self.proc.get_reg_mem(reg);
-        self.proc
-            .regs_machine
-            .read(self.step + step_offset, reg, val, selector_idx);
+        if let ExecMode::Trace = self.mode {
+            self.proc
+                .regs_machine
+                .read(self.step + step_offset, reg, val, selector_idx);
+        }
         val
     }
 
@@ -1141,10 +1145,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
 
                 let addr = addr as u32;
-                self.proc.set_mem(addr, value.u());
-                self.proc
-                    .memory_machine
-                    .write(self.step + 3, addr, value, 1);
+                self.proc.set_mem(addr, value.u(), self.step + 3, 1);
 
                 set_col!(tmp1_col, addr1);
                 set_col!(tmp2_col, addr2);
@@ -1167,7 +1168,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let addr = addr1.bin() + offset;
 
-                let val = self.proc.get_mem(addr as u32 & 0xfffffffc);
+                let val = self
+                    .proc
+                    .get_mem(addr as u32 & 0xfffffffc, self.step + 1, 0);
                 let rem = addr % 4;
 
                 self.reg_write(2, write_addr1, val.into(), 3);
@@ -1186,13 +1189,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(
                     wrap_bit,
                     Elem::from_u32_as_fe(((v as u64 >> 32) & 1) as u32)
-                );
-
-                self.proc.memory_machine.read(
-                    self.step + 1,
-                    addr as u32 & 0xfffffffc,
-                    val.into(),
-                    0,
                 );
 
                 Vec::new()
@@ -1892,23 +1888,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let inputs = (0..12)
                     .map(|i| {
-                        let lo = self.proc.get_mem(input_ptr.u() + 8 * i);
-                        let hi = self.proc.get_mem(input_ptr.u() + 8 * i + 4);
-                        // memory reads of the poseidon machine
-                        if let ExecMode::Trace = self.mode {
-                            self.proc.memory_machine.read(
-                                self.step,
-                                input_ptr.u() + 8 * i,
-                                lo.into(),
-                                2,
-                            );
-                            self.proc.memory_machine.read(
-                                self.step,
-                                input_ptr.u() + 8 * i + 4,
-                                hi.into(),
-                                3,
-                            );
-                        }
+                        // step/selector of memory reads from the poseidon machine
+                        let lo = self.proc.get_mem(input_ptr.u() + 8 * i, self.step, 2);
+                        let hi = self.proc.get_mem(input_ptr.u() + 8 * i + 4, self.step, 3);
                         F::from(((hi as u64) << 32) | lo as u64)
                     })
                     .collect::<Vec<_>>();
@@ -1920,8 +1902,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     let v = v.to_integer().try_into_u64().unwrap();
                     let hi = (v >> 32) as u32;
                     let lo = (v & 0xffffffff) as u32;
-                    self.proc.set_mem(output_ptr.u() + 8 * i as u32, lo);
-                    self.proc.set_mem(output_ptr.u() + 8 * i as u32 + 4, hi);
+                    // step/selector of memory writes from the poseidon machine
+                    self.proc
+                        .set_mem(output_ptr.u() + 8 * i as u32, lo, self.step + 1, 4);
+                    self.proc
+                        .set_mem(output_ptr.u() + 8 * i as u32 + 4, hi, self.step + 1, 5);
                     if let ExecMode::Trace = self.mode {
                         // split gl of the poseidon machine
                         self.proc.submachine("split_gl").add_operation(
@@ -1929,19 +1914,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                             &[hi.into(), lo.into()],
                             Some(1),
                             &[],
-                        );
-                        // memory writes of the poseidon machine
-                        self.proc.memory_machine.write(
-                            self.step + 1,
-                            output_ptr.u() + 8 * i as u32,
-                            lo.into(),
-                            4,
-                        );
-                        self.proc.memory_machine.write(
-                            self.step + 1,
-                            output_ptr.u() + 8 * i as u32 + 4,
-                            hi.into(),
-                            5,
                         );
                     }
                 });
@@ -1982,7 +1954,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 assert_eq!(input_ptr % 4, 0);
 
                 let inputs: [u64; 8] = (0..16)
-                    .map(|i| self.proc.get_mem(input_ptr + i * 4))
+                    .map(|i| self.proc.get_mem(input_ptr + i * 4, 0, 0)) // TODO: step/selector for poseidon2
                     .chunks(2)
                     .into_iter()
                     .map(|mut chunk| {
@@ -2001,7 +1973,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let output_ptr = self.proc.get_reg_mem(args[1].u()).u();
                 assert_eq!(output_ptr % 4, 0);
                 result.enumerate().for_each(|(i, v)| {
-                    self.proc.set_mem(output_ptr + i as u32 * 4, v);
+                    self.proc.set_mem(output_ptr + i as u32 * 4, v, 0, 0); // TODO: step/selector for poseidon2
                 });
 
                 vec![]
