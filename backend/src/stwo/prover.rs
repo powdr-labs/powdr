@@ -9,7 +9,7 @@ use std::io;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::stwo::circuit_builder::{gen_stwo_circuit_trace, PowdrComponent, PowdrEval};
+use crate::stwo::circuit_builder::{gen_stwo_circle_column, PowdrComponent, PowdrEval};
 use crate::stwo::proof::{StarkProvingKey, TableProvingKey, TableProvingKeyCollection};
 
 use stwo_prover::constraint_framework::{
@@ -23,7 +23,7 @@ use stwo_prover::core::channel::{Channel, MerkleChannel};
 use stwo_prover::core::fields::m31::{BaseField, M31};
 use stwo_prover::core::fri::FriConfig;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig};
-use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use stwo_prover::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 use stwo_prover::core::poly::twiddles::TwiddleTree;
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
@@ -76,15 +76,27 @@ where
     pub fn setup(&mut self) {
         // machines with varying sizes are not supported yet, and it is checked in backendfactory create function.
         //TODO: support machines with varying sizes
+        let domain_map: BTreeMap<usize, CircleDomain> = self
+            .analyzed
+            .degrees()
+            .iter()
+            .map(|size| {
+                (
+                    (size.ilog2() as usize),
+                    CanonicCoset::new(size.ilog2()).circle_domain(),
+                )
+            })
+            .collect();
         let preprocessed: BTreeMap<String, TableProvingKeyCollection<B, MC>> = self
             .split
             .iter()
             .filter_map(|(namespace, pil)| {
                 // if we have neither fixed columns nor publics, we don't need to commit to anything
-                if pil.constant_count() + pil.publics_count() == 0 {
+                if pil.constant_count() == 0 {
                     None
                 } else {
                     let fixed_columns = machine_fixed_columns(&self.fixed, pil);
+
                     Some((
                         namespace.to_string(),
                         pil.committed_polys_in_source_order()
@@ -92,39 +104,22 @@ where
                             .unwrap()
                             .iter()
                             .map(|size| {
-                                let domain = CanonicCoset::new(
-                                    fixed_columns
-                                        .keys()
-                                        .next()
-                                        .map(|&first_key| first_key.ilog2())
-                                        .unwrap(),
-                                )
-                                .circle_domain();
-
                                 let constant_trace: ColumnVec<
                                     CircleEvaluation<B, BaseField, BitReversedOrder>,
                                 > = fixed_columns
                                     .values()
                                     .flat_map(|vec| {
                                         vec.iter().map(|(_name, values)| {
-                                            let mut column: <B as ColumnOps<M31>>::Column =
-                                                <B as ColumnOps<M31>>::Column::zeros(values.len());
-                                            values.iter().enumerate().for_each(|(i, v)| {
-                                                column.set(
-                                                    bit_reverse_index(
-                                                        coset_index_to_circle_domain_index(
-                                                            i,
-                                                            values.len().ilog2(),
-                                                        ),
-                                                        values.len().ilog2(),
-                                                    ),
-                                                    v.try_into_i32().unwrap().into(),
-                                                );
-                                            });
-                                            CircleEvaluation::new(domain, column)
+                                            gen_stwo_circle_column::<F, B, M31>(
+                                                *domain_map
+                                                    .get(&(values.len().ilog2() as usize))
+                                                    .unwrap(),
+                                                &(values.to_vec()),
+                                            )
                                         })
                                     })
                                     .collect();
+                                // Collect into a `Vec`
 
                                 (
                                     size as usize,
@@ -147,6 +142,17 @@ where
 
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
         let config = get_config();
+        let domain_map: BTreeMap<usize, CircleDomain> = self
+            .analyzed
+            .degrees()
+            .iter()
+            .map(|size| {
+                (
+                    (size.ilog2() as usize),
+                    CanonicCoset::new(size.ilog2()).circle_domain(),
+                )
+            })
+            .collect();
         let twiddles_map: BTreeMap<usize, TwiddleTree<B>> = self
             .split
             .values()
@@ -200,8 +206,22 @@ where
         }
         tree_builder.commit(prover_channel);
 
-        // committed/witness trace
-        let trace = gen_stwo_circuit_trace::<F, B, M31>(witness);
+        assert!(
+            witness
+                .iter()
+                .all(|(_name, vec)| vec.len() == witness[0].1.len()),
+            "All Vec<T> in witness must have the same length. Mismatch found!"
+        );
+
+        let trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = witness
+            .iter()
+            .map(|(_name, values)| {
+                gen_stwo_circle_column::<F, B, M31>(
+                    *domain_map.get(&(values.len().ilog2() as usize)).unwrap(),
+                    values,
+                )
+            })
+            .collect();
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);
