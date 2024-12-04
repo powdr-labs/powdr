@@ -2381,6 +2381,10 @@ fn execute_inner<F: FieldElement>(
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
 ) -> Execution<F> {
+    if profiling.is_some() {
+        log::info!("Profiling enabled.");
+    }
+
     let main_machine = get_main_machine(asm);
 
     let PreprocessedMain {
