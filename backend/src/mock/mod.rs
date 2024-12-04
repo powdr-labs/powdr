@@ -103,6 +103,7 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             })
             .collect::<BTreeMap<_, _>>();
 
+        let start = std::time::Instant::now();
         let machines = self
             .machine_to_pil
             // TODO: We should probably iterate in parallel, because Machine::try_new might generate
@@ -121,6 +122,12 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             })
             .map(|machine| (machine.machine_name.clone(), machine))
             .collect::<BTreeMap<_, _>>();
+        if !challenges.is_empty() {
+            log::info!(
+                "Generating later-stage witnesses took {:.2}s",
+                start.elapsed().as_secs_f32()
+            );
+        }
 
         let is_ok = machines.values().all(|machine| {
             !PolynomialConstraintChecker::new(machine, &challenges)
