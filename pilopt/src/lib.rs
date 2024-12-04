@@ -263,7 +263,6 @@ fn deduplicate_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             .unzip();
 
     // substitute all occurences in expressions.
-
     pil_file.post_visit_expressions_in_identities_mut(&mut |e| {
         if let AlgebraicExpression::Reference(r) = e {
             if let Some((new_name, new_id)) = replacement_by_id.get(&r.poly_id) {
@@ -724,18 +723,15 @@ fn equal_constrained<T: FieldElement>(
             right,
         }) => match (left.as_ref(), right.as_ref()) {
             (AlgebraicExpression::Reference(l), AlgebraicExpression::Reference(r)) => {
-                let l_valid = l.is_witness()
-                    && !l.next
-                    && poly_id_to_array_elem
-                        .get(&l.poly_id)
-                        .map_or(false, |&(_, b)| !b);
-                let r_valid = r.is_witness()
-                    && !r.next
-                    && poly_id_to_array_elem
-                        .get(&r.poly_id)
-                        .map_or(false, |&(_, b)| !b);
+                let is_valid = |x: &AlgebraicReference| {
+                    x.is_witness()
+                        && !x.next
+                        && poly_id_to_array_elem
+                            .get(&x.poly_id)
+                            .map_or(false, |&(_, b)| !b)
+                };
 
-                if l_valid && r_valid {
+                if is_valid(l) && is_valid(r) {
                     Some(if l.poly_id > r.poly_id {
                         ((l.name.clone(), l.poly_id), (r.name.clone(), r.poly_id))
                     } else {
@@ -765,15 +761,10 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
         })
         .collect();
 
-    let subs_by_id: HashMap<_, _> = substitutions
+    let (subs_by_id, subs_by_name): (HashMap<_, _>, HashMap<_, _>) = substitutions
         .iter()
-        .map(|((_, id), to_keep)| (id, to_keep))
-        .collect();
-
-    let subs_by_name: HashMap<_, _> = substitutions
-        .iter()
-        .map(|((name, _), to_keep)| (name, to_keep))
-        .collect();
+        .map(|((name, id), to_keep)| ((id, to_keep), (name, to_keep)))
+        .unzip();
 
     pil_file.post_visit_expressions_in_identities_mut(&mut |e: &mut AlgebraicExpression<_>| {
         if let AlgebraicExpression::Reference(ref mut reference) = e {
@@ -792,27 +783,3 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
         }
     });
 }
-// fn cols_in_identity_lookup<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<String> {
-//     pil_file
-//         .identities
-//         .iter()
-//         .filter_map(|id| match id {
-//             Identity::Lookup(LookupIdentity { left, right, .. }) => {
-//                 Some(extract_references(left).chain(extract_references(right)))
-//             }
-//             _ => None,
-//         })
-//         .flatten()
-//         .collect()
-// }
-// fn extract_references<T: FieldElement>(
-//     selected_expr: &SelectedExpressions<T>,
-// ) -> impl Iterator<Item = String> + '_ {
-//     selected_expr.expressions.iter().flat_map(|expr| {
-//         expr.all_children().filter_map(|child| match child {
-//             AlgebraicExpression::Reference(reference) => Some(reference.name.clone()),
-//             AlgebraicExpression::PublicReference(preference) => Some(preference.clone()),
-//             _ => None,
-//         })
-//     })
-// }
