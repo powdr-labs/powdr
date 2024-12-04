@@ -251,12 +251,13 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
         initial_memory,
         pipeline.data_callback().unwrap(),
         &riscv::continuations::bootloader::default_input(&[]),
-        Some(ProfilerOptions {
-            output_directory: ".".to_string(),
-            file_stem: Some("recursion".to_string()),
-            flamegraph: true,
-            callgrind: true,
-        }),
+        None,
+        // Some(ProfilerOptions {
+        //     output_directory: ".".to_string(),
+        //     file_stem: Some("recursion".to_string()),
+        //     flamegraph: true,
+        //     callgrind: true,
+        // }),
     );
 
     let duration = start.elapsed();
