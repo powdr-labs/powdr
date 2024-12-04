@@ -191,6 +191,16 @@ impl Session {
 
         self.pipeline.export_verification_key(file).unwrap();
     }
+
+    pub fn stdout<S: serde::de::DeserializeOwned>(&self) -> S {
+        let host = self.pipeline.host_context();
+        host.read(1).unwrap()
+    }
+
+    pub fn stderr<S: serde::de::DeserializeOwned>(&self) -> S {
+        let host = self.pipeline.host_context();
+        host.read(2).unwrap()
+    }
 }
 
 fn pil_file_path(asm_name: &Path) -> PathBuf {
