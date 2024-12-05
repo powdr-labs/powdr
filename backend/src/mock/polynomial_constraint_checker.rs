@@ -4,9 +4,7 @@ use powdr_ast::{
     analyzed::{AlgebraicExpression, Identity, PolynomialIdentity},
     parsed::visitor::AllChildren,
 };
-use powdr_executor::witgen::{
-    evaluators::expression_evaluator::ExpressionEvaluator, AlgebraicVariable,
-};
+use powdr_executor::witgen::evaluators::expression_evaluator::ExpressionEvaluator;
 use powdr_number::FieldElement;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
@@ -82,9 +80,7 @@ impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
                         row,
                         identity,
                         assignments: used_variables
-                            .map(|variable| {
-                                (variable.try_into().unwrap(), evaluator.evaluate(variable))
-                            })
+                            .map(|variable| (variable, evaluator.evaluate(variable)))
                             .collect(),
                     })
                 } else {
@@ -98,7 +94,7 @@ impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
 struct FailingPolynomialConstraint<'a, F> {
     row: usize,
     identity: &'a PolynomialIdentity<F>,
-    assignments: BTreeMap<AlgebraicVariable<'a>, F>,
+    assignments: BTreeMap<&'a AlgebraicExpression<F>, F>,
 }
 
 impl<F: fmt::Display> fmt::Display for FailingPolynomialConstraint<'_, F> {
