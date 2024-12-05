@@ -40,7 +40,14 @@ let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity|
     let beta = fp2_from_array(array::new(required_extension_size(), |i| challenge(0, i + 3)));
 
     // Implemented as: folded = (beta - fingerprint(id, tuple...));
-    let folded = sub_ext(beta, fingerprint_with_id_inter(id, tuple, alpha));
+    // Materialized as a witness column for two reasons:
+    // - It makes sure the constraint degree is independent of the input tuple.
+    // - We can access folded', even if the tuple contains next references.
+    let folded = fp2_from_array(
+        array::new(required_extension_size(),
+                   |i| std::prover::new_witness_col_at_stage("folded", 1))
+    );
+    constrain_eq_ext(folded, sub_ext(beta, fingerprint_with_id_inter(id, tuple, alpha)));
     let folded_next = next_ext(folded);
 
     let m_ext = from_base(multiplicity);
