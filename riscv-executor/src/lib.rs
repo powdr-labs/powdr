@@ -20,7 +20,7 @@ use builder::TraceBuilder;
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::Analyzed,
+    analyzed::{AlgebraicExpression, Analyzed, Identity, LookupIdentity},
     asm_analysis::{AnalysisASMFile, CallableSymbol, FunctionStatement, LabelStatement, Machine},
     parsed::{
         asm::{parse_absolute_path, AssignmentRegister, DebugDirective},
@@ -2422,24 +2422,37 @@ fn execute_inner<F: FieldElement>(
         })
         .unwrap_or_default();
 
-    // program columns to witness columns
-    let program_cols: HashMap<_, _> = if let Some(fixed) = &fixed {
-        fixed
-            .iter()
-            .filter_map(|(name, _col)| {
-                if !name.starts_with("main__rom::p_") {
-                    return None;
-                }
-                let wit_name = format!("main::{}", name.strip_prefix("main__rom::p_").unwrap());
-                if !witness_cols.contains(&wit_name) {
-                    return None;
-                }
-                Some((name.clone(), wit_name))
-            })
-            .collect()
-    } else {
-        Default::default()
-    };
+    //program columns to witness columns
+    let program_cols: HashMap<_, _> = opt_pil
+        .map(|pil| {
+            pil.identities
+                .iter()
+                .flat_map(|id| match id {
+                    Identity::Lookup(LookupIdentity { left, right, .. }) => left
+                        .expressions
+                        .iter()
+                        .zip(right.expressions.iter())
+                        .filter_map(|(l, r)| match (l, r) {
+                            (
+                                AlgebraicExpression::Reference(l),
+                                AlgebraicExpression::Reference(r),
+                            ) => {
+                                if r.name.starts_with("main__rom::p_")
+                                    && witness_cols.contains(&l.name)
+                                {
+                                    Some((r.name.clone(), l.name.clone()))
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>(),
+                    _ => vec![],
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
     let proc = match TraceBuilder::<'_, F>::new(
         main_machine,
