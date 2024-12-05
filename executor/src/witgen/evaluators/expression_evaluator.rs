@@ -37,14 +37,17 @@ impl<T> OwnedTraceValues<T> {
             .committed_polys_in_source_order()
             .chain(pil.constant_polys_in_source_order())
             .flat_map(|(symbol, _)| symbol.array_elements())
-            .map(|(name, poly_id)| {
-                let column = columns_by_name
+            .filter_map(|(name, poly_id)| {
+                columns_by_name
                     .remove(&name)
-                    .unwrap_or_else(|| panic!("Missing column: {name}"));
-                (poly_id, column)
+                    .map(|column| (poly_id, column))
             })
             .collect();
         Self { values }
+    }
+
+    pub fn height(&self) -> usize {
+        self.values.values().next().map(|v| v.len()).unwrap()
     }
 
     pub fn row(&self, row: usize) -> RowTraceValues<T> {
