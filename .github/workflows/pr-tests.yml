@@ -241,6 +241,9 @@ jobs:
   bench:
     needs: build
     runs-on: warp-ubuntu-2404-x64-4x
+    permissions:
+      contents: write
+      deployments: write
 
     steps:
     - uses: actions/checkout@v4
