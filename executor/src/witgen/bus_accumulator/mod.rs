@@ -87,12 +87,10 @@ impl<'a, T: FieldElement> BusAccumulatorGenerator<'a, T> {
             .par_iter()
             .flat_map(|bus_interaction| {
                 let (acc1, acc2) = self.interaction_columns(bus_interaction);
-                let next1 = next(&acc1);
-                let next2 = next(&acc2);
 
                 // We assume that the second-stage witness columns are in this order,
                 // for each bus interaction.
-                [acc1, acc2, next1, next2]
+                [acc1, acc2]
             })
             .collect::<Vec<_>>();
 
@@ -169,11 +167,4 @@ fn powers_of_alpha<T: FieldElement>(alpha: Fp2<T>, n: usize) -> Vec<Fp2<T>> {
             Some(result)
         })
         .collect::<Vec<_>>()
-}
-
-/// Rotates a column to the left.
-fn next<T: Clone>(column: &[T]) -> Vec<T> {
-    let mut result = column.to_vec();
-    result.rotate_left(1);
-    result
 }
