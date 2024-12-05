@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
-use bus_accumulator::generate_bus_accumulators;
+use bus_accumulator::BusAccumulatorGenerator;
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
 use powdr_ast::analyzed::{
@@ -96,25 +96,6 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
             .collect()
     }
 
-    pub fn select_fixed_columns2(
-        &self,
-        pil: &Analyzed<T>,
-        size: DegreeType,
-    ) -> Vec<(String, &[T])> {
-        // The provided PIL might only contain a subset of all fixed columns.
-        let fixed_column_names = pil
-            .constant_polys_in_source_order()
-            .flat_map(|(symbol, _)| symbol.array_elements())
-            .map(|(name, _)| name.clone())
-            .collect::<BTreeSet<_>>();
-        // Select the columns in the current PIL and select the right size.
-        self.fixed_col_values
-            .iter()
-            .filter(|(n, _)| fixed_column_names.contains(n))
-            .map(|(n, v)| (n.clone(), v.get_by_size(size).unwrap()))
-            .collect()
-    }
-
     /// Computes the next-stage witness, given the current witness and challenges.
     /// All columns in the provided PIL are expected to have the same size.
     /// Typically, this function should be called once per machine.
@@ -125,8 +106,6 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
         challenges: BTreeMap<u64, T>,
         stage: u8,
     ) -> Vec<(String, Vec<T>)> {
-        let size = current_witness.iter().next().unwrap().1.len() as DegreeType;
-
         let has_phantom_bus_sends = pil
             .identities
             .iter()
@@ -134,11 +113,19 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
 
         if has_phantom_bus_sends && T::known_field() == Some(KnownField::GoldilocksField) {
             log::debug!("Using hand-written bus witgen.");
-            let fixed_col_values = self.select_fixed_columns2(pil, size);
             assert_eq!(stage, 1);
-            generate_bus_accumulators(pil, current_witness, fixed_col_values, challenges)
+            let bus_columns = BusAccumulatorGenerator::new(
+                pil,
+                current_witness,
+                &self.fixed_col_values,
+                challenges,
+            )
+            .generate();
+
+            current_witness.iter().cloned().chain(bus_columns).collect()
         } else {
             log::debug!("Using automatic stage-1 witgen.");
+            let size = current_witness.iter().next().unwrap().1.len() as DegreeType;
             let fixed_col_values = self.select_fixed_columns(pil, size);
             WitnessGenerator::new(pil, &fixed_col_values, &*self.query_callback)
                 .with_external_witness_values(current_witness)
