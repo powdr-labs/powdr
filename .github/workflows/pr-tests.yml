@@ -272,7 +272,7 @@ jobs:
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Run benchmarks
-      run: cargo bench --workspace --all-features --verbose | tee output.txt
+      run: cargo bench --workspace --all-features | tee output.txt
     - name: Store benchmark result
       uses: benchmark-action/github-action-benchmark@v1
       with:
