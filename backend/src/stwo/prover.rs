@@ -1,4 +1,4 @@
-use powdr_ast::analyzed::Analyzed;
+use powdr_ast::analyzed::{Analyzed, Identity};
 use powdr_backend_utils::machine_fixed_columns;
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_number::FieldElement;
@@ -9,7 +9,9 @@ use std::io;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::stwo::circuit_builder::{gen_stwo_circle_column, PowdrComponent, PowdrEval};
+use crate::stwo::circuit_builder::{
+    gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
+};
 use crate::stwo::proof::{StarkProvingKey, TableProvingKey, TableProvingKeyCollection};
 
 use stwo_prover::constraint_framework::{
@@ -18,7 +20,7 @@ use stwo_prover::constraint_framework::{
 use stwo_prover::core::prover::StarkProof;
 
 use stwo_prover::core::air::{Component, ComponentProver};
-use stwo_prover::core::backend::{Backend, BackendForChannel, Column, ColumnOps};
+use stwo_prover::core::backend::{Backend, BackendForChannel};
 use stwo_prover::core::channel::{Channel, MerkleChannel};
 use stwo_prover::core::fields::m31::{BaseField, M31};
 use stwo_prover::core::fri::FriConfig;
@@ -26,7 +28,6 @@ use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, P
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 use stwo_prover::core::poly::twiddles::TwiddleTree;
 use stwo_prover::core::poly::BitReversedOrder;
-use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use stwo_prover::core::ColumnVec;
 
 const FRI_LOG_BLOWUP: usize = 1;
@@ -87,6 +88,7 @@ where
                 )
             })
             .collect();
+
         let preprocessed: BTreeMap<String, TableProvingKeyCollection<B, MC>> = self
             .split
             .iter()
@@ -99,6 +101,7 @@ where
 
                     Some((
                         namespace.to_string(),
+                        //why here it is committed_polys_in_source_order() instead of constant polys?
                         pil.committed_polys_in_source_order()
                             .find_map(|(s, _)| s.degree)
                             .unwrap()
@@ -114,12 +117,11 @@ where
                                                 *domain_map
                                                     .get(&(values.len().ilog2() as usize))
                                                     .unwrap(),
-                                                &(values.to_vec()),
+                                                values,
                                             )
                                         })
                                     })
                                     .collect();
-                                // Collect into a `Vec`
 
                                 (
                                     size as usize,
@@ -190,6 +192,9 @@ where
         let mut tree_builder = commitment_scheme.tree_builder();
 
         // only the frist one is used, machines with varying sizes are not supported yet, and it is checked in backendfactory create function.
+        let constant_list: Vec<usize> = get_constant_with_next_list(&self.analyzed);
+
+        //commit to the constant polynomials with next reference constraint
         if let Some((_, table_proving_key)) =
             self.proving_key
                 .preprocessed
@@ -200,7 +205,15 @@ where
                         .find_map(|(_, table_collection)| table_collection.iter().next())
                 })
         {
-            tree_builder.extend_evals(table_proving_key.constant_trace_circle_domain.clone());
+            tree_builder.extend_evals(
+                table_proving_key
+                    .constant_trace_circle_domain
+                    .clone()
+                    .into_iter() // Convert it into an iterator
+                    .enumerate() // Enumerate to get (index, value)
+                    .filter(|(index, _)| !constant_list.contains(index)) // Keep only elements whose index is not in `constant_list`
+                    .map(|(_, element)| element),
+            );
         } else {
             tree_builder.extend_evals([]);
         }
@@ -213,7 +226,7 @@ where
             "All Vec<T> in witness must have the same length. Mismatch found!"
         );
 
-        let trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = witness
+        let mut trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = witness
             .iter()
             .map(|(_name, values)| {
                 gen_stwo_circle_column::<F, B, M31>(
@@ -222,6 +235,28 @@ where
                 )
             })
             .collect();
+
+        if let Some((_, table_proving_key)) =
+            self.proving_key
+                .preprocessed
+                .as_ref()
+                .and_then(|preprocessed| {
+                    preprocessed
+                        .iter()
+                        .find_map(|(_, table_collection)| table_collection.iter().next())
+                })
+        {
+            let constants_with_next: Vec<CircleEvaluation<B, M31, BitReversedOrder>> =
+                table_proving_key
+                    .constant_trace_circle_domain
+                    .clone()
+                    .into_iter()
+                    .enumerate()
+                    .filter(|(index, _)| constant_list.contains(index)) // Keep only elements whose index is not in `constant_list`
+                    .map(|(_, element)| element)
+                    .collect();
+            trace.extend(constants_with_next);
+        }
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);
