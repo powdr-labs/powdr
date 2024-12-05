@@ -68,6 +68,8 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         // How do we ensur ethat the first row is full to begin with?
         // -> of course! Either use the interpreter or run the algorithm on a specific row.
         //
+        // After discussion with georg: Probably best to have partially filled rows,
+        // then evaluate all constraints only on one row and re-produce the same pattern.
 
         // So we call `can_hanndle` with "all columns known on the latch row".
         self.can_handle(None)
