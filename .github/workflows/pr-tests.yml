@@ -257,12 +257,18 @@ jobs:
           target/
           Cargo.lock
         key: ${{ runner.os }}-cargo-pr-tests
+    - name: Install EStarkPolygon prover dependencies
+      run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm
+    - name: Install Rust toolchain nightly-2024-09-21
+      run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu
     - name: Install nightly
       run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install std source
       run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install riscv target
       run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
+    - name: Install test dependencies
+      run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
     - name: Run benchmarks
       run: cargo bench --all --all-features --verbose | tee output.txt
     - name: Store benchmark result
