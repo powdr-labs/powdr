@@ -6,9 +6,6 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
-[lib]
-name = "powdr_plonky3"
-
 [[bin]]
 name = "gen_poseidon_consts"
 path = "src/bin/gen_poseidon_consts.rs"
@@ -77,3 +74,6 @@ powdr-riscv-runtime = { path = "../riscv-runtime", features = [
 indexmap = { version = "1.9.3", features = [
   "std",
 ] }
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458

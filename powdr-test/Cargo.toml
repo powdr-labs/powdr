@@ -15,3 +15,6 @@ env_logger = "0.10.2"
 
 [lints]
 workspace = true
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458
