@@ -140,7 +140,7 @@ fn jit_benchmark(c: &mut Criterion) {
     for (name, val) in sqrt_inputs() {
         group.bench_with_input(format!("sqrt_{name}"), &val, |b, val| {
             b.iter(|| {
-                std::thread::sleep(std::time::Duration::from_secs(1));
+                std::thread::sleep(std::time::Duration::from_secs(2));
                 sqrt_fun.call(*val);
             });
         });
