@@ -1,4 +1,4 @@
-use powdr_ast::analyzed::{Analyzed, Identity};
+use powdr_ast::analyzed::Analyzed;
 use powdr_backend_utils::machine_fixed_columns;
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_number::FieldElement;

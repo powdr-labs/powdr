@@ -296,16 +296,16 @@ pub fn constant_with_next_to_witness_col<T: FieldElement>(
             op: Pow,
             right,
         }) => match **right {
-            AlgebraicExpression::Number(n) => {
-                let left = constant_with_next_to_witness_col::<T>(left, constant_with_next_list);
+            AlgebraicExpression::Number(_) => {
+                constant_with_next_to_witness_col::<T>(left, constant_with_next_list);
             }
             _ => unimplemented!("pow with non-constant exponent"),
         },
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op: _, right }) => {
             constant_with_next_to_witness_col::<T>(left, constant_with_next_list);
             constant_with_next_to_witness_col::<T>(right, constant_with_next_list);
         }
-        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op: _, expr }) => {
             constant_with_next_to_witness_col::<T>(expr, constant_with_next_list);
         }
         AlgebraicExpression::Challenge(_challenge) => {}
