@@ -144,7 +144,6 @@ where
     }
 
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
-
         assert!(
             witness
                 .iter()
@@ -228,8 +227,6 @@ where
         }
         tree_builder.commit(prover_channel);
 
-       
-
         let mut trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = witness
             .iter()
             .map(|(_name, values)| {
@@ -239,7 +236,7 @@ where
                 )
             })
             .collect();
-        
+
         //extend the witness trace with the constant polys that have next reference constraint
         if let Some((_, table_proving_key)) =
             self.proving_key
