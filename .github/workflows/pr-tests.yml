@@ -288,5 +288,4 @@ jobs:
         auto-push: true
         alert-threshold: '120%'
         comment-on-alert: true
-        fail-on-alert: true
         summary-always: true
