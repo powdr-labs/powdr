@@ -146,7 +146,11 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             })
             .collect();
 
-        for id in self.analyzed.identities.clone() {
+        println!("self.analyzed.identities_with_inlined_intermediate_polynomials(): {:?}", self.analyzed.identities_with_inlined_intermediate_polynomials());
+
+        println!("\n self.analyzed.identities is {:?}", self.analyzed.identities);
+
+        for id in self.analyzed.identities_with_inlined_intermediate_polynomials() {
             match id {
                 Identity::Polynomial(identity) => {
                     let expr = to_stwo_expression(
