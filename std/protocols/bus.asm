@@ -30,6 +30,10 @@ let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity|
 
     std::check::assert(required_extension_size() <= 2, || "Invalid extension size");
 
+    // Add phantom bus interaction
+    let full_tuple = [id] + tuple;
+    Constr::PhantomBusInteraction(multiplicity, full_tuple);
+
     // Alpha is used to compress the LHS and RHS arrays.
     let alpha = fp2_from_array(array::new(required_extension_size(), |i| challenge(0, i + 1)));
     // Beta is used to update the accumulator.

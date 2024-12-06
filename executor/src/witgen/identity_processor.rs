@@ -55,6 +55,8 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
                 //     "Identity of kind {kind:?} is not supported by the identity processor."
                 // )
             }
+            // TODO(bus_interaction)
+            Identity::PhantomBusInteraction(..) => Ok(EvalValue::complete(Vec::new())),
         };
         report_identity_solving(identity, &result);
         result
