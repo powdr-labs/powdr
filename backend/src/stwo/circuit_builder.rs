@@ -309,6 +309,7 @@ pub fn constant_with_next_to_witness_col<T: FieldElement>(
     }
 }
 
+// This function creates a list of indexs of the constant polynomials that have next references constraint
 pub fn get_constant_with_next_list<T: FieldElement>(analyzed: &Arc<Analyzed<T>>) -> Vec<usize> {
     let mut all_constant_with_next: Vec<usize> = Vec::new();
     for id in analyzed.identities_with_inlined_intermediate_polynomials() {

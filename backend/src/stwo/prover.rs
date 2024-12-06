@@ -43,10 +43,11 @@ pub struct StwoProver<T, B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: 
     pub fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
 
     /// Proving key
-    proving_key: StarkProvingKey<B, MC>,
+    proving_key: StarkProvingKey<B>,
     /// Verifying key placeholder
     _verifying_key: Option<()>,
     _channel_marker: PhantomData<C>,
+    _merkle_channel_marker: PhantomData<MC>,
 }
 
 impl<'a, F: FieldElement, B, MC, C> StwoProver<F, B, MC, C>
@@ -72,6 +73,7 @@ where
             proving_key: StarkProvingKey { preprocessed: None },
             _verifying_key: None,
             _channel_marker: PhantomData,
+            _merkle_channel_marker: PhantomData,
         })
     }
     pub fn setup(&mut self) {
@@ -89,7 +91,7 @@ where
             })
             .collect();
 
-        let preprocessed: BTreeMap<String, TableProvingKeyCollection<B, MC>> = self
+        let preprocessed: BTreeMap<String, TableProvingKeyCollection<B>> = self
             .split
             .iter()
             .filter_map(|(namespace, pil)| {
@@ -127,7 +129,6 @@ where
                                     size as usize,
                                     TableProvingKey {
                                         constant_trace_circle_domain: constant_trace,
-                                        _marker: PhantomData,
                                     },
                                 )
                             })
@@ -143,6 +144,14 @@ where
     }
 
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
+
+        assert!(
+            witness
+                .iter()
+                .all(|(_name, vec)| vec.len() == witness[0].1.len()),
+            "All Vec<T> in witness must have the same length. Mismatch found!"
+        );
+
         let config = get_config();
         let domain_map: BTreeMap<usize, CircleDomain> = self
             .analyzed
@@ -191,10 +200,10 @@ where
 
         let mut tree_builder = commitment_scheme.tree_builder();
 
-        // only the frist one is used, machines with varying sizes are not supported yet, and it is checked in backendfactory create function.
+        // Get the list of constant polynomials with next reference constraint
         let constant_list: Vec<usize> = get_constant_with_next_list(&self.analyzed);
 
-        //commit to the constant polynomials with next reference constraint
+        //commit to the constant polynomials that are without next reference constraint
         if let Some((_, table_proving_key)) =
             self.proving_key
                 .preprocessed
@@ -219,12 +228,7 @@ where
         }
         tree_builder.commit(prover_channel);
 
-        assert!(
-            witness
-                .iter()
-                .all(|(_name, vec)| vec.len() == witness[0].1.len()),
-            "All Vec<T> in witness must have the same length. Mismatch found!"
-        );
+       
 
         let mut trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = witness
             .iter()
@@ -235,7 +239,8 @@ where
                 )
             })
             .collect();
-
+        
+        //extend the witness trace with the constant polys that have next reference constraint
         if let Some((_, table_proving_key)) =
             self.proving_key
                 .preprocessed
