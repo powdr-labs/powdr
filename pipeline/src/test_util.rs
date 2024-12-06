@@ -610,6 +610,28 @@ pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
         .collect();
     pipeline.verify(&proof, &[publics]).unwrap();
 }
+#[cfg(feature = "stwo")]
+pub fn assert_proofs_fail_for_invalid_witnesses_stwo(
+    file_name: &str,
+    witness: &[(String, Vec<u64>)],
+) {
+    let pipeline = Pipeline::<Mersenne31Field>::default()
+        .from_file(resolve_test_file(file_name))
+        .set_witness(convert_witness(witness));
+
+    assert!(pipeline
+        .clone()
+        .with_backend(powdr_backend::BackendType::Stwo, None)
+        .compute_proof()
+        .is_err());
+}
+
+#[cfg(not(feature = "stwo"))]
+pub fn assert_proofs_fail_for_invalid_witnesses_stwo(
+    _file_name: &str,
+    _witness: &[(String, Vec<u64>)],
+) {
+}
 
 #[cfg(not(feature = "stwo"))]
 pub fn test_stwo(_file_name: &str, _inputs: Vec<u32>) {}
