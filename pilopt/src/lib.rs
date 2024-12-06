@@ -496,7 +496,7 @@ fn remove_constant_intermediate_columns<T: FieldElement>(pil_file: &mut Analyzed
                 // update the known values if we ended up with a constant
                 if let AlgebraicExpression::Number(value) = definition {
                     log::debug!(
-                        "Determined fixed column {} to be constant {value}. Removing.",
+                        "Determined intermediate column {} to be constant {value}. Removing.",
                         symbol.absolute_name
                     );
                     values.insert(poly_id, (name, value.to_arbitrary_integer()));
