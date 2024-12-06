@@ -218,7 +218,7 @@ fn keep_machine_parameters() {
 
     let expectation = r#"machine Main with degree: 8 {
     ::Required required
-    ::ParamMachine sub
+    ::ParamMachine sub(required)
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

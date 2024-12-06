@@ -133,7 +133,15 @@ impl Display for LinkDefinition {
 
 impl Display for SubmachineDeclaration {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{} {}", self.ty, self.name)
+        write!(
+            f,
+            "{} {}{}",
+            self.ty,
+            self.name,
+            (!self.args.is_empty())
+                .then(|| format!("({})", self.args.iter().format(", ")))
+                .unwrap_or_default()
+        )
     }
 }
 
