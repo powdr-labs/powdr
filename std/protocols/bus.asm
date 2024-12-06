@@ -16,6 +16,9 @@ use std::protocols::fingerprint::fingerprint_with_id;
 use std::protocols::fingerprint::fingerprint_with_id_inter;
 use std::math::fp2::required_extension_size;
 use std::prover::eval;
+use std::field::known_field;
+use std::field::KnownField;
+use std::check::panic;
 
 /// Sends the tuple (id, tuple...) to the bus by adding
 /// `multiplicity / (beta - fingerprint(id, tuple...))` to `acc`
@@ -40,14 +43,29 @@ let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity|
     let beta = fp2_from_array(array::new(required_extension_size(), |i| challenge(0, i + 3)));
 
     // Implemented as: folded = (beta - fingerprint(id, tuple...));
-    // Materialized as a witness column for two reasons:
-    // - It makes sure the constraint degree is independent of the input tuple.
-    // - We can access folded', even if the tuple contains next references.
-    let folded = fp2_from_array(
-        array::new(required_extension_size(),
-                   |i| std::prover::new_witness_col_at_stage("folded", 1))
-    );
-    constrain_eq_ext(folded, sub_ext(beta, fingerprint_with_id_inter(id, tuple, alpha)));
+    let folded = match known_field() {
+        Option::Some(KnownField::Goldilocks) => {
+            // Materialized as a witness column for two reasons:
+            // - It makes sure the constraint degree is independent of the input tuple.
+            // - We can access folded', even if the tuple contains next references.
+            // Note that if all expressions are degree-1 and there is no next reference,
+            // this is wasteful, but we can't check that here.
+            let folded = fp2_from_array(
+                array::new(required_extension_size(),
+                        |i| std::prover::new_witness_col_at_stage("folded", 1))
+            );
+            constrain_eq_ext(folded, sub_ext(beta, fingerprint_with_id_inter(id, tuple, alpha)));
+            folded
+        },
+        // The case above triggers our hand-written witness generation, but on Bn254, we'd not be
+        // on the extension field and use the automatic witness generation.
+        // However, it does not work with a materialized folded tuple. At the same time, Halo2
+        // (the only prover that supports BN254) does not have a hard degree bound. So, we can
+        // in-line the expression here. 
+        Option::Some(KnownField::BN254) => sub_ext(beta, fingerprint_with_id_inter(id, tuple, alpha)),
+        _ => panic("Unexpected field!")
+    };
+
     let folded_next = next_ext(folded);
 
     let m_ext = from_base(multiplicity);
