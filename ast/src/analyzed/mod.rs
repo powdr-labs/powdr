@@ -648,7 +648,7 @@ pub fn type_from_definition(
 /// given a list of type arguments.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SolvedTraitImpls {
-    impls: HashMap<String, HashMap<Vec<Type>, ImplData>>,
+    impls: BTreeMap<String, HashMap<Vec<Type>, ImplData>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -711,7 +711,6 @@ impl SolvedTraitImpls {
     /// This just updates the `index` fields.
     /// Assumes that `to_remove` is sorted.
     pub fn remove_trait_impls(&mut self, to_remove: &[usize]) {
-        #[allow(clippy::iter_over_hash_type)]
         for map in self.impls.values_mut() {
             *map = map
                 .drain()

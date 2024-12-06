@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use powdr_ast::{
     analyzed::{Expression, Reference},
@@ -13,7 +13,6 @@ pub fn sort_called_first<'a, I: Iterator<Item = (&'a str, Option<&'a Expression>
     let graph = call_graph(symbols);
     let mut visited: HashSet<&str> = HashSet::new();
     let mut result: Vec<String> = Vec::new();
-    #[allow(clippy::iter_over_hash_type)]
     for (name, _) in graph.iter() {
         topo_sort_visit(name, &graph, &mut visited, &mut result);
     }
@@ -23,7 +22,7 @@ pub fn sort_called_first<'a, I: Iterator<Item = (&'a str, Option<&'a Expression>
 
 fn topo_sort_visit<'a, 'b>(
     name: &'a str,
-    graph: &'b HashMap<&'a str, HashSet<&'a str>>,
+    graph: &'b BTreeMap<&'a str, BTreeSet<&'a str>>,
     visited: &'b mut HashSet<&'a str>,
     result: &'b mut Vec<String>,
 ) {
@@ -31,7 +30,6 @@ fn topo_sort_visit<'a, 'b>(
         return;
     }
     if let Some(called) = graph.get(name) {
-        #[allow(clippy::iter_over_hash_type)]
         for c in called {
             topo_sort_visit(c, graph, visited, result);
         }
@@ -41,10 +39,10 @@ fn topo_sort_visit<'a, 'b>(
 
 fn call_graph<'a, I: Iterator<Item = (&'a str, Option<&'a Expression>)>>(
     symbols: I,
-) -> HashMap<&'a str, HashSet<&'a str>> {
+) -> BTreeMap<&'a str, BTreeSet<&'a str>> {
     symbols
         .map(|(name, expr)| {
-            let mut called: HashSet<&str> = HashSet::new();
+            let mut called: BTreeSet<&str> = BTreeSet::new();
             if let Some(e) = expr {
                 e.all_children().for_each(|e| {
                     if let Expression::Reference(_, Reference::Poly(r)) = e {
