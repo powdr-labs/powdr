@@ -14,11 +14,15 @@ use super::machine::Machine;
 
 pub struct PolynomialConstraintChecker<'a, F> {
     machine: &'a Machine<'a, F>,
+    challenges: &'a BTreeMap<u64, F>,
 }
 
 impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
-    pub fn new(machine: &'a Machine<'a, F>) -> Self {
-        Self { machine }
+    pub fn new(machine: &'a Machine<'a, F>, challenges: &'a BTreeMap<u64, F>) -> Self {
+        Self {
+            machine,
+            challenges,
+        }
     }
 
     pub fn check(&self) -> MachineResult<'a, F> {
@@ -54,6 +58,7 @@ impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
         let variables = Variables {
             machine: self.machine,
             row,
+            challenges: self.challenges,
         };
         let mut evaluator =
             ExpressionEvaluator::new(&variables, &self.machine.intermediate_definitions);

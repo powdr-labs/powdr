@@ -62,5 +62,5 @@ walkdir = "2.4.0"
 name = "evaluator_benchmark"
 harness = false
 
-[lints.clippy]
-uninlined_format_args = "deny"
+[lints]
+workspace = true

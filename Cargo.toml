@@ -83,3 +83,7 @@ codegen-units = 256
 [profile.release-with-debug]
 inherits = "release"
 debug = true
+
+[workspace.lints.clippy]
+print_stdout = "deny"
+uninlined_format_args = "deny"
