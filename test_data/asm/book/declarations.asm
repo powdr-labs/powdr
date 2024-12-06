@@ -5,8 +5,9 @@ mod utils {
         0 => 0,
         _ => arr[len - 1] + sum(len - 1, arr)
     };
-    // A simple function that returns the same input as an expression.
-    let id: expr -> expr = |x| x;
+    // A simple function that returns the input incremented by one,
+    // as an expression.
+    let incremented: expr -> expr = |x| x + 1;
     // This is a function that takes an expression as input and returns
     // a constraint enforcing this expression increments by a certain value
     // between rows.
@@ -26,11 +27,11 @@ machine Main with degree: 4 {
     // and now we force it to stay unchanged.
     utils::constrain_incremented_by(x, 0);
 
-    // We define an instruction that uses a complicated way to set a register.
-    instr do_nothing { A = utils::id(A) }
+    // We define an instruction that uses a complicated way to increment a register.
+    instr incr_a { A' = utils::incremented(A) }
 
     function main {
-        do_nothing;
+        incr_a;
         return;
     }
 }
