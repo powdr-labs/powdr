@@ -191,8 +191,7 @@ where
             arguments: Arguments::default(),
             host_context: ctx,
         }
-        // We add the basic callback functionalities
-        // to support PrintChar and Hint.
+        // We add the basic callback functionalities to support PrintChar and Hint.
         .add_query_callback(Arc::new(handle_simple_queries_callback()))
         .add_query_callback(cb)
     }
@@ -973,6 +972,8 @@ impl<T: FieldElement> Pipeline<T> {
         if let Some(ref witness) = self.artifact.witness {
             return Ok(witness.clone());
         }
+
+        self.host_context.clear();
 
         let pil = self.compute_optimized_pil()?;
         let fixed_cols = self.compute_fixed_cols()?;

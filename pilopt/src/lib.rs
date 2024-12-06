@@ -1,5 +1,4 @@
 //! PIL-based optimizer
-#![deny(clippy::print_stdout)]
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};

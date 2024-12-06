@@ -59,7 +59,7 @@ enum Query {
     /// Query a prover input (field element) by channel id and index.
     Input(int, int),
     /// Writes a field element (second argument) to an output channel (first argument).
-    /// Channel 1 is stdout, 2 is stderr.
+    /// It is the host's responsibility to give semantics to each channel.
     Output(int, fe),
     /// This value is not (additionally) constrained by the query.
     None,

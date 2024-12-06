@@ -1,5 +1,4 @@
 //! A RISC-V frontend for powdr
-#![deny(clippy::print_stdout)]
 
 use std::{
     borrow::Cow,

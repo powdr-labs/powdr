@@ -1,7 +1,5 @@
 //! Utils used with different lalrpop parsers
 
-#![deny(clippy::print_stdout)]
-
 use std::{
     fmt::{self, Debug, Formatter},
     hash::Hash,
