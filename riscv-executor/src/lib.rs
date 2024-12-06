@@ -895,6 +895,22 @@ mod builder {
             // fill up main trace to degree
             self.extend_rows(main_degree);
 
+            // generate witness for submachines
+            // ----------------------------
+            for (m, events) in self.trace.submachine_events {
+                match m {
+                    // MachineInstance::main_binary => {}
+                    // MachineInstance::main_shift => {}
+                    // MachineInstance::main_memory => todo!(),
+                    // MachineInstance::main_regs => todo!(),
+                    // MachineInstance::main_publics => todo!(),
+                    // MachineInstance::main_split_gl => todo!(),
+                    // MachineInstance::main_poseidon_gl => todo!(),
+                    // MachineInstance::main_poseidon2_gl => todo!(),
+                    _ => {}
+                }
+            }
+
             // add submachine traces to main trace
             // ----------------------------
             for mut machine in self.submachines.into_values().map(|m| m.into_inner()) {
