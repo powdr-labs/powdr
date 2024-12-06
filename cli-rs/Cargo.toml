@@ -27,3 +27,4 @@ clap-markdown = "0.1.3"
 [[bin]]
 name = "powdr-rs"
 path = "src/main.rs"
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458

@@ -12,13 +12,21 @@ repository.workspace = true
 powdr-ast.workspace = true
 powdr-number.workspace = true
 
-serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
-schemars = { version = "0.8.16", features = ["preserve_order"]}
+serde = { version = "1.0", default-features = false, features = [
+    "alloc",
+    "derive",
+    "rc",
+] }
+schemars = { version = "0.8.16", features = ["preserve_order"] }
 serde_cbor = "0.11.2"
 
 [[bin]]
 name = "powdr-schemas"
 path = "bin/main.rs"
+bench = false          # See https://github.com/bheisler/criterion.rs/issues/458
 
 [lints.clippy]
 uninlined_format_args = "deny"
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458

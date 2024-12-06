@@ -67,3 +67,6 @@ harness = false
 
 [lints]
 workspace = true
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458
