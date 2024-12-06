@@ -16,7 +16,7 @@ use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
 use powdr_ast::parsed::Number;
 use powdr_number::{BigUint, FieldElement};
 
-mod referenced_symbols;
+pub mod referenced_symbols;
 
 use referenced_symbols::{ReferencedSymbols, SymbolReference};
 

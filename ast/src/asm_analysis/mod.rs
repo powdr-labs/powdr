@@ -3,7 +3,7 @@ mod display;
 use std::{
     collections::{
         btree_map::{IntoIter, Iter, IterMut},
-        BTreeMap, BTreeSet,
+        BTreeMap, BTreeSet, HashSet,
     },
     iter::{once, repeat},
     ops::ControlFlow,
@@ -880,6 +880,19 @@ impl Module {
 
     pub fn push_module(&mut self, name: String) {
         self.ordering.push(StatementReference::Module(name));
+    }
+
+    /// Retains only the machines with the specified names.
+    /// Ordering is preserved.
+    pub fn retain_machines(&mut self, names: HashSet<String>) {
+        self.machines.retain(|key, _| names.contains(key));
+        self.ordering.retain(|statement| {
+            if let StatementReference::MachineDeclaration(decl_name) = statement {
+                names.contains(decl_name)
+            } else {
+                true
+            }
+        });
     }
 
     pub fn into_inner(
