@@ -1,4 +1,4 @@
-use std::machines::hash::keccakf16::Keccakf16;
+use std::machines::small_field::keccakf16::Keccakf16;
 
 machine Main with degree: 64 {
     reg pc[@pc];
