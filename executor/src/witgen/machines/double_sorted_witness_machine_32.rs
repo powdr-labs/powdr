@@ -478,7 +478,7 @@ impl<T: FieldElement> Default for PagedData<T> {
     fn default() -> Self {
         Self {
             pages: Default::default(),
-            first_page: vec![0.into(); Self::PAGE_SIZE as usize],
+            first_page: Self::fresh_page(),
         }
     }
 }
@@ -498,14 +498,16 @@ impl<T: FieldElement> PagedData<T> {
         (addr >> Self::PAGE_BITS, (addr & Self::PAGE_MASK) as usize)
     }
 
+    fn fresh_page() -> Vec<T> {
+        vec![0.into(); Self::PAGE_SIZE as usize]
+    }
+
     pub fn write(&mut self, addr: T, value: T) {
         let (page, offset) = Self::page_offset(addr);
         if page == 0 {
             self.first_page[offset] = value;
         } else {
-            self.pages
-                .entry(page)
-                .or_insert_with(|| vec![0.into(); Self::PAGE_SIZE as usize])[offset] = value;
+            self.pages.entry(page).or_insert_with(Self::fresh_page)[offset] = value;
         }
     }
 
