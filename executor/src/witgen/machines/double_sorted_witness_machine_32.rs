@@ -11,7 +11,7 @@ use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalResult, FixedData, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement, LargeInt};
 
 use powdr_ast::analyzed::{DegreeRange, PolyID};
 
@@ -54,8 +54,8 @@ pub struct DoubleSortedWitnesses32<'a, T: FieldElement> {
     //witness_positions: HashMap<String, usize>,
     /// (addr, step) -> value
     trace: BTreeMap<(T, T), Operation<T>>,
-    /// A map addr -> value, the current content of the memory.
-    data: BTreeMap<T, T>,
+    /// The current contents of memory.
+    data: PagedData<T>,
     is_initialized: BTreeMap<T, bool>,
     namespace: String,
     name: String,
@@ -419,7 +419,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
                 addr,
                 value
             );
-            self.data.insert(addr, value);
+            self.data.write(addr, value);
             self.trace
                 .insert(
                     (addr, step),
@@ -432,14 +432,14 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
                 )
                 .is_none()
         } else {
-            let value = self.data.entry(addr).or_default();
+            let value = self.data.read(addr);
             log::trace!(
                 "Memory read: addr={:x}, step={step}, value={:x}",
                 addr,
                 value
             );
             let ass =
-                (value_expr.clone() - (*value).into()).solve_with_range_constraints(caller_rows)?;
+                (value_expr.clone() - value.into()).solve_with_range_constraints(caller_rows)?;
             assignments.combine(ass);
             self.trace
                 .insert(
@@ -447,7 +447,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
                     Operation {
                         is_normal_write,
                         is_bootloader_write,
-                        value: *value,
+                        value,
                         selector_id,
                     },
                 )
@@ -464,5 +464,60 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
         }
 
         Ok(assignments)
+    }
+}
+
+struct PagedData<T> {
+    /// All pages except the first.
+    pages: HashMap<u64, Vec<T>>,
+    /// The first page, to optimize for small memory addresses.
+    first_page: Vec<T>,
+}
+
+impl<T: FieldElement> Default for PagedData<T> {
+    fn default() -> Self {
+        Self {
+            pages: Default::default(),
+            first_page: vec![0.into(); Self::PAGE_SIZE as usize],
+        }
+    }
+}
+
+impl<T: FieldElement> PagedData<T> {
+    /// Tuning parameters.
+    /// On the dev machine, only the combination of "PAGE_BITS <= 8" and the introduction
+    /// of "page zero" gives a 2x improvement in the register machine (and 20% in regular
+    /// memory as well actually) relative to non-paged.
+    /// This should be continuously monitored.
+    const PAGE_BITS: u64 = 8;
+    const PAGE_SIZE: u64 = (1 << Self::PAGE_BITS);
+    const PAGE_MASK: u64 = Self::PAGE_SIZE - 1;
+
+    fn page_offset(addr: T) -> (u64, usize) {
+        let addr = addr.to_integer().try_into_u64().unwrap();
+        (addr >> Self::PAGE_BITS, (addr & Self::PAGE_MASK) as usize)
+    }
+
+    pub fn write(&mut self, addr: T, value: T) {
+        let (page, offset) = Self::page_offset(addr);
+        if page == 0 {
+            self.first_page[offset] = value;
+        } else {
+            self.pages
+                .entry(page)
+                .or_insert_with(|| vec![0.into(); Self::PAGE_SIZE as usize])[offset] = value;
+        }
+    }
+
+    pub fn read(&mut self, addr: T) -> T {
+        let (page, offset) = Self::page_offset(addr);
+        if page == 0 {
+            self.first_page[offset]
+        } else {
+            self.pages
+                .get(&page)
+                .map(|page| page[offset])
+                .unwrap_or_default()
+        }
     }
 }
