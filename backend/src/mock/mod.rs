@@ -20,7 +20,6 @@ use powdr_number::{DegreeType, FieldElement};
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
 mod connection_constraint_checker;
-mod evaluator;
 mod machine;
 mod polynomial_constraint_checker;
 

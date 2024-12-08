@@ -1,8 +1,8 @@
-use super::affine_expression::{AffineExpression, AffineResult, AlgebraicVariable};
-use super::expression_evaluator::SymbolicVariables;
-use super::IncompleteCause;
-
 use powdr_number::FieldElement;
+
+use crate::witgen::{AffineExpression, AffineResult, AlgebraicVariable, IncompleteCause};
+
+use super::partial_expression_evaluator::SymbolicVariables;
 
 /// A purely symbolic evaluator, uses AlgebraicReference as keys
 /// and neither resolves fixed columns nor witness columns.

@@ -1,7 +1,6 @@
-use super::affine_expression::{AffineResult, AlgebraicVariable};
-use super::expression_evaluator::SymbolicVariables;
-use super::FixedData;
 use powdr_number::{DegreeType, FieldElement};
+
+use crate::witgen::{AffineResult, AlgebraicVariable, FixedData, SymbolicVariables};
 
 /// Evaluates only fixed columns on a specific row.
 pub struct FixedEvaluator<'a, T: FieldElement> {

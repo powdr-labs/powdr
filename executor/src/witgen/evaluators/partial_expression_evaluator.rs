@@ -8,10 +8,7 @@ use powdr_ast::analyzed::{
 
 use powdr_number::FieldElement;
 
-use super::{
-    affine_expression::{AffineResult, AlgebraicVariable},
-    IncompleteCause,
-};
+use crate::witgen::{AffineResult, AlgebraicVariable, IncompleteCause};
 
 pub trait SymbolicVariables<T> {
     /// Value of a polynomial (fixed or witness) or public.
@@ -24,7 +21,7 @@ pub trait SymbolicVariables<T> {
     }
 }
 
-pub struct ExpressionEvaluator<'a, T, SV> {
+pub struct PartialExpressionEvaluator<'a, T, SV> {
     variables: SV,
     intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
     /// Maps intermediate reference to their evaluation. Updated throughout the lifetime of the
@@ -32,7 +29,7 @@ pub struct ExpressionEvaluator<'a, T, SV> {
     intermediates_cache: BTreeMap<AlgebraicReferenceThin, AffineResult<AlgebraicVariable<'a>, T>>,
 }
 
-impl<'a, T, SV> ExpressionEvaluator<'a, T, SV>
+impl<'a, T, SV> PartialExpressionEvaluator<'a, T, SV>
 where
     SV: SymbolicVariables<T>,
     T: FieldElement,

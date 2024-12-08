@@ -5,6 +5,7 @@ use std::ops::ControlFlow;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::AlgebraicExpression;
+use powdr_ast::analyzed::AlgebraicReference;
 use powdr_ast::analyzed::Analyzed;
 use powdr_ast::analyzed::{
     Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
@@ -13,15 +14,12 @@ use powdr_ast::analyzed::{
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::visitor::VisitOrder;
 use powdr_backend_utils::referenced_namespaces_algebraic_expression;
-use powdr_executor::witgen::ExpressionEvaluator;
+use powdr_executor::witgen::evaluators::expression_evaluator::ExpressionEvaluator;
+use powdr_executor::witgen::evaluators::expression_evaluator::TraceValues;
 use powdr_number::FieldElement;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 
-use crate::mock::evaluator::evaluate_to_fe;
-
-use super::evaluator::EmptyVariables;
-use super::evaluator::Variables;
 use super::machine::Machine;
 
 #[derive(PartialEq, Eq, Debug)]
@@ -256,21 +254,19 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                 Some(machine) => (0..machine.size)
                     .into_par_iter()
                     .filter_map(|row| {
-                        let variables = Variables {
-                            machine,
-                            row,
-                            challenges: self.challenges,
-                        };
-                        let mut evaluator =
-                            ExpressionEvaluator::new(&variables, &machine.intermediate_definitions);
-                        let result = evaluate_to_fe(&mut evaluator, &selected_expressions.selector);
+                        let mut evaluator = ExpressionEvaluator::new(
+                            machine.trace_values.row(row),
+                            &machine.intermediate_definitions,
+                            self.challenges,
+                        );
+                        let result = evaluator.evaluate(&selected_expressions.selector);
 
                         assert!(result.is_zero() || result.is_one(), "Non-binary selector");
                         result.is_one().then(|| {
                             let values = selected_expressions
                                 .expressions
                                 .iter()
-                                .map(|expression| evaluate_to_fe(&mut evaluator, expression))
+                                .map(|expression| evaluator.evaluate(expression))
                                 .collect::<Vec<_>>();
                             Tuple { values, row }
                         })
@@ -283,8 +279,13 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
             None => {
                 let empty_variables = EmptyVariables {};
                 let empty_definitions = BTreeMap::new();
-                let mut evaluator = ExpressionEvaluator::new(empty_variables, &empty_definitions);
-                let selector_value = evaluate_to_fe(&mut evaluator, &selected_expressions.selector);
+                let empty_challenges = BTreeMap::new();
+                let mut evaluator = ExpressionEvaluator::new(
+                    empty_variables,
+                    &empty_definitions,
+                    &empty_challenges,
+                );
+                let selector_value = evaluator.evaluate(&selected_expressions.selector);
 
                 match selector_value.to_degree() {
                     // Selected expressions is of the form `0 $ [ <constants> ]`
@@ -307,7 +308,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                         let values = selected_expressions
                             .expressions
                             .iter()
-                            .map(|expression| evaluate_to_fe(&mut evaluator, expression))
+                            .map(|expression| evaluator.evaluate(expression))
                             .collect::<Vec<_>>();
                         vec![Tuple { values, row: 0 }]
                     }
@@ -315,6 +316,17 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                 }
             }
         }
+    }
+}
+
+struct EmptyVariables;
+
+impl<T> TraceValues<T> for EmptyVariables
+where
+    T: FieldElement,
+{
+    fn get(&self, _reference: &AlgebraicReference) -> T {
+        panic!()
     }
 }
 

@@ -13,12 +13,11 @@ use crate::witgen::Constraint;
 use super::{
     affine_expression::{AffineExpression, AffineResult, AlgebraicVariable},
     data_structures::column_map::WitnessColumnMap,
-    expression_evaluator::ExpressionEvaluator,
+    evaluators::symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},
     global_constraints::RangeConstraintSet,
     machines::MachineParts,
     range_constraints::RangeConstraint,
-    symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},
-    FixedData,
+    FixedData, PartialExpressionEvaluator,
 };
 
 /// A small wrapper around a row index, which knows the total number of rows.
@@ -472,7 +471,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         // Note that because we instantiate a fresh evaluator here, we don't benefit from caching
         // of intermediate values across calls of `RowPair::evaluate`. In practice, we only call
         // it many times for the same RowPair though.
-        ExpressionEvaluator::new(variables, &self.fixed_data.intermediate_definitions)
+        PartialExpressionEvaluator::new(variables, &self.fixed_data.intermediate_definitions)
             .evaluate(expr)
     }
 }
