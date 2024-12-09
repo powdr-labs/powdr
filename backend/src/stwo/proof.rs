@@ -23,14 +23,14 @@ impl<B: Backend> From<SerializableTableProvingKey> for TableProvingKey<B> {
         let constant_trace_circle_domain = serializable
             .constant_trace_circle_domain
             .into_iter()
-            .map(|circle_eval| {
+            .map(|(size, values)| {
                 let mut column: <B as ColumnOps<M31>>::Column =
-                    <B as ColumnOps<M31>>::Column::zeros(circle_eval.values.len());
-                circle_eval.values.iter().enumerate().for_each(|(i, v)| {
+                    <B as ColumnOps<M31>>::Column::zeros(values.len());
+                values.iter().enumerate().for_each(|(i, v)| {
                     column.set(i, *v);
                 });
                 CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
-                    CanonicCoset::new(circle_eval.domain_log_size).circle_domain(),
+                    CanonicCoset::new(size as u32).circle_domain(),
                     column,
                 )
             })
@@ -70,36 +70,20 @@ impl<B: Backend> From<SerializableStarkProvingKey> for StarkProvingKey<B> {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct SerializableCircleEvaluation {
-    domain_log_size: u32,
-    values: Vec<M31>,
-}
-
-impl<B: Backend> From<CircleEvaluation<B, BaseField, BitReversedOrder>>
-    for SerializableCircleEvaluation
-{
-    fn from(circle_evaluation: CircleEvaluation<B, BaseField, BitReversedOrder>) -> Self {
-        let domain_log_size = circle_evaluation.domain.log_size();
-        let values = circle_evaluation.values.to_cpu();
-        Self {
-            domain_log_size,
-            values,
-        }
-    }
-}
-
-#[derive(Serialize, Deserialize)]
 pub struct SerializableTableProvingKey {
-    constant_trace_circle_domain: Vec<SerializableCircleEvaluation>,
+    // usize is the domain log size, Vec<M31> is the values of the circle evaluation
+    constant_trace_circle_domain: BTreeMap<usize, Vec<M31>>, // Single BTreeMap
 }
 
 impl<B: Backend> From<TableProvingKey<B>> for SerializableTableProvingKey {
     fn from(table_proving_key: TableProvingKey<B>) -> Self {
-        let constant_trace_circle_domain = table_proving_key
-            .constant_trace_circle_domain
-            .iter()
-            .map(|circle_eval| SerializableCircleEvaluation::from(circle_eval.clone()))
-            .collect();
+        let mut constant_trace_circle_domain = BTreeMap::new();
+
+        for circle_eval in &table_proving_key.constant_trace_circle_domain {
+            let domain_log_size = circle_eval.domain.log_size() as usize;
+            let values = circle_eval.values.to_cpu();
+            constant_trace_circle_domain.insert(domain_log_size, values);
+        }
 
         Self {
             constant_trace_circle_domain,
