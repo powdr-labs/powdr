@@ -590,9 +590,10 @@ impl SubmachineKind for PoseidonGlMachine {
             "x7[9]", "x7[10]", "x7[11]",
         ];
 
-        let [input_addr, output_addr, time_step, selector] = args[0..3] else {
-            panic!()
+        let [input_addr, output_addr, time_step, selector] = args[0..4] else {
+            panic!();
         };
+
         let input = args[3..3 + STATE_SIZE].to_vec();
         let output = args[3 + STATE_SIZE..3 + STATE_SIZE + OUTPUT_SIZE].to_vec();
 

@@ -2125,6 +2125,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                         input_ptr.into_fe(),
                         output_ptr.into_fe(),
                         self.step.into(),
+                        sel.into(),
                         inputs[0],
                         inputs[1],
                         inputs[2],
@@ -2141,7 +2142,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                         outputs[1],
                         outputs[2],
                         outputs[3],
-                        sel.into(),
                     ]);
                 }
 
