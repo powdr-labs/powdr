@@ -320,6 +320,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - <Latch>));
     /// This function fixes this exception by setting _operation_id_no_change to 0.
     fn handle_last_row(&self, data: &mut HashMap<PolyID, Vec<T>>) {
+        #[allow(clippy::iter_over_hash_type)]
+        // This is deterministic because there is no shared state.
         for (poly_id, col) in data.iter_mut() {
             if self
                 .parts
