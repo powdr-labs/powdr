@@ -332,6 +332,11 @@ fn propagate_constraints<T: FieldElement>(
             // permutation identities are stronger than just range constraints, so we do nothing
             false
         }
+        Identity::PhantomBusInteraction(..) => {
+            // TODO(bus_interaction): If we can statically match sends & receives, we could extract
+            // range constraints from them.
+            false
+        }
     }
 }
 

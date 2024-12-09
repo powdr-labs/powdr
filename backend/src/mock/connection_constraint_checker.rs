@@ -66,6 +66,8 @@ impl<F: FieldElement> Connection<F> {
             | Identity::PhantomPermutation(PhantomPermutationIdentity { left, right, .. }) => {
                 Ok((left.clone(), right.clone(), ConnectionKind::Permutation))
             }
+            // TODO(bus_interaction)
+            Identity::PhantomBusInteraction(_) => Err(()),
         }?;
 
         // This connection is not localized yet: Its expression's PolyIDs point to the global PIL, not the local PIL.

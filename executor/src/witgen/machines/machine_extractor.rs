@@ -284,6 +284,8 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                     Identity::Connect(..) => {
                         unimplemented!()
                     }
+                    // TODO(bus_interaction)
+                    Identity::PhantomBusInteraction(..) => {}
                 };
             }
             if witnesses.len() == count {
@@ -312,6 +314,12 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             }
             Identity::Polynomial(i) => self.fixed.polynomial_references(i),
             Identity::Connect(i) => self.fixed.polynomial_references(i),
+            Identity::PhantomBusInteraction(i) => self
+                .fixed
+                .polynomial_references(&i.tuple)
+                .into_iter()
+                .chain(self.fixed.polynomial_references(&i.multiplicity))
+                .collect(),
         }
     }
 }
