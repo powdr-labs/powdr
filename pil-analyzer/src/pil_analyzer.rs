@@ -204,6 +204,8 @@ impl PILAnalyzer {
     /// Check that query and constr functions are used in the correct contexts.
     pub fn side_effect_check(&self) -> Result<(), Vec<Error>> {
         let mut errors = vec![];
+        #[allow(clippy::iter_over_hash_type)]
+        // TODO: This is not deterministic to the extent that the errors are added in arbitrary order. Source order would be better.
         for (symbol, value) in self.definitions.values() {
             let Some(value) = value else { continue };
             let context = match symbol.kind {

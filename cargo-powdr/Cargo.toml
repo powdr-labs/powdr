@@ -13,3 +13,4 @@ clap = { version = "^4.3", features = ["derive"] }
 [[bin]]
 name = "cargo-powdr"
 path = "src/main.rs"
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458
