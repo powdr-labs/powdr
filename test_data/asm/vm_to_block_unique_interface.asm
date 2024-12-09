@@ -1,4 +1,5 @@
 machine Binary with
+    degree: 32,
     latch: latch,
     operation_id: operation_id,
 {
@@ -20,6 +21,7 @@ machine Binary with
 }
 
 machine Arith with
+    degree: 32,
     latch: latch,
     operation_id: operation_id,
 {

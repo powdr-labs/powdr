@@ -1,6 +1,9 @@
 use std::machines::large_field::arith::Arith;
 
-machine Main with degree: 65536 {
+let main_degree: int = 2**9;
+let arith_degree: int = 2**12;
+
+machine Main with degree: main_degree {
     reg pc[@pc];
     reg A0[<=];
     reg A1[<=];
@@ -68,7 +71,7 @@ machine Main with degree: 65536 {
     reg t_1_6;
     reg t_1_7;
 
-    Arith arith;
+    Arith arith(arith_degree, arith_degree);
 
     instr affine_256 A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7, C0, C1, C2, C3, C4, C5, C6, C7 -> D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7
         link ~> (D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7) = arith.affine_256(A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7, C0, C1, C2, C3, C4, C5, C6, C7);
@@ -267,7 +270,8 @@ machine Main with degree: 65536 {
         assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0x70afe85a, 0xc5b0f470, 0x9620095b, 0x687cf441, 0x4d734633, 0x15c38f00, 0x48e7561b, 0xd01115d5;
         assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 0xf4062327, 0x6b051b13, 0xd9a86d52, 0x79238c5d, 0xe17bd815, 0xa8b64537, 0xc815e0d7, 0xa9f34ffd;
 
-        // Auto-generated rest of the test cases:
+        // Auto-generated rest of the test cases,
+        // see: https://gist.github.com/georgwiese/a66425ae95c839b548edffffe6a692f9
         t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== ec_double(
             0x70afe85a, 0xc5b0f470, 0x9620095b, 0x687cf441, 0x4d734633, 0x15c38f00, 0x48e7561b, 0xd01115d5,
             0xf4062327, 0x6b051b13, 0xd9a86d52, 0x79238c5d, 0xe17bd815, 0xa8b64537, 0xc815e0d7, 0xa9f34ffd);

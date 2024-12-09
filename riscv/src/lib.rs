@@ -1,5 +1,4 @@
 //! A RISC-V frontend for powdr
-#![deny(clippy::print_stdout)]
 
 use std::{
     borrow::Cow,
@@ -74,7 +73,7 @@ impl CompilerOptions {
             libs,
             continuations,
             min_degree_log: 5,
-            max_degree_log: 20,
+            max_degree_log: 18,
         }
     }
 
@@ -84,7 +83,7 @@ impl CompilerOptions {
             libs: RuntimeLibs::new(),
             continuations: false,
             min_degree_log: 5,
-            max_degree_log: 20,
+            max_degree_log: 18,
         }
     }
 
@@ -94,7 +93,7 @@ impl CompilerOptions {
             libs: RuntimeLibs::new(),
             continuations: false,
             min_degree_log: 5,
-            max_degree_log: 20,
+            max_degree_log: 18,
         }
     }
 

@@ -4,13 +4,14 @@ use std::iter::once;
 use itertools::Itertools;
 
 use super::{Machine, MachineParts};
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
+use crate::witgen::{EvalError, EvalResult, FixedData, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement, LargeInt};
 
 use powdr_ast::analyzed::{DegreeRange, PolyID};
 
@@ -53,8 +54,8 @@ pub struct DoubleSortedWitnesses32<'a, T: FieldElement> {
     //witness_positions: HashMap<String, usize>,
     /// (addr, step) -> value
     trace: BTreeMap<(T, T), Operation<T>>,
-    /// A map addr -> value, the current content of the memory.
-    data: BTreeMap<T, T>,
+    /// The current contents of memory.
+    data: PagedData<T>,
     is_initialized: BTreeMap<T, bool>,
     namespace: String,
     name: String,
@@ -98,6 +99,10 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
 
         if namespaces.len() > 1 {
             // columns are not in the same namespace, fail
+            return None;
+        }
+
+        if parts.connections.is_empty() {
             return None;
         }
 
@@ -189,7 +194,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
 
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &mut MutableState<'a, '_, T, Q>,
+        _mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -198,7 +203,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         let mut addr = vec![];
         let mut step = vec![];
@@ -414,7 +419,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
                 addr,
                 value
             );
-            self.data.insert(addr, value);
+            self.data.write(addr, value);
             self.trace
                 .insert(
                     (addr, step),
@@ -427,14 +432,14 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
                 )
                 .is_none()
         } else {
-            let value = self.data.entry(addr).or_default();
+            let value = self.data.read(addr);
             log::trace!(
                 "Memory read: addr={:x}, step={step}, value={:x}",
                 addr,
                 value
             );
             let ass =
-                (value_expr.clone() - (*value).into()).solve_with_range_constraints(caller_rows)?;
+                (value_expr.clone() - value.into()).solve_with_range_constraints(caller_rows)?;
             assignments.combine(ass);
             self.trace
                 .insert(
@@ -442,20 +447,84 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
                     Operation {
                         is_normal_write,
                         is_bootloader_write,
-                        value: *value,
+                        value,
                         selector_id,
                     },
                 )
                 .is_none()
         };
-        if has_side_effect {
-            assignments = assignments.report_side_effect();
-        }
+        assert!(
+            has_side_effect,
+            "Already had a memory access for address 0x{addr:x} and time step {step}!"
+        );
+        assignments = assignments.report_side_effect();
 
-        if self.trace.len() >= (self.degree as usize) {
+        if self.trace.len() > (self.degree as usize) {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
         Ok(assignments)
+    }
+}
+
+/// A paged key-value store. Addresses do not overlap, every address can store
+/// a full field element.
+struct PagedData<T> {
+    /// All pages except the first.
+    pages: HashMap<u64, Vec<T>>,
+    /// The first page, to optimize for small memory addresses.
+    first_page: Vec<T>,
+}
+
+impl<T: FieldElement> Default for PagedData<T> {
+    fn default() -> Self {
+        Self {
+            pages: Default::default(),
+            first_page: Self::fresh_page(),
+        }
+    }
+}
+
+impl<T: FieldElement> PagedData<T> {
+    /// Tuning parameters.
+    /// On the dev machine, only the combination of "PAGE_SIZE_LOG2 <= 8" and the introduction
+    /// of "page zero" gives a 2x improvement in the register machine (and 20% in regular
+    /// memory as well actually) relative to non-paged.
+    /// This should be continuously monitored.
+    const PAGE_SIZE_LOG2: u64 = 8;
+    const PAGE_SIZE: u64 = (1 << Self::PAGE_SIZE_LOG2);
+    const PAGE_MASK: u64 = Self::PAGE_SIZE - 1;
+
+    fn page_offset(addr: T) -> (u64, usize) {
+        let addr = addr.to_integer().try_into_u64().unwrap();
+        (
+            addr >> Self::PAGE_SIZE_LOG2,
+            (addr & Self::PAGE_MASK) as usize,
+        )
+    }
+
+    fn fresh_page() -> Vec<T> {
+        vec![0.into(); Self::PAGE_SIZE as usize]
+    }
+
+    pub fn write(&mut self, addr: T, value: T) {
+        let (page, offset) = Self::page_offset(addr);
+        if page == 0 {
+            self.first_page[offset] = value;
+        } else {
+            self.pages.entry(page).or_insert_with(Self::fresh_page)[offset] = value;
+        }
+    }
+
+    pub fn read(&mut self, addr: T) -> T {
+        let (page, offset) = Self::page_offset(addr);
+        if page == 0 {
+            self.first_page[offset]
+        } else {
+            self.pages
+                .get(&page)
+                .map(|page| page[offset])
+                .unwrap_or_default()
+        }
     }
 }

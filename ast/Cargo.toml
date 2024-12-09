@@ -26,5 +26,5 @@ powdr-pil-analyzer.workspace = true
 powdr-parser.workspace = true
 
 
-[lints.clippy]
-uninlined_format_args = "deny"
+[lints]
+workspace = true

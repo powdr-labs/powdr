@@ -9,6 +9,7 @@ repository = { workspace = true }
 
 [dependencies]
 powdr-ast.workspace = true
+powdr-executor-utils.workspace = true
 powdr-number.workspace = true
 powdr-parser-util.workspace = true
 powdr-pil-analyzer.workspace = true
@@ -32,5 +33,5 @@ pretty_assertions = "1.4.0"
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]
 
-[lints.clippy]
-uninlined_format_args = "deny"
+[lints]
+workspace = true

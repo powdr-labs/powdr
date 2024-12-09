@@ -13,6 +13,7 @@ use std::math::fp2::needs_extension;
 use std::math::fp2::fp2_from_array;
 use std::math::fp2::constrain_eq_ext;
 use std::protocols::fingerprint::fingerprint_with_id;
+use std::protocols::fingerprint::fingerprint_with_id_inter;
 use std::math::fp2::required_extension_size;
 use std::prover::eval;
 
@@ -29,13 +30,17 @@ let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity|
 
     std::check::assert(required_extension_size() <= 2, || "Invalid extension size");
 
+    // Add phantom bus interaction
+    let full_tuple = [id] + tuple;
+    Constr::PhantomBusInteraction(multiplicity, full_tuple);
+
     // Alpha is used to compress the LHS and RHS arrays.
     let alpha = fp2_from_array(array::new(required_extension_size(), |i| challenge(0, i + 1)));
     // Beta is used to update the accumulator.
     let beta = fp2_from_array(array::new(required_extension_size(), |i| challenge(0, i + 3)));
 
     // Implemented as: folded = (beta - fingerprint(id, tuple...));
-    let folded = sub_ext(beta, fingerprint_with_id(id, tuple, alpha));
+    let folded = sub_ext(beta, fingerprint_with_id_inter(id, tuple, alpha));
     let folded_next = next_ext(folded);
 
     let m_ext = from_base(multiplicity);
@@ -81,22 +86,25 @@ let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity|
 /// This is intended to be used as a hint in the extension field case; for the base case
 /// automatic witgen is smart enough to figure out the value of the accumulator.
 let compute_next_z: expr, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<expr> -> fe[] = query |is_first, id, tuple, multiplicity, acc, alpha, beta| {
-    // Implemented as: folded = (beta - fingerprint(id, tuple...));
-    // `multiplicity / (beta - fingerprint(id, tuple...))` to `acc`
-    let folded = sub_ext(beta, fingerprint_with_id(id, tuple, alpha));
-    let folded_next = next_ext(folded);
 
-    let m_ext = from_base(multiplicity);
-    let m_ext_next = next_ext(m_ext);
+    let m_next = eval(multiplicity');
+    let m_ext_next = from_base(m_next);
 
     let is_first_next = eval(is_first');
     let current_acc = if is_first_next == 1 {from_base(0)} else {eval_ext(acc)};
     
     // acc' = current_acc + multiplicity' / folded'
-    let res = add_ext(
-        current_acc,
-        mul_ext(eval_ext(m_ext_next), inv_ext(eval_ext(folded_next)))
-    );
+    let res = if m_next == 0 {
+        current_acc
+    } else {
+        // Implemented as: folded = (beta - fingerprint(id, tuple...));
+        // `multiplicity / (beta - fingerprint(id, tuple...))` to `acc`
+        let folded_next = sub_ext(eval_ext(beta), fingerprint_with_id(eval(id'), array::eval(array::next(tuple)), alpha));
+        add_ext(
+            current_acc,
+            mul_ext(m_ext_next, inv_ext(folded_next))
+        )
+    };
 
     unpack_ext_array(res)
 };

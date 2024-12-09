@@ -3,7 +3,6 @@ use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::iter::{self, once};
-use powdr_backend_utils::machine_witness_columns;
 
 use itertools::Itertools;
 use p3_air::Air;
@@ -19,7 +18,9 @@ use tracing::{info_span, instrument};
 use crate::circuit_builder::{generate_matrix, PowdrCircuit, PowdrTable};
 use crate::params::{Challenge, Challenger, Pcs};
 use crate::proof::{OpenedValues, StageOpenedValues};
-use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
+use crate::symbolic_builder::{
+    get_log_quotient_degree, get_max_constraint_degree, SymbolicAirBuilder,
+};
 use crate::traits::MultiStageAir;
 use crate::{
     Com, Commitment, Commitments, FieldElementMap, PcsProof, PcsProverData, ProcessedStage, Proof,
@@ -314,6 +315,10 @@ where
         get_log_quotient_degree(&self.air, &self.public_input_count_per_stage())
     }
 
+    fn max_constraint_degree(&self) -> usize {
+        get_max_constraint_degree(&self.air, &self.public_input_count_per_stage())
+    }
+
     fn observe_instance(&self, challenger: &mut Challenger<T>) {
         challenger.observe(Val::<T::Config>::from_canonical_usize(self.log_degree()));
         // TODO: Might be best practice to include other instance data here; see verifier comment.
@@ -393,7 +398,7 @@ where
 pub fn prove<T: FieldElementMap>(
     proving_key: Option<&StarkProvingKey<T::Config>>,
     program: &PowdrCircuit<T>,
-    witness: &mut Vec<(String, Vec<T>)>,
+    witness_by_machine: &mut BTreeMap<String, Vec<(String, Vec<T>)>>,
     challenger: &mut Challenger<T>,
 ) -> Proof<T::Config>
 where
@@ -403,18 +408,33 @@ where
     let (tables, stage_0): (BTreeMap<_, _>, BTreeMap<_, _>) = program
         .split
         .iter()
-        .map(|(name, (pil, constraint_system))| {
-            let columns = machine_witness_columns(witness, pil, name);
+        .filter_map(|(name, (_, constraint_system))| {
+            let columns = witness_by_machine.get(name).unwrap();
             let degree = columns[0].1.len();
 
-            (
-                (
-                    name.clone(),
-                    Table {
-                        air: PowdrTable::new(constraint_system),
-                        degree,
-                    },
-                ),
+            if degree == 0 {
+                // If a machine has no rows, remove it entirely.
+                return None;
+            }
+
+            let table = Table {
+                air: PowdrTable::new(constraint_system),
+                degree,
+            };
+
+            // Sanity-check that the degree bound is not exceeded
+            // If we don't panic here, Plonky3 panics with a bad error message when computing the quotient polynomial
+            let degree_bound = T::degree_bound();
+            let max_degree = table.max_constraint_degree();
+            if max_degree > degree_bound {
+                panic!(
+                    "Table {} has a constraint of degree {} which exceeds the degree bound of {}.",
+                    name, max_degree, degree_bound
+                );
+            }
+
+            Some((
+                (name.clone(), table),
                 (
                     name.clone(),
                     AirStage {
@@ -424,7 +444,9 @@ where
                         public_values: constraint_system.publics_by_stage[0]
                             .iter()
                             .map(|(_, column_name, _, row)| {
-                                witness
+                                witness_by_machine
+                                    .get(name)
+                                    .unwrap()
                                     .iter()
                                     .find_map(|(n, v)| (n == column_name).then(|| v[*row]))
                                     .unwrap()
@@ -433,7 +455,7 @@ where
                             .collect(),
                     },
                 ),
-            )
+            ))
         })
         .unzip();
 
@@ -453,14 +475,17 @@ where
 
     // observe the parts of the proving key which correspond to the sizes of the tables we are proving
     if let Some(proving_key) = proving_key {
-        for commitment in proving_key
+        proving_key
             .preprocessed
             .iter()
-            .map(|(name, map)| &map[&multi_table.tables[name].degree].commitment)
-        {
-            challenger.observe(commitment.clone());
-        }
-    };
+            .filter_map(|(name, map)| {
+                multi_table
+                    .tables
+                    .get(name)
+                    .map(|table| &map[&table.degree].commitment)
+            })
+            .for_each(|commitment| challenger.observe(commitment.clone()));
+    }
 
     multi_table.observe_instances(challenger);
 
@@ -478,7 +503,7 @@ where
         // get the challenges drawn at the end of the previous stage
         let local_challenges = &state.processed_stages.last().unwrap().challenge_values;
         let CallbackResult { air_stages } =
-            program.compute_stage(stage_id, local_challenges, witness);
+            program.compute_stage(stage_id, local_challenges, witness_by_machine);
 
         assert_eq!(air_stages.len(), multi_table.table_count());
 

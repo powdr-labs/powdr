@@ -16,7 +16,11 @@ use std::math::fp2::constrain_eq_ext;
 use std::math::fp2::required_extension_size;
 use std::math::fp2::needs_extension;
 use std::protocols::fingerprint::fingerprint;
+use std::protocols::fingerprint::fingerprint_inter;
+use std::prover::eval;
+use std::array;
 use std::utils::unwrap_or_else;
+use std::constraints::to_phantom_permutation;
 
 let unpack_permutation_constraint: Constr -> (expr, expr[], expr, expr[]) = |permutation_constraint| match permutation_constraint {
     Constr::Permutation((lhs_selector, rhs_selector), values) => (
@@ -41,22 +45,19 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
     
-    let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, fingerprint(lhs, alpha)));
-    let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, fingerprint(rhs, alpha)));
+    let lhs_folded = selected_or_one(eval(lhs_selector), sub_ext(eval_ext(beta), fingerprint(array::eval(lhs), alpha)));
+    let rhs_folded = selected_or_one(eval(rhs_selector), sub_ext(eval_ext(beta), fingerprint(array::eval(rhs), alpha)));
     
     // acc' = acc * lhs_folded / rhs_folded
     let res = mul_ext(
-        eval_ext(mul_ext(acc, lhs_folded)),
-        inv_ext(eval_ext(rhs_folded))
+        mul_ext(eval_ext(acc), lhs_folded),
+        inv_ext(rhs_folded)
     );
 
     unpack_ext_array(res)
 };
 
 /// Returns constraints that enforce that lhs is a permutation of rhs
-/// WARNING: This function can currently not be used multiple times since
-/// the used challenges would overlap
-/// TODO: Implement this for an array of constraints
 ///
 /// # Implementation:
 /// This function implements a permutation argument described e.g. in
@@ -85,8 +86,8 @@ let permutation: Constr -> () = constr |permutation_constraint| {
     // If the selector is 1, contribute a factor of `beta - fingerprint(lhs)` to accumulator.
     // If the selector is 0, contribute a factor of 1 to the accumulator.
     // Implemented as: folded = selector * (beta - fingerprint(values) - 1) + 1;
-    let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, fingerprint(lhs, alpha)));
-    let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, fingerprint(rhs, alpha)));
+    let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, fingerprint_inter(lhs, alpha)));
+    let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, fingerprint_inter(rhs, alpha)));
 
     let acc = std::array::new(required_extension_size(), |i| std::prover::new_witness_col_at_stage("acc", 1));
     let acc_ext = fp2_from_array(acc);
@@ -109,6 +110,9 @@ let permutation: Constr -> () = constr |permutation_constraint| {
     is_first * (acc_1 - 1) = 0;
     is_first * acc_2 = 0;
     constrain_eq_ext(update_expr, from_base(0));
+
+    // Add an annotation for witness generation
+    to_phantom_permutation(permutation_constraint);
 
     // In the extension field, we need a prover function for the accumulator.
     if needs_extension() {

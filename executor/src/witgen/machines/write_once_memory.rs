@@ -3,12 +3,14 @@ use std::collections::{BTreeMap, HashMap};
 use itertools::{Either, Itertools};
 
 use num_traits::One;
-use powdr_ast::analyzed::{PolyID, PolynomialType};
+use powdr_ast::analyzed::{Identity, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::{
-    rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
-    IncompleteCause, MutableState, QueryCallback,
+    data_structures::multiplicity_counter::MultiplicityCounter, rows::RowPair,
+    util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData, IncompleteCause,
+    QueryCallback,
 };
 
 use super::{Connection, Machine, MachineParts};
@@ -38,6 +40,7 @@ pub struct WriteOnceMemory<'a, T: FieldElement> {
     /// The memory content
     data: BTreeMap<DegreeType, Vec<Option<T>>>,
     name: String,
+    multiplicity_counter: MultiplicityCounter,
 }
 
 impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
@@ -46,7 +49,16 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        if !parts.identities.is_empty() {
+        if parts
+            .identities
+            .iter()
+            // The only identity we'd expect is a PhantomBusInteraction
+            .any(|id| !matches!(id, Identity::PhantomBusInteraction(_)))
+        {
+            return None;
+        }
+
+        if parts.connections.is_empty() {
             return None;
         }
 
@@ -123,6 +135,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             value_polys,
             key_to_index,
             data: BTreeMap::new(),
+            multiplicity_counter: MultiplicityCounter::new(&parts.connections),
         })
     }
 
@@ -208,6 +221,9 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         let is_complete = !values.contains(&None);
         let side_effect = self.data.insert(index, values).is_none();
 
+        self.multiplicity_counter
+            .increment_at_row(identity_id, index as usize);
+
         match is_complete {
             true => Ok({
                 let res = EvalValue::complete(updates);
@@ -236,7 +252,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -245,7 +261,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         self.value_polys
             .iter()
@@ -266,8 +282,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
                         }
                         column
                     });
-                (self.fixed_data.column_name(poly).to_string(), column)
+                (*poly, column)
             })
+            .chain(
+                self.multiplicity_counter
+                    .generate_columns_single_size(self.degree),
+            )
+            .map(|(poly_id, column)| (self.fixed_data.column_name(&poly_id).to_string(), column))
             .collect()
     }
 }

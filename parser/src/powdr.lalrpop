@@ -109,7 +109,6 @@ pub PilStatement = {
     LetStatement,
     PolynomialDefinition,
     PublicDeclaration,
-    PolynomialConstantDeclaration,
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
@@ -147,10 +146,6 @@ PublicDeclaration: PilStatement = {
         <poly:NamespacedPolynomialReference>
         <expr1:("[" <Expression> "]")?>
         "(" <expr2:Expression> ")" <end:@R> ";" => PilStatement::PublicDeclaration(ctx.source_ref(start, end), id, poly, expr1, expr2)
-}
-
-PolynomialConstantDeclaration: PilStatement = {
-    <start:@L> PolCol ConstantFixed <list:PolynomialNameList> <end:@R> ";" => PilStatement::PolynomialConstantDeclaration(ctx.source_ref(start, end), list)
 }
 
 PolynomialConstantDefinition: PilStatement = {

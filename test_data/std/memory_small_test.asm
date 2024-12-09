@@ -2,7 +2,10 @@ use std::machines::range::Bit12;
 use std::machines::range::Byte2;
 use std::machines::small_field::memory::Memory;
 
-machine Main with degree: 65536 {
+let main_degree: int = 2**8;
+let memory_degree: int = 2**8;
+
+machine Main with degree: main_degree {
     reg pc[@pc];
     reg X1[<=];
     reg X2[<=];
@@ -14,7 +17,7 @@ machine Main with degree: 65536 {
     col fixed STEP(i) { i };
     Bit12 bit12;
     Byte2 byte2;
-    Memory memory(bit12, byte2);
+    Memory memory(bit12, byte2, memory_degree, memory_degree);
 
     instr mload X1, X2 -> Y1, Y2 link ~> (Y1, Y2) = memory.mload(X1, X2, STEP);
     instr mstore X1, X2, Y1, Y2 -> link ~> memory.mstore(X1, X2, STEP, Y1, Y2);
