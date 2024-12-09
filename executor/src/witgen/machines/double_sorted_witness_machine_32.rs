@@ -4,6 +4,7 @@ use std::iter::once;
 use itertools::Itertools;
 
 use super::{LookupCell, Machine, MachineParts};
+use crate::witgen::data_structures::caller_data::CallerData;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::processor::OuterQuery;
@@ -209,14 +210,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
     ) -> EvalResult<'a, T> {
         let connection = self.parts.connections[&identity_id];
         let outer_query = OuterQuery::new(caller_rows, connection);
-        let mut data_raw = vec![T::zero(); outer_query.left.len()];
-        let mut data = outer_query.prepare_for_direct_lookup(&mut data_raw);
-        if self.process_lookup_direct(mutable_state, identity_id, &mut data)? {
-            Ok(outer_query
-                .direct_lookup_to_eval_result(data_raw)?
-                .report_side_effect())
+        let mut data = CallerData::from(&outer_query);
+        if self.process_lookup_direct(mutable_state, identity_id, &mut data.as_lookup_cells())? {
+            Ok(EvalResult::from(data)?.report_side_effect())
         } else {
             // One of the required arguments was not set, find out which:
+            let data = data.as_lookup_cells();
             Ok(EvalValue::incomplete(
                 IncompleteCause::NonConstantRequiredArgument(
                     match (&data[0], &data[1], &data[2], &data[3]) {

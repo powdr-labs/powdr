@@ -9,6 +9,7 @@ use powdr_ast::analyzed::{AlgebraicReference, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
+use crate::witgen::data_structures::caller_data::CallerData;
 use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
@@ -219,17 +220,16 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         }
 
         // Split the left-hand-side into known input values and unknown output expressions.
-        let mut data = vec![T::zero(); outer_query.left.len()];
-        let mut values = outer_query.prepare_for_direct_lookup(&mut data);
+        let mut values = CallerData::from(&outer_query);
 
-        if !self.process_lookup_direct(mutable_state, identity_id, &mut values)? {
+        if !self.process_lookup_direct(mutable_state, identity_id, &mut values.as_lookup_cells())? {
             // multiple matches, we stop and learnt nothing
             return Ok(EvalValue::incomplete(
                 IncompleteCause::MultipleLookupMatches,
             ));
         };
 
-        outer_query.direct_lookup_to_eval_result(data)
+        values.into()
     }
 
     fn process_range_check(
