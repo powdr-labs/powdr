@@ -33,6 +33,7 @@ mod expression_evaluator;
 pub mod fixed_evaluator;
 mod global_constraints;
 mod identity_processor;
+mod jit;
 mod machines;
 mod processor;
 mod query_processor;
