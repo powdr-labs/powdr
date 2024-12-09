@@ -16,6 +16,7 @@ use powdr_ast::{
 };
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
@@ -103,12 +104,11 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             })
             .collect::<BTreeMap<_, _>>();
 
+        let start = std::time::Instant::now();
         let machines = self
             .machine_to_pil
-            // TODO: We should probably iterate in parallel, because Machine::try_new might generate
-            // later-stage witnesses, which is expensive.
-            // However, for now, doing it sequentially simplifies debugging.
-            .iter()
+            // Machine::try_new generates any second-stage witnesses, so better to do it in parallel.
+            .par_iter()
             .filter_map(|(machine_name, pil)| {
                 Machine::try_new(
                     machine_name.clone(),
@@ -121,6 +121,12 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             })
             .map(|machine| (machine.machine_name.clone(), machine))
             .collect::<BTreeMap<_, _>>();
+        if !challenges.is_empty() {
+            log::info!(
+                "Generating later-stage witnesses took {:.2}s",
+                start.elapsed().as_secs_f32()
+            );
+        }
 
         let is_ok = machines.values().all(|machine| {
             !PolynomialConstraintChecker::new(machine, &challenges)

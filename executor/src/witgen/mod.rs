@@ -1,16 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
+use bus_accumulator::BusAccumulatorGenerator;
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, AlgebraicReferenceThin, Analyzed, DegreeRange,
-    Expression, FunctionValueDefinition, PolyID, PolynomialType, Symbol, SymbolKind,
+    Expression, FunctionValueDefinition, Identity, PolyID, PolynomialType, Symbol, SymbolKind,
     TypedExpression,
 };
 use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement, KnownField};
 use std::iter::once;
 
 use crate::constant_evaluator::VariablySizedColumn;
@@ -27,6 +28,7 @@ use self::machines::profiling::{record_end, record_start, reset_and_print_profil
 mod affine_expression;
 pub(crate) mod analysis;
 mod block_processor;
+mod bus_accumulator;
 mod data_structures;
 mod eval_result;
 pub mod evaluators;
@@ -104,12 +106,32 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
         challenges: BTreeMap<u64, T>,
         stage: u8,
     ) -> Vec<(String, Vec<T>)> {
-        let size = current_witness.iter().next().unwrap().1.len() as DegreeType;
-        let fixed_col_values = self.select_fixed_columns(pil, size);
-        WitnessGenerator::new(pil, &fixed_col_values, &*self.query_callback)
-            .with_external_witness_values(current_witness)
-            .with_challenges(stage, challenges)
-            .generate()
+        let has_phantom_bus_sends = pil
+            .identities
+            .iter()
+            .any(|identity| matches!(identity, Identity::PhantomBusInteraction(_)));
+
+        if has_phantom_bus_sends && T::known_field() == Some(KnownField::GoldilocksField) {
+            log::debug!("Using hand-written bus witgen.");
+            assert_eq!(stage, 1);
+            let bus_columns = BusAccumulatorGenerator::new(
+                pil,
+                current_witness,
+                &self.fixed_col_values,
+                challenges,
+            )
+            .generate();
+
+            current_witness.iter().cloned().chain(bus_columns).collect()
+        } else {
+            log::debug!("Using automatic stage-1 witgen.");
+            let size = current_witness.iter().next().unwrap().1.len() as DegreeType;
+            let fixed_col_values = self.select_fixed_columns(pil, size);
+            WitnessGenerator::new(pil, &fixed_col_values, &*self.query_callback)
+                .with_external_witness_values(current_witness)
+                .with_challenges(stage, challenges)
+                .generate()
+        }
     }
 }
 
