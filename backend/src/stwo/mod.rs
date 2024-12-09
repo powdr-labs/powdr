@@ -38,6 +38,7 @@ impl<F: FieldElement> BackendFactory<F> for RestrictedFactory {
         if proving_key.is_some() {
             return Err(Error::BackendError("Proving key unused".to_string()));
         }
+
         if pil.degrees().len() > 1 {
             return Err(Error::NoVariableDegreeAvailable);
         }
@@ -76,7 +77,7 @@ where
 
         Ok(self.verify(proof, instances)?)
     }
-    #[allow(unreachable_code)]
+
     #[allow(unused_variables)]
     fn prove(
         &self,

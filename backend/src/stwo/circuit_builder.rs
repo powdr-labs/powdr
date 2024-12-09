@@ -70,7 +70,7 @@ impl<T: FieldElement> PowdrEval<T> {
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
-
+        // create a list of indexs of the constant polynomials that have next references constraint
         let constant_with_next_list = get_constant_with_next_list(&analyzed);
 
         let constant_with_next_columns: BTreeMap<PolyID, usize> = analyzed
@@ -146,10 +146,6 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             })
             .collect();
 
-        //println!("self.analyzed.identities_with_inlined_intermediate_polynomials(): {:?}", self.analyzed.identities_with_inlined_intermediate_polynomials());
-
-        //println!("\n self.analyzed.identities is {:?}", self.analyzed.identities);
-
         for id in self
             .analyzed
             .identities_with_inlined_intermediate_polynomials()
@@ -215,7 +211,7 @@ where
                     if !constant_with_next_eval.contains_key(&poly_id) {
                         match r.next {
                             false => constant_eval[&poly_id].clone(),
-                            true => panic!("Next on a constant polynomial filter fails"),
+                            true => panic!("constant polynomial with next reference filter fails"),
                         }
                     } else {
                         match r.next {

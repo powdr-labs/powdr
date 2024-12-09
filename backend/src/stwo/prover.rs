@@ -130,7 +130,7 @@ where
             .split
             .iter()
             .filter_map(|(namespace, pil)| {
-                // if we have neither fixed columns nor publics, we don't need to commit to anything
+                // if we no fixed columns, we don't need to commit to anything, publics is not supported yet.
                 if pil.constant_count() == 0 {
                     None
                 } else {
@@ -208,9 +208,8 @@ where
                         s.degree.iter().flat_map(|range| {
                             range
                                 .iter()
-                                .filter(|&size| size.is_power_of_two()) // Only take powers of 2
+                                .filter(|&size| size.is_power_of_two())
                                 .map(|size| {
-                                    // Compute twiddles for this size
                                     let twiddles = B::precompute_twiddles(
                                         CanonicCoset::new(size.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
                                             .circle_domain()
@@ -218,10 +217,10 @@ where
                                     );
                                     (size as usize, twiddles)
                                 })
-                                .collect::<Vec<_>>() // Collect results into a Vec
+                                .collect::<Vec<_>>()
                         })
                     })
-                    .collect::<Vec<_>>() // Collect the inner results into a Vec
+                    .collect::<Vec<_>>()
             })
             .collect();
         // only the first one is used, machines with varying sizes are not supported yet, and it is checked in backendfactory create function.
