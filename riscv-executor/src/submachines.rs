@@ -195,7 +195,7 @@ impl SubmachineKind for BinaryMachine {
     const BLOCK_SIZE: u32 = 4;
 
     fn add_operation<F: FieldElement>(trace: &mut SubmachineTrace<F>, args: &[F]) {
-        let [op_id, a, b, c, selector] = args[..] else {
+        let [selector, op_id, a, b, c] = args[..] else {
             panic!();
         };
 
@@ -291,7 +291,7 @@ impl SubmachineKind for ShiftMachine {
     const BLOCK_SIZE: u32 = 4;
 
     fn add_operation<F: FieldElement>(trace: &mut SubmachineTrace<F>, args: &[F]) {
-        let [op_id, a, b, c, selector] = args[..] else {
+        let [selector, op_id, a, b, c] = args[..] else {
             panic!();
         };
 
@@ -383,7 +383,7 @@ impl SubmachineKind for SplitGlMachine {
     const BLOCK_SIZE: u32 = 8;
 
     fn add_operation<F: FieldElement>(trace: &mut SubmachineTrace<F>, args: &[F]) {
-        let [output_lo, output_hi, selector] = args[..] else {
+        let [selector, output_lo, output_hi] = args[..] else {
             panic!();
         };
 
@@ -590,7 +590,7 @@ impl SubmachineKind for PoseidonGlMachine {
             "x7[9]", "x7[10]", "x7[11]",
         ];
 
-        let [input_addr, output_addr, time_step, selector] = args[0..4] else {
+        let [selector, input_addr, output_addr, time_step] = args[0..4] else {
             panic!();
         };
 

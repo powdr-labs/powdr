@@ -323,7 +323,7 @@ pub struct ExecutionTrace<F: FieldElement> {
     main_events: Vec<MainEvent<F>>,
 
     /// Calls into submachines. Each is a sequence of field elemements: the RHS values of the lookup followed by the selector idx (if the machine has it).
-    /// TODO: keep a flat Vec instead? individial events can be identified from the machine asm definition.
+    /// TODO: keep a flat Vec instead? individial events could be identified from the machine asm definition and operation id.
     submachine_events: HashMap<MachineInstance, Vec<Vec<F>>>,
 
     /// witness columns
@@ -1889,9 +1889,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 if let ExecMode::Trace = self.mode {
                     let selector = 0;
                     self.proc.submachine("split_gl").add_operation(&[
+                        selector.into(),
                         lo.into(),
                         hi.into(),
-                        selector.into(),
                     ]);
                 }
 
@@ -1937,11 +1937,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 if let ExecMode::Trace = self.mode {
                     self.proc.submachine("binary").add_operation(&[
+                        sel.into(),
                         op_id.into(),
                         val1.into_fe(),
                         val2_offset.into_fe(),
                         r.into(),
-                        sel.into(),
                     ]);
                 }
 
@@ -1988,11 +1988,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 if let ExecMode::Trace = self.mode {
                     self.proc.submachine("shift").add_operation(&[
+                        sel.into(),
                         op_id.into(),
                         val1.into_fe(),
                         val2_offset.into_fe(),
                         r.into(),
-                        sel.into(),
                     ]);
                 }
 
@@ -2018,9 +2018,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 if let ExecMode::Trace = self.mode {
                     let sel = 0;
                     self.proc.submachine("split_gl").add_operation(&[
+                        sel.into(),
                         low_inv.into(),
                         high_inv.into(),
-                        sel.into(),
                     ]);
                 }
 
@@ -2051,9 +2051,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 if let ExecMode::Trace = self.mode {
                     let sel = 0;
                     self.proc.submachine("split_gl").add_operation(&[
+                        sel.into(),
                         lo.into(),
                         hi.into(),
-                        sel.into(),
                     ]);
                 }
 
@@ -2112,9 +2112,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                         // split gl of the poseidon machine
                         let sel = 1;
                         self.proc.submachine("split_gl").add_operation(&[
+                            sel.into(),
                             lo.into(),
                             hi.into(),
-                            sel.into(),
                         ]);
                     }
                 });
@@ -2122,10 +2122,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 if let ExecMode::Trace = self.mode {
                     let sel = 0;
                     self.proc.submachine("poseidon_gl").add_operation(&[
+                        sel.into(),
                         input_ptr.into_fe(),
                         output_ptr.into_fe(),
                         self.step.into(),
-                        sel.into(),
                         inputs[0],
                         inputs[1],
                         inputs[2],
