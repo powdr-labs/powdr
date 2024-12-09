@@ -220,7 +220,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
         _identity_id: u64,
         _values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
-        unimplemented!("Direct lookup not supported machine {}.", self.name())
+        unimplemented!("Direct lookup not supported by machine {}.", self.name())
     }
 
     fn identity_ids(&self) -> Vec<u64> {
