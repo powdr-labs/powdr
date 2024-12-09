@@ -85,6 +85,8 @@ fn check_struct_declarations(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
 ) -> Vec<Error> {
     let mut errors = Vec::new();
+    #[allow(clippy::iter_over_hash_type)]
+    // TODO: This is not deterministic, because the errors are inserted in arbitrary order. Source order would be better.
     for (symbol, def) in definitions.values() {
         let Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(struct_decl))) =
             def
