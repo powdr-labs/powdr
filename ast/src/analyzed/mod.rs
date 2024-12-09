@@ -901,7 +901,7 @@ impl Children<Expression> for NamedType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Hash)]
 pub struct PublicDeclaration {
     pub id: u64,
     pub source: SourceRef,
@@ -921,7 +921,9 @@ impl PublicDeclaration {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct SelectedExpressions<T> {
     pub selector: AlgebraicExpression<T>,
     pub expressions: Vec<AlgebraicExpression<T>>,
@@ -947,7 +949,7 @@ impl<T> Children<AlgebraicExpression<T>> for SelectedExpressions<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema, Hash)]
 pub struct PolynomialIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
@@ -964,7 +966,7 @@ impl<T> Children<AlgebraicExpression<T>> for PolynomialIdentity<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema, Hash)]
 pub struct LookupIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
@@ -986,7 +988,7 @@ impl<T> Children<AlgebraicExpression<T>> for LookupIdentity<T> {
 ///
 /// This identity is used as a replacement for a lookup identity which has been turned into challenge-based polynomial identities.
 /// This is ignored by the backend.
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema, Hash)]
 pub struct PhantomLookupIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
@@ -1015,7 +1017,7 @@ impl<T> Children<AlgebraicExpression<T>> for PhantomLookupIdentity<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema, Hash)]
 pub struct PermutationIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
@@ -1037,7 +1039,7 @@ impl<T> Children<AlgebraicExpression<T>> for PermutationIdentity<T> {
 ///
 /// This identity is used as a replacement for a permutation identity which has been turned into challenge-based polynomial identities.
 /// This is ignored by the backend.
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema, Hash)]
 pub struct PhantomPermutationIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
@@ -1055,7 +1057,7 @@ impl<T> Children<AlgebraicExpression<T>> for PhantomPermutationIdentity<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema, Hash)]
 pub struct ConnectIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
@@ -1073,7 +1075,9 @@ impl<T> Children<AlgebraicExpression<T>> for ConnectIdentity<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema, PartialOrd, Ord)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema, PartialOrd, Ord, Hash,
+)]
 pub struct ExpressionList<T>(pub Vec<AlgebraicExpression<T>>);
 
 impl<T> Children<AlgebraicExpression<T>> for ExpressionList<T> {
@@ -1085,7 +1089,7 @@ impl<T> Children<AlgebraicExpression<T>> for ExpressionList<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema, Hash)]
 pub struct PhantomBusInteractionIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
@@ -1114,6 +1118,7 @@ impl<T> Children<AlgebraicExpression<T>> for PhantomBusInteractionIdentity<T> {
     derive_more::Display,
     derive_more::From,
     derive_more::TryInto,
+    Hash,
 )]
 pub enum Identity<T> {
     Polynomial(PolynomialIdentity<T>),
@@ -1305,7 +1310,9 @@ impl Hash for AlgebraicReference {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub enum AlgebraicExpression<T> {
     Reference(AlgebraicReference),
     PublicReference(String),
@@ -1315,7 +1322,9 @@ pub enum AlgebraicExpression<T> {
     UnaryOperation(AlgebraicUnaryOperation<T>),
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct AlgebraicBinaryOperation<T> {
     pub left: Box<AlgebraicExpression<T>>,
     pub op: AlgebraicBinaryOperator,
@@ -1341,7 +1350,9 @@ impl<T> From<AlgebraicBinaryOperation<T>> for AlgebraicExpression<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct AlgebraicUnaryOperation<T> {
     pub op: AlgebraicUnaryOperator,
     pub expr: Box<AlgebraicExpression<T>>,
@@ -1525,7 +1536,7 @@ impl<T> AlgebraicExpression<T> {
 }
 
 #[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema,
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema, Hash,
 )]
 pub struct Challenge {
     /// Challenge ID
@@ -1534,7 +1545,7 @@ pub struct Challenge {
 }
 
 #[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema,
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema, Hash,
 )]
 pub enum AlgebraicBinaryOperator {
     Add,
@@ -1572,7 +1583,7 @@ impl TryFrom<BinaryOperator> for AlgebraicBinaryOperator {
 }
 
 #[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema,
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema, Hash,
 )]
 pub enum AlgebraicUnaryOperator {
     Minus,
