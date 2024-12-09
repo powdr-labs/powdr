@@ -220,7 +220,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
 
         // Split the left-hand-side into known input values and unknown output expressions.
         let mut data = vec![T::zero(); left.len()];
-        let values = left
+        let mut values = left
             .iter()
             .zip(&mut data)
             .map(|(l, d)| {
@@ -233,7 +233,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             })
             .collect::<Vec<_>>();
 
-        if !self.process_lookup_direct(mutable_state, identity_id, values)? {
+        if !self.process_lookup_direct(mutable_state, identity_id, &mut values)? {
             // multiple matches, we stop and learnt nothing
             return Ok(EvalValue::incomplete(
                 IncompleteCause::MultipleLookupMatches,
@@ -357,7 +357,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         &mut self,
         _mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        values: Vec<LookupCell<'c, T>>,
+        values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         let mut input_values = vec![];
 
@@ -407,14 +407,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         self.multiplicity_counter.increment_at_row(identity_id, row);
 
         values
-            .into_iter()
+            .iter_mut()
             .filter_map(|v| match v {
                 LookupCell::Output(e) => Some(e),
                 _ => None,
             })
             .zip(output)
             .for_each(|(e, v)| {
-                *e = *v;
+                **e = *v;
             });
         Ok(true)
     }
