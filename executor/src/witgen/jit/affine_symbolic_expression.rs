@@ -253,7 +253,6 @@ impl<T: FieldElement, V: Clone + Ord> Add for &AffineSymbolicExpression<T, V> {
     type Output = AffineSymbolicExpression<T, V>;
 
     fn add(self, rhs: Self) -> Self::Output {
-        // TODO could iterate in parallel.
         let mut coefficients = self.coefficients.clone();
         for (var, coeff) in rhs.coefficients.iter() {
             coefficients
