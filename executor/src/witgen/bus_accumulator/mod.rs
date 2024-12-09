@@ -85,15 +85,7 @@ impl<'a, T: FieldElement> BusAccumulatorGenerator<'a, T> {
         let accumulators = self
             .bus_interactions
             .par_iter()
-            .flat_map(|bus_interaction| {
-                let (acc1, acc2) = self.interaction_columns(bus_interaction);
-                let next1 = next(&acc1);
-                let next2 = next(&acc2);
-
-                // We assume that the second-stage witness columns are in this order,
-                // for each bus interaction.
-                [acc1, acc2, next1, next2]
-            })
+            .flat_map(|bus_interaction| self.interaction_columns(bus_interaction))
             .collect::<Vec<_>>();
 
         self.pil
@@ -107,11 +99,13 @@ impl<'a, T: FieldElement> BusAccumulatorGenerator<'a, T> {
     fn interaction_columns(
         &self,
         bus_interaction: &PhantomBusInteractionIdentity<T>,
-    ) -> (Vec<T>, Vec<T>) {
+    ) -> Vec<Vec<T>> {
         let intermediate_definitions = self.pil.intermediate_definitions();
         let empty_challenges = BTreeMap::new();
 
         let size = self.trace_values.height();
+        let mut folded1 = vec![T::zero(); size];
+        let mut folded2 = vec![T::zero(); size];
         let mut acc1 = vec![T::zero(); size];
         let mut acc2 = vec![T::zero(); size];
 
@@ -128,26 +122,26 @@ impl<'a, T: FieldElement> BusAccumulatorGenerator<'a, T> {
             };
             let multiplicity = evaluator.evaluate(&bus_interaction.multiplicity);
 
+            let tuple = bus_interaction
+                .tuple
+                .0
+                .iter()
+                .map(|r| evaluator.evaluate(r))
+                .collect::<Vec<_>>();
+            let folded = self.beta - self.fingerprint(&tuple);
+
             let new_acc = match multiplicity.is_zero() {
                 true => current_acc,
-                false => {
-                    let tuple = bus_interaction
-                        .tuple
-                        .0
-                        .iter()
-                        .map(|r| evaluator.evaluate(r))
-                        .collect::<Vec<_>>();
-
-                    let fingerprint = self.beta - self.fingerprint(&tuple);
-                    current_acc + fingerprint.inverse() * multiplicity
-                }
+                false => current_acc + folded.inverse() * multiplicity,
             };
 
+            folded1[i] = folded.0;
+            folded2[i] = folded.1;
             acc1[i] = new_acc.0;
             acc2[i] = new_acc.1;
         }
 
-        (acc1, acc2)
+        vec![folded1, folded2, acc1, acc2]
     }
 
     /// Fingerprints a tuples of field elements, using the pre-computed powers of alpha.
@@ -169,11 +163,4 @@ fn powers_of_alpha<T: FieldElement>(alpha: Fp2<T>, n: usize) -> Vec<Fp2<T>> {
             Some(result)
         })
         .collect::<Vec<_>>()
-}
-
-/// Rotates a column to the left.
-fn next<T: Clone>(column: &[T]) -> Vec<T> {
-    let mut result = column.to_vec();
-    result.rotate_left(1);
-    result
 }
