@@ -467,6 +467,8 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
     }
 }
 
+/// A paged key-value store. Addresses do not overlap, every address can store
+/// a full field element.
 struct PagedData<T> {
     /// All pages except the first.
     pages: HashMap<u64, Vec<T>>,
@@ -485,17 +487,20 @@ impl<T: FieldElement> Default for PagedData<T> {
 
 impl<T: FieldElement> PagedData<T> {
     /// Tuning parameters.
-    /// On the dev machine, only the combination of "PAGE_BITS <= 8" and the introduction
+    /// On the dev machine, only the combination of "PAGE_SIZE_LOG2 <= 8" and the introduction
     /// of "page zero" gives a 2x improvement in the register machine (and 20% in regular
     /// memory as well actually) relative to non-paged.
     /// This should be continuously monitored.
-    const PAGE_BITS: u64 = 8;
-    const PAGE_SIZE: u64 = (1 << Self::PAGE_BITS);
+    const PAGE_SIZE_LOG2: u64 = 8;
+    const PAGE_SIZE: u64 = (1 << Self::PAGE_SIZE_LOG2);
     const PAGE_MASK: u64 = Self::PAGE_SIZE - 1;
 
     fn page_offset(addr: T) -> (u64, usize) {
         let addr = addr.to_integer().try_into_u64().unwrap();
-        (addr >> Self::PAGE_BITS, (addr & Self::PAGE_MASK) as usize)
+        (
+            addr >> Self::PAGE_SIZE_LOG2,
+            (addr & Self::PAGE_MASK) as usize,
+        )
     }
 
     fn fresh_page() -> Vec<T> {
