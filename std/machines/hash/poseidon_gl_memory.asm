@@ -23,7 +23,6 @@ use std::machines::split::split_gl::SplitGL;
 //   - 1 to split the current output into low and high words
 machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     latch: CLK_0,
-    operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
@@ -40,9 +39,7 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     // 8 32-Bit machine words representing 4 field elements in little-endian format
     // (in canonical form).
     // Reads happen at the provided time step; writes happen at the next time step.
-    operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
-
-    let operation_id;
+    operation poseidon_permutation input_addr, output_addr, time_step ->;
 
     // Ported from:
     // - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/poseidong.pil
