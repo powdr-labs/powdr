@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use itertools::Itertools;
 use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 
@@ -84,7 +85,7 @@ impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
     ) -> Vec<LookupCell<'c, T>> {
         self.left
             .iter()
-            .zip(input_output_data.iter_mut())
+            .zip_eq(input_output_data.iter_mut())
             .map(|(l, d)| {
                 if let Some(value) = l.constant_value() {
                     *d = value;

@@ -79,8 +79,7 @@ impl<T: FieldElement> CompactData<T> {
     pub fn append_new_rows(&mut self, count: usize) {
         self.data
             .resize(self.data.len() + count * self.column_count, T::zero());
-        self.known_cells
-            .grow(count * self.column_count, false);
+        self.known_cells.grow(count * self.column_count, false);
     }
 
     fn index(&self, row: usize, col: u64) -> usize {
@@ -102,7 +101,8 @@ impl<T: FieldElement> CompactData<T> {
 
     pub fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (u64, &T)> {
         (0..self.column_count).filter_map(move |i| {
-            let idx = row * self.column_count + i;
+            let col = self.first_column_id + i as u64;
+            let idx = self.index(row, col);
             self.known_cells[idx].then(|| {
                 let col_id = self.first_column_id + i as u64;
                 (col_id, &self.data[idx])
@@ -276,10 +276,7 @@ impl<T: FieldElement> FinalizableData<T> {
 
     /// Returns an iterator over the values known in that row together with the PolyIDs.
     #[auto_enum(Iterator)]
-    pub fn known_values_in_row(
-        &self,
-        row: usize,
-    ) -> impl Iterator<Item = (PolyID, T)> + use<'_, T> {
+    pub fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (PolyID, T)> + '_ {
         match self.location_of_row(row) {
             Location::PreFinalized(local) => {
                 let row = &self.pre_finalized_data[local];
