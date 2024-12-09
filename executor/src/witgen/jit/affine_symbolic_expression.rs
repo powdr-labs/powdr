@@ -1,7 +1,7 @@
 use std::{
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
-    ops::{Add, Mul, Neg, Sub},
+    ops::{Add, Neg, Sub},
 };
 
 use itertools::Itertools;
@@ -14,9 +14,10 @@ use super::{super::range_constraints::RangeConstraint, symbolic_expression::Symb
 
 /// The effect of solving a symbolic equation.
 pub enum Effect<T: FieldElement, V> {
+    /// variable can be assigned a value.
     Assignment(V, SymbolicExpression<T>),
+    /// we learnt a new range constraint on variable.
     RangeConstraint(V, RangeConstraint<T>),
-    Code(String),
 }
 
 /// Represents an expression `a_1 * x_1 + ... + a_k * x_k + offset`,
@@ -77,15 +78,12 @@ impl<T: FieldElement, V: Ord + Clone> AffineSymbolicExpression<T, V> {
     pub fn from_number(n: T) -> Self {
         SymbolicExpression::from(n).into()
     }
-
     pub fn is_known_zero(&self) -> bool {
         self.coefficients.is_empty() && self.offset.is_known_zero()
     }
-
     pub fn is_known_one(&self) -> bool {
         self.coefficients.is_empty() && self.offset.is_known_one()
     }
-
     pub fn is_known(&self) -> bool {
         self.coefficients.is_empty()
     }
@@ -150,6 +148,7 @@ impl<T: FieldElement, V: Ord + Clone> AffineSymbolicExpression<T, V> {
             .collect()
     }
 
+    /// Tries to solve a bit-decomposition equation.
     fn solve_through_constraints(
         &self,
         range_constraints: &impl RangeConstraintSet<V, T>,
@@ -182,10 +181,11 @@ impl<T: FieldElement, V: Ord + Clone> AffineSymbolicExpression<T, V> {
             } else {
                 covered_bits |= mask;
             }
-            let mask = T::from(mask);
-            let masked = &(-&self.offset) & &mask.into();
-            let rhs = masked.integer_div(&coeff.into());
-            assignments.push(Effect::Assignment(var.clone(), rhs));
+            let masked = &(-&self.offset) & &T::from(mask).into();
+            assignments.push(Effect::Assignment(
+                var.clone(),
+                masked.integer_div(&coeff.into()),
+            ));
         }
 
         if covered_bits >= T::modulus() {
@@ -322,20 +322,20 @@ mod test {
         }
     }
 
-    type ASE = AffineSymbolicExpression<GoldilocksField, &'static str>;
+    type Ase = AffineSymbolicExpression<GoldilocksField, &'static str>;
 
-    fn from_number(x: i32) -> ASE {
-        ASE::from_number(GoldilocksField::from(x))
+    fn from_number(x: i32) -> Ase {
+        Ase::from_number(GoldilocksField::from(x))
     }
 
-    fn mul(a: &ASE, b: &ASE) -> ASE {
+    fn mul(a: &Ase, b: &Ase) -> Ase {
         a.try_mul(b).unwrap()
     }
 
     #[test]
     fn solve_simple_eq() {
-        let y = ASE::from_known_variable("y");
-        let x = ASE::from_unknown_variable("X");
+        let y = Ase::from_known_variable("y");
+        let x = Ase::from_unknown_variable("X");
         // 2 * X + 7 * y - 10 = 0
         let two = from_number(2);
         let seven = from_number(7);
@@ -352,10 +352,10 @@ mod test {
 
     #[test]
     fn solve_bit_decomposition() {
-        let a = ASE::from_unknown_variable("a");
-        let b = ASE::from_unknown_variable("b");
-        let c = ASE::from_unknown_variable("c");
-        let z = ASE::from_known_variable("Z");
+        let a = Ase::from_unknown_variable("a");
+        let b = Ase::from_unknown_variable("b");
+        let c = Ase::from_unknown_variable("c");
+        let z = Ase::from_known_variable("Z");
         let range_constraints = SimpleRangeConstraintSet(
             ["a", "b", "c"]
                 .into_iter()
@@ -387,6 +387,43 @@ mod test {
             "a = ((-((10 + Z)) & 65280) // 256);
 b = ((-((10 + Z)) & 16711680) // 65536);
 c = ((-((10 + Z)) & 4278190080) // 16777216);
+"
+        );
+    }
+
+    #[test]
+    fn solve_constraint_transfer() {
+        let a = Ase::from_unknown_variable("a");
+        let b = Ase::from_unknown_variable("b");
+        let c = Ase::from_unknown_variable("c");
+        let z = Ase::from_unknown_variable("Z");
+        let range_constraints = SimpleRangeConstraintSet(
+            ["a", "b", "c"]
+                .into_iter()
+                .map(|var| (var, RangeConstraint::from_mask(0xffu32)))
+                .collect(),
+        );
+        // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 - Z = 0
+        let ten = from_number(10);
+        let constr = &(&(&(&mul(&a, &from_number(0x100)) + &mul(&b, &from_number(0x10000)))
+            + &mul(&c, &from_number(0x1000000)))
+            + &ten)
+            - &z;
+        let effects = constr
+            .solve(&range_constraints)
+            .into_iter()
+            .map(|effect| match effect {
+                Effect::RangeConstraint(v, rc) => format!("{v}: {rc};\n"),
+                _ => panic!(),
+            })
+            .format("")
+            .to_string();
+        // It appears twice because we solve the positive and the negated equation.
+        // Maybe it is enough to only solve one.
+        assert_eq!(
+            effects,
+            "Z: [10, 4294967050] & 0xffffff0a;
+Z: [10, 4294967050] & 0xffffff0a;
 "
         );
     }
