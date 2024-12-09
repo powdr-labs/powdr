@@ -480,7 +480,7 @@ fn enum_pattern() {
 }
 
 #[test]
-#[should_panic = "Only one \"..\"-item allowed in array pattern"]
+#[should_panic = "Only one \\\"..\\\"-item allowed in array pattern"]
 fn multi_ellipsis() {
     let input = "    let t: int[] -> int = (|i| match i {
         [1, .., 3, ..] => 2,
@@ -722,7 +722,7 @@ fn trait_user_defined_enum_wrong_type() {
 }
 
 #[test]
-#[should_panic = "Could not find an implementation for the trait function ToTuple::get::<int, (int, int)> at input:90-102"]
+#[should_panic = "Could not find an implementation for the trait function ToTuple::get::<int, (int, int)> (trait is not implemented at all) at input:90-102"]
 fn trait_no_impl() {
     let input = "
     trait ToTuple<S, I> {
@@ -734,7 +734,7 @@ fn trait_no_impl() {
 }
 
 #[test]
-#[should_panic = "Could not find an implementation for the trait function Trait::f::<string> at input:109-117"]
+#[should_panic = "Could not find a matching implementation for the trait function Trait::f::<string> at input:109-117"]
 fn trait_wrong_impl() {
     let input = r#"
     trait Trait<X> {

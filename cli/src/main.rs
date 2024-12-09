@@ -6,13 +6,15 @@ use clap::{CommandFactory, Parser, Subcommand};
 use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::{max_level, LevelFilter};
-use powdr_backend::BackendType;
-use powdr_number::{buffered_write_file, read_polys_csv_file, CsvRenderMode};
-use powdr_number::{
+use powdr::backend::BackendType;
+use powdr::number::{buffered_write_file, read_polys_csv_file, CsvRenderMode};
+use powdr::number::{
     BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KoalaBearField,
     Mersenne31Field,
 };
-use powdr_pipeline::Pipeline;
+use powdr::pipeline::pipeline::{DegreeMode, LinkerMode, LinkerParams};
+use powdr::pipeline::test_runner;
+use powdr::Pipeline;
 use std::io;
 use std::path::PathBuf;
 use std::{fs, io::Write, path::Path};
@@ -31,7 +33,8 @@ fn bind_cli_args<F: FieldElement>(
     force_overwrite: bool,
     pilo: bool,
     witness_values: Option<String>,
-    export_csv: bool,
+    export_witness: bool,
+    export_all_columns: bool,
     csv_mode: CsvRenderModeCLI,
 ) -> Pipeline<F> {
     let witness_values = witness_values
@@ -50,7 +53,7 @@ fn bind_cli_args<F: FieldElement>(
     let pipeline = pipeline
         .with_output(output_dir.clone(), force_overwrite)
         .add_external_witness_values(witness_values.clone())
-        .with_witness_csv_settings(export_csv, csv_mode)
+        .with_witness_csv_settings(export_witness, export_all_columns, csv_mode)
         .with_prover_inputs(inputs.clone());
 
     if pilo {
@@ -152,10 +155,24 @@ enum Commands {
         #[arg(long)]
         backend_options: Option<String>,
 
-        /// Generate a CSV file containing the fixed and witness column values. Useful for debugging purposes.
+        /// Linker mode, deciding how to reduce links to constraints.
+        #[arg(long)]
+        #[arg(value_parser = clap_enum_variants!(LinkerMode))]
+        linker_mode: Option<LinkerMode>,
+
+        /// Degree mode, deciding whether to use a single monolithic table or a set of dynamically sized tables.
+        #[arg(long)]
+        degree_mode: Option<DegreeMode>,
+
+        /// Generate a CSV file containing the witness column values.
         #[arg(long)]
         #[arg(default_value_t = false)]
-        export_csv: bool,
+        export_witness_csv: bool,
+
+        /// Generate a CSV file containing all fixed and witness column values. Useful for debugging purposes.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        export_all_columns_csv: bool,
 
         /// How to render field elements in the csv file
         #[arg(long)]
@@ -357,6 +374,19 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(FieldArgument))]
         field: FieldArgument,
     },
+
+    /// Executes all functions starting with `test_` in every module called
+    /// `test` (or sub-module thereof) starting from the given module.
+    Test {
+        /// Input file.
+        file: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+    },
 }
 
 fn split_inputs<T: FieldElement>(inputs: &str) -> Vec<T> {
@@ -423,7 +453,7 @@ fn run_command(command: Commands) {
     let result = match command {
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
-            match powdr_parser::parse(Some(&file), &contents) {
+            match powdr::parser::parse(Some(&file), &contents) {
                 Ok(ast) => println!("{ast}"),
                 Err(err) => err.output_to_stderr(),
             };
@@ -444,7 +474,10 @@ fn run_command(command: Commands) {
             prove_with,
             params,
             backend_options,
-            export_csv,
+            linker_mode,
+            degree_mode,
+            export_witness_csv,
+            export_all_columns_csv,
             csv_mode,
         } => {
             call_with_field!(run_pil::<field>(
@@ -457,9 +490,15 @@ fn run_command(command: Commands) {
                 prove_with,
                 params,
                 backend_options,
-                export_csv,
+                linker_mode,
+                degree_mode,
+                export_witness_csv,
+                export_all_columns_csv,
                 csv_mode
             ))
+        }
+        Commands::Test { file, field } => {
+            call_with_field!(run_test::<field>(&file))
         }
         Commands::Prove {
             file,
@@ -643,19 +682,28 @@ fn run_pil<F: FieldElement>(
     prove_with: Option<BackendType>,
     params: Option<String>,
     backend_options: Option<String>,
-    export_csv: bool,
+    linker_mode: Option<LinkerMode>,
+    degree_mode: Option<DegreeMode>,
+    export_witness: bool,
+    export_all_columns: bool,
     csv_mode: CsvRenderModeCLI,
 ) -> Result<(), Vec<String>> {
     let inputs = split_inputs::<F>(&inputs);
 
     let pipeline = bind_cli_args(
-        Pipeline::<F>::default().from_file(PathBuf::from(&file)),
+        Pipeline::<F>::default()
+            .from_file(PathBuf::from(&file))
+            .with_linker_params(LinkerParams {
+                mode: linker_mode.unwrap_or_default(),
+                degree_mode: degree_mode.unwrap_or_default(),
+            }),
         inputs.clone(),
         PathBuf::from(output_directory),
         force,
         pilo,
         witness_values,
-        export_csv,
+        export_witness,
+        export_all_columns,
         csv_mode,
     );
     run(pipeline, prove_with, params, backend_options)?;
@@ -678,7 +726,12 @@ fn run<F: FieldElement>(
             .compute_proof()
             .unwrap();
     }
+    Ok(())
+}
 
+fn run_test<T: FieldElement>(file: &str) -> Result<(), Vec<String>> {
+    let include_std_tests = false;
+    test_runner::run_from_file::<T>(file, include_std_tests)?;
     Ok(())
 }
 
@@ -752,7 +805,7 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
 #[cfg(test)]
 mod test {
     use crate::{run_command, Commands, CsvRenderModeCLI, FieldArgument};
-    use powdr_backend::BackendType;
+    use powdr::backend::BackendType;
     use test_log::test;
 
     #[test]
@@ -772,7 +825,10 @@ mod test {
             prove_with: Some(BackendType::EStarkDump),
             params: None,
             backend_options: Some("stark_gl".to_string()),
-            export_csv: true,
+            linker_mode: None,
+            degree_mode: None,
+            export_witness_csv: false,
+            export_all_columns_csv: true,
             csv_mode: CsvRenderModeCLI::Hex,
         };
         run_command(pil_command);

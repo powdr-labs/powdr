@@ -16,7 +16,7 @@ halo2 = [
   "dep:halo2_solidity_verifier",
 ]
 estark-starky = ["dep:starky"]
-estark-polygon = ["dep:pil-stark-prover"]
+estark-polygon = ["dep:pil-stark-prover", "dep:starky"]
 plonky3 = [
   "dep:powdr-plonky3",
   "dep:p3-commit",
@@ -27,8 +27,7 @@ stwo = ["dep:stwo-prover"]
 
 # Enable AVX or Neon accordingly in backends that support them.
 plonky3-simd = ["powdr-plonky3?/nightly-features"]
-estark-starky-simd = ["starky/avx512"]
-simd = ["plonky3-simd", "estark-starky-simd"]
+estark-starky-simd = ["starky?/avx512"]
 
 [dependencies]
 powdr-ast.workspace = true
@@ -56,6 +55,7 @@ snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier.git", rev
 halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier.git", rev = "ecae7fd2f62178c18b5fe18011630aa71da3371f", features = [
   "evm",
 ], optional = true }
+rayon = "1.7.0"
 
 p3-commit = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", features = [
   "test-utils",
@@ -63,7 +63,7 @@ p3-commit = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf2
 p3-matrix = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", optional = true }
 p3-uni-stark = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", optional = true }
 # TODO: Change this to main branch when the `andrew/dev/update-toolchain` branch is merged,the main branch is using "nightly-2024-01-04", not compatiable with plonky3
-stwo-prover = { git = "https://github.com/starkware-libs/stwo.git", optional = true, rev = "52d050c18b5dbc74af40214b3b441a6f60a20d41" }
+stwo-prover = { git = "https://github.com/starkware-libs/stwo.git", optional = true, rev = "e6d10bc107c11cce54bb4aa152c3afa2e15e92c1" }
 
 strum = { version = "0.24.1", features = ["derive"] }
 log = "0.4.17"
@@ -87,5 +87,5 @@ powdr-pipeline.workspace = true
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]
 
-[lints.clippy]
-uninlined_format_args = "deny"
+[lints]
+workspace = true

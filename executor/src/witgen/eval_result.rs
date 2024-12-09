@@ -161,6 +161,7 @@ impl<K, T: FieldElement> EvalValue<K, T> {
 /// New assignments or constraints for witness columns identified by an ID.
 pub type EvalResult<'a, T, K = AlgebraicVariable<'a>> = Result<EvalValue<K, T>, EvalError<T>>;
 
+/// A fatal error for witness generation.
 #[derive(Clone, PartialEq)]
 pub enum EvalError<T: FieldElement> {
     /// We ran out of rows
@@ -175,6 +176,8 @@ pub enum EvalError<T: FieldElement> {
     FixedLookupFailed(Vec<(String, T)>),
     /// Error getting information from the prover.
     ProverQueryError(String),
+    /// Machines depend on each other recursively.
+    RecursiveMachineCalls(String),
     Generic(String),
     Multiple(Vec<EvalError<T>>),
 }
@@ -239,6 +242,9 @@ impl<T: FieldElement> fmt::Display for EvalError<T> {
             }
             EvalError::ProverQueryError(s) => {
                 write!(f, "Error getting external information from the prover: {s}")
+            }
+            EvalError::RecursiveMachineCalls(err) => {
+                write!(f, "Recursive machine dependency: {err}")
             }
             EvalError::Generic(s) => write!(f, "{s}"),
         }

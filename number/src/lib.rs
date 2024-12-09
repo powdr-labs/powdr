@@ -1,7 +1,5 @@
 //! Numerical types used across powdr
 
-#![deny(clippy::print_stdout)]
-
 #[macro_use]
 mod macros;
 mod baby_bear;

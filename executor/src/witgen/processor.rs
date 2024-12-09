@@ -6,6 +6,7 @@ use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference,
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 use crate::Identity;
 
@@ -19,10 +20,31 @@ use super::{
     },
     identity_processor::IdentityProcessor,
     rows::{Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
-    Constraints, EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback,
+    Constraints, EvalError, EvalValue, IncompleteCause, QueryCallback,
 };
 
 type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
+
+/// The data mutated by the processor
+pub(crate) struct SolverState<'a, T: FieldElement> {
+    /// The block of trace cells
+    pub block: FinalizableData<T>,
+    /// The values of publics
+    pub publics: BTreeMap<&'a str, T>,
+}
+
+impl<'a, T: FieldElement> SolverState<'a, T> {
+    pub fn new(block: FinalizableData<T>, publics: BTreeMap<&'a str, T>) -> Self {
+        Self { block, publics }
+    }
+
+    pub fn without_publics(block: FinalizableData<T>) -> Self {
+        Self {
+            block,
+            publics: BTreeMap::new(),
+        }
+    }
+}
 
 /// Data needed to handle an outer query.
 #[derive(Clone)]
@@ -67,15 +89,16 @@ pub struct IdentityResult {
 /// on any given row.
 /// The lifetimes mean the following:
 /// - `'a`: The duration of the entire witness generation (e.g. references to identities)
-/// - `'b`: The duration of this machine's call (e.g. the mutable references of the other machines)
 /// - `'c`: The duration of this Processor's lifetime (e.g. the reference to the identity processor)
-pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
+pub struct Processor<'a, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// The global index of the first row of [Processor::data].
     row_offset: RowIndex,
     /// The rows that are being processed.
     data: FinalizableData<T>,
+    /// The values of the publics
+    publics: BTreeMap<&'a str, T>,
     /// The mutable state
-    mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+    mutable_state: &'c MutableState<'a, T, Q>,
     /// The fixed data (containing information about all columns)
     fixed_data: &'a FixedData<'a, T>,
     /// The machine parts (witness columns, identities, fixed data)
@@ -94,11 +117,11 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     size: DegreeType,
 }
 
-impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
+impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
     pub fn new(
         row_offset: RowIndex,
-        data: FinalizableData<T>,
-        mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+        mutable_data: SolverState<'a, T>,
+        mutable_state: &'c MutableState<'a, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         size: DegreeType,
@@ -118,7 +141,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
 
         Self {
             row_offset,
-            data,
+            data: mutable_data.block,
+            publics: mutable_data.publics,
             mutable_state,
             fixed_data,
             parts,
@@ -134,10 +158,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         }
     }
 
-    pub fn with_outer_query(
-        self,
-        outer_query: OuterQuery<'a, 'c, T>,
-    ) -> Processor<'a, 'b, 'c, T, Q> {
+    pub fn with_outer_query(self, outer_query: OuterQuery<'a, 'c, T>) -> Processor<'a, 'c, T, Q> {
         log::trace!("  Extracting inputs:");
         let mut inputs = vec![];
         for (l, r) in outer_query
@@ -170,22 +191,30 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             .unwrap_or(true)
     }
 
-    pub fn finish(self) -> FinalizableData<T> {
-        self.data
+    /// Returns the updated data and values for publics
+    pub fn finish(self) -> SolverState<'a, T> {
+        SolverState {
+            block: self.data,
+            publics: self.publics,
+        }
     }
 
     pub fn latch_value(&self, row_index: usize) -> Option<bool> {
         let row_pair = RowPair::from_single_row(
             &self.data[row_index],
             self.row_offset + row_index as u64,
+            &self.publics,
             self.fixed_data,
             UnknownStrategy::Unknown,
             self.size,
         );
         self.outer_query
             .as_ref()
-            .and_then(|outer_query| outer_query.connection.right.selector.as_ref())
-            .and_then(|latch| row_pair.evaluate(latch).ok())
+            .and_then(|outer_query| {
+                row_pair
+                    .evaluate(&outer_query.connection.right.selector)
+                    .ok()
+            })
             .and_then(|l| l.constant_value())
             .map(|l| l.is_one())
     }
@@ -193,7 +222,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     pub fn process_queries(&mut self, row_index: usize) -> Result<bool, EvalError<T>> {
         let mut query_processor = QueryProcessor::new(
             self.fixed_data,
-            self.mutable_state.query_callback,
+            self.mutable_state.query_callback(),
             self.size,
         );
 
@@ -202,6 +231,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             &self.data[row_index],
             &self.data[row_index + 1],
             global_row_index,
+            &self.publics,
             self.fixed_data,
             UnknownStrategy::Unknown,
             self.size,
@@ -240,6 +270,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             &self.data[row_index],
             &self.data[row_index + 1],
             global_row_index,
+            &self.publics,
             self.fixed_data,
             unknown_strategy,
             self.size,
@@ -291,13 +322,11 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     ) -> Result<(bool, Constraints<AlgebraicVariable<'a>, T>), EvalError<T>> {
         let mut progress = false;
         let right = self.outer_query.as_ref().unwrap().connection.right;
-        if let Some(selector) = right.selector.as_ref() {
-            progress |= self
-                .set_value(row_index, selector, T::one(), || {
-                    "Set selector to 1".to_string()
-                })
-                .unwrap_or(false);
-        }
+        progress |= self
+            .set_value(row_index, &right.selector, T::one(), || {
+                "Set selector to 1".to_string()
+            })
+            .unwrap_or(false);
 
         let outer_query = self
             .outer_query
@@ -308,6 +337,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             &self.data[row_index],
             &self.data[row_index + 1],
             self.row_offset + row_index as u64,
+            &self.publics,
             self.fixed_data,
             UnknownStrategy::Unknown,
             self.size,
@@ -393,6 +423,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             &self.data[row_index],
             &self.data[row_index + 1],
             self.row_offset + row_index as u64,
+            &self.publics,
             self.fixed_data,
             UnknownStrategy::Unknown,
             self.size,
@@ -418,28 +449,35 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         let mut progress = false;
         for (var, c) in &updates.constraints {
-            let poly = match var {
-                AlgebraicVariable::Column(poly) => poly,
-                _ => unimplemented!(),
-            };
-            if self.parts.witnesses.contains(&poly.poly_id) {
-                // Build RowUpdater
-                // (a bit complicated, because we need two mutable
-                // references to elements of the same vector)
-                let (current, next) = self.data.mutable_row_pair(row_index);
-                let mut row_updater =
-                    RowUpdater::new(current, next, self.row_offset + row_index as u64);
-                row_updater.apply_update(poly, c);
-                progress = true;
-                self.propagate_along_copy_constraints(row_index, poly, c);
-            } else if let Constraint::Assignment(v) = c {
-                let left = &mut self.outer_query.as_mut().unwrap().left;
-                log::trace!("      => {} (outer) = {}", poly, v);
-                for l in left.iter_mut() {
-                    l.assign(*var, *v);
+            match var {
+                AlgebraicVariable::Public(name) => {
+                    if let Constraint::Assignment(v) = c {
+                        // There should be only few publics, so this can be logged with info.
+                        log::info!("      => {} (public) = {}", name, v);
+                        assert!(
+                            self.publics.insert(name, *v).is_none(),
+                            "value was already set!"
+                        );
+                    }
                 }
-                progress = true;
-            };
+                AlgebraicVariable::Column(poly) => {
+                    if self.parts.witnesses.contains(&poly.poly_id) {
+                        let (current, next) = self.data.mutable_row_pair(row_index);
+                        let mut row_updater =
+                            RowUpdater::new(current, next, self.row_offset + row_index as u64);
+                        row_updater.apply_update(poly, c);
+                        progress = true;
+                        self.propagate_along_copy_constraints(row_index, poly, c);
+                    } else if let Constraint::Assignment(v) = c {
+                        let left = &mut self.outer_query.as_mut().unwrap().left;
+                        log::trace!("      => {} (outer) = {}", poly, v);
+                        for l in left.iter_mut() {
+                            l.assign(*var, *v);
+                        }
+                        progress = true;
+                    };
+                }
+            }
         }
 
         progress
@@ -491,7 +529,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         self.data.len()
     }
 
-    pub fn finalize_range(&mut self, range: impl Iterator<Item = usize>) {
+    pub fn finalize_range(&mut self, range: std::ops::Range<usize>) {
         assert!(
             self.copy_constraints.is_empty(),
             "Machines with copy constraints should not be finalized while being processed."
@@ -536,6 +574,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                     &self.data[row_index - 1],
                     proposed_row,
                     self.row_offset + (row_index - 1) as DegreeType,
+                    &self.publics,
                     self.fixed_data,
                     UnknownStrategy::Zero,
                     self.size,
@@ -547,6 +586,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             false => RowPair::from_single_row(
                 proposed_row,
                 self.row_offset + row_index as DegreeType,
+                &self.publics,
                 self.fixed_data,
                 UnknownStrategy::Zero,
                 self.size,

@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     collections::{btree_map::Entry, BTreeMap},
     io::{self, Cursor, Read},
     marker::PhantomData,
@@ -13,6 +12,7 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
@@ -41,8 +41,8 @@ struct MachineProof {
 /// A composite proof that contains a proof for each machine separately, sorted by machine name.
 #[derive(Serialize, Deserialize)]
 struct CompositeProof {
-    /// Machine proofs, sorted by machine name.
-    proofs: Vec<MachineProof>,
+    /// Machine proofs by machine name.
+    proofs: BTreeMap<String, MachineProof>,
 }
 
 pub(crate) struct CompositeBackendFactory<F: FieldElement, B: BackendFactory<F>> {
@@ -307,16 +307,29 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
             unimplemented!();
         }
 
+        // Compute next-stage witness for each machine in parallel.
+        let mut witness_by_machine = self
+            .machine_data
+            .par_iter()
+            .map(|(machine_name, machine_data)| {
+                let (witness, size) =
+                    process_witness_for_machine(machine_name, machine_data, witness);
+                (machine_name.clone(), (witness, size))
+            })
+            .collect::<BTreeMap<_, _>>();
+
         // We use scoped threads to be able to share non-'static references.
         thread::scope(|scope| {
             let mut proofs_status = self
                 .machine_data
                 .iter()
-                .map(|machine_entry| {
+                .filter_map(|machine_entry| {
                     let (machine, machine_data) = machine_entry;
-                    let (witness, size) =
-                        process_witness_for_machine(machine, machine_data, witness);
-
+                    let (witness, size) = witness_by_machine[machine].clone();
+                    if size == 0 {
+                        // If a machine has no rows, remove it entirely.
+                        return None;
+                    }
                     let inner_machine_data = machine_data
                         .get(&size)
                         .expect("Machine does not support the given size");
@@ -325,12 +338,11 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
                         sub_prover::run(scope, &inner_machine_data.backend, witness)
                     });
 
-                    (status, machine_entry, size)
+                    Some((status, machine_entry, size))
                 })
                 .collect::<Vec<_>>();
 
-            let mut proof_results = Vec::new();
-            let mut witness = Cow::Borrowed(witness);
+            let mut proof_results = BTreeMap::new();
             for stage in 1.. {
                 // Filter out proofs that have completed and accumulate the
                 // challenges.
@@ -339,7 +351,8 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
                     .into_iter()
                     .filter_map(|(status, machine_data, size)| match status {
                         sub_prover::RunStatus::Completed(result) => {
-                            proof_results.push((result, size));
+                            let (machine_name, _) = machine_data;
+                            assert!(proof_results.insert(machine_name, (result, size)).is_none());
                             None
                         }
                         sub_prover::RunStatus::Challenged(sub_prover, c) => {
@@ -354,17 +367,29 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
                     break;
                 }
 
-                witness = witgen_callback
-                    .next_stage_witness(&witness, challenges, stage)
-                    .into();
+                witness_by_machine = self
+                    .machine_data
+                    .par_iter()
+                    .map(|(machine_name, machine_data)| {
+                        let (machine_witness, size) = witness_by_machine.get(machine_name).unwrap();
+                        let machine_data = machine_data.get(size).unwrap();
+                        let new_witness = witgen_callback.next_stage_witness(
+                            &machine_data.pil,
+                            machine_witness,
+                            challenges.clone(),
+                            stage,
+                        );
+                        (machine_name.clone(), (new_witness, *size))
+                    })
+                    .collect();
 
                 // Resume the waiting provers with the new witness
                 proofs_status = waiting_provers
                     .into_iter()
                     .map(|(prover, machine_entry)| {
-                        let (machine_name, machine_data) = machine_entry;
+                        let (machine_name, _) = machine_entry;
                         let (witness, size) =
-                            process_witness_for_machine(machine_name, machine_data, &witness);
+                            witness_by_machine.get(machine_name).cloned().unwrap();
 
                         let status =
                             time_stage(machine_name, size, stage, move || prover.resume(witness));
@@ -376,14 +401,14 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
 
             let proofs = proof_results
                 .into_iter()
-                .map(|(proof, size)| match proof {
-                    Ok(proof) => Ok(MachineProof { size, proof }),
+                .map(|(machine_name, (proof, size))| match proof {
+                    Ok(proof) => Ok((machine_name.clone(), MachineProof { size, proof })),
                     Err(e) => {
                         log::error!("==> Machine proof failed: {:?}", e);
                         Err(e)
                     }
                 })
-                .collect::<Result<Vec<_>, _>>()?;
+                .collect::<Result<BTreeMap<_, _>, _>>()?;
 
             let proof = CompositeProof { proofs };
             Ok(bincode::serialize(&proof).unwrap())
@@ -392,16 +417,16 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
 
     fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
         let proof: CompositeProof = bincode::deserialize(proof).unwrap();
-        for (machine_data, machine_proof) in
-            self.machine_data.values().zip_eq(proof.proofs.into_iter())
-        {
-            machine_data
-                .get(&machine_proof.size)
-                .unwrap()
-                .backend
-                .lock()
-                .unwrap()
-                .verify(&machine_proof.proof, instances)?;
+        for (machine_name, machine_data) in self.machine_data.iter() {
+            if let Some(machine_proof) = proof.proofs.get(machine_name) {
+                machine_data
+                    .get(&machine_proof.size)
+                    .unwrap()
+                    .backend
+                    .lock()
+                    .unwrap()
+                    .verify(&machine_proof.proof, instances)?;
+            }
         }
         Ok(())
     }

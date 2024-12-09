@@ -3,7 +3,7 @@
 use itertools::Itertools;
 use p3_commit::Pcs;
 use p3_matrix::dense::RowMajorMatrix;
-use powdr_backend_utils::machine_fixed_columns;
+use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use serde::{Deserialize, Serialize};
 
@@ -85,13 +85,16 @@ where
         self.verifying_key = Some(bincode::deserialize_from(rdr).unwrap());
     }
 
-    pub fn export_proving_key(&self) -> Result<Vec<u8>, KeyExportError> {
-        Ok(bincode::serialize(
-            self.proving_key
-                .as_ref()
-                .ok_or(KeyExportError::NoProvingKey)?,
-        )
-        .unwrap())
+    pub fn export_proving_key(
+        &self,
+        writer: &mut dyn std::io::Write,
+    ) -> Result<(), KeyExportError> {
+        let pk = self
+            .proving_key
+            .as_ref()
+            .ok_or(KeyExportError::NoProvingKey)?;
+        bincode::serialize_into(writer, pk).unwrap();
+        Ok(())
     }
 
     pub fn export_verifying_key(&self) -> Result<Vec<u8>, KeyExportError> {
@@ -130,7 +133,9 @@ where
                                 let publics = pil
                                     .get_publics()
                                     .into_iter()
-                                    .map(|(_, _, row_id, _)| move |i| T::from(i == row_id as u64))
+                                    .map(|(_, _, _, row_id, _)| {
+                                        move |i| T::from(i == row_id as u64)
+                                    })
                                     .collect::<Vec<_>>();
 
                                 // get the config
@@ -203,8 +208,16 @@ where
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
-        // here we need to clone the witness because the callback will modify it
-        let witness = &mut witness.to_vec();
+        let mut witness_by_machine = self
+            .split
+            .iter()
+            .map(|(machine, (pil, _))| {
+                (
+                    machine.clone(),
+                    machine_witness_columns(witness, pil, machine),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
 
         let circuit = PowdrCircuit::new(&self.split).with_witgen_callback(witgen_callback);
 
@@ -212,13 +225,18 @@ where
 
         let proving_key = self.proving_key.as_ref();
 
-        let proof = prove(proving_key, &circuit, witness, &mut challenger);
+        let proof = prove(
+            proving_key,
+            &circuit,
+            &mut witness_by_machine,
+            &mut challenger,
+        );
 
         let mut challenger = T::get_challenger();
 
         let verifying_key = self.verifying_key.as_ref();
 
-        let public_values = circuit.public_values_so_far(witness);
+        let public_values = circuit.public_values_so_far(&witness_by_machine);
 
         // extract the full map of public values by unwrapping all the options
         let public_values = public_values
@@ -276,7 +294,7 @@ where
             .get_publics()
             .iter()
             .zip_eq(instances.iter())
-            .map(|((poly_name, _, _, stage), value)| {
+            .map(|((_, poly_name, _, _, stage), value)| {
                 let namespace = poly_name.split("::").next().unwrap();
                 (namespace, stage, value)
             })
@@ -353,12 +371,23 @@ mod tests {
 
     #[test]
     fn public_values() {
-        let content = "namespace Global(8); pol witness x; x * (x - 1) = 0; public out = x(7);";
+        let content = "
+        namespace Global(8);
+            pol fixed FIRST = [1] + [0]*;
+            pol witness x;
+            pol witness y;
+            y * y = y;
+            x' = (1 - FIRST') * (x + 1);
+            public out0 = x(6);
+            public out1 = x(7);
+            public out2 = y(3);
+            public out3 = y(5);
+        ";
         run_test(content);
     }
 
     #[test]
-    #[should_panic = "not implemented: Unexpected expression: :oldstate"]
+    #[should_panic = "Witness generation failed."]
     fn public_reference() {
         let content = r#"
         namespace Global(8);

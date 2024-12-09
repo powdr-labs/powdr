@@ -40,11 +40,12 @@ impl Location {
 }
 
 #[derive(Clone)]
-pub struct PILGraph {
+pub struct MachineInstanceGraph {
     pub main: Machine,
     pub entry_points: Vec<Operation>,
     pub objects: BTreeMap<Location, Object>,
-    /// PIL utilities by module path
+    /// List of module-level PIL statements (utility functions,
+    /// data structures, etc) by module path
     pub statements: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
 }
 

@@ -59,6 +59,18 @@ let<T: Add + FromLiteral + Mul> mul_ext: Fp4<T>, Fp4<T> -> Fp4<T> = |a, b| match
     )
 };
 
+/// Extension field squaring
+/// This implementation yields a shorter expression than `mul_ext(a, a)` and should be preferred
+/// when squaring expressions many times.
+let<T: Add + FromLiteral + Mul> square_ext: Fp4<T> -> Fp4<T> = |a| match a {
+    Fp4::Fp4(a0, a1, a2, a3) => Fp4::Fp4(
+        a0 * a0 + 11 * (2 * a1 * a3 + a2 * a2),
+        2 * (a0 * a1 + 11 * a2 * a3),
+        2 * a0 * a2 + a1 * a1 + 11 * (a3 * a3),
+        2 * (a0 * a3 + a1 * a2)
+    )
+};
+
 /// Inversion for an Fp4 element
 /// The inverse of (a0, a1, a2, a3) is a point (b0, b1, b2, b3) such that:
 /// (a0 + a1 * x + a2 * x^2 + a3 * x^3) (b0 + b1 * x + b2 * x^2 + b3 * x^3) = 1 (mod x^4 - 11)
@@ -141,12 +153,13 @@ mod test {
     use super::add_ext;
     use super::sub_ext;
     use super::mul_ext;
+    use super::square_ext;
     use super::inv_ext;
     use super::eq_ext;
     use std::check::assert;
     use std::array::map;
 
-    let add = || {
+    let test_add = || {
         let test_add = |a, b, c| assert(eq_ext(add_ext(a, b), c), || "Wrong addition result");
 
         // Test adding 0
@@ -165,7 +178,7 @@ mod test {
         test_add(Fp4::Fp4(-1, 0, 0, 0), Fp4::Fp4(1, 0, 0, 0), from_base(0));
     };
 
-    let sub = || {
+    let test_sub = || {
         let test_sub = |a, b, c| assert(eq_ext(sub_ext(a, b), c), || "Wrong subtraction result");
 
         // Test subtracting 0
@@ -177,7 +190,7 @@ mod test {
         test_sub(Fp4::Fp4(-1, -1, 0, 0), Fp4::Fp4(0x78000000, 1, 0, 0), Fp4::Fp4(-0x78000000 - 1, -2, 0, 0))
     };
 
-    let mul = || {
+    let test_mul = || {
         let test_mul = |a, b, c| assert(eq_ext(mul_ext(a, b), c), || "Wrong multiplication result");
 
         // Test multiplication by 1
@@ -197,7 +210,19 @@ mod test {
         test_mul(Fp4::Fp4(-1, -2, -3, -4), Fp4::Fp4(-3, 4, 4, 5), Fp4::Fp4(-415, -339, -223, -13));
     };
 
-    let inverse = || {
+    let test_square = || {
+        // Tests consistency with mul_ext
+        let test_square = |a| assert(eq_ext(mul_ext(a, a), square_ext(a)), || "Wrong squaring result");
+
+        test_square(from_base(0));
+        test_square(from_base(1));
+        test_square(from_base(2));
+        test_square(Fp4::Fp4(1, 1, 1, 1));
+        test_square(Fp4::Fp4(123, 1234, 12, 12345));
+        test_square(Fp4::Fp4(-1, -2, -3, -4));
+    };
+
+    let test_inverse = || {
         let test_elements = [
             from_base(1),
             Fp4::Fp4(123, 1234, 1, 2),

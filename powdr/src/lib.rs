@@ -2,7 +2,9 @@ pub use powdr_ast as ast;
 pub use powdr_backend as backend;
 pub use powdr_executor as executor;
 pub use powdr_number as number;
+pub use powdr_parser as parser;
 pub use powdr_pil_analyzer as pil_analyzer;
+pub use powdr_pilopt as pilopt;
 pub use powdr_pipeline as pipeline;
 pub use powdr_riscv as riscv;
 pub use powdr_riscv_executor as riscv_executor;
@@ -10,15 +12,23 @@ pub use powdr_riscv_executor as riscv_executor;
 pub use powdr_pipeline::Pipeline;
 
 pub use powdr_number::Bn254Field;
-pub use powdr_number::FieldElement;
 pub use powdr_number::GoldilocksField;
+pub use powdr_number::{FieldElement, LargeInt};
 
-use riscv::CompilerOptions;
+use riscv::{CompilerOptions, RuntimeLibs};
 
 use std::fs::{self, File};
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
+
+#[derive(Default)]
+pub struct SessionBuilder {
+    guest_path: String,
+    out_path: String,
+    chunk_size_log2: Option<u8>,
+    precompiles: RuntimeLibs,
+}
 
 pub struct Session {
     pipeline: Pipeline<GoldilocksField>,
@@ -29,39 +39,62 @@ const DEFAULT_PKEY: &str = "pkey.bin";
 const DEFAULT_VKEY: &str = "vkey.bin";
 
 // Minimum and maximum log of number of rows for the RISCV machine.
-const DEFAULT_MIN_DEGREE_LOG: u32 = 5;
-const DEFAULT_MAX_DEGREE_LOG: u32 = 20;
+const DEFAULT_MIN_DEGREE_LOG: u8 = 5;
+const DEFAULT_MAX_DEGREE_LOG: u8 = 20;
 // Minimum acceptable max degree.
-const DEFAULT_MIN_MAX_DEGREE_LOG: u32 = 18;
+const DEFAULT_MIN_MAX_DEGREE_LOG: u8 = 18;
 
-impl Session {
-    pub fn new(guest_path: &str, out_path: &str) -> Self {
+impl SessionBuilder {
+    /// Builds a session with the given parameters.
+    pub fn build(self) -> Session {
         Session {
             pipeline: pipeline_from_guest(
-                guest_path,
-                Path::new(out_path),
+                &self.guest_path,
+                Path::new(&self.out_path),
                 DEFAULT_MIN_DEGREE_LOG,
-                DEFAULT_MAX_DEGREE_LOG,
+                self.chunk_size_log2.unwrap_or(DEFAULT_MAX_DEGREE_LOG),
+                self.precompiles,
             ),
-            out_path: out_path.into(),
+            out_path: self.out_path,
         }
         .with_backend(powdr_backend::BackendType::Plonky3)
     }
 
-    /// Create a new session with a specific chunk size, represented by its log2.
-    /// Example: for a chunk size of 2^20, set chunk_size_log to 20.
-    pub fn new_with_chunk_size(guest_path: &str, out_path: &str, chunk_size_log: u32) -> Self {
-        assert!(chunk_size_log >= DEFAULT_MIN_MAX_DEGREE_LOG);
-        Session {
-            pipeline: pipeline_from_guest(
-                guest_path,
-                Path::new(out_path),
-                DEFAULT_MIN_DEGREE_LOG,
-                chunk_size_log,
-            ),
-            out_path: out_path.into(),
+    /// Sets the path to the guest program.
+    pub fn guest_path(mut self, guest_path: &str) -> Self {
+        self.guest_path = guest_path.into();
+        self
+    }
+
+    /// Sets the output path for the artifacts.
+    pub fn out_path(mut self, out_path: &str) -> Self {
+        self.out_path = out_path.into();
+        self
+    }
+
+    /// Set the chunk size, represented by its log2.
+    /// Example: for a chunk size of 2^20, set chunk_size_log2 to 20.
+    /// If the execution trace is longer than the 2^chunk_size_log2,
+    /// the execution will be split into multiple chunks of length `2^chunk_size_log2`.
+    /// Each chunk will be proven separately.
+    pub fn chunk_size_log2(mut self, chunk_size_log2: u8) -> Self {
+        assert!(chunk_size_log2 >= DEFAULT_MIN_MAX_DEGREE_LOG);
+        self.chunk_size_log2 = Some(chunk_size_log2);
+        self
+    }
+
+    pub fn precompiles(mut self, precompiles: RuntimeLibs) -> Self {
+        self.precompiles = precompiles;
+        self
+    }
+}
+
+impl Session {
+    pub fn builder() -> SessionBuilder {
+        SessionBuilder {
+            precompiles: RuntimeLibs::new(),
+            ..SessionBuilder::default()
         }
-        .with_backend(powdr_backend::BackendType::Plonky3)
     }
 
     pub fn into_pipeline(self) -> Pipeline<GoldilocksField> {
@@ -158,6 +191,27 @@ impl Session {
 
         self.pipeline.export_verification_key(file).unwrap();
     }
+
+    pub fn publics(&self) -> [u32; 8] {
+        let pubs: Vec<u32> = self
+            .pipeline
+            .publics()
+            .unwrap()
+            .iter()
+            .map(|(_, v)| v.unwrap().to_integer().try_into_u32().unwrap())
+            .collect();
+        pubs.try_into().expect("There should be exactly 8 publics")
+    }
+
+    pub fn stdout<S: serde::de::DeserializeOwned>(&self) -> S {
+        let host = self.pipeline.host_context();
+        host.read(1).unwrap()
+    }
+
+    pub fn stderr<S: serde::de::DeserializeOwned>(&self) -> S {
+        let host = self.pipeline.host_context();
+        host.read(2).unwrap()
+    }
 }
 
 fn pil_file_path(asm_name: &Path) -> PathBuf {
@@ -169,34 +223,36 @@ fn pil_file_path(asm_name: &Path) -> PathBuf {
 pub fn build_guest(
     guest_path: &str,
     out_path: &Path,
-    min_degree_log: u32,
-    max_degree_log: u32,
+    min_degree_log: u8,
+    max_degree_log: u8,
+    precompiles: RuntimeLibs,
 ) -> (PathBuf, String) {
-    riscv::compile_rust(
-        guest_path,
-        CompilerOptions::new_gl()
-            .with_poseidon()
-            .with_continuations()
-            .with_min_degree_log(min_degree_log)
-            .with_max_degree_log(max_degree_log),
-        out_path,
-        true,
-        None,
-    )
-    .ok_or_else(|| vec!["could not compile rust".to_string()])
-    .unwrap()
+    let options = CompilerOptions::new_gl()
+        .with_runtime_libs(precompiles)
+        .with_continuations()
+        .with_min_degree_log(min_degree_log)
+        .with_max_degree_log(max_degree_log);
+    riscv::compile_rust(guest_path, options, out_path, true, None)
+        .ok_or_else(|| vec!["could not compile rust".to_string()])
+        .unwrap()
 }
 
 pub fn pipeline_from_guest(
     guest_path: &str,
     out_path: &Path,
-    min_degree_log: u32,
-    max_degree_log: u32,
+    min_degree_log: u8,
+    max_degree_log: u8,
+    precompiles: RuntimeLibs,
 ) -> Pipeline<GoldilocksField> {
     println!("Compiling guest program...");
 
-    let (asm_file_path, asm_contents) =
-        build_guest(guest_path, out_path, min_degree_log, max_degree_log);
+    let (asm_file_path, asm_contents) = build_guest(
+        guest_path,
+        out_path,
+        min_degree_log,
+        max_degree_log,
+        precompiles,
+    );
 
     // Create a pipeline from the asm program
     Pipeline::<GoldilocksField>::default()
@@ -208,21 +264,19 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
     println!("Running powdr-riscv executor in fast mode...");
     let start = Instant::now();
 
-    let program = pipeline.compute_analyzed_asm().unwrap().clone();
-    let initial_memory = riscv::continuations::load_initial_memory(&program);
-    let (trace, _mem, _reg_mem) = riscv_executor::execute_ast(
-        &program,
+    let asm = pipeline.compute_analyzed_asm().unwrap().clone();
+    let initial_memory = riscv::continuations::load_initial_memory(&asm);
+    let trace_len = riscv_executor::execute_fast(
+        &asm,
         initial_memory,
         pipeline.data_callback().unwrap(),
         &riscv::continuations::bootloader::default_input(&[]),
-        usize::MAX,
-        riscv_executor::ExecMode::Fast,
         None,
     );
 
     let duration = start.elapsed();
     println!("Fast executor took: {duration:?}");
-    println!("Trace length: {}", trace.len);
+    println!("Trace length: {trace_len}");
 }
 
 pub fn prove(pipeline: &mut Pipeline<GoldilocksField>) {
@@ -258,7 +312,10 @@ pub fn prove(pipeline: &mut Pipeline<GoldilocksField>) {
 
     pipeline.rollback_from_witness();
 
-    println!("Running witness and proof generation for all chunks...");
+    println!(
+        "Running witness and proof generation for {} chunks...",
+        bootloader_inputs.bootloader_inputs.len()
+    );
     let start = Instant::now();
     riscv::continuations::rust_continuations(pipeline, generate_proof, bootloader_inputs).unwrap();
     let duration = start.elapsed();

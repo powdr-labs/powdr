@@ -1,23 +1,24 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use powdr_ast::analyzed::DegreeRange;
+use powdr_ast::analyzed::{DegreeRange, LookupIdentity, PhantomLookupIdentity};
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;
 
 use std::time::Instant;
 
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::identity_processor::{self};
+use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::IncompleteCause;
 use crate::Identity;
 
 use super::affine_expression::AlgebraicVariable;
-use super::data_structures::finalizable_data::FinalizableData;
 use super::machines::MachineParts;
-use super::processor::{OuterQuery, Processor};
+use super::processor::{OuterQuery, Processor, SolverState};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
-use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
+use super::{Constraints, EvalError, EvalValue, FixedData, QueryCallback};
 
 /// Maximal period checked during loop detection.
 const MAX_PERIOD: usize = 4;
@@ -44,7 +45,7 @@ impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
     }
 }
 
-pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
+pub struct VmProcessor<'a, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// The name of the machine being run
     machine_name: String,
     /// The common degree range of all referenced columns
@@ -65,29 +66,39 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     identities_without_next_ref: Vec<&'a Identity<T>>,
     last_report: DegreeType,
     last_report_time: Instant,
-    processor: Processor<'a, 'b, 'c, T, Q>,
+    processor: Processor<'a, 'c, T, Q>,
     progress_bar: ProgressBar,
+    /// If true, we'll periodically check if we are in a loop. If yes, we'll add new rows by
+    /// copying the old ones and check the constraints.
+    loop_detection: bool,
 }
 
-impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T, Q> {
+impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         machine_name: String,
         row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
-        data: FinalizableData<T>,
-        mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+        mutable_data: SolverState<'a, T>,
+        mutable_state: &'c MutableState<'a, T, Q>,
+        degree: DegreeType,
+        loop_detection: bool,
     ) -> Self {
         let degree_range = parts.common_degree_range();
-
-        let degree = degree_range.max;
 
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = parts
             .identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, parts, degree);
+        let processor = Processor::new(
+            row_offset,
+            mutable_data,
+            mutable_state,
+            fixed_data,
+            parts,
+            degree,
+        );
 
         let progress_bar = ProgressBar::new(degree);
         progress_bar.set_style(
@@ -110,15 +121,17 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             last_report_time: Instant::now(),
             processor,
             progress_bar,
+            loop_detection,
         }
     }
 
-    pub fn with_outer_query(self, outer_query: OuterQuery<'a, 'b, T>) -> Self {
+    pub fn with_outer_query(self, outer_query: OuterQuery<'a, 'c, T>) -> Self {
         let processor = self.processor.with_outer_query(outer_query);
         Self { processor, ..self }
     }
 
-    pub fn finish(self) -> (FinalizableData<T>, DegreeType) {
+    /// Returns the updated data, values for publics, and the length of the block.
+    pub fn finish(self) -> (SolverState<'a, T>, DegreeType) {
         (self.processor.finish(), self.degree)
     }
 
@@ -172,7 +185,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             }
 
             // Check if we are in a loop.
-            if looping_period.is_none() && row_index % 100 == 0 && row_index > 0 {
+            if looping_period.is_none()
+                && row_index % 100 == 0
+                && row_index > 0
+                && self.loop_detection
+            {
                 looping_period = self.rows_are_repeating(row_index);
                 if let Some(p) = looping_period {
                     log::log!(
@@ -180,17 +197,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                         "Found loop with period {p} starting at row {row_index}"
                     );
 
-                    let new_degree = self.processor.len().next_power_of_two() as DegreeType;
-                    let new_degree = self.degree_range.fit(new_degree);
-                    log::info!(
-                        "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-                        self.machine_name,
-                        self.degree,
-                        new_degree,
-                        self.processor.len()
+                    self.degree = compute_size_and_log(
+                        &self.machine_name,
+                        self.processor.len(),
+                        self.degree_range,
                     );
-                    self.degree = new_degree;
-                    self.processor.set_size(new_degree);
+                    self.processor.set_size(self.degree);
                 }
             }
             if let Some(period) = looping_period {
@@ -352,10 +364,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             .iter_mut()
             .enumerate()
             .filter_map(|(index, (ident, _))| match ident {
-                Identity::Lookup(i) => Some((index, i)),
+                Identity::Lookup(LookupIdentity { left, .. })
+                | Identity::PhantomLookup(PhantomLookupIdentity { left, .. }) => {
+                    Some((index, left))
+                }
                 _ => None,
             })
-            .max_by_key(|(_, ident)| ident.left.expressions.len())
+            .max_by_key(|(_, left)| left.expressions.len())
             .map(|(i, _)| i);
         loop {
             let mut progress = false;
@@ -444,7 +459,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             return Ok(None);
         }
 
-        let is_machine_call = matches!(identity, Identity::Lookup(..) | Identity::Permutation(..));
+        let is_machine_call = matches!(
+            identity,
+            Identity::Lookup(..)
+                | Identity::Permutation(..)
+                | Identity::PhantomLookup(..)
+                | Identity::PhantomPermutation(..)
+        );
         if is_machine_call && unknown_strategy == UnknownStrategy::Zero {
             // The fact that we got to the point where we assume 0 for unknown cells, but this identity
             // is still not complete, means that either the inputs or the machine is under-constrained.

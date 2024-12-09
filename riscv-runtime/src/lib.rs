@@ -3,16 +3,19 @@
     start,
     alloc_error_handler,
     maybe_uninit_write_slice,
-    round_char_boundary
+    round_char_boundary,
+    asm_const
 )]
 
-use core::arch::{asm, global_asm};
-use powdr_riscv_syscalls::Syscall;
+#[macro_use]
+mod ecall;
 
 mod allocator;
 pub mod arith;
+pub mod commit;
 pub mod ec;
 pub mod fmt;
+pub mod goldilocks;
 pub mod hash;
 pub mod io;
 
@@ -24,12 +27,30 @@ mod no_std_support;
 #[cfg(feature = "std")]
 mod std_support;
 
+use core::arch::{asm, global_asm};
+use powdr_riscv_syscalls::Syscall;
+
+#[no_mangle]
 pub fn halt() -> ! {
+    finalize();
     unsafe {
-        asm!("ecall", in("t0") u32::from(Syscall::Halt));
+        ecall!(Syscall::Halt,);
     }
     #[allow(clippy::empty_loop)]
     loop {}
+}
+
+pub fn finalize() {
+    unsafe {
+        let commit = commit::finalize();
+        for (i, limb) in commit.iter().enumerate() {
+            let low = *limb as u32;
+            let high = (*limb >> 32) as u32;
+            // TODO this is not going to work properly for BB for now.
+            ecall!(Syscall::CommitPublic, in("a0") i * 2, in("a1") low);
+            ecall!(Syscall::CommitPublic, in("a0") i * 2 + 1, in("a1") high);
+        }
+    }
 }
 
 // Entry point function __runtime_start:
@@ -55,6 +76,7 @@ __runtime_start:
     #lla sp, __powdr_stack_start
     lui sp, %hi(__powdr_stack_start)
     addi sp, sp, %lo(__powdr_stack_start)
-    tail main
+    call main
+    call halt
 "
 );

@@ -6,10 +6,7 @@ use itertools::Itertools;
 
 use crate::code_gen::Register;
 
-use crate::runtime::{
-    parse_function_statement, parse_instruction_declaration, SubMachine, SyscallImpl,
-    EXTRA_REG_PREFIX,
-};
+use crate::runtime::{parse_instruction_declaration, SubMachine, SyscallImpl, EXTRA_REG_PREFIX};
 use crate::RuntimeLibs;
 
 /// RISCV powdr assembly runtime.
@@ -17,14 +14,14 @@ use crate::RuntimeLibs;
 #[derive(Clone)]
 pub struct Runtime {
     submachines: BTreeMap<String, SubMachine>,
-    syscalls: BTreeMap<Syscall, SyscallImpl>,
+    syscalls: BTreeMap<&'static str, SyscallImpl>,
 }
 
 impl Runtime {
-    pub fn new(libs: RuntimeLibs, continuations: bool) -> Self {
+    pub fn new(libs: RuntimeLibs) -> Self {
         let mut runtime = Runtime::base();
-        if libs.poseidon {
-            runtime = runtime.with_poseidon(continuations);
+        if libs.poseidon2 {
+            runtime = runtime.with_poseidon2();
         }
         if libs.keccak {
             runtime = runtime.with_keccak();
@@ -47,7 +44,7 @@ impl Runtime {
             "std::machines::large_field::binary::Binary",
             None,
             "binary",
-            vec!["byte_binary"],
+            vec!["byte_binary", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
             [
                 r#"instr and X, Y, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
@@ -66,14 +63,13 @@ impl Runtime {
                     link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
             ],
             0,
-            ["and 0, 0, 0, 0;"],
         );
 
         r.add_submachine(
             "std::machines::large_field::shift::Shift",
             None,
             "shift",
-            vec!["byte_shift"],
+            vec!["byte_shift", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
             [
                 r#"instr shl X, Y, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
@@ -87,101 +83,56 @@ impl Runtime {
                     link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
             ],
             0,
-            ["shl 0, 0, 0, 0;"],
         );
 
         r.add_submachine(
             "std::machines::split::split_gl::SplitGL",
             None,
             "split_gl",
-            vec!["byte_compare"],
+            vec!["byte_compare", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
             [r#"instr split_gl X, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> (tmp3_col, tmp4_col) = split_gl.split(tmp1_col)
                     link ~> regs.mstore(Z, STEP + 2, tmp3_col)
                     link ~> regs.mstore(W, STEP + 3, tmp4_col);"#],
             0,
-            ["split_gl 0, 0, 0;"],
         );
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Bit2",
-            None,
-            "bit2",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Bit2", None, "bit2", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Bit6",
-            None,
-            "bit6",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Bit6", None, "bit6", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Bit7",
-            None,
-            "bit7",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Bit7", None, "bit7", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Byte",
-            None,
-            "byte",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Byte", None, "byte", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Byte2",
-            None,
-            "byte2",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Byte2", None, "byte2", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
+        r.add_submachine::<&str, _>(
             "std::machines::binary::ByteBinary",
             None,
             "byte_binary",
             vec![],
             [],
             0,
-            [],
         );
 
-        r.add_submachine::<&str, _, _>(
+        r.add_submachine::<&str, _>(
             "std::machines::large_field::shift::ByteShift",
             None,
             "byte_shift",
             vec![],
             [],
             0,
-            [],
         );
 
-        r.add_submachine::<&str, _, _>(
+        r.add_submachine::<&str, _>(
             "std::machines::split::ByteCompare",
             None,
             "byte_compare",
             vec![],
             [],
             0,
-            [],
         );
 
         // Base syscalls
@@ -209,7 +160,11 @@ impl Runtime {
 
         r.add_syscall(Syscall::Halt, ["return;"]);
 
-        r
+        r.add_syscall(Syscall::CommitPublic, ["commit_public 10, 11;"]);
+
+        r.add_syscall(Syscall::InvertGL, ["invert_gl 10, 11;"]);
+
+        r.with_poseidon()
     }
 
     fn with_keccak(mut self) -> Self {
@@ -233,10 +188,6 @@ impl Runtime {
             "#
             .to_string()],
             0,
-            std::iter::once("set_reg 10, 0x100;".to_string()) // filler value for input pointer
-                .chain(std::iter::once("set_reg 11, 0x300;".to_string())) // filler value for output pointer (at least 200 bytes away)
-                .chain(std::iter::once("keccakf 10, 11;".to_string())) // must be called at least once
-                .chain((0..50).flat_map(|i| store_word(11, i as u32 * 4, "x0"))), // zero out 200 bytes following output pointer
         );
 
         // The keccakf syscall has a two arguments passed on x10 and x11,
@@ -249,7 +200,7 @@ impl Runtime {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn add_submachine<S: AsRef<str>, I1: IntoIterator<Item = S>, I2: IntoIterator<Item = S>>(
+    fn add_submachine<S: AsRef<str>, I1: IntoIterator<Item = S>>(
         &mut self,
         path: &str,
         alias: Option<&str>,
@@ -257,7 +208,6 @@ impl Runtime {
         arguments: Vec<&str>,
         instructions: I1,
         extra_registers: u8,
-        init_call: I2,
     ) {
         let subm = SubMachine {
             path: str::parse(path).expect("invalid submachine path"),
@@ -269,10 +219,6 @@ impl Runtime {
                 .map(|s| parse_instruction_declaration(s.as_ref()))
                 .collect(),
             extra_registers,
-            init_call: init_call
-                .into_iter()
-                .map(|s| parse_function_statement(s.as_ref()))
-                .collect(),
         };
         assert!(
             self.submachines
@@ -287,55 +233,34 @@ impl Runtime {
         syscall: Syscall,
         implementation: I,
     ) {
-        let implementation = SyscallImpl(
-            implementation
+        let implementation = SyscallImpl {
+            syscall,
+            statements: implementation
                 .into_iter()
-                .map(|s| parse_function_statement(s.as_ref()))
+                .map(|s| s.as_ref().to_string())
                 .collect(),
-        );
+        };
 
-        if self.syscalls.insert(syscall, implementation).is_some() {
+        if self
+            .syscalls
+            .insert(syscall.name(), implementation)
+            .is_some()
+        {
             panic!("duplicate syscall {syscall}");
         }
     }
 
-    fn with_poseidon(mut self, continuations: bool) -> Self {
-        let init_call = if continuations {
-            vec![
-                "mstore_bootloader 0, 0, 0, 0;",
-                "mstore_bootloader 0, 0, 4, 0;",
-                "mstore_bootloader 0, 0, 8, 0;",
-                "mstore_bootloader 0, 0, 12, 0;",
-                "mstore_bootloader 0, 0, 16, 0;",
-                "mstore_bootloader 0, 0, 20, 0;",
-                "mstore_bootloader 0, 0, 24, 0;",
-                "mstore_bootloader 0, 0, 28, 0;",
-                "mstore_bootloader 0, 0, 32, 0;",
-                "mstore_bootloader 0, 0, 36, 0;",
-                "mstore_bootloader 0, 0, 40, 0;",
-                "mstore_bootloader 0, 0, 44, 0;",
-                "mstore_bootloader 0, 0, 48, 0;",
-                "mstore_bootloader 0, 0, 52, 0;",
-                "mstore_bootloader 0, 0, 56, 0;",
-                "mstore_bootloader 0, 0, 60, 0;",
-                "mstore_bootloader 0, 0, 64, 0;",
-                "mstore_bootloader 0, 0, 68, 0;",
-                "mstore_bootloader 0, 0, 72, 0;",
-                "mstore_bootloader 0, 0, 76, 0;",
-                "mstore_bootloader 0, 0, 80, 0;",
-                "mstore_bootloader 0, 0, 84, 0;",
-                "mstore_bootloader 0, 0, 88, 0;",
-                "mstore_bootloader 0, 0, 92, 0;",
-                "poseidon_gl 0, 0;",
-            ]
-        } else {
-            vec!["poseidon_gl 0, 0;"]
-        };
+    fn with_poseidon(mut self) -> Self {
         self.add_submachine(
             "std::machines::hash::poseidon_gl_memory::PoseidonGLMemory",
             None,
             "poseidon_gl",
-            vec!["memory", "split_gl"],
+            vec![
+                "memory",
+                "split_gl",
+                "MIN_DEGREE",
+                "LARGE_SUBMACHINES_MAX_DEGREE",
+            ],
             [r#"instr poseidon_gl X, Y
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
@@ -350,7 +275,6 @@ impl Runtime {
                 }
             "#],
             0,
-            init_call,
         );
 
         // The poseidon syscall has a single argument passed on x10, the
@@ -358,7 +282,43 @@ impl Runtime {
         // offset is chosen by LLVM, we assume it's properly aligned.
         let implementation = std::iter::once("poseidon_gl 10, 10;".to_string());
 
-        self.add_syscall(Syscall::PoseidonGL, implementation);
+        self.add_syscall(Syscall::PoseidonGL, implementation.clone());
+        self.add_syscall(Syscall::NativeHash, implementation);
+        self
+    }
+
+    fn with_poseidon2(mut self) -> Self {
+        self.add_submachine(
+            "std::machines::hash::poseidon2_gl::Poseidon2GL",
+            None,
+            "poseidon2_gl",
+            vec![
+                "memory",
+                "split_gl",
+                "MIN_DEGREE",
+                "LARGE_SUBMACHINES_MAX_DEGREE",
+            ],
+            [r#"instr poseidon2_gl X, Y
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> poseidon2_gl.poseidon2_permutation(tmp1_col, tmp2_col, STEP)
+                {
+                    // make sure tmp1_col and tmp2_col are aligned memory addresses
+                    tmp3_col * 4 = tmp1_col,
+                    tmp4_col * 4 = tmp2_col,
+                    // make sure the factors fit in 32 bits
+                    tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+                    tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+                }
+            "#],
+            0,
+        );
+
+        // The poseidon2 syscall has input address passed on x10 and output address passed on x11,
+        // they can overlap.
+        let implementation = std::iter::once("poseidon2_gl 10, 11;".to_string());
+
+        self.add_syscall(Syscall::Poseidon2GL, implementation);
         self
     }
 
@@ -368,10 +328,10 @@ impl Runtime {
 
     fn with_arith(mut self) -> Self {
         self.add_submachine(
-            "std::machines::arith::Arith",
+            "std::machines::large_field::arith::Arith",
             None,
             "arith",
-            vec![],
+            vec!["MIN_DEGREE", "MAIN_MAX_DEGREE"],
             [
                 format!(
                     "instr affine_256 link ~> {};",
@@ -391,41 +351,6 @@ impl Runtime {
                 ),
             ],
             32,
-            // calling ec_double for machine initialization.
-            // store x in registers 0..8
-            [
-                0x60297556u32,
-                0x2f057a14,
-                0x8568a18b,
-                0x82f6472f,
-                0x355235d3,
-                0x20453a14,
-                0x755eeea4,
-                0xfff97bd5,
-            ]
-            .into_iter()
-            .enumerate()
-            .map(|(i, fe)| format!("{} <=X= {fe};", reg(i)))
-            // store y in registers 8..16
-            .chain(
-                [
-                    0xb075f297u32,
-                    0x3c870c36,
-                    0x518fe4a0,
-                    0xde80f0f6,
-                    0x7f45c560,
-                    0xf3be9601,
-                    0xacfbb620,
-                    0xae12777a,
-                ]
-                .into_iter()
-                .enumerate()
-                .map(|(i, fe)| format!("{} <=X= {fe};", reg(i + 8))),
-            )
-            // call machine instruction
-            .chain(std::iter::once("ec_double;".to_string()))
-            // set output registers to zero
-            .chain((0..16).map(|i| format!("{} <=X= 0;", reg(i)))),
         );
 
         // The affine_256 syscall takes as input the addresses of x1, y1 and x2.
@@ -499,14 +424,6 @@ impl Runtime {
         self
     }
 
-    pub fn submachines_init(&self) -> Vec<String> {
-        self.submachines
-            .values()
-            .flat_map(|m| m.init_call.iter())
-            .map(|s| s.to_string())
-            .collect()
-    }
-
     pub fn submachines_import(&self) -> String {
         self.submachines.values().map(|m| m.import()).join("\n")
     }
@@ -546,10 +463,10 @@ impl Runtime {
         ]
         .into_iter();
 
-        let jump_table = self.syscalls.keys().map(|s| {
+        let jump_table = self.syscalls.values().map(|s| {
             format!(
                 "branch_if_diff_equal 5, 0, {}, __ecall_handler_{};",
-                *s as u32, s
+                s.syscall as u8, s.syscall
             )
         });
 
@@ -557,7 +474,7 @@ impl Runtime {
 
         let handlers = self.syscalls.iter().flat_map(|(syscall, implementation)| {
             std::iter::once(format!("__ecall_handler_{syscall}:"))
-                .chain(implementation.0.iter().map(|i| i.to_string()))
+                .chain(implementation.statements.iter().cloned())
                 .chain([format!("jump_dyn 1, {};", Register::from("tmp1").addr())])
         });
 
@@ -567,6 +484,10 @@ impl Runtime {
             .chain(handlers)
             .chain(std::iter::once("// end of ecall handler".to_string()))
             .collect()
+    }
+
+    pub fn get_syscall_impl(&self, syscall_name: &str) -> Option<&SyscallImpl> {
+        self.syscalls.get(syscall_name)
     }
 }
 

@@ -4,9 +4,11 @@ use std::iter::once;
 use itertools::Itertools;
 
 use super::{Machine, MachineParts};
+use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
+use crate::witgen::{EvalError, EvalResult, FixedData, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 
 use powdr_number::{DegreeType, FieldElement};
@@ -100,6 +102,10 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
             return None;
         }
 
+        if parts.connections.is_empty() {
+            return None;
+        }
+
         if !parts.connections.values().all(|i| i.is_permutation()) {
             return None;
         }
@@ -107,13 +113,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
         let selector_ids = parts
             .connections
             .iter()
-            .map(|(id, i)| {
-                i.right
-                    .selector
-                    .as_ref()
-                    .and_then(|r| try_to_simple_poly(r))
-                    .map(|p| (*id, p.poly_id))
-            })
+            .map(|(id, i)| try_to_simple_poly(&i.right.selector).map(|p| (*id, p.poly_id)))
             .collect::<Option<BTreeMap<_, _>>>()?;
 
         let namespace = namespaces.drain().next().unwrap().into();
@@ -194,7 +194,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
 
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &mut MutableState<'a, '_, T, Q>,
+        _mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -203,7 +203,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         let mut addr = vec![];
         let mut step = vec![];
@@ -262,17 +262,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
             set_selector(None);
         }
 
-        let current_size = addr.len();
-        let new_size = current_size.next_power_of_two() as DegreeType;
-        let new_size = self.degree_range.fit(new_size);
-        log::info!(
-            "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-            self.name,
-            self.degree,
-            new_size,
-            current_size
-        );
-        self.degree = new_size;
+        self.degree = compute_size_and_log(&self.name, addr.len(), self.degree_range);
 
         while addr.len() < self.degree as usize {
             addr.push(*addr.last().unwrap());
@@ -463,11 +453,13 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
                 )
                 .is_none()
         };
-        if has_side_effect {
-            assignments = assignments.report_side_effect();
-        }
+        assert!(
+            has_side_effect,
+            "Already had a memory access for address 0x{addr:x} and time step {step}!"
+        );
+        assignments = assignments.report_side_effect();
 
-        if self.trace.len() >= (self.degree as usize) {
+        if self.trace.len() > (self.degree as usize) {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 

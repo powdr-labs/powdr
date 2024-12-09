@@ -679,13 +679,6 @@ pub struct MachineDegree {
     pub max: Option<Expression>,
 }
 
-impl MachineDegree {
-    pub fn is_static(&self) -> bool {
-        // we use expression equality here, so `2 + 2 != 4`
-        matches!((&self.min, &self.max), (Some(min), Some(max)) if min == max)
-    }
-}
-
 impl From<Expression> for MachineDegree {
     fn from(value: Expression) -> Self {
         Self {
@@ -856,6 +849,7 @@ pub enum StatementReference {
 #[derive(Default, Clone, Debug)]
 pub struct Module {
     machines: BTreeMap<String, Machine>,
+    /// Module-level PIL statements.
     statements: Vec<PilStatement>,
     ordering: Vec<StatementReference>,
 }
