@@ -1,7 +1,10 @@
 use std::machines::small_field::shift::ByteShift;
 use std::machines::small_field::shift::Shift;
 
-machine Main with degree: 65536 {
+let main_degree: int = 2**10;
+let shift_degree: int = 2**12;
+
+machine Main with degree: main_degree {
     reg pc[@pc];
     reg X0_1[<=];
     reg X0_2[<=];
@@ -12,7 +15,7 @@ machine Main with degree: 65536 {
     reg AHi;
 
     ByteShift byte_shift;
-    Shift shift(byte_shift);
+    Shift shift(byte_shift, shift_degree, shift_degree);
 
     instr shl X0_1, X0_2, X1 -> X2_1, X2_2 link ~> (X2_1, X2_2) = shift.shl(X0_1, X0_2, X1);
     instr shr X0_1, X0_2, X1 -> X2_1, X2_2 link ~> (X2_1, X2_2) = shift.shr(X0_1, X0_2, X1);

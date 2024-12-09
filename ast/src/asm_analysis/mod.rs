@@ -3,7 +3,7 @@ mod display;
 use std::{
     collections::{
         btree_map::{IntoIter, Iter, IterMut},
-        BTreeMap, BTreeSet,
+        BTreeMap, BTreeSet, HashSet,
     },
     iter::{once, repeat},
     ops::ControlFlow,
@@ -679,13 +679,6 @@ pub struct MachineDegree {
     pub max: Option<Expression>,
 }
 
-impl MachineDegree {
-    pub fn is_static(&self) -> bool {
-        // we use expression equality here, so `2 + 2 != 4`
-        matches!((&self.min, &self.max), (Some(min), Some(max)) if min == max)
-    }
-}
-
 impl From<Expression> for MachineDegree {
     fn from(value: Expression) -> Self {
         Self {
@@ -887,6 +880,19 @@ impl Module {
 
     pub fn push_module(&mut self, name: String) {
         self.ordering.push(StatementReference::Module(name));
+    }
+
+    /// Retains only the machines with the specified names.
+    /// Ordering is preserved.
+    pub fn retain_machines(&mut self, names: HashSet<String>) {
+        self.machines.retain(|key, _| names.contains(key));
+        self.ordering.retain(|statement| {
+            if let StatementReference::MachineDeclaration(decl_name) = statement {
+                names.contains(decl_name)
+            } else {
+                true
+            }
+        });
     }
 
     pub fn into_inner(

@@ -23,7 +23,8 @@ machine Main with degree: main_degree {
 
     Keccakf16Memory keccakf16_memory(memory, keccakf_memory_degree, keccakf_memory_degree);
 
-    col fixed STEP(i) { i };
+    // Increase time step by 2 in each row, because keccakf16_memory reads in step `i` and writes in step `i + 1`.
+    col fixed STEP(i) { 2 * i };
 
     // Big endian.
     // Usage: mstore addr_h, addr_l, val_h, val_l

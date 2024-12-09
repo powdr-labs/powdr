@@ -1,5 +1,4 @@
 //! PIL-based optimizer
-#![deny(clippy::print_stdout)]
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -17,7 +16,7 @@ use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
 use powdr_ast::parsed::Number;
 use powdr_number::{BigUint, FieldElement};
 
-mod referenced_symbols;
+pub mod referenced_symbols;
 
 use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
@@ -258,7 +257,7 @@ fn deduplicate_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     });
 
     // substitute all occurences in definitions.
-    pil_file.post_visit_expressions_in_definitions_mut(&mut |e| {
+    pil_file.post_visit_expressions_mut(&mut |e| {
         if let Expression::Reference(_, Reference::Poly(reference)) = e {
             if let Some((replacement_name, _)) = replacement_by_name.get(&reference.name) {
                 reference.name = replacement_name.clone();
@@ -478,7 +477,7 @@ fn substitute_polynomial_references<T: FieldElement>(
         .into_iter()
         .map(|((name, _), value)| (name, value))
         .collect::<HashMap<String, _>>();
-    pil_file.post_visit_expressions_in_definitions_mut(&mut |e: &mut Expression| {
+    pil_file.post_visit_expressions_mut(&mut |e: &mut Expression| {
         if let Expression::Reference(
             _,
             Reference::Poly(PolynomialReference { name, type_args: _ }),
@@ -557,6 +556,13 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 left.expressions.is_empty().then_some(index)
             }
             Identity::Connect(..) => None,
+            Identity::PhantomBusInteraction(id) => {
+                if id.tuple.0.is_empty() {
+                    unreachable!("Unexpected empty bus interaction: {}", id);
+                } else {
+                    None
+                }
+            }
         })
         .collect();
     pil_file.remove_identities(&to_remove);
@@ -577,6 +583,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 Identity::Permutation(..) => 3,
                 Identity::PhantomPermutation(..) => 4,
                 Identity::Connect(..) => 5,
+                Identity::PhantomBusInteraction(..) => 6,
             };
 
             discriminant(self)
@@ -636,6 +643,11 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                             left: c, right: d, ..
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
+                    (Identity::PhantomBusInteraction(_), Identity::PhantomBusInteraction(_)) => {
+                        unimplemented!(
+                            "Bus interactions should have been removed before this point."
+                        )
+                    }
                     _ => {
                         unreachable!("Different identity types would have different discriminants.")
                     }
@@ -663,11 +675,13 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .identities
         .iter()
         .enumerate()
-        .filter_map(|(index, identity)| {
-            match identity_expressions.insert(CanonicalIdentity(identity)) {
+        .filter_map(|(index, identity)| match identity {
+            // Duplicate bus interactions should not be removed, because that changes the statement.
+            Identity::PhantomBusInteraction(_) => None,
+            _ => match identity_expressions.insert(CanonicalIdentity(identity)) {
                 false => Some(index),
                 true => None,
-            }
+            },
         })
         .collect();
     pil_file.remove_identities(&to_remove);

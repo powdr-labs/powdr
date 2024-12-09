@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     collections::{btree_map::Entry, BTreeMap},
     io::{self, Cursor, Read},
     marker::PhantomData,
@@ -13,6 +12,7 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
@@ -307,6 +307,17 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
             unimplemented!();
         }
 
+        // Compute next-stage witness for each machine in parallel.
+        let mut witness_by_machine = self
+            .machine_data
+            .par_iter()
+            .map(|(machine_name, machine_data)| {
+                let (witness, size) =
+                    process_witness_for_machine(machine_name, machine_data, witness);
+                (machine_name.clone(), (witness, size))
+            })
+            .collect::<BTreeMap<_, _>>();
+
         // We use scoped threads to be able to share non-'static references.
         thread::scope(|scope| {
             let mut proofs_status = self
@@ -314,8 +325,7 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
                 .iter()
                 .filter_map(|machine_entry| {
                     let (machine, machine_data) = machine_entry;
-                    let (witness, size) =
-                        process_witness_for_machine(machine, machine_data, witness);
+                    let (witness, size) = witness_by_machine[machine].clone();
                     if size == 0 {
                         // If a machine has no rows, remove it entirely.
                         return None;
@@ -333,7 +343,6 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
                 .collect::<Vec<_>>();
 
             let mut proof_results = BTreeMap::new();
-            let mut witness = Cow::Borrowed(witness);
             for stage in 1.. {
                 // Filter out proofs that have completed and accumulate the
                 // challenges.
@@ -358,17 +367,29 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
                     break;
                 }
 
-                witness = witgen_callback
-                    .next_stage_witness(&witness, challenges, stage)
-                    .into();
+                witness_by_machine = self
+                    .machine_data
+                    .par_iter()
+                    .map(|(machine_name, machine_data)| {
+                        let (machine_witness, size) = witness_by_machine.get(machine_name).unwrap();
+                        let machine_data = machine_data.get(size).unwrap();
+                        let new_witness = witgen_callback.next_stage_witness(
+                            &machine_data.pil,
+                            machine_witness,
+                            challenges.clone(),
+                            stage,
+                        );
+                        (machine_name.clone(), (new_witness, *size))
+                    })
+                    .collect();
 
                 // Resume the waiting provers with the new witness
                 proofs_status = waiting_provers
                     .into_iter()
                     .map(|(prover, machine_entry)| {
-                        let (machine_name, machine_data) = machine_entry;
+                        let (machine_name, _) = machine_entry;
                         let (witness, size) =
-                            process_witness_for_machine(machine_name, machine_data, &witness);
+                            witness_by_machine.get(machine_name).cloned().unwrap();
 
                         let status =
                             time_stage(machine_name, size, stage, move || prover.resume(witness));

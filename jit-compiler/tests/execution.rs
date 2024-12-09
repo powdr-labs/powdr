@@ -140,7 +140,6 @@ fn degree_builtin() {
             let a: int -> int = |i| std::prover::degree();
         "#;
     let compiled_pil = compile(input, &["main::a"]);
-    println!("Calling set degree outside");
     compiled_pil.set_degree(128);
 
     let a = compiled_pil.get_fixed_column("main::a").unwrap();

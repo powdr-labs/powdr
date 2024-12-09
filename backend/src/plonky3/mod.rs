@@ -90,10 +90,7 @@ where
     }
 
     fn export_proving_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
-        let pk = self
-            .export_proving_key()
-            .map_err(|e| Error::BackendError(e.to_string()))?;
-        output.write_all(&pk).unwrap();
-        Ok(())
+        self.export_proving_key(output)
+            .map_err(|e| Error::BackendError(e.to_string()))
     }
 }

@@ -1,5 +1,3 @@
-#![deny(clippy::print_stdout)]
-
 mod call_graph;
 mod condenser;
 pub mod evaluator;

@@ -162,6 +162,8 @@ impl Runtime {
 
         r.add_syscall(Syscall::CommitPublic, ["commit_public 10, 11;"]);
 
+        r.add_syscall(Syscall::InvertGL, ["invert_gl 10, 11;"]);
+
         r.with_poseidon()
     }
 
@@ -329,7 +331,7 @@ impl Runtime {
             "std::machines::large_field::arith::Arith",
             None,
             "arith",
-            vec![],
+            vec!["MIN_DEGREE", "MAIN_MAX_DEGREE"],
             [
                 format!(
                     "instr affine_256 link ~> {};",

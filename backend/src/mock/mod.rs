@@ -1,16 +1,28 @@
-use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    hash::{DefaultHasher, Hash, Hasher},
+    io,
+    marker::PhantomData,
+    path::PathBuf,
+    sync::Arc,
+};
 
-use constraint_checker::ConstraintChecker;
-use itertools::Itertools;
-use powdr_ast::analyzed::Analyzed;
-use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
+use connection_constraint_checker::{Connection, ConnectionConstraintChecker};
+use machine::Machine;
+use polynomial_constraint_checker::PolynomialConstraintChecker;
+use powdr_ast::{
+    analyzed::{AlgebraicExpression, Analyzed},
+    parsed::visitor::AllChildren,
+};
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
-mod constraint_checker;
+mod connection_constraint_checker;
 mod evaluator;
+mod machine;
+mod polynomial_constraint_checker;
 
 pub(crate) struct MockBackendFactory<F: FieldElement> {
     _marker: PhantomData<F>,
@@ -34,7 +46,7 @@ impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
         proving_key: Option<&mut dyn std::io::Read>,
         _verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
-        backend_options: BackendOptions,
+        _backend_options: BackendOptions,
     ) -> Result<Box<dyn Backend<F>>, Error> {
         if proving_key.is_some() {
             unimplemented!();
@@ -43,16 +55,12 @@ impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
             unimplemented!();
         }
         let machine_to_pil = powdr_backend_utils::split_pil(&pil);
-        let allow_warnings = match backend_options.as_str() {
-            "allow_warnings" => true,
-            "" => false,
-            _ => panic!("Invalid backend option: {backend_options}"),
-        };
+        let connections = Connection::get_all(&pil, &machine_to_pil);
 
         Ok(Box::new(MockBackend {
-            allow_warnings,
             machine_to_pil,
             fixed,
+            connections,
         }))
     }
 
@@ -62,9 +70,9 @@ impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
 }
 
 pub(crate) struct MockBackend<F> {
-    allow_warnings: bool,
     machine_to_pil: BTreeMap<String, Analyzed<F>>,
     fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
+    connections: Vec<Connection<F>>,
 }
 
 impl<F: FieldElement> Backend<F> for MockBackend<F> {
@@ -72,36 +80,60 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
         &self,
         witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
-        _witgen_callback: WitgenCallback<F>,
+        witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error> {
         if prev_proof.is_some() {
             unimplemented!();
         }
 
-        let mut is_ok = true;
-        for (machine, pil) in &self.machine_to_pil {
-            let witness = machine_witness_columns(witness, pil, machine);
-            let size = witness
-                .iter()
-                .map(|(_, witness)| witness.len())
-                .unique()
-                .exactly_one()
-                .expect("All witness columns of a machine must have the same size")
-                as DegreeType;
-            let all_fixed = machine_fixed_columns(&self.fixed, pil);
-            let fixed = all_fixed.get(&size).unwrap();
+        let challenges = self
+            .machine_to_pil
+            .values()
+            .flat_map(|pil| pil.identities.iter())
+            .flat_map(|identity| identity.all_children())
+            .filter_map(|expr| match expr {
+                AlgebraicExpression::Challenge(challenge) => {
+                    // Use the hash of the ID as the challenge.
+                    // This way, if the same challenge is used by different machines, they will
+                    // have the same value.
+                    let mut hasher = DefaultHasher::new();
+                    challenge.id.hash(&mut hasher);
+                    Some((challenge.id, F::from(hasher.finish())))
+                }
+                _ => None,
+            })
+            .collect::<BTreeMap<_, _>>();
 
-            let result = ConstraintChecker::new(machine.clone(), &witness, fixed, pil).check();
-            result.log();
-            is_ok &= !result.has_errors();
-            if !self.allow_warnings {
-                is_ok &= !result.has_warnings();
-            }
+        let machines = self
+            .machine_to_pil
+            // TODO: We should probably iterate in parallel, because Machine::try_new might generate
+            // later-stage witnesses, which is expensive.
+            // However, for now, doing it sequentially simplifies debugging.
+            .iter()
+            .filter_map(|(machine_name, pil)| {
+                Machine::try_new(
+                    machine_name.clone(),
+                    witness,
+                    &self.fixed,
+                    pil,
+                    &witgen_callback,
+                    &challenges,
+                )
+            })
+            .map(|machine| (machine.machine_name.clone(), machine))
+            .collect::<BTreeMap<_, _>>();
+
+        let is_ok = machines.values().all(|machine| {
+            !PolynomialConstraintChecker::new(machine, &challenges)
+                .check()
+                .has_errors()
+        }) && ConnectionConstraintChecker {
+            connections: &self.connections,
+            machines,
+            challenges: &challenges,
         }
-
-        // TODO:
-        // - Check machine connections
-        // - Check later-stage witness
+        .check()
+        .is_ok();
 
         match is_ok {
             true => Ok(Vec::new()),

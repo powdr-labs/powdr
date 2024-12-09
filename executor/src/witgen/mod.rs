@@ -1,31 +1,28 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
-use machines::MachineParts;
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
-    FunctionValueDefinition, PolyID, PolynomialType, Symbol, SymbolKind, TypedExpression,
+    AlgebraicExpression, AlgebraicReference, AlgebraicReferenceThin, Analyzed, DegreeRange,
+    Expression, FunctionValueDefinition, PolyID, PolynomialType, Symbol, SymbolKind,
+    TypedExpression,
 };
-use powdr_ast::parsed::visitor::ExpressionVisitable;
+use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
+use std::iter::once;
 
 use crate::constant_evaluator::VariablySizedColumn;
 use crate::witgen::data_structures::mutable_state::MutableState;
-use crate::Identity;
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
-use self::generator::Generator;
 
 use self::global_constraints::GlobalConstraints;
-use self::machines::machine_extractor::ExtractionOutput;
 use self::machines::profiling::{record_end, record_start, reset_and_print_profile_summary};
-use self::machines::Machine;
 
 mod affine_expression;
 pub(crate) mod analysis;
@@ -34,7 +31,6 @@ mod data_structures;
 mod eval_result;
 mod expression_evaluator;
 pub mod fixed_evaluator;
-mod generator;
 mod global_constraints;
 mod identity_processor;
 mod machines;
@@ -66,40 +62,57 @@ pub use powdr_executor_utils::{WitgenCallback, WitgenCallbackFn};
 pub struct WitgenCallbackContext<T> {
     /// TODO: all these fields probably don't need to be Arc anymore, since the
     /// Arc was moved one level up... but I have to investigate this further.
-    analyzed: Arc<Analyzed<T>>,
     fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
     query_callback: Arc<dyn QueryCallback<T>>,
 }
 
 impl<T: FieldElement> WitgenCallbackContext<T> {
     pub fn new(
-        analyzed: Arc<Analyzed<T>>,
         fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
         query_callback: Option<Arc<dyn QueryCallback<T>>>,
     ) -> Self {
         let query_callback = query_callback.unwrap_or_else(|| Arc::new(unused_query_callback()));
         Self {
-            analyzed,
             fixed_col_values,
             query_callback,
         }
     }
 
+    pub fn select_fixed_columns(
+        &self,
+        pil: &Analyzed<T>,
+        size: DegreeType,
+    ) -> Vec<(String, VariablySizedColumn<T>)> {
+        // The provided PIL might only contain a subset of all fixed columns.
+        let fixed_column_names = pil
+            .constant_polys_in_source_order()
+            .flat_map(|(symbol, _)| symbol.array_elements())
+            .map(|(name, _)| name.clone())
+            .collect::<BTreeSet<_>>();
+        // Select the columns in the current PIL and select the right size.
+        self.fixed_col_values
+            .iter()
+            .filter(|(n, _)| fixed_column_names.contains(n))
+            .map(|(n, v)| (n.clone(), v.get_by_size(size).unwrap().to_vec().into()))
+            .collect()
+    }
+
     /// Computes the next-stage witness, given the current witness and challenges.
+    /// All columns in the provided PIL are expected to have the same size.
+    /// Typically, this function should be called once per machine.
     pub fn next_stage_witness(
         &self,
+        pil: &Analyzed<T>,
         current_witness: &[(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
         stage: u8,
     ) -> Vec<(String, Vec<T>)> {
-        WitnessGenerator::new(
-            &self.analyzed,
-            &self.fixed_col_values,
-            &*self.query_callback,
-        )
-        .with_external_witness_values(current_witness)
-        .with_challenges(stage, challenges)
-        .generate()
+        let size = current_witness.iter().next().unwrap().1.len() as DegreeType;
+        let fixed_col_values = self.select_fixed_columns(pil, size);
+        WitnessGenerator::new(pil, &fixed_col_values, &*self.query_callback)
+            .with_external_witness_values(current_witness)
+            .with_challenges(stage, challenges)
+            .generate()
     }
 }
 
@@ -175,17 +188,25 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .clone()
             .into_iter()
             .filter(|identity| {
-                let discard = identity.expr_any(|expr| {
+                let references_later_stage_challenge = identity.expr_any(|expr| {
                     if let AlgebraicExpression::Challenge(challenge) = expr {
                         challenge.stage >= self.stage.into()
                     } else {
                         false
                     }
                 });
+                let references_later_stage_witness = fixed
+                    .polynomial_references(identity)
+                    .into_iter()
+                    .any(|poly_id| {
+                        (poly_id.ptype == PolynomialType::Committed)
+                            && fixed.witness_cols[&poly_id].stage > self.stage as u32
+                    });
+
+                let discard = references_later_stage_challenge || references_later_stage_witness;
+
                 if discard {
-                    log::debug!(
-                        "Skipping identity that references challenge of later stage: {identity}",
-                    );
+                    log::debug!("Skipping identity that references later-stage items: {identity}",);
                 }
                 !discard
             })
@@ -195,55 +216,10 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         // These are already captured in the range constraints.
         let (fixed, retained_identities) =
             global_constraints::set_global_constraints(fixed, &identities);
-        let ExtractionOutput {
-            machines,
-            base_parts,
-        } = if self.stage == 0 {
-            MachineExtractor::new(&fixed).split_out_machines(retained_identities, self.stage)
-        } else {
-            // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
-            // These don't behave like normal witness columns (e.g. in a block machine), and they might depend
-            // on witness columns of more than one machine.
-            // Therefore, we treat everything as one big machine. Also, we remove lookups and permutations,
-            // as they are assumed to be handled in stage 0.
-            let polynomial_identities = identities
-                .iter()
-                .filter(|identity| matches!(identity, Identity::Polynomial(_)))
-                .collect::<Vec<_>>();
-            ExtractionOutput {
-                machines: Vec::new(),
-                base_parts: MachineParts::new(
-                    &fixed,
-                    Default::default(),
-                    polynomial_identities,
-                    fixed.witness_cols.keys().collect::<HashSet<_>>(),
-                    fixed.analyzed.prover_functions.iter().collect(),
-                ),
-            }
-        };
+        let machines = MachineExtractor::new(&fixed).split_out_machines(retained_identities);
 
-        let mutable_state = MutableState::new(machines.into_iter(), &self.query_callback);
-
-        let generator = (!base_parts.witnesses.is_empty()).then(|| {
-            let mut generator = Generator::new(
-                "Main Machine".to_string(),
-                &fixed,
-                base_parts,
-                // We could set the latch of the main VM here, but then we would have to detect it.
-                // Instead, the main VM will be computed in one block, directly continuing into the
-                // infinite loop after the first return.
-                None,
-            );
-
-            generator.run(&mutable_state);
-            generator
-        });
-
-        // Get columns from machines
-        let mut columns = generator
-            .map(|mut generator| generator.take_witness_col_values(&mutable_state))
-            .unwrap_or_default();
-        columns.extend(mutable_state.take_witness_col_values());
+        // Run main machine and extract columns from all machines.
+        let mut columns = MutableState::new(machines.into_iter(), &self.query_callback).run();
 
         Self::range_constraint_multiplicity_witgen(&fixed, &mut columns);
 
@@ -334,7 +310,8 @@ pub fn extract_publics<T: FieldElement>(
         .collect()
 }
 
-/// Data that is fixed for witness generation.
+/// Data that is fixed for witness generation for a certain proof stage
+/// (i.e., a call to [WitnessGenerator::generate]).
 pub struct FixedData<'a, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
@@ -342,7 +319,8 @@ pub struct FixedData<'a, T: FieldElement> {
     column_by_name: HashMap<String, PolyID>,
     challenges: BTreeMap<u64, T>,
     global_range_constraints: GlobalConstraints<T>,
-    intermediate_definitions: BTreeMap<PolyID, &'a AlgebraicExpression<T>>,
+    intermediate_definitions: BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+    stage: u8,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
@@ -358,30 +336,30 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .map(|(name, values)| (name.clone(), values))
             .collect::<BTreeMap<_, _>>();
 
-        let intermediate_definitions = analyzed
-            .intermediate_polys_in_source_order()
-            .flat_map(|(symbol, definitions)| {
-                symbol
-                    .array_elements()
-                    .zip_eq(definitions)
-                    .map(|((_, poly_id), def)| (poly_id, def))
-            })
-            .collect();
+        let intermediate_definitions = analyzed.intermediate_definitions();
 
         let witness_cols =
             WitnessColumnMap::from(analyzed.committed_polys_in_source_order().flat_map(
-                |(poly, value)| {
-                    poly.array_elements()
+                |(symbol, value)| {
+                    symbol
+                        .array_elements()
                         .map(|(name, poly_id)| {
                             let external_values = external_witness_values.remove(name.as_str());
                             // Remove any hint for witness columns of a later stage
                             // (because it might reference a challenge that is not available yet)
-                            let value = if poly.stage.unwrap_or_default() <= stage.into() {
+                            let col_stage = symbol.stage.unwrap_or_default();
+                            let value = if col_stage <= stage.into() {
                                 value.as_ref()
                             } else {
                                 None
                             };
-                            WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
+                            WitnessColumn::new(
+                                poly_id.id as usize,
+                                &name,
+                                value,
+                                external_values,
+                                col_stage,
+                            )
                         })
                         .collect::<Vec<_>>()
                 },
@@ -422,6 +400,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             challenges,
             global_range_constraints,
             intermediate_definitions,
+            stage,
         }
     }
 
@@ -464,18 +443,28 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     fn common_degree_range<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeRange {
         let ids: HashSet<_> = ids.into_iter().collect();
 
-        self.all_poly_symbols()
-            .flat_map(|symbol| symbol.array_elements().map(|(_, id)| (id, symbol.degree)))
-            // only keep the ones matching our set
-            .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
-            // get the common degree
+        // Iterator of (id, Option<DegreeRange>), with only the requested ids.
+        let filtered_ids_and_degrees = || {
+            self.all_poly_symbols()
+                .flat_map(|symbol| symbol.array_elements().map(|(_, id)| (id, symbol.degree)))
+                .filter_map(|(id, degree)| ids.contains(&id).then_some((id, degree)))
+        };
+
+        filtered_ids_and_degrees()
+            .map(|(_, degree_range)| degree_range)
             .unique()
             .exactly_one()
-            .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
+            .unwrap_or_else(|_| {
+                log::error!("The following columns have different degree ranges:");
+                for (id, degree) in filtered_ids_and_degrees() {
+                    log::error!("  {}: {:?}", self.column_name(&id), degree);
+                }
+                panic!("Expected all columns to have the same degree")
+            })
             .unwrap()
     }
 
-    /// Returns whether all polynomials have the same static degree.
+    /// Returns whether all columns have the same static degree.
     fn is_monolithic(&self) -> bool {
         match self
             .all_poly_symbols()
@@ -486,6 +475,10 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             Ok(degree) => degree.is_unique(),
             _ => false,
         }
+    }
+
+    pub fn stage(&self) -> u8 {
+        self.stage
     }
 
     pub fn global_range_constraints(&self) -> &GlobalConstraints<T> {
@@ -517,6 +510,62 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 v.get(row as usize).cloned()
             })
     }
+
+    fn witnesses_until_current_stage(&self) -> impl Iterator<Item = PolyID> + '_ {
+        self.witness_cols
+            .iter()
+            .filter(|(_, col)| col.stage <= self.stage as u32)
+            .map(|(poly_id, _)| poly_id)
+    }
+
+    /// Finds all referenced witness or fixed columns,
+    /// including those referenced via intermediate columns.
+    fn polynomial_references(
+        &self,
+        expr: &impl AllChildren<AlgebraicExpression<T>>,
+    ) -> HashSet<PolyID> {
+        let mut cache = BTreeMap::new();
+        self.polynomial_references_with_cache(expr, &mut cache)
+    }
+
+    /// Like [Self::polynomial_references], but with a cache for intermediate results.
+    /// This avoids visiting the same intermediate column multiple times, which can lead
+    /// to exponential complexity for some expressions.
+    fn polynomial_references_with_cache(
+        &self,
+        expr: &impl AllChildren<AlgebraicExpression<T>>,
+        intermediates_cache: &mut BTreeMap<AlgebraicReferenceThin, HashSet<PolyID>>,
+    ) -> HashSet<PolyID> {
+        expr.all_children()
+            .flat_map(|child| {
+                if let AlgebraicExpression::Reference(poly_ref) = child {
+                    match poly_ref.poly_id.ptype {
+                        PolynomialType::Committed | PolynomialType::Constant => {
+                            once(poly_ref.poly_id).collect()
+                        }
+                        PolynomialType::Intermediate => {
+                            let poly_ref = poly_ref.to_thin();
+                            intermediates_cache
+                                .get(&poly_ref)
+                                .cloned()
+                                .unwrap_or_else(|| {
+                                    let intermediate_expr =
+                                        &self.intermediate_definitions[&poly_ref];
+                                    let refs = self.polynomial_references_with_cache(
+                                        intermediate_expr,
+                                        intermediates_cache,
+                                    );
+                                    intermediates_cache.insert(poly_ref, refs.clone());
+                                    refs
+                                })
+                        }
+                    }
+                } else {
+                    HashSet::new()
+                }
+            })
+            .collect()
+    }
 }
 
 pub struct FixedColumn<'a, T> {
@@ -531,7 +580,14 @@ impl<'a, T> FixedColumn<'a, T> {
     }
 
     pub fn values(&self, size: DegreeType) -> &[T] {
-        self.values.get_by_size(size).unwrap()
+        self.values.get_by_size(size).unwrap_or_else(|| {
+            panic!(
+                "Fixed column {} does not have a value for size {}. Available sizes: {:?}",
+                self.name,
+                size,
+                self.values.available_sizes()
+            )
+        })
     }
 
     pub fn values_max_size(&self) -> &[T] {
@@ -554,6 +610,8 @@ pub struct WitnessColumn<'a, T> {
     /// A list of externally computed witness values, if any.
     /// The length of this list must be equal to the degree.
     external_values: Option<&'a Vec<T>>,
+    /// The stage of the column.
+    stage: u32,
 }
 
 impl<'a, T> WitnessColumn<'a, T> {
@@ -562,6 +620,7 @@ impl<'a, T> WitnessColumn<'a, T> {
         name: &str,
         value: Option<&'a FunctionValueDefinition>,
         external_values: Option<&'a Vec<T>>,
+        stage: u32,
     ) -> WitnessColumn<'a, T> {
         let query = if let Some(FunctionValueDefinition::Expression(TypedExpression {
             e:
@@ -593,6 +652,7 @@ impl<'a, T> WitnessColumn<'a, T> {
             expr,
             query,
             external_values,
+            stage,
         }
     }
 }

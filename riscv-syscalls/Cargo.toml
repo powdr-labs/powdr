@@ -9,5 +9,5 @@ repository = { workspace = true }
 
 [dependencies]
 
-[lints.clippy]
-uninlined_format_args = "deny"
+[lints]
+workspace = true

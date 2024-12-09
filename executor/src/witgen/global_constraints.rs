@@ -6,7 +6,8 @@ use num_traits::Zero;
 use num_traits::One;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, LookupIdentity, PhantomLookupIdentity, PolyID, PolynomialType,
+    AlgebraicReference, AlgebraicReferenceThin, LookupIdentity, PhantomLookupIdentity, PolyID,
+    PolynomialType,
 };
 
 use powdr_number::FieldElement;
@@ -257,7 +258,7 @@ fn add_constraint<T: FieldElement>(
 /// If the returned flag is true, the identity can be removed, because it contains
 /// no further information than the range constraint.
 fn propagate_constraints<T: FieldElement>(
-    intermediate_definitions: &BTreeMap<PolyID, &AlgebraicExpression<T>>,
+    intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     known_constraints: &mut BTreeMap<PolyID, RangeConstraint<T>>,
     range_constraint_multiplicities: &mut BTreeMap<PolyID, PhantomRangeConstraintTarget>,
     identity: &Identity<T>,
@@ -331,12 +332,17 @@ fn propagate_constraints<T: FieldElement>(
             // permutation identities are stronger than just range constraints, so we do nothing
             false
         }
+        Identity::PhantomBusInteraction(..) => {
+            // TODO(bus_interaction): If we can statically match sends & receives, we could extract
+            // range constraints from them.
+            false
+        }
     }
 }
 
 /// Tries to find "X * (1 - X) = 0"
 fn is_binary_constraint<T: FieldElement>(
-    intermediate_definitions: &BTreeMap<PolyID, &AlgebraicExpression<T>>,
+    intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     expr: &Expression<T>,
 ) -> Option<PolyID> {
     // TODO Write a proper pattern matching engine.
@@ -383,7 +389,7 @@ fn is_binary_constraint<T: FieldElement>(
 
 /// Tries to transfer constraints in a linear expression.
 fn try_transfer_constraints<T: FieldElement>(
-    intermediate_definitions: &BTreeMap<PolyID, &AlgebraicExpression<T>>,
+    intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     expr: &Expression<T>,
     known_constraints: &BTreeMap<PolyID, RangeConstraint<T>>,
 ) -> Vec<(PolyID, RangeConstraint<T>)> {
