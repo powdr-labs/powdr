@@ -14,7 +14,6 @@ use std::machines::small_field::add_sub::AddSub;
 
 machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     latch: final_step,
-    operation_id: operation_id,
     call_selectors: sel,
 {
     /*
@@ -44,7 +43,7 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     Though note that input address need to be first copied from the last row to the first row.
     */
 
-    operation keccakf16_memory<0> input_addr_h, input_addr_l, output_addr_h, output_addr_l, time_step ->;
+    operation keccakf16_memory input_addr_h, input_addr_l, output_addr_h, output_addr_l, time_step ->;
 
     // Get an intermediate column that indicates that we're in an
     // actual block, not a default block. Its value is constant
@@ -296,8 +295,6 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     // Adapted from Plonky3 implementation of Keccak: https://github.com/Plonky3/Plonky3/tree/main/keccak-air/src
 
     std::check::require_field_bits(16, || "The field modulus should be at least 2^16 - 1 to work in the keccakf16 machine.");
-
-    col witness operation_id;
 
     let NUM_ROUNDS: int = 24;
 

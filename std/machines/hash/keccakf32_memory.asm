@@ -13,7 +13,6 @@ use std::machines::large_field::memory::Memory;
 
 machine Keccakf32Memory(mem: Memory) with
     latch: final_step,
-    operation_id: operation_id,
     call_selectors: sel,
 {
     /*
@@ -37,7 +36,7 @@ machine Keccakf32Memory(mem: Memory) with
     Though note that input address need to be first copied from the last row to the first row.
     */
 
-    operation keccakf32_memory<0> input_addr, output_addr, time_step ->;
+    operation keccakf32_memory input_addr, output_addr, time_step ->;
 
     // Get an intermediate column that indicates that we're in an
     // actual block, not a default block. Its value is constant
@@ -178,8 +177,6 @@ machine Keccakf32Memory(mem: Memory) with
     // Adapted from Plonky3 implementation of Keccak: https://github.com/Plonky3/Plonky3/tree/main/keccak-air/src
 
     std::check::require_field_bits(32, || "The field modulus should be at least 2^32 - 1 to work in the keccakf32 machine.");
-
-    col witness operation_id;
 
     let NUM_ROUNDS: int = 24;
 
