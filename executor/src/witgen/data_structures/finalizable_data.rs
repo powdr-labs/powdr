@@ -80,7 +80,7 @@ impl<T: FieldElement> CompactData<T> {
         self.data
             .resize(self.data.len() + count * self.column_count, T::zero());
         self.known_cells
-            .grow(self.known_cells.len() + count * self.column_count, false);
+            .grow(count * self.column_count, false);
     }
 
     fn index(&self, row: usize, col: u64) -> usize {
