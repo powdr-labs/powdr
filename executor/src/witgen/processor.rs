@@ -23,7 +23,7 @@ use super::{
     Constraints, EvalError, EvalValue, IncompleteCause, QueryCallback,
 };
 
-type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
+pub type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
 
 /// The data mutated by the processor
 pub(crate) struct SolverState<'a, T: FieldElement> {

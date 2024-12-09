@@ -11,7 +11,9 @@ use crate::witgen::processor::SolverState;
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use crate::witgen::vm_processor::VmProcessor;
-use crate::witgen::{EvalResult, FixedData, QueryCallback};
+use crate::witgen::{EvalError, EvalResult, FixedData, QueryCallback};
+
+use super::LookupCell;
 
 /// A machine responsible for second-phase witness generation.
 /// For example, this might generate the witnesses for a bus accumulator or LogUp argument.
@@ -25,6 +27,15 @@ pub struct SecondStageMachine<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for SecondStageMachine<'a, T> {
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b MutableState<'a, T, Q>,
+        _identity_id: u64,
+        _values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup not supported by machine {}.", self.name())
+    }
+
     fn identity_ids(&self) -> Vec<u64> {
         Vec::new()
     }

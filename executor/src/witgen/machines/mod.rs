@@ -91,12 +91,10 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// An error is always unrecoverable.
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b MutableState<'a, T, Q>,
-        _identity_id: u64,
-        _values: &mut [LookupCell<'c, T>],
-    ) -> Result<bool, EvalError<T>> {
-        unimplemented!("Direct lookup not supported machine {}.", self.name())
-    }
+        mutable_state: &'b MutableState<'a, T, Q>,
+        identity_id: u64,
+        values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>>;
 
     /// Returns the final values of the witness columns.
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
