@@ -126,6 +126,7 @@ fn build_poly_id_to_definition_name_lookup(
     pil_file: &Analyzed<impl FieldElement>,
 ) -> BTreeMap<PolyID, &String> {
     let mut poly_id_to_definition_name = BTreeMap::new();
+    #[allow(clippy::iter_over_hash_type)]
     for (name, (symbol, _)) in &pil_file.definitions {
         if matches!(symbol.kind, SymbolKind::Poly(_)) {
             symbol.array_elements().for_each(|(_, id)| {
@@ -133,6 +134,7 @@ fn build_poly_id_to_definition_name_lookup(
             });
         }
     }
+    #[allow(clippy::iter_over_hash_type)]
     for (name, (symbol, _)) in &pil_file.intermediate_columns {
         symbol.array_elements().for_each(|(_, id)| {
             poly_id_to_definition_name.insert(id, name);

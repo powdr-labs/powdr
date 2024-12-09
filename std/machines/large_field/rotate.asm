@@ -7,13 +7,11 @@ use std::check::require_field_bits;
 /// We can rotate by at most 31 bits
 machine ByteRotate with
     latch: latch,
-    operation_id: operation_id,
     degree: 65536
 {
-    operation run<0> P_operation, P_A, P_B, P_ROW -> P_C;
+    operation run P_operation, P_A, P_B, P_ROW -> P_C;
 
     col fixed latch = [1]*;
-    col fixed operation_id = [0]*;
     let bit_counts = [256, 32, 4, 2];
     let min_degree = std::array::product(bit_counts);
     std::check::assert(std::prover::min_degree() >= std::array::product(bit_counts), || "The rotate machine needs at least 65536 rows to work.");

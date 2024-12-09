@@ -726,7 +726,6 @@ impl SubmachineKind for PoseidonGlMachine {
             trace.set_current_row(STATE_COLS[i], Elem::Field(state[i]));
         }
         // these are the same in the whole block
-        trace.set_current_block(Self::BLOCK_SIZE, "operation_id", 0.into());
         trace.set_current_block(Self::BLOCK_SIZE, "time_step", time_step);
         trace.set_current_block(Self::BLOCK_SIZE, "input_addr", input_addr);
         trace.set_current_block(Self::BLOCK_SIZE, "output_addr", output_addr);

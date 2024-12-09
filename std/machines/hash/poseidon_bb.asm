@@ -23,7 +23,6 @@ use std::machines::split::split_bb::SplitBB;
 // with memory directly to fetch its inputs and write its outputs.
 machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     latch: CLK_0,
-    operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
@@ -39,12 +38,10 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     // (in canonical form).
     //
     // Reads happen at the provided time step; writes happen at the next time step.
-    operation poseidon_permutation<0>
+    operation poseidon_permutation
         input_addr_high, input_addr_low,
         output_addr_high, output_addr_low,
         time_step ->;
-
-    let operation_id;
 
     // Number of field elements in the state
     let STATE_SIZE: int = 16;

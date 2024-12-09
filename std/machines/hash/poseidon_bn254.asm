@@ -4,7 +4,6 @@ use std::utils::unchanged_until;
 // Implements the Poseidon permutation for the BN254 curve.
 machine PoseidonBN254 with
     latch: FIRSTBLOCK,
-    operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
@@ -14,9 +13,7 @@ machine PoseidonBN254 with
     // When the hash function is used only once, the capacity element should be
     // set to a constant, where different constants can be used to define different
     // hash functions.
-    operation poseidon_permutation<0> state[0], state[1], state[2] -> output[0];
-
-    let operation_id;
+    operation poseidon_permutation state[0], state[1], state[2] -> output[0];
 
     // Using parameters from https://eprint.iacr.org/2019/458.pdf
     // See https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/master/code/poseidonperm_x5_254_3.sage

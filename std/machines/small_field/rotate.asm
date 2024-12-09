@@ -7,13 +7,11 @@ use std::check::require_field_bits;
 /// We can rotate by at most 31 bits
 machine ByteRotate with
     latch: latch,
-    operation_id: operation_id,
     degree: 65536
 {
     // P_C0 and P_C1 are both 16 bit limbs of P_C, where P_C0 is the less significant limb.
-    operation run<0> P_operation, P_A, P_B, P_ROW -> P_C0, P_C1;
+    operation run P_operation, P_A, P_B, P_ROW -> P_C0, P_C1;
     col fixed latch = [1]*;
-    col fixed operation_id = [0]*;
 
     require_field_bits(16, || "The field modulus should be at least 2^16 - 1 to work in the rotate machine.");
 

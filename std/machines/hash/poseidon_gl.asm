@@ -4,7 +4,6 @@ use std::utils::unchanged_until;
 // Implements the Poseidon permutation for the Goldilocks field.
 machine PoseidonGL with
     latch: FIRSTBLOCK,
-    operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
@@ -14,9 +13,7 @@ machine PoseidonGL with
     // When the hash function is used only once, the capacity elements should be
     // set to constants, where different constants can be used to define different
     // hash functions.
-    operation poseidon_permutation<0> state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7], state[8], state[9], state[10], state[11] -> output[0], output[1], output[2], output[3];
-
-    let operation_id;
+    operation poseidon_permutation state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7], state[8], state[9], state[10], state[11] -> output[0], output[1], output[2], output[3];
 
     // Ported from:
     // - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/poseidong.pil

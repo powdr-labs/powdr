@@ -16,7 +16,6 @@ use super::poseidon2_common::poseidon2;
 // it can be used as a compression function for building a Merkle tree.
 machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     latch: latch,
-    operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
@@ -30,13 +29,12 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     // Similarly, the output data is written to memory at the provided pointer.
     //
     // Reads happen at the provided time step; writes happen at the next time step.
-    operation poseidon2_permutation<0>
+    operation poseidon2_permutation
         input_addr_high[0], input_addr_low[0],
         output_addr_high[0], output_addr_low[0],
         time_step ->;
 
     let latch = 1;
-    let operation_id;
 
     let time_step;
 

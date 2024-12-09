@@ -19,7 +19,6 @@ use super::poseidon2_common::poseidon2;
 // state size of 8 field elements instead of 12, matching Plonky3's implementation.
 machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     latch: latch,
-    operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
@@ -33,13 +32,12 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     // Similarly, the output data is written to memory at the provided pointer.
     //
     // Reads happen at the provided time step; writes happen at the next time step.
-    operation poseidon2_permutation<0>
+    operation poseidon2_permutation
         input_addr,
         output_addr,
         time_step ->;
 
     let latch = 1;
-    let operation_id;
 
     let time_step;
 

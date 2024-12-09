@@ -147,6 +147,8 @@ pub fn condense<T: FieldElement>(
                 })
                 .collect::<Vec<_>>();
 
+            #[allow(clippy::iter_over_hash_type)]
+            // TODO: is this deterministic?
             for (name, value) in condenser.extract_new_column_values() {
                 if new_values.insert(name.clone(), value).is_some() {
                     panic!("Column {name} already has a hint set, but tried to add another one.",)
@@ -162,9 +164,13 @@ pub fn condense<T: FieldElement>(
         .collect();
 
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
+    #[allow(clippy::iter_over_hash_type)]
+    // This is deterministic because insertion order does not matter.
     for symbol in new_columns {
         definitions.insert(symbol.absolute_name.clone(), (symbol, None));
     }
+    #[allow(clippy::iter_over_hash_type)]
+    // This is deterministic because definitions can be updated in any order.
     for (name, new_value) in new_values {
         if let Some((_, value)) = definitions.get_mut(&name) {
             if !value.is_none() {
