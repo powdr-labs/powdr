@@ -38,13 +38,22 @@ impl<F: FieldElement> BackendFactory<F> for RestrictedFactory {
         if proving_key.is_some() {
             return Err(Error::BackendError("Proving key unused".to_string()));
         }
-        // if pil.degrees().len() > 1 {
-        //     return Err(Error::NoVariableDegreeAvailable);
-        // }
+        if pil.degrees().len() > 1 {
+            return Err(Error::NoVariableDegreeAvailable);
+        }
 
         let mut stwo: Box<StwoProver<F, SimdBackend, Blake2sMerkleChannel, Blake2sChannel>> =
             Box::new(StwoProver::new(pil, fixed)?);
-        stwo.setup();
+
+        match (proving_key, verification_key) {
+            (Some(pk), Some(vk)) => {
+                stwo.set_proving_key(pk);
+                //stwo.set_verifying_key(vk);
+            }
+            _ => {
+                stwo.setup();
+            }
+        }
 
         Ok(stwo)
     }
@@ -80,8 +89,8 @@ where
         }
         Ok(StwoProver::prove(self, witness)?)
     }
-    #[allow(unused_variables)]
-    fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
-        unimplemented!()
+    fn export_proving_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
+        self.export_proving_key(output)
+            .map_err(|e| Error::BackendError(e.to_string()))
     }
 }

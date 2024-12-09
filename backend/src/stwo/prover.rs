@@ -5,14 +5,16 @@ use powdr_number::FieldElement;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 use std::collections::BTreeMap;
-use std::io;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use std::{fmt, io};
 
 use crate::stwo::circuit_builder::{
     gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
 };
-use crate::stwo::proof::{StarkProvingKey, TableProvingKey, TableProvingKeyCollection};
+use crate::stwo::proof::{
+    SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
+};
 
 use stwo_prover::constraint_framework::{
     TraceLocationAllocator, ORIGINAL_TRACE_IDX, PREPROCESSED_TRACE_IDX,
@@ -34,6 +36,20 @@ const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 const LOG_LAST_LAYER_DEGREE_BOUND: usize = 0;
+
+pub enum KeyExportError {
+    NoProvingKey,
+    //NoVerificationKey,
+}
+
+impl fmt::Display for KeyExportError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoProvingKey => write!(f, "No proving key set"),
+            // Self::NoVerificationKey => write!(f, "No verification key set"),
+        }
+    }
+}
 
 pub struct StwoProver<T, B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Channel> {
     pub analyzed: Arc<Analyzed<T>>,
@@ -76,6 +92,25 @@ where
             _merkle_channel_marker: PhantomData,
         })
     }
+
+    pub fn set_proving_key(&mut self, rdr: &mut dyn std::io::Read) {
+        let serializable_key: SerializableStarkProvingKey = bincode::deserialize_from(rdr).unwrap();
+        self.proving_key = StarkProvingKey::from(serializable_key);
+    }
+
+    pub fn export_proving_key(
+        &self,
+        writer: &mut dyn std::io::Write,
+    ) -> Result<(), KeyExportError> {
+        let pk = SerializableStarkProvingKey::from(self.proving_key.clone());
+        self.proving_key
+            .preprocessed
+            .as_ref()
+            .ok_or(KeyExportError::NoProvingKey)?;
+        bincode::serialize_into(writer, &pk).unwrap();
+        Ok(())
+    }
+
     pub fn setup(&mut self) {
         // machines with varying sizes are not supported yet, and it is checked in backendfactory create function.
         //TODO: support machines with varying sizes
@@ -171,11 +206,8 @@ where
                 pil.committed_polys_in_source_order()
                     .flat_map(|(s, _)| {
                         s.degree.iter().flat_map(|range| {
-                            let min = range.min;
-                            let max = range.max;
-
-                            // Iterate over powers of 2 from min to max
-                            (min..=max)
+                            range
+                                .iter()
                                 .filter(|&size| size.is_power_of_two()) // Only take powers of 2
                                 .map(|size| {
                                     // Compute twiddles for this size
