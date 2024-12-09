@@ -13,7 +13,7 @@ use crate::witgen::{
     QueryCallback,
 };
 
-use super::{Connection, Machine, MachineParts};
+use super::{Connection, LookupCell, Machine, MachineParts};
 
 /// A memory machine with a fixed address space, and each address can only have one
 /// value during the lifetime of the program.
@@ -242,6 +242,15 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b MutableState<'a, T, Q>,
+        _identity_id: u64,
+        _values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup not supported machine {}.", self.name())
+    }
+
     fn identity_ids(&self) -> Vec<u64> {
         self.connections.keys().copied().collect()
     }

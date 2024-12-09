@@ -3,7 +3,7 @@ use std::iter::once;
 
 use itertools::Itertools;
 
-use super::{Machine, MachineParts};
+use super::{LookupCell, Machine, MachineParts};
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::rows::RowPair;
@@ -184,6 +184,15 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b MutableState<'a, T, Q>,
+        _identity_id: u64,
+        _values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup not supported machine {}.", self.name())
+    }
+
     fn identity_ids(&self) -> Vec<u64> {
         self.selector_ids.keys().cloned().collect()
     }

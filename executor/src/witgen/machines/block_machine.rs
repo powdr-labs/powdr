@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::iter::{self};
 
-use super::{compute_size_and_log, ConnectionKind, EvalResult, FixedData, MachineParts};
+use super::{
+    compute_size_and_log, ConnectionKind, EvalResult, FixedData, LookupCell, MachineParts,
+};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::analysis::detect_connection_type_and_block_size;
@@ -137,6 +139,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.parts.connections.keys().copied().collect()
+    }
+
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b MutableState<'a, T, Q>,
+        _identity_id: u64,
+        _values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup not supported machine {}.", self.name())
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
