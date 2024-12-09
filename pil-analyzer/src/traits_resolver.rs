@@ -99,8 +99,7 @@ impl<'a> TraitsResolver<'a> {
 
     /// Checks for overlapping trait implementations.
     ///
-    /// This method iterates through all the trait declarations.
-    /// For each declaration, it checks that there are no traits with the same name and overlapping type variables.
+    /// This method checks that there are no traits with the same name and overlapping type variables.
     /// Overlapping implementations can lead to ambiguity in trait function calls, even when all types
     /// are fully concrete. This check helps prevent such ambiguities and ensures clear resolution
     /// of trait function calls.
@@ -137,8 +136,10 @@ impl<'a> TraitsResolver<'a> {
         }
     }
 
-    /// Validates the trait implementations in the given `implementations` list against the trait
-    /// declarations passed in the `trait_decl` parameter.
+    /// Validates that trait implementations conform to their declarations by checking:
+    ///
+    /// 1. All type variables declared in the trait are actually used in its functions
+    /// 2. The number of type parameters in implementations matches the trait declaration
     fn validate_impl_definitions(
         &self,
         implementations: &[(&TraitImplementation<Expression>, usize)],
@@ -176,10 +177,7 @@ impl<'a> TraitsResolver<'a> {
         Ok(())
     }
 
-    /// Ensures that there are no overlapping trait implementations in the given `implementations` list.
-    ///
-    /// This function iterates through all the trait implementations comparing them with each other and ensuring that
-    /// there are no traits with overlapping type variables.
+    /// Prevents ambiguous trait resolution by ensuring no overlapping implementations exist for the same trait.
     fn ensure_unique_impls(
         &self,
         implementations: &[(&TraitImplementation<Expression>, usize)],
