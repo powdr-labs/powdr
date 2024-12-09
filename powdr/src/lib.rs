@@ -12,8 +12,8 @@ pub use powdr_riscv_executor as riscv_executor;
 pub use powdr_pipeline::Pipeline;
 
 pub use powdr_number::Bn254Field;
-pub use powdr_number::FieldElement;
 pub use powdr_number::GoldilocksField;
+pub use powdr_number::{FieldElement, LargeInt};
 
 use riscv::{CompilerOptions, RuntimeLibs};
 
@@ -190,6 +190,27 @@ impl Session {
         let file = File::create(path).unwrap();
 
         self.pipeline.export_verification_key(file).unwrap();
+    }
+
+    pub fn publics(&self) -> [u32; 8] {
+        let pubs: Vec<u32> = self
+            .pipeline
+            .publics()
+            .unwrap()
+            .iter()
+            .map(|(_, v)| v.unwrap().to_integer().try_into_u32().unwrap())
+            .collect();
+        pubs.try_into().expect("There should be exactly 8 publics")
+    }
+
+    pub fn stdout<S: serde::de::DeserializeOwned>(&self) -> S {
+        let host = self.pipeline.host_context();
+        host.read(1).unwrap()
+    }
+
+    pub fn stderr<S: serde::de::DeserializeOwned>(&self) -> S {
+        let host = self.pipeline.host_context();
+        host.read(2).unwrap()
     }
 }
 

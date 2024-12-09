@@ -1,11 +1,9 @@
 use powdr_ast::analyzed::{Challenge, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
-use super::{
-    affine_expression::{AffineResult, AlgebraicVariable},
-    expression_evaluator::SymbolicVariables,
-    FixedData,
-};
+use crate::witgen::{AffineResult, AlgebraicVariable, FixedData};
+
+use super::partial_expression_evaluator::SymbolicVariables;
 
 pub trait WitnessColumnEvaluator<T> {
     /// Returns a symbolic or concrete value for the given witness column and next flag.
@@ -14,9 +12,11 @@ pub trait WitnessColumnEvaluator<T> {
     fn value<'b>(&self, poly: AlgebraicVariable<'b>) -> AffineResult<AlgebraicVariable<'b>, T>;
 }
 
-/// An evaluator (to be used together with ExpressionEvaluator) that performs concrete
-/// evaluation of all fixed columns but falls back to a generic WitnessColumnEvaluator
-/// to evaluate the witness columns either symbolically or concretely.
+/// An evaluator to be used together with ExpressionEvaluator.
+///
+/// Performs concrete evaluation of all fixed columns but falls back to a
+/// generic WitnessColumnEvaluator to evaluate the witness columns either
+/// symbolically or concretely.
 pub struct SymbolicWitnessEvaluator<'a, T: FieldElement, WA: WitnessColumnEvaluator<T>> {
     fixed_data: &'a FixedData<'a, T>,
     row: DegreeType,

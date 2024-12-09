@@ -55,6 +55,8 @@ pub struct Artifacts<T: FieldElement> {
     /// The analyzed .asm file: Assignment registers are inferred, instructions
     /// are batched and some properties are checked.
     analyzed_asm: Option<AnalysisASMFile>,
+    /// The optimized version of the analyzed ASM file.
+    optimized_asm: Option<AnalysisASMFile>,
     /// A machine collection that only contains constrained machines.
     constrained_machine_collection: Option<AnalysisASMFile>,
     /// The airgen graph, i.e. a collection of constrained machines with resolved
@@ -156,6 +158,7 @@ impl<T: FieldElement> Clone for Artifacts<T> {
             parsed_asm_file: self.parsed_asm_file.clone(),
             resolved_module_tree: self.resolved_module_tree.clone(),
             analyzed_asm: self.analyzed_asm.clone(),
+            optimized_asm: self.optimized_asm.clone(),
             constrained_machine_collection: self.constrained_machine_collection.clone(),
             linked_machine_graph: self.linked_machine_graph.clone(),
             parsed_pil_file: self.parsed_pil_file.clone(),
@@ -191,8 +194,7 @@ where
             arguments: Arguments::default(),
             host_context: ctx,
         }
-        // We add the basic callback functionalities
-        // to support PrintChar and Hint.
+        // We add the basic callback functionalities to support PrintChar and Hint.
         .add_query_callback(Arc::new(handle_simple_queries_callback()))
         .add_query_callback(cb)
     }
@@ -787,14 +789,33 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.analyzed_asm.as_ref().unwrap())
     }
 
+    pub fn compute_optimized_asm(&mut self) -> Result<&AnalysisASMFile, Vec<String>> {
+        if let Some(ref optimized_asm) = self.artifact.optimized_asm {
+            return Ok(optimized_asm);
+        }
+
+        self.compute_analyzed_asm()?;
+        let analyzed_asm = self.artifact.analyzed_asm.take().unwrap();
+
+        self.log("Optimizing asm...");
+        let optimized = powdr_asmopt::optimize(analyzed_asm);
+        self.artifact.optimized_asm = Some(optimized);
+
+        Ok(self.artifact.optimized_asm.as_ref().unwrap())
+    }
+
+    pub fn optimized_asm(&self) -> Result<&AnalysisASMFile, Vec<String>> {
+        Ok(self.artifact.optimized_asm.as_ref().unwrap())
+    }
+
     pub fn compute_constrained_machine_collection(
         &mut self,
     ) -> Result<&AnalysisASMFile, Vec<String>> {
         if self.artifact.constrained_machine_collection.is_none() {
             self.artifact.constrained_machine_collection = Some({
-                self.compute_analyzed_asm()?;
-                let analyzed_asm = self.artifact.analyzed_asm.take().unwrap();
-                powdr_asm_to_pil::compile::<T>(analyzed_asm)
+                self.compute_optimized_asm()?;
+                let optimized_asm = self.artifact.optimized_asm.take().unwrap();
+                powdr_asm_to_pil::compile::<T>(optimized_asm)
             });
         }
 
@@ -973,6 +994,8 @@ impl<T: FieldElement> Pipeline<T> {
         if let Some(ref witness) = self.artifact.witness {
             return Ok(witness.clone());
         }
+
+        self.host_context.clear();
 
         let pil = self.compute_optimized_pil()?;
         let fixed_cols = self.compute_fixed_cols()?;

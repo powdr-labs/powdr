@@ -1,16 +1,17 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
+use bus_accumulator::BusAccumulatorGenerator;
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, AlgebraicReferenceThin, Analyzed, DegreeRange,
-    Expression, FunctionValueDefinition, PolyID, PolynomialType, Symbol, SymbolKind,
+    Expression, FunctionValueDefinition, Identity, PolyID, PolynomialType, Symbol, SymbolKind,
     TypedExpression,
 };
 use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement, KnownField};
 use std::iter::once;
 
 use crate::constant_evaluator::VariablySizedColumn;
@@ -27,10 +28,10 @@ use self::machines::profiling::{record_end, record_start, reset_and_print_profil
 mod affine_expression;
 pub(crate) mod analysis;
 mod block_processor;
+mod bus_accumulator;
 mod data_structures;
 mod eval_result;
-mod expression_evaluator;
-pub mod fixed_evaluator;
+pub mod evaluators;
 mod global_constraints;
 mod identity_processor;
 mod machines;
@@ -39,13 +40,11 @@ mod query_processor;
 mod range_constraints;
 mod rows;
 mod sequence_iterator;
-pub mod symbolic_evaluator;
-mod symbolic_witness_evaluator;
 mod util;
 mod vm_processor;
 
 pub use affine_expression::{AffineExpression, AffineResult, AlgebraicVariable};
-pub use expression_evaluator::{ExpressionEvaluator, SymbolicVariables};
+pub use evaluators::partial_expression_evaluator::{PartialExpressionEvaluator, SymbolicVariables};
 
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 static RANGE_CONSTRAINT_MULTIPLICITY_WITGEN: &str = "range constraint multiplicity witgen";
@@ -107,12 +106,32 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
         challenges: BTreeMap<u64, T>,
         stage: u8,
     ) -> Vec<(String, Vec<T>)> {
-        let size = current_witness.iter().next().unwrap().1.len() as DegreeType;
-        let fixed_col_values = self.select_fixed_columns(pil, size);
-        WitnessGenerator::new(pil, &fixed_col_values, &*self.query_callback)
-            .with_external_witness_values(current_witness)
-            .with_challenges(stage, challenges)
-            .generate()
+        let has_phantom_bus_sends = pil
+            .identities
+            .iter()
+            .any(|identity| matches!(identity, Identity::PhantomBusInteraction(_)));
+
+        if has_phantom_bus_sends && T::known_field() == Some(KnownField::GoldilocksField) {
+            log::debug!("Using hand-written bus witgen.");
+            assert_eq!(stage, 1);
+            let bus_columns = BusAccumulatorGenerator::new(
+                pil,
+                current_witness,
+                &self.fixed_col_values,
+                challenges,
+            )
+            .generate();
+
+            current_witness.iter().cloned().chain(bus_columns).collect()
+        } else {
+            log::debug!("Using automatic stage-1 witgen.");
+            let size = current_witness.iter().next().unwrap().1.len() as DegreeType;
+            let fixed_col_values = self.select_fixed_columns(pil, size);
+            WitnessGenerator::new(pil, &fixed_col_values, &*self.query_callback)
+                .with_external_witness_values(current_witness)
+                .with_challenges(stage, challenges)
+                .generate()
+        }
     }
 }
 
@@ -443,18 +462,28 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     fn common_degree_range<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeRange {
         let ids: HashSet<_> = ids.into_iter().collect();
 
-        self.all_poly_symbols()
-            .flat_map(|symbol| symbol.array_elements().map(|(_, id)| (id, symbol.degree)))
-            // only keep the ones matching our set
-            .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
-            // get the common degree
+        // Iterator of (id, Option<DegreeRange>), with only the requested ids.
+        let filtered_ids_and_degrees = || {
+            self.all_poly_symbols()
+                .flat_map(|symbol| symbol.array_elements().map(|(_, id)| (id, symbol.degree)))
+                .filter_map(|(id, degree)| ids.contains(&id).then_some((id, degree)))
+        };
+
+        filtered_ids_and_degrees()
+            .map(|(_, degree_range)| degree_range)
             .unique()
             .exactly_one()
-            .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
+            .unwrap_or_else(|_| {
+                log::error!("The following columns have different degree ranges:");
+                for (id, degree) in filtered_ids_and_degrees() {
+                    log::error!("  {}: {:?}", self.column_name(&id), degree);
+                }
+                panic!("Expected all columns to have the same degree")
+            })
             .unwrap()
     }
 
-    /// Returns whether all polynomials have the same static degree.
+    /// Returns whether all columns have the same static degree.
     fn is_monolithic(&self) -> bool {
         match self
             .all_poly_symbols()
@@ -570,7 +599,14 @@ impl<'a, T> FixedColumn<'a, T> {
     }
 
     pub fn values(&self, size: DegreeType) -> &[T] {
-        self.values.get_by_size(size).unwrap()
+        self.values.get_by_size(size).unwrap_or_else(|| {
+            panic!(
+                "Fixed column {} does not have a value for size {}. Available sizes: {:?}",
+                self.name,
+                size,
+                self.values.available_sizes()
+            )
+        })
     }
 
     pub fn values_max_size(&self) -> &[T] {

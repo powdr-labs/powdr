@@ -949,7 +949,7 @@ impl<T> Children<AlgebraicExpression<T>> for SelectedExpressions<T> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PolynomialIdentity<T> {
-    // The ID is globally unique among identitites.
+    // The ID is globally unique among identities.
     pub id: u64,
     pub source: SourceRef,
     pub expression: AlgebraicExpression<T>,
@@ -966,7 +966,7 @@ impl<T> Children<AlgebraicExpression<T>> for PolynomialIdentity<T> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LookupIdentity<T> {
-    // The ID is globally unique among identitites.
+    // The ID is globally unique among identities.
     pub id: u64,
     pub source: SourceRef,
     pub left: SelectedExpressions<T>,
@@ -1017,7 +1017,7 @@ impl<T> Children<AlgebraicExpression<T>> for PhantomLookupIdentity<T> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PermutationIdentity<T> {
-    // The ID is globally unique among identitites.
+    // The ID is globally unique among identities.
     pub id: u64,
     pub source: SourceRef,
     pub left: SelectedExpressions<T>,
@@ -1035,11 +1035,11 @@ impl<T> Children<AlgebraicExpression<T>> for PermutationIdentity<T> {
 
 /// A witness generation helper for a permutation identity.
 ///
-/// This identity is used as a replactement for a permutation identity which has been turned into challenge-based polynomial identities.
+/// This identity is used as a replacement for a permutation identity which has been turned into challenge-based polynomial identities.
 /// This is ignored by the backend.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PhantomPermutationIdentity<T> {
-    // The ID is globally unique among identitites.
+    // The ID is globally unique among identities.
     pub id: u64,
     pub source: SourceRef,
     pub left: SelectedExpressions<T>,
@@ -1057,7 +1057,7 @@ impl<T> Children<AlgebraicExpression<T>> for PhantomPermutationIdentity<T> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ConnectIdentity<T> {
-    // The ID is globally unique among identitites.
+    // The ID is globally unique among identities.
     pub id: u64,
     pub source: SourceRef,
     pub left: Vec<AlgebraicExpression<T>>,
@@ -1070,6 +1070,36 @@ impl<T> Children<AlgebraicExpression<T>> for ConnectIdentity<T> {
     }
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(self.left.iter().chain(self.right.iter()))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema, PartialOrd, Ord)]
+pub struct ExpressionList<T>(pub Vec<AlgebraicExpression<T>>);
+
+impl<T> Children<AlgebraicExpression<T>> for ExpressionList<T> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(self.0.iter_mut())
+    }
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(self.0.iter())
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PhantomBusInteractionIdentity<T> {
+    // The ID is globally unique among identities.
+    pub id: u64,
+    pub source: SourceRef,
+    pub multiplicity: AlgebraicExpression<T>,
+    pub tuple: ExpressionList<T>,
+}
+
+impl<T> Children<AlgebraicExpression<T>> for PhantomBusInteractionIdentity<T> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(once(&mut self.multiplicity).chain(self.tuple.children_mut()))
+    }
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(once(&self.multiplicity).chain(self.tuple.children()))
     }
 }
 
@@ -1092,6 +1122,7 @@ pub enum Identity<T> {
     Permutation(PermutationIdentity<T>),
     PhantomPermutation(PhantomPermutationIdentity<T>),
     Connect(ConnectIdentity<T>),
+    PhantomBusInteraction(PhantomBusInteractionIdentity<T>),
 }
 
 impl<T> Identity<T> {
@@ -1111,6 +1142,7 @@ impl<T> Identity<T> {
             Identity::Permutation(i) => i.id,
             Identity::PhantomPermutation(i) => i.id,
             Identity::Connect(i) => i.id,
+            Identity::PhantomBusInteraction(i) => i.id,
         }
     }
 
@@ -1122,6 +1154,7 @@ impl<T> Identity<T> {
             Identity::Permutation(_) => IdentityKind::Permutation,
             Identity::PhantomPermutation(_) => IdentityKind::PhantomPermutation,
             Identity::Connect(_) => IdentityKind::Connect,
+            Identity::PhantomBusInteraction(_) => IdentityKind::PhantomBusInteraction,
         }
     }
 }
@@ -1135,6 +1168,7 @@ impl<T> SourceReference for Identity<T> {
             Identity::Permutation(i) => &i.source,
             Identity::PhantomPermutation(i) => &i.source,
             Identity::Connect(i) => &i.source,
+            Identity::PhantomBusInteraction(i) => &i.source,
         }
     }
 
@@ -1146,6 +1180,7 @@ impl<T> SourceReference for Identity<T> {
             Identity::Permutation(i) => &mut i.source,
             Identity::PhantomPermutation(i) => &mut i.source,
             Identity::Connect(i) => &mut i.source,
+            Identity::PhantomBusInteraction(i) => &mut i.source,
         }
     }
 }
@@ -1159,6 +1194,7 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
             Identity::Permutation(i) => i.children_mut(),
             Identity::PhantomPermutation(i) => i.children_mut(),
             Identity::Connect(i) => i.children_mut(),
+            Identity::PhantomBusInteraction(i) => i.children_mut(),
         }
     }
 
@@ -1170,6 +1206,7 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
             Identity::Permutation(i) => i.children(),
             Identity::PhantomPermutation(i) => i.children(),
             Identity::Connect(i) => i.children(),
+            Identity::PhantomBusInteraction(i) => i.children(),
         }
     }
 }
@@ -1184,6 +1221,7 @@ pub enum IdentityKind {
     Permutation,
     PhantomPermutation,
     Connect,
+    PhantomBusInteraction,
 }
 
 impl<T> SelectedExpressions<T> {

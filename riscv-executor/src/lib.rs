@@ -531,10 +531,10 @@ mod builder {
             let mut ret = Self {
                 pc_idx,
                 curr_pc: PC_INITIAL_VAL.into(),
+                regs_machine: MemoryMachine::new("main_regs", &witness_cols),
+                memory_machine: MemoryMachine::new("main_memory", &witness_cols),
                 trace: ExecutionTrace::new(witness_cols, reg_map, reg_writes, PC_INITIAL_VAL + 1),
                 submachines,
-                regs_machine: MemoryMachine::new("main_regs"),
-                memory_machine: MemoryMachine::new("main_memory"),
                 next_statement_line: 1,
                 batch_to_line_map,
                 max_rows: max_rows_len,
@@ -699,28 +699,30 @@ mod builder {
             self.set_next_pc().and(Some(st_line))
         }
 
-        pub(crate) fn set_mem(&mut self, addr: u32, val: u32) {
+        pub(crate) fn set_mem(&mut self, addr: u32, val: u32, step: u32, selector: u32) {
             if let ExecMode::Trace = self.mode {
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Write,
                     address: addr,
                 });
+                self.memory_machine.write(step, addr, val.into(), selector);
             }
 
             self.mem.insert(addr, val);
         }
 
-        pub(crate) fn get_mem(&mut self, addr: u32) -> u32 {
+        pub(crate) fn get_mem(&mut self, addr: u32, step: u32, selector: u32) -> u32 {
+            let val = *self.mem.get(&addr).unwrap_or(&0);
             if let ExecMode::Trace = self.mode {
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Read,
                     address: addr,
                 });
+                self.memory_machine.read(step, addr, val.into(), selector);
             }
-
-            *self.mem.get(&addr).unwrap_or(&0)
+            val
         }
 
         pub(crate) fn set_reg_mem(&mut self, addr: u32, val: Elem<F>) {
@@ -777,17 +779,16 @@ mod builder {
             // add submachine traces to main trace
             // ----------------------------
             for mut machine in self.submachines.into_values().map(|m| m.into_inner()) {
-                if machine.len() == 0 {
-                    // ignore empty machines
-                    continue;
-                }
-                machine.final_row_override();
-                let range = namespace_degree_range(pil, machine.namespace());
-                // extend with dummy blocks up to the required machine degree
-                let machine_degree =
-                    std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
-                while machine.len() < machine_degree {
-                    machine.push_dummy_block(machine_degree as usize);
+                // if the machine is not empty, we need to fill it up to the degree
+                if machine.len() > 0 {
+                    machine.final_row_override();
+                    let range = namespace_degree_range(pil, machine.namespace());
+                    // extend with dummy blocks up to the required machine degree
+                    let machine_degree =
+                        std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
+                    while machine.len() < machine_degree {
+                        machine.push_dummy_block(machine_degree as usize);
+                    }
                 }
                 for (col_name, col) in machine.take_cols() {
                     assert!(self.trace.cols.insert(col_name, col).is_none());
@@ -1022,9 +1023,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     /// read register value, updating the register memory machine
     fn reg_read(&mut self, step_offset: u32, reg: u32, selector_idx: u32) -> Elem<F> {
         let val = self.proc.get_reg_mem(reg);
-        self.proc
-            .regs_machine
-            .read(self.step + step_offset, reg, val, selector_idx);
+        if let ExecMode::Trace = self.mode {
+            self.proc
+                .regs_machine
+                .read(self.step + step_offset, reg, val, selector_idx);
+        }
         val
     }
 
@@ -1142,10 +1145,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
 
                 let addr = addr as u32;
-                self.proc.set_mem(addr, value.u());
-                self.proc
-                    .memory_machine
-                    .write(self.step + 3, addr, value, 1);
+                self.proc.set_mem(addr, value.u(), self.step + 3, 1);
 
                 set_col!(tmp1_col, addr1);
                 set_col!(tmp2_col, addr2);
@@ -1168,7 +1168,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let addr = addr1.bin() + offset;
 
-                let val = self.proc.get_mem(addr as u32 & 0xfffffffc);
+                let val = self
+                    .proc
+                    .get_mem(addr as u32 & 0xfffffffc, self.step + 1, 0);
                 let rem = addr % 4;
 
                 self.reg_write(2, write_addr1, val.into(), 3);
@@ -1187,13 +1189,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(
                     wrap_bit,
                     Elem::from_u32_as_fe(((v as u64 >> 32) & 1) as u32)
-                );
-
-                self.proc.memory_machine.read(
-                    self.step + 1,
-                    addr as u32 & 0xfffffffc,
-                    val.into(),
-                    0,
                 );
 
                 Vec::new()
@@ -1893,23 +1888,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let inputs = (0..12)
                     .map(|i| {
-                        let lo = self.proc.get_mem(input_ptr.u() + 8 * i);
-                        let hi = self.proc.get_mem(input_ptr.u() + 8 * i + 4);
-                        // memory reads of the poseidon machine
-                        if let ExecMode::Trace = self.mode {
-                            self.proc.memory_machine.read(
-                                self.step,
-                                input_ptr.u() + 8 * i,
-                                lo.into(),
-                                2,
-                            );
-                            self.proc.memory_machine.read(
-                                self.step,
-                                input_ptr.u() + 8 * i + 4,
-                                hi.into(),
-                                3,
-                            );
-                        }
+                        // step/selector of memory reads from the poseidon machine
+                        let lo = self.proc.get_mem(input_ptr.u() + 8 * i, self.step, 2);
+                        let hi = self.proc.get_mem(input_ptr.u() + 8 * i + 4, self.step, 3);
                         F::from(((hi as u64) << 32) | lo as u64)
                     })
                     .collect::<Vec<_>>();
@@ -1921,8 +1902,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     let v = v.to_integer().try_into_u64().unwrap();
                     let hi = (v >> 32) as u32;
                     let lo = (v & 0xffffffff) as u32;
-                    self.proc.set_mem(output_ptr.u() + 8 * i as u32, lo);
-                    self.proc.set_mem(output_ptr.u() + 8 * i as u32 + 4, hi);
+                    // step/selector of memory writes from the poseidon machine
+                    self.proc
+                        .set_mem(output_ptr.u() + 8 * i as u32, lo, self.step + 1, 4);
+                    self.proc
+                        .set_mem(output_ptr.u() + 8 * i as u32 + 4, hi, self.step + 1, 5);
                     if let ExecMode::Trace = self.mode {
                         // split gl of the poseidon machine
                         self.proc.submachine("split_gl").add_operation(
@@ -1930,19 +1914,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                             &[hi.into(), lo.into()],
                             Some(1),
                             &[],
-                        );
-                        // memory writes of the poseidon machine
-                        self.proc.memory_machine.write(
-                            self.step + 1,
-                            output_ptr.u() + 8 * i as u32,
-                            lo.into(),
-                            4,
-                        );
-                        self.proc.memory_machine.write(
-                            self.step + 1,
-                            output_ptr.u() + 8 * i as u32 + 4,
-                            hi.into(),
-                            5,
                         );
                     }
                 });
@@ -1983,7 +1954,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 assert_eq!(input_ptr % 4, 0);
 
                 let inputs: [u64; 8] = (0..16)
-                    .map(|i| self.proc.get_mem(input_ptr + i * 4))
+                    .map(|i| self.proc.get_mem(input_ptr + i * 4, 0, 0)) // TODO: step/selector for poseidon2
                     .chunks(2)
                     .into_iter()
                     .map(|mut chunk| {
@@ -2002,7 +1973,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let output_ptr = self.proc.get_reg_mem(args[1].u()).u();
                 assert_eq!(output_ptr % 4, 0);
                 result.enumerate().for_each(|(i, v)| {
-                    self.proc.set_mem(output_ptr + i as u32 * 4, v);
+                    self.proc.set_mem(output_ptr + i as u32 * 4, v, 0, 0); // TODO: step/selector for poseidon2
                 });
 
                 vec![]
@@ -2318,7 +2289,7 @@ enum ExecMode {
 pub fn execute_fast<F: FieldElement>(
     asm: &AnalysisASMFile,
     initial_memory: MemoryState,
-    inputs: &Callback<F>,
+    prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     profiling: Option<ProfilerOptions>,
 ) -> usize {
@@ -2328,7 +2299,7 @@ pub fn execute_fast<F: FieldElement>(
         None,
         None,
         initial_memory,
-        inputs,
+        prover_ctx,
         bootloader_inputs,
         usize::MAX,
         ExecMode::Fast,
@@ -2344,7 +2315,7 @@ pub fn execute<F: FieldElement>(
     opt_pil: &Analyzed<F>,
     fixed: FixedColumns<F>,
     initial_memory: MemoryState,
-    inputs: &Callback<F>,
+    prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     max_steps_to_execute: Option<usize>,
     profiling: Option<ProfilerOptions>,
@@ -2355,7 +2326,7 @@ pub fn execute<F: FieldElement>(
         Some(opt_pil),
         Some(fixed),
         initial_memory,
-        inputs,
+        prover_ctx,
         bootloader_inputs,
         max_steps_to_execute.unwrap_or(usize::MAX),
         ExecMode::Trace,
@@ -2375,7 +2346,7 @@ fn execute_inner<F: FieldElement>(
     opt_pil: Option<&Analyzed<F>>,
     fixed: Option<FixedColumns<F>>,
     initial_memory: MemoryState,
-    inputs: &Callback<F>,
+    prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     max_steps_to_execute: usize,
     mode: ExecMode,
@@ -2437,10 +2408,12 @@ fn execute_inner<F: FieldElement>(
         .map(|v| Elem::try_from_fe_as_bin(v).unwrap_or(Elem::Field(*v)))
         .collect();
 
+    // We clear the QueryCallback's virtual FS before the execution.
+    (prover_ctx)("Clear").unwrap();
     let mut e = Executor {
         proc,
         label_map,
-        inputs,
+        inputs: prover_ctx,
         bootloader_inputs,
         fixed: fixed.unwrap_or_default(),
         program_cols,

@@ -11,9 +11,10 @@ use std::{
 
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, ConnectIdentity, DegreeRange, Expression,
-    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialType, PublicDeclaration,
-    SelectedExpressions, SolvedTraitImpls, StatementIdentifier, Symbol, SymbolKind,
+    ExpressionList, FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity,
+    PhantomBusInteractionIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolyID,
+    PolynomialIdentity, PolynomialType, PublicDeclaration, SelectedExpressions, SolvedTraitImpls,
+    StatementIdentifier, Symbol, SymbolKind,
 };
 use powdr_ast::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
@@ -791,6 +792,16 @@ fn to_constraint<T: FieldElement>(
             }
             .into()
         }
+        "PhantomBusInteraction" => PhantomBusInteractionIdentity {
+            id: counters.dispense_identity_id(),
+            source,
+            multiplicity: to_expr(&fields[0]),
+            tuple: ExpressionList(match fields[1].as_ref() {
+                Value::Array(fields) => fields.iter().map(|f| to_expr(f)).collect(),
+                _ => panic!("Expected array, got {:?}", fields[1]),
+            }),
+        }
+        .into(),
         _ => panic!("Expected constraint but got {constraint}"),
     }
 }

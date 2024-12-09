@@ -108,8 +108,9 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                 Identity::Permutation(..) => {
                     unimplemented!("Permutation is not implemented in stwo yet")
                 }
-                Identity::PhantomPermutation(..) => {}
-                Identity::PhantomLookup(..) => {}
+                Identity::PhantomPermutation(..)
+                | Identity::PhantomLookup(..)
+                | Identity::PhantomBusInteraction(..) => {}
             }
         }
         eval
