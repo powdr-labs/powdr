@@ -1,13 +1,11 @@
 use powdr_number::FieldElement;
 
-use crate::Elem;
-
 #[derive(Debug, Eq, PartialEq)]
 /// Order of fields matter: will be ordered by addr then step.
 struct Op<F: FieldElement> {
     addr: u32,
     step: u32,
-    value: Elem<F>,
+    value: F,
     write: bool,
     // each machine that's called via permutation has a selector array, with one entry per incoming permutation.
     // This is the idx assigned to the `link` triggering the memory operation.
@@ -37,7 +35,7 @@ impl<F: FieldElement> MemoryMachine<F> {
         }
     }
 
-    pub fn write(&mut self, step: u32, addr: u32, val: Elem<F>, selector_idx: u32) {
+    pub fn write(&mut self, step: u32, addr: u32, val: F, selector_idx: u32) {
         self.ops.push(Op {
             addr,
             step,
@@ -47,7 +45,7 @@ impl<F: FieldElement> MemoryMachine<F> {
         });
     }
 
-    pub fn read(&mut self, step: u32, addr: u32, val: Elem<F>, selector_idx: u32) {
+    pub fn read(&mut self, step: u32, addr: u32, val: F, selector_idx: u32) {
         self.ops.push(Op {
             addr,
             step,
@@ -61,7 +59,7 @@ impl<F: FieldElement> MemoryMachine<F> {
         self.ops.len() as u32
     }
 
-    pub fn take_cols(mut self, len: u32) -> Vec<(String, Vec<Elem<F>>)> {
+    pub fn take_cols(mut self, len: u32) -> Vec<(String, Vec<F>)> {
         assert!(
             len >= self.len(),
             "trying to take less rows than memory ops"
@@ -132,11 +130,7 @@ impl<F: FieldElement> MemoryMachine<F> {
         // extend rows if needed
         let last_step = self.ops.last().map(|op| op.step).unwrap_or(0);
         let last_addr = self.ops.last().map(|op| op.addr).unwrap_or(0);
-        let last_value = self
-            .ops
-            .last()
-            .map(|op| op.value)
-            .unwrap_or(Elem::Field(0.into()));
+        let last_value = self.ops.last().map(|op| op.value).unwrap_or(0.into());
         if self.len() < len {
             // addr and value are repeated
             cols[Addr as usize].1.resize(len as usize, last_addr.into());
@@ -145,7 +139,7 @@ impl<F: FieldElement> MemoryMachine<F> {
             cols[Step as usize].1.extend(
                 (last_step + 1..)
                     .take((len - self.len()) as usize)
-                    .map(|x| Elem::from_u32_as_fe(x)),
+                    .map(|x| F::from(x)),
             );
             // rest are zero
             cols[Change as usize].1.resize(len as usize, 0.into());
