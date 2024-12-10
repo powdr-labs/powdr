@@ -19,7 +19,7 @@ impl<B: Backend> From<SerializableTableProvingKeyCollection> for TableProvingKey
             .constant_trace_circle_domain_collection
             .into_iter()
             .map(|(size, table_provingkey)| {
-                let domain = CanonicCoset::new(size as u32).circle_domain();
+                let domain = CanonicCoset::new(size.ilog2()).circle_domain();
                 let constant_trace_circle_domain = table_provingkey
                     .into_values()
                     .map(|values| {
@@ -86,14 +86,12 @@ impl<B: Backend> From<TableProvingKeyCollection<B>> for SerializableTableProving
             .iter()
             .for_each(|(&size, trable_provingkey)| {
                 let mut values: BTreeMap<usize, Vec<M31>> = BTreeMap::new();
+                let log_size = size.ilog2();
                 trable_provingkey
                     .constant_trace_circle_domain
                     .iter()
                     .for_each(|circle_eval| {
-                        values.insert(
-                            circle_eval.domain.log_size() as usize,
-                            circle_eval.values.to_cpu().to_vec(),
-                        );
+                        values.insert(log_size as usize, circle_eval.values.to_cpu().to_vec());
                     });
 
                 constant_trace_circle_domain_collection.insert(size, values);
