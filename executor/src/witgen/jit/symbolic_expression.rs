@@ -44,6 +44,10 @@ pub enum UnaryOperator {
 }
 
 impl<T: FieldElement, V> SymbolicExpression<T, V> {
+    pub fn from_var(name: V) -> Self {
+        SymbolicExpression::Variable(name, None)
+    }
+
     pub fn is_known_zero(&self) -> bool {
         self.try_to_number().map_or(false, |n| n.is_zero())
     }
@@ -113,12 +117,6 @@ impl Display for UnaryOperator {
         match self {
             UnaryOperator::Neg => write!(f, "-"),
         }
-    }
-}
-
-impl<T: FieldElement, V> SymbolicExpression<T, V> {
-    pub fn from_var(name: V) -> Self {
-        SymbolicExpression::Variable(name, None)
     }
 }
 
