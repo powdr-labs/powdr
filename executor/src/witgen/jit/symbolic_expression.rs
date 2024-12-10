@@ -1,6 +1,6 @@
 use std::{
     fmt::{self, Display, Formatter},
-    ops::{Add, BitAnd, Div, Mul, Neg},
+    ops::{Add, BitAnd, BitOr, Mul, Neg},
 };
 
 use powdr_number::FieldElement;
@@ -39,6 +39,7 @@ pub enum BinaryOperator {
     /// Integer division, i.e. convert field elements to unsigned integer and divide.
     IntegerDiv,
     BitAnd,
+    BitOr,
 }
 
 #[derive(Debug, Clone)]
@@ -106,6 +107,7 @@ impl Display for BinaryOperator {
             BinaryOperator::Div => write!(f, "/"),
             BinaryOperator::IntegerDiv => write!(f, "//"),
             BinaryOperator::BitAnd => write!(f, "&"),
+            BinaryOperator::BitOr => write!(f, "|"),
         }
     }
 }
@@ -199,16 +201,14 @@ impl<T: FieldElement> Mul for &SymbolicExpression<T> {
     }
 }
 
-impl<T: FieldElement> Div for &SymbolicExpression<T> {
-    type Output = SymbolicExpression<T>;
-
+impl<T: FieldElement> SymbolicExpression<T> {
     /// Field element division. See `integer_div` for integer division.
-    fn div(self, rhs: Self) -> Self::Output {
+    /// If you use this, you must ensure that the divisor is not zero.
+    pub fn field_div(&self, rhs: &Self) -> Self {
         if let (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) = (self, rhs) {
             assert!(b != &T::from(0));
             SymbolicExpression::Concrete(*a / *b)
         } else if self.is_known_zero() {
-            // TODO should we still detect division by zero in this case?
             SymbolicExpression::Concrete(T::from(0))
         } else if rhs.is_known_one() {
             self.clone()
@@ -224,9 +224,8 @@ impl<T: FieldElement> Div for &SymbolicExpression<T> {
             )
         }
     }
-}
 
-impl<T: FieldElement> SymbolicExpression<T> {
+    /// Integer division, i.e. convert field elements to unsigned integer and divide.
     pub fn integer_div(&self, rhs: &Self) -> Self {
         if rhs.is_known_one() {
             self.clone()
@@ -247,8 +246,9 @@ impl<T: FieldElement> BitAnd for &SymbolicExpression<T> {
     fn bitand(self, rhs: Self) -> Self::Output {
         if let (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) = (self, rhs) {
             SymbolicExpression::Concrete(T::from(a.to_integer() & b.to_integer()))
+        } else if self.is_known_zero() || rhs.is_known_zero() {
+            SymbolicExpression::Concrete(T::from(0))
         } else {
-            // TODO simplifications?
             SymbolicExpression::BinaryOperation(
                 Box::new(self.clone()),
                 BinaryOperator::BitAnd,
@@ -256,6 +256,25 @@ impl<T: FieldElement> BitAnd for &SymbolicExpression<T> {
                 self.range_constraint()
                     .zip(rhs.range_constraint())
                     .map(|(a, b)| a.conjunction(&b)),
+            )
+        }
+    }
+}
+
+impl<T: FieldElement> BitOr for &SymbolicExpression<T> {
+    type Output = SymbolicExpression<T>;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        if let (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) = (self, rhs) {
+            let v = a.to_integer() | b.to_integer();
+            assert!(v <= T::modulus());
+            SymbolicExpression::Concrete(T::from(v))
+        } else {
+            SymbolicExpression::BinaryOperation(
+                Box::new(self.clone()),
+                BinaryOperator::BitOr,
+                Box::new(rhs.clone()),
+                None,
             )
         }
     }

@@ -8,7 +8,7 @@ use itertools::Itertools;
 use num_traits::Zero;
 use powdr_number::FieldElement;
 
-use crate::witgen::global_constraints::RangeConstraintSet;
+use crate::witgen::{global_constraints::RangeConstraintSet, EvalError};
 
 use super::{super::range_constraints::RangeConstraint, symbolic_expression::SymbolicExpression};
 
@@ -18,6 +18,40 @@ pub enum Effect<T: FieldElement, V> {
     Assignment(V, SymbolicExpression<T>),
     /// we learnt a new range constraint on variable.
     RangeConstraint(V, RangeConstraint<T>),
+    /// a run-time assertion. If this fails, we have conflicting constraints.
+    Assertion(Assertion<T>),
+}
+
+/// A run-time assertion. If this fails, we have conflicting constraints.
+pub struct Assertion<T: FieldElement> {
+    pub lhs: SymbolicExpression<T>,
+    pub rhs: SymbolicExpression<T>,
+    /// If this is true, we assert that both sides are equal.
+    /// Otherwise, we assert that they are different.
+    pub expected_equal: bool,
+}
+
+impl<T: FieldElement> Assertion<T> {
+    pub fn assert_is_zero<V>(condition: SymbolicExpression<T>) -> Effect<T, V> {
+        Self::assert_eq(condition, SymbolicExpression::from(T::from(0)))
+    }
+    pub fn assert_is_nonzero<V>(condition: SymbolicExpression<T>) -> Effect<T, V> {
+        Self::assert_neq(condition, SymbolicExpression::from(T::from(0)))
+    }
+    pub fn assert_eq<V>(lhs: SymbolicExpression<T>, rhs: SymbolicExpression<T>) -> Effect<T, V> {
+        Effect::Assertion(Assertion {
+            lhs,
+            rhs,
+            expected_equal: true,
+        })
+    }
+    pub fn assert_neq<V>(lhs: SymbolicExpression<T>, rhs: SymbolicExpression<T>) -> Effect<T, V> {
+        Effect::Assertion(Assertion {
+            lhs,
+            rhs,
+            expected_equal: false,
+        })
+    }
 }
 
 /// Represents an expression `a_1 * x_1 + ... + a_k * x_k + offset`,
@@ -65,7 +99,7 @@ impl<T: FieldElement, V> From<SymbolicExpression<T>> for AffineSymbolicExpressio
     }
 }
 
-impl<T: FieldElement, V: Ord + Clone> AffineSymbolicExpression<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
     pub fn from_known_variable(var: &str) -> Self {
         SymbolicExpression::from_var(var).into()
     }
@@ -114,38 +148,50 @@ impl<T: FieldElement, V: Ord + Clone> AffineSymbolicExpression<T, V> {
     }
 
     /// Solves the equation `self = 0` and returns how to compute the solution.
-    pub fn solve(&self, range_constraints: &impl RangeConstraintSet<V, T>) -> Vec<Effect<T, V>> {
+    pub fn solve(
+        &self,
+        range_constraints: &impl RangeConstraintSet<V, T>,
+    ) -> Result<Vec<Effect<T, V>>, EvalError<T>> {
         match self.coefficients.len() {
             0 => {
                 return if self.offset.is_known_zero() {
-                    vec![]
+                    Ok(vec![])
                 } else {
-                    // TODO this is a non-satisfiable constraint - should we panic?
-                    vec![]
+                    Err(EvalError::ConstraintUnsatisfiable(format!("{} != 0", self)))
                 };
             }
             1 => {
                 let (var, coeff) = self.coefficients.iter().next().unwrap();
                 assert!(!coeff.is_known_zero());
-                let value = &self.offset / &coeff.neg();
-                return vec![Effect::Assignment(var.clone(), value)];
+                let value = self.offset.field_div(&coeff.neg());
+                let assignment = Effect::Assignment(var.clone(), value);
+                if let Some(coeff) = coeff.try_to_number() {
+                    assert!(!coeff.is_zero(), "Zero coefficient has not been removed.");
+                    return Ok(vec![assignment]);
+                } else {
+                    return Ok(vec![
+                        Assertion::assert_is_nonzero(coeff.clone()),
+                        assignment,
+                    ]);
+                }
             }
             _ => {}
         }
 
         let r = self.solve_through_constraints(range_constraints);
         if !r.is_empty() {
-            return r;
+            return Ok(r);
         }
         let negated = -self;
         let r = negated.solve_through_constraints(range_constraints);
         if !r.is_empty() {
-            return r;
+            return Ok(r);
         }
-        self.transfer_constraints(range_constraints)
+        Ok(self
+            .transfer_constraints(range_constraints)
             .into_iter()
             .chain(self.transfer_constraints(range_constraints))
-            .collect()
+            .collect())
     }
 
     /// Tries to solve a bit-decomposition equation.
@@ -172,7 +218,7 @@ impl<T: FieldElement, V: Ord + Clone> AffineSymbolicExpression<T, V> {
 
         // Check if they are mutually exclusive and compute assignments.
         let mut covered_bits: <T as FieldElement>::Integer = 0.into();
-        let mut assignments = vec![];
+        let mut effects = vec![];
         for (var, coeff, constraint) in constrained_coefficients {
             let mask = *constraint.multiple(coeff).mask();
             if !(mask & covered_bits).is_zero() {
@@ -182,7 +228,7 @@ impl<T: FieldElement, V: Ord + Clone> AffineSymbolicExpression<T, V> {
                 covered_bits |= mask;
             }
             let masked = &(-&self.offset) & &T::from(mask).into();
-            assignments.push(Effect::Assignment(
+            effects.push(Effect::Assignment(
                 var.clone(),
                 masked.integer_div(&coeff.into()),
             ));
@@ -192,10 +238,16 @@ impl<T: FieldElement, V: Ord + Clone> AffineSymbolicExpression<T, V> {
             return vec![];
         }
 
-        // TODO we need to add an assertion that offset is covered by the masks.
-        // Otherwise the equation is not solvable.
-        // TODO is this really the case?
-        assignments
+        // We need to assert that the masks cover the offset,
+        // otherwise the equation is not solvable.
+        // We assert offset & !masks == 0 <=> offset == offset | masks.
+        // We use the latter since we cannot properly bit-negate inside the field.
+        effects.push(Assertion::assert_eq(
+            self.offset.clone(),
+            &self.offset | &T::from(covered_bits).into(),
+        ));
+
+        effects
     }
 
     fn transfer_constraints(
@@ -332,6 +384,30 @@ mod test {
     }
 
     #[test]
+    fn unsolveable() {
+        let r = from_number(10).solve(&SimpleRangeConstraintSet::default());
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn unsolvable_with_vars() {
+        let x = Ase::from_known_variable("X");
+        let y = Ase::from_known_variable("Y");
+        let constr = &(&x + &y) - &from_number(10);
+        let r = constr.solve(&SimpleRangeConstraintSet::default());
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn solveable_without_vars() {
+        let constr = &from_number(0);
+        assert!(constr
+            .solve(&SimpleRangeConstraintSet::default())
+            .unwrap()
+            .is_empty());
+    }
+
+    #[test]
     fn solve_simple_eq() {
         let y = Ase::from_known_variable("y");
         let x = Ase::from_unknown_variable("X");
@@ -340,7 +416,7 @@ mod test {
         let seven = from_number(7);
         let ten = from_number(10);
         let constr = &(&mul(&two, &x) + &mul(&seven, &y)) - &ten;
-        let effects = constr.solve(&SimpleRangeConstraintSet::default());
+        let effects = constr.solve(&SimpleRangeConstraintSet::default()).unwrap();
         assert_eq!(effects.len(), 1);
         let Effect::Assignment(var, expr) = &effects[0] else {
             panic!("Expected assignment");
@@ -370,13 +446,25 @@ mod test {
         // Without range constraints, this is not solvable.
         assert!(constr
             .solve(&SimpleRangeConstraintSet::default())
+            .unwrap()
             .is_empty());
         // With range constraints, it should be solvable.
         let effects = constr
             .solve(&range_constraints)
+            .unwrap()
             .into_iter()
             .map(|effect| match effect {
                 Effect::Assignment(v, expr) => format!("{v} = {expr};\n"),
+                Effect::Assertion(Assertion {
+                    lhs,
+                    rhs,
+                    expected_equal,
+                }) => {
+                    format!(
+                        "assert {lhs} {} {rhs};\n",
+                        if expected_equal { "==" } else { "!=" }
+                    )
+                }
                 _ => panic!(),
             })
             .format("")
@@ -386,6 +474,7 @@ mod test {
             "a = ((-((10 + Z)) & 65280) // 256);
 b = ((-((10 + Z)) & 16711680) // 65536);
 c = ((-((10 + Z)) & 4278190080) // 16777216);
+assert (10 + Z) == ((10 + Z) | 4294967040);
 "
         );
     }
@@ -410,6 +499,7 @@ c = ((-((10 + Z)) & 4278190080) // 16777216);
             - &z;
         let effects = constr
             .solve(&range_constraints)
+            .unwrap()
             .into_iter()
             .map(|effect| match effect {
                 Effect::RangeConstraint(v, rc) => format!("{v}: {rc};\n"),
