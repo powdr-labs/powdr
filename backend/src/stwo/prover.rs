@@ -130,7 +130,7 @@ where
             .split
             .iter()
             .filter_map(|(namespace, pil)| {
-                // if we no fixed columns, we don't need to commit to anything, publics is not supported yet.
+                // if we have no fixed columns, we don't need to commit to anything.
                 if pil.constant_count() == 0 {
                     None
                 } else {
