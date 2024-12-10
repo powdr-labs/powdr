@@ -254,10 +254,8 @@ where
 
         let mut tree_builder = commitment_scheme.tree_builder();
 
-        // Get the list of constant polynomials with next reference constraint
-        // let constant_list: Vec<usize> = get_constant_with_next_list(&self.analyzed);
 
-        //commit to the constant polynomials that are without next reference constraint
+        //commit to the constant and shifted constant polynomials 
         if let Some((_, table_proving_key)) =
             self.proving_key
                 .preprocessed

@@ -85,7 +85,6 @@ impl<T: FieldElement> PowdrEval<T> {
             .definitions_in_source_order(PolynomialType::Constant)
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
-            //   .filter(|(_, (_, id))| !constant_with_next_list.contains(&(id.id as usize)))
             .map(|(index, (_, id))| (id, index))
             .collect();
 
@@ -142,7 +141,6 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             .map(|(i, poly_id)| {
                 (
                     *poly_id,
-                    // PreprocessedColumn::Plonk(i) is unused argument in get_preprocessed_column
                     eval.get_preprocessed_column(PreprocessedColumn::Plonk(
                         i + constant_eval.len(),
                     )),
