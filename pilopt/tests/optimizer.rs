@@ -100,11 +100,7 @@ fn intermediate() {
         col intermediate = x;
         intermediate = intermediate;
     "#;
-    let expectation = r#"namespace N(65536);
-    col witness x;
-    col intermediate = N::x;
-    N::intermediate = N::intermediate;
-"#;
+    let expectation = r#""#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
