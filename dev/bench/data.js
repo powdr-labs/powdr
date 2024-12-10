@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1733850274648,
+  "lastUpdate": 1733852048919,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -1841,6 +1841,162 @@ window.BENCHMARK_DATA = {
             "name": "executor-benchmark/keccak",
             "value": 8647094773,
             "range": "± 48960392",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "georgwiese@gmail.com",
+            "name": "Georg Wiese",
+            "username": "georgwiese"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "0180542559db8ea6811c2b57d5b2ca292ea7ea69",
+          "message": "Refactorings around `process_lookup_direct` (#2209)\n\nThis PR refactors a few things:\n- `process_lookup_direct` no longer has a default implementation.\nEventually, we want all machines to implement it, so I figured it would\nbe better to explicitly panic in each machine.\n- Refactored the implementation of\n`FixedLookupMachine::process_plookup`, pulling some stuff out into a new\n`CallerData` struct. This is similar to what @chriseth has done on\n[`call_jit_from_block`](https://github.com/powdr-labs/powdr/compare/main...call_jit_from_block),\nsee the comment below.\n- As a first test, I implemented `process_lookup_direct` for the\n\"large\"-field memory machine (and `process_plookup` by wrapping\n`process_lookup_direct`)",
+          "timestamp": "2024-12-10T16:44:15Z",
+          "tree_id": "3c3050b6316c6db5af054b636680e99dbfb8e8f4",
+          "url": "https://github.com/powdr-labs/powdr/commit/0180542559db8ea6811c2b57d5b2ca292ea7ea69"
+        },
+        "date": 1733852047972,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "evaluator-benchmark/std::math::ff::inverse",
+            "value": 6848,
+            "range": "± 8",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/std::math::ff::reduce",
+            "value": 593,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/std::math::ff::mul",
+            "value": 1069,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_879882356",
+            "value": 29045,
+            "range": "± 28",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_1882356",
+            "value": 24336,
+            "range": "± 18",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_1187956",
+            "value": 24954,
+            "range": "± 19",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_56",
+            "value": 17278,
+            "range": "± 17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_33",
+            "value": 794429,
+            "range": "± 2244",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_100",
+            "value": 2749887,
+            "range": "± 4172",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_300",
+            "value": 9557325,
+            "range": "± 19595",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_900",
+            "value": 34950155,
+            "range": "± 50678",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_2700",
+            "value": 139339462,
+            "range": "± 261637",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_879882356",
+            "value": 3118,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_1882356",
+            "value": 2482,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_1187956",
+            "value": 2439,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_56",
+            "value": 1373,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_33",
+            "value": 66209,
+            "range": "± 49",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_100",
+            "value": 250827,
+            "range": "± 266",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_300",
+            "value": 1020246,
+            "range": "± 1272",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_900",
+            "value": 4851170,
+            "range": "± 7651",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_2700",
+            "value": 27600525,
+            "range": "± 158186",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "executor-benchmark/keccak",
+            "value": 8132598043,
+            "range": "± 57065964",
             "unit": "ns/iter"
           }
         ]
