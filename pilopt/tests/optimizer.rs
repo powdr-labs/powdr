@@ -425,3 +425,21 @@ fn equal_constrained_array_elements() {
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
+
+#[test]
+fn equal_constrained_transitive() {
+    let input = r#"namespace N(65536);
+        col witness a;
+        col witness b;
+        col witness c;
+        a = b;
+        b = c;
+        a + b + c = 5;
+    "#;
+    let expectation = r#"namespace N(65536);
+    col witness a;
+    N::a + N::a + N::a = 5;
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}

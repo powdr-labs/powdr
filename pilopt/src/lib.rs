@@ -122,26 +122,33 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
 }
 
 /// Builds a lookup-table that can be used to turn all poly ids into the names of the symbols that define them.
-/// For array elements, this is the name of the array.
-/// The boolean flag indicates whether the symbol belongs to an array or not
+/// For array elements, this contains the array name and the index of the element in the array.
 fn build_poly_id_to_definition_name_lookup(
     pil_file: &Analyzed<impl FieldElement>,
-) -> BTreeMap<PolyID, (&String, bool)> {
+) -> BTreeMap<PolyID, (&String, Option<usize>)> {
     let mut poly_id_to_definition_name = BTreeMap::new();
     #[allow(clippy::iter_over_hash_type)]
     for (name, (symbol, _)) in &pil_file.definitions {
         if matches!(symbol.kind, SymbolKind::Poly(_)) {
-            symbol.array_elements().for_each(|(_, id)| {
-                poly_id_to_definition_name.insert(id, (name, symbol.is_array()));
-            });
+            symbol
+                .array_elements()
+                .enumerate()
+                .for_each(|(idx, (_, id))| {
+                    let array_pos = if symbol.is_array() { Some(idx) } else { None };
+                    poly_id_to_definition_name.insert(id, (name, array_pos));
+                });
         }
     }
 
     #[allow(clippy::iter_over_hash_type)]
     for (name, (symbol, _)) in &pil_file.intermediate_columns {
-        symbol.array_elements().for_each(|(_, id)| {
-            poly_id_to_definition_name.insert(id, (name, symbol.is_array()));
-        });
+        symbol
+            .array_elements()
+            .enumerate()
+            .for_each(|(idx, (_, id))| {
+                let array_pos = if symbol.is_array() { Some(idx) } else { None };
+                poly_id_to_definition_name.insert(id, (name, array_pos));
+            });
     }
 
     poly_id_to_definition_name
@@ -150,7 +157,7 @@ fn build_poly_id_to_definition_name_lookup(
 /// Collect all names that are referenced in identities and public declarations.
 fn collect_required_symbols<'a, T: FieldElement>(
     pil_file: &'a Analyzed<T>,
-    poly_id_to_definition_name: &BTreeMap<PolyID, (&'a String, bool)>,
+    poly_id_to_definition_name: &BTreeMap<PolyID, (&'a String, Option<usize>)>,
 ) -> HashSet<SymbolReference<'a>> {
     let mut required_names: HashSet<SymbolReference<'a>> = Default::default();
     required_names.extend(
@@ -718,7 +725,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 /// for each pair of identified columns
 fn equal_constrained<T: FieldElement>(
     expression: &AlgebraicExpression<T>,
-    poly_id_to_array_elem: &BTreeMap<PolyID, (&String, bool)>,
+    poly_id_to_array_elem: &BTreeMap<PolyID, (&String, Option<usize>)>,
 ) -> Option<((String, PolyID), (String, PolyID))> {
     match expression {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
@@ -730,9 +737,7 @@ fn equal_constrained<T: FieldElement>(
                 let is_valid = |x: &AlgebraicReference| {
                     x.is_witness()
                         && !x.next
-                        && poly_id_to_array_elem
-                            .get(&x.poly_id)
-                            .map_or(false, |&(_, b)| !b)
+                        && poly_id_to_array_elem.get(&x.poly_id).unwrap().1.is_none()
                 };
 
                 if is_valid(l) && is_valid(r) {
@@ -765,6 +770,8 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
         })
         .collect();
 
+    let substitutions = resolve_transitive_substitutions(substitutions);
+
     let (subs_by_id, subs_by_name): (HashMap<_, _>, HashMap<_, _>) = substitutions
         .iter()
         .map(|((name, id), to_keep)| ((id, to_keep), (name, to_keep)))
@@ -786,4 +793,29 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
             }
         }
     });
+}
+
+fn resolve_transitive_substitutions(
+    subs: Vec<((String, PolyID), (String, PolyID))>,
+) -> Vec<((String, PolyID), (String, PolyID))> {
+    let mut result = subs.clone();
+    let mut changed = true;
+
+    while changed {
+        changed = false;
+        for i in 0..result.len() {
+            let (_, target1) = &result[i].1;
+            if let Some(j) = result
+                .iter()
+                .position(|((_, source2), _)| source2 == target1)
+            {
+                let ((name1, source1), _) = &result[i];
+                let (_, (name3, target2)) = &result[j];
+                result[i] = ((name1.clone(), *source1), (name3.clone(), *target2));
+                changed = true;
+            }
+        }
+    }
+
+    result
 }
