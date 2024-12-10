@@ -230,7 +230,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             } else {
                 covered_bits |= mask;
             }
-            let masked = &(-&self.offset) & &T::from(mask).into();
+            let masked = -&self.offset & T::from(mask).into();
             effects.push(Effect::Assignment(
                 var.clone(),
                 masked.integer_div(&coeff.into()),
@@ -327,11 +327,27 @@ impl<T: FieldElement, V: Clone + Ord> Add for &AffineSymbolicExpression<T, V> {
     }
 }
 
+impl<T: FieldElement, V: Clone + Ord> Add for AffineSymbolicExpression<T, V> {
+    type Output = AffineSymbolicExpression<T, V>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        &self + &rhs
+    }
+}
+
 impl<T: FieldElement, V: Clone + Ord> Sub for &AffineSymbolicExpression<T, V> {
     type Output = AffineSymbolicExpression<T, V>;
 
     fn sub(self, rhs: Self) -> Self::Output {
         self + &-rhs
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> Sub for AffineSymbolicExpression<T, V> {
+    type Output = AffineSymbolicExpression<T, V>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        &self - &rhs
     }
 }
 
@@ -347,6 +363,14 @@ impl<T: FieldElement, V: Clone + Ord> Neg for &AffineSymbolicExpression<T, V> {
                 .collect(),
             offset: -&self.offset,
         }
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> Neg for AffineSymbolicExpression<T, V> {
+    type Output = AffineSymbolicExpression<T, V>;
+
+    fn neg(self) -> Self::Output {
+        -&self
     }
 }
 
@@ -396,9 +420,9 @@ mod test {
 
     #[test]
     fn unsolvable_with_vars() {
-        let x = Ase::from_known_variable("X");
-        let y = Ase::from_known_variable("Y");
-        let constr = &(&x + &y) - &from_number(10);
+        let x = &Ase::from_known_variable("X");
+        let y = &Ase::from_known_variable("Y");
+        let constr = x + y - from_number(10);
         let r = constr.solve(&SimpleRangeConstraintSet::default());
         assert!(r.is_err());
     }
@@ -420,7 +444,7 @@ mod test {
         let two = from_number(2);
         let seven = from_number(7);
         let ten = from_number(10);
-        let constr = &(&mul(&two, &x) + &mul(&seven, &y)) - &ten;
+        let constr = mul(&two, &x) + mul(&seven, &y) - ten;
         let effects = constr.solve(&SimpleRangeConstraintSet::default()).unwrap();
         assert_eq!(effects.len(), 1);
         let Effect::Assignment(var, expr) = &effects[0] else {
@@ -444,10 +468,11 @@ mod test {
         );
         // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 + Z = 0
         let ten = from_number(10);
-        let constr = &(&(&(&mul(&a, &from_number(0x100)) + &mul(&b, &from_number(0x10000)))
-            + &mul(&c, &from_number(0x1000000)))
-            + &ten)
-            + &z;
+        let constr = mul(&a, &from_number(0x100))
+            + mul(&b, &from_number(0x10000))
+            + mul(&c, &from_number(0x1000000))
+            + ten
+            + z;
         // Without range constraints, this is not solvable.
         assert!(constr
             .solve(&SimpleRangeConstraintSet::default())
@@ -498,10 +523,11 @@ assert (10 + Z) == ((10 + Z) | 4294967040);
         );
         // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 - Z = 0
         let ten = from_number(10);
-        let constr = &(&(&(&mul(&a, &from_number(0x100)) + &mul(&b, &from_number(0x10000)))
-            + &mul(&c, &from_number(0x1000000)))
-            + &ten)
-            - &z;
+        let constr = mul(&a, &from_number(0x100))
+            + mul(&b, &from_number(0x10000))
+            + mul(&c, &from_number(0x1000000))
+            + ten
+            - z;
         let effects = constr
             .solve(&range_constraints)
             .unwrap()

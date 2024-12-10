@@ -154,6 +154,13 @@ impl<T: FieldElement, V: Clone> Add for &SymbolicExpression<T, V> {
     }
 }
 
+impl<T: FieldElement, V: Clone> Add for SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
+    fn add(self, rhs: Self) -> Self::Output {
+        &self + &rhs
+    }
+}
+
 impl<T: FieldElement, V: Clone> Neg for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
@@ -167,6 +174,13 @@ impl<T: FieldElement, V: Clone> Neg for &SymbolicExpression<T, V> {
                 self.range_constraint().map(|rc| rc.multiple(-T::from(1))),
             ),
         }
+    }
+}
+
+impl<T: FieldElement, V: Clone> Neg for SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
+    fn neg(self) -> Self::Output {
+        -&self
     }
 }
 
@@ -194,6 +208,13 @@ impl<T: FieldElement, V: Clone> Mul for &SymbolicExpression<T, V> {
                 None,
             )
         }
+    }
+}
+
+impl<T: FieldElement, V: Clone> Mul for SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
+    fn mul(self, rhs: Self) -> Self {
+        &self * &rhs
     }
 }
 
@@ -257,6 +278,14 @@ impl<T: FieldElement, V: Clone> BitAnd for &SymbolicExpression<T, V> {
     }
 }
 
+impl<T: FieldElement, V: Clone> BitAnd for SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        &self & &rhs
+    }
+}
+
 impl<T: FieldElement, V: Clone> BitOr for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
@@ -273,5 +302,13 @@ impl<T: FieldElement, V: Clone> BitOr for &SymbolicExpression<T, V> {
                 None,
             )
         }
+    }
+}
+
+impl<T: FieldElement, V: Clone> BitOr for SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        &self | &rhs
     }
 }
