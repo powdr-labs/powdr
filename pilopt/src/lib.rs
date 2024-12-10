@@ -55,14 +55,20 @@ fn hash_pil_state<T: FieldElement>(pil: &Analyzed<T>) -> u64 {
         identity.hash(&mut hasher);
     }
 
-    for (name, (_, value)) in &pil.definitions {
+    // Ordenar las claves antes de iterar
+    let mut sorted_definitions: Vec<_> = pil.definitions.iter().collect();
+    sorted_definitions.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+    for (name, (_, value)) in sorted_definitions {
         name.hash(&mut hasher);
         if let Some(v) = value {
             v.hash(&mut hasher);
         }
     }
 
-    for (name, (_, value)) in &pil.intermediate_columns {
+    // Ordenar las columnas intermedias
+    let mut sorted_intermediates: Vec<_> = pil.intermediate_columns.iter().collect();
+    sorted_intermediates.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+    for (name, (_, value)) in sorted_intermediates {
         name.hash(&mut hasher);
         value.hash(&mut hasher);
     }
@@ -71,7 +77,10 @@ fn hash_pil_state<T: FieldElement>(pil: &Analyzed<T>) -> u64 {
         pf.hash(&mut hasher);
     }
 
-    for (key, decl) in &pil.public_declarations {
+    // Ordenar las declaraciones públicas
+    let mut sorted_declarations: Vec<_> = pil.public_declarations.iter().collect();
+    sorted_declarations.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+    for (key, decl) in sorted_declarations {
         key.hash(&mut hasher);
         decl.hash(&mut hasher);
     }
