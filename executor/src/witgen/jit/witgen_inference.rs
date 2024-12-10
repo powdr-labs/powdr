@@ -1,28 +1,21 @@
-use std::{
-    collections::{BTreeSet, HashMap, HashSet},
-    iter::once,
-};
+use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
-use powdr_ast::{
-    analyzed::{
-        AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-        AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity,
-        LookupIdentity, PhantomLookupIdentity, PolyID, PolynomialIdentity, PolynomialType,
-        SelectedExpressions,
-    },
-    indent,
-    parsed::visitor::AllChildren,
+use powdr_ast::analyzed::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
+    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
+    PhantomLookupIdentity, PolyID, PolynomialIdentity, PolynomialType, SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::global_constraints::RangeConstraintSet;
+use crate::witgen::{
+    global_constraints::RangeConstraintSet, jit::affine_symbolic_expression::LookupArgument,
+};
 
 use super::{
-    super::{machines::MachineParts, range_constraints::RangeConstraint, FixedData},
+    super::{range_constraints::RangeConstraint, FixedData},
     affine_symbolic_expression::{AffineSymbolicExpression, Effect},
     cell::Cell,
-    symbolic_expression::SymbolicExpression,
 };
 
 /// This component can generate code that solves identities.
@@ -31,7 +24,7 @@ pub struct WitgenInference<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     range_constraints: HashMap<Cell, RangeConstraint<T>>,
     known_cells: HashSet<Cell>,
-    code: Vec<String>, // TODO make this a proper expression
+    code: Vec<Effect<T, Cell>>,
 }
 
 impl<'a, T: FieldElement> WitgenInference<'a, T> {
@@ -47,20 +40,12 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
         }
     }
 
-    fn cell_at_row(&self, id: u64, row_offset: i32) -> Cell {
-        let poly_id = PolyID {
-            id,
-            ptype: PolynomialType::Committed,
-        };
-        Cell {
-            column_name: self.fixed_data.column_name(&poly_id).to_string(),
-            id,
-            row_offset,
-        }
+    pub fn known_cells(&self) -> &HashSet<Cell> {
+        &self.known_cells
     }
 
-    fn known_cells(&self) -> &HashSet<Cell> {
-        &self.known_cells
+    pub fn code(self) -> Vec<Effect<T, Cell>> {
+        self.code
     }
 
     pub fn process_identity(&mut self, id: &Identity<T>, row_offset: i32) {
@@ -98,7 +83,10 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
         offset: i32,
     ) -> Vec<Effect<T, Cell>> {
         if let Some(r) = self.evaluate(expression, offset) {
-            // TODO remove unwrap
+            // TODO propagate or report error properly.
+            // If solve returns an error, it means that the constraint is conflicting.
+            // In the future, we might run this in a runtime-conditional, so an error
+            // could just mean that this case cannot happen in practice.
             r.solve(self).unwrap()
         } else {
             vec![]
@@ -121,50 +109,33 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
             Expression::Number(_) => true,
             _ => false,
         }) {
-            // and the selector is known to be 1 and all except one expression is known on the LHS.
+            // and the selector is known to be 1...
             if self
                 .evaluate(&left.selector, offset)
                 .map(|s| s.is_known_one())
                 == Some(true)
             {
-                if let Some(inputs) = left
+                if let Some(lhs) = left
                     .expressions
                     .iter()
                     .map(|e| self.evaluate(e, offset))
                     .collect::<Option<Vec<_>>>()
                 {
-                    if inputs.iter().filter(|i| i.is_known()).count() == inputs.len() - 1 {
-                        let mut var_decl = String::new();
-                        let mut output_var = String::new();
-                        let query = inputs
-                            .iter()
-                            .enumerate()
-                            .map(|(i, e)| {
-                                if e.is_known() {
-                                    format!("LookupCell::Input(&({e}))")
-                                } else {
-                                    let var_name = format!("lookup_{lookup_id}_{i}");
-                                    output_var = var_name.clone();
-                                    var_decl.push_str(&format!(
-                                        "let mut {var_name}: FieldElement = Default::default();"
-                                    ));
-                                    format!("LookupCell::Output(&mut {var_name})")
-                                }
-                            })
-                            .format(", ");
-                        let machine_call = format!(
-                            "assert!(process_lookup(mutable_state, {lookup_id}, &mut [{query}]));"
-                        );
-                        // TODO range constraints?
-                        let output_expr = inputs.iter().find(|i| !i.is_known()).unwrap();
-                        return once(Effect::Code(var_decl))
-                            .chain(once(Effect::Code(machine_call)))
-                            .chain(
-                                (output_expr
-                                    - &KnownValue::from_known_local_var(&output_var).into())
-                                    .solve(self),
-                            )
-                            .collect();
+                    // and all except one expression is known on the LHS.
+                    let unknown = lhs.iter().filter(|e| !e.is_known()).collect_vec();
+                    if unknown.len() == 1 && unknown[0].single_unknown_variable().is_some() {
+                        return vec![Effect::Lookup(
+                            lookup_id,
+                            lhs.into_iter()
+                                .map(|e| {
+                                    if let Some(val) = e.try_to_known() {
+                                        LookupArgument::Known(val.clone())
+                                    } else {
+                                        LookupArgument::Unknown(e)
+                                    }
+                                })
+                                .collect(),
+                        )];
                     }
                 }
             }
@@ -172,20 +143,31 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
         vec![]
     }
 
-    fn ingest_effects(&mut self, effects: Vec<Effect<T>>) {
+    fn ingest_effects(&mut self, effects: Vec<Effect<T, Cell>>) {
         for e in effects {
-            match e {
+            match &e {
                 Effect::Assignment(cell, assignment) => {
-                    // TODO also use raneg constraint?
+                    if let Some(rc) = assignment.range_constraint() {
+                        // If the cell was determined to be a constant, we add this
+                        // as a range constraint, so we can use it in future evaluations.
+                        self.add_range_constraint(cell.clone(), rc);
+                    }
                     self.known_cells.insert(cell.clone());
-                    self.code.push(assignment);
+                    self.code.push(e);
                 }
                 Effect::RangeConstraint(cell, rc) => {
-                    self.add_range_constraint(cell, rc);
+                    self.add_range_constraint(cell.clone(), rc.clone());
                 }
-                Effect::Code(code) => {
-                    self.code.push(code);
+                Effect::Lookup(_, arguments) => {
+                    for arg in arguments {
+                        if let LookupArgument::Unknown(expr) = arg {
+                            let cell = expr.single_unknown_variable().unwrap();
+                            self.known_cells.insert(cell.clone());
+                        }
+                    }
+                    self.code.push(e);
                 }
+                Effect::Assertion(_) => self.code.push(e),
             }
         }
     }
@@ -195,6 +177,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
             .range_constraint(cell.clone())
             .map_or(rc.clone(), |existing_rc| existing_rc.conjunction(&rc));
         // TODO if the conjuntion results in a single value, make the cell known.
+        // TODO but do we also need to generate code for the assignment?
         self.range_constraints.insert(cell, rc);
     }
 
