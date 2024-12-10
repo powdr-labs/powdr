@@ -20,6 +20,8 @@ pub enum Effect<T: FieldElement, V> {
     RangeConstraint(V, RangeConstraint<T>),
     /// a run-time assertion. If this fails, we have conflicting constraints.
     Assertion(Assertion<T, V>),
+    /// a lookup / call to a different machine.
+    Lookup(u64, Vec<LookupArgument<T, V>>),
 }
 
 /// A run-time assertion. If this fails, we have conflicting constraints.
@@ -55,6 +57,11 @@ impl<T: FieldElement, V> Assertion<T, V> {
             expected_equal: false,
         })
     }
+}
+
+pub enum LookupArgument<T: FieldElement, V> {
+    Known(SymbolicExpression<T, V>),
+    Unknown(AffineSymbolicExpression<T, V>),
 }
 
 /// Represents an expression `a_1 * x_1 + ... + a_k * x_k + offset`,
@@ -120,6 +127,15 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
     pub fn try_to_known(&self) -> Option<&SymbolicExpression<T, V>> {
         if self.coefficients.is_empty() {
             Some(&self.offset)
+        } else {
+            None
+        }
+    }
+
+    /// If this expression contains a single unknown variable, returns it.
+    pub fn single_unknown_variable(&self) -> Option<&V> {
+        if self.coefficients.len() == 1 {
+            self.coefficients.keys().next()
         } else {
             None
         }

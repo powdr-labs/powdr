@@ -157,6 +157,14 @@ impl<T: FieldElement> RangeConstraint<T> {
             mask: mask.unwrap_or_else(|| Self::from_range(min, max).mask),
         }
     }
+
+    pub fn try_to_single_value(&self) -> Option<T> {
+        if self.min == self.max {
+            Some(self.min)
+        } else {
+            None
+        }
+    }
 }
 
 /// The number of elements in an (inclusive) min/max range.
