@@ -65,11 +65,12 @@ impl<F: FieldElement, M: SubmachineKind> SubmachineImpl<F, M> {
     pub fn new(namespace: &str, witness_cols: &[String]) -> Self {
         // filter machine columns
         let prefix = format!("{namespace}::");
-        let witness_cols = witness_cols
+        let witness_cols: HashMap<_, _> = witness_cols
             .iter()
             .filter(|c| c.starts_with(namespace))
             .map(|c| (c.strip_prefix(&prefix).unwrap().to_string(), vec![]))
             .collect();
+        assert!(!witness_cols.is_empty(), "machine with no witness columns");
         SubmachineImpl {
             namespace: namespace.to_string(),
             trace: SubmachineTrace::new(witness_cols),
@@ -121,7 +122,6 @@ struct SubmachineTrace<F: FieldElement> {
 
 impl<F: FieldElement> SubmachineTrace<F> {
     fn new(cols: HashMap<String, Vec<F>>) -> Self {
-        assert!(!cols.is_empty(), "machine with no witness columns");
         SubmachineTrace {
             last_row_overrides: cols.keys().map(|n| (n.clone(), None)).collect(),
             cols,

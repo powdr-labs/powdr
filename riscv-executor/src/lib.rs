@@ -2058,7 +2058,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     let selector = 0;
                     self.proc.submachine("split_gl").add_operation(
                         Some(selector),
-                        &[value_fe.into(), lo.into(), hi.into()],
+                        &[value_fe, lo.into(), hi.into()],
                         &[],
                     );
                 }
