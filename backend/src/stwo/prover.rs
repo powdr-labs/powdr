@@ -254,8 +254,7 @@ where
 
         let mut tree_builder = commitment_scheme.tree_builder();
 
-
-        //commit to the constant and shifted constant polynomials 
+        //commit to the constant and shifted constant polynomials
         if let Some((_, table_proving_key)) =
             self.proving_key
                 .preprocessed
