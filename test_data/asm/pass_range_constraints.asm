@@ -6,6 +6,7 @@
 // calling machine).
 
 machine Mul with
+    degree: 16,
     latch: latch,
     operation_id: operation_id,
     call_selectors: sel,

@@ -21,6 +21,7 @@ estark-starky-simd = ["powdr-backend/estark-starky-simd"]
 [dependencies]
 powdr-airgen.workspace = true
 powdr-analysis.workspace = true
+powdr-asmopt.workspace = true
 powdr-asm-to-pil.workspace = true
 powdr-ast.workspace = true
 powdr-backend.workspace = true
@@ -61,5 +62,8 @@ walkdir = "2.4.0"
 name = "evaluator_benchmark"
 harness = false
 
-[lints.clippy]
-uninlined_format_args = "deny"
+[lints]
+workspace = true
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458

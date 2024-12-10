@@ -1,4 +1,4 @@
-machine NotUsed {
+machine NotUsed with degree: 32 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -12,6 +12,7 @@ instr add X, Y -> Z {
 
 // ANCHOR: submachine
 machine SubMachine with
+    degree: 32,
     latch: latch,
     operation_id: operation_id
 {

@@ -1,5 +1,3 @@
-#![deny(clippy::print_stdout)]
-
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;

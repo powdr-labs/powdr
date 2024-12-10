@@ -20,7 +20,7 @@ env:
 
 jobs:
   build:
-    runs-on: warp-ubuntu-2204-x64-8x
+    runs-on: warp-ubuntu-2404-x64-8x
 
     steps:
     - uses: actions/checkout@v4
@@ -43,7 +43,7 @@ jobs:
 
     ##### The block below is shared between cache build and PR build workflows #####
     - name: Install EStarkPolygon prover dependencies
-      run: sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm
+      run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm
     - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
       run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
     - name: Install Rust toolchain 1.81 (stable)
@@ -77,7 +77,7 @@ jobs:
 
   test_quick:
     needs: build
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         test:
@@ -106,6 +106,8 @@ jobs:
       run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install riscv target
       run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
+    - name: Install test dependencies
+      run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - uses: taiki-e/install-action@nextest
@@ -116,7 +118,7 @@ jobs:
         POWDR_STD: ${{ github.workspace }}/std/
 
   run_examples:
-    runs-on: warp-ubuntu-2204-x64-4x
+    runs-on: warp-ubuntu-2404-x64-4x
 
     steps:
     - uses: actions/checkout@v4
@@ -135,12 +137,20 @@ jobs:
         key: ${{ runner.os }}-cargo-pr-tests
     - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
       run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
+    - name: Install nightly
+      run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
+    - name: Install std source
+      run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
+    - name: Install riscv target
+      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
+    - name: Install test dependencies
+      run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
     - name: Run examples
-      run: cargo run --example hello_world && cargo run --example sqrt_with_publics
+      run: cargo run --profile pr-tests --example hello_world && cargo run --profile pr-tests --example sqrt_with_publics && cargo run --profile pr-tests --example fibonacci
 
   test_estark_polygon:
     needs: build
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v4
       with:
@@ -166,7 +176,7 @@ jobs:
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Install EStarkPolygon prover system dependency
-      run: sudo apt-get install -y nlohmann-json3-dev
+      run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev
     - uses: taiki-e/install-action@nextest
     - name: Unpack EStarkPolygon built dependencies
       run: tar --zstd -xf pil-stark-prover-deps.tar.zst
@@ -189,7 +199,7 @@ jobs:
         - "7"
         - "8"
     needs: build
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@v4
@@ -208,7 +218,7 @@ jobs:
     - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
       run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
     - name: Install test dependencies
-      run: sudo apt-get install -y binutils-riscv64-unknown-elf lld
+      run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
     - name: Install nightly-2024-08-01
       run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install std source
@@ -227,3 +237,55 @@ jobs:
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
         POWDR_STD: ${{ github.workspace }}/std/
+
+  bench:
+    needs: build
+    runs-on: warp-ubuntu-2404-x64-4x
+    permissions:
+      contents: write
+      deployments: write
+      pull-requests: write
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: recursive
+    - name: ⚡ Restore rust cache
+      id: cache
+      uses: WarpBuilds/cache/restore@v1
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+          Cargo.lock
+        key: ${{ runner.os }}-cargo-pr-tests
+    - name: Install Rust toolchain 1.81
+      run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu
+    - name: Install nightly
+      run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
+    - name: Install std source
+      run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
+    - name: Install riscv target
+      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
+    - name: Install test dependencies
+      run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
+    - name: Install EStarkPolygon prover dependencies
+      run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc uuid-dev build-essential cmake pkg-config git
+    - name: Install pilcom
+      run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
+    - name: Run benchmarks
+      # we add `|| exit 1` to make sure the step fails if `cargo bench` fails
+      run: cargo bench --workspace --all-features -- --output-format bencher | tee output.txt || exit 1
+    - name: Store benchmark result
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        name: Benchmarks
+        tool: 'cargo'
+        output-file-path: output.txt
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        auto-push: true
+        alert-threshold: '120%'
+        comment-on-alert: true
+        summary-always: true

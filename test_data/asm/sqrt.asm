@@ -40,7 +40,7 @@ machine Sqrt with
 
 
 machine Main with degree: 8 {
-    Sqrt sqrt;
+    Sqrt sqrt(8, 8);
 
     reg pc[@pc];
     reg X[<=];

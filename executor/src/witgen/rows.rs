@@ -13,12 +13,11 @@ use crate::witgen::Constraint;
 use super::{
     affine_expression::{AffineExpression, AffineResult, AlgebraicVariable},
     data_structures::column_map::WitnessColumnMap,
-    expression_evaluator::ExpressionEvaluator,
+    evaluators::symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},
     global_constraints::RangeConstraintSet,
     machines::MachineParts,
     range_constraints::RangeConstraint,
-    symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},
-    FixedData,
+    FixedData, PartialExpressionEvaluator,
 };
 
 /// A small wrapper around a row index, which knows the total number of rows.
@@ -483,14 +482,18 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// Tries to evaluate the expression to an expression affine in the witness polynomials,
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
-    pub fn evaluate<'b>(&self, expr: &'b Expression<T>) -> AffineResult<AlgebraicVariable<'b>, T> {
-        ExpressionEvaluator::new(SymbolicWitnessEvaluator::new(
+    pub fn evaluate(&self, expr: &'a Expression<T>) -> AffineResult<AlgebraicVariable<'a>, T> {
+        let variables = SymbolicWitnessEvaluator::new(
             self.fixed_data,
             self.current_row_index.into(),
             self,
             self.size,
-        ))
-        .evaluate(expr)
+        );
+        // Note that because we instantiate a fresh evaluator here, we don't benefit from caching
+        // of intermediate values across calls of `RowPair::evaluate`. In practice, we only call
+        // it many times for the same RowPair though.
+        PartialExpressionEvaluator::new(variables, &self.fixed_data.intermediate_definitions)
+            .evaluate(expr)
     }
 }
 

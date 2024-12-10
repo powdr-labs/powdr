@@ -23,28 +23,32 @@ It has two main components:
   
 Both frontend and backend are highly flexible.
 
-As an example, *powdr* contains a frontend that enables you to write code in (no-std) Rust,
-which is compiled to RISCV, then to powdr-asm and finally to powdr-PIL.
+The [powdrVM](https://docs.powdr.org/quick_start_vm.html) is a zkVM
+implementation that builds on *powdr*.
+Users can write code in std Rust which is compiled to RISCV,
+then to powdr-asm and finally to powdr-PIL.
 
-*powdr*-pil can be used to generate proofs using multiple backends, such as:
+*powdr*-PIL can be used to generate proofs using multiple backends, such as:
 
+- [Plonky3](https://github.com/Plonky3/Plonky3)
 - Halo2, using PSE's
     - [Halo2](https://github.com/privacy-scaling-explorations/halo2)
     - [snark-verifier](https://github.com/privacy-scaling-explorations/snark-verifier/)
     - [halo2-solidity-verifier](https://github.com/privacy-scaling-explorations/halo2-solidity-verifier)
+- [Stwo](https://github.com/starkware-libs/stwo/) (under development)
 - eSTARK, using
     - [Eigen's starky](https://github.com/0xEigenLabs/eigen-zkvm/)
     - [our fork of Polygon's zkevm-prover](https://github.com/powdr-labs/zkevm-prover)
-- Plonky3 (ongoing work): https://github.com/powdr-labs/powdr/pull/1158
 
 All stages are fully automatic, which means you do not need to write any
 additional code for witness generation besides your Rust code. All witnesses
 are automatically inferred from the constraints. Since the witnesses are
-inferred, *powdr* can ensure that the system is not underconstrained, i.e.
+inferred, *powdr* can ensure that the system is not underconstrained, i.e.,
 there are no additional unwanted witnesses.
 
-All artifacts from the compilation pipeline are human-readable. You
-can inspect the RISCV assembly files, the powdr-asm IR, and the compiled PIL file.
+All artifacts from the compilation pipeline are human-readable.
+You can inspect the powdr-asm IR, the compiled powdr-PIL file,
+and its final optimized version.
 
 The assembly language is designed to be extensible and does not have a single
 native instruction. Instead, all instructions are user-defined and because of that,

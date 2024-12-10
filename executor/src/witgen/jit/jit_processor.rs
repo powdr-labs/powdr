@@ -35,9 +35,9 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         false
     }
 
-    pub fn process_lookup_direct<'b, 'c, 'd, Q: QueryCallback<T>>(
+    pub fn process_lookup_direct<'c, 'd, Q: QueryCallback<T>>(
         &self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _mutable_state: &MutableState<'a, T, Q>,
         connection_id: u64,
         values: Vec<LookupCell<'c, T>>,
         mut data: CompactDataRef<'d, T>,

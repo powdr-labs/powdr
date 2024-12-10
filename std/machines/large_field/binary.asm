@@ -35,5 +35,10 @@ machine Binary(byte_binary: ByteBinary) with
     B' = B * (1 - latch) + B_byte * FACTOR;
     C' = C * (1 - latch) + C_byte * FACTOR;
 
-    link => C_byte = byte_binary.run(operation_id', A_byte, B_byte);
+    // TODO: Currently, the bus linker does not support next references in operations and links.
+    //       We add an extra witness column to make the Goldilocks RISC-V machine work for now.
+    //       This will be fixed with #2140.
+    col witness operation_id_next;
+    operation_id' = operation_id_next;
+    link => C_byte = byte_binary.run(operation_id_next, A_byte, B_byte);
 }

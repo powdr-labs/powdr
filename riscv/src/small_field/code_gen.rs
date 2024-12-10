@@ -165,7 +165,7 @@ fn translate_program_impl(
             }
             Statement::Label(l) => statements.push(format!("{}:", escape_label(l.as_ref()))),
             Statement::Instruction { op, args } => {
-                let processed_instr = match process_instruction(op, args) {
+                let processed_instr = match process_instruction(op, args, runtime) {
                     Ok(s) => s,
                     Err(e) => panic!("Failed to process instruction '{op}'. {e}"),
                 };
@@ -376,7 +376,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     // Jump to the address in register XL and store the return program counter in register WL.
     instr jump_dyn XL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
-        link ~> regs.mstore(0, WL, STEP, tmp2_h, tmp2_l)
+        link ~> regs.mstore(0, WL, STEP + 3, tmp2_h, tmp2_l)
         // pc is capped at 24 bits, so for this instruction 
         // we restrict the higher limbs to 1 byte
         link => byte.check(tmp1_h)
@@ -568,7 +568,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     // Stores 1 in register WL if val(XL) == val(YL), otherwise stores 0.
     instr is_not_equal XL, YL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
-        link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP)
+        link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
         link ~> (tmp3_h, tmp3_l) = add_sub.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
         link ~> regs.mstore(0, WL, STEP + 2, 0, 1 - XXIsZero)
     {
@@ -777,7 +777,11 @@ fn i32_low(x: i32) -> u16 {
     (x & 0xffff) as u16
 }
 
-fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<String>, A::Error> {
+fn process_instruction<A: InstructionArgs>(
+    instr: &str,
+    args: A,
+    runtime: &Runtime,
+) -> Result<Vec<String>, A::Error> {
     let tmp1 = Register::from("tmp1");
     let tmp2 = Register::from("tmp2");
     let tmp3 = Register::from("tmp3");
@@ -1186,6 +1190,48 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                     // and zero otherwise.
                     format!("xor {}, {}, 0, 0, {};", tmp1.addr(), rs.addr(), rd.addr()),
                     format!("shr {}, 0, 0, {amount}, {};", rd.addr(), rd.addr()),
+                    format!("xor {}, {}, 0, 0, {};", tmp1.addr(), rd.addr(), rd.addr()),
+                ],
+            )
+        }
+        "sra" => {
+            // arithmetic shift right
+            // TODO see if we can implement this directly with a machine.
+            // Now we are using the equivalence
+            // a >>> b = (a >= 0 ? a >> b : ~(~a >> b))
+            let (rd, rs1, rs2) = args.rrr()?;
+            assert!(rs2.addr() <= 31);
+            only_if_no_write_to_zero_vec(
+                rd,
+                vec![
+                    format!("affine {}, {}, 0, 1, 0, 0;", rs1.addr(), tmp1.addr()),
+                    format!(
+                        "is_greater_or_equal_signed {}, 0, {};",
+                        tmp1.addr(),
+                        tmp1.addr()
+                    ),
+                    format!(
+                        "affine {}, {}, {}, {}, 0, 1;",
+                        tmp1.addr(),
+                        tmp1.addr(),
+                        i32_high(-1),
+                        i32_low(-1)
+                    ),
+                    format!(
+                        "affine {}, {}, 0xffff, 0xffff, 0, 0;",
+                        tmp1.addr(),
+                        tmp1.addr()
+                    ),
+                    // Here, tmp1 is the full bit mask if rs1 is negative
+                    // and zero otherwise.
+                    format!(
+                        "xor {}, {}, 0, 0, {};",
+                        tmp1.addr(),
+                        rs1.addr(),
+                        tmp2.addr()
+                    ),
+                    format!("and {}, 0, 0, 0x1f, {};", rs2.addr(), tmp3.addr()),
+                    format!("shr {}, {}, 0, 0, {};", rd.addr(), tmp3.addr(), rd.addr()),
                     format!("xor {}, {}, 0, 0, {};", tmp1.addr(), rd.addr(), rd.addr()),
                 ],
             )
@@ -1806,8 +1852,12 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             .collect()
         }
 
-        _ => {
-            panic!("Unknown instruction: {instr}");
+        // possibly inlined system calls
+        insn => {
+            let Some(syscall_impl) = runtime.get_syscall_impl(insn) else {
+                panic!("Unknown instruction: {instr}");
+            };
+            syscall_impl.statements.clone()
         }
     };
     for s in &statements {

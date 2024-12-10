@@ -20,6 +20,7 @@ machine Main with degree: 16 {
 }
 
 machine Arith with
+    degree: 16,
     latch: latch,
     operation_id: operation_id
 {

@@ -6,10 +6,7 @@ use itertools::Itertools;
 
 use crate::code_gen::Register;
 
-use crate::runtime::{
-    parse_function_statement, parse_instruction_declaration, SubMachine, SyscallImpl,
-    EXTRA_REG_PREFIX,
-};
+use crate::runtime::{parse_instruction_declaration, SubMachine, SyscallImpl, EXTRA_REG_PREFIX};
 use crate::RuntimeLibs;
 
 /// RISCV powdr assembly runtime.
@@ -17,7 +14,7 @@ use crate::RuntimeLibs;
 #[derive(Clone)]
 pub struct Runtime {
     submachines: BTreeMap<String, SubMachine>,
-    syscalls: BTreeMap<Syscall, SyscallImpl>,
+    syscalls: BTreeMap<&'static str, SyscallImpl>,
 }
 
 impl Runtime {
@@ -165,6 +162,8 @@ impl Runtime {
 
         r.add_syscall(Syscall::CommitPublic, ["commit_public 10, 11;"]);
 
+        r.add_syscall(Syscall::InvertGL, ["invert_gl 10, 11;"]);
+
         r.with_poseidon()
     }
 
@@ -234,14 +233,19 @@ impl Runtime {
         syscall: Syscall,
         implementation: I,
     ) {
-        let implementation = SyscallImpl(
-            implementation
+        let implementation = SyscallImpl {
+            syscall,
+            statements: implementation
                 .into_iter()
-                .map(|s| parse_function_statement(s.as_ref()))
+                .map(|s| s.as_ref().to_string())
                 .collect(),
-        );
+        };
 
-        if self.syscalls.insert(syscall, implementation).is_some() {
+        if self
+            .syscalls
+            .insert(syscall.name(), implementation)
+            .is_some()
+        {
             panic!("duplicate syscall {syscall}");
         }
     }
@@ -288,7 +292,12 @@ impl Runtime {
             "std::machines::hash::poseidon2_gl::Poseidon2GL",
             None,
             "poseidon2_gl",
-            vec!["memory", "split_gl"],
+            vec![
+                "memory",
+                "split_gl",
+                "MIN_DEGREE",
+                "LARGE_SUBMACHINES_MAX_DEGREE",
+            ],
             [r#"instr poseidon2_gl X, Y
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
@@ -322,7 +331,7 @@ impl Runtime {
             "std::machines::large_field::arith::Arith",
             None,
             "arith",
-            vec![],
+            vec!["MIN_DEGREE", "MAIN_MAX_DEGREE"],
             [
                 format!(
                     "instr affine_256 link ~> {};",
@@ -454,10 +463,10 @@ impl Runtime {
         ]
         .into_iter();
 
-        let jump_table = self.syscalls.keys().map(|s| {
+        let jump_table = self.syscalls.values().map(|s| {
             format!(
                 "branch_if_diff_equal 5, 0, {}, __ecall_handler_{};",
-                *s as u32, s
+                s.syscall as u8, s.syscall
             )
         });
 
@@ -465,7 +474,7 @@ impl Runtime {
 
         let handlers = self.syscalls.iter().flat_map(|(syscall, implementation)| {
             std::iter::once(format!("__ecall_handler_{syscall}:"))
-                .chain(implementation.0.iter().map(|i| i.to_string()))
+                .chain(implementation.statements.iter().cloned())
                 .chain([format!("jump_dyn 1, {};", Register::from("tmp1").addr())])
         });
 
@@ -475,6 +484,10 @@ impl Runtime {
             .chain(handlers)
             .chain(std::iter::once("// end of ecall handler".to_string()))
             .collect()
+    }
+
+    pub fn get_syscall_impl(&self, syscall_name: &str) -> Option<&SyscallImpl> {
+        self.syscalls.get(syscall_name)
     }
 }
 

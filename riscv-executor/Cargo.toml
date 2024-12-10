@@ -8,10 +8,8 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-powdr-analysis.workspace = true
 powdr-ast.workspace = true
 powdr-executor.workspace = true
-powdr-importer.workspace = true
 powdr-number.workspace = true
 powdr-parser.workspace = true
 # we need powdr-plonky3 for the poseidon2 params
@@ -30,3 +28,6 @@ inferno = "0.11.19"
 
 [lints.clippy]
 uninlined_format_args = "deny"
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458
