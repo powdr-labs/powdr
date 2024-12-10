@@ -1,6 +1,7 @@
 use std::{
     fmt::{self, Display, Formatter},
     ops::{Add, BitAnd, BitOr, Mul, Neg},
+    rc::Rc,
 };
 
 use powdr_number::FieldElement;
@@ -17,12 +18,12 @@ pub enum SymbolicExpression<T: FieldElement, V> {
     /// A symbolic value known at run-time, referencing either a cell or a local variable.
     Variable(V, Option<RangeConstraint<T>>),
     BinaryOperation(
-        Box<Self>,
+        Rc<Self>,
         BinaryOperator,
-        Box<Self>,
+        Rc<Self>,
         Option<RangeConstraint<T>>,
     ),
-    UnaryOperation(UnaryOperator, Box<Self>, Option<RangeConstraint<T>>),
+    UnaryOperation(UnaryOperator, Rc<Self>, Option<RangeConstraint<T>>),
 }
 
 #[derive(Debug, Clone)]
@@ -44,6 +45,10 @@ pub enum UnaryOperator {
 }
 
 impl<T: FieldElement, V> SymbolicExpression<T, V> {
+    pub fn from_var(name: V) -> Self {
+        SymbolicExpression::Variable(name, None)
+    }
+
     pub fn is_known_zero(&self) -> bool {
         self.try_to_number().map_or(false, |n| n.is_zero())
     }
@@ -116,12 +121,6 @@ impl Display for UnaryOperator {
     }
 }
 
-impl<T: FieldElement, V> SymbolicExpression<T, V> {
-    pub fn from_var(name: V) -> Self {
-        SymbolicExpression::Variable(name, None)
-    }
-}
-
 impl<T: FieldElement, V> From<T> for SymbolicExpression<T, V> {
     fn from(n: T) -> Self {
         SymbolicExpression::Concrete(n)
@@ -143,9 +142,9 @@ impl<T: FieldElement, V: Clone> Add for &SymbolicExpression<T, V> {
                 SymbolicExpression::Concrete(*a + *b)
             }
             _ => SymbolicExpression::BinaryOperation(
-                Box::new(self.clone()),
+                Rc::new(self.clone()),
                 BinaryOperator::Add,
-                Box::new(rhs.clone()),
+                Rc::new(rhs.clone()),
                 self.range_constraint()
                     .zip(rhs.range_constraint())
                     .map(|(a, b)| a.combine_sum(&b)),
@@ -167,10 +166,12 @@ impl<T: FieldElement, V: Clone> Neg for &SymbolicExpression<T, V> {
     fn neg(self) -> Self::Output {
         match self {
             SymbolicExpression::Concrete(n) => SymbolicExpression::Concrete(-*n),
-            SymbolicExpression::UnaryOperation(UnaryOperator::Neg, expr, _) => *expr.clone(),
+            SymbolicExpression::UnaryOperation(UnaryOperator::Neg, expr, _) => {
+                expr.as_ref().clone()
+            }
             _ => SymbolicExpression::UnaryOperation(
                 UnaryOperator::Neg,
-                Box::new(self.clone()),
+                Rc::new(self.clone()),
                 self.range_constraint().map(|rc| rc.multiple(-T::from(1))),
             ),
         }
@@ -202,9 +203,9 @@ impl<T: FieldElement, V: Clone> Mul for &SymbolicExpression<T, V> {
             -self
         } else {
             SymbolicExpression::BinaryOperation(
-                Box::new(self.clone()),
+                Rc::new(self.clone()),
                 BinaryOperator::Mul,
-                Box::new(rhs.clone()),
+                Rc::new(rhs.clone()),
                 None,
             )
         }
@@ -234,9 +235,9 @@ impl<T: FieldElement, V: Clone> SymbolicExpression<T, V> {
         } else {
             // TODO other simplifications like `-x / -y => x / y`, `-x / concrete => x / -concrete`, etc.
             SymbolicExpression::BinaryOperation(
-                Box::new(self.clone()),
+                Rc::new(self.clone()),
                 BinaryOperator::Div,
-                Box::new(rhs.clone()),
+                Rc::new(rhs.clone()),
                 None,
             )
         }
@@ -248,9 +249,9 @@ impl<T: FieldElement, V: Clone> SymbolicExpression<T, V> {
             self.clone()
         } else {
             SymbolicExpression::BinaryOperation(
-                Box::new(self.clone()),
+                Rc::new(self.clone()),
                 BinaryOperator::IntegerDiv,
-                Box::new(rhs.clone()),
+                Rc::new(rhs.clone()),
                 None,
             )
         }
@@ -267,9 +268,9 @@ impl<T: FieldElement, V: Clone> BitAnd for &SymbolicExpression<T, V> {
             SymbolicExpression::Concrete(T::from(0))
         } else {
             SymbolicExpression::BinaryOperation(
-                Box::new(self.clone()),
+                Rc::new(self.clone()),
                 BinaryOperator::BitAnd,
-                Box::new(rhs.clone()),
+                Rc::new(rhs.clone()),
                 self.range_constraint()
                     .zip(rhs.range_constraint())
                     .map(|(a, b)| a.conjunction(&b)),
@@ -292,13 +293,17 @@ impl<T: FieldElement, V: Clone> BitOr for &SymbolicExpression<T, V> {
     fn bitor(self, rhs: Self) -> Self::Output {
         if let (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) = (self, rhs) {
             let v = a.to_integer() | b.to_integer();
-            assert!(v <= T::modulus());
+            assert!(v < T::modulus());
             SymbolicExpression::Concrete(T::from(v))
+        } else if self.is_known_zero() {
+            rhs.clone()
+        } else if rhs.is_known_zero() {
+            self.clone()
         } else {
             SymbolicExpression::BinaryOperation(
-                Box::new(self.clone()),
+                Rc::new(self.clone()),
                 BinaryOperator::BitOr,
-                Box::new(rhs.clone()),
+                Rc::new(rhs.clone()),
                 None,
             )
         }
