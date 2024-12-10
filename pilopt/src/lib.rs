@@ -131,15 +131,9 @@ fn build_poly_id_to_definition_name_lookup(
 
     for (name, (symbol, _)) in &pil_file.definitions {
         if matches!(symbol.kind, SymbolKind::Poly(_)) {
-            if symbol.is_array() {
                 symbol.array_elements().for_each(|(_, id)| {
-                    poly_id_to_info.insert(id, (name, true));
+                    poly_id_to_info.insert(id, (name, symbol.is_array()));
                 });
-            } else {
-                symbol.array_elements().for_each(|(_, id)| {
-                    poly_id_to_info.insert(id, (name, false));
-                });
-            }
         }
     }
 
