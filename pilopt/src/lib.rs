@@ -2,6 +2,7 @@
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
@@ -22,16 +23,20 @@ use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
+    let mut pil_hash = 0;
     remove_unreferenced_definitions(&mut pil_file);
-    remove_constant_fixed_columns(&mut pil_file);
-    deduplicate_fixed_columns(&mut pil_file);
-    simplify_identities(&mut pil_file);
-    extract_constant_lookups(&mut pil_file);
-    remove_constant_witness_columns(&mut pil_file);
-    simplify_identities(&mut pil_file);
-    remove_trivial_identities(&mut pil_file);
-    remove_duplicate_identities(&mut pil_file);
-    remove_unreferenced_definitions(&mut pil_file);
+    while pil_hash != hash_pil_state(&pil_file) {
+        pil_hash = hash_pil_state(&pil_file);
+        remove_constant_fixed_columns(&mut pil_file);
+        deduplicate_fixed_columns(&mut pil_file);
+        simplify_identities(&mut pil_file);
+        extract_constant_lookups(&mut pil_file);
+        remove_constant_witness_columns(&mut pil_file);
+        simplify_identities(&mut pil_file);
+        remove_trivial_identities(&mut pil_file);
+        remove_duplicate_identities(&mut pil_file);
+        remove_unreferenced_definitions(&mut pil_file);
+    }
     let col_count_post = (pil_file.commitment_count(), pil_file.constant_count());
     log::info!(
         "Removed {} witness and {} fixed columns. Total count now: {} witness and {} fixed columns.",
@@ -41,6 +46,46 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         col_count_post.1
     );
     pil_file
+}
+
+fn hash_pil_state<T: FieldElement>(pil: &Analyzed<T>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+
+    for identity in &pil.identities {
+        identity.hash(&mut hasher);
+    }
+
+    // Ordenar las claves antes de iterar
+    let mut sorted_definitions: Vec<_> = pil.definitions.iter().collect();
+    sorted_definitions.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+    for (name, (_, value)) in sorted_definitions {
+        name.hash(&mut hasher);
+        if let Some(v) = value {
+            v.hash(&mut hasher);
+        }
+    }
+
+    // Ordenar las columnas intermedias
+    let mut sorted_intermediates: Vec<_> = pil.intermediate_columns.iter().collect();
+    sorted_intermediates.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+    for (name, (_, value)) in sorted_intermediates {
+        name.hash(&mut hasher);
+        value.hash(&mut hasher);
+    }
+
+    for pf in &pil.prover_functions {
+        pf.hash(&mut hasher);
+    }
+
+    // Ordenar las declaraciones públicas
+    let mut sorted_declarations: Vec<_> = pil.public_declarations.iter().collect();
+    sorted_declarations.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+    for (key, decl) in sorted_declarations {
+        key.hash(&mut hasher);
+        decl.hash(&mut hasher);
+    }
+
+    hasher.finish()
 }
 
 /// Removes all definitions that are not referenced by an identity, public declaration
