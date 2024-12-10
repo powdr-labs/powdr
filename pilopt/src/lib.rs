@@ -16,7 +16,7 @@ use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
 use powdr_ast::parsed::Number;
 use powdr_number::{BigUint, FieldElement};
 
-mod referenced_symbols;
+pub mod referenced_symbols;
 
 use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
@@ -127,29 +127,24 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
 fn build_poly_id_to_definition_name_lookup(
     pil_file: &Analyzed<impl FieldElement>,
 ) -> BTreeMap<PolyID, (&String, bool)> {
-    let mut poly_id_to_info = BTreeMap::new();
-
+    let mut poly_id_to_definition_name = BTreeMap::new();
+    #[allow(clippy::iter_over_hash_type)]
     for (name, (symbol, _)) in &pil_file.definitions {
         if matches!(symbol.kind, SymbolKind::Poly(_)) {
             symbol.array_elements().for_each(|(_, id)| {
-                poly_id_to_info.insert(id, (name, symbol.is_array()));
+                poly_id_to_definition_name.insert(id, (name, symbol.is_array()));
             });
         }
     }
 
+    #[allow(clippy::iter_over_hash_type)]
     for (name, (symbol, _)) in &pil_file.intermediate_columns {
-        if symbol.is_array() {
-            symbol.array_elements().for_each(|(_, id)| {
-                poly_id_to_info.insert(id, (name, true));
-            });
-        } else {
-            symbol.array_elements().for_each(|(_, id)| {
-                poly_id_to_info.insert(id, (name, false));
-            });
-        }
+        symbol.array_elements().for_each(|(_, id)| {
+            poly_id_to_definition_name.insert(id, (name, symbol.is_array()));
+        });
     }
 
-    poly_id_to_info
+    poly_id_to_definition_name
 }
 
 /// Collect all names that are referenced in identities and public declarations.
@@ -568,7 +563,7 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                         AlgebraicExpression::Reference(right),
                     ) = (left.as_ref(), right.as_ref())
                     {
-                        if left.is_witness() && right.is_witness() && left == right {
+                        if !left.next && !right.next && left == right {
                             Some(index)
                         } else {
                             None
@@ -587,6 +582,13 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 left.expressions.is_empty().then_some(index)
             }
             Identity::Connect(..) => None,
+            Identity::PhantomBusInteraction(id) => {
+                if id.tuple.0.is_empty() {
+                    unreachable!("Unexpected empty bus interaction: {}", id);
+                } else {
+                    None
+                }
+            }
         })
         .collect();
     pil_file.remove_identities(&to_remove);
@@ -607,6 +609,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 Identity::Permutation(..) => 3,
                 Identity::PhantomPermutation(..) => 4,
                 Identity::Connect(..) => 5,
+                Identity::PhantomBusInteraction(..) => 6,
             };
 
             discriminant(self)
@@ -666,6 +669,11 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                             left: c, right: d, ..
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
+                    (Identity::PhantomBusInteraction(_), Identity::PhantomBusInteraction(_)) => {
+                        unimplemented!(
+                            "Bus interactions should have been removed before this point."
+                        )
+                    }
                     _ => {
                         unreachable!("Different identity types would have different discriminants.")
                     }
@@ -693,11 +701,13 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .identities
         .iter()
         .enumerate()
-        .filter_map(|(index, identity)| {
-            match identity_expressions.insert(CanonicalIdentity(identity)) {
+        .filter_map(|(index, identity)| match identity {
+            // Duplicate bus interactions should not be removed, because that changes the statement.
+            Identity::PhantomBusInteraction(_) => None,
+            _ => match identity_expressions.insert(CanonicalIdentity(identity)) {
                 false => Some(index),
                 true => None,
-            }
+            },
         })
         .collect();
     pil_file.remove_identities(&to_remove);

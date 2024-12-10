@@ -43,3 +43,6 @@ estark-starky-simd = ["powdr-backend/estark-starky-simd", "powdr-pipeline/estark
 
 [lints.clippy]
 uninlined_format_args = "deny"
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458
