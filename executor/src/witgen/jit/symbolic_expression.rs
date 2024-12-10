@@ -11,22 +11,18 @@ use crate::witgen::range_constraints::RangeConstraint;
 /// involving known cells or variables and compile-time constants.
 /// Each of the sub-expressions can have its own range constraint.
 #[derive(Debug, Clone)]
-pub enum SymbolicExpression<T: FieldElement> {
+pub enum SymbolicExpression<T: FieldElement, V> {
     /// A concrete constant value known at compile time.
     Concrete(T),
     /// A symbolic value known at run-time, referencing either a cell or a local variable.
-    Variable(String, Option<RangeConstraint<T>>),
+    Variable(V, Option<RangeConstraint<T>>),
     BinaryOperation(
-        Box<SymbolicExpression<T>>,
+        Box<Self>,
         BinaryOperator,
-        Box<SymbolicExpression<T>>,
+        Box<Self>,
         Option<RangeConstraint<T>>,
     ),
-    UnaryOperation(
-        UnaryOperator,
-        Box<SymbolicExpression<T>>,
-        Option<RangeConstraint<T>>,
-    ),
+    UnaryOperation(UnaryOperator, Box<Self>, Option<RangeConstraint<T>>),
 }
 
 #[derive(Debug, Clone)]
@@ -47,7 +43,7 @@ pub enum UnaryOperator {
     Neg,
 }
 
-impl<T: FieldElement> SymbolicExpression<T> {
+impl<T: FieldElement, V> SymbolicExpression<T, V> {
     pub fn is_known_zero(&self) -> bool {
         self.try_to_number().map_or(false, |n| n.is_zero())
     }
@@ -79,7 +75,7 @@ impl<T: FieldElement> SymbolicExpression<T> {
     }
 }
 
-impl<T: FieldElement> Display for SymbolicExpression<T> {
+impl<T: FieldElement, V: Display> Display for SymbolicExpression<T, V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             SymbolicExpression::Concrete(n) => {
@@ -120,20 +116,20 @@ impl Display for UnaryOperator {
     }
 }
 
-impl<T: FieldElement> SymbolicExpression<T> {
-    pub fn from_var(name: &str) -> Self {
-        SymbolicExpression::Variable(name.to_string(), None)
+impl<T: FieldElement, V> SymbolicExpression<T, V> {
+    pub fn from_var(name: V) -> Self {
+        SymbolicExpression::Variable(name, None)
     }
 }
 
-impl<T: FieldElement> From<T> for SymbolicExpression<T> {
+impl<T: FieldElement, V> From<T> for SymbolicExpression<T, V> {
     fn from(n: T) -> Self {
         SymbolicExpression::Concrete(n)
     }
 }
 
-impl<T: FieldElement> Add for &SymbolicExpression<T> {
-    type Output = SymbolicExpression<T>;
+impl<T: FieldElement, V: Clone> Add for &SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
 
     fn add(self, rhs: Self) -> Self::Output {
         if self.is_known_zero() {
@@ -158,8 +154,8 @@ impl<T: FieldElement> Add for &SymbolicExpression<T> {
     }
 }
 
-impl<T: FieldElement> Neg for &SymbolicExpression<T> {
-    type Output = SymbolicExpression<T>;
+impl<T: FieldElement, V: Clone> Neg for &SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
 
     fn neg(self) -> Self::Output {
         match self {
@@ -174,8 +170,8 @@ impl<T: FieldElement> Neg for &SymbolicExpression<T> {
     }
 }
 
-impl<T: FieldElement> Mul for &SymbolicExpression<T> {
-    type Output = SymbolicExpression<T>;
+impl<T: FieldElement, V: Clone> Mul for &SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
 
     fn mul(self, rhs: Self) -> Self::Output {
         if let (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) = (self, rhs) {
@@ -201,7 +197,7 @@ impl<T: FieldElement> Mul for &SymbolicExpression<T> {
     }
 }
 
-impl<T: FieldElement> SymbolicExpression<T> {
+impl<T: FieldElement, V: Clone> SymbolicExpression<T, V> {
     /// Field element division. See `integer_div` for integer division.
     /// If you use this, you must ensure that the divisor is not zero.
     pub fn field_div(&self, rhs: &Self) -> Self {
@@ -240,8 +236,8 @@ impl<T: FieldElement> SymbolicExpression<T> {
     }
 }
 
-impl<T: FieldElement> BitAnd for &SymbolicExpression<T> {
-    type Output = SymbolicExpression<T>;
+impl<T: FieldElement, V: Clone> BitAnd for &SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
 
     fn bitand(self, rhs: Self) -> Self::Output {
         if let (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) = (self, rhs) {
@@ -261,8 +257,8 @@ impl<T: FieldElement> BitAnd for &SymbolicExpression<T> {
     }
 }
 
-impl<T: FieldElement> BitOr for &SymbolicExpression<T> {
-    type Output = SymbolicExpression<T>;
+impl<T: FieldElement, V: Clone> BitOr for &SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
 
     fn bitor(self, rhs: Self) -> Self::Output {
         if let (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) = (self, rhs) {

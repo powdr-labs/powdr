@@ -15,37 +15,40 @@ use super::{super::range_constraints::RangeConstraint, symbolic_expression::Symb
 /// The effect of solving a symbolic equation.
 pub enum Effect<T: FieldElement, V> {
     /// variable can be assigned a value.
-    Assignment(V, SymbolicExpression<T>),
+    Assignment(V, SymbolicExpression<T, V>),
     /// we learnt a new range constraint on variable.
     RangeConstraint(V, RangeConstraint<T>),
     /// a run-time assertion. If this fails, we have conflicting constraints.
-    Assertion(Assertion<T>),
+    Assertion(Assertion<T, V>),
 }
 
 /// A run-time assertion. If this fails, we have conflicting constraints.
-pub struct Assertion<T: FieldElement> {
-    pub lhs: SymbolicExpression<T>,
-    pub rhs: SymbolicExpression<T>,
+pub struct Assertion<T: FieldElement, V> {
+    pub lhs: SymbolicExpression<T, V>,
+    pub rhs: SymbolicExpression<T, V>,
     /// If this is true, we assert that both sides are equal.
     /// Otherwise, we assert that they are different.
     pub expected_equal: bool,
 }
 
-impl<T: FieldElement> Assertion<T> {
-    pub fn assert_is_zero<V>(condition: SymbolicExpression<T>) -> Effect<T, V> {
+impl<T: FieldElement, V> Assertion<T, V> {
+    pub fn assert_is_zero(condition: SymbolicExpression<T, V>) -> Effect<T, V> {
         Self::assert_eq(condition, SymbolicExpression::from(T::from(0)))
     }
-    pub fn assert_is_nonzero<V>(condition: SymbolicExpression<T>) -> Effect<T, V> {
+    pub fn assert_is_nonzero(condition: SymbolicExpression<T, V>) -> Effect<T, V> {
         Self::assert_neq(condition, SymbolicExpression::from(T::from(0)))
     }
-    pub fn assert_eq<V>(lhs: SymbolicExpression<T>, rhs: SymbolicExpression<T>) -> Effect<T, V> {
+    pub fn assert_eq(lhs: SymbolicExpression<T, V>, rhs: SymbolicExpression<T, V>) -> Effect<T, V> {
         Effect::Assertion(Assertion {
             lhs,
             rhs,
             expected_equal: true,
         })
     }
-    pub fn assert_neq<V>(lhs: SymbolicExpression<T>, rhs: SymbolicExpression<T>) -> Effect<T, V> {
+    pub fn assert_neq(
+        lhs: SymbolicExpression<T, V>,
+        rhs: SymbolicExpression<T, V>,
+    ) -> Effect<T, V> {
         Effect::Assertion(Assertion {
             lhs,
             rhs,
@@ -59,8 +62,8 @@ impl<T: FieldElement> Assertion<T> {
 /// and the `x_i` are unknown variables.
 #[derive(Debug, Clone)]
 pub struct AffineSymbolicExpression<T: FieldElement, V> {
-    coefficients: BTreeMap<V, SymbolicExpression<T>>,
-    offset: SymbolicExpression<T>,
+    coefficients: BTreeMap<V, SymbolicExpression<T, V>>,
+    offset: SymbolicExpression<T, V>,
 }
 
 impl<T: FieldElement, V: Display> Display for AffineSymbolicExpression<T, V> {
@@ -90,8 +93,8 @@ impl<T: FieldElement, V: Display> Display for AffineSymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V> From<SymbolicExpression<T>> for AffineSymbolicExpression<T, V> {
-    fn from(k: SymbolicExpression<T>) -> Self {
+impl<T: FieldElement, V> From<SymbolicExpression<T, V>> for AffineSymbolicExpression<T, V> {
+    fn from(k: SymbolicExpression<T, V>) -> Self {
         AffineSymbolicExpression {
             coefficients: Default::default(),
             offset: k,
@@ -100,7 +103,7 @@ impl<T: FieldElement, V> From<SymbolicExpression<T>> for AffineSymbolicExpressio
 }
 
 impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
-    pub fn from_known_variable(var: &str) -> Self {
+    pub fn from_known_variable(var: V) -> Self {
         SymbolicExpression::from_var(var).into()
     }
     pub fn from_unknown_variable(var: V) -> Self {
@@ -347,7 +350,9 @@ impl<T: FieldElement, V: Clone + Ord> Neg for &AffineSymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V> TryFrom<&AffineSymbolicExpression<T, V>> for SymbolicExpression<T> {
+impl<T: FieldElement, V: Clone> TryFrom<&AffineSymbolicExpression<T, V>>
+    for SymbolicExpression<T, V>
+{
     type Error = ();
 
     fn try_from(value: &AffineSymbolicExpression<T, V>) -> Result<Self, Self::Error> {
