@@ -16,10 +16,10 @@ use crate::witgen::data_structures::column_map::{FixedColumnMap, WitnessColumnMa
 use crate::Identity;
 
 use super::affine_expression::AlgebraicVariable;
-use super::expression_evaluator::ExpressionEvaluator;
+use super::evaluators::partial_expression_evaluator::PartialExpressionEvaluator;
+use super::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use super::machines::Connection;
 use super::range_constraints::RangeConstraint;
-use super::symbolic_evaluator::SymbolicEvaluator;
 use super::util::try_to_simple_poly;
 use super::{Constraint, FixedData};
 use powdr_ast::analyzed::AlgebraicExpression;
@@ -363,7 +363,8 @@ fn is_binary_constraint<T: FieldElement>(
         right,
     }) = expr
     {
-        let mut evaluator = ExpressionEvaluator::new(SymbolicEvaluator, intermediate_definitions);
+        let mut evaluator =
+            PartialExpressionEvaluator::new(SymbolicEvaluator, intermediate_definitions);
         let left_root = evaluator.evaluate(left).ok().and_then(|l| l.solve().ok())?;
         let right_root = evaluator
             .evaluate(right)
@@ -397,9 +398,10 @@ fn try_transfer_constraints<T: FieldElement>(
         return vec![];
     }
 
-    let Some(aff_expr) = ExpressionEvaluator::new(SymbolicEvaluator, intermediate_definitions)
-        .evaluate(expr)
-        .ok()
+    let Some(aff_expr) =
+        PartialExpressionEvaluator::new(SymbolicEvaluator, intermediate_definitions)
+            .evaluate(expr)
+            .ok()
     else {
         return vec![];
     };

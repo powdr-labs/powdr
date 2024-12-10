@@ -12,7 +12,6 @@ use std::prover::provide_value;
 
 machine Keccakf16 with
     latch: final_step,
-    operation_id: operation_id,
     call_selectors: sel,
 {
     // Adapted from Plonky3 implementation of Keccak: https://github.com/Plonky3/Plonky3/tree/main/keccak-air/src
@@ -21,7 +20,7 @@ machine Keccakf16 with
 
     // Expects input of 25 64-bit numbers decomposed to 25 chunks of 4 16-bit big endian limbs. Same for output.
     // The output is a_prime_prime_prime_0_0_limbs for the first 4 and a_prime_prime for the rest.
-    operation keccakf16<0> 
+    operation keccakf16
         preimage[3], preimage[2], preimage[1], preimage[0], 
         preimage[7], preimage[6], preimage[5], preimage[4], 
         preimage[11], preimage[10], preimage[9], preimage[8], 
@@ -73,8 +72,6 @@ machine Keccakf16 with
         a_prime_prime[91], a_prime_prime[90], a_prime_prime[89], a_prime_prime[88], 
         a_prime_prime[95], a_prime_prime[94], a_prime_prime[93], a_prime_prime[92], 
         a_prime_prime[99], a_prime_prime[98], a_prime_prime[97], a_prime_prime[96];
-
-    col witness operation_id;
 
     let NUM_ROUNDS: int = 24;
 

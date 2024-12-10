@@ -648,7 +648,7 @@ pub fn type_from_definition(
 /// given a list of type arguments.
 #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SolvedTraitImpls {
-    impls: HashMap<String, HashMap<Vec<Type>, ImplData>>,
+    impls: BTreeMap<String, HashMap<Vec<Type>, ImplData>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
