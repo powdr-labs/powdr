@@ -237,6 +237,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
         }
         result.insert(self.fixed_data.column_name(&self.key_col).to_string(), keys);
 
+        #[allow(clippy::iter_over_hash_type)]
+        // TODO: Is this deterministic?
         for (col, &i) in &self.witness_positions {
             let mut col_values = values
                 .iter_mut()

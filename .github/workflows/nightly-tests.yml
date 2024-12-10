@@ -86,5 +86,3 @@ jobs:
     - name: Run tests
       # Number threads is set to 1 because the runner does not have enough memeory for more.
       run: PILCOM=$(pwd)/pilcom/ cargo test --all --release --verbose --all-features -- --include-ignored --nocapture --test-threads=1
-    - name: Run benchmarks
-      run: cargo bench --workspace --all-features

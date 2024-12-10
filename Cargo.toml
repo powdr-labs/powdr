@@ -33,7 +33,7 @@ members = [
     "executor-utils",
 ]
 
-exclude = [ "riscv-runtime" ]
+exclude = ["riscv-runtime"]
 
 [workspace.package]
 version = "0.1.3"
@@ -87,3 +87,4 @@ debug = true
 [workspace.lints.clippy]
 print_stdout = "deny"
 uninlined_format_args = "deny"
+iter_over_hash_type = "deny"

@@ -9,14 +9,12 @@ use std::check::require_field_bits;
 // TODO this way, we cannot prove anything that shifts by more than 31 bits.
 machine ByteShift with
     latch: latch,
-    operation_id: operation_id,
     degree: 65536
 {
     // P_CLow and P_CHi are both 16 bit limbs of P_C, where P_CLow is the less significant limb.
-    operation run<0> P_operation, P_A, P_B, P_ROW -> P_CLow, P_CHi;
+    operation run P_operation, P_A, P_B, P_ROW -> P_CLow, P_CHi;
 
     col fixed latch = [1]*;
-    col fixed operation_id = [0]*;
 
     let bit_counts = [256, 32, 4, 2];
     let min_degree = std::array::product(bit_counts);
