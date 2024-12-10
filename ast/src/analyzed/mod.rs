@@ -139,7 +139,7 @@ impl<T> Analyzed<T> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
-    fn intermediate_polys_in_source_order(
+    pub fn intermediate_polys_in_source_order(
         &self,
     ) -> impl Iterator<Item = &(Symbol, Vec<AlgebraicExpression<T>>)> {
         self.source_order.iter().filter_map(move |statement| {
