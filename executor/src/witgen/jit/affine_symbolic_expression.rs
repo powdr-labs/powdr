@@ -15,37 +15,40 @@ use super::{super::range_constraints::RangeConstraint, symbolic_expression::Symb
 /// The effect of solving a symbolic equation.
 pub enum Effect<T: FieldElement, V> {
     /// variable can be assigned a value.
-    Assignment(V, SymbolicExpression<T>),
+    Assignment(V, SymbolicExpression<T, V>),
     /// we learnt a new range constraint on variable.
     RangeConstraint(V, RangeConstraint<T>),
     /// a run-time assertion. If this fails, we have conflicting constraints.
-    Assertion(Assertion<T>),
+    Assertion(Assertion<T, V>),
 }
 
 /// A run-time assertion. If this fails, we have conflicting constraints.
-pub struct Assertion<T: FieldElement> {
-    pub lhs: SymbolicExpression<T>,
-    pub rhs: SymbolicExpression<T>,
+pub struct Assertion<T: FieldElement, V> {
+    pub lhs: SymbolicExpression<T, V>,
+    pub rhs: SymbolicExpression<T, V>,
     /// If this is true, we assert that both sides are equal.
     /// Otherwise, we assert that they are different.
     pub expected_equal: bool,
 }
 
-impl<T: FieldElement> Assertion<T> {
-    pub fn assert_is_zero<V>(condition: SymbolicExpression<T>) -> Effect<T, V> {
+impl<T: FieldElement, V> Assertion<T, V> {
+    pub fn assert_is_zero(condition: SymbolicExpression<T, V>) -> Effect<T, V> {
         Self::assert_eq(condition, SymbolicExpression::from(T::from(0)))
     }
-    pub fn assert_is_nonzero<V>(condition: SymbolicExpression<T>) -> Effect<T, V> {
+    pub fn assert_is_nonzero(condition: SymbolicExpression<T, V>) -> Effect<T, V> {
         Self::assert_neq(condition, SymbolicExpression::from(T::from(0)))
     }
-    pub fn assert_eq<V>(lhs: SymbolicExpression<T>, rhs: SymbolicExpression<T>) -> Effect<T, V> {
+    pub fn assert_eq(lhs: SymbolicExpression<T, V>, rhs: SymbolicExpression<T, V>) -> Effect<T, V> {
         Effect::Assertion(Assertion {
             lhs,
             rhs,
             expected_equal: true,
         })
     }
-    pub fn assert_neq<V>(lhs: SymbolicExpression<T>, rhs: SymbolicExpression<T>) -> Effect<T, V> {
+    pub fn assert_neq(
+        lhs: SymbolicExpression<T, V>,
+        rhs: SymbolicExpression<T, V>,
+    ) -> Effect<T, V> {
         Effect::Assertion(Assertion {
             lhs,
             rhs,
@@ -59,8 +62,8 @@ impl<T: FieldElement> Assertion<T> {
 /// and the `x_i` are unknown variables.
 #[derive(Debug, Clone)]
 pub struct AffineSymbolicExpression<T: FieldElement, V> {
-    coefficients: BTreeMap<V, SymbolicExpression<T>>,
-    offset: SymbolicExpression<T>,
+    coefficients: BTreeMap<V, SymbolicExpression<T, V>>,
+    offset: SymbolicExpression<T, V>,
 }
 
 impl<T: FieldElement, V: Display> Display for AffineSymbolicExpression<T, V> {
@@ -90,8 +93,8 @@ impl<T: FieldElement, V: Display> Display for AffineSymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V> From<SymbolicExpression<T>> for AffineSymbolicExpression<T, V> {
-    fn from(k: SymbolicExpression<T>) -> Self {
+impl<T: FieldElement, V> From<SymbolicExpression<T, V>> for AffineSymbolicExpression<T, V> {
+    fn from(k: SymbolicExpression<T, V>) -> Self {
         AffineSymbolicExpression {
             coefficients: Default::default(),
             offset: k,
@@ -100,7 +103,7 @@ impl<T: FieldElement, V> From<SymbolicExpression<T>> for AffineSymbolicExpressio
 }
 
 impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
-    pub fn from_known_variable(var: &str) -> Self {
+    pub fn from_known_variable(var: V) -> Self {
         SymbolicExpression::from_var(var).into()
     }
     pub fn from_unknown_variable(var: V) -> Self {
@@ -227,7 +230,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             } else {
                 covered_bits |= mask;
             }
-            let masked = &(-&self.offset) & &T::from(mask).into();
+            let masked = -&self.offset & T::from(mask).into();
             effects.push(Effect::Assignment(
                 var.clone(),
                 masked.integer_div(&coeff.into()),
@@ -324,11 +327,27 @@ impl<T: FieldElement, V: Clone + Ord> Add for &AffineSymbolicExpression<T, V> {
     }
 }
 
+impl<T: FieldElement, V: Clone + Ord> Add for AffineSymbolicExpression<T, V> {
+    type Output = AffineSymbolicExpression<T, V>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        &self + &rhs
+    }
+}
+
 impl<T: FieldElement, V: Clone + Ord> Sub for &AffineSymbolicExpression<T, V> {
     type Output = AffineSymbolicExpression<T, V>;
 
     fn sub(self, rhs: Self) -> Self::Output {
         self + &-rhs
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> Sub for AffineSymbolicExpression<T, V> {
+    type Output = AffineSymbolicExpression<T, V>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        &self - &rhs
     }
 }
 
@@ -347,7 +366,17 @@ impl<T: FieldElement, V: Clone + Ord> Neg for &AffineSymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V> TryFrom<&AffineSymbolicExpression<T, V>> for SymbolicExpression<T> {
+impl<T: FieldElement, V: Clone + Ord> Neg for AffineSymbolicExpression<T, V> {
+    type Output = AffineSymbolicExpression<T, V>;
+
+    fn neg(self) -> Self::Output {
+        -&self
+    }
+}
+
+impl<T: FieldElement, V: Clone> TryFrom<&AffineSymbolicExpression<T, V>>
+    for SymbolicExpression<T, V>
+{
     type Error = ();
 
     fn try_from(value: &AffineSymbolicExpression<T, V>) -> Result<Self, Self::Error> {
@@ -391,9 +420,9 @@ mod test {
 
     #[test]
     fn unsolvable_with_vars() {
-        let x = Ase::from_known_variable("X");
-        let y = Ase::from_known_variable("Y");
-        let constr = &(&x + &y) - &from_number(10);
+        let x = &Ase::from_known_variable("X");
+        let y = &Ase::from_known_variable("Y");
+        let constr = x + y - from_number(10);
         let r = constr.solve(&SimpleRangeConstraintSet::default());
         assert!(r.is_err());
     }
@@ -415,7 +444,7 @@ mod test {
         let two = from_number(2);
         let seven = from_number(7);
         let ten = from_number(10);
-        let constr = &(&mul(&two, &x) + &mul(&seven, &y)) - &ten;
+        let constr = mul(&two, &x) + mul(&seven, &y) - ten;
         let effects = constr.solve(&SimpleRangeConstraintSet::default()).unwrap();
         assert_eq!(effects.len(), 1);
         let Effect::Assignment(var, expr) = &effects[0] else {
@@ -439,10 +468,11 @@ mod test {
         );
         // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 + Z = 0
         let ten = from_number(10);
-        let constr = &(&(&(&mul(&a, &from_number(0x100)) + &mul(&b, &from_number(0x10000)))
-            + &mul(&c, &from_number(0x1000000)))
-            + &ten)
-            + &z;
+        let constr = mul(&a, &from_number(0x100))
+            + mul(&b, &from_number(0x10000))
+            + mul(&c, &from_number(0x1000000))
+            + ten
+            + z;
         // Without range constraints, this is not solvable.
         assert!(constr
             .solve(&SimpleRangeConstraintSet::default())
@@ -493,10 +523,11 @@ assert (10 + Z) == ((10 + Z) | 4294967040);
         );
         // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 - Z = 0
         let ten = from_number(10);
-        let constr = &(&(&(&mul(&a, &from_number(0x100)) + &mul(&b, &from_number(0x10000)))
-            + &mul(&c, &from_number(0x1000000)))
-            + &ten)
-            - &z;
+        let constr = mul(&a, &from_number(0x100))
+            + mul(&b, &from_number(0x10000))
+            + mul(&c, &from_number(0x1000000))
+            + ten
+            - z;
         let effects = constr
             .solve(&range_constraints)
             .unwrap()
