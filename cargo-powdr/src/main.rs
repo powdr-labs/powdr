@@ -35,6 +35,7 @@ const HOST_MAIN_TEMPLATE: &str = include_str!("../template/src/main.rs");
 const HOST_README_TEMPLATE: &str = include_str!("../template/README.md");
 const GUEST_CARGO_TOML_TEMPLATE: &str = include_str!("../template/guest/Cargo.toml.template");
 const GUEST_MAIN_TEMPLATE: &str = include_str!("../template/guest/src/main.rs");
+const GITIGNORE: &str = include_str!("../template/.gitignore.template");
 
 fn main() -> Result<(), io::Error> {
     let args = Cli::parse();
@@ -90,6 +91,7 @@ fn new_project(project_name: String, guest_name: String) -> Result<(), Error> {
         HOST_TOOLCHAIN_TEMPLATE,
     )?;
     create_file(&project_dir.join("README.md"), HOST_README_TEMPLATE)?;
+    create_file(&project_dir.join(".gitignore"), GITIGNORE)?;
     create_file(&src_dir.join("main.rs"), HOST_MAIN_TEMPLATE)?;
     create_file(&guest_dir.join("Cargo.toml"), GUEST_CARGO_TOML_TEMPLATE)?;
     create_file(&guest_src_dir.join("main.rs"), GUEST_MAIN_TEMPLATE)?;
