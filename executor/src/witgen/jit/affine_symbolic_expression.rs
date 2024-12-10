@@ -309,16 +309,13 @@ impl<T: FieldElement, V: Clone + Ord> Add for &AffineSymbolicExpression<T, V> {
 
     fn add(self, rhs: Self) -> Self::Output {
         let mut coefficients = self.coefficients.clone();
-        for (var, coeff) in rhs.coefficients.iter() {
+        for (var, coeff) in &rhs.coefficients {
             coefficients
                 .entry(var.clone())
                 .and_modify(|f| *f = &*f + coeff)
                 .or_insert_with(|| coeff.clone());
         }
-        let coefficients = coefficients
-            .into_iter()
-            .filter(|(_, f)| !f.is_known_zero())
-            .collect();
+        coefficients.retain(|_, f| !f.is_known_zero());
         let offset = &self.offset + &rhs.offset;
         AffineSymbolicExpression {
             coefficients,
