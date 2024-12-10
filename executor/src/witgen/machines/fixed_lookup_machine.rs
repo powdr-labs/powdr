@@ -202,36 +202,25 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        rows: &RowPair<'_, 'a, T>,
-        left: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        rows: &RowPair<'_, '_, T>,
+        outer_query: &OuterQuery<'a, 'b, T>,
         mut right: Peekable<impl Iterator<Item = &'a AlgebraicReference>>,
     ) -> EvalResult<'a, T> {
-        if left.len() == 1
-            && !left.first().unwrap().is_constant()
+        if outer_query.left.len() == 1
+            && !outer_query.left.first().unwrap().is_constant()
             && right.peek().unwrap().poly_id.ptype == PolynomialType::Constant
         {
             // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
             return self.process_range_check(
                 rows,
-                left.first().unwrap(),
+                outer_query.left.first().unwrap(),
                 AlgebraicVariable::Column(right.peek().unwrap()),
             );
         }
 
         // Split the left-hand-side into known input values and unknown output expressions.
-        let mut data = vec![T::zero(); left.len()];
-        let mut values = left
-            .iter()
-            .zip(&mut data)
-            .map(|(l, d)| {
-                if let Some(value) = l.constant_value() {
-                    *d = value;
-                    LookupCell::Input(d)
-                } else {
-                    LookupCell::Output(d)
-                }
-            })
-            .collect::<Vec<_>>();
+        let mut input_output_data = vec![T::zero(); outer_query.left.len()];
+        let mut values = outer_query.prepare_for_direct_lookup(&mut input_output_data);
 
         if !self.process_lookup_direct(mutable_state, identity_id, &mut values)? {
             // multiple matches, we stop and learnt nothing
@@ -240,31 +229,12 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             ));
         };
 
-        let mut result = EvalValue::complete(vec![]);
-        for (l, v) in left.iter().zip(data) {
-            if !l.is_constant() {
-                let evaluated = l.clone() - v.into();
-                // TODO we could use bit constraints here
-                match evaluated.solve() {
-                    Ok(constraints) => {
-                        result.combine(constraints);
-                    }
-                    Err(_) => {
-                        // Fail the whole lookup
-                        return Err(EvalError::ConstraintUnsatisfiable(format!(
-                            "Constraint is invalid ({l} != {v}).",
-                        )));
-                    }
-                }
-            }
-        }
-
-        Ok(result)
+        outer_query.direct_lookup_to_eval_result(input_output_data)
     }
 
     fn process_range_check(
         &self,
-        rows: &RowPair<'_, 'a, T>,
+        rows: &RowPair<'_, '_, T>,
         lhs: &AffineExpression<AlgebraicVariable<'a>, T>,
         rhs: AlgebraicVariable<'a>,
     ) -> EvalResult<'a, T> {
@@ -344,18 +314,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .peekable();
 
         let outer_query = OuterQuery::new(caller_rows, identity);
-        self.process_plookup_internal(
-            mutable_state,
-            identity_id,
-            caller_rows,
-            &outer_query.left,
-            right,
-        )
+        self.process_plookup_internal(mutable_state, identity_id, caller_rows, &outer_query, right)
     }
 
-    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+    fn process_lookup_direct<'c, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b MutableState<'a, T, Q>,
+        _mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {

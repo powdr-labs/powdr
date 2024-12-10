@@ -3,6 +3,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
+use auto_enums::auto_enum;
 use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
@@ -13,7 +14,7 @@ use crate::witgen::rows::Row;
 /// Sequence of rows of field elements, stored in a compact form.
 /// Optimized for contiguous column IDs, but works with any combination.
 #[derive(Clone)]
-struct CompactData<T: FieldElement> {
+pub struct CompactData<T> {
     /// The ID of the first column used in the table.
     first_column_id: u64,
     /// The length of a row in the table.
@@ -26,7 +27,7 @@ struct CompactData<T: FieldElement> {
 
 impl<T: FieldElement> CompactData<T> {
     /// Creates a new empty compact data storage.
-    fn new(column_ids: &[PolyID]) -> Self {
+    pub fn new(column_ids: &[PolyID]) -> Self {
         let col_id_range = column_ids.iter().map(|id| id.id).minmax();
         let (first_column_id, last_column_id) = col_id_range.into_option().unwrap();
         Self {
@@ -37,28 +38,28 @@ impl<T: FieldElement> CompactData<T> {
         }
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
     /// Returns the number of stored rows.
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.data.len() / self.column_count
     }
 
     /// Truncates the data to `len` rows.
-    fn truncate(&mut self, len: usize) {
+    pub fn truncate(&mut self, len: usize) {
         self.data.truncate(len * self.column_count);
         self.known_cells.truncate(len * self.column_count);
     }
 
-    fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.data.clear();
         self.known_cells.clear();
     }
 
     /// Appends a non-finalized row to the data, turning it into a finalized row.
-    fn push(&mut self, row: Row<T>) {
+    pub fn push(&mut self, row: Row<T>) {
         self.data.reserve(self.column_count);
         self.known_cells.reserve(self.column_count);
         for col_id in self.first_column_id..(self.first_column_id + self.column_count as u64) {
@@ -75,10 +76,68 @@ impl<T: FieldElement> CompactData<T> {
         }
     }
 
-    fn get(&self, row: usize, col: u64) -> (T, bool) {
+    pub fn append_new_rows(&mut self, count: usize) {
+        self.data
+            .resize(self.data.len() + count * self.column_count, T::zero());
+        self.known_cells.grow(count * self.column_count, false);
+    }
+
+    fn index(&self, row: usize, col: u64) -> usize {
         let col = col - self.first_column_id;
-        let idx = row * self.column_count + col as usize;
+        row * self.column_count + col as usize
+    }
+
+    pub fn get(&self, row: usize, col: u64) -> (T, bool) {
+        let idx = self.index(row, col);
         (self.data[idx], self.known_cells[idx])
+    }
+
+    pub fn set(&mut self, row: usize, col: u64, value: T) {
+        let idx = self.index(row, col);
+        assert!(!self.known_cells[idx] || self.data[idx] == value);
+        self.data[idx] = value;
+        self.known_cells.set(idx, true);
+    }
+
+    pub fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (u64, &T)> {
+        (0..self.column_count).filter_map(move |i| {
+            let col = self.first_column_id + i as u64;
+            let idx = self.index(row, col);
+            self.known_cells[idx].then(|| {
+                let col_id = self.first_column_id + i as u64;
+                (col_id, &self.data[idx])
+            })
+        })
+    }
+}
+
+/// A mutable reference into CompactData that is meant to be used
+/// only for a certain block of rows, starting from row index zero.
+/// It allows negative row indices as well.
+pub struct CompactDataRef<'a, T> {
+    data: &'a mut CompactData<T>,
+    row_offset: usize,
+}
+
+impl<'a, T: FieldElement> CompactDataRef<'a, T> {
+    /// Creates a new reference to the data, supplying the offset of the row
+    /// that is supposed to be "row zero".
+    pub fn new(data: &'a mut CompactData<T>, row_offset: usize) -> Self {
+        Self { data, row_offset }
+    }
+
+    pub fn get(&self, row: i32, col: u32) -> T {
+        let (v, known) = self.data.get(self.inner_row(row), col as u64);
+        assert!(known);
+        v
+    }
+
+    pub fn set(&mut self, row: i32, col: u32, value: T) {
+        self.data.set(self.inner_row(row), col as u64, value);
+    }
+
+    fn inner_row(&self, row: i32) -> usize {
+        (row + self.row_offset as i32) as usize
     }
 }
 
@@ -215,6 +274,38 @@ impl<T: FieldElement> FinalizableData<T> {
         }
     }
 
+    /// Returns an iterator over the values known in that row together with the PolyIDs.
+    #[auto_enum(Iterator)]
+    pub fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (PolyID, T)> + '_ {
+        match self.location_of_row(row) {
+            Location::PreFinalized(local) => {
+                let row = &self.pre_finalized_data[local];
+                self.column_ids
+                    .iter()
+                    .filter_map(move |id| row.value(id).map(|v| (*id, v)))
+            }
+            Location::Finalized(local) => {
+                self.finalized_data
+                    .known_values_in_row(local)
+                    .map(|(id, v)| {
+                        (
+                            PolyID {
+                                id,
+                                ptype: PolynomialType::Committed,
+                            },
+                            *v,
+                        )
+                    })
+            }
+            Location::PostFinalized(local) => {
+                let row = &self.post_finalized_data[local];
+                self.column_ids
+                    .iter()
+                    .filter_map(move |id| row.value(id).map(|v| (*id, v)))
+            }
+        }
+    }
+
     pub fn last(&self) -> Option<&Row<T>> {
         match self.location_of_last_row()? {
             Location::PreFinalized(local) => self.pre_finalized_data.get(local),
@@ -281,6 +372,18 @@ impl<T: FieldElement> FinalizableData<T> {
             self.post_finalized_data = new_post_data;
             counter
         }
+    }
+
+    /// Appends a given amount of new finalized rows set to zero and "unknown".
+    /// Returns a `CompactDataRef` that is built so that its "row zero" is the
+    /// first newly appended row.
+    ///
+    /// Panics if there are any non-finalized rows at the end.
+    pub fn append_new_finalized_rows(&mut self, count: usize) -> CompactDataRef<'_, T> {
+        assert!(self.post_finalized_data.is_empty());
+        let row_zero = self.finalized_data.len();
+        self.finalized_data.append_new_rows(count);
+        CompactDataRef::new(&mut self.finalized_data, row_zero)
     }
 
     /// Takes all data out of the [FinalizableData] and returns it as a list of columns.
