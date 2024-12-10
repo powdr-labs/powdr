@@ -9,11 +9,10 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [features]
-default = []                                       # complex-tests is disabled by default
+default = []
 
 # features below only affects tests
 # not sure this is the best approach
-complex-tests = []
 estark-polygon = ["powdr-pipeline/estark-polygon"]
 plonky3 = ["powdr-pipeline/plonky3"]
 
