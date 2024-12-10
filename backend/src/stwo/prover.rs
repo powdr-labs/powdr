@@ -138,13 +138,12 @@ where
 
                     Some((
                         namespace.to_string(),
-                        //why here it is committed_polys_in_source_order() instead of constant polys?
                         pil.committed_polys_in_source_order()
                             .find_map(|(s, _)| s.degree)
                             .unwrap()
                             .iter()
                             .map(|size| {
-                                let constant_trace: ColumnVec<
+                                let mut constant_trace: ColumnVec<
                                     CircleEvaluation<B, BaseField, BitReversedOrder>,
                                 > = fixed_columns
                                     .values()
@@ -159,6 +158,31 @@ where
                                         })
                                     })
                                     .collect();
+
+                                let constant_with_next_list = get_constant_with_next_list(pil);
+
+                                let constant_shifted_trace: ColumnVec<
+                                    CircleEvaluation<B, BaseField, BitReversedOrder>,
+                                > = fixed_columns
+                                    .values()
+                                    .flat_map(|vec| {
+                                        vec.iter()
+                                            .enumerate()
+                                            .filter(|(i, _)| constant_with_next_list.contains(i))
+                                            .map(|(_, (_name, values))| {
+                                                let mut rotated_values = values.to_vec();
+                                                rotated_values.rotate_left(1);
+                                                gen_stwo_circle_column::<F, B, M31>(
+                                                    *domain_map
+                                                        .get(&(values.len().ilog2() as usize))
+                                                        .unwrap(),
+                                                    &rotated_values,
+                                                )
+                                            })
+                                    })
+                                    .collect();
+
+                                constant_trace.extend(constant_shifted_trace);
 
                                 (
                                     size as usize,
@@ -231,7 +255,7 @@ where
         let mut tree_builder = commitment_scheme.tree_builder();
 
         // Get the list of constant polynomials with next reference constraint
-        let constant_list: Vec<usize> = get_constant_with_next_list(&self.analyzed);
+        // let constant_list: Vec<usize> = get_constant_with_next_list(&self.analyzed);
 
         //commit to the constant polynomials that are without next reference constraint
         if let Some((_, table_proving_key)) =
@@ -244,21 +268,13 @@ where
                         .find_map(|(_, table_collection)| table_collection.iter().next())
                 })
         {
-            tree_builder.extend_evals(
-                table_proving_key
-                    .constant_trace_circle_domain
-                    .clone()
-                    .into_iter() // Convert it into an iterator
-                    .enumerate() // Enumerate to get (index, value)
-                    .filter(|(index, _)| !constant_list.contains(index)) // Keep only elements whose index is not in `constant_list`
-                    .map(|(_, element)| element),
-            );
+            tree_builder.extend_evals(table_proving_key.constant_trace_circle_domain.clone());
         } else {
             tree_builder.extend_evals([]);
         }
         tree_builder.commit(prover_channel);
 
-        let mut trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = witness
+        let trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = witness
             .iter()
             .map(|(_name, values)| {
                 gen_stwo_circle_column::<F, B, M31>(
@@ -267,29 +283,6 @@ where
                 )
             })
             .collect();
-
-        //extend the witness trace with the constant polys that have next reference constraint
-        if let Some((_, table_proving_key)) =
-            self.proving_key
-                .preprocessed
-                .as_ref()
-                .and_then(|preprocessed| {
-                    preprocessed
-                        .iter()
-                        .find_map(|(_, table_collection)| table_collection.iter().next())
-                })
-        {
-            let constants_with_next: Vec<CircleEvaluation<B, M31, BitReversedOrder>> =
-                table_proving_key
-                    .constant_trace_circle_domain
-                    .clone()
-                    .into_iter()
-                    .enumerate()
-                    .filter(|(index, _)| constant_list.contains(index)) // Keep only elements whose index is not in `constant_list`
-                    .map(|(_, element)| element)
-                    .collect();
-            trace.extend(constants_with_next);
-        }
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);

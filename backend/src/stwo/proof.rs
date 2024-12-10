@@ -13,6 +13,39 @@ use stwo_prover::core::ColumnVec;
 /// For each possible size, the commitment and prover data
 pub type TableProvingKeyCollection<B> = BTreeMap<usize, TableProvingKey<B>>;
 
+impl<B: Backend> From<SerializableTableProvingKeyCollection> for TableProvingKeyCollection<B> {
+    fn from(serializable: SerializableTableProvingKeyCollection) -> Self {
+        let constant_trace_circle_domain_collection = serializable
+            .constant_trace_circle_domain_collection
+            .into_iter()
+            .map(|(size, table_provingkey)| {
+                let domain = CanonicCoset::new(size as u32).circle_domain();
+                let constant_trace_circle_domain = table_provingkey
+                    .into_values()
+                    .map(|values| {
+                        let mut column: <B as ColumnOps<M31>>::Column =
+                            <B as ColumnOps<M31>>::Column::zeros(values.len());
+                        values.iter().enumerate().for_each(|(i, v)| {
+                            column.set(i, *v);
+                        });
+
+                        CircleEvaluation::<B, BaseField, BitReversedOrder>::new(domain, column)
+                    })
+                    .collect::<ColumnVec<_>>();
+
+                (
+                    size,
+                    TableProvingKey {
+                        constant_trace_circle_domain,
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        constant_trace_circle_domain_collection
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct TableProvingKey<B: Backend> {
     pub constant_trace_circle_domain: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>,
@@ -24,36 +57,13 @@ pub struct StarkProvingKey<B: Backend> {
 }
 
 impl<B: Backend> From<SerializableStarkProvingKey> for StarkProvingKey<B> {
-    fn from(serializable_stark_provingkey: SerializableStarkProvingKey) -> Self {
-        let preprocessed = serializable_stark_provingkey.preprocessed.map(|map| {
+    fn from(serializable: SerializableStarkProvingKey) -> Self {
+        let preprocessed = serializable.preprocessed.map(|map| {
             map.into_iter()
                 .map(|(namespace, table_provingkey_collection)| {
                     (
                         namespace,
-                        table_provingkey_collection
-                            .into_iter()
-                            .map(|(machine_size, table_provingkey)| {
-                                (
-                                    machine_size,
-                                    TableProvingKey{
-                                        constant_trace_circle_domain: table_provingkey
-                                      .into_iter()
-                                      .map(|(size,values)|{
-                                            let mut column: <B as ColumnOps<M31>>::Column =
-                                                <B as ColumnOps<M31>>::Column::zeros(values.len());
-                                            values.iter().enumerate().for_each(|(i, v)| {
-                                                column.set(i, *v);
-                                            });
-                                            CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
-                                                CanonicCoset::new(size as u32).circle_domain(),
-                                                column,
-                                            )
-                                      })
-                                      .collect::<ColumnVec<_>>(),
-                                    }
-                                )
-                            })
-                            .collect::<BTreeMap<_, _>>(),
+                        TableProvingKeyCollection::<B>::from(table_provingkey_collection),
                     )
                 })
                 .collect::<BTreeMap<_, _>>()
@@ -63,39 +73,51 @@ impl<B: Backend> From<SerializableStarkProvingKey> for StarkProvingKey<B> {
     }
 }
 
-type CircleEvaluationMap = BTreeMap<usize, Vec<M31>>;
+#[derive(Serialize, Deserialize)]
+pub struct SerializableTableProvingKeyCollection {
+    constant_trace_circle_domain_collection: BTreeMap<usize, BTreeMap<usize, Vec<M31>>>,
+}
+
+impl<B: Backend> From<TableProvingKeyCollection<B>> for SerializableTableProvingKeyCollection {
+    fn from(table_provingkey_collection: TableProvingKeyCollection<B>) -> Self {
+        let mut constant_trace_circle_domain_collection = BTreeMap::new();
+
+        table_provingkey_collection
+            .iter()
+            .for_each(|(&size, trable_provingkey)| {
+                let mut values: BTreeMap<usize, Vec<M31>> = BTreeMap::new();
+                trable_provingkey
+                    .constant_trace_circle_domain
+                    .iter()
+                    .for_each(|circle_eval| {
+                        values.insert(
+                            circle_eval.domain.log_size() as usize,
+                            circle_eval.values.to_cpu().to_vec(),
+                        );
+                    });
+
+                constant_trace_circle_domain_collection.insert(size, values);
+            });
+
+        Self {
+            constant_trace_circle_domain_collection,
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize)]
 pub struct SerializableStarkProvingKey {
-    // usize is the domain log size, Vec<M31> is the values of the circle evaluation
-    preprocessed: Option<BTreeMap<String, BTreeMap<usize, CircleEvaluationMap>>>,
+    preprocessed: Option<BTreeMap<String, SerializableTableProvingKeyCollection>>,
 }
 
 impl<B: Backend> From<StarkProvingKey<B>> for SerializableStarkProvingKey {
     fn from(stark_proving_key: StarkProvingKey<B>) -> Self {
         let preprocessed = stark_proving_key.preprocessed.map(|map| {
             map.into_iter()
-                .map(|(namespace, value)| {
+                .map(|(namespace, table_provingkey_collection)| {
                     (
                         namespace,
-                        value
-                            .into_iter()
-                            .map(|(machine_size, table_provingkey)| {
-                                (
-                                    machine_size,
-                                    table_provingkey
-                                        .constant_trace_circle_domain
-                                        .into_iter()
-                                        .map(|circle_evaluation| {
-                                            (
-                                                circle_evaluation.domain.log_size() as usize,
-                                                circle_evaluation.values.to_cpu(),
-                                            )
-                                        })
-                                        .collect::<BTreeMap<_, _>>(),
-                                )
-                            })
-                            .collect::<BTreeMap<_, _>>(),
+                        SerializableTableProvingKeyCollection::from(table_provingkey_collection),
                     )
                 })
                 .collect::<BTreeMap<_, _>>()
