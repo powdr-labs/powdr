@@ -115,22 +115,19 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
     pub fn from_number(n: T) -> Self {
         SymbolicExpression::from(n).into()
     }
-    pub fn is_known_zero(&self) -> bool {
-        self.coefficients.is_empty() && self.offset.is_known_zero()
-    }
-    pub fn is_known_one(&self) -> bool {
-        self.coefficients.is_empty() && self.offset.is_known_one()
-    }
-    pub fn is_known(&self) -> bool {
-        self.coefficients.is_empty()
+
+    /// If this expression does not contain unknown variables, returns the symbolic expression.
+    pub fn try_to_known(&self) -> Option<&SymbolicExpression<T, V>> {
+        if self.coefficients.is_empty() {
+            Some(&self.offset)
+        } else {
+            None
+        }
     }
 
     /// Tries to multiply this expression with another one.
     /// Returns `None` if the result would be quadratic.
     pub fn try_mul(&self, other: &Self) -> Option<Self> {
-        if self.is_known_zero() || other.is_known_zero() {
-            return Some(AffineSymbolicExpression::from_number(T::from(0)));
-        }
         if !self.coefficients.is_empty() && !other.coefficients.is_empty() {
             return None;
         }
