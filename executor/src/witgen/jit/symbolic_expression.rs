@@ -293,8 +293,12 @@ impl<T: FieldElement, V: Clone> BitOr for &SymbolicExpression<T, V> {
     fn bitor(self, rhs: Self) -> Self::Output {
         if let (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) = (self, rhs) {
             let v = a.to_integer() | b.to_integer();
-            assert!(v <= T::modulus());
+            assert!(v < T::modulus());
             SymbolicExpression::Concrete(T::from(v))
+        } else if self.is_known_zero() {
+            rhs.clone()
+        } else if rhs.is_known_zero() {
+            self.clone()
         } else {
             SymbolicExpression::BinaryOperation(
                 Rc::new(self.clone()),
