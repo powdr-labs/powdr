@@ -273,3 +273,61 @@ impl<T: FieldElement> RangeConstraintSet<Cell, T> for WitgenInference<'_, T> {
             .reduce(|gc, rc| gc.conjunction(&rc))
     }
 }
+
+#[cfg(test)]
+mod test {
+    use powdr_ast::analyzed::Analyzed;
+    use powdr_number::GoldilocksField;
+
+    use crate::witgen::{jit::affine_symbolic_expression::Assertion, FixedData};
+
+    use super::*;
+
+    fn format_code(effects: &[Effect<GoldilocksField, Cell>]) -> String {
+        effects
+            .iter()
+            .map(|effect| match effect {
+                Effect::Assignment(v, expr) => format!("{v} = {expr};"),
+                Effect::Assertion(Assertion {
+                    lhs,
+                    rhs,
+                    expected_equal,
+                }) => {
+                    format!(
+                        "assert {lhs} {} {rhs};",
+                        if *expected_equal { "==" } else { "!=" }
+                    )
+                }
+                Effect::Lookup(id, args) => {
+                    format!(
+                        "lookup({id}, [{}]);",
+                        args.iter()
+                            .map(|arg| match arg {
+                                LookupArgument::Known(k) => format!("Known({k})"),
+                                LookupArgument::Unknown(u) => format!("Unknown({u})"),
+                            })
+                            .join(", ")
+                    )
+                }
+                Effect::RangeConstraint(..) => {
+                    panic!("Range constraints should not be part of the code.")
+                }
+            })
+            .join("\n")
+    }
+
+    #[test]
+    fn simple_polynomial_solving() {
+        let input = "let X; let Y; let Z; X = 1; Y = X + 1; Z * Y = X + 10;";
+        let analyzed: Analyzed<GoldilocksField> =
+            powdr_pil_analyzer::analyze_string(input).unwrap();
+        let fixed_data = FixedData::new(&analyzed, &[], &[], Default::default(), 0);
+        let mut witgen = WitgenInference::new(&fixed_data, vec![]);
+        for id in analyzed.identities.iter() {
+            witgen.process_identity(id, 0);
+        }
+        assert_eq!(witgen.known_cells().len(), 3);
+        let code = format_code(&witgen.code());
+        assert_eq!(code, "X[0] = 1;\nY[0] = 2;\nZ[0] = -9223372034707292155;");
+    }
+}
