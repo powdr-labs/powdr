@@ -121,8 +121,8 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     pil_file.remove_trait_impls(&impls_to_remove);
 }
 
-/// Builds a lookup-table that can be used to turn all symbols
-/// (including array elements) in the form of their poly ids, into the names of the symbols.
+/// Builds a lookup-table that can be used to turn all poly ids into the names of the symbols that define them.
+/// For array elements, this is the name of the array.
 /// The boolean flag indicates whether the symbol belongs to an array or not
 fn build_poly_id_to_definition_name_lookup(
     pil_file: &Analyzed<impl FieldElement>,
