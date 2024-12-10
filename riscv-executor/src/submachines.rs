@@ -11,7 +11,14 @@ trait SubmachineKind {
     /// Row block size
     const BLOCK_SIZE: u32;
     /// Add an operation to the submachine trace
-    fn add_operation<F: FieldElement>(trace: &mut SubmachineTrace<F>, args: &[F]);
+    fn add_operation<F: FieldElement>(
+        trace: &mut SubmachineTrace<F>,
+        // pil lookup RHS values (including selector idx, if present)
+        selector_idx: Option<usize>,
+        lookup_args: &[F],
+        // extra info provided by the executor
+        extra: &[F],
+    );
     /// Some machines need more than simply copying first block
     fn dummy_block_fix<F: FieldElement>(_trace: &mut SubmachineTrace<F>, _rows: u32) {}
 }
@@ -37,7 +44,7 @@ pub trait Submachine<F: FieldElement> {
     /// current number of rows
     fn len(&self) -> u32;
     /// add a new operation to the trace
-    fn add_operation(&mut self, args: &[F]);
+    fn add_operation(&mut self, selector_idx: Option<usize>, lookup_args: &[F], extra: &[F]);
     /// apply final row overrides (needed because the trace is circular)
     fn final_row_override(&mut self);
     /// push a dummy block to the trace
@@ -80,8 +87,8 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
         self.trace.len()
     }
 
-    fn add_operation(&mut self, args: &[F]) {
-        M::add_operation(&mut self.trace, args);
+    fn add_operation(&mut self, selector_idx: Option<usize>, lookup_args: &[F], extra: &[F]) {
+        M::add_operation(&mut self.trace, selector_idx, lookup_args, extra);
     }
 
     fn final_row_override(&mut self) {
@@ -165,6 +172,7 @@ impl<F: FieldElement> SubmachineTrace<F> {
     /// Push a dummy block to the trace.
     /// A dummy block is a copy of the first block, with the final row updates applied to it, and selectors set to 0.
     fn push_dummy_block(&mut self, machine_max_degree: usize, size: u32, selectors: &'static str) {
+        // TODO: use Optional selector argument
         let selector_pat = format!("{selectors}[");
 
         for i in 0..size {
@@ -194,8 +202,15 @@ impl SubmachineKind for BinaryMachine {
     const SELECTORS: &'static str = "sel";
     const BLOCK_SIZE: u32 = 4;
 
-    fn add_operation<F: FieldElement>(trace: &mut SubmachineTrace<F>, args: &[F]) {
-        let [selector, op_id, a, b, c] = args[..] else {
+    fn add_operation<F: FieldElement>(
+        trace: &mut SubmachineTrace<F>,
+        selector_idx: Option<usize>,
+        lookup_args: &[F],
+        extra: &[F],
+    ) {
+        assert!(extra.is_empty());
+        let selector_idx = selector_idx.unwrap();
+        let [op_id, a, b, c] = lookup_args[..] else {
             panic!();
         };
 
@@ -277,10 +292,7 @@ impl SubmachineKind for BinaryMachine {
         trace.set_current_row("B", b);
         trace.set_current_row("C", c);
         // latch row: set selector
-        trace.set_current_row(
-            &format!("{}[{}]", Self::SELECTORS, selector.try_into_i32().unwrap()),
-            1.into(),
-        );
+        trace.set_current_row(&format!("{}[{}]", Self::SELECTORS, selector_idx), 1.into());
     }
 }
 
@@ -290,8 +302,15 @@ impl SubmachineKind for ShiftMachine {
     const SELECTORS: &'static str = "sel";
     const BLOCK_SIZE: u32 = 4;
 
-    fn add_operation<F: FieldElement>(trace: &mut SubmachineTrace<F>, args: &[F]) {
-        let [selector, op_id, a, b, c] = args[..] else {
+    fn add_operation<F: FieldElement>(
+        trace: &mut SubmachineTrace<F>,
+        selector_idx: Option<usize>,
+        lookup_args: &[F],
+        extra: &[F],
+    ) {
+        assert!(extra.is_empty());
+        let selector_idx = selector_idx.unwrap();
+        let [op_id, a, b, c] = lookup_args[..] else {
             panic!();
         };
 
@@ -369,10 +388,7 @@ impl SubmachineKind for ShiftMachine {
         trace.set_current_row("A", a);
         trace.set_current_row("B", b);
         trace.set_current_row("C", c);
-        trace.set_current_row(
-            &format!("{}[{}]", Self::SELECTORS, selector.try_into_i32().unwrap()),
-            1.into(),
-        );
+        trace.set_current_row(&format!("{}[{}]", Self::SELECTORS, selector_idx), 1.into());
     }
 }
 
@@ -382,8 +398,15 @@ impl SubmachineKind for SplitGlMachine {
     const SELECTORS: &'static str = "sel";
     const BLOCK_SIZE: u32 = 8;
 
-    fn add_operation<F: FieldElement>(trace: &mut SubmachineTrace<F>, args: &[F]) {
-        let [selector, output_lo, output_hi] = args[..] else {
+    fn add_operation<F: FieldElement>(
+        trace: &mut SubmachineTrace<F>,
+        selector_idx: Option<usize>,
+        lookup_args: &[F],
+        extra: &[F],
+    ) {
+        assert!(extra.is_empty());
+        let selector_idx = selector_idx.unwrap();
+        let [_input, output_lo, output_hi] = lookup_args[..] else {
             panic!();
         };
 
@@ -503,10 +526,7 @@ impl SubmachineKind for SplitGlMachine {
 
         // 7: bytes/lt/gt/was_lt are set by the next row
         trace.push_row();
-        trace.set_current_row(
-            &format!("{}[{}]", Self::SELECTORS, selector.try_into_i32().unwrap()),
-            1.into(),
-        );
+        trace.set_current_row(&format!("{}[{}]", Self::SELECTORS, selector_idx), 1.into());
         trace.set_current_row("output_low", lo.into());
         trace.set_current_row("output_high", hi.into());
         trace.set_current_row("in_acc", hi_and_lo(hi, lo));
@@ -517,8 +537,15 @@ pub struct PublicsMachine;
 impl SubmachineKind for PublicsMachine {
     const SELECTORS: &'static str = "";
     const BLOCK_SIZE: u32 = 1;
-    fn add_operation<F: FieldElement>(trace: &mut SubmachineTrace<F>, args: &[F]) {
-        let [addr, value] = args[..] else {
+    fn add_operation<F: FieldElement>(
+        trace: &mut SubmachineTrace<F>,
+        selector_idx: Option<usize>,
+        lookup_args: &[F],
+        extra: &[F],
+    ) {
+        assert!(selector_idx.is_none());
+        assert!(extra.is_empty());
+        let [addr, value] = lookup_args[..] else {
             panic!();
         };
         assert!(
@@ -543,9 +570,22 @@ impl SubmachineKind for PoseidonGlMachine {
     const SELECTORS: &'static str = "sel";
     const BLOCK_SIZE: u32 = 31; // full rounds + partial rounds + 1
 
-    fn add_operation<F: FieldElement>(trace: &mut SubmachineTrace<F>, args: &[F]) {
+    fn add_operation<F: FieldElement>(
+        trace: &mut SubmachineTrace<F>,
+        selector_idx: Option<usize>,
+        lookup_args: &[F],
+        extra: &[F],
+    ) {
         const STATE_SIZE: usize = 12;
         const OUTPUT_SIZE: usize = 4;
+
+        let selector_idx = selector_idx.unwrap();
+        let [input_addr, output_addr, time_step] = lookup_args[..] else {
+            panic!();
+        };
+
+        let input = extra[0..STATE_SIZE].to_vec();
+        let output = extra[STATE_SIZE..STATE_SIZE + OUTPUT_SIZE].to_vec();
 
         const INPUT_COLS: [&str; STATE_SIZE] = [
             "input[0]",
@@ -589,13 +629,6 @@ impl SubmachineKind for PoseidonGlMachine {
             "x7[0]", "x7[1]", "x7[2]", "x7[3]", "x7[4]", "x7[5]", "x7[6]", "x7[7]", "x7[8]",
             "x7[9]", "x7[10]", "x7[11]",
         ];
-
-        let [selector, input_addr, output_addr, time_step] = args[0..4] else {
-            panic!();
-        };
-
-        let input = args[3..3 + STATE_SIZE].to_vec();
-        let output = args[3 + STATE_SIZE..3 + STATE_SIZE + OUTPUT_SIZE].to_vec();
 
         let mut state: Vec<F> = input.clone();
 
@@ -672,7 +705,7 @@ impl SubmachineKind for PoseidonGlMachine {
         // set selector
         trace.set_current_block(
             Self::BLOCK_SIZE,
-            &format!("{}[{}]", Self::SELECTORS, selector.try_into_i32().unwrap()),
+            &format!("{}[{}]", Self::SELECTORS, selector_idx),
             1.into(),
         );
         for i in 0..STATE_SIZE {

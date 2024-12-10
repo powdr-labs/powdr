@@ -1888,11 +1888,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 if let ExecMode::Trace = self.mode {
                     let selector = 0;
-                    self.proc.submachine("split_gl").add_operation(&[
-                        selector.into(),
-                        lo.into(),
-                        hi.into(),
-                    ]);
+                    self.proc.submachine("split_gl").add_operation(
+                        Some(selector),
+                        &[r.into(), lo.into(), hi.into()],
+                        &[],
+                    );
                 }
 
                 submachine_event!(main_split_gl, r.into(), lo.into(), hi.into());
@@ -1911,7 +1911,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
 
-                let (r, op_id, sel) = match name {
+                let (r, op_id, selector) = match name {
                     "and" => {
                         main_event!(and,);
                         (val1.u() & val2_offset.u(), 0, 0)
@@ -1936,13 +1936,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
 
                 if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("binary").add_operation(&[
-                        sel.into(),
-                        op_id.into(),
-                        val1.into_fe(),
-                        val2_offset.into_fe(),
-                        r.into(),
-                    ]);
+                    self.proc.submachine("binary").add_operation(
+                        Some(selector),
+                        &[
+                            op_id.into(),
+                            val1.into_fe(),
+                            val2_offset.into_fe(),
+                            r.into(),
+                        ],
+                        &[],
+                    );
                 }
 
                 self.reg_write(3, write_reg, r.into(), 3);
@@ -1960,7 +1963,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let write_reg = args[3].u();
                 let val2_offset: Elem<F> = (val2.bin() + offset).into();
 
-                let (r, op_id, sel) = match name {
+                let (r, op_id, selector) = match name {
                     "shl" => {
                         main_event!(shl,);
                         (val1.u() << val2_offset.u(), 0, 0)
@@ -1987,13 +1990,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
                 if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("shift").add_operation(&[
-                        sel.into(),
-                        op_id.into(),
-                        val1.into_fe(),
-                        val2_offset.into_fe(),
-                        r.into(),
-                    ]);
+                    self.proc.submachine("shift").add_operation(
+                        Some(selector),
+                        &[
+                            op_id.into(),
+                            val1.into_fe(),
+                            val2_offset.into_fe(),
+                            r.into(),
+                        ],
+                        &[],
+                    );
                 }
 
                 Vec::new()
@@ -2016,12 +2022,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(XX_inv, Elem::Field(inv));
 
                 if let ExecMode::Trace = self.mode {
-                    let sel = 0;
-                    self.proc.submachine("split_gl").add_operation(&[
-                        sel.into(),
-                        low_inv.into(),
-                        high_inv.into(),
-                    ]);
+                    let selector = 0;
+                    self.proc.submachine("split_gl").add_operation(
+                        Some(selector),
+                        &[inv, low_inv.into(), high_inv.into()],
+                        &[],
+                    );
                 }
 
                 submachine_event!(main_split_gl, inv, low_inv.into(), high_inv.into());
@@ -2034,10 +2040,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let write_reg1 = args[1].u();
                 let write_reg2 = args[2].u();
 
-                let value = val1.into_fe().to_integer();
+                let value_fe = val1.into_fe();
                 // This instruction is only for Goldilocks, so the value must
                 // fit into a u64.
-                let value = value.try_into_u64().unwrap();
+                let value = value_fe.to_integer().try_into_u64().unwrap();
                 let lo = (value & 0xffffffff) as u32;
                 let hi = (value >> 32) as u32;
 
@@ -2049,12 +2055,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
                 if let ExecMode::Trace = self.mode {
-                    let sel = 0;
-                    self.proc.submachine("split_gl").add_operation(&[
-                        sel.into(),
-                        lo.into(),
-                        hi.into(),
-                    ]);
+                    let selector = 0;
+                    self.proc.submachine("split_gl").add_operation(
+                        Some(selector),
+                        &[value_fe.into(), lo.into(), hi.into()],
+                        &[],
+                    );
                 }
 
                 submachine_event!(main_split_gl, value.into(), lo.into(), hi.into());
@@ -2110,39 +2116,26 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     submachine_event!(main_split_gl, *v, lo.into(), hi.into());
                     if let ExecMode::Trace = self.mode {
                         // split gl of the poseidon machine
-                        let sel = 1;
-                        self.proc.submachine("split_gl").add_operation(&[
-                            sel.into(),
-                            lo.into(),
-                            hi.into(),
-                        ]);
+                        let selector = 1;
+                        self.proc.submachine("split_gl").add_operation(
+                            Some(selector),
+                            &[*v, lo.into(), hi.into()],
+                            &[],
+                        );
                     }
                 });
 
                 if let ExecMode::Trace = self.mode {
-                    let sel = 0;
-                    self.proc.submachine("poseidon_gl").add_operation(&[
-                        sel.into(),
-                        input_ptr.into_fe(),
-                        output_ptr.into_fe(),
-                        self.step.into(),
-                        inputs[0],
-                        inputs[1],
-                        inputs[2],
-                        inputs[3],
-                        inputs[4],
-                        inputs[5],
-                        inputs[6],
-                        inputs[7],
-                        inputs[8],
-                        inputs[9],
-                        inputs[10],
-                        inputs[11],
-                        outputs[0],
-                        outputs[1],
-                        outputs[2],
-                        outputs[3],
-                    ]);
+                    let selector = 0;
+                    self.proc.submachine("poseidon_gl").add_operation(
+                        Some(selector),
+                        &[input_ptr.into_fe(), output_ptr.into_fe(), self.step.into()],
+                        &[
+                            inputs[0], inputs[1], inputs[2], inputs[3], inputs[4], inputs[5],
+                            inputs[6], inputs[7], inputs[8], inputs[9], inputs[10], inputs[11],
+                            outputs[0], outputs[1], outputs[2], outputs[3],
+                        ],
+                    );
                 }
 
                 submachine_event!(
@@ -2302,9 +2295,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp2_col, limb);
                 log::debug!("Committing public: idx={idx}, limb={limb}");
                 if let ExecMode::Trace = self.mode {
-                    self.proc
-                        .submachine("publics")
-                        .add_operation(&[idx.into_fe(), limb.into_fe()]);
+                    self.proc.submachine("publics").add_operation(
+                        None,
+                        &[idx.into_fe(), limb.into_fe()],
+                        &[],
+                    );
                 }
 
                 submachine_event!(main_publics, idx.into_fe(), limb.into_fe());
