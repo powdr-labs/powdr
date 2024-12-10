@@ -30,6 +30,19 @@ pub trait SubmachineBoxed<F: FieldElement> {
 
 impl<F: FieldElement, M: SubmachineKind + 'static> SubmachineBoxed<F> for M {
     fn new_boxed(namespace: &str, witness_cols: &[String]) -> Box<dyn Submachine<F>> {
+        // filter machine columns
+        let prefix = format!("{namespace}::");
+        let witness_cols: HashMap<_, _> = witness_cols
+            .iter()
+            .filter(|c| c.starts_with(namespace))
+            .map(|c| (c.strip_prefix(&prefix).unwrap().to_string(), vec![]))
+            .collect();
+        // if we end up with no columns, the machine is not present or has been optimized away
+        if witness_cols.is_empty() {
+            return Box::new(DummySubmachine {
+                namespace: namespace.to_string(),
+            });
+        }
         Box::new(SubmachineImpl::<F, M>::new(namespace, witness_cols))
     }
 }
@@ -59,15 +72,7 @@ struct SubmachineImpl<F: FieldElement, M: SubmachineKind> {
 }
 
 impl<F: FieldElement, M: SubmachineKind> SubmachineImpl<F, M> {
-    pub fn new(namespace: &str, witness_cols: &[String]) -> Self {
-        // filter machine columns
-        let prefix = format!("{namespace}::");
-        let witness_cols: HashMap<_, _> = witness_cols
-            .iter()
-            .filter(|c| c.starts_with(namespace))
-            .map(|c| (c.strip_prefix(&prefix).unwrap().to_string(), vec![]))
-            .collect();
-        assert!(!witness_cols.is_empty(), "machine with no witness columns");
+    pub fn new(namespace: &str, witness_cols: HashMap<String, Vec<F>>) -> Self {
         SubmachineImpl {
             namespace: namespace.to_string(),
             trace: SubmachineTrace::new(witness_cols),
@@ -106,6 +111,27 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
             .take_cols()
             .map(|(k, v)| (format!("{}::{}", self.namespace, k), v))
             .collect()
+    }
+}
+
+/// Submachine that does nothing. Used in place of machines that are not present in the optimized pil.
+struct DummySubmachine {
+    namespace: String,
+}
+
+impl<F: FieldElement> Submachine<F> for DummySubmachine {
+    fn namespace(&self) -> &str {
+        self.namespace.as_str()
+    }
+
+    fn len(&self) -> u32 {
+        0
+    }
+
+    fn add_operation(&mut self, _selector_idx: Option<u8>, _lookup_args: &[F], _extra: &[F]) {}
+
+    fn finish(&mut self, _degree: u32) -> Vec<(String, Vec<F>)> {
+        vec![]
     }
 }
 
