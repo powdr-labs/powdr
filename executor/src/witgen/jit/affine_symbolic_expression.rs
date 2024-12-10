@@ -157,7 +157,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
                 return if self.offset.is_known_zero() {
                     Ok(vec![])
                 } else {
-                    Err(EvalError::ConstraintUnsatisfiable(format!("{} != 0", self)))
+                    Err(EvalError::ConstraintUnsatisfiable(format!("{self} != 0")))
                 };
             }
             1 => {
