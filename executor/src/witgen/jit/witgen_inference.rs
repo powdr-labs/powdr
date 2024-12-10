@@ -112,7 +112,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
             // and the selector is known to be 1...
             if self
                 .evaluate(&left.selector, offset)
-                .map(|s| s.is_known_one())
+                .and_then(|s| s.try_to_known().map(|k| k.is_known_one()))
                 == Some(true)
             {
                 if let Some(lhs) = left
@@ -122,7 +122,10 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
                     .collect::<Option<Vec<_>>>()
                 {
                     // and all except one expression is known on the LHS.
-                    let unknown = lhs.iter().filter(|e| !e.is_known()).collect_vec();
+                    let unknown = lhs
+                        .iter()
+                        .filter(|e| e.try_to_known().is_none())
+                        .collect_vec();
                     if unknown.len() == 1 && unknown[0].single_unknown_variable().is_some() {
                         return vec![Effect::Lookup(
                             lookup_id,
