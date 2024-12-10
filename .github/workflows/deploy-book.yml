@@ -37,7 +37,7 @@ jobs:
         # Delete the ref to avoid keeping history.
         git update-ref -d refs/heads/gh-pages
         # Delete everything except the `dev` folder, as it contains benchmarks we should keep.
-        find . -mindepth 1 -maxdepth 1 ! -name "dev" -exec rm -rf {} +
+        find . -mindepth 1 -maxdepth 1 ! -name "dev" ! -name ".*" -exec rm -rf {} +
         mv ../book/* .
         git add .
         git commit -m "Deploy $GITHUB_SHA to gh-pages"
