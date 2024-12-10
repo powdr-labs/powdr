@@ -9,7 +9,7 @@ struct Op<F: FieldElement> {
     write: bool,
     // each machine that's called via permutation has a selector array, with one entry per incoming permutation.
     // This is the idx assigned to the `link` triggering the memory operation.
-    selector_idx: u32,
+    selector_idx: u8,
 }
 
 pub struct MemoryMachine<F: FieldElement> {
@@ -35,7 +35,7 @@ impl<F: FieldElement> MemoryMachine<F> {
         }
     }
 
-    pub fn write(&mut self, step: u32, addr: u32, val: F, selector_idx: u32) {
+    pub fn write(&mut self, step: u32, addr: u32, val: F, selector_idx: u8) {
         self.ops.push(Op {
             addr,
             step,
@@ -45,7 +45,7 @@ impl<F: FieldElement> MemoryMachine<F> {
         });
     }
 
-    pub fn read(&mut self, step: u32, addr: u32, val: F, selector_idx: u32) {
+    pub fn read(&mut self, step: u32, addr: u32, val: F, selector_idx: u8) {
         self.ops.push(Op {
             addr,
             step,
@@ -116,7 +116,7 @@ impl<F: FieldElement> MemoryMachine<F> {
             cols[Addr as usize].1.push(op.addr.into());
             cols[Value as usize].1.push(op.value);
 
-            for i in 0..selector_count as u32 {
+            for i in 0..selector_count as u8 {
                 cols[Selectors as usize + i as usize]
                     .1
                     .push(if i == op.selector_idx {

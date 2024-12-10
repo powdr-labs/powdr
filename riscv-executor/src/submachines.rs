@@ -14,7 +14,7 @@ trait SubmachineKind {
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
         // pil lookup RHS values (including selector idx, if present)
-        selector_idx: Option<usize>,
+        selector_idx: Option<u8>,
         lookup_args: &[F],
         // extra info provided by the executor
         extra: &[F],
@@ -44,7 +44,7 @@ pub trait Submachine<F: FieldElement> {
     /// current number of rows
     fn len(&self) -> u32;
     /// add a new operation to the trace
-    fn add_operation(&mut self, selector_idx: Option<usize>, lookup_args: &[F], extra: &[F]);
+    fn add_operation(&mut self, selector_idx: Option<u8>, lookup_args: &[F], extra: &[F]);
     /// apply final row overrides (needed because the trace is circular)
     fn final_row_override(&mut self);
     /// push a dummy block to the trace
@@ -88,7 +88,7 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
         self.trace.len()
     }
 
-    fn add_operation(&mut self, selector_idx: Option<usize>, lookup_args: &[F], extra: &[F]) {
+    fn add_operation(&mut self, selector_idx: Option<u8>, lookup_args: &[F], extra: &[F]) {
         M::add_operation(&mut self.trace, selector_idx, lookup_args, extra);
     }
 
@@ -204,7 +204,7 @@ impl SubmachineKind for BinaryMachine {
 
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        selector_idx: Option<usize>,
+        selector_idx: Option<u8>,
         lookup_args: &[F],
         extra: &[F],
     ) {
@@ -304,7 +304,7 @@ impl SubmachineKind for ShiftMachine {
 
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        selector_idx: Option<usize>,
+        selector_idx: Option<u8>,
         lookup_args: &[F],
         extra: &[F],
     ) {
@@ -400,7 +400,7 @@ impl SubmachineKind for SplitGlMachine {
 
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        selector_idx: Option<usize>,
+        selector_idx: Option<u8>,
         lookup_args: &[F],
         extra: &[F],
     ) {
@@ -539,7 +539,7 @@ impl SubmachineKind for PublicsMachine {
     const BLOCK_SIZE: u32 = 1;
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        selector_idx: Option<usize>,
+        selector_idx: Option<u8>,
         lookup_args: &[F],
         extra: &[F],
     ) {
@@ -572,7 +572,7 @@ impl SubmachineKind for PoseidonGlMachine {
 
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        selector_idx: Option<usize>,
+        selector_idx: Option<u8>,
         lookup_args: &[F],
         extra: &[F],
     ) {

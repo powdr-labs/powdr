@@ -89,7 +89,14 @@ enum MainInstruction {
     commit_public,
 }
 
-struct MainEvent<F: FieldElement>(MainInstruction, u32, Vec<F>);
+struct MainOp<F: FieldElement>(MainInstruction, u32, Vec<F>);
+#[derive(Debug)]
+struct SubmachineOp<F: FieldElement> {
+    selector: Option<u8>,
+    lookup_args: Vec<F>,
+    // TODO: make submachines produce everything and remove this
+    extra: Vec<F>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[allow(non_camel_case_types)]
@@ -320,11 +327,10 @@ pub struct ExecutionTrace<F: FieldElement> {
     len: usize,
 
     /// Main machine instructions
-    main_events: Vec<MainEvent<F>>,
+    main_ops: Vec<MainOp<F>>,
 
     /// Calls into submachines. Each is a sequence of field elemements: the RHS values of the lookup followed by the selector idx (if the machine has it).
-    /// TODO: keep a flat Vec instead? individial events could be identified from the machine asm definition and operation id.
-    submachine_events: HashMap<MachineInstance, Vec<Vec<F>>>,
+    submachine_ops: HashMap<MachineInstance, Vec<SubmachineOp<F>>>,
 
     /// witness columns
     cols: HashMap<String, Vec<F>>,
@@ -348,8 +354,8 @@ impl<F: FieldElement> ExecutionTrace<F> {
             reg_writes,
             mem_ops: Vec::new(),
             len: pc,
-            main_events: Vec::new(),
-            submachine_events: HashMap::new(),
+            main_ops: Vec::new(),
+            submachine_ops: HashMap::new(),
             cols,
         }
     }
@@ -450,10 +456,10 @@ mod builder {
     use powdr_number::FieldElement;
 
     use crate::{
-        BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MachineInstance, MainEvent,
-        MainInstruction, MemOperation, MemOperationKind, MemoryMachine, MemoryState,
-        PoseidonGlMachine, PublicsMachine, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine,
-        Submachine, SubmachineBoxed, PC_INITIAL_VAL,
+        BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MachineInstance, MainInstruction,
+        MainOp, MemOperation, MemOperationKind, MemoryMachine, MemoryState, PoseidonGlMachine,
+        PublicsMachine, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine, Submachine,
+        SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
     };
 
     fn namespace_degree_range<F: FieldElement>(
@@ -613,19 +619,29 @@ mod builder {
             }
         }
 
-        pub(crate) fn main_event(&mut self, ev: MainInstruction, pc: u32, args: Vec<F>) {
+        pub(crate) fn main_op(&mut self, ev: MainInstruction, pc: u32, args: Vec<F>) {
             if let ExecMode::Trace = self.mode {
-                self.trace.main_events.push(MainEvent(ev, pc, args));
+                self.trace.main_ops.push(MainOp(ev, pc, args));
             }
         }
 
-        pub(crate) fn submachine_event(&mut self, m: MachineInstance, args: &[F]) {
+        pub(crate) fn submachine_op(
+            &mut self,
+            m: MachineInstance,
+            selector: Option<u8>,
+            lookup_args: &[F],
+            extra: &[F],
+        ) {
             if let ExecMode::Trace = self.mode {
                 self.trace
-                    .submachine_events
+                    .submachine_ops
                     .entry(m)
                     .or_default()
-                    .push(args.into());
+                    .push(SubmachineOp {
+                        selector,
+                        lookup_args: lookup_args.to_vec(),
+                        extra: extra.to_vec(),
+                    });
             }
         }
 
@@ -774,16 +790,12 @@ mod builder {
             self.set_next_pc().and(Some(st_line))
         }
 
-        pub(crate) fn set_mem(&mut self, addr: u32, val: u32, step: u32, selector: u32) {
-            self.submachine_event(
+        pub(crate) fn set_mem(&mut self, addr: u32, val: u32, step: u32, selector: u8) {
+            self.submachine_op(
                 MachineInstance::main_memory,
-                &[
-                    1.into(),
-                    addr.into(),
-                    step.into(),
-                    val.into(),
-                    selector.into(),
-                ],
+                Some(selector),
+                &[1.into(), addr.into(), step.into(), val.into()],
+                &[],
             );
             if let ExecMode::Trace = self.mode {
                 self.trace.mem_ops.push(MemOperation {
@@ -797,17 +809,13 @@ mod builder {
             self.mem.insert(addr, val);
         }
 
-        pub(crate) fn get_mem(&mut self, addr: u32, step: u32, selector: u32) -> u32 {
+        pub(crate) fn get_mem(&mut self, addr: u32, step: u32, selector: u8) -> u32 {
             let val = *self.mem.get(&addr).unwrap_or(&0);
-            self.submachine_event(
+            self.submachine_op(
                 MachineInstance::main_memory,
-                &[
-                    0.into(),
-                    addr.into(),
-                    step.into(),
-                    val.into(),
-                    selector.into(),
-                ],
+                Some(selector),
+                &[0.into(), addr.into(), step.into(), val.into()],
+                &[],
             );
             if let ExecMode::Trace = self.mode {
                 self.trace.mem_ops.push(MemOperation {
@@ -854,12 +862,12 @@ mod builder {
                 };
             }
 
-            for MainEvent(i, pc, args) in &self.trace.main_events {
+            for MainOp(i, pc, args) in &self.trace.main_ops {
                 println!("main_event {i:?} {pc} {args:?}");
             }
-            for (m, ev) in &self.trace.submachine_events {
-                for e in ev {
-                    println!("submachine_event {m:?} {e:?}");
+            for (m, ops) in &self.trace.submachine_ops {
+                for o in ops {
+                    println!("submachine_event {m:?} {o:?}");
                 }
             }
 
@@ -1132,11 +1140,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     }
 
     /// read register value, updating the register memory machine
-    fn reg_read(&mut self, step_offset: u32, reg: u32, selector: u32) -> Elem<F> {
+    fn reg_read(&mut self, step_offset: u32, reg: u32, selector: u8) -> Elem<F> {
         let val = self.proc.get_reg_mem(reg);
-        self.proc.submachine_event(
+        self.proc.submachine_op(
             MachineInstance::main_regs,
-            &[0.into(), reg.into(), val.into_fe(), selector.into()],
+            Some(selector),
+            &[0.into(), reg.into(), val.into_fe()],
+            &[],
         );
         if let ExecMode::Trace = self.mode {
             self.proc
@@ -1147,10 +1157,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     }
 
     /// write value to register, updating the register memory machine
-    fn reg_write(&mut self, step_offset: u32, reg: u32, val: Elem<F>, selector: u32) {
-        self.proc.submachine_event(
+    fn reg_write(&mut self, step_offset: u32, reg: u32, val: Elem<F>, selector: u8) {
+        self.proc.submachine_op(
             MachineInstance::main_regs,
-            &[1.into(), reg.into(), val.into_fe(), selector.into()],
+            Some(selector),
+            &[1.into(), reg.into(), val.into_fe()],
+            &[],
         );
         if let ExecMode::Trace = self.mode {
             self.proc
@@ -1194,13 +1206,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         macro_rules! main_event {
             ($insn:ident, $($args:expr),*) => {
                 self.proc
-                    .main_event(MainInstruction::$insn, self.proc.get_pc().u(), vec![$($args, )*])
+                    .main_op(MainInstruction::$insn, self.proc.get_pc().u(), vec![$($args, )*])
             };
         }
 
         macro_rules! submachine_event {
-            ($machine:ident, $($args:expr),*) => {
-                self.proc.submachine_event(MachineInstance::$machine, &[$($args, )*])
+            ($machine:ident, $selector:expr, $args:expr, $($extra:expr),*) => {
+                self.proc.submachine_op(MachineInstance::$machine, $selector, $args, &[$($extra, )*])
             };
         }
 
@@ -1886,8 +1898,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp3_col, Elem::from_u32_as_fe(lo));
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
+                let selector = 0;
                 if let ExecMode::Trace = self.mode {
-                    let selector = 0;
                     self.proc.submachine("split_gl").add_operation(
                         Some(selector),
                         &[r.into(), lo.into(), hi.into()],
@@ -1895,7 +1907,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     );
                 }
 
-                submachine_event!(main_split_gl, r.into(), lo.into(), hi.into());
+                submachine_event!(
+                    main_split_gl,
+                    Some(selector),
+                    &[r.into(), lo.into(), hi.into()],
+                );
                 main_event!(mul,);
                 Vec::new()
             }
@@ -1929,10 +1945,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 submachine_event!(
                     main_binary,
-                    op_id.into(),
-                    val1.into_fe(),
-                    val2_offset.into_fe(),
-                    r.into()
+                    Some(selector),
+                    &[
+                        op_id.into(),
+                        val1.into_fe(),
+                        val2_offset.into_fe(),
+                        r.into()
+                    ],
                 );
 
                 if let ExecMode::Trace = self.mode {
@@ -1977,10 +1996,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 submachine_event!(
                     main_shift,
-                    op_id.into(),
-                    val1.into_fe(),
-                    val2_offset.into_fe(),
-                    r.into()
+                    Some(selector),
+                    &[
+                        op_id.into(),
+                        val1.into_fe(),
+                        val2_offset.into_fe(),
+                        r.into()
+                    ],
                 );
 
                 self.reg_write(3, write_reg, r.into(), 3);
@@ -2021,8 +2043,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp4_col, Elem::from_u32_as_fe(high_inv));
                 set_col!(XX_inv, Elem::Field(inv));
 
+                let selector = 0;
                 if let ExecMode::Trace = self.mode {
-                    let selector = 0;
                     self.proc.submachine("split_gl").add_operation(
                         Some(selector),
                         &[inv, low_inv.into(), high_inv.into()],
@@ -2030,7 +2052,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     );
                 }
 
-                submachine_event!(main_split_gl, inv, low_inv.into(), high_inv.into());
+                submachine_event!(
+                    main_split_gl,
+                    Some(selector),
+                    &[inv, low_inv.into(), high_inv.into()],
+                );
                 main_event!(invert_gl,);
                 Vec::new()
             }
@@ -2054,8 +2080,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp3_col, Elem::from_u32_as_fe(lo));
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
+                let selector = 0;
                 if let ExecMode::Trace = self.mode {
-                    let selector = 0;
                     self.proc.submachine("split_gl").add_operation(
                         Some(selector),
                         &[value_fe, lo.into(), hi.into()],
@@ -2063,7 +2089,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     );
                 }
 
-                submachine_event!(main_split_gl, value.into(), lo.into(), hi.into());
+                submachine_event!(
+                    main_split_gl,
+                    Some(selector),
+                    &[value.into(), lo.into(), hi.into()],
+                );
                 main_event!(split_gl,);
                 Vec::new()
             }
@@ -2113,10 +2143,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                         .set_mem(output_ptr.u() + 8 * i as u32, lo, self.step + 1, 4);
                     self.proc
                         .set_mem(output_ptr.u() + 8 * i as u32 + 4, hi, self.step + 1, 5);
-                    submachine_event!(main_split_gl, *v, lo.into(), hi.into());
+                    let selector = 1;
+                    submachine_event!(main_split_gl, Some(selector), &[*v, lo.into(), hi.into()],);
                     if let ExecMode::Trace = self.mode {
                         // split gl of the poseidon machine
-                        let selector = 1;
                         self.proc.submachine("split_gl").add_operation(
                             Some(selector),
                             &[*v, lo.into(), hi.into()],
@@ -2125,8 +2155,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 });
 
+                let selector = 0;
                 if let ExecMode::Trace = self.mode {
-                    let selector = 0;
                     self.proc.submachine("poseidon_gl").add_operation(
                         Some(selector),
                         &[input_ptr.into_fe(), output_ptr.into_fe(), self.step.into()],
@@ -2140,9 +2170,24 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 submachine_event!(
                     main_poseidon_gl,
-                    input_ptr.into_fe(),
-                    output_ptr.into_fe(),
-                    self.step.into()
+                    Some(selector),
+                    &[input_ptr.into_fe(), output_ptr.into_fe(), self.step.into()],
+                    inputs[0],
+                    inputs[1],
+                    inputs[2],
+                    inputs[3],
+                    inputs[4],
+                    inputs[5],
+                    inputs[6],
+                    inputs[7],
+                    inputs[8],
+                    inputs[9],
+                    inputs[10],
+                    inputs[11],
+                    outputs[0],
+                    outputs[1],
+                    outputs[2],
+                    outputs[3]
                 );
                 main_event!(poseidon_gl,);
                 vec![]
@@ -2175,11 +2220,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
 
                 // TODO: need to add memory read/write events for poseidon2 to work
+                let selector = 0;
                 submachine_event!(
                     main_poseidon2_gl,
-                    input_ptr.into(),
-                    output_ptr.into(),
-                    self.step.into()
+                    Some(selector),
+                    &[input_ptr.into(), output_ptr.into(), self.step.into()],
                 );
                 main_event!(poseidon2_gl,);
                 vec![]
@@ -2302,7 +2347,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     );
                 }
 
-                submachine_event!(main_publics, idx.into_fe(), limb.into_fe());
+                submachine_event!(main_publics, None, &[idx.into_fe(), limb.into_fe()],);
                 main_event!(commit_public,);
                 vec![]
             }
