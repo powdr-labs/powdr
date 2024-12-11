@@ -89,6 +89,7 @@ enum MainInstruction {
     commit_public,
 }
 
+// TODO: we don't do anything with these yet. Idea is to keep info that is to be given to witgen
 #[allow(unused)]
 struct MainOp<F: FieldElement>(MainInstruction, u32, Vec<F>);
 
@@ -99,8 +100,7 @@ struct SubmachineOp<F: FieldElement> {
     // these are the RHS values of the lookup (i.e., inside brackets in the PIL lookup)
     lookup_args: Vec<F>,
     // TODO: this is just for the hand-written poseidon_gl submachine,
-    // instead of accessing memory from the submachine we give it the input
-    // values
+    // we give it the input values because it doesn't have access to memory
     extra: Vec<F>,
 }
 
@@ -335,7 +335,9 @@ pub struct ExecutionTrace<F: FieldElement> {
     /// Main machine instructions
     main_ops: Vec<MainOp<F>>,
 
-    /// Calls into submachines. Each is a sequence of field elemements: the RHS values of the lookup followed by the selector idx (if the machine has it).
+    /// Calls into submachines. Each is a sequence of field elemements: the RHS
+    /// values of the lookup followed by the selector idx (if the machine has
+    /// it).
     submachine_ops: HashMap<MachineInstance, Vec<SubmachineOp<F>>>,
 
     /// witness columns
@@ -493,8 +495,6 @@ mod builder {
         trace: ExecutionTrace<F>,
 
         submachines: HashMap<String, RefCell<Box<dyn Submachine<F>>>>,
-        pub regs_machine: MemoryMachine<F>,
-        pub memory_machine: MemoryMachine<F>,
 
         /// Maximum rows we can run before we stop the execution.
         max_rows: usize,
@@ -571,28 +571,39 @@ mod builder {
                 if let ExecMode::Trace = mode {
                     [
                         (
-                            "binary",
-                            BinaryMachine::new_boxed("main_binary", &witness_cols).into(),
+                            "memory".to_string(),
+                            RefCell::new(Box::new(MemoryMachine::new("main_memory", &witness_cols)))
+                                as RefCell<Box<dyn Submachine<F>>>, // this first `as` is needed to coerce the type of the array
                         ),
                         (
-                            "shift",
-                            ShiftMachine::new_boxed("main_shift", &witness_cols).into(),
+                            "regs".to_string(),
+                            RefCell::new(Box::new(MemoryMachine::new("main_regs", &witness_cols))),
                         ),
                         (
-                            "split_gl",
-                            SplitGlMachine::new_boxed("main_split_gl", &witness_cols).into(),
+                            "binary".to_string(),
+                            RefCell::new(BinaryMachine::new_boxed("main_binary", &witness_cols)),
                         ),
                         (
-                            "publics",
-                            PublicsMachine::new_boxed("main_publics", &witness_cols).into(),
+                            "shift".to_string(),
+                            RefCell::new(ShiftMachine::new_boxed("main_shift", &witness_cols)),
                         ),
                         (
-                            "poseidon_gl",
-                            PoseidonGlMachine::new_boxed("main_poseidon_gl", &witness_cols).into(),
+                            "split_gl".to_string(),
+                            RefCell::new(SplitGlMachine::new_boxed("main_split_gl", &witness_cols)),
+                        ),
+                        (
+                            "publics".to_string(),
+                            RefCell::new(PublicsMachine::new_boxed("main_publics", &witness_cols)),
+                        ),
+                        (
+                            "poseidon_gl".to_string(),
+                            RefCell::new(PoseidonGlMachine::new_boxed(
+                                "main_poseidon_gl",
+                                &witness_cols,
+                            )),
                         ),
                     ]
                     .into_iter()
-                    .map(|(name, m)| (name.to_string(), m))
                     .collect()
                 } else {
                     Default::default()
@@ -601,8 +612,6 @@ mod builder {
             let mut ret = Self {
                 pc_idx,
                 curr_pc: PC_INITIAL_VAL.into(),
-                regs_machine: MemoryMachine::new("main_regs", &witness_cols),
-                memory_machine: MemoryMachine::new("main_memory", &witness_cols),
                 trace: ExecutionTrace::new(witness_cols, reg_map, reg_writes, PC_INITIAL_VAL + 1),
                 submachines,
                 next_statement_line: 1,
@@ -805,7 +814,6 @@ mod builder {
                     kind: MemOperationKind::Write,
                     address: addr,
                 });
-                self.memory_machine.write(step, addr, val.into(), selector);
             }
 
             self.mem.insert(addr, val);
@@ -825,7 +833,6 @@ mod builder {
                     kind: MemOperationKind::Read,
                     address: addr,
                 });
-                self.memory_machine.read(step, addr, val.into(), selector);
             }
             val
         }
@@ -881,8 +888,8 @@ mod builder {
             // ----------------------------
             for (m, ops) in self.trace.submachine_ops {
                 let m = match m {
-                    MachineInstance::main_memory => continue, // "memory",
-                    MachineInstance::main_regs => continue,   // "regs",
+                    MachineInstance::main_memory => "memory",
+                    MachineInstance::main_regs => "regs",
                     MachineInstance::main_binary => "binary",
                     MachineInstance::main_shift => "shift",
                     MachineInstance::main_publics => "publics",
@@ -911,32 +918,6 @@ mod builder {
                         assert!(self.trace.cols.insert(col_name, col).is_none());
                     }
                 }
-            }
-
-            // add regs memory trace
-            // ----------------------------
-            let regs_degree = {
-                let range = namespace_degree_range(pil, &self.regs_machine.namespace);
-                std::cmp::max(
-                    self.regs_machine.len().next_power_of_two(),
-                    range.min as u32,
-                )
-            };
-            for (col_name, col) in self.regs_machine.take_cols(regs_degree) {
-                assert!(self.trace.cols.insert(col_name, col).is_none());
-            }
-
-            // add main memory trace
-            // ----------------------------
-            let mem_degree = {
-                let range = namespace_degree_range(pil, &self.memory_machine.namespace);
-                std::cmp::max(
-                    self.memory_machine.len().next_power_of_two(),
-                    range.min as u32,
-                )
-            };
-            for (col_name, col) in self.memory_machine.take_cols(mem_degree) {
-                assert!(self.trace.cols.insert(col_name, col).is_none());
             }
 
             Execution {
@@ -1135,14 +1116,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         self.proc.submachine_op(
             MachineInstance::main_regs,
             Some(selector),
-            &[0.into(), reg.into(), val.into_fe()],
+            &[
+                0.into(),
+                reg.into(),
+                (self.step + step_offset).into(),
+                val.into_fe(),
+            ],
             &[],
         );
-        if let ExecMode::Trace = self.mode {
-            self.proc
-                .regs_machine
-                .read(self.step + step_offset, reg, val.into_fe(), selector);
-        }
         val
     }
 
@@ -1151,14 +1132,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         self.proc.submachine_op(
             MachineInstance::main_regs,
             Some(selector),
-            &[1.into(), reg.into(), val.into_fe()],
+            &[
+                1.into(),
+                reg.into(),
+                (self.step + step_offset).into(),
+                val.into_fe(),
+            ],
             &[],
         );
-        if let ExecMode::Trace = self.mode {
-            self.proc
-                .regs_machine
-                .write(self.step + step_offset, reg, val.into_fe(), selector);
-        }
         self.proc.set_reg_mem(reg, val);
     }
 
@@ -1193,14 +1174,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             };
         }
 
-        macro_rules! main_event {
+        macro_rules! main_op {
             ($insn:ident, $($args:expr),*) => {
                 self.proc
                     .main_op(MainInstruction::$insn, self.proc.get_pc().u(), vec![$($args, )*])
             };
         }
 
-        macro_rules! submachine_event {
+        macro_rules! submachine_op {
             ($machine:ident, $selector:expr, $args:expr, $($extra:expr),*) => {
                 self.proc.submachine_op(MachineInstance::$machine, $selector, $args, &[$($extra, )*])
             };
@@ -1232,14 +1213,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(Y_free_value, val);
                 }
 
-                main_event!(set_reg,);
+                main_op!(set_reg,);
                 Vec::new()
             }
             "get_reg" => {
                 let addr = args[0].u();
                 let val = self.reg_read(0, addr, 0);
 
-                main_event!(get_reg,);
+                main_op!(get_reg,);
                 vec![val]
             }
             "affine" => {
@@ -1254,7 +1235,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.reg_write(1, write_reg, res, 3);
                 set_col!(tmp1_col, val1);
 
-                main_event!(affine,);
+                main_op!(affine,);
                 Vec::new()
             }
 
@@ -1295,9 +1276,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
 
                 if name == "mstore" {
-                    main_event!(mstore,);
+                    main_op!(mstore,);
                 } else {
-                    main_event!(mstore_bootloader,);
+                    main_op!(mstore_bootloader,);
                 }
                 Vec::new()
             }
@@ -1333,7 +1314,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     Elem::from_u32_as_fe(((v as u64 >> 32) & 1) as u32)
                 );
 
-                main_event!(mload,);
+                main_op!(mload,);
                 Vec::new()
             }
             // TODO: update to witness generation for continuations
@@ -1348,7 +1329,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.reg_write(2, write_addr, val, 3);
 
-                main_event!(load_bootloader_input,);
+                main_op!(load_bootloader_input,);
                 Vec::new()
             }
             // TODO: update to witness generation for continuations
@@ -1363,7 +1344,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 assert_eq!(val, actual_val);
 
-                main_event!(assert_bootloader_input,);
+                main_op!(assert_bootloader_input,);
                 Vec::new()
             }
             "load_label" => {
@@ -1375,7 +1356,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.proc.set_col("main::instr_load_label_param_l", label);
 
-                main_event!(load_label,);
+                main_op!(load_label,);
                 Vec::new()
             }
             "jump" => {
@@ -1389,7 +1370,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.proc.set_col("main::instr_jump_param_l", label);
 
-                main_event!(jump,);
+                main_op!(jump,);
                 Vec::new()
             }
             "jump_dyn" => {
@@ -1404,7 +1385,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(tmp1_col, addr);
 
-                main_event!(jump_dyn,);
+                main_op!(jump_dyn,);
                 Vec::new()
             }
             // TODO: update to witness generation for continuations
@@ -1413,7 +1394,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let addr = self.bootloader_inputs[bootloader_input_idx];
                 self.proc.set_pc(addr);
 
-                main_event!(jump_to_bootloader_input,);
+                main_op!(jump_to_bootloader_input,);
                 Vec::new()
             }
             "branch_if_diff_nonzero" => {
@@ -1439,7 +1420,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.proc
                     .set_col("main::instr_branch_if_diff_nonzero_param_l", label);
 
-                main_event!(branch_if_diff_nonzero,);
+                main_op!(branch_if_diff_nonzero,);
                 Vec::new()
             }
             "branch_if_diff_equal" => {
@@ -1466,7 +1447,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.proc
                     .set_col("main::instr_branch_if_diff_equal_param_l", label);
 
-                main_event!(branch_if_diff_equal,);
+                main_op!(branch_if_diff_equal,);
                 Vec::new()
             }
             "skip_if_equal" => {
@@ -1491,7 +1472,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
-                main_event!(skip_if_equal,);
+                main_op!(skip_if_equal,);
                 Vec::new()
             }
             "branch_if_diff_greater_than" => {
@@ -1533,7 +1514,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_event!(branch_if_diff_greater_than,);
+                main_op!(branch_if_diff_greater_than,);
                 Vec::new()
             }
             "is_diff_greater_than" => {
@@ -1562,7 +1543,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
                 set_col!(wrap_bit, Elem::from_u32_as_fe(r));
 
-                main_event!(is_diff_greater_than,);
+                main_op!(is_diff_greater_than,);
                 Vec::new()
             }
             "is_equal_zero" => {
@@ -1580,7 +1561,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
-                main_event!(is_equal_zero,);
+                main_op!(is_equal_zero,);
                 Vec::new()
             }
             "is_not_equal" => {
@@ -1603,7 +1584,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
-                main_event!(is_not_equal,);
+                main_op!(is_not_equal,);
                 Vec::new()
             }
             "add_wrap" => {
@@ -1641,7 +1622,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_event!(add_wrap,);
+                main_op!(add_wrap,);
                 Vec::new()
             }
             "wrap16" => {
@@ -1670,7 +1651,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(Y_b5, Elem::from_u32_as_fe(b5.into()));
                 set_col!(Y_b6, Elem::from_u32_as_fe(b6.into()));
 
-                main_event!(wrap16,);
+                main_op!(wrap16,);
                 Vec::new()
             }
             "sub_wrap_with_offset" => {
@@ -1704,7 +1685,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_event!(sub_wrap_with_offset,);
+                main_op!(sub_wrap_with_offset,);
                 Vec::new()
             }
             "sign_extend_byte" => {
@@ -1737,7 +1718,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_event!(sign_extend_byte,);
+                main_op!(sign_extend_byte,);
                 Vec::new()
             }
             "sign_extend_16_bits" => {
@@ -1774,7 +1755,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_event!(sign_extend_16_bits,);
+                main_op!(sign_extend_16_bits,);
                 Vec::new()
             }
             "to_signed" => {
@@ -1803,7 +1784,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(Y_7bit, Elem::from_u32_as_fe(b4 as u32 & 0x7f));
 
-                main_event!(to_signed,);
+                main_op!(to_signed,);
                 Vec::new()
             }
             "fail" => {
@@ -1865,7 +1846,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(Y_b8, Elem::from_u32_as_fe(b8.into()));
                 }
 
-                main_event!(divremu,);
+                main_op!(divremu,);
                 Vec::new()
             }
             "mul" => {
@@ -1889,12 +1870,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
                 let selector = 0;
-                submachine_event!(
+                submachine_op!(
                     main_split_gl,
                     Some(selector),
                     &[r.into(), lo.into(), hi.into()],
                 );
-                main_event!(mul,);
+                main_op!(mul,);
                 Vec::new()
             }
             "and" | "or" | "xor" => {
@@ -1911,21 +1892,21 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let (r, op_id, selector) = match name {
                     "and" => {
-                        main_event!(and,);
+                        main_op!(and,);
                         (val1.u() & val2_offset.u(), 0, 0)
                     }
                     "or" => {
-                        main_event!(or,);
+                        main_op!(or,);
                         (val1.u() | val2_offset.u(), 1, 1)
                     }
                     "xor" => {
-                        main_event!(xor,);
+                        main_op!(xor,);
                         (val1.u() ^ val2_offset.u(), 2, 2)
                     }
                     _ => unreachable!(),
                 };
 
-                submachine_event!(
+                submachine_op!(
                     main_binary,
                     Some(selector),
                     &[
@@ -1953,17 +1934,17 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let (r, op_id, selector) = match name {
                     "shl" => {
-                        main_event!(shl,);
+                        main_op!(shl,);
                         (val1.u() << val2_offset.u(), 0, 0)
                     }
                     "shr" => {
-                        main_event!(shr,);
+                        main_op!(shr,);
                         (val1.u() >> val2_offset.u(), 1, 1)
                     }
                     _ => unreachable!(),
                 };
 
-                submachine_event!(
+                submachine_op!(
                     main_shift,
                     Some(selector),
                     &[
@@ -2000,12 +1981,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(XX_inv, Elem::Field(inv));
 
                 let selector = 0;
-                submachine_event!(
+                submachine_op!(
                     main_split_gl,
                     Some(selector),
                     &[inv, low_inv.into(), high_inv.into()],
                 );
-                main_event!(invert_gl,);
+                main_op!(invert_gl,);
                 Vec::new()
             }
             "split_gl" => {
@@ -2029,12 +2010,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
                 let selector = 0;
-                submachine_event!(
+                submachine_op!(
                     main_split_gl,
                     Some(selector),
                     &[value.into(), lo.into(), hi.into()],
                 );
-                main_event!(split_gl,);
+                main_op!(split_gl,);
                 Vec::new()
             }
             "poseidon_gl" => {
@@ -2084,11 +2065,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc
                         .set_mem(output_ptr.u() + 8 * i as u32 + 4, hi, self.step + 1, 5);
                     let selector = 1;
-                    submachine_event!(main_split_gl, Some(selector), &[*v, lo.into(), hi.into()],);
+                    submachine_op!(main_split_gl, Some(selector), &[*v, lo.into(), hi.into()],);
                 });
 
                 let selector = 0;
-                submachine_event!(
+                submachine_op!(
                     main_poseidon_gl,
                     Some(selector),
                     &[input_ptr.into_fe(), output_ptr.into_fe(), self.step.into()],
@@ -2109,7 +2090,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     outputs[2],
                     outputs[3]
                 );
-                main_event!(poseidon_gl,);
+                main_op!(poseidon_gl,);
                 vec![]
             }
             "poseidon2_gl" => {
@@ -2139,7 +2120,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc.set_mem(output_ptr + i as u32 * 4, v, 0, 0); // TODO: step/selector for poseidon2
                 });
 
-                main_event!(poseidon2_gl,);
+                main_op!(poseidon2_gl,);
                 vec![]
             }
             "affine_256" => {
@@ -2166,7 +2147,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
 
                 // TODO: main_arith event
-                main_event!(affine_256,);
+                main_op!(affine_256,);
                 vec![]
             }
             "mod_256" => {
@@ -2189,7 +2170,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
 
                 // TODO: main_arith event
-                main_event!(mod_256,);
+                main_op!(mod_256,);
                 vec![]
             }
             "ec_add" => {
@@ -2219,7 +2200,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
 
                 // TODO: main_arith event
-                main_event!(ec_add,);
+                main_op!(ec_add,);
                 vec![]
             }
             "ec_double" => {
@@ -2243,7 +2224,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
 
                 // TODO: main_arith event
-                main_event!(ec_double,);
+                main_op!(ec_double,);
                 vec![]
             }
             "commit_public" => {
@@ -2252,8 +2233,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, idx);
                 set_col!(tmp2_col, limb);
                 log::debug!("Committing public: idx={idx}, limb={limb}");
-                submachine_event!(main_publics, None, &[idx.into_fe(), limb.into_fe()],);
-                main_event!(commit_public,);
+                submachine_op!(main_publics, None, &[idx.into_fe(), limb.into_fe()],);
+                main_op!(commit_public,);
                 vec![]
             }
             instr => {
