@@ -80,7 +80,7 @@ impl<T: FieldElement> PowdrEval<T> {
             .definitions_in_source_order(PolynomialType::Constant)
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
-            .filter(|(_, (_, id))| constant_with_next_list.contains(&(id.id as usize)))
+            .filter(|(_, (name, _))| constant_with_next_list.contains(name))
             .map(|(index, (_, id))| (id, index))
             .collect();
 
@@ -263,19 +263,19 @@ where
     }
 }
 
-// This function creates a list of indices of the constant polynomials that have next references constraint
-pub fn get_constant_with_next_list<T: FieldElement>(analyzed: &Analyzed<T>) -> HashSet<usize> {
-    let mut constant_with_next_list: HashSet<usize> = HashSet::new();
+// This function creates a list of the names of the constant polynomials that have next references constraint
+pub fn get_constant_with_next_list<T: FieldElement>(analyzed: &Analyzed<T>) -> HashSet<&String> {
+    let mut constant_with_next_list: HashSet<&String> = HashSet::new();
     analyzed.all_children().for_each(|e| {
         if let AlgebraicExpression::Reference(AlgebraicReference {
-            name: _,
+            name,
             poly_id,
             next,
         }) = e
         {
             if matches!(poly_id.ptype, PolynomialType::Constant) && *next {
-                // add the index of the constant polynomial to the list
-                constant_with_next_list.insert(poly_id.id as usize);
+                // add the name of the constant polynomial to the list
+                constant_with_next_list.insert(name);
             }
         };
     });

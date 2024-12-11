@@ -167,9 +167,10 @@ where
                                     .values()
                                     .flat_map(|vec| {
                                         vec.iter()
-                                            .enumerate()
-                                            .filter(|(i, _)| constant_with_next_list.contains(i))
-                                            .map(|(_, (_name, values))| {
+                                            .filter(|(name, _)| {
+                                                constant_with_next_list.contains(name)
+                                            })
+                                            .map(|(_, values)| {
                                                 let mut rotated_values = values.to_vec();
                                                 rotated_values.rotate_left(1);
                                                 gen_stwo_circle_column::<F, B, M31>(
