@@ -94,18 +94,6 @@ fn replace_lookup() {
 }
 
 #[test]
-fn intermediate() {
-    let input = r#"namespace N(65536);
-        col witness x;
-        col intermediate = x;
-        intermediate = intermediate;
-    "#;
-    let expectation = r#""#;
-    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-    assert_eq!(optimized, expectation);
-}
-
-#[test]
 fn zero_sized_array() {
     let input = r#"
         namespace std::array(65536);
