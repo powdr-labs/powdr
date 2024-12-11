@@ -88,10 +88,8 @@ impl<T: FieldElement> RangeConstraint<T> {
             if v < self.min || v > self.max {
                 return false;
             }
-        } else {
-            if v < self.min && v > self.max {
-                return false;
-            }
+        } else if v < self.min && v > self.max {
+            return false;
         }
         v.to_integer() & self.mask == v.to_integer()
     }
