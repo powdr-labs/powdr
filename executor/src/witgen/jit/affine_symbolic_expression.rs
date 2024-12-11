@@ -1,14 +1,14 @@
 use std::{
     collections::BTreeMap,
     fmt::{self, Display, Formatter},
-    ops::{Add, Neg, Sub},
+    ops::{Add, Mul, Neg, Sub},
 };
 
 use itertools::Itertools;
 use num_traits::Zero;
 use powdr_number::FieldElement;
 
-use crate::witgen::{global_constraints::RangeConstraintSet, EvalError};
+use crate::witgen::EvalError;
 
 use super::{super::range_constraints::RangeConstraint, symbolic_expression::SymbolicExpression};
 
@@ -61,10 +61,12 @@ impl<T: FieldElement, V> Assertion<T, V> {
 /// where the `a_i` and `offset` are symbolic expressions, i.e. values known at run-time
 /// (which can still include variables or symbols, which are only known at run-time),
 /// and the `x_i` are variables that are unknown at this point.
+/// It also stores range constraints for all unknown variables.
 #[derive(Debug, Clone)]
 pub struct AffineSymbolicExpression<T: FieldElement, V> {
     coefficients: BTreeMap<V, SymbolicExpression<T, V>>,
     offset: SymbolicExpression<T, V>,
+    range_constraints: BTreeMap<V, RangeConstraint<T>>,
 }
 
 /// Display for affine symbolic expressions, for informational purposes only.
@@ -100,18 +102,20 @@ impl<T: FieldElement, V> From<SymbolicExpression<T, V>> for AffineSymbolicExpres
         AffineSymbolicExpression {
             coefficients: Default::default(),
             offset: k,
+            range_constraints: Default::default(),
         }
     }
 }
 
 impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
-    pub fn from_known_variable(var: V) -> Self {
-        SymbolicExpression::from_var(var).into()
+    pub fn from_known_variable(var: V, rc: Option<RangeConstraint<T>>) -> Self {
+        SymbolicExpression::from_var(var, rc).into()
     }
-    pub fn from_unknown_variable(var: V) -> Self {
+    pub fn from_unknown_variable(var: V, rc: Option<RangeConstraint<T>>) -> Self {
         AffineSymbolicExpression {
-            coefficients: [(var, T::from(1).into())].into_iter().collect(),
+            coefficients: [(var.clone(), T::from(1).into())].into_iter().collect(),
             offset: SymbolicExpression::from(T::from(0)),
+            range_constraints: rc.into_iter().map(|rc| (var.clone(), rc)).collect(),
         }
     }
     pub fn from_number(n: T) -> Self {
@@ -128,32 +132,20 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
     }
 
     /// Tries to multiply this expression with another one.
-    /// Returns `None` if the result would be quadratic.
+    /// Returns `None` if the result would be quadratic, i.e.
+    /// if both expressions contain unknown variables.
     pub fn try_mul(&self, other: &Self) -> Option<Self> {
-        if !self.coefficients.is_empty() && !other.coefficients.is_empty() {
-            return None;
-        }
-        let (multiplier, coefficients, offset) = if self.coefficients.is_empty() {
-            (&self.offset, &other.coefficients, &other.offset)
+        if let Some(multiplier) = other.try_to_known() {
+            Some(self.clone() * multiplier)
+        } else if let Some(multiplier) = self.try_to_known() {
+            Some(other.clone() * multiplier)
         } else {
-            (&other.offset, &self.coefficients, &self.offset)
-        };
-        let coefficients = coefficients
-            .iter()
-            .map(|(var, coeff)| (var.clone(), coeff * multiplier))
-            .collect();
-        let offset = offset * multiplier;
-        Some(AffineSymbolicExpression {
-            coefficients,
-            offset,
-        })
+            None
+        }
     }
 
     /// Solves the equation `self = 0` and returns how to compute the solution.
-    pub fn solve(
-        &self,
-        range_constraints: &impl RangeConstraintSet<V, T>,
-    ) -> Result<Vec<Effect<T, V>>, EvalError<T>> {
+    pub fn solve(&self) -> Result<Vec<Effect<T, V>>, EvalError<T>> {
         Ok(match self.coefficients.len() {
             0 => {
                 if self.offset.is_known_zero() {
@@ -178,45 +170,41 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
                 }
             }
             _ => {
-                let r = self.solve_through_constraints(range_constraints);
-                if !r.is_empty() {
-                    return Ok(r);
-                }
-                let negated = -self;
-                let r = negated.solve_through_constraints(range_constraints);
+                let r = self.solve_bit_decomposition();
                 if !r.is_empty() {
                     r
                 } else {
-                    self.transfer_constraints(range_constraints)
-                        .into_iter()
-                        .chain(self.transfer_constraints(range_constraints))
-                        .collect()
+                    let negated = -self;
+                    let r = negated.solve_bit_decomposition();
+                    if !r.is_empty() {
+                        r
+                    } else {
+                        self.transfer_constraints()
+                            .into_iter()
+                            .chain(negated.transfer_constraints())
+                            .collect()
+                    }
                 }
             }
         })
     }
 
     /// Tries to solve a bit-decomposition equation.
-    fn solve_through_constraints(
-        &self,
-        range_constraints: &impl RangeConstraintSet<V, T>,
-    ) -> Vec<Effect<T, V>> {
+    fn solve_bit_decomposition(&self) -> Vec<Effect<T, V>> {
+        // All the coefficients need to be known numbers and the
+        // variables need to be range-constrained.
         let constrained_coefficients = self
             .coefficients
             .iter()
-            .filter_map(|(var, coeff)| {
-                coeff.try_to_number().and_then(|c| {
-                    range_constraints
-                        .range_constraint(var.clone())
-                        .map(|rc| (var.clone(), c, rc))
-                })
+            .map(|(var, coeff)| {
+                let c = coeff.try_to_number()?;
+                let rc = self.range_constraints.get(var)?;
+                Some((var.clone(), c, rc))
             })
-            .collect_vec();
-
-        // All the coefficients need to have known range constraints.
-        if constrained_coefficients.len() != self.coefficients.len() {
-            return Vec::new();
-        }
+            .collect::<Option<Vec<_>>>();
+        let Some(constrained_coefficients) = constrained_coefficients else {
+            return vec![];
+        };
 
         // Check if they are mutually exclusive and compute assignments.
         let mut covered_bits: <T as FieldElement>::Integer = 0.into();
@@ -252,10 +240,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
         effects
     }
 
-    fn transfer_constraints(
-        &self,
-        range_constraints: &impl RangeConstraintSet<V, T>,
-    ) -> Vec<Effect<T, V>> {
+    fn transfer_constraints(&self) -> Vec<Effect<T, V>> {
         // We are looking for X = a * Y + b * Z + ... or -X = a * Y + b * Z + ...
         // where X is least constrained.
 
@@ -265,8 +250,8 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             .filter(|(_var, coeff)| coeff.is_known_one() || coeff.is_known_minus_one())
             .max_by_key(|(var, _c)| {
                 // Sort so that we get the least constrained variable.
-                range_constraints
-                    .range_constraint((*var).clone())
+                self.range_constraints
+                    .get(var)
                     .map(|c| c.range_width())
                     .unwrap_or_else(|| T::modulus())
             })
@@ -280,11 +265,9 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             .iter()
             .filter(|(var, _)| *var != solve_for)
             .map(|(var, coeff)| {
-                coeff.try_to_number().and_then(|coeff| {
-                    range_constraints
-                        .range_constraint(var.clone())
-                        .map(|constraint| constraint.multiple(coeff))
-                })
+                let coeff = coeff.try_to_number()?;
+                let rc = self.range_constraints.get(var)?;
+                Some(rc.multiple(coeff))
             })
             .chain(std::iter::once(self.offset.range_constraint()))
             .collect::<Option<Vec<_>>>()
@@ -308,17 +291,25 @@ impl<T: FieldElement, V: Clone + Ord> Add for &AffineSymbolicExpression<T, V> {
 
     fn add(self, rhs: Self) -> Self::Output {
         let mut coefficients = self.coefficients.clone();
+        let mut range_constraints = self.range_constraints.clone();
         for (var, coeff) in &rhs.coefficients {
             coefficients
                 .entry(var.clone())
                 .and_modify(|f| *f = &*f + coeff)
                 .or_insert_with(|| coeff.clone());
+            if let Some(range_right) = rhs.range_constraints.get(var) {
+                range_constraints
+                    .entry(var.clone())
+                    .and_modify(|rc| *rc = rc.conjunction(range_right))
+                    .or_insert_with(|| range_right.clone());
+            }
         }
         coefficients.retain(|_, f| !f.is_known_zero());
         let offset = &self.offset + &rhs.offset;
         AffineSymbolicExpression {
             coefficients,
             offset,
+            range_constraints,
         }
     }
 }
@@ -358,6 +349,7 @@ impl<T: FieldElement, V: Clone + Ord> Neg for &AffineSymbolicExpression<T, V> {
                 .map(|(var, coeff)| (var.clone(), -coeff))
                 .collect(),
             offset: -&self.offset,
+            range_constraints: self.range_constraints.clone(),
         }
     }
 }
@@ -370,19 +362,26 @@ impl<T: FieldElement, V: Clone + Ord> Neg for AffineSymbolicExpression<T, V> {
     }
 }
 
+/// Multiply by known symbolic expression.
+impl<T: FieldElement, V: Clone + Ord> Mul<&SymbolicExpression<T, V>>
+    for AffineSymbolicExpression<T, V>
+{
+    type Output = AffineSymbolicExpression<T, V>;
+
+    fn mul(mut self, rhs: &SymbolicExpression<T, V>) -> Self::Output {
+        for coeff in self.coefficients.values_mut() {
+            *coeff = &*coeff * rhs;
+        }
+        self.offset = &self.offset * rhs;
+        self
+    }
+}
+
 #[cfg(test)]
 mod test {
     use powdr_number::GoldilocksField;
 
     use super::*;
-
-    #[derive(Default)]
-    struct SimpleRangeConstraintSet(BTreeMap<&'static str, RangeConstraint<GoldilocksField>>);
-    impl RangeConstraintSet<&str, GoldilocksField> for SimpleRangeConstraintSet {
-        fn range_constraint(&self, var: &str) -> Option<RangeConstraint<GoldilocksField>> {
-            self.0.get(var).cloned()
-        }
-    }
 
     type Ase = AffineSymbolicExpression<GoldilocksField, &'static str>;
 
@@ -396,58 +395,73 @@ mod test {
 
     #[test]
     fn unsolvable() {
-        let r = from_number(10).solve(&SimpleRangeConstraintSet::default());
+        let r = from_number(10).solve();
         assert!(r.is_err());
     }
 
     #[test]
     fn unsolvable_with_vars() {
-        let x = &Ase::from_known_variable("X");
-        let y = &Ase::from_known_variable("Y");
+        let x = &Ase::from_known_variable("X", None);
+        let y = &Ase::from_known_variable("Y", None);
         let constr = x + y - from_number(10);
-        let r = constr.solve(&SimpleRangeConstraintSet::default());
+        let r = constr.solve();
         assert!(r.is_err());
     }
 
     #[test]
     fn solvable_without_vars() {
         let constr = &from_number(0);
-        assert!(constr
-            .solve(&SimpleRangeConstraintSet::default())
-            .unwrap()
-            .is_empty());
+        assert!(constr.solve().unwrap().is_empty());
     }
 
     #[test]
     fn solve_simple_eq() {
-        let y = Ase::from_known_variable("y");
-        let x = Ase::from_unknown_variable("X");
+        let y = Ase::from_known_variable("y", None);
+        let x = Ase::from_unknown_variable("X", None);
         // 2 * X + 7 * y - 10 = 0
         let two = from_number(2);
         let seven = from_number(7);
         let ten = from_number(10);
         let constr = mul(&two, &x) + mul(&seven, &y) - ten;
-        let effects = constr.solve(&SimpleRangeConstraintSet::default()).unwrap();
+        let effects = constr.solve().unwrap();
         assert_eq!(effects.len(), 1);
         let Effect::Assignment(var, expr) = &effects[0] else {
             panic!("Expected assignment");
         };
         assert_eq!(var.to_string(), "X");
-        assert_eq!(expr.to_string(), "(((y * 7) + -10) / -2)");
+        assert_eq!(expr.to_string(), "(((7 * y) + -10) / -2)");
+    }
+
+    #[test]
+    fn solve_div_by_range_constrained_var() {
+        let y = Ase::from_known_variable("y", None);
+        let z = Ase::from_known_variable("z", None);
+        let x = Ase::from_unknown_variable("X", None);
+        // z * X + 7 * y - 10 = 0
+        let seven = from_number(7);
+        let ten = from_number(10);
+        let constr = mul(&z, &x) + mul(&seven, &y) - ten.clone();
+        // If we do not range-constrain z, we cannot solve since we don't know if it might be zero.
+        let effects = constr.solve().unwrap();
+        assert_eq!(effects.len(), 0);
+        let z =
+            Ase::from_known_variable("z", Some(RangeConstraint::from_range(10.into(), 20.into())));
+        let constr = mul(&z, &x) + mul(&seven, &y) - ten;
+        let effects = constr.solve().unwrap();
+        let Effect::Assignment(var, expr) = &effects[0] else {
+            panic!("Expected assignment");
+        };
+        assert_eq!(var.to_string(), "X");
+        assert_eq!(expr.to_string(), "(((7 * y) + -10) / -z)");
     }
 
     #[test]
     fn solve_bit_decomposition() {
-        let a = Ase::from_unknown_variable("a");
-        let b = Ase::from_unknown_variable("b");
-        let c = Ase::from_unknown_variable("c");
-        let z = Ase::from_known_variable("Z");
-        let range_constraints = SimpleRangeConstraintSet(
-            ["a", "b", "c"]
-                .into_iter()
-                .map(|var| (var, RangeConstraint::from_mask(0xffu32)))
-                .collect(),
-        );
+        let rc = Some(RangeConstraint::from_mask(0xffu32));
+        let a = Ase::from_unknown_variable("a", rc.clone());
+        let b = Ase::from_unknown_variable("b", rc.clone());
+        let c = Ase::from_unknown_variable("c", rc.clone());
+        let z = Ase::from_known_variable("Z", None);
         // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 + Z = 0
         let ten = from_number(10);
         let constr = mul(&a, &from_number(0x100))
@@ -456,13 +470,10 @@ mod test {
             + ten
             + z;
         // Without range constraints, this is not solvable.
-        assert!(constr
-            .solve(&SimpleRangeConstraintSet::default())
-            .unwrap()
-            .is_empty());
+        assert!(constr.solve().unwrap().is_empty());
         // With range constraints, it should be solvable.
         let effects = constr
-            .solve(&range_constraints)
+            .solve()
             .unwrap()
             .into_iter()
             .map(|effect| match effect {
@@ -493,16 +504,11 @@ assert (10 + Z) == ((10 + Z) | 4294967040);
 
     #[test]
     fn solve_constraint_transfer() {
-        let a = Ase::from_unknown_variable("a");
-        let b = Ase::from_unknown_variable("b");
-        let c = Ase::from_unknown_variable("c");
-        let z = Ase::from_unknown_variable("Z");
-        let range_constraints = SimpleRangeConstraintSet(
-            ["a", "b", "c"]
-                .into_iter()
-                .map(|var| (var, RangeConstraint::from_mask(0xffu32)))
-                .collect(),
-        );
+        let rc = Some(RangeConstraint::from_mask(0xffu32));
+        let a = Ase::from_unknown_variable("a", rc.clone());
+        let b = Ase::from_unknown_variable("b", rc.clone());
+        let c = Ase::from_unknown_variable("c", rc.clone());
+        let z = Ase::from_unknown_variable("Z", None);
         // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 - Z = 0
         let ten = from_number(10);
         let constr = mul(&a, &from_number(0x100))
@@ -511,7 +517,7 @@ assert (10 + Z) == ((10 + Z) | 4294967040);
             + ten
             - z;
         let effects = constr
-            .solve(&range_constraints)
+            .solve()
             .unwrap()
             .into_iter()
             .map(|effect| match effect {

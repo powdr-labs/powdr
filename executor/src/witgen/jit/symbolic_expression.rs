@@ -45,8 +45,8 @@ pub enum UnaryOperator {
 }
 
 impl<T: FieldElement, V> SymbolicExpression<T, V> {
-    pub fn from_var(name: V) -> Self {
-        SymbolicExpression::Variable(name, None)
+    pub fn from_var(var: V, rc: Option<RangeConstraint<T>>) -> Self {
+        SymbolicExpression::Variable(var, rc)
     }
 
     pub fn is_known_zero(&self) -> bool {
