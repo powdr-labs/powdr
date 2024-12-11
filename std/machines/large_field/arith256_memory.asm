@@ -313,15 +313,9 @@ machine Arith256Memory(mem: Memory) with
     *
     *****/
 
-    /*
-    link => byte2.check(sum(16, |i| x1[i] * CLK32[i]) + sum(16, |i| y1[i] * CLK32[16 + i]));
-    link => byte2.check(sum(16, |i| x2[i] * CLK32[i]) + sum(16, |i| y2[i] * CLK32[16 + i]));
-    link => byte2.check(sum(16, |i| x3[i] * CLK32[i]) + sum(16, |i| y3[i] * CLK32[16 + i]));
-    // Note that for q0-q2, we only range-constrain the first 15 limbs here
-    link => byte2.check(sum(16, |i| s[i] * CLK32[i]) + sum(15, |i| q0[i] * CLK32[16 + i]));
-    link => byte2.check(sum(15, |i| q1[i] * CLK32[i]) + sum(15, |i| q2[i] * CLK32[16 + i]));
-    */
-
+    // The sums were extracted out of the checks because of a bug
+    // in the bus linker code that prepends the constraints with the current namespace.
+    // TODO Revert when that's fixed.
     let range_arg1 = sum(16, |i| x1[i] * CLK32[i]) + sum(16, |i| y1[i] * CLK32[16 + i]);
     link => byte2.check(range_arg1);
     let range_arg2 = sum(16, |i| x2[i] * CLK32[i]) + sum(16, |i| y2[i] * CLK32[16 + i]);

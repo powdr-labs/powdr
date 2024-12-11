@@ -1865,9 +1865,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let reg1 = args[0].u();
                 let reg2 = args[1].u();
                 let input_ptr = self.reg_read(0, reg1, 0);
-                assert_eq!(input_ptr.u() % 4, 0);
+                assert!(is_multiple_of_4(input_ptr.u()));
                 let output_ptr = self.reg_read(1, reg2, 1);
-                assert_eq!(output_ptr.u() % 4, 0);
+                assert!(is_multiple_of_4(output_ptr.u()));
 
                 set_col!(tmp1_col, input_ptr);
                 set_col!(tmp2_col, output_ptr);
@@ -1951,7 +1951,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             "poseidon2_gl" => {
                 let input_ptr = self.proc.get_reg_mem(args[0].u()).u();
-                assert_eq!(input_ptr % 4, 0);
+                assert!(is_multiple_of_4(input_ptr));
 
                 let inputs: [u64; 8] = (0..16)
                     .map(|i| self.proc.get_mem(input_ptr + i * 4, 0, 0)) // TODO: step/selector for poseidon2
@@ -1971,7 +1971,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .flat_map(|v| vec![(v & 0xffffffff) as u32, (v >> 32) as u32]);
 
                 let output_ptr = self.proc.get_reg_mem(args[1].u()).u();
-                assert_eq!(output_ptr % 4, 0);
+                assert!(is_multiple_of_4(output_ptr));
                 result.enumerate().for_each(|(i, v)| {
                     self.proc.set_mem(output_ptr + i as u32 * 4, v, 0, 0); // TODO: step/selector for poseidon2
                 });
@@ -1981,13 +1981,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "affine_256" => {
                 // a * b + c = d
                 let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
-                assert_eq!(input_ptr_a % 4, 0);
+                assert!(is_multiple_of_4(input_ptr_a));
                 let input_ptr_b = self.proc.get_reg_mem(args[1].u()).u();
-                assert_eq!(input_ptr_b % 4, 0);
+                assert!(is_multiple_of_4(input_ptr_b));
                 let input_ptr_c = self.proc.get_reg_mem(args[2].u()).u();
-                assert_eq!(input_ptr_c % 4, 0);
+                assert!(is_multiple_of_4(input_ptr_c));
                 let output_ptr_d = self.proc.get_reg_mem(args[3].u()).u();
-                assert_eq!(output_ptr_d % 4, 0);
+                assert!(is_multiple_of_4(output_ptr_d));
 
                 let a = (0..8)
                     .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
@@ -2022,11 +2022,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "mod_256" => {
                 // a mod b = c
                 let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
-                assert_eq!(input_ptr_a % 4, 0);
+                assert!(is_multiple_of_4(input_ptr_a));
                 let input_ptr_b = self.proc.get_reg_mem(args[1].u()).u();
-                assert_eq!(input_ptr_b % 4, 0);
+                assert!(is_multiple_of_4(input_ptr_b));
                 let output_ptr_c = self.proc.get_reg_mem(args[2].u()).u();
-                assert_eq!(output_ptr_c % 4, 0);
+                assert!(is_multiple_of_4(output_ptr_c));
 
                 let ah = (0..8)
                     .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
@@ -2053,11 +2053,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "ec_add" => {
                 // a + b = c
                 let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
-                assert_eq!(input_ptr_a % 4, 0);
+                assert!(is_multiple_of_4(input_ptr_a));
                 let input_ptr_b = self.proc.get_reg_mem(args[1].u()).u();
-                assert_eq!(input_ptr_b % 4, 0);
+                assert!(is_multiple_of_4(input_ptr_b));
                 let output_ptr_c = self.proc.get_reg_mem(args[2].u()).u();
-                assert_eq!(output_ptr_c % 4, 0);
+                assert!(is_multiple_of_4(output_ptr_c));
 
                 let ax = (0..8)
                     .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
@@ -2095,9 +2095,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "ec_double" => {
                 // a * 2 = b
                 let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
-                assert_eq!(input_ptr_a % 4, 0);
+                assert!(is_multiple_of_4(input_ptr_a));
                 let output_ptr_b = self.proc.get_reg_mem(args[1].u()).u();
-                assert_eq!(output_ptr_b % 4, 0);
+                assert!(is_multiple_of_4(output_ptr_b));
 
                 let ax = (0..8)
                     .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
@@ -2675,4 +2675,8 @@ pub fn write_executor_csv<F: FieldElement, P: AsRef<Path>>(
         powdr_number::CsvRenderMode::Hex,
         &columns[..],
     );
+}
+
+fn is_multiple_of_4(n: u32) -> bool {
+    n % 4 == 0
 }

@@ -38,7 +38,7 @@ pub(crate) fn u32x16_to_be(from: &[u32; 16], to: &mut [u8; 64]) {
 }
 
 /// Calculate `a*b + c = d` for 256 bit values (as u8 big-endian arrays).
-/// Returns `d`.
+/// Returns `d`, a 512-bit value.
 pub fn affine_256_u8_be(a: [u8; 32], b: [u8; 32], c: [u8; 32]) -> [u8; 64] {
     let mut a1: [u32; 8] = Default::default();
     let mut b1: [u32; 8] = Default::default();
@@ -67,7 +67,7 @@ pub fn affine_256_u8_be(a: [u8; 32], b: [u8; 32], c: [u8; 32]) -> [u8; 64] {
 }
 
 /// Calculate `a*b + c = d` for 256 bit values (as u8 little-endian arrays).
-/// Returns `d`.
+/// Returns `d`, a 512-bit value.
 pub fn affine_256_u8_le(a: [u8; 32], b: [u8; 32], c: [u8; 32]) -> [u8; 64] {
     let mut res: [u8; 64] = [0u8; 64];
     unsafe {
@@ -82,7 +82,7 @@ pub fn affine_256_u8_le(a: [u8; 32], b: [u8; 32], c: [u8; 32]) -> [u8; 64] {
 }
 
 /// Calculate `a*b + c = d` for 256 bit values (as u32 little-endian arrays).
-/// Returns `d`.
+/// Returns `d`, a 512-bit value.
 pub fn affine_256_u32_le(mut a: [u32; 8], mut b: [u32; 8], c: [u32; 8]) -> [u32; 16] {
     let mut res: [u32; 16] = Default::default();
     unsafe {
