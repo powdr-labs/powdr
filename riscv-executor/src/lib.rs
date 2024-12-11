@@ -92,9 +92,13 @@ enum MainInstruction {
 struct MainOp<F: FieldElement>(MainInstruction, u32, Vec<F>);
 #[derive(Debug)]
 struct SubmachineOp<F: FieldElement> {
+    // TODO: if we move to using witgen here, this will probably be an `identity_id` instead
     selector: Option<u8>,
+    // these are the RHS values of the lookup (i.e., inside brackets in the PIL lookup)
     lookup_args: Vec<F>,
-    // TODO: make submachines produce everything and remove this
+    // TODO: this is just for the hand-written poseidon_gl submachine,
+    // instead of accessing memory from the submachine we give it the input
+    // values
     extra: Vec<F>,
 }
 
@@ -108,7 +112,7 @@ enum MachineInstance {
     main_shift,
     main_split_gl,
     main_poseidon_gl,
-    main_poseidon2_gl,
+    // main_poseidon2_gl,
     // main_keccakf,
     // main_arith,
 }
@@ -2219,13 +2223,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc.set_mem(output_ptr + i as u32 * 4, v, 0, 0); // TODO: step/selector for poseidon2
                 });
 
-                // TODO: need to add memory read/write events for poseidon2 to work
-                let selector = 0;
-                submachine_event!(
-                    main_poseidon2_gl,
-                    Some(selector),
-                    &[input_ptr.into(), output_ptr.into(), self.step.into()],
-                );
                 main_event!(poseidon2_gl,);
                 vec![]
             }
