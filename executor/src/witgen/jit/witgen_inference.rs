@@ -6,7 +6,7 @@ use powdr_ast::analyzed::{
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
     PhantomLookupIdentity, PolyID, PolynomialIdentity, PolynomialType, SelectedExpressions,
 };
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 use crate::witgen::{
     global_constraints::RangeConstraintSet, jit::affine_symbolic_expression::LookupArgument,
@@ -244,7 +244,13 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
             AlgebraicBinaryOperator::Add => Some(&left + &right),
             AlgebraicBinaryOperator::Sub => Some(&left - &right),
             AlgebraicBinaryOperator::Mul => left.try_mul(&right),
-            _ => todo!(),
+            AlgebraicBinaryOperator::Pow => {
+                let result = left
+                    .try_to_known()?
+                    .try_to_number()?
+                    .pow(right.try_to_known()?.try_to_number()?.to_integer());
+                Some(AffineSymbolicExpression::from_number(result))
+            }
         }
     }
 
