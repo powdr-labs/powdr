@@ -211,11 +211,17 @@ where
         let mut witness_by_machine = self
             .split
             .iter()
-            .map(|(machine, (pil, _))| {
-                (
-                    machine.clone(),
-                    machine_witness_columns(witness, pil, machine),
-                )
+            .filter_map(|(machine, (pil, _))| {
+                let witness_columns = machine_witness_columns(witness, pil, machine);
+                if witness_columns[0].1.is_empty() {
+                    // Empty machines can be removed entirely.
+                    None
+                } else {
+                    Some((
+                        machine.clone(),
+                        machine_witness_columns(witness, pil, machine),
+                    ))
+                }
             })
             .collect::<BTreeMap<_, _>>();
 

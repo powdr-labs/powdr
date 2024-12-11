@@ -393,6 +393,9 @@ where
     }
 }
 
+/// Prove a program execution.
+/// Note that `witness_by_machine` might not have all the machines, empty ones are expected
+/// to be removed already.
 #[instrument(skip_all)]
 #[allow(clippy::multiple_bound_locations)] // cfg not supported in where clauses?
 pub fn prove<T: FieldElementMap>(
@@ -405,17 +408,11 @@ where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
-    let (tables, stage_0): (BTreeMap<_, _>, BTreeMap<_, _>) = program
-        .split
+    let (tables, stage_0): (BTreeMap<_, _>, BTreeMap<_, _>) = witness_by_machine
         .iter()
-        .filter_map(|(name, (_, constraint_system))| {
-            let columns = witness_by_machine.get(name).unwrap();
+        .map(|(name, columns)| {
+            let constraint_system = &program.split.get(name).unwrap().1;
             let degree = columns[0].1.len();
-
-            if degree == 0 {
-                // If a machine has no rows, remove it entirely.
-                return None;
-            }
 
             let table = Table {
                 air: PowdrTable::new(constraint_system),
@@ -433,7 +430,7 @@ where
                 );
             }
 
-            Some((
+            (
                 (name.clone(), table),
                 (
                     name.clone(),
@@ -455,7 +452,7 @@ where
                             .collect(),
                     },
                 ),
-            ))
+            )
         })
         .unzip();
 
