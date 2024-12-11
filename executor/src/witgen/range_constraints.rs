@@ -84,14 +84,13 @@ impl<T: FieldElement> RangeConstraint<T> {
 
     /// Returns true if `v` is an allowed value for this range constraint.
     pub fn allows_value(&self, v: T) -> bool {
-        let wrapping = self.min > self.max;
-        if (!wrapping && (v < self.min || v > self.max))
-            || (wrapping && (v < self.min && v > self.max))
-        {
-            false
+        let in_range = if self.min <= self.max {
+            self.min <= v && v <= self.max
         } else {
-            v.to_integer() & self.mask == v.to_integer()
-        }
+            v <= self.min || self.max <= v
+        };
+        let in_mask = v.to_integer() & self.mask == v.to_integer();
+        in_range && in_mask
     }
 
     /// The range constraint of the sum of two expressions.
