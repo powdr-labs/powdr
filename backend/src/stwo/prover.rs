@@ -159,7 +159,8 @@ where
                                     })
                                     .collect();
 
-                                let constant_with_next_list = get_constant_with_next_list(pil);
+                                let constant_with_next_list =
+                                    get_constant_with_next_list(&mut pil.clone());
 
                                 let constant_shifted_trace: ColumnVec<
                                     CircleEvaluation<B, BaseField, BitReversedOrder>,

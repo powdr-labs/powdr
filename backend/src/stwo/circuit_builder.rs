@@ -1,4 +1,5 @@
 use num_traits::Zero;
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 use std::sync::Arc;
@@ -6,7 +7,8 @@ use std::sync::Arc;
 extern crate alloc;
 use alloc::collections::btree_map::BTreeMap;
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Analyzed, Identity,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+    Analyzed, Identity,
 };
 use powdr_number::{FieldElement, LargeInt};
 
@@ -70,8 +72,9 @@ impl<T: FieldElement> PowdrEval<T> {
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
-        // create a list of indexs of the constant polynomials that have next references constraint
-        let constant_with_next_list = get_constant_with_next_list(&analyzed);
+        let mut analyzed_mut = (*analyzed).clone();
+
+        let constant_with_next_list = get_constant_with_next_list(&mut analyzed_mut);
 
         let constant_shifted: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Constant)
@@ -260,60 +263,21 @@ where
     }
 }
 
-pub fn constant_with_next_to_witness_col<T: FieldElement>(
-    expr: &AlgebraicExpression<T>,
-    constant_with_next_list: &mut Vec<usize>,
-) {
-    use AlgebraicBinaryOperator::*;
-    match expr {
-        AlgebraicExpression::Reference(r) => {
-            let poly_id = r.poly_id;
-
-            match poly_id.ptype {
-                PolynomialType::Committed => {}
-                PolynomialType::Constant => match r.next {
-                    false => {}
-                    true => {
-                        constant_with_next_list.push(r.poly_id.id as usize);
-                    }
-                },
-                PolynomialType::Intermediate => {}
-            }
-        }
-        AlgebraicExpression::PublicReference(..) => {}
-        AlgebraicExpression::Number(_) => {}
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-            left,
-            op: Pow,
-            right,
-        }) => match **right {
-            AlgebraicExpression::Number(_) => {
-                constant_with_next_to_witness_col::<T>(left, constant_with_next_list);
-            }
-            _ => unimplemented!("pow with non-constant exponent"),
-        },
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op: _, right }) => {
-            constant_with_next_to_witness_col::<T>(left, constant_with_next_list);
-            constant_with_next_to_witness_col::<T>(right, constant_with_next_list);
-        }
-        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op: _, expr }) => {
-            constant_with_next_to_witness_col::<T>(expr, constant_with_next_list);
-        }
-        AlgebraicExpression::Challenge(_challenge) => {}
-    }
-}
-
 // This function creates a list of indices of the constant polynomials that have next references constraint
-pub fn get_constant_with_next_list<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<usize> {
-    let mut all_constant_with_next: Vec<usize> = Vec::new();
-    for id in analyzed.identities_with_inlined_intermediate_polynomials() {
-        if let Identity::Polynomial(identity) = id {
-            let mut constant_with_next: Vec<usize> = Vec::new();
-            constant_with_next_to_witness_col::<T>(&identity.expression, &mut constant_with_next);
-            all_constant_with_next.extend(constant_with_next)
-        }
-    }
-    all_constant_with_next.sort_unstable();
-    all_constant_with_next.dedup();
-    all_constant_with_next
+pub fn get_constant_with_next_list<T: FieldElement>(analyzed: &mut Analyzed<T>) -> HashSet<usize> {
+    let mut constant_with_next_list: HashSet<usize> = HashSet::new();
+    analyzed.post_visit_expressions_in_identities_mut(&mut |e| {
+        if let AlgebraicExpression::Reference(AlgebraicReference {
+            name: _,
+            poly_id,
+            next,
+        }) = e
+        {
+            if matches!(poly_id.ptype, PolynomialType::Constant) && *next {
+                // add the index of the constant polynomial to the list
+                constant_with_next_list.insert(poly_id.id as usize);
+            }
+        };
+    });
+    constant_with_next_list
 }
