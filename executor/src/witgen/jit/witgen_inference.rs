@@ -337,11 +337,11 @@ mod test {
         });
         let mut witgen = WitgenInference::new(&fixed_data, known_cells);
         let mut complete = HashSet::new();
-        for _ in 0..4 {
+        while complete.len() != analyzed.identities.len() * rows.len() {
             for row in rows {
                 for id in analyzed.identities.iter() {
-                    if !complete.contains(&(id.id(), row)) && witgen.process_identity(id, *row) {
-                        complete.insert((id.id(), row));
+                    if !complete.contains(&(id.id(), *row)) && witgen.process_identity(id, *row) {
+                        complete.insert((id.id(), *row));
                     }
                 }
             }
