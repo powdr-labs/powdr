@@ -19,7 +19,6 @@ fn replace_fixed() {
 "#;
     let expectation = r#"namespace N(65536);
     col witness X;
-    col witness Y;
     query |i| {
         let _: expr = 1_expr;
     };
