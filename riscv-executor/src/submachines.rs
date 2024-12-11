@@ -45,13 +45,9 @@ pub trait Submachine<F: FieldElement> {
     fn len(&self) -> u32;
     /// add a new operation to the trace
     fn add_operation(&mut self, selector_idx: Option<u8>, lookup_args: &[F], extra: &[F]);
-    /// apply final row overrides (needed because the trace is circular)
-    fn final_row_override(&mut self);
-    /// push a dummy block to the trace
-    fn push_dummy_block(&mut self, machine_max_degree: usize);
-    /// Consume the trace returning a list of columns.
-    /// Should be called only once.
-    fn take_cols(&mut self) -> Vec<(String, Vec<F>)>;
+    /// finish the trace, padding to the given degree and returning the machine columns.
+    /// Ideally we'd take `self` here, but this is called from a `dyn Trait`...
+    fn finish(&mut self, degree: u32) -> Vec<(String, Vec<F>)>;
 }
 
 /// Concrete implementation of the Submachine trait
@@ -59,6 +55,7 @@ struct SubmachineImpl<F: FieldElement, M: SubmachineKind> {
     namespace: String,
     trace: SubmachineTrace<F>,
     m: std::marker::PhantomData<M>,
+    finished: bool,
 }
 
 impl<F: FieldElement, M: SubmachineKind> SubmachineImpl<F, M> {
@@ -75,6 +72,7 @@ impl<F: FieldElement, M: SubmachineKind> SubmachineImpl<F, M> {
             namespace: namespace.to_string(),
             trace: SubmachineTrace::new(witness_cols),
             m: std::marker::PhantomData,
+            finished: false,
         }
     }
 }
@@ -92,19 +90,18 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
         M::add_operation(&mut self.trace, selector_idx, lookup_args, extra);
     }
 
-    fn final_row_override(&mut self) {
-        self.trace.final_row_override()
-    }
-
-    fn push_dummy_block(&mut self, machine_max_degree: usize) {
-        let prev_len = self.len();
-        self.trace
-            .push_dummy_block(machine_max_degree, M::BLOCK_SIZE, M::SELECTORS);
-        let dummy_size = self.len() - prev_len;
-        M::dummy_block_fix(&mut self.trace, dummy_size);
-    }
-
-    fn take_cols(&mut self) -> Vec<(String, Vec<F>)> {
+    fn finish(&mut self, degree: u32) -> Vec<(String, Vec<F>)> {
+        assert!(self.len() > 0);
+        assert!(!self.finished, "submachine finish called twice");
+        self.finished = true;
+        self.trace.final_row_override();
+        while self.len() < degree {
+            let prev_len = self.len();
+            self.trace
+                .push_dummy_block(degree, M::BLOCK_SIZE, M::SELECTORS);
+            let dummy_size = self.len() - prev_len;
+            M::dummy_block_fix(&mut self.trace, dummy_size);
+        }
         self.trace
             .take_cols()
             .map(|(k, v)| (format!("{}::{}", self.namespace, k), v))
@@ -171,12 +168,12 @@ impl<F: FieldElement> SubmachineTrace<F> {
 
     /// Push a dummy block to the trace.
     /// A dummy block is a copy of the first block, with the final row updates applied to it, and selectors set to 0.
-    fn push_dummy_block(&mut self, machine_max_degree: usize, size: u32, selectors: &'static str) {
+    fn push_dummy_block(&mut self, machine_max_degree: u32, size: u32, selectors: &'static str) {
         // TODO: use Optional selector argument
         let selector_pat = format!("{selectors}[");
 
         for i in 0..size {
-            if self.cols.values().next().unwrap().len() == machine_max_degree {
+            if self.cols.values().next().unwrap().len() as u32 == machine_max_degree {
                 break;
             }
             self.cols.iter_mut().for_each(|(col, values)| {

@@ -89,7 +89,9 @@ enum MainInstruction {
     commit_public,
 }
 
+#[allow(unused)]
 struct MainOp<F: FieldElement>(MainInstruction, u32, Vec<F>);
+
 #[derive(Debug)]
 struct SubmachineOp<F: FieldElement> {
     // TODO: if we move to using witgen here, this will probably be an `identity_id` instead
@@ -447,11 +449,7 @@ impl<F: FieldElement> RegisterMemory<F> {
 }
 
 mod builder {
-    use std::{
-        cell::{RefCell, RefMut},
-        cmp,
-        collections::HashMap,
-    };
+    use std::{cell::RefCell, cmp, collections::HashMap};
 
     use powdr_ast::{
         analyzed::{Analyzed, DegreeRange},
@@ -862,15 +860,6 @@ mod builder {
                 };
             }
 
-            for MainOp(i, pc, args) in &self.trace.main_ops {
-                println!("main_event {i:?} {pc} {args:?}");
-            }
-            for (m, ops) in &self.trace.submachine_ops {
-                for o in ops {
-                    println!("submachine_event {m:?} {o:?}");
-                }
-            }
-
             let pil = opt_pil.unwrap();
 
             let main_degree = {
@@ -912,19 +901,15 @@ mod builder {
             // add submachine traces to main trace
             // ----------------------------
             for mut machine in self.submachines.into_values().map(|m| m.into_inner()) {
-                // if the machine is not empty, we need to fill it up to the degree
+                // finalize and extend the submachine traces and add to full trace
                 if machine.len() > 0 {
-                    machine.final_row_override();
                     let range = namespace_degree_range(pil, machine.namespace());
                     // extend with dummy blocks up to the required machine degree
                     let machine_degree =
                         std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
-                    while machine.len() < machine_degree {
-                        machine.push_dummy_block(machine_degree as usize);
+                    for (col_name, col) in machine.finish(machine_degree) {
+                        assert!(self.trace.cols.insert(col_name, col).is_none());
                     }
-                }
-                for (col_name, col) in machine.take_cols() {
-                    assert!(self.trace.cols.insert(col_name, col).is_none());
                 }
             }
 
