@@ -66,6 +66,7 @@ pub struct AffineSymbolicExpression<T: FieldElement, V> {
     offset: SymbolicExpression<T, V>,
 }
 
+/// Display for affine symbolic expressions, for informational purposes only.
 impl<T: FieldElement, V: Display> Display for AffineSymbolicExpression<T, V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.coefficients.is_empty() {
@@ -481,9 +482,9 @@ mod test {
             .to_string();
         assert_eq!(
             effects,
-            "a = ((-((10 + Z)) & 65280) // 256);
-b = ((-((10 + Z)) & 16711680) // 65536);
-c = ((-((10 + Z)) & 4278190080) // 16777216);
+            "a = ((-(10 + Z) & 65280) // 256);
+b = ((-(10 + Z) & 16711680) // 65536);
+c = ((-(10 + Z) & 4278190080) // 16777216);
 assert (10 + Z) == ((10 + Z) | 4294967040);
 "
         );

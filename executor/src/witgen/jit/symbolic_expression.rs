@@ -91,6 +91,7 @@ impl<T: FieldElement, V> SymbolicExpression<T, V> {
     }
 }
 
+/// Display for affine symbolic expressions, for informational purposes only.
 impl<T: FieldElement, V: Display> Display for SymbolicExpression<T, V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -105,7 +106,7 @@ impl<T: FieldElement, V: Display> Display for SymbolicExpression<T, V> {
             SymbolicExpression::BinaryOperation(lhs, op, rhs, _) => {
                 write!(f, "({lhs} {op} {rhs})")
             }
-            SymbolicExpression::UnaryOperation(op, expr, _) => write!(f, "{op}({expr})"),
+            SymbolicExpression::UnaryOperation(op, expr, _) => write!(f, "{op}{expr}"),
         }
     }
 }
