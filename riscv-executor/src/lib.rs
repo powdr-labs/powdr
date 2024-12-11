@@ -851,10 +851,6 @@ mod builder {
             self.reg_mem.second_last = self.reg_mem.last.clone();
         }
 
-        pub(crate) fn submachine(&self, name: &str) -> RefMut<'_, Box<dyn Submachine<F>>> {
-            self.submachines[name].borrow_mut()
-        }
-
         pub fn finish(mut self, opt_pil: Option<&Analyzed<F>>) -> Execution<F> {
             if let ExecMode::Fast = self.mode {
                 return Execution {
@@ -894,19 +890,24 @@ mod builder {
 
             // generate witness for submachines
             // ----------------------------
-            // for (m, _events) in self.trace.submachine_events {
-            //     match m {
-            //         // MachineInstance::main_binary => {}
-            //         // MachineInstance::main_shift => {}
-            //         // MachineInstance::main_memory => todo!(),
-            //         // MachineInstance::main_regs => todo!(),
-            //         // MachineInstance::main_publics => todo!(),
-            //         // MachineInstance::main_split_gl => todo!(),
-            //         // MachineInstance::main_poseidon_gl => todo!(),
-            //         // MachineInstance::main_poseidon2_gl => todo!(),
-            //         _ => {}
-            //     }
-            // }
+            for (m, ops) in self.trace.submachine_ops {
+                let m = match m {
+                    MachineInstance::main_memory => continue, // "memory",
+                    MachineInstance::main_regs => continue,   // "regs",
+                    MachineInstance::main_binary => "binary",
+                    MachineInstance::main_shift => "shift",
+                    MachineInstance::main_publics => "publics",
+                    MachineInstance::main_split_gl => "split_gl",
+                    MachineInstance::main_poseidon_gl => "poseidon_gl",
+                };
+                for op in ops {
+                    self.submachines[m].borrow_mut().add_operation(
+                        op.selector,
+                        &op.lookup_args,
+                        &op.extra,
+                    );
+                }
+            }
 
             // add submachine traces to main trace
             // ----------------------------
@@ -1903,14 +1904,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
                 let selector = 0;
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("split_gl").add_operation(
-                        Some(selector),
-                        &[r.into(), lo.into(), hi.into()],
-                        &[],
-                    );
-                }
-
                 submachine_event!(
                     main_split_gl,
                     Some(selector),
@@ -1958,19 +1951,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     ],
                 );
 
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("binary").add_operation(
-                        Some(selector),
-                        &[
-                            op_id.into(),
-                            val1.into_fe(),
-                            val2_offset.into_fe(),
-                            r.into(),
-                        ],
-                        &[],
-                    );
-                }
-
                 self.reg_write(3, write_reg, r.into(), 3);
 
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
@@ -2015,19 +1995,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp2_col, val2);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("shift").add_operation(
-                        Some(selector),
-                        &[
-                            op_id.into(),
-                            val1.into_fe(),
-                            val2_offset.into_fe(),
-                            r.into(),
-                        ],
-                        &[],
-                    );
-                }
-
                 Vec::new()
             }
             "invert_gl" => {
@@ -2048,14 +2015,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(XX_inv, Elem::Field(inv));
 
                 let selector = 0;
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("split_gl").add_operation(
-                        Some(selector),
-                        &[inv, low_inv.into(), high_inv.into()],
-                        &[],
-                    );
-                }
-
                 submachine_event!(
                     main_split_gl,
                     Some(selector),
@@ -2085,14 +2044,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
                 let selector = 0;
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("split_gl").add_operation(
-                        Some(selector),
-                        &[value_fe, lo.into(), hi.into()],
-                        &[],
-                    );
-                }
-
                 submachine_event!(
                     main_split_gl,
                     Some(selector),
@@ -2149,29 +2100,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                         .set_mem(output_ptr.u() + 8 * i as u32 + 4, hi, self.step + 1, 5);
                     let selector = 1;
                     submachine_event!(main_split_gl, Some(selector), &[*v, lo.into(), hi.into()],);
-                    if let ExecMode::Trace = self.mode {
-                        // split gl of the poseidon machine
-                        self.proc.submachine("split_gl").add_operation(
-                            Some(selector),
-                            &[*v, lo.into(), hi.into()],
-                            &[],
-                        );
-                    }
                 });
 
                 let selector = 0;
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("poseidon_gl").add_operation(
-                        Some(selector),
-                        &[input_ptr.into_fe(), output_ptr.into_fe(), self.step.into()],
-                        &[
-                            inputs[0], inputs[1], inputs[2], inputs[3], inputs[4], inputs[5],
-                            inputs[6], inputs[7], inputs[8], inputs[9], inputs[10], inputs[11],
-                            outputs[0], outputs[1], outputs[2], outputs[3],
-                        ],
-                    );
-                }
-
                 submachine_event!(
                     main_poseidon_gl,
                     Some(selector),
@@ -2336,14 +2267,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, idx);
                 set_col!(tmp2_col, limb);
                 log::debug!("Committing public: idx={idx}, limb={limb}");
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("publics").add_operation(
-                        None,
-                        &[idx.into_fe(), limb.into_fe()],
-                        &[],
-                    );
-                }
-
                 submachine_event!(main_publics, None, &[idx.into_fe(), limb.into_fe()],);
                 main_event!(commit_public,);
                 vec![]
