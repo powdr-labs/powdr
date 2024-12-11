@@ -11,9 +11,10 @@ use std::{
 
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, ConnectIdentity, DegreeRange, Expression,
-    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialType, PublicDeclaration,
-    SelectedExpressions, SolvedTraitImpls, StatementIdentifier, Symbol, SymbolKind,
+    ExpressionList, FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity,
+    PhantomBusInteractionIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolyID,
+    PolynomialIdentity, PolynomialType, PublicDeclaration, SelectedExpressions, SolvedTraitImpls,
+    StatementIdentifier, Symbol, SymbolKind,
 };
 use powdr_ast::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
@@ -146,6 +147,8 @@ pub fn condense<T: FieldElement>(
                 })
                 .collect::<Vec<_>>();
 
+            #[allow(clippy::iter_over_hash_type)]
+            // TODO: is this deterministic?
             for (name, value) in condenser.extract_new_column_values() {
                 if new_values.insert(name.clone(), value).is_some() {
                     panic!("Column {name} already has a hint set, but tried to add another one.",)
@@ -161,9 +164,13 @@ pub fn condense<T: FieldElement>(
         .collect();
 
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
+    #[allow(clippy::iter_over_hash_type)]
+    // This is deterministic because insertion order does not matter.
     for symbol in new_columns {
         definitions.insert(symbol.absolute_name.clone(), (symbol, None));
     }
+    #[allow(clippy::iter_over_hash_type)]
+    // This is deterministic because definitions can be updated in any order.
     for (name, new_value) in new_values {
         if let Some((_, value)) = definitions.get_mut(&name) {
             if !value.is_none() {
@@ -785,6 +792,16 @@ fn to_constraint<T: FieldElement>(
             }
             .into()
         }
+        "PhantomBusInteraction" => PhantomBusInteractionIdentity {
+            id: counters.dispense_identity_id(),
+            source,
+            multiplicity: to_expr(&fields[0]),
+            tuple: ExpressionList(match fields[1].as_ref() {
+                Value::Array(fields) => fields.iter().map(|f| to_expr(f)).collect(),
+                _ => panic!("Expected array, got {:?}", fields[1]),
+            }),
+        }
+        .into(),
         _ => panic!("Expected constraint but got {constraint}"),
     }
 }

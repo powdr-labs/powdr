@@ -91,12 +91,10 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// An error is always unrecoverable.
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b MutableState<'a, T, Q>,
-        _identity_id: u64,
-        _values: Vec<LookupCell<'c, T>>,
-    ) -> Result<bool, EvalError<T>> {
-        unimplemented!("Direct lookup is not supported for this machine.");
-    }
+        mutable_state: &'b MutableState<'a, T, Q>,
+        identity_id: u64,
+        values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>>;
 
     /// Returns the final values of the witness columns.
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -173,6 +171,40 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             }
             KnownMachine::FixedLookup(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
+            }
+        }
+    }
+
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        mutable_state: &'b MutableState<'a, T, Q>,
+        identity_id: u64,
+        values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        match self {
+            KnownMachine::SecondStageMachine(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+            KnownMachine::SortedWitnesses(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+            KnownMachine::DoubleSortedWitnesses16(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+            KnownMachine::DoubleSortedWitnesses32(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+            KnownMachine::WriteOnceMemory(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+            KnownMachine::BlockMachine(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+            KnownMachine::DynamicMachine(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+            KnownMachine::FixedLookup(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
             }
         }
     }

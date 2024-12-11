@@ -1,16 +1,15 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::super::affine_expression::AffineExpression;
-use super::{Connection, EvalResult, FixedData};
+use super::{Connection, EvalResult, FixedData, LookupCell};
 use super::{Machine, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::evaluators::fixed_evaluator::FixedEvaluator;
+use crate::witgen::evaluators::partial_expression_evaluator::PartialExpressionEvaluator;
+use crate::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use crate::witgen::rows::RowPair;
-use crate::witgen::{
-    expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
-    symbolic_evaluator::SymbolicEvaluator,
-};
-use crate::witgen::{EvalValue, IncompleteCause, QueryCallback};
+use crate::witgen::{EvalError, EvalValue, IncompleteCause, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
 use num_traits::One;
@@ -138,7 +137,7 @@ fn check_identity<T: FieldElement>(
     for row in 0..(degree as usize) {
         let fixed_evaluator = FixedEvaluator::new(fixed_data, row, degree);
         let mut ev =
-            ExpressionEvaluator::new(fixed_evaluator, &fixed_data.intermediate_definitions);
+            PartialExpressionEvaluator::new(fixed_evaluator, &fixed_data.intermediate_definitions);
         let degree = degree as usize;
         let nl = ev.evaluate(not_last).ok()?.constant_value()?;
         if (row == degree - 1 && !nl.is_zero()) || (row < degree - 1 && !nl.is_one()) {
@@ -159,7 +158,7 @@ fn check_constraint<T: FieldElement>(
     constraint: &Expression<T>,
 ) -> Option<PolyID> {
     let sort_constraint =
-        match ExpressionEvaluator::new(SymbolicEvaluator, &fixed.intermediate_definitions)
+        match PartialExpressionEvaluator::new(SymbolicEvaluator, &fixed.intermediate_definitions)
             .evaluate(constraint)
         {
             Ok(c) => c,
@@ -196,6 +195,15 @@ fn check_constraint<T: FieldElement>(
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b MutableState<'a, T, Q>,
+        _identity_id: u64,
+        _values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup not supported by machine {}.", self.name())
+    }
+
     fn identity_ids(&self) -> Vec<u64> {
         self.rhs_references.keys().cloned().collect()
     }
@@ -229,6 +237,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
         }
         result.insert(self.fixed_data.column_name(&self.key_col).to_string(), keys);
 
+        #[allow(clippy::iter_over_hash_type)]
+        // TODO: Is this deterministic?
         for (col, &i) in &self.witness_positions {
             let mut col_values = values
                 .iter_mut()

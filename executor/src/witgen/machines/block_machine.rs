@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::iter::{self};
 
-use super::{compute_size_and_log, ConnectionKind, EvalResult, FixedData, MachineParts};
+use super::{
+    compute_size_and_log, ConnectionKind, EvalResult, FixedData, LookupCell, MachineParts,
+};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::analysis::detect_connection_type_and_block_size;
@@ -137,6 +139,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.parts.connections.keys().copied().collect()
+    }
+
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b MutableState<'a, T, Q>,
+        _identity_id: u64,
+        _values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup not supported by machine {}.", self.name())
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -320,6 +331,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - <Latch>));
     /// This function fixes this exception by setting _operation_id_no_change to 0.
     fn handle_last_row(&self, data: &mut HashMap<PolyID, Vec<T>>) {
+        #[allow(clippy::iter_over_hash_type)]
+        // This is deterministic because there is no shared state.
         for (poly_id, col) in data.iter_mut() {
             if self
                 .parts

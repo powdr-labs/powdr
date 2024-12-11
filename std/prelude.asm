@@ -41,7 +41,16 @@ enum Constr {
     PhantomPermutation((Option<expr>, Option<expr>), (expr, expr)[]),
 
     /// A connection constraint (copy constraint), result of the "connect" operator.
-    Connection((expr, expr)[])
+    Connection((expr, expr)[]),
+
+    /// A "phantom" bus interaction, i.e., an annotation for witness generation.
+    /// The actual constraint should be enforced via other constraints.
+    /// Contains:
+    /// - An expression for the multiplicity.
+    /// - The tuple added to the bus.
+    /// WARNING: As of now, this annotation is largely ignored. When using the bus,
+    /// make sure that you also add phantom lookup / permutation constraints.
+    PhantomBusInteraction(expr, expr[])
 }
 
 /// This is the result of the "$" operator. It can be used as the left and
