@@ -267,8 +267,6 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
 }
 
 impl<T: FieldElement> RangeConstraintSet<Cell, T> for WitgenInference<'_, T> {
-    // TODO would be nice to use &Cell, but this leads to lifetime trouble
-    // in the solve() function.
     fn range_constraint(&self, cell: Cell) -> Option<RangeConstraint<T>> {
         self.fixed_data
             .global_range_constraints
