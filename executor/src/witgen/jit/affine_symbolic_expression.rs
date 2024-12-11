@@ -58,8 +58,9 @@ impl<T: FieldElement, V> Assertion<T, V> {
 }
 
 /// Represents an expression `a_1 * x_1 + ... + a_k * x_k + offset`,
-/// where the `a_i` and `offset` are symbolic expressions, i.e. values known at run-time,
-/// and the `x_i` are unknown variables.
+/// where the `a_i` and `offset` are symbolic expressions, i.e. values known at run-time
+/// (which can still include variables or symbols, which are only known at run-time),
+/// and the `x_i` are variables that are unknown at this point.
 #[derive(Debug, Clone)]
 pub struct AffineSymbolicExpression<T: FieldElement, V> {
     coefficients: BTreeMap<V, SymbolicExpression<T, V>>,
