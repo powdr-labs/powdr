@@ -64,6 +64,27 @@ pub enum LookupArgument<T: FieldElement, V> {
     Unknown(AffineSymbolicExpression<T, V>),
 }
 
+#[derive(Default)]
+pub struct ProcessResult<T: FieldElement, V> {
+    pub effects: Vec<Effect<T, V>>,
+    pub complete: bool,
+}
+
+impl<T: FieldElement, V> ProcessResult<T, V> {
+    pub fn empty() -> Self {
+        Self {
+            effects: vec![],
+            complete: false,
+        }
+    }
+    pub fn complete(effects: Vec<Effect<T, V>>) -> Self {
+        Self {
+            effects,
+            complete: true,
+        }
+    }
+}
+
 /// Represents an expression `a_1 * x_1 + ... + a_k * x_k + offset`,
 /// where the `a_i` and `offset` are symbolic expressions, i.e. values known at run-time,
 /// and the `x_i` are unknown variables.
@@ -167,12 +188,14 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
     pub fn solve(
         &self,
         range_constraints: &impl RangeConstraintSet<V, T>,
-    ) -> Result<Vec<Effect<T, V>>, EvalError<T>> {
+    ) -> Result<ProcessResult<T, V>, EvalError<T>> {
         match self.coefficients.len() {
             0 => {
                 return if self.offset.is_known_zero() {
-                    Ok(vec![])
+                    Ok(ProcessResult::complete(vec![]))
                 } else {
+                    // TODO this does not always mean it is unsatisfiable, since
+                    // the offset could be a known variable.
                     Err(EvalError::ConstraintUnsatisfiable(self.to_string()))
                 };
             }
@@ -183,38 +206,46 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
                 let assignment = Effect::Assignment(var.clone(), value);
                 if let Some(coeff) = coeff.try_to_number() {
                     assert!(!coeff.is_zero(), "Zero coefficient has not been removed.");
-                    return Ok(vec![assignment]);
+                    return Ok(ProcessResult::complete(vec![assignment]));
                 } else {
-                    return Ok(vec![
+                    // TODO if the coefficient is known and zero, it does not mean
+                    // that the equation is unsatisfiable. So this should actually
+                    // be a conditional assignment.
+                    return Ok(ProcessResult::complete(vec![
                         Assertion::assert_is_nonzero(coeff.clone()),
                         assignment,
-                    ]);
+                    ]));
                 }
             }
             _ => {}
         }
 
         let r = self.solve_through_constraints(range_constraints);
-        if !r.is_empty() {
+        if r.complete {
             return Ok(r);
         }
         let negated = -self;
         let r = negated.solve_through_constraints(range_constraints);
-        if !r.is_empty() {
+        if r.complete {
             return Ok(r);
         }
-        Ok(self
+
+        let effects = self
             .transfer_constraints(range_constraints)
             .into_iter()
             .chain(self.transfer_constraints(range_constraints))
-            .collect())
+            .collect();
+        Ok(ProcessResult {
+            effects,
+            complete: false,
+        })
     }
 
     /// Tries to solve a bit-decomposition equation.
     fn solve_through_constraints(
         &self,
         range_constraints: &impl RangeConstraintSet<V, T>,
-    ) -> Vec<Effect<T, V>> {
+    ) -> ProcessResult<T, V> {
         let constrained_coefficients = self
             .coefficients
             .iter()
@@ -229,7 +260,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
 
         // All the coefficients need to have known range constraints.
         if constrained_coefficients.len() != self.coefficients.len() {
-            return Vec::new();
+            return ProcessResult::empty();
         }
 
         // Check if they are mutually exclusive and compute assignments.
@@ -239,7 +270,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             let mask = *constraint.multiple(coeff).mask();
             if !(mask & covered_bits).is_zero() {
                 // Overlapping range constraints.
-                return vec![];
+                return ProcessResult::empty();
             } else {
                 covered_bits |= mask;
             }
@@ -251,7 +282,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
         }
 
         if covered_bits >= T::modulus() {
-            return vec![];
+            return ProcessResult::empty();
         }
 
         // We need to assert that the masks cover the offset,
@@ -263,7 +294,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             &self.offset | &T::from(covered_bits).into(),
         ));
 
-        effects
+        ProcessResult::complete(effects)
     }
 
     fn transfer_constraints(
@@ -443,6 +474,7 @@ mod test {
         assert!(constr
             .solve(&SimpleRangeConstraintSet::default())
             .unwrap()
+            .effects
             .is_empty());
     }
 
@@ -455,9 +487,10 @@ mod test {
         let seven = from_number(7);
         let ten = from_number(10);
         let constr = mul(&two, &x) + mul(&seven, &y) - ten;
-        let effects = constr.solve(&SimpleRangeConstraintSet::default()).unwrap();
-        assert_eq!(effects.len(), 1);
-        let Effect::Assignment(var, expr) = &effects[0] else {
+        let result = constr.solve(&SimpleRangeConstraintSet::default()).unwrap();
+        assert!(result.complete);
+        assert_eq!(result.effects.len(), 1);
+        let Effect::Assignment(var, expr) = &result.effects[0] else {
             panic!("Expected assignment");
         };
         assert_eq!(var.to_string(), "X");
@@ -484,14 +517,13 @@ mod test {
             + ten
             + z;
         // Without range constraints, this is not solvable.
-        assert!(constr
-            .solve(&SimpleRangeConstraintSet::default())
-            .unwrap()
-            .is_empty());
+        let result = constr.solve(&SimpleRangeConstraintSet::default()).unwrap();
+        assert!(!result.complete && result.effects.is_empty());
         // With range constraints, it should be solvable.
-        let effects = constr
-            .solve(&range_constraints)
-            .unwrap()
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(result.complete);
+        let effects = result
+            .effects
             .into_iter()
             .map(|effect| match effect {
                 Effect::Assignment(v, expr) => format!("{v} = {expr};\n"),
@@ -538,9 +570,10 @@ assert (10 + Z) == ((10 + Z) | 4294967040);
             + mul(&c, &from_number(0x1000000))
             + ten
             - z;
-        let effects = constr
-            .solve(&range_constraints)
-            .unwrap()
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(!result.complete);
+        let effects = result
+            .effects
             .into_iter()
             .map(|effect| match effect {
                 Effect::RangeConstraint(v, rc) => format!("{v}: {rc};\n"),

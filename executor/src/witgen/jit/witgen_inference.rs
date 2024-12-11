@@ -14,7 +14,7 @@ use crate::witgen::{
 
 use super::{
     super::{range_constraints::RangeConstraint, FixedData},
-    affine_symbolic_expression::{AffineSymbolicExpression, Effect},
+    affine_symbolic_expression::{AffineSymbolicExpression, Effect, ProcessResult},
     cell::Cell,
 };
 
@@ -48,8 +48,11 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
         self.code
     }
 
-    pub fn process_identity(&mut self, id: &Identity<T>, row_offset: i32) {
-        let effects = match id {
+    /// Process an identity on a certain row.
+    /// Returns true if this identity/row pair was fully processed and
+    /// should not be considered again.
+    pub fn process_identity(&mut self, id: &Identity<T>, row_offset: i32) -> bool {
+        let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                 self.process_polynomial_identity(expression, row_offset)
             }
@@ -71,25 +74,28 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
             }
             _ => {
                 // TODO
-                vec![]
+                ProcessResult::empty()
             }
         };
-        self.ingest_effects(effects);
+        self.ingest_effects(result.effects);
+        result.complete
     }
 
     fn process_polynomial_identity(
         &self,
         expression: &'a Expression<T>,
         offset: i32,
-    ) -> Vec<Effect<T, Cell>> {
+    ) -> ProcessResult<T, Cell> {
         if let Some(r) = self.evaluate(expression, offset) {
             // TODO propagate or report error properly.
             // If solve returns an error, it means that the constraint is conflicting.
             // In the future, we might run this in a runtime-conditional, so an error
             // could just mean that this case cannot happen in practice.
+            // TODO this can also happen if we solve a constraint where all values are
+            // known but symbolic.
             r.solve(self).unwrap()
         } else {
-            vec![]
+            ProcessResult::empty()
         }
     }
 
@@ -99,7 +105,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
         left: &SelectedExpressions<T>,
         right: &SelectedExpressions<T>,
         offset: i32,
-    ) -> Vec<Effect<T, Cell>> {
+    ) -> ProcessResult<T, Cell> {
         // TODO: In the future, call the 'mutable state' to check if the
         // lookup can always be answered.
 
@@ -127,7 +133,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
                         .filter(|e| e.try_to_known().is_none())
                         .collect_vec();
                     if unknown.len() == 1 && unknown[0].single_unknown_variable().is_some() {
-                        return vec![Effect::Lookup(
+                        let effects = vec![Effect::Lookup(
                             lookup_id,
                             lhs.into_iter()
                                 .map(|e| {
@@ -139,11 +145,12 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
                                 })
                                 .collect(),
                         )];
+                        return ProcessResult::complete(effects);
                     }
                 }
             }
         }
-        vec![]
+        ProcessResult::empty()
     }
 
     fn ingest_effects(&mut self, effects: Vec<Effect<T, Cell>>) {
@@ -316,18 +323,46 @@ mod test {
             .join("\n")
     }
 
-    #[test]
-    fn simple_polynomial_solving() {
-        let input = "let X; let Y; let Z; X = 1; Y = X + 1; Z * Y = X + 10;";
+    fn solve_on_rows(input: &str, rows: &[i32], known_cells: Vec<(&str, i32)>) -> String {
         let analyzed: Analyzed<GoldilocksField> =
             powdr_pil_analyzer::analyze_string(input).unwrap();
         let fixed_data = FixedData::new(&analyzed, &[], &[], Default::default(), 0);
-        let mut witgen = WitgenInference::new(&fixed_data, vec![]);
-        for id in analyzed.identities.iter() {
-            witgen.process_identity(id, 0);
+        let known_cells = known_cells.iter().map(|(name, row_offset)| {
+            let id = fixed_data.try_column_by_name(name).unwrap().id;
+            Cell {
+                column_name: name.to_string(),
+                id,
+                row_offset: *row_offset,
+            }
+        });
+        let mut witgen = WitgenInference::new(&fixed_data, known_cells);
+        let mut complete = HashSet::new();
+        for _ in 0..4 {
+            for row in rows {
+                for id in analyzed.identities.iter() {
+                    if !complete.contains(&(id.id(), row)) && witgen.process_identity(id, *row) {
+                        complete.insert((id.id(), row));
+                    }
+                }
+            }
         }
-        assert_eq!(witgen.known_cells().len(), 3);
-        let code = format_code(&witgen.code());
+        format_code(&witgen.code())
+    }
+
+    #[test]
+    fn simple_polynomial_solving() {
+        let input = "let X; let Y; let Z; X = 1; Y = X + 1; Z * Y = X + 10;";
+        let code = solve_on_rows(input, &[0], vec![]);
         assert_eq!(code, "X[0] = 1;\nY[0] = 2;\nZ[0] = -9223372034707292155;");
+    }
+
+    #[test]
+    fn fib() {
+        let input = "let X; let Y; X' = Y; Y' = X + Y;";
+        let code = solve_on_rows(input, &[0, 1], vec![("X", 0), ("Y", 0)]);
+        assert_eq!(
+            code,
+            "X[1] = Y[0];\nY[1] = (X[0] + Y[0]);\nX[2] = Y[1];\nY[2] = (X[1] + Y[1]);"
+        );
     }
 }
