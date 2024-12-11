@@ -468,7 +468,8 @@ mod test {
     #[test]
     fn solve_bit_decomposition() {
         let rc = Some(RangeConstraint::from_mask(0xffu32));
-        let a = Ase::from_unknown_variable("a", rc.clone());
+        // First try without range constrain on a
+        let a = Ase::from_unknown_variable("a", None);
         let b = Ase::from_unknown_variable("b", rc.clone());
         let c = Ase::from_unknown_variable("c", rc.clone());
         let z = Ase::from_known_variable("Z", None);
@@ -477,11 +478,17 @@ mod test {
         let constr = mul(&a, &from_number(0x100))
             + mul(&b, &from_number(0x10000))
             + mul(&c, &from_number(0x1000000))
-            + ten
-            + z;
+            + ten.clone()
+            + z.clone();
         // Without range constraints, this is not solvable.
         assert!(constr.solve().unwrap().is_empty());
-        // With range constraints, it should be solvable.
+        // Now add the range constraint on a, it should be solvable.
+        let a = Ase::from_unknown_variable("a", rc.clone());
+        let constr = mul(&a, &from_number(0x100))
+            + mul(&b, &from_number(0x10000))
+            + mul(&c, &from_number(0x1000000))
+            + ten.clone()
+            + z;
         let effects = constr
             .solve()
             .unwrap()
@@ -537,11 +544,11 @@ assert (10 + Z) == ((10 + Z) | 4294967040);
             .format("")
             .to_string();
         // It appears twice because we solve the positive and the negated equation.
-        // Maybe it is enough to only solve one.
+        // Note that the negated version has a different bit mask.
         assert_eq!(
             effects,
             "Z: [10, 4294967050] & 0xffffff0a;
-Z: [10, 4294967050] & 0xffffff0a;
+Z: [10, 4294967050] & 0xffffffff;
 "
         );
     }
