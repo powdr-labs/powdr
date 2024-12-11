@@ -162,13 +162,16 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             }
             1 => {
                 let (var, coeff) = self.coefficients.iter().next().unwrap();
-                assert!(!coeff.is_known_zero());
-                if coeff.try_to_number().is_some() {
+                assert!(
+                    !coeff.is_known_zero(),
+                    "Zero coefficient has not been removed."
+                );
+                if coeff.is_known_nonzero() {
                     let value = self.offset.field_div(&-coeff);
                     vec![Effect::Assignment(var.clone(), value)]
                 } else {
                     // We can only solve this if we know that the coefficient cannot be zero.
-                    // TODO We can either do this by adding a condition or we can check the range constraint.
+                    // TODO We could do this by adding a runtime condition
                     vec![]
                 }
             }

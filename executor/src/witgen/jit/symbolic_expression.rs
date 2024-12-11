@@ -61,6 +61,17 @@ impl<T: FieldElement, V> SymbolicExpression<T, V> {
         self.try_to_number().map_or(false, |n| n == -T::from(1))
     }
 
+    pub fn is_known_nonzero(&self) -> bool {
+        // Only checking range constraint is enough since if this is a known
+        // fixed value, we will get a range constraint with just a single value.
+        if let Some(rc) = self.range_constraint() {
+            !rc.allows_value(0.into())
+        } else {
+            // unknown
+            false
+        }
+    }
+
     pub fn range_constraint(&self) -> Option<RangeConstraint<T>> {
         match self {
             SymbolicExpression::Concrete(v) => Some(RangeConstraint::from_value(*v)),
