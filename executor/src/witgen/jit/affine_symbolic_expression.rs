@@ -152,46 +152,43 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
         &self,
         range_constraints: &impl RangeConstraintSet<V, T>,
     ) -> Result<Vec<Effect<T, V>>, EvalError<T>> {
-        match self.coefficients.len() {
+        Ok(match self.coefficients.len() {
             0 => {
-                return if self.offset.is_known_zero() {
-                    Ok(vec![])
+                if self.offset.is_known_zero() {
+                    vec![]
                 } else {
-                    Err(EvalError::ConstraintUnsatisfiable(self.to_string()))
-                };
+                    return Err(EvalError::ConstraintUnsatisfiable(self.to_string()));
+                }
             }
             1 => {
                 let (var, coeff) = self.coefficients.iter().next().unwrap();
                 assert!(!coeff.is_known_zero());
-                let value = self.offset.field_div(&coeff.neg());
-                let assignment = Effect::Assignment(var.clone(), value);
-                if let Some(coeff) = coeff.try_to_number() {
-                    assert!(!coeff.is_zero(), "Zero coefficient has not been removed.");
-                    return Ok(vec![assignment]);
+                if coeff.try_to_number().is_some() {
+                    let value = self.offset.field_div(&-coeff);
+                    vec![Effect::Assignment(var.clone(), value)]
                 } else {
-                    return Ok(vec![
-                        Assertion::assert_is_nonzero(coeff.clone()),
-                        assignment,
-                    ]);
+                    // We can only solve this if we know that the coefficient cannot be zero.
+                    // TODO We can either do this by adding a condition or we can check the range constraint.
+                    vec![]
                 }
             }
-            _ => {}
-        }
-
-        let r = self.solve_through_constraints(range_constraints);
-        if !r.is_empty() {
-            return Ok(r);
-        }
-        let negated = -self;
-        let r = negated.solve_through_constraints(range_constraints);
-        if !r.is_empty() {
-            return Ok(r);
-        }
-        Ok(self
-            .transfer_constraints(range_constraints)
-            .into_iter()
-            .chain(self.transfer_constraints(range_constraints))
-            .collect())
+            _ => {
+                let r = self.solve_through_constraints(range_constraints);
+                if !r.is_empty() {
+                    return Ok(r);
+                }
+                let negated = -self;
+                let r = negated.solve_through_constraints(range_constraints);
+                if !r.is_empty() {
+                    r
+                } else {
+                    self.transfer_constraints(range_constraints)
+                        .into_iter()
+                        .chain(self.transfer_constraints(range_constraints))
+                        .collect()
+                }
+            }
+        })
     }
 
     /// Tries to solve a bit-decomposition equation.
@@ -365,20 +362,6 @@ impl<T: FieldElement, V: Clone + Ord> Neg for AffineSymbolicExpression<T, V> {
 
     fn neg(self) -> Self::Output {
         -&self
-    }
-}
-
-impl<T: FieldElement, V: Clone> TryFrom<&AffineSymbolicExpression<T, V>>
-    for SymbolicExpression<T, V>
-{
-    type Error = ();
-
-    fn try_from(value: &AffineSymbolicExpression<T, V>) -> Result<Self, Self::Error> {
-        if value.coefficients.is_empty() {
-            Ok(value.offset.clone())
-        } else {
-            Err(())
-        }
     }
 }
 
