@@ -239,7 +239,6 @@ jobs:
           POWDR_STD: ${{ github.workspace }}/std/
 
   bench:
-    needs: build
     runs-on: warp-ubuntu-2404-x64-4x
     permissions:
       contents: write
@@ -291,7 +290,6 @@ jobs:
           summary-always: true
 
   udeps:
-    needs: build
     runs-on: ubuntu-22.04
 
     steps:
