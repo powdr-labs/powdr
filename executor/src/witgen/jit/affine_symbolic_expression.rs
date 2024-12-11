@@ -14,11 +14,11 @@ use super::{super::range_constraints::RangeConstraint, symbolic_expression::Symb
 
 /// The effect of solving a symbolic equation.
 pub enum Effect<T: FieldElement, V> {
-    /// variable can be assigned a value.
+    /// Variable can be assigned a value.
     Assignment(V, SymbolicExpression<T, V>),
-    /// we learnt a new range constraint on variable.
+    /// We learnt a new range constraint on variable.
     RangeConstraint(V, RangeConstraint<T>),
-    /// a run-time assertion. If this fails, we have conflicting constraints.
+    /// A run-time assertion. If this fails, we have conflicting constraints.
     Assertion(Assertion<T, V>),
 }
 
@@ -107,9 +107,15 @@ impl<T: FieldElement, V> From<SymbolicExpression<T, V>> for AffineSymbolicExpres
     }
 }
 
+impl<T: FieldElement, V> From<T> for AffineSymbolicExpression<T, V> {
+    fn from(k: T) -> Self {
+        SymbolicExpression::from(k).into()
+    }
+}
+
 impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
-    pub fn from_known_variable(var: V, rc: Option<RangeConstraint<T>>) -> Self {
-        SymbolicExpression::from_var(var, rc).into()
+    pub fn from_known_symbol(symbol: V, rc: Option<RangeConstraint<T>>) -> Self {
+        SymbolicExpression::from_symbol(symbol, rc).into()
     }
     pub fn from_unknown_variable(var: V, rc: Option<RangeConstraint<T>>) -> Self {
         AffineSymbolicExpression {
@@ -117,9 +123,6 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             offset: SymbolicExpression::from(T::from(0)),
             range_constraints: rc.into_iter().map(|rc| (var.clone(), rc)).collect(),
         }
-    }
-    pub fn from_number(n: T) -> Self {
-        SymbolicExpression::from(n).into()
     }
 
     /// If this expression does not contain unknown variables, returns the symbolic expression.
@@ -145,13 +148,16 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
     }
 
     /// Solves the equation `self = 0` and returns how to compute the solution.
+    /// The solution can contain assignments to multiple variables.
+    /// If no way to solve the equation has been found, returns the empty vector.
+    /// If the equation is known to be unsolvable, returns an error.
     pub fn solve(&self) -> Result<Vec<Effect<T, V>>, EvalError<T>> {
         Ok(match self.coefficients.len() {
             0 => {
-                if self.offset.is_known_zero() {
-                    vec![]
-                } else {
+                if self.offset.is_known_nonzero() {
                     return Err(EvalError::ConstraintUnsatisfiable(self.to_string()));
+                } else {
+                    vec![]
                 }
             }
             1 => {
@@ -396,7 +402,7 @@ mod test {
     type Ase = AffineSymbolicExpression<GoldilocksField, &'static str>;
 
     fn from_number(x: i32) -> Ase {
-        Ase::from_number(GoldilocksField::from(x))
+        GoldilocksField::from(x).into()
     }
 
     fn mul(a: &Ase, b: &Ase) -> Ase {
@@ -411,11 +417,13 @@ mod test {
 
     #[test]
     fn unsolvable_with_vars() {
-        let x = &Ase::from_known_variable("X", None);
-        let y = &Ase::from_known_variable("Y", None);
+        let x = &Ase::from_known_symbol("X", None);
+        let y = &Ase::from_known_symbol("Y", None);
         let constr = x + y - from_number(10);
-        let r = constr.solve();
-        assert!(r.is_err());
+        // We cannot solve it but also cannot know it is unsolvable.
+        assert!(constr.solve().unwrap().is_empty());
+        // But if we know the values, we can be sure there is a conflict.
+        assert!(from_number(10).solve().is_err());
     }
 
     #[test]
@@ -426,7 +434,7 @@ mod test {
 
     #[test]
     fn solve_simple_eq() {
-        let y = Ase::from_known_variable("y", None);
+        let y = Ase::from_known_symbol("y", None);
         let x = Ase::from_unknown_variable("X", None);
         // 2 * X + 7 * y - 10 = 0
         let two = from_number(2);
@@ -444,8 +452,8 @@ mod test {
 
     #[test]
     fn solve_div_by_range_constrained_var() {
-        let y = Ase::from_known_variable("y", None);
-        let z = Ase::from_known_variable("z", None);
+        let y = Ase::from_known_symbol("y", None);
+        let z = Ase::from_known_symbol("z", None);
         let x = Ase::from_unknown_variable("X", None);
         // z * X + 7 * y - 10 = 0
         let seven = from_number(7);
@@ -455,7 +463,7 @@ mod test {
         let effects = constr.solve().unwrap();
         assert_eq!(effects.len(), 0);
         let z =
-            Ase::from_known_variable("z", Some(RangeConstraint::from_range(10.into(), 20.into())));
+            Ase::from_known_symbol("z", Some(RangeConstraint::from_range(10.into(), 20.into())));
         let constr = mul(&z, &x) + mul(&seven, &y) - ten;
         let effects = constr.solve().unwrap();
         let Effect::Assignment(var, expr) = &effects[0] else {
@@ -472,7 +480,7 @@ mod test {
         let a = Ase::from_unknown_variable("a", None);
         let b = Ase::from_unknown_variable("b", rc.clone());
         let c = Ase::from_unknown_variable("c", rc.clone());
-        let z = Ase::from_known_variable("Z", None);
+        let z = Ase::from_known_symbol("Z", None);
         // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 + Z = 0
         let ten = from_number(10);
         let constr = mul(&a, &from_number(0x100))

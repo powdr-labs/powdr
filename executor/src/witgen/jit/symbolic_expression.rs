@@ -12,11 +12,12 @@ use crate::witgen::range_constraints::RangeConstraint;
 /// involving known cells or variables and compile-time constants.
 /// Each of the sub-expressions can have its own range constraint.
 #[derive(Debug, Clone)]
-pub enum SymbolicExpression<T: FieldElement, V> {
+pub enum SymbolicExpression<T: FieldElement, S> {
     /// A concrete constant value known at compile time.
     Concrete(T),
-    /// A symbolic value known at run-time, referencing either a cell or a local variable.
-    Variable(V, Option<RangeConstraint<T>>),
+    /// A symbolic value known at run-time, referencing a cell,
+    /// an input, a local variable or whatever it is used for.
+    Symbol(S, Option<RangeConstraint<T>>),
     BinaryOperation(
         Rc<Self>,
         BinaryOperator,
@@ -44,9 +45,9 @@ pub enum UnaryOperator {
     Neg,
 }
 
-impl<T: FieldElement, V> SymbolicExpression<T, V> {
-    pub fn from_var(var: V, rc: Option<RangeConstraint<T>>) -> Self {
-        SymbolicExpression::Variable(var, rc)
+impl<T: FieldElement, S> SymbolicExpression<T, S> {
+    pub fn from_symbol(symbol: S, rc: Option<RangeConstraint<T>>) -> Self {
+        SymbolicExpression::Symbol(symbol, rc)
     }
 
     pub fn is_known_zero(&self) -> bool {
@@ -75,7 +76,7 @@ impl<T: FieldElement, V> SymbolicExpression<T, V> {
     pub fn range_constraint(&self) -> Option<RangeConstraint<T>> {
         match self {
             SymbolicExpression::Concrete(v) => Some(RangeConstraint::from_value(*v)),
-            SymbolicExpression::Variable(.., rc)
+            SymbolicExpression::Symbol(.., rc)
             | SymbolicExpression::BinaryOperation(.., rc)
             | SymbolicExpression::UnaryOperation(.., rc) => rc.clone(),
         }
@@ -84,7 +85,7 @@ impl<T: FieldElement, V> SymbolicExpression<T, V> {
     pub fn try_to_number(&self) -> Option<T> {
         match self {
             SymbolicExpression::Concrete(n) => Some(*n),
-            SymbolicExpression::Variable(..)
+            SymbolicExpression::Symbol(..)
             | SymbolicExpression::BinaryOperation(..)
             | SymbolicExpression::UnaryOperation(..) => None,
         }
@@ -102,7 +103,7 @@ impl<T: FieldElement, V: Display> Display for SymbolicExpression<T, V> {
                     write!(f, "-{}", -*n)
                 }
             }
-            SymbolicExpression::Variable(name, _) => write!(f, "{name}"),
+            SymbolicExpression::Symbol(name, _) => write!(f, "{name}"),
             SymbolicExpression::BinaryOperation(lhs, op, rhs, _) => {
                 write!(f, "({lhs} {op} {rhs})")
             }
