@@ -23,8 +23,7 @@ fn replace_fixed() {
     query |i| {
         let _: expr = 1_expr;
     };
-    N::X = N::Y;
-    N::Y = 7 * N::X;
+    N::X = 7 * N::X;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -102,11 +101,7 @@ fn intermediate() {
         col intermediate = x;
         intermediate = intermediate;
     "#;
-    let expectation = r#"namespace N(65536);
-    col witness x;
-    col intermediate = N::x;
-    N::intermediate = N::intermediate;
-"#;
+    let expectation = r#""#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
@@ -371,6 +366,76 @@ fn handle_array_references_in_prover_functions() {
             let _: expr = intermediate;
         }
     };
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn equal_constrained_array_elements_empty() {
+    let input = r#"namespace N(65536);
+        col witness w[20];
+        w[4] = w[7];
+    "#;
+    let expectation = r#"namespace N(65536);
+    col witness w[20];
+    N::w[4] = N::w[7];
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn equal_constrained_array_elements_query() {
+    let input = r#"namespace N(65536);
+        col witness w[20];
+        w[4] = w[7];
+        query |i| {
+            let _ = w[4] + w[7] - w[5];
+        };
+    "#;
+    let expectation = r#"namespace N(65536);
+    col witness w[20];
+    N::w[4] = N::w[7];
+    query |i| {
+        let _: expr = N::w[4_int] + N::w[7_int] - N::w[5_int];
+    };
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn equal_constrained_array_elements() {
+    let input = r#"namespace N(65536);
+        col witness w[20];
+        w[4] = w[7];
+        w[3] = w[5];
+        w[7] + w[1] = 5;
+    "#;
+    let expectation = r#"namespace N(65536);
+    col witness w[20];
+    N::w[4] = N::w[7];
+    N::w[3] = N::w[5];
+    N::w[7] + N::w[1] = 5;
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn equal_constrained_transitive() {
+    let input = r#"namespace N(65536);
+        col witness a;
+        col witness b;
+        col witness c;
+        a = b;
+        b = c;
+        a + b + c = 5;
+    "#;
+    let expectation = r#"namespace N(65536);
+    col witness a;
+    N::a + N::a + N::a = 5;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
