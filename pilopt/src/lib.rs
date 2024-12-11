@@ -55,34 +55,31 @@ fn hash_pil_state<T: FieldElement>(pil: &Analyzed<T>) -> u64 {
         identity.hash(&mut hasher);
     }
 
-    // Ordenar las claves antes de iterar
-    let mut sorted_definitions: Vec<_> = pil.definitions.iter().collect();
-    sorted_definitions.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-    for (name, (_, value)) in sorted_definitions {
-        name.hash(&mut hasher);
-        if let Some(v) = value {
+    let mut keys: Vec<_> = pil.definitions.keys().collect();
+    keys.sort();
+    for key in keys {
+        key.hash(&mut hasher);
+        if let Some(v) = &pil.definitions[key].1 {
             v.hash(&mut hasher);
         }
     }
 
-    // Ordenar las columnas intermedias
-    let mut sorted_intermediates: Vec<_> = pil.intermediate_columns.iter().collect();
-    sorted_intermediates.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-    for (name, (_, value)) in sorted_intermediates {
-        name.hash(&mut hasher);
-        value.hash(&mut hasher);
+    let mut keys: Vec<_> = pil.intermediate_columns.keys().collect();
+    keys.sort();
+    for key in keys {
+        key.hash(&mut hasher);
+        pil.intermediate_columns[key].1.hash(&mut hasher);
     }
 
     for pf in &pil.prover_functions {
         pf.hash(&mut hasher);
     }
 
-    // Ordenar las declaraciones públicas
-    let mut sorted_declarations: Vec<_> = pil.public_declarations.iter().collect();
-    sorted_declarations.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
-    for (key, decl) in sorted_declarations {
+    let mut keys: Vec<_> = pil.public_declarations.keys().collect();
+    keys.sort();
+    for key in keys {
         key.hash(&mut hasher);
-        decl.hash(&mut hasher);
+        pil.public_declarations[key].hash(&mut hasher);
     }
 
     hasher.finish()
