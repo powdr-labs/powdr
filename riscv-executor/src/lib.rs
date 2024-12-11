@@ -335,9 +335,7 @@ pub struct ExecutionTrace<F: FieldElement> {
     /// Main machine instructions
     main_ops: Vec<MainOp<F>>,
 
-    /// Calls into submachines. Each is a sequence of field elemements: the RHS
-    /// values of the lookup followed by the selector idx (if the machine has
-    /// it).
+    /// Calls into submachines
     submachine_ops: HashMap<MachineInstance, Vec<SubmachineOp<F>>>,
 
     /// witness columns
