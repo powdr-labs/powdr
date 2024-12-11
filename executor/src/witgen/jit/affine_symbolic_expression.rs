@@ -140,10 +140,9 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
     pub fn try_mul(&self, other: &Self) -> Option<Self> {
         if let Some(multiplier) = other.try_to_known() {
             Some(self.clone() * multiplier)
-        } else if let Some(multiplier) = self.try_to_known() {
-            Some(other.clone() * multiplier)
         } else {
-            None
+            self.try_to_known()
+                .map(|multiplier| other.clone() * multiplier)
         }
     }
 
