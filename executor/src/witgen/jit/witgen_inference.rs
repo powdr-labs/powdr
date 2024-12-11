@@ -6,7 +6,7 @@ use powdr_ast::analyzed::{
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
     PhantomLookupIdentity, PolyID, PolynomialIdentity, PolynomialType, SelectedExpressions,
 };
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::FieldElement;
 
 use crate::witgen::{
     global_constraints::RangeConstraintSet, jit::affine_symbolic_expression::LookupArgument,
@@ -91,9 +91,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
             // If solve returns an error, it means that the constraint is conflicting.
             // In the future, we might run this in a runtime-conditional, so an error
             // could just mean that this case cannot happen in practice.
-            // TODO this can also happen if we solve a constraint where all values are
-            // known but symbolic.
-            r.solve(self).unwrap()
+            r.solve().unwrap()
         } else {
             ProcessResult::empty()
         }
@@ -187,7 +185,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
             .range_constraint(cell.clone())
             .map_or(rc.clone(), |existing_rc| existing_rc.conjunction(&rc));
         // TODO if the conjuntion results in a single value, make the cell known.
-        // TODO but do we also need to generate code for the assignment?
+        // TODO but we also need to generate code for the assignment!
         self.range_constraints.insert(cell, rc);
     }
 
@@ -213,21 +211,19 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
                     let cell = Cell::from_reference(r, offset);
                     // If a cell is known and has a compile-time constant value,
                     // that value is stored in the range constraints.
-                    if let Some(v) = self
-                        .range_constraint(cell.clone())
-                        .and_then(|rc| rc.try_to_single_value())
-                    {
-                        AffineSymbolicExpression::from_number(v)
+                    let rc = self.range_constraint(cell.clone());
+                    if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
+                        val.into()
                     } else if self.known_cells.contains(&cell) {
-                        AffineSymbolicExpression::from_known_variable(cell)
+                        AffineSymbolicExpression::from_known_symbol(cell, rc)
                     } else {
-                        AffineSymbolicExpression::from_unknown_variable(cell)
+                        AffineSymbolicExpression::from_unknown_variable(cell, rc)
                     }
                 }
             }
             Expression::PublicReference(_) => return None, // TODO
             Expression::Challenge(_) => return None,       // TODO
-            Expression::Number(n) => AffineSymbolicExpression::from_number(*n),
+            Expression::Number(n) => (*n).into(),
             Expression::BinaryOperation(op) => self.evaulate_binary_operation(op, offset)?,
             Expression::UnaryOperation(op) => self.evaluate_unary_operation(op, offset)?,
         })
@@ -249,7 +245,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
                     .try_to_known()?
                     .try_to_number()?
                     .pow(right.try_to_known()?.try_to_number()?.to_integer());
-                Some(AffineSymbolicExpression::from_number(result))
+                Some(AffineSymbolicExpression::from(result))
             }
         }
     }
@@ -264,9 +260,9 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
             AlgebraicUnaryOperator::Minus => Some(-&expr),
         }
     }
-}
 
-impl<T: FieldElement> RangeConstraintSet<Cell, T> for WitgenInference<'_, T> {
+    /// Returns the current best-known range constraint on the given cell
+    /// combining global range constraints and newly derived local range constraints.
     fn range_constraint(&self, cell: Cell) -> Option<RangeConstraint<T>> {
         self.fixed_data
             .global_range_constraints
