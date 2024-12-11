@@ -1,4 +1,5 @@
 use num_traits::Zero;
+use powdr_ast::parsed::visitor::AllChildren;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
@@ -72,9 +73,8 @@ impl<T: FieldElement> PowdrEval<T> {
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
-        let mut analyzed_mut = (*analyzed).clone();
 
-        let constant_with_next_list = get_constant_with_next_list(&mut analyzed_mut);
+        let constant_with_next_list = get_constant_with_next_list(&analyzed);
 
         let constant_shifted: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Constant)
@@ -264,9 +264,9 @@ where
 }
 
 // This function creates a list of indices of the constant polynomials that have next references constraint
-pub fn get_constant_with_next_list<T: FieldElement>(analyzed: &mut Analyzed<T>) -> HashSet<usize> {
+pub fn get_constant_with_next_list<T: FieldElement>(analyzed: &Analyzed<T>) -> HashSet<usize> {
     let mut constant_with_next_list: HashSet<usize> = HashSet::new();
-    analyzed.post_visit_expressions_in_identities_mut(&mut |e| {
+    analyzed.all_children().for_each(|e| {
         if let AlgebraicExpression::Reference(AlgebraicReference {
             name: _,
             poly_id,
