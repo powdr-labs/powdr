@@ -156,16 +156,26 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             }
             1 => {
                 let (var, coeff) = self.coefficients.iter().next().unwrap();
+                // Solve "coeff * X + self.offset = 0" by division.
                 assert!(
                     !coeff.is_known_zero(),
                     "Zero coefficient has not been removed."
                 );
                 if coeff.is_known_nonzero() {
+                    // In this case, we can always compute a solution.
                     let value = self.offset.field_div(&-coeff);
                     vec![Effect::Assignment(var.clone(), value)]
+                } else if self.offset.is_known_nonzero() {
+                    // If the offset is not zero, then the coefficient must be non-zero,
+                    // otherwise the constraint is violated.
+                    let value = self.offset.field_div(&-coeff);
+                    vec![
+                        Assertion::assert_is_nonzero(coeff.clone()),
+                        Effect::Assignment(var.clone(), value),
+                    ]
                 } else {
-                    // We can only solve this if we know that the coefficient cannot be zero.
-                    // TODO We could do this by adding a runtime condition
+                    // If this case, we could have an equation of the form
+                    // 0 * X = 0, which is valid and generates no information about X.
                     vec![]
                 }
             }
