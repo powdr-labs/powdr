@@ -393,7 +393,7 @@ mod test {
     }
 
     #[test]
-    fn unsolveable() {
+    fn unsolvable() {
         let r = from_number(10).solve(&SimpleRangeConstraintSet::default());
         assert!(r.is_err());
     }
@@ -408,7 +408,7 @@ mod test {
     }
 
     #[test]
-    fn solveable_without_vars() {
+    fn solvable_without_vars() {
         let constr = &from_number(0);
         assert!(constr
             .solve(&SimpleRangeConstraintSet::default())
