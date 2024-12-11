@@ -454,9 +454,9 @@ mod test {
         let x = &Ase::from_known_symbol("X", None);
         let y = &Ase::from_known_symbol("Y", None);
         let constr = x + y - from_number(10);
-        // We cannot solve it but also cannot know it is unsolvable.
+        // We cannot solve it, but we can also not learn anything new from it.
         let result = constr.solve().unwrap();
-        assert!(!result.complete && result.effects.is_empty());
+        assert!(result.complete && result.effects.is_empty());
         // But if we know the values, we can be sure there is a conflict.
         assert!(from_number(10).solve().is_err());
     }
