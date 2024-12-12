@@ -73,7 +73,7 @@ impl<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> WitgenInference<'a, T,
                 id, left, right, ..
             }) => self.process_lookup(*id, left, right, row_offset),
             Identity::PhantomBusInteraction(_) => {
-                // TODO Once we have a concept of "can_be_answered", bus interactions
+                // TODO(bus_interaction) Once we have a concept of "can_be_answered", bus interactions
                 // should be as easy as lookups.
                 ProcessResult::empty()
             }
