@@ -905,7 +905,11 @@ mod builder {
 
             // add submachine traces to main trace
             // ----------------------------
-            for mut machine in self.submachines.into_values().map(|m| m.into_inner()) {
+            for (name, mut machine) in self
+                .submachines
+                .into_iter()
+                .map(|(n, m)| (n, m.into_inner()))
+            {
                 // finalize and extend the submachine traces and add to full trace
                 if machine.len() > 0 {
                     let range = namespace_degree_range(pil, machine.namespace());
@@ -913,6 +917,23 @@ mod builder {
                     let machine_degree =
                         std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
                     for (col_name, col) in machine.finish(machine_degree) {
+                        assert!(self.trace.cols.insert(col_name, col).is_none());
+                    }
+                } else if name == "publics" {
+                    // for the publics machine, even with no operations being
+                    // issued, the declared "publics" force the cells to be
+                    // filled. We add operations here to emulate that.
+                    if machine.len() == 0 {
+                        for i in 0..8 {
+                            machine.add_operation(None, &[i.into(), 0.into()], &[]);
+                        }
+                    }
+                    for (col_name, col) in machine.finish(8) {
+                        assert!(self.trace.cols.insert(col_name, col).is_none());
+                    }
+                } else {
+                    // keep machine columns empty
+                    for (col_name, col) in machine.finish(0) {
                         assert!(self.trace.cols.insert(col_name, col).is_none());
                     }
                 }

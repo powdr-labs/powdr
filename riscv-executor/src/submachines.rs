@@ -52,7 +52,6 @@ pub trait Submachine<F: FieldElement> {
 
 /// Concrete implementation of the Submachine trait
 struct SubmachineImpl<F: FieldElement, M: SubmachineKind> {
-    namespace: String,
     trace: SubmachineTrace<F>,
     m: std::marker::PhantomData<M>,
     finished: bool,
@@ -67,10 +66,14 @@ impl<F: FieldElement, M: SubmachineKind> SubmachineImpl<F, M> {
             .filter(|c| c.starts_with(namespace))
             .map(|c| (c.strip_prefix(&prefix).unwrap().to_string(), vec![]))
             .collect();
-        assert!(!witness_cols.is_empty(), "machine with no witness columns");
+        if witness_cols.is_empty() {
+            log::info!(
+                "namespace {} has no witness columns in the optimized pil",
+                namespace
+            );
+        }
         SubmachineImpl {
-            namespace: namespace.to_string(),
-            trace: SubmachineTrace::new(witness_cols),
+            trace: SubmachineTrace::new(namespace, witness_cols),
             m: std::marker::PhantomData,
             finished: false,
         }
@@ -79,7 +82,7 @@ impl<F: FieldElement, M: SubmachineKind> SubmachineImpl<F, M> {
 
 impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> {
     fn namespace(&self) -> &str {
-        self.namespace.as_str()
+        self.trace.namespace.as_str()
     }
 
     fn len(&self) -> u32 {
@@ -91,7 +94,7 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
     }
 
     fn finish(&mut self, degree: u32) -> Vec<(String, Vec<F>)> {
-        assert!(self.len() > 0);
+        assert!(self.len() <= degree);
         assert!(!self.finished, "submachine finish called twice");
         self.finished = true;
         self.trace.final_row_override();
@@ -104,13 +107,14 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
         }
         self.trace
             .take_cols()
-            .map(|(k, v)| (format!("{}::{}", self.namespace, k), v))
+            .map(|(k, v)| (format!("{}::{}", self.trace.namespace, k), v))
             .collect()
     }
 }
 
 /// Holds the submachine trace as a list of columns and a last row override
 struct SubmachineTrace<F: FieldElement> {
+    namespace: String,
     cols: HashMap<String, Vec<F>>,
     // the trace is circular, so for the first block, we can only set the
     // previous row after the whole trace is built
@@ -118,14 +122,18 @@ struct SubmachineTrace<F: FieldElement> {
 }
 
 impl<F: FieldElement> SubmachineTrace<F> {
-    fn new(cols: HashMap<String, Vec<F>>) -> Self {
+    fn new(namespace: &str, cols: HashMap<String, Vec<F>>) -> Self {
         SubmachineTrace {
+            namespace: namespace.to_string(),
             last_row_overrides: cols.keys().map(|n| (n.clone(), None)).collect(),
             cols,
         }
     }
 
     fn len(&self) -> u32 {
+        if self.cols.is_empty() {
+            return 0;
+        }
         self.cols.values().next().unwrap().len().try_into().unwrap()
     }
 
@@ -136,7 +144,7 @@ impl<F: FieldElement> SubmachineTrace<F> {
             *self
                 .cols
                 .get_mut(col)
-                .unwrap()
+                .unwrap_or_else(|| panic!("{} has no column {col}", self.namespace))
                 .get_mut(idx as usize)
                 .unwrap() = value;
         }
@@ -144,19 +152,32 @@ impl<F: FieldElement> SubmachineTrace<F> {
 
     /// set the value of a column in the current
     fn set_current_row(&mut self, col: &str, value: F) {
-        *self.cols.get_mut(col).unwrap().last_mut().unwrap() = value;
+        *self
+            .cols
+            .get_mut(col)
+            .unwrap_or_else(|| panic!("{} has no column {col}", self.namespace))
+            .last_mut()
+            .unwrap() = value;
     }
 
     /// set the value of a column in the last row of the complete trace
     fn set_final_row(&mut self, col: &str, value: F) {
-        *self.last_row_overrides.get_mut(col).unwrap() = Some(value);
+        *self
+            .last_row_overrides
+            .get_mut(col)
+            .unwrap_or_else(|| panic!("{} has no column {col}", self.namespace)) = Some(value);
     }
 
     /// apply saved updates to the last row of the trace
     fn final_row_override(&mut self) {
         for (col, value) in self.last_row_overrides.iter() {
             if let Some(value) = value {
-                *self.cols.get_mut(col).unwrap().last_mut().unwrap() = *value;
+                *self
+                    .cols
+                    .get_mut(col)
+                    .unwrap_or_else(|| panic!("{} has no column {col}", self.namespace))
+                    .last_mut()
+                    .unwrap() = *value;
             }
         }
     }
