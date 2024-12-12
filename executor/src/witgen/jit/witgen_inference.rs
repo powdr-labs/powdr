@@ -4,13 +4,13 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge, Identity,
-    LookupIdentity, PhantomLookupIdentity, PolyID, PolynomialIdentity, PolynomialType,
-    SelectedExpressions,
+    LookupIdentity, PermutationIdentity, PhantomBusInteractionIdentity, PhantomLookupIdentity,
+    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialType, SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    global_constraints::RangeConstraintSet, jit::affine_symbolic_expression::LookupArgument,
+    global_constraints::RangeConstraintSet, jit::affine_symbolic_expression::MachineCallArgument,
 };
 
 use super::{
@@ -63,13 +63,21 @@ impl<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> WitgenInference<'a, T,
             Identity::Lookup(LookupIdentity {
                 id, left, right, ..
             })
+            | Identity::Permutation(PermutationIdentity {
+                id, left, right, ..
+            })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity {
+                id, left, right, ..
+            })
             | Identity::PhantomLookup(PhantomLookupIdentity {
                 id, left, right, ..
             }) => self.process_lookup(*id, left, right, row_offset),
-            _ => {
-                // TODO
+            Identity::PhantomBusInteraction(_) => {
+                // TODO Once we have a concept of "can_be_answered", bus interactions
+                // should be as easy as lookups.
                 ProcessResult::empty()
             }
+            Identity::Connect(_) => ProcessResult::empty(),
         };
         self.ingest_effects(result.effects);
         result.complete
@@ -125,14 +133,14 @@ impl<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> WitgenInference<'a, T,
                         .filter(|e| e.try_to_known().is_none())
                         .collect_vec();
                     if unknown.len() == 1 && unknown[0].single_unknown_variable().is_some() {
-                        let effects = vec![Effect::Lookup(
+                        let effects = vec![Effect::MachineCall(
                             lookup_id,
                             lhs.into_iter()
                                 .map(|e| {
                                     if let Some(val) = e.try_to_known() {
-                                        LookupArgument::Known(val.clone())
+                                        MachineCallArgument::Known(val.clone())
                                     } else {
-                                        LookupArgument::Unknown(e)
+                                        MachineCallArgument::Unknown(e)
                                     }
                                 })
                                 .collect(),
@@ -160,9 +168,9 @@ impl<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> WitgenInference<'a, T,
                 Effect::RangeConstraint(cell, rc) => {
                     self.add_range_constraint(cell.clone(), rc.clone());
                 }
-                Effect::Lookup(_, arguments) => {
+                Effect::MachineCall(_, arguments) => {
                     for arg in arguments {
-                        if let LookupArgument::Unknown(expr) = arg {
+                        if let MachineCallArgument::Unknown(expr) = arg {
                             let cell = expr.single_unknown_variable().unwrap();
                             self.known_cells.insert(cell.clone());
                         }
@@ -219,12 +227,12 @@ impl<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> WitgenInference<'a, T,
                 .evaluate_challenge(challenge)?
                 .into(),
             Expression::Number(n) => (*n).into(),
-            Expression::BinaryOperation(op) => self.evaulate_binary_operation(op, offset)?,
+            Expression::BinaryOperation(op) => self.evaluate_binary_operation(op, offset)?,
             Expression::UnaryOperation(op) => self.evaluate_unary_operation(op, offset)?,
         })
     }
 
-    fn evaulate_binary_operation(
+    fn evaluate_binary_operation(
         &self,
         op: &AlgebraicBinaryOperation<T>,
         offset: i32,
@@ -317,13 +325,13 @@ mod test {
                         if *expected_equal { "==" } else { "!=" }
                     )
                 }
-                Effect::Lookup(id, args) => {
+                Effect::MachineCall(id, args) => {
                     format!(
                         "lookup({id}, [{}]);",
                         args.iter()
                             .map(|arg| match arg {
-                                LookupArgument::Known(k) => format!("Known({k})"),
-                                LookupArgument::Unknown(u) => format!("Unknown({u})"),
+                                MachineCallArgument::Known(k) => format!("Known({k})"),
+                                MachineCallArgument::Unknown(u) => format!("Unknown({u})"),
                             })
                             .join(", ")
                     )

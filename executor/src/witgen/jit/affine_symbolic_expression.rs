@@ -20,8 +20,8 @@ pub enum Effect<T: FieldElement, V> {
     RangeConstraint(V, RangeConstraint<T>),
     /// A run-time assertion. If this fails, we have conflicting constraints.
     Assertion(Assertion<T, V>),
-    /// a lookup / call to a different machine.
-    Lookup(u64, Vec<LookupArgument<T, V>>),
+    /// a call to a different machine.
+    MachineCall(u64, Vec<MachineCallArgument<T, V>>),
 }
 
 /// A run-time assertion. If this fails, we have conflicting constraints.
@@ -59,7 +59,7 @@ impl<T: FieldElement, V> Assertion<T, V> {
     }
 }
 
-pub enum LookupArgument<T: FieldElement, V> {
+pub enum MachineCallArgument<T: FieldElement, V> {
     Known(SymbolicExpression<T, V>),
     Unknown(AffineSymbolicExpression<T, V>),
 }
