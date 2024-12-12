@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::super::affine_expression::AffineExpression;
-use super::{Connection, EvalResult, FixedData};
+use super::{Connection, EvalResult, FixedData, LookupCell};
 use super::{Machine, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::data_structures::mutable_state::MutableState;
@@ -9,7 +9,7 @@ use crate::witgen::evaluators::fixed_evaluator::FixedEvaluator;
 use crate::witgen::evaluators::partial_expression_evaluator::PartialExpressionEvaluator;
 use crate::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use crate::witgen::rows::RowPair;
-use crate::witgen::{EvalValue, IncompleteCause, QueryCallback};
+use crate::witgen::{EvalError, EvalValue, IncompleteCause, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
 use num_traits::One;
@@ -195,6 +195,15 @@ fn check_constraint<T: FieldElement>(
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b MutableState<'a, T, Q>,
+        _identity_id: u64,
+        _values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup not supported by machine {}.", self.name())
+    }
+
     fn identity_ids(&self) -> Vec<u64> {
         self.rhs_references.keys().cloned().collect()
     }
