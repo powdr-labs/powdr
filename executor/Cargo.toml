@@ -15,6 +15,7 @@ powdr-parser-util.workspace = true
 powdr-pil-analyzer.workspace = true
 powdr-jit-compiler.workspace = true
 
+auto_enums = "0.8.5"
 itertools = "0.13"
 log = { version = "0.4.17" }
 rayon = "1.7.0"

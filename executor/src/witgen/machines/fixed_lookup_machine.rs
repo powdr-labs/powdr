@@ -234,7 +234,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
 
     fn process_range_check(
         &self,
-        rows: &RowPair<'_, 'a, T>,
+        rows: &RowPair<'_, '_, T>,
         lhs: &AffineExpression<AlgebraicVariable<'a>, T>,
         rhs: AlgebraicVariable<'a>,
     ) -> EvalResult<'a, T> {
@@ -317,9 +317,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         self.process_plookup_internal(mutable_state, identity_id, caller_rows, outer_query, right)
     }
 
-    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+    fn process_lookup_direct<'c, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b MutableState<'a, T, Q>,
+        _mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
