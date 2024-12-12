@@ -42,56 +42,9 @@ use memory::*;
 
 use crate::profiler::Profiler;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-/// Used to identify operations in the event log
-#[allow(non_camel_case_types)]
-enum MainInstruction {
-    set_reg,
-    get_reg,
-    affine,
-    mstore,
-    mstore_bootloader,
-    mload,
-    load_bootloader_input,
-    assert_bootloader_input,
-    load_label,
-    jump,
-    jump_dyn,
-    jump_to_bootloader_input,
-    branch_if_diff_nonzero,
-    branch_if_diff_equal,
-    skip_if_equal,
-    branch_if_diff_greater_than,
-    is_diff_greater_than,
-    is_equal_zero,
-    is_not_equal,
-    add_wrap,
-    wrap16,
-    sub_wrap_with_offset,
-    sign_extend_byte,
-    sign_extend_16_bits,
-    to_signed,
-    divremu,
-    mul,
-    and,
-    or,
-    xor,
-    shl,
-    shr,
-    invert_gl,
-    split_gl,
-    poseidon_gl,
-    poseidon2_gl,
-    affine_256,
-    mod_256,
-    ec_add,
-    ec_double,
-    commit_public,
-}
-
 // TODO: we don't do anything with these yet. Idea is to keep info that is to be given to witgen
 #[allow(unused)]
-struct MainOp<F: FieldElement>(MainInstruction, u32, Vec<F>);
+struct MainOp<F: FieldElement>(&'static str, u32, Vec<F>);
 
 #[derive(Debug)]
 struct SubmachineOp<F: FieldElement> {
@@ -458,8 +411,8 @@ mod builder {
     use powdr_number::FieldElement;
 
     use crate::{
-        BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MachineInstance, MainInstruction,
-        MainOp, MemOperation, MemOperationKind, MemoryMachine, MemoryState, PoseidonGlMachine,
+        BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MachineInstance, MainOp,
+        MemOperation, MemOperationKind, MemoryMachine, MemoryState, PoseidonGlMachine,
         PublicsMachine, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine, Submachine,
         SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
     };
@@ -628,7 +581,7 @@ mod builder {
             }
         }
 
-        pub(crate) fn main_op(&mut self, ev: MainInstruction, pc: u32, args: Vec<F>) {
+        pub(crate) fn main_op(&mut self, ev: &'static str, pc: u32, args: Vec<F>) {
             if let ExecMode::Trace = self.mode {
                 self.trace.main_ops.push(MainOp(ev, pc, args));
             }
@@ -1196,7 +1149,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         macro_rules! main_op {
             ($insn:ident, $($args:expr),*) => {
                 self.proc
-                    .main_op(MainInstruction::$insn, self.proc.get_pc().u(), vec![$($args, )*])
+                    .main_op(stringify!($insn), self.proc.get_pc().u(), vec![$($args, )*])
             };
         }
 
