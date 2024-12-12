@@ -134,7 +134,7 @@ fn build_poly_id_to_definition_name_lookup(
                 .array_elements()
                 .enumerate()
                 .for_each(|(idx, (_, id))| {
-                    let array_pos = if symbol.is_array() { Some(idx) } else { None };
+                    let array_pos = symbol.is_array().then_some(idx);
                     poly_id_to_definition_name.insert(id, (name, array_pos));
                 });
         }
