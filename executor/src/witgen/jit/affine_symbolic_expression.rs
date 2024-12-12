@@ -20,6 +20,8 @@ pub enum Effect<T: FieldElement, V> {
     RangeConstraint(V, RangeConstraint<T>),
     /// A run-time assertion. If this fails, we have conflicting constraints.
     Assertion(Assertion<T, V>),
+    /// a call to a different machine.
+    MachineCall(u64, Vec<MachineCallArgument<T, V>>),
 }
 
 /// A run-time assertion. If this fails, we have conflicting constraints.
@@ -54,6 +56,32 @@ impl<T: FieldElement, V> Assertion<T, V> {
             rhs,
             expected_equal: false,
         })
+    }
+}
+
+pub enum MachineCallArgument<T: FieldElement, V> {
+    Known(SymbolicExpression<T, V>),
+    Unknown(AffineSymbolicExpression<T, V>),
+}
+
+#[derive(Default)]
+pub struct ProcessResult<T: FieldElement, V> {
+    pub effects: Vec<Effect<T, V>>,
+    pub complete: bool,
+}
+
+impl<T: FieldElement, V> ProcessResult<T, V> {
+    pub fn empty() -> Self {
+        Self {
+            effects: vec![],
+            complete: false,
+        }
+    }
+    pub fn complete(effects: Vec<Effect<T, V>>) -> Self {
+        Self {
+            effects,
+            complete: true,
+        }
     }
 }
 
@@ -134,6 +162,15 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
         }
     }
 
+    /// If this expression contains a single unknown variable, returns it.
+    pub fn single_unknown_variable(&self) -> Option<&V> {
+        if self.coefficients.len() == 1 {
+            self.coefficients.keys().next()
+        } else {
+            None
+        }
+    }
+
     /// Tries to multiply this expression with another one.
     /// Returns `None` if the result would be quadratic, i.e.
     /// if both expressions contain unknown variables.
@@ -148,15 +185,17 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
 
     /// Solves the equation `self = 0` and returns how to compute the solution.
     /// The solution can contain assignments to multiple variables.
-    /// If no way to solve the equation has been found, returns the empty vector.
+    /// If no way to solve the equation (and no way to derive new range
+    /// constraints) has been found, but it still contains
+    /// unknown variables, returns an empty, incomplete result.
     /// If the equation is known to be unsolvable, returns an error.
-    pub fn solve(&self) -> Result<Vec<Effect<T, V>>, EvalError<T>> {
+    pub fn solve(&self) -> Result<ProcessResult<T, V>, EvalError<T>> {
         Ok(match self.coefficients.len() {
             0 => {
                 if self.offset.is_known_nonzero() {
                     return Err(EvalError::ConstraintUnsatisfiable(self.to_string()));
                 } else {
-                    vec![]
+                    ProcessResult::complete(vec![])
                 }
             }
             1 => {
@@ -169,35 +208,40 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
                 if coeff.is_known_nonzero() {
                     // In this case, we can always compute a solution.
                     let value = self.offset.field_div(&-coeff);
-                    vec![Effect::Assignment(var.clone(), value)]
+                    ProcessResult::complete(vec![Effect::Assignment(var.clone(), value)])
                 } else if self.offset.is_known_nonzero() {
                     // If the offset is not zero, then the coefficient must be non-zero,
                     // otherwise the constraint is violated.
                     let value = self.offset.field_div(&-coeff);
-                    vec![
+                    ProcessResult::complete(vec![
                         Assertion::assert_is_nonzero(coeff.clone()),
                         Effect::Assignment(var.clone(), value),
-                    ]
+                    ])
                 } else {
                     // If this case, we could have an equation of the form
                     // 0 * X = 0, which is valid and generates no information about X.
-                    vec![]
+                    ProcessResult::empty()
                 }
             }
             _ => {
                 let r = self.solve_bit_decomposition();
-                if !r.is_empty() {
+                if r.complete {
                     r
                 } else {
                     let negated = -self;
                     let r = negated.solve_bit_decomposition();
-                    if !r.is_empty() {
+                    if r.complete {
                         r
                     } else {
-                        self.transfer_constraints()
+                        let effects = self
+                            .transfer_constraints()
                             .into_iter()
                             .chain(negated.transfer_constraints())
-                            .collect()
+                            .collect();
+                        ProcessResult {
+                            effects,
+                            complete: false,
+                        }
                     }
                 }
             }
@@ -205,7 +249,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
     }
 
     /// Tries to solve a bit-decomposition equation.
-    fn solve_bit_decomposition(&self) -> Vec<Effect<T, V>> {
+    fn solve_bit_decomposition(&self) -> ProcessResult<T, V> {
         // All the coefficients need to be known numbers and the
         // variables need to be range-constrained.
         let constrained_coefficients = self
@@ -218,7 +262,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             })
             .collect::<Option<Vec<_>>>();
         let Some(constrained_coefficients) = constrained_coefficients else {
-            return vec![];
+            return ProcessResult::empty();
         };
 
         // Check if they are mutually exclusive and compute assignments.
@@ -228,7 +272,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             let mask = *constraint.multiple(coeff).mask();
             if !(mask & covered_bits).is_zero() {
                 // Overlapping range constraints.
-                return vec![];
+                return ProcessResult::empty();
             } else {
                 covered_bits |= mask;
             }
@@ -240,26 +284,26 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
         }
 
         if covered_bits >= T::modulus() {
-            return vec![];
+            return ProcessResult::empty();
         }
 
-        // We need to assert that the masks cover the offset,
+        // We need to assert that the masks cover "-offset",
         // otherwise the equation is not solvable.
-        // We assert offset & !masks == 0 <=> offset == offset | masks.
+        // We assert -offset & !masks == 0 <=> -offset == -offset | masks.
         // We use the latter since we cannot properly bit-negate inside the field.
         effects.push(Assertion::assert_eq(
-            self.offset.clone(),
-            &self.offset | &T::from(covered_bits).into(),
+            -&self.offset,
+            -&self.offset | T::from(covered_bits).into(),
         ));
 
-        effects
+        ProcessResult::complete(effects)
     }
 
-    fn transfer_constraints(&self) -> Vec<Effect<T, V>> {
+    fn transfer_constraints(&self) -> Option<Effect<T, V>> {
         // We are looking for X = a * Y + b * Z + ... or -X = a * Y + b * Z + ...
         // where X is least constrained.
 
-        let Some((solve_for, solve_for_coefficient)) = self
+        let (solve_for, solve_for_coefficient) = self
             .coefficients
             .iter()
             .filter(|(_var, coeff)| coeff.is_known_one() || coeff.is_known_minus_one())
@@ -269,13 +313,10 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
                     .get(var)
                     .map(|c| c.range_width())
                     .unwrap_or_else(|| T::modulus())
-            })
-        else {
-            return vec![];
-        };
+            })?;
 
         // This only works if the coefficients are all known.
-        let Some(summands) = self
+        let summands = self
             .coefficients
             .iter()
             .filter(|(var, _)| *var != solve_for)
@@ -285,19 +326,14 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
                 Some(rc.multiple(coeff))
             })
             .chain(std::iter::once(self.offset.range_constraint()))
-            .collect::<Option<Vec<_>>>()
-        else {
-            return vec![];
-        };
-        let Some(constraint) = summands.into_iter().reduce(|c1, c2| c1.combine_sum(&c2)) else {
-            return vec![];
-        };
+            .collect::<Option<Vec<_>>>()?;
+        let constraint = summands.into_iter().reduce(|c1, c2| c1.combine_sum(&c2))?;
         let constraint = if solve_for_coefficient.is_known_one() {
             -constraint
         } else {
             constraint
         };
-        vec![Effect::RangeConstraint(solve_for.clone(), constraint)]
+        Some(Effect::RangeConstraint(solve_for.clone(), constraint))
     }
 }
 
@@ -394,6 +430,8 @@ impl<T: FieldElement, V: Clone + Ord> Mul<&SymbolicExpression<T, V>>
 
 #[cfg(test)]
 mod test {
+    use pretty_assertions::assert_eq;
+
     use powdr_number::GoldilocksField;
 
     use super::*;
@@ -419,8 +457,9 @@ mod test {
         let x = &Ase::from_known_symbol("X", None);
         let y = &Ase::from_known_symbol("Y", None);
         let constr = x + y - from_number(10);
-        // We cannot solve it but also cannot know it is unsolvable.
-        assert!(constr.solve().unwrap().is_empty());
+        // We cannot solve it, but we can also not learn anything new from it.
+        let result = constr.solve().unwrap();
+        assert!(result.complete && result.effects.is_empty());
         // But if we know the values, we can be sure there is a conflict.
         assert!(from_number(10).solve().is_err());
     }
@@ -428,7 +467,8 @@ mod test {
     #[test]
     fn solvable_without_vars() {
         let constr = &from_number(0);
-        assert!(constr.solve().unwrap().is_empty());
+        let result = constr.solve().unwrap();
+        assert!(result.complete && result.effects.is_empty());
     }
 
     #[test]
@@ -440,9 +480,10 @@ mod test {
         let seven = from_number(7);
         let ten = from_number(10);
         let constr = mul(&two, &x) + mul(&seven, &y) - ten;
-        let effects = constr.solve().unwrap();
-        assert_eq!(effects.len(), 1);
-        let Effect::Assignment(var, expr) = &effects[0] else {
+        let result = constr.solve().unwrap();
+        assert!(result.complete);
+        assert_eq!(result.effects.len(), 1);
+        let Effect::Assignment(var, expr) = &result.effects[0] else {
             panic!("Expected assignment");
         };
         assert_eq!(var.to_string(), "X");
@@ -459,12 +500,14 @@ mod test {
         let ten = from_number(10);
         let constr = mul(&z, &x) + mul(&seven, &y) - ten.clone();
         // If we do not range-constrain z, we cannot solve since we don't know if it might be zero.
-        let effects = constr.solve().unwrap();
-        assert_eq!(effects.len(), 0);
+        let result = constr.solve().unwrap();
+        assert!(!result.complete && result.effects.is_empty());
         let z =
             Ase::from_known_symbol("z", Some(RangeConstraint::from_range(10.into(), 20.into())));
         let constr = mul(&z, &x) + mul(&seven, &y) - ten;
-        let effects = constr.solve().unwrap();
+        let result = constr.solve().unwrap();
+        assert!(result.complete);
+        let effects = result.effects;
         let Effect::Assignment(var, expr) = &effects[0] else {
             panic!("Expected assignment");
         };
@@ -488,7 +531,8 @@ mod test {
             + ten.clone()
             + z.clone();
         // Without range constraints, this is not solvable.
-        assert!(constr.solve().unwrap().is_empty());
+        let result = constr.solve().unwrap();
+        assert!(!result.complete && result.effects.is_empty());
         // Now add the range constraint on a, it should be solvable.
         let a = Ase::from_unknown_variable("a", rc.clone());
         let constr = mul(&a, &from_number(0x100))
@@ -496,9 +540,10 @@ mod test {
             + mul(&c, &from_number(0x1000000))
             + ten.clone()
             + z;
-        let effects = constr
-            .solve()
-            .unwrap()
+        let result = constr.solve().unwrap();
+        assert!(result.complete);
+        let effects = result
+            .effects
             .into_iter()
             .map(|effect| match effect {
                 Effect::Assignment(v, expr) => format!("{v} = {expr};\n"),
@@ -521,7 +566,7 @@ mod test {
             "a = ((-(10 + Z) & 65280) // 256);
 b = ((-(10 + Z) & 16711680) // 65536);
 c = ((-(10 + Z) & 4278190080) // 16777216);
-assert (10 + Z) == ((10 + Z) | 4294967040);
+assert -(10 + Z) == (-(10 + Z) | 4294967040);
 "
         );
     }
@@ -540,9 +585,10 @@ assert (10 + Z) == ((10 + Z) | 4294967040);
             + mul(&c, &from_number(0x1000000))
             + ten
             - z;
-        let effects = constr
-            .solve()
-            .unwrap()
+        let result = constr.solve().unwrap();
+        assert!(!result.complete);
+        let effects = result
+            .effects
             .into_iter()
             .map(|effect| match effect {
                 Effect::RangeConstraint(v, rc) => format!("{v}: {rc};\n"),
