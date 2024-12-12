@@ -300,12 +300,14 @@ pub trait ReferenceEvaluator<T: FieldElement> {
 mod test {
     use std::{fs, str::from_utf8};
 
+    use pretty_assertions::assert_eq;
+
     use powdr_ast::analyzed::Analyzed;
     use powdr_number::GoldilocksField;
 
     use crate::{
         constant_evaluator,
-        witgen::{jit::affine_symbolic_expression::Assertion, FixedData},
+        witgen::{global_constraints, jit::affine_symbolic_expression::Assertion, FixedData},
     };
 
     use super::*;
@@ -362,6 +364,8 @@ mod test {
             powdr_pil_analyzer::analyze_string(input).unwrap();
         let fixed_col_vals = constant_evaluator::generate(&analyzed);
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
+        let (fixed_data, retained_identities) =
+            global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
         let known_cells = known_cells.iter().map(|(name, row_offset)| {
             let id = fixed_data.try_column_by_name(name).unwrap().id;
             Cell {
@@ -374,14 +378,17 @@ mod test {
         let ref_eval = ReferenceEvaluatorForFixedData(&fixed_data);
         let mut witgen = WitgenInference::new(&fixed_data, ref_eval, known_cells);
         let mut complete = HashSet::new();
-        while complete.len() != analyzed.identities.len() * rows.len() {
+        let mut counter = 0;
+        while complete.len() != retained_identities.len() * rows.len() {
+            counter += 1;
             for row in rows {
-                for id in analyzed.identities.iter() {
+                for id in retained_identities.iter() {
                     if !complete.contains(&(id.id(), *row)) && witgen.process_identity(id, *row) {
                         complete.insert((id.id(), *row));
                     }
                 }
             }
+            assert!(counter < 10000, "Solving took more than 10000 rounds.");
         }
         format_code(&witgen.code())
     }
@@ -429,6 +436,76 @@ Fib::x[3] = 3;
 Fib::y[3] = 5;
 Fib::x[4] = 5;
 Fib::y[4] = 8;"
+        );
+    }
+
+    #[test]
+    fn xor() {
+        let input = "
+namespace Xor(256 * 256);
+    let latch: col = |i| { if (i % 4) == 3 { 1 } else { 0 } };
+    let FACTOR: col = |i| { 1 << (((i + 1) % 4) * 8) };
+
+    let a: int -> int = |i| i % 256;
+    let b: int -> int = |i| (i / 256) % 256;
+    let P_A: col = a;
+    let P_B: col = b;
+    let P_C: col = |i| a(i) ^ b(i);
+
+    let A_byte;
+    let B_byte;
+    let C_byte;
+
+    [ A_byte, B_byte, C_byte ] in [ P_A, P_B, P_C ];
+
+    let A;
+    let B;
+    let C;
+
+    A' = A * (1 - latch) + A_byte * FACTOR;
+    B' = B * (1 - latch) + B_byte * FACTOR;
+    C' = C * (1 - latch) + C_byte * FACTOR;
+";
+        let code = solve_on_rows(
+            &input,
+            // Use the second block to avoid wrap-around.
+            &[3, 4, 5, 6, 7],
+            vec![
+                ("Xor::A", 7),
+                ("Xor::C", 7), // We solve it in reverse, just for fun.
+            ],
+        );
+        assert_eq!(
+            code,
+            "\
+Xor::A_byte[6] = ((Xor::A[7] & 4278190080) // 16777216);
+Xor::A[6] = (Xor::A[7] & 16777215);
+assert Xor::A[7] == (Xor::A[7] | 4294967295);
+Xor::C_byte[6] = ((Xor::C[7] & 4278190080) // 16777216);
+Xor::C[6] = (Xor::C[7] & 16777215);
+assert Xor::C[7] == (Xor::C[7] | 4294967295);
+Xor::A_byte[5] = ((Xor::A[6] & 16711680) // 65536);
+Xor::A[5] = (Xor::A[6] & 65535);
+assert Xor::A[6] == (Xor::A[6] | 16777215);
+Xor::C_byte[5] = ((Xor::C[6] & 16711680) // 65536);
+Xor::C[5] = (Xor::C[6] & 65535);
+assert Xor::C[6] == (Xor::C[6] | 16777215);
+lookup(0, [Known(Xor::A_byte[6]), Unknown(Xor::B_byte[6]), Known(Xor::C_byte[6])]);
+Xor::A_byte[4] = (65280 // 256);
+Xor::A[4] = 255;
+assert 65535 == 65535;
+Xor::C_byte[4] = (65280 // 256);
+Xor::C[4] = 255;
+assert 65535 == 65535;
+lookup(0, [Known(Xor::A_byte[5]), Unknown(Xor::B_byte[5]), Known(Xor::C_byte[5])]);
+Xor::A_byte[3] = 255;
+Xor::C_byte[3] = 255;
+lookup(0, [Known(Xor::A_byte[4]), Unknown(Xor::B_byte[4]), Known(Xor::C_byte[4])]);
+lookup(0, [Known(255), Unknown(Xor::B_byte[3]), Known(255)]);
+Xor::B[4] = Xor::B_byte[3];
+Xor::B[5] = (Xor::B[4] + (Xor::B_byte[4] * 256));
+Xor::B[6] = (Xor::B[5] + (Xor::B_byte[5] * 65536));
+Xor::B[7] = (Xor::B[6] + (Xor::B_byte[6] * 16777216));"
         );
     }
 }

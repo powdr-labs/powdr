@@ -286,13 +286,13 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             return ProcessResult::empty();
         }
 
-        // We need to assert that the masks cover the offset,
+        // We need to assert that the masks cover "-offset",
         // otherwise the equation is not solvable.
-        // We assert offset & !masks == 0 <=> offset == offset | masks.
+        // We assert -offset & !masks == 0 <=> -offset == -offset | masks.
         // We use the latter since we cannot properly bit-negate inside the field.
         effects.push(Assertion::assert_eq(
-            self.offset.clone(),
-            &self.offset | &T::from(covered_bits).into(),
+            -&self.offset,
+            -&self.offset | T::from(covered_bits).into(),
         ));
 
         ProcessResult::complete(effects)
@@ -429,6 +429,8 @@ impl<T: FieldElement, V: Clone + Ord> Mul<&SymbolicExpression<T, V>>
 
 #[cfg(test)]
 mod test {
+    use pretty_assertions::assert_eq;
+
     use powdr_number::GoldilocksField;
 
     use super::*;
@@ -562,7 +564,7 @@ mod test {
             "a = ((-(10 + Z) & 65280) // 256);
 b = ((-(10 + Z) & 16711680) // 65536);
 c = ((-(10 + Z) & 4278190080) // 16777216);
-assert (10 + Z) == ((10 + Z) | 4294967040);
+assert -(10 + Z) == (-(10 + Z) | 4294967040);
 "
         );
     }
