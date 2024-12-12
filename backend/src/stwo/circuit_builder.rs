@@ -1,58 +1,68 @@
 use num_traits::Zero;
+use powdr_ast::parsed::visitor::AllChildren;
+use std::collections::HashSet;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
+use std::sync::Arc;
 
 extern crate alloc;
-use alloc::{collections::btree_map::BTreeMap, string::String, vec::Vec};
+use alloc::collections::btree_map::BTreeMap;
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Analyzed, Identity,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+    Analyzed, Identity,
 };
 use powdr_number::{FieldElement, LargeInt};
-use std::sync::Arc;
 
 use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
 };
-use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
-use stwo_prover::core::backend::ColumnOps;
+use stwo_prover::constraint_framework::preprocessed_columns::PreprocessedColumn;
+use stwo_prover::constraint_framework::{
+    EvalAtRow, FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX,
+};
+use stwo_prover::core::backend::{Column, ColumnOps};
 use stwo_prover::core::fields::m31::{BaseField, M31};
 use stwo_prover::core::fields::{ExtensionOf, FieldExpOps, FieldOps};
-use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
+use stwo_prover::core::poly::circle::{CircleDomain, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
-use stwo_prover::core::ColumnVec;
+use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 
 pub type PowdrComponent<'a, F> = FrameworkComponent<PowdrEval<F>>;
 
-pub(crate) fn gen_stwo_circuit_trace<T, B, F>(
-    witness: &[(String, Vec<T>)],
-) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>
+pub fn gen_stwo_circle_column<T, B, F>(
+    domain: CircleDomain,
+    slice: &[T],
+) -> CircleEvaluation<B, BaseField, BitReversedOrder>
 where
-    T: FieldElement, //only Merenne31Field is supported, checked in runtime
-    B: FieldOps<M31> + ColumnOps<F>, // Ensure B implements FieldOps for M31
+    T: FieldElement,
+    B: FieldOps<M31> + ColumnOps<F>,
+
     F: ExtensionOf<BaseField>,
 {
     assert!(
-        witness
-            .iter()
-            .all(|(_name, vec)| vec.len() == witness[0].1.len()),
-        "All Vec<T> in witness must have the same length. Mismatch found!"
+        slice.len().ilog2() == domain.size().ilog2(),
+        "column size must be equal to domain size"
     );
-    let domain = CanonicCoset::new(witness[0].1.len().ilog2()).circle_domain();
-    witness
-        .iter()
-        .map(|(_name, values)| {
-            let values = values
-                .iter()
-                .map(|v| v.try_into_i32().unwrap().into())
-                .collect();
-            CircleEvaluation::new(domain, values)
-        })
-        .collect()
+    let mut column: <B as ColumnOps<M31>>::Column =
+        <B as ColumnOps<M31>>::Column::zeros(slice.len());
+    slice.iter().enumerate().for_each(|(i, v)| {
+        column.set(
+            bit_reverse_index(
+                coset_index_to_circle_domain_index(i, slice.len().ilog2()),
+                slice.len().ilog2(),
+            ),
+            v.try_into_i32().unwrap().into(),
+        );
+    });
+
+    CircleEvaluation::new(domain, column)
 }
 
 pub struct PowdrEval<T> {
     analyzed: Arc<Analyzed<T>>,
     witness_columns: BTreeMap<PolyID, usize>,
+    constant_shifted: BTreeMap<PolyID, usize>,
+    constant_columns: BTreeMap<PolyID, usize>,
 }
 
 impl<T: FieldElement> PowdrEval<T> {
@@ -64,9 +74,28 @@ impl<T: FieldElement> PowdrEval<T> {
             .map(|(index, (_, id))| (id, index))
             .collect();
 
+        let constant_with_next_list = get_constant_with_next_list(&analyzed);
+
+        let constant_shifted: BTreeMap<PolyID, usize> = analyzed
+            .definitions_in_source_order(PolynomialType::Constant)
+            .flat_map(|(symbol, _)| symbol.array_elements())
+            .enumerate()
+            .filter(|(_, (name, _))| constant_with_next_list.contains(name))
+            .map(|(index, (_, id))| (id, index))
+            .collect();
+
+        let constant_columns: BTreeMap<PolyID, usize> = analyzed
+            .definitions_in_source_order(PolynomialType::Constant)
+            .flat_map(|(symbol, _)| symbol.array_elements())
+            .enumerate()
+            .map(|(index, (_, id))| (id, index))
+            .collect();
+
         Self {
             analyzed,
             witness_columns,
+            constant_shifted,
+            constant_columns,
         }
     }
 }
@@ -80,14 +109,46 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         assert!(
-            self.analyzed.constant_count() == 0 && self.analyzed.publics_count() == 0,
-            "Error: Expected no fixed columns nor public inputs, as they are not supported yet.",
+            self.analyzed.publics_count() == 0,
+            "Error: Expected no public inputs, as they are not supported yet.",
         );
 
         let witness_eval: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
             .witness_columns
             .keys()
-            .map(|poly_id| (*poly_id, eval.next_interaction_mask(0, [0, 1])))
+            .map(|poly_id| {
+                (
+                    *poly_id,
+                    eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, 1]),
+                )
+            })
+            .collect();
+
+        let constant_eval: BTreeMap<_, _> = self
+            .constant_columns
+            .keys()
+            .enumerate()
+            .map(|(i, poly_id)| {
+                (
+                    *poly_id,
+                    // PreprocessedColumn::Plonk(i) is unused argument in get_preprocessed_column
+                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(i)),
+                )
+            })
+            .collect();
+
+        let constant_shifted_eval: BTreeMap<_, _> = self
+            .constant_shifted
+            .keys()
+            .enumerate()
+            .map(|(i, poly_id)| {
+                (
+                    *poly_id,
+                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(
+                        i + constant_eval.len(),
+                    )),
+                )
+            })
             .collect();
 
         for id in self
@@ -96,7 +157,12 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
         {
             match id {
                 Identity::Polynomial(identity) => {
-                    let expr = to_stwo_expression(&identity.expression, &witness_eval);
+                    let expr = to_stwo_expression(
+                        &identity.expression,
+                        &witness_eval,
+                        &constant_shifted_eval,
+                        &constant_eval,
+                    );
                     eval.add_constraint(expr);
                 }
                 Identity::Connect(..) => {
@@ -120,6 +186,8 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
 fn to_stwo_expression<T: FieldElement, F>(
     expr: &AlgebraicExpression<T>,
     witness_eval: &BTreeMap<PolyID, [F; 2]>,
+    constant_shifted_eval: &BTreeMap<PolyID, F>,
+    constant_eval: &BTreeMap<PolyID, F>,
 ) -> F
 where
     F: FieldExpOps
@@ -145,9 +213,10 @@ where
                     false => witness_eval[&poly_id][0].clone(),
                     true => witness_eval[&poly_id][1].clone(),
                 },
-                PolynomialType::Constant => {
-                    unimplemented!("Constant polynomials are not supported in stwo yet")
-                }
+                PolynomialType::Constant => match r.next {
+                    false => constant_eval[&poly_id].clone(),
+                    true => constant_shifted_eval[&poly_id].clone(),
+                },
                 PolynomialType::Intermediate => {
                     unimplemented!("Intermediate polynomials are not supported in stwo yet")
                 }
@@ -163,15 +232,17 @@ where
             right,
         }) => match **right {
             AlgebraicExpression::Number(n) => {
-                let left = to_stwo_expression(left, witness_eval);
+                let left =
+                    to_stwo_expression(left, witness_eval, constant_shifted_eval, constant_eval);
                 (0u32..n.to_integer().try_into_u32().unwrap())
                     .fold(F::one(), |acc, _| acc * left.clone())
             }
             _ => unimplemented!("pow with non-constant exponent"),
         },
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let left = to_stwo_expression(left, witness_eval);
-            let right = to_stwo_expression(right, witness_eval);
+            let left = to_stwo_expression(left, witness_eval, constant_shifted_eval, constant_eval);
+            let right =
+                to_stwo_expression(right, witness_eval, constant_shifted_eval, constant_eval);
 
             match op {
                 Add => left + right,
@@ -181,7 +252,7 @@ where
             }
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-            let expr = to_stwo_expression(expr, witness_eval);
+            let expr = to_stwo_expression(expr, witness_eval, constant_shifted_eval, constant_eval);
 
             match op {
                 AlgebraicUnaryOperator::Minus => -expr,
@@ -191,4 +262,23 @@ where
             unimplemented!("challenges are not supported in stwo yet")
         }
     }
+}
+
+// This function creates a list of the names of the constant polynomials that have next references constraint
+pub fn get_constant_with_next_list<T: FieldElement>(analyzed: &Analyzed<T>) -> HashSet<&String> {
+    let mut constant_with_next_list: HashSet<&String> = HashSet::new();
+    analyzed.all_children().for_each(|e| {
+        if let AlgebraicExpression::Reference(AlgebraicReference {
+            name,
+            poly_id,
+            next,
+        }) = e
+        {
+            if matches!(poly_id.ptype, PolynomialType::Constant) && *next {
+                // add the name of the constant polynomial to the list
+                constant_with_next_list.insert(name);
+            }
+        };
+    });
+    constant_with_next_list
 }

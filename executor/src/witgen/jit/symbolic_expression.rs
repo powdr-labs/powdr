@@ -286,7 +286,7 @@ impl<T: FieldElement, V: Clone> BitAnd for &SymbolicExpression<T, V> {
                 Rc::new(rhs.clone()),
                 self.range_constraint()
                     .zip(rhs.range_constraint())
-                    .map(|(a, b)| a.conjunction(&b)),
+                    .map(|(a, b)| RangeConstraint::from_mask(*a.mask() & *b.mask())),
             )
         }
     }
@@ -317,7 +317,9 @@ impl<T: FieldElement, V: Clone> BitOr for &SymbolicExpression<T, V> {
                 Rc::new(self.clone()),
                 BinaryOperator::BitOr,
                 Rc::new(rhs.clone()),
-                None,
+                self.range_constraint()
+                    .zip(rhs.range_constraint())
+                    .map(|(a, b)| RangeConstraint::from_mask(*a.mask() | *b.mask())),
             )
         }
     }
