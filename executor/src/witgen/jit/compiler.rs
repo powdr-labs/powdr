@@ -13,15 +13,16 @@ use super::{
     symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
 };
 
+#[repr(C)]
 pub struct WitgenFunctionParams<T> {
     data: *mut T,
     known: *mut u32,
     len: u64,
     row_offset: u64,
+    call_machine: fn(u64, &mut [LookupCell<'_, T>]) -> bool,
 }
 
-pub type WitgenFunction<T> =
-    extern "C" fn(WitgenFunctionParams<T>, fn(u64, &mut [LookupCell<'_, T>]) -> bool);
+pub type WitgenFunction<T> = extern "C" fn(WitgenFunctionParams<T>);
 
 pub fn compile_effects<T: FieldElement>(
     first_column_id: u64,
@@ -76,9 +77,8 @@ extern "C" fn {fun_name}(
         known,
         len,
         row_offset,
+        call_machine
     }}: WitgenFunctionParams,
-    _mutable_state: *const c_void,
-    _call_machine: fn(*const c_void, u64, &mut [LookupCell<'_, FieldElement>]) -> bool
 ) {{
     let data: &mut [FieldElement] = unsafe {{ std::slice::from_raw_parts_mut(data as *mut FieldElement, len as usize) }};
 {assign_inputs}
@@ -306,6 +306,7 @@ struct WitgenFunctionParams {{
     known: *mut u32,
     len: u64,
     row_offset: u64,
+    call_machine: fn(u64, &mut [LookupCell<'_, FieldElement>]) -> bool,
 }}
     "#
     ))
@@ -327,28 +328,20 @@ mod tests {
         }
     }
 
+    fn cell(column_name: &str, id: u64, row_offset: i32) -> Cell {
+        Cell {
+            column_name: column_name.to_string(),
+            row_offset,
+            id,
+        }
+    }
+
     #[test]
     fn simple_effects() {
-        let a0 = Cell {
-            id: 2,
-            column_name: "a".to_string(),
-            row_offset: 0,
-        };
-        let x0 = Cell {
-            id: 0,
-            column_name: "x".to_string(),
-            row_offset: 0,
-        };
-        let ym1 = Cell {
-            id: 1,
-            column_name: "y".to_string(),
-            row_offset: -1,
-        };
-        let yp1 = Cell {
-            id: 1,
-            column_name: "y".to_string(),
-            row_offset: 1,
-        };
+        let a0 = cell("a", 2, 0);
+        let x0 = cell("x", 0, 0);
+        let ym1 = cell("y", 1, -1);
+        let yp1 = cell("y", 1, 1);
         let effects = vec![
             Effect::Assignment(
                 x0.clone(),
@@ -380,8 +373,8 @@ extern \"C\" fn witgen(
         known,
         len,
         row_offset,
+        call_machine
     }: WitgenFunctionParams,
-    _call_machine: fn(u64, &mut [LookupCell<'_, FieldElement>]) -> bool
 ) {
     let data: &mut [FieldElement] = unsafe { std::slice::from_raw_parts_mut(data as *mut FieldElement, len as usize) };
     let a_d0 = get(data, row_offset, 0, 2);
