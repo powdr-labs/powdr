@@ -52,22 +52,23 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
     /// Call the machine responsible for the right-hand-side of an identity given its ID
     /// and the row pair of the caller.
     pub fn call(&self, identity_id: u64, caller_rows: &RowPair<'_, 'a, T>) -> EvalResult<'a, T> {
-        self.responsible_machne(identity_id)?
+        self.responsible_machine(identity_id)?
             .process_plookup_timed(self, identity_id, caller_rows)
     }
 
     /// Call the machine responsible for the right-hand-side of an identity given its ID,
     /// use the direct interface.
+    #[allow(unused)]
     pub fn call_direct(
         &self,
         identity_id: u64,
         values: &mut [LookupCell<'_, T>],
     ) -> Result<bool, EvalError<T>> {
-        self.responsible_machne(identity_id)?
+        self.responsible_machine(identity_id)?
             .process_lookup_direct_timed(self, identity_id, values)
     }
 
-    fn responsible_machne(
+    fn responsible_machine(
         &self,
         identity_id: u64,
     ) -> Result<RefMut<KnownMachine<'a, T>>, EvalError<T>> {
