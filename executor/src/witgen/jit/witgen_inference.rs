@@ -3,8 +3,9 @@ use std::collections::{HashMap, HashSet};
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
-    PhantomLookupIdentity, PolyID, PolynomialIdentity, PolynomialType, SelectedExpressions,
+    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge, Identity,
+    LookupIdentity, PhantomLookupIdentity, PolyID, PolynomialIdentity, PolynomialType,
+    SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
@@ -20,20 +21,23 @@ use super::{
 
 /// This component can generate code that solves identities.
 /// It needs a driver that tells it which identities to process on which rows.
-pub struct WitgenInference<'a, T: FieldElement> {
+pub struct WitgenInference<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> {
     fixed_data: &'a FixedData<'a, T>,
+    reference_evaluator: RefEval,
     range_constraints: HashMap<Cell, RangeConstraint<T>>,
     known_cells: HashSet<Cell>,
     code: Vec<Effect<T, Cell>>,
 }
 
-impl<'a, T: FieldElement> WitgenInference<'a, T> {
+impl<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> WitgenInference<'a, T, RefEval> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
+        reference_evaluator: RefEval,
         known_cells: impl IntoIterator<Item = Cell>,
     ) -> Self {
         Self {
             fixed_data,
+            reference_evaluator,
             range_constraints: Default::default(),
             known_cells: known_cells.into_iter().collect(),
             code: Default::default(),
@@ -57,21 +61,11 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
                 self.process_polynomial_identity(expression, row_offset)
             }
             Identity::Lookup(LookupIdentity {
-                id,
-                source: _,
-                left,
-                right,
+                id, left, right, ..
             })
             | Identity::PhantomLookup(PhantomLookupIdentity {
-                id,
-                source: _,
-                left,
-                right,
-                multiplicity: _,
-            }) => {
-                // TODO multiplicity?
-                self.process_lookup(*id, left, right, row_offset)
-            }
+                id, left, right, ..
+            }) => self.process_lookup(*id, left, right, row_offset),
             _ => {
                 // TODO
                 ProcessResult::empty()
@@ -155,12 +149,12 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
         for e in effects {
             match &e {
                 Effect::Assignment(cell, assignment) => {
+                    self.known_cells.insert(cell.clone());
                     if let Some(rc) = assignment.range_constraint() {
                         // If the cell was determined to be a constant, we add this
                         // as a range constraint, so we can use it in future evaluations.
                         self.add_range_constraint(cell.clone(), rc);
                     }
-                    self.known_cells.insert(cell.clone());
                     self.code.push(e);
                 }
                 Effect::RangeConstraint(cell, rc) => {
@@ -184,9 +178,14 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
         let rc = self
             .range_constraint(cell.clone())
             .map_or(rc.clone(), |existing_rc| existing_rc.conjunction(&rc));
-        // TODO if the conjuntion results in a single value, make the cell known.
-        // TODO but we also need to generate code for the assignment!
-        self.range_constraints.insert(cell, rc);
+        if !self.known_cells.contains(&cell) {
+            if let Some(v) = rc.try_to_single_value() {
+                // Special case: Cell is fixed to a constant by range constraints only.
+                self.known_cells.insert(cell.clone());
+                self.code.push(Effect::Assignment(cell.clone(), v.into()));
+            }
+        }
+        self.range_constraints.insert(cell.clone(), rc);
     }
 
     fn evaluate(
@@ -197,16 +196,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
         Some(match expr {
             Expression::Reference(r) => {
                 if r.is_fixed() {
-                    todo!()
-                    // let mut row = self.latch_row as i64 + offset as i64;
-                    // while row < 0 {
-                    //     row += self.block_size as i64;
-                    // }
-                    // // TODO at some point we should check that all of the fixed columns are periodic.
-                    // // TODO We can only do this for block machines.
-                    // // For dynamic machines, fixed columns are "known but symbolic"
-                    // let v = self.fixed_data.fixed_cols[&r.poly_id].values_max_size()[row as usize];
-                    // EvalResult::from_number(v)
+                    self.reference_evaluator.evaluate_fixed(r, offset)?.into()
                 } else {
                     let cell = Cell::from_reference(r, offset);
                     // If a cell is known and has a compile-time constant value,
@@ -221,8 +211,13 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
                     }
                 }
             }
-            Expression::PublicReference(_) => return None, // TODO
-            Expression::Challenge(_) => return None,       // TODO
+            Expression::PublicReference(public) => {
+                self.reference_evaluator.evaluate_public(public)?.into()
+            }
+            Expression::Challenge(challenge) => self
+                .reference_evaluator
+                .evaluate_challenge(challenge)?
+                .into(),
             Expression::Number(n) => (*n).into(),
             Expression::BinaryOperation(op) => self.evaulate_binary_operation(op, offset)?,
             Expression::UnaryOperation(op) => self.evaluate_unary_operation(op, offset)?,
@@ -281,12 +276,29 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
     }
 }
 
+pub trait ReferenceEvaluator<T: FieldElement> {
+    fn evaluate_fixed(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
+        None
+    }
+    fn evaluate_challenge(&self, _challenge: &Challenge) -> Option<T> {
+        None
+    }
+    fn evaluate_public(&self, _public: &String) -> Option<T> {
+        None
+    }
+}
+
 #[cfg(test)]
 mod test {
+    use std::{fs, str::from_utf8};
+
     use powdr_ast::analyzed::Analyzed;
     use powdr_number::GoldilocksField;
 
-    use crate::witgen::{jit::affine_symbolic_expression::Assertion, FixedData};
+    use crate::{
+        constant_evaluator,
+        witgen::{jit::affine_symbolic_expression::Assertion, FixedData},
+    };
 
     use super::*;
 
@@ -323,10 +335,25 @@ mod test {
             .join("\n")
     }
 
+    struct ReferenceEvaluatorForFixedData<'a>(&'a FixedData<'a, GoldilocksField>);
+    impl<'a> ReferenceEvaluator<GoldilocksField> for ReferenceEvaluatorForFixedData<'a> {
+        fn evaluate_fixed(
+            &self,
+            var: &AlgebraicReference,
+            row_offset: i32,
+        ) -> Option<GoldilocksField> {
+            assert!(var.is_fixed());
+            let values = self.0.fixed_cols[&var.poly_id].values_max_size();
+            let row = (row_offset as usize + var.next as usize) % values.len();
+            Some(values[row])
+        }
+    }
+
     fn solve_on_rows(input: &str, rows: &[i32], known_cells: Vec<(&str, i32)>) -> String {
         let analyzed: Analyzed<GoldilocksField> =
             powdr_pil_analyzer::analyze_string(input).unwrap();
-        let fixed_data = FixedData::new(&analyzed, &[], &[], Default::default(), 0);
+        let fixed_col_vals = constant_evaluator::generate(&analyzed);
+        let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let known_cells = known_cells.iter().map(|(name, row_offset)| {
             let id = fixed_data.try_column_by_name(name).unwrap().id;
             Cell {
@@ -335,7 +362,9 @@ mod test {
                 row_offset: *row_offset,
             }
         });
-        let mut witgen = WitgenInference::new(&fixed_data, known_cells);
+
+        let ref_eval = ReferenceEvaluatorForFixedData(&fixed_data);
+        let mut witgen = WitgenInference::new(&fixed_data, ref_eval, known_cells);
         let mut complete = HashSet::new();
         while complete.len() != analyzed.identities.len() * rows.len() {
             for row in rows {
@@ -363,6 +392,35 @@ mod test {
         assert_eq!(
             code,
             "X[1] = Y[0];\nY[1] = (X[0] + Y[0]);\nX[2] = Y[1];\nY[2] = (X[1] + Y[1]);"
+        );
+    }
+
+    #[test]
+    fn fib_with_fixed() {
+        let input = "
+        namespace Fib(8);
+            col fixed FIRST = [1] + [0]*;
+            let x;
+            let y;
+            FIRST * (y - 1) = 0;
+            FIRST * (x - 1) = 0;
+            // This works in this test because we do not implement wrapping properly in this test.
+            x' - y = 0;
+            y' - (x + y) = 0;
+        ";
+        let code = solve_on_rows(&input, &[0, 1, 2, 3], vec![]);
+        assert_eq!(
+            code,
+            "Fib::y[0] = 1;
+Fib::x[0] = 1;
+Fib::x[1] = 1;
+Fib::y[1] = 2;
+Fib::x[2] = 2;
+Fib::y[2] = 3;
+Fib::x[3] = 3;
+Fib::y[3] = 5;
+Fib::x[4] = 5;
+Fib::y[4] = 8;"
         );
     }
 }
