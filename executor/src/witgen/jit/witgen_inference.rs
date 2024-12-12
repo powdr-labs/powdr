@@ -21,23 +21,23 @@ use super::{
 
 /// This component can generate code that solves identities.
 /// It needs a driver that tells it which identities to process on which rows.
-pub struct WitgenInference<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> {
+pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     fixed_data: &'a FixedData<'a, T>,
-    reference_evaluator: RefEval,
+    fixed_evaluator: FixedEval,
     derived_range_constraints: HashMap<Cell, RangeConstraint<T>>,
     known_cells: HashSet<Cell>,
     code: Vec<Effect<T, Cell>>,
 }
 
-impl<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> WitgenInference<'a, T, RefEval> {
+impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, FixedEval> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        reference_evaluator: RefEval,
+        fixed_evaluator: FixedEval,
         known_cells: impl IntoIterator<Item = Cell>,
     ) -> Self {
         Self {
             fixed_data,
-            reference_evaluator,
+            fixed_evaluator,
             derived_range_constraints: Default::default(),
             known_cells: known_cells.into_iter().collect(),
             code: Default::default(),
@@ -204,7 +204,7 @@ impl<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> WitgenInference<'a, T,
         Some(match expr {
             Expression::Reference(r) => {
                 if r.is_fixed() {
-                    self.reference_evaluator.evaluate_fixed(r, offset)?.into()
+                    self.fixed_evaluator.evaluate(r, offset)?.into()
                 } else {
                     let cell = Cell::from_reference(r, offset);
                     // If a cell is known and has a compile-time constant value,
@@ -219,13 +219,10 @@ impl<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> WitgenInference<'a, T,
                     }
                 }
             }
-            Expression::PublicReference(public) => {
-                self.reference_evaluator.evaluate_public(public)?.into()
+            Expression::PublicReference(_) | Expression::Challenge(_) => {
+                // TODO we need to introduce a variable type for those.
+                return None;
             }
-            Expression::Challenge(challenge) => self
-                .reference_evaluator
-                .evaluate_challenge(challenge)?
-                .into(),
             Expression::Number(n) => (*n).into(),
             Expression::BinaryOperation(op) => self.evaluate_binary_operation(op, offset)?,
             Expression::UnaryOperation(op) => self.evaluate_unary_operation(op, offset)?,
@@ -284,21 +281,14 @@ impl<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> WitgenInference<'a, T,
     }
 }
 
-pub trait ReferenceEvaluator<T: FieldElement> {
-    fn evaluate_fixed(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
-        None
-    }
-    fn evaluate_challenge(&self, _challenge: &Challenge) -> Option<T> {
-        None
-    }
-    fn evaluate_public(&self, _public: &String) -> Option<T> {
+pub trait FixedEvaluator<T: FieldElement> {
+    fn evaluate(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
         None
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::{fs, str::from_utf8};
 
     use pretty_assertions::assert_eq;
 
@@ -345,13 +335,9 @@ mod test {
             .join("\n")
     }
 
-    struct ReferenceEvaluatorForFixedData<'a>(&'a FixedData<'a, GoldilocksField>);
-    impl<'a> ReferenceEvaluator<GoldilocksField> for ReferenceEvaluatorForFixedData<'a> {
-        fn evaluate_fixed(
-            &self,
-            var: &AlgebraicReference,
-            row_offset: i32,
-        ) -> Option<GoldilocksField> {
+    struct FixedEvaluatorForFixedData<'a>(&'a FixedData<'a, GoldilocksField>);
+    impl<'a> FixedEvaluator<GoldilocksField> for FixedEvaluatorForFixedData<'a> {
+        fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<GoldilocksField> {
             assert!(var.is_fixed());
             let values = self.0.fixed_cols[&var.poly_id].values_max_size();
             let row = (row_offset as usize + var.next as usize) % values.len();
@@ -375,7 +361,7 @@ mod test {
             }
         });
 
-        let ref_eval = ReferenceEvaluatorForFixedData(&fixed_data);
+        let ref_eval = FixedEvaluatorForFixedData(&fixed_data);
         let mut witgen = WitgenInference::new(&fixed_data, ref_eval, known_cells);
         let mut complete = HashSet::new();
         let mut counter = 0;
