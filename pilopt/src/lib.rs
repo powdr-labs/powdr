@@ -23,9 +23,9 @@ use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
-    remove_unreferenced_definitions(&mut pil_file);
     loop {
         let pil_hash = hash_pil_state(&pil_file);
+        remove_unreferenced_definitions(&mut pil_file);
         remove_constant_fixed_columns(&mut pil_file);
         deduplicate_fixed_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
@@ -58,21 +58,18 @@ fn hash_pil_state<T: FieldElement>(pil: &Analyzed<T>) -> u64 {
         identity.hash(&mut hasher);
     }
 
-    for (key, value) in pil.constant_polys_in_source_order() {
+    for (key, (_, value)) in pil.definitions.iter().sorted_by(|a, b| a.0.cmp(b.0)) {
         key.hash(&mut hasher);
-        if let Some(v) = &value {
+        if let Some(v) = value {
             v.hash(&mut hasher);
         }
     }
 
-    for (key, value) in pil.committed_polys_in_source_order() {
-        key.hash(&mut hasher);
-        if let Some(v) = &value {
-            v.hash(&mut hasher);
-        }
-    }
-
-    for (key, value) in pil.intermediate_polys_in_source_order() {
+    for (key, (_, value)) in pil
+        .intermediate_columns
+        .iter()
+        .sorted_by(|a, b| a.0.cmp(b.0))
+    {
         key.hash(&mut hasher);
         value.hash(&mut hasher);
     }
@@ -81,7 +78,11 @@ fn hash_pil_state<T: FieldElement>(pil: &Analyzed<T>) -> u64 {
         pf.hash(&mut hasher);
     }
 
-    for (key, value) in pil.public_declarations_in_source_order() {
+    for (key, value) in pil
+        .public_declarations
+        .iter()
+        .sorted_by(|a, b| a.0.cmp(b.0))
+    {
         key.hash(&mut hasher);
         value.hash(&mut hasher);
     }
