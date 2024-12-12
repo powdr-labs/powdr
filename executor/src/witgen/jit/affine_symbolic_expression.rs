@@ -185,8 +185,9 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
 
     /// Solves the equation `self = 0` and returns how to compute the solution.
     /// The solution can contain assignments to multiple variables.
-    /// If no way to solve the equation has been found, but it still contains
-    /// unknon variables, returns an empty, incomplete result.
+    /// If no way to solve the equation (and no way to derive new range
+    /// constraints) has been found, but it still contains
+    /// unknown variables, returns an empty, incomplete result.
     /// If the equation is known to be unsolvable, returns an error.
     pub fn solve(&self) -> Result<ProcessResult<T, V>, EvalError<T>> {
         Ok(match self.coefficients.len() {
@@ -466,7 +467,8 @@ mod test {
     #[test]
     fn solvable_without_vars() {
         let constr = &from_number(0);
-        assert!(constr.solve().unwrap().effects.is_empty());
+        let result = constr.solve().unwrap();
+        assert!(result.complete && result.effects.is_empty());
     }
 
     #[test]

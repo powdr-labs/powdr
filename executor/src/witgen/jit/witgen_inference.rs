@@ -24,7 +24,7 @@ use super::{
 pub struct WitgenInference<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> {
     fixed_data: &'a FixedData<'a, T>,
     reference_evaluator: RefEval,
-    range_constraints: HashMap<Cell, RangeConstraint<T>>,
+    derived_range_constraints: HashMap<Cell, RangeConstraint<T>>,
     known_cells: HashSet<Cell>,
     code: Vec<Effect<T, Cell>>,
 }
@@ -38,7 +38,7 @@ impl<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> WitgenInference<'a, T,
         Self {
             fixed_data,
             reference_evaluator,
-            range_constraints: Default::default(),
+            derived_range_constraints: Default::default(),
             known_cells: known_cells.into_iter().collect(),
             code: Default::default(),
         }
@@ -193,7 +193,7 @@ impl<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> WitgenInference<'a, T,
                 self.code.push(Effect::Assignment(cell.clone(), v.into()));
             }
         }
-        self.range_constraints.insert(cell.clone(), rc);
+        self.derived_range_constraints.insert(cell.clone(), rc);
     }
 
     fn evaluate(
@@ -278,7 +278,7 @@ impl<'a, T: FieldElement, RefEval: ReferenceEvaluator<T>> WitgenInference<'a, T,
                 next: false,
             })
             .iter()
-            .chain(self.range_constraints.get(&cell))
+            .chain(self.derived_range_constraints.get(&cell))
             .cloned()
             .reduce(|gc, rc| gc.conjunction(&rc))
     }
