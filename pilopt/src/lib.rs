@@ -23,10 +23,9 @@ use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
-    let mut pil_hash = 0;
-    remove_unreferenced_definitions(&mut pil_file);
-    while pil_hash != hash_pil_state(&pil_file) {
-        pil_hash = hash_pil_state(&pil_file);
+    loop {
+        let pil_hash = hash_pil_state(&pil_file);
+        remove_unreferenced_definitions(&mut pil_file);
         remove_constant_fixed_columns(&mut pil_file);
         deduplicate_fixed_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
@@ -35,8 +34,12 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         simplify_identities(&mut pil_file);
         remove_trivial_identities(&mut pil_file);
         remove_duplicate_identities(&mut pil_file);
-        remove_unreferenced_definitions(&mut pil_file);
+
+        if pil_hash == hash_pil_state(&pil_file) {
+            break;
+        }
     }
+
     let col_count_post = (pil_file.commitment_count(), pil_file.constant_count());
     log::info!(
         "Removed {} witness and {} fixed columns. Total count now: {} witness and {} fixed columns.",
@@ -55,7 +58,9 @@ fn hash_pil_state<T: FieldElement>(pil: &Analyzed<T>) -> u64 {
         identity.hash(&mut hasher);
     }
 
-    for (key, value) in pil.definitions.iter().sorted() {
+    let mut keys: Vec<_> = pil.definitions.keys().collect();
+    keys.sort();
+    for key in keys {
         key.hash(&mut hasher);
         if let Some(v) = &pil.definitions[key].1 {
             v.hash(&mut hasher);
@@ -78,6 +83,10 @@ fn hash_pil_state<T: FieldElement>(pil: &Analyzed<T>) -> u64 {
     for key in keys {
         key.hash(&mut hasher);
         pil.public_declarations[key].hash(&mut hasher);
+    }
+
+    for _impl in &pil.trait_impls {
+        _impl.hash(&mut hasher);
     }
 
     hasher.finish()

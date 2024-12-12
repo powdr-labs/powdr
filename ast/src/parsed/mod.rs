@@ -421,7 +421,9 @@ impl<R> Children<Expression<R>> for EnumVariant<Expression<R>> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct TraitImplementation<Expr> {
     pub name: SymbolPath,
     pub source_ref: SourceRef,
