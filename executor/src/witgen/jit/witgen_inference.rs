@@ -3,9 +3,9 @@ use std::collections::{HashMap, HashSet};
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge, Identity,
-    LookupIdentity, PermutationIdentity, PhantomBusInteractionIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialType, SelectedExpressions,
+    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
+    PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolyID,
+    PolynomialIdentity, PolynomialType, SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
@@ -42,10 +42,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             known_cells: known_cells.into_iter().collect(),
             code: Default::default(),
         }
-    }
-
-    pub fn known_cells(&self) -> &HashSet<Cell> {
-        &self.known_cells
     }
 
     pub fn code(self) -> Vec<Effect<T, Cell>> {
@@ -415,7 +411,7 @@ mod test {
             x' - y = 0;
             y' - (x + y) = 0;
         ";
-        let code = solve_on_rows(&input, &[0, 1, 2, 3], vec![], None);
+        let code = solve_on_rows(input, &[0, 1, 2, 3], vec![], None);
         assert_eq!(
             code,
             "Fib::y[0] = 1;
@@ -459,7 +455,7 @@ namespace Xor(256 * 256);
     C' = C * (1 - latch) + C_byte * FACTOR;
 ";
         let code = solve_on_rows(
-            &input,
+            input,
             // Use the second block to avoid wrap-around.
             &[3, 4, 5, 6, 7],
             vec![
