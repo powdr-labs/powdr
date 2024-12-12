@@ -46,13 +46,12 @@ pub fn compile_effects<T: FieldElement>(
 }
 
 fn witgen_code<T: FieldElement>(known_inputs: &[Cell], effects: &[Effect<T, Cell>]) -> String {
-    // TODO indent
     let fun_name = "witgen";
     let assign_inputs = known_inputs
         .iter()
         .map(|c| {
             format!(
-                "let {} = get(data, row_offset, {}, {});",
+                "    let {} = get(data, row_offset, {}, {});",
                 cell_to_var_name(c),
                 c.row_offset,
                 c.id
@@ -75,9 +74,9 @@ extern "C" fn {fun_name}(
     _call_machine: fn(*const c_void, u64, &mut [LookupCell<'_, FieldElement>]) -> bool
 ) {{
     let data: &mut [FieldElement] = unsafe {{ std::slice::from_raw_parts_mut(data as *mut FieldElement, len as usize) }};
-    {assign_inputs}
-    {main_code}
-    {store_values}
+{assign_inputs}
+{main_code}
+{store_values}
     // TODO store_known
     }}
 "#
@@ -87,7 +86,11 @@ extern "C" fn {fun_name}(
 fn format_effect<T: FieldElement>(effect: &Effect<T, Cell>) -> String {
     match effect {
         Effect::Assignment(var, e) => {
-            format!("let {} = {};", cell_to_var_name(var), format_expression(e))
+            format!(
+                "    let {} = {};",
+                cell_to_var_name(var),
+                format_expression(e)
+            )
         }
         Effect::RangeConstraint(..) => {
             unreachable!("Final code should not contain pure range constraints.")
@@ -97,7 +100,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Cell>) -> String {
             rhs,
             expected_equal,
         }) => format!(
-            "assert!({} {} {});",
+            "    assert!({} {} {});",
             format_expression(lhs),
             if *expected_equal { "==" } else { "!=" },
             format_expression(rhs)
@@ -140,7 +143,9 @@ fn cell_to_var_name(
     }: &Cell,
 ) -> String {
     // TODO this might still not be unique.
-    let column_name = &column_name[column_name.rfind("::").unwrap() + 2..]
+    let column_name = column_name
+        .rfind("::")
+        .map_or(column_name.as_str(), |i| &column_name[i + 2..])
         .replace("[", "_")
         .replace("]", "_");
     if *row_offset < 0 {
@@ -301,6 +306,8 @@ struct WitgenFunctionParams {{
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq;
+
     use powdr_number::GoldilocksField;
 
     use super::*;
@@ -311,5 +318,74 @@ mod tests {
             println!("{e}");
             panic!()
         }
+    }
+
+    #[test]
+    fn simple_effects() {
+        let a0 = Cell {
+            id: 2,
+            column_name: "a".to_string(),
+            row_offset: 0,
+        };
+        let x0 = Cell {
+            id: 0,
+            column_name: "x".to_string(),
+            row_offset: 0,
+        };
+        let ym1 = Cell {
+            id: 1,
+            column_name: "y".to_string(),
+            row_offset: -1,
+        };
+        let yp1 = Cell {
+            id: 1,
+            column_name: "y".to_string(),
+            row_offset: 1,
+        };
+        let effects = vec![
+            Effect::Assignment(
+                x0.clone(),
+                SymbolicExpression::from(GoldilocksField::from(7))
+                    * SymbolicExpression::from_symbol(a0.clone(), None),
+            ),
+            Effect::Assignment(
+                ym1.clone(),
+                SymbolicExpression::from_symbol(x0.clone(), None),
+            ),
+            Effect::Assignment(
+                yp1.clone(),
+                SymbolicExpression::from_symbol(ym1.clone(), None)
+                    + SymbolicExpression::from_symbol(x0.clone(), None),
+            ),
+            Effect::Assertion(Assertion {
+                lhs: SymbolicExpression::from_symbol(ym1.clone(), None),
+                rhs: SymbolicExpression::from_symbol(x0.clone(), None),
+                expected_equal: true,
+            }),
+        ];
+        let known_inputs = vec![a0.clone()];
+        let code = witgen_code(&known_inputs, &effects);
+        assert_eq!(code, "
+#[no_mangle]
+extern \"C\" fn witgen(
+    WitgenFunctionParams{
+        data,
+        known,
+        len,
+        row_offset,
+    }: WitgenFunctionParams,
+    _mutable_state: *const c_void,
+    _call_machine: fn(*const c_void, u64, &mut [LookupCell<'_, FieldElement>]) -> bool
+) {
+    let data: &mut [FieldElement] = unsafe { std::slice::from_raw_parts_mut(data as *mut FieldElement, len as usize) };
+    let a_d0 = get(data, row_offset, 0, 2);
+    let x_d0 = (FieldElement::from(7) * a_d0);
+    let y_u1 = x_d0;
+    let y_d1 = (y_u1 + x_d0);
+    assert!(y_u1 == x_d0);
+
+    // TODO store_known
+    }
+");
     }
 }
