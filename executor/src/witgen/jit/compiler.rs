@@ -1,8 +1,11 @@
-use std::{mem, sync::Arc};
+use std::{ffi::CString, mem, sync::Arc};
 
 use itertools::Itertools;
+use libloading::Library;
 use powdr_jit_compiler::compiler::call_cargo;
 use powdr_number::FieldElement;
+
+use crate::witgen::machines::LookupCell;
 
 use super::{
     affine_symbolic_expression::{Assertion, Effect},
@@ -10,43 +13,47 @@ use super::{
     symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
 };
 
+pub struct WitgenFunctionParams<T> {
+    data: *mut T,
+    known: *mut u32,
+    len: u64,
+    row_offset: u64,
+}
+
+pub type WitgenFunction<T> =
+    extern "C" fn(WitgenFunctionParams<T>, fn(u64, &mut [LookupCell<'_, T>]) -> bool);
+
 pub fn compile_effects<T: FieldElement>(
     first_column_id: u64,
     column_count: usize,
     known_inputs: &[Cell],
     effects: &[Effect<T, Cell>],
-) -> Result<(), String> {
+) -> Result<(Arc<Library>, WitgenFunction<T>), String> {
+    // // TODO what happen if there is a conflict in function names? Should we
+    // // encode the ID and the known inputs?
+    let fun_name = "witgen";
+
     let utils = util_code::<T>(first_column_id, column_count)?;
-    let witgen_code = witgen_code(known_inputs, effects);
+    let witgen_code = witgen_code(fun_name, known_inputs, effects);
     let code = format!("{utils}\n//-------------------------------\n{witgen_code}");
 
     let lib_path = powdr_jit_compiler::compiler::call_cargo(&code)
         .map_err(|e| format!("Failed to compile generated code: {e}"))?;
 
     let library = Arc::new(unsafe { libloading::Library::new(&lib_path.path).unwrap() });
-    // // TODO what happen if there is a conflict in function names? Should we
-    // // encode the ID and the known inputs?
-    // let witgen_fun = unsafe {
-    //     library.get::<extern "C" fn(WitgenFunctionParams, *mut c_void, *const c_void)>(b"witgen")
-    // }
-    // .unwrap();
 
-    // self.witgen_functions.write().unwrap().insert(
-    //     key,
-    //     (
-    //         WitgenFunction {
-    //             library: library.clone(),
-    //             witgen_function: *witgen_fun,
-    //         },
-    //         known_after,
-    //     ),
-    // );
-    // true
-    Ok(())
+    let fun_name_terminated = CString::new(fun_name).unwrap();
+    let witgen_fun =
+        unsafe { library.get::<WitgenFunction<T>>(fun_name_terminated.as_bytes()) }.unwrap();
+
+    Ok((library.clone(), *witgen_fun))
 }
 
-fn witgen_code<T: FieldElement>(known_inputs: &[Cell], effects: &[Effect<T, Cell>]) -> String {
-    let fun_name = "witgen";
+fn witgen_code<T: FieldElement>(
+    fun_name: &str,
+    known_inputs: &[Cell],
+    effects: &[Effect<T, Cell>],
+) -> String {
     let assign_inputs = known_inputs
         .iter()
         .map(|c| {
@@ -364,7 +371,7 @@ mod tests {
             }),
         ];
         let known_inputs = vec![a0.clone()];
-        let code = witgen_code(&known_inputs, &effects);
+        let code = witgen_code("witgen", &known_inputs, &effects);
         assert_eq!(code, "
 #[no_mangle]
 extern \"C\" fn witgen(
@@ -374,8 +381,7 @@ extern \"C\" fn witgen(
         len,
         row_offset,
     }: WitgenFunctionParams,
-    _mutable_state: *const c_void,
-    _call_machine: fn(*const c_void, u64, &mut [LookupCell<'_, FieldElement>]) -> bool
+    _call_machine: fn(u64, &mut [LookupCell<'_, FieldElement>]) -> bool
 ) {
     let data: &mut [FieldElement] = unsafe { std::slice::from_raw_parts_mut(data as *mut FieldElement, len as usize) };
     let a_d0 = get(data, row_offset, 0, 2);
