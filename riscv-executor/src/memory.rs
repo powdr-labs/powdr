@@ -156,9 +156,9 @@ impl<F: FieldElement> Submachine<F> for MemoryMachine<F> {
                     .1
                     .resize(degree as usize, 0.into());
             }
+            // m_change is 1 in last row
+            *cols[Change as usize].1.last_mut().unwrap() = 1.into();
         }
-        // m_change is 1 in last row
-        *cols[Change as usize].1.last_mut().unwrap() = 1.into();
         cols
     }
 }
