@@ -1,11 +1,45 @@
-use std::mem;
+use std::{mem, sync::Arc};
 
+use powdr_jit_compiler::compiler::call_cargo;
 use powdr_number::FieldElement;
+
+use super::{affine_symbolic_expression::Effect, cell::Cell};
+
+pub fn compile_effects<T: FieldElement>(
+    first_column_id: u64,
+    column_count: usize,
+    effects: &[Effect<T, Cell>],
+) -> Result<(), String> {
+    let code = util_code::<T>(first_column_id, column_count)?;
+    let lib_path = powdr_jit_compiler::compiler::call_cargo(&code)
+        .map_err(|e| format!("Failed to compile generated code: {e}"))?;
+
+    let library = Arc::new(unsafe { libloading::Library::new(&lib_path.path).unwrap() });
+    // // TODO what happen if there is a conflict in function names? Should we
+    // // encode the ID and the known inputs?
+    // let witgen_fun = unsafe {
+    //     library.get::<extern "C" fn(WitgenFunctionParams, *mut c_void, *const c_void)>(b"witgen")
+    // }
+    // .unwrap();
+
+    // self.witgen_functions.write().unwrap().insert(
+    //     key,
+    //     (
+    //         WitgenFunction {
+    //             library: library.clone(),
+    //             witgen_function: *witgen_fun,
+    //         },
+    //         known_after,
+    //     ),
+    // );
+    // true
+    Ok(())
+}
 
 /// Returns the rust code containing utility functions given a first column id and a column count
 /// that is used to store the column table.
 fn util_code<T: FieldElement>(first_column_id: u64, column_count: usize) -> Result<String, String> {
-    if T::has_direct_repr() || (mem::size_of::<T>() != 8 && mem::size_of::<T>() != 4) {
+    if !(T::has_direct_repr() && (mem::size_of::<T>() == 8 || mem::size_of::<T>() == 4)) {
         return Err(format!(
             "Field {}not supported",
             T::known_field()
@@ -35,7 +69,7 @@ use std::ffi::c_void;
 struct FieldElement({int_type});
 
 type IntType = {int_type};
-type DoubleIntTYpe = {double_int_type};
+type DoubleIntType = {double_int_type};
 const MODULUS: IntType = {modulus}_{int_type};
 
 impl std::fmt::Display for FieldElement {{
@@ -75,7 +109,7 @@ impl std::ops::Mul<FieldElement> for FieldElement {{
 impl std::ops::Div<FieldElement> for FieldElement {{
     type Output = Self;
     #[inline]
-    fn div(self, b: FieldElement) -> FieldElement {{
+    fn div(self, _b: FieldElement) -> FieldElement {{
         // TODO we could generate the algorithm we use for goldilocks
         // for a generic prime field.
         todo!()
@@ -149,4 +183,19 @@ struct WitgenFunctionParams {{
 }}
     "#
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use powdr_number::GoldilocksField;
+
+    use super::*;
+
+    #[test]
+    fn compile_util_code() {
+        if let Err(e) = compile_effects::<GoldilocksField>(0, 2, &[]) {
+            println!("{e}");
+            panic!()
+        }
+    }
 }
