@@ -23,9 +23,9 @@ use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
+    remove_unreferenced_definitions(&mut pil_file);
     loop {
         let pil_hash = hash_pil_state(&pil_file);
-        remove_unreferenced_definitions(&mut pil_file);
         remove_constant_fixed_columns(&mut pil_file);
         deduplicate_fixed_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
@@ -58,31 +58,32 @@ fn hash_pil_state<T: FieldElement>(pil: &Analyzed<T>) -> u64 {
         identity.hash(&mut hasher);
     }
 
-    let mut keys: Vec<_> = pil.definitions.keys().collect();
-    keys.sort();
-    for key in keys {
+    for (key, value) in pil.constant_polys_in_source_order() {
         key.hash(&mut hasher);
-        if let Some(v) = &pil.definitions[key].1 {
+        if let Some(v) = &value {
             v.hash(&mut hasher);
         }
     }
 
-    let mut keys: Vec<_> = pil.intermediate_columns.keys().collect();
-    keys.sort();
-    for key in keys {
+    for (key, value) in pil.committed_polys_in_source_order() {
         key.hash(&mut hasher);
-        pil.intermediate_columns[key].1.hash(&mut hasher);
+        if let Some(v) = &value {
+            v.hash(&mut hasher);
+        }
+    }
+
+    for (key, value) in pil.intermediate_polys_in_source_order() {
+        key.hash(&mut hasher);
+        value.hash(&mut hasher);
     }
 
     for pf in &pil.prover_functions {
         pf.hash(&mut hasher);
     }
 
-    let mut keys: Vec<_> = pil.public_declarations.keys().collect();
-    keys.sort();
-    for key in keys {
+    for (key, value) in pil.public_declarations_in_source_order() {
         key.hash(&mut hasher);
-        pil.public_declarations[key].hash(&mut hasher);
+        value.hash(&mut hasher);
     }
 
     for _impl in &pil.trait_impls {

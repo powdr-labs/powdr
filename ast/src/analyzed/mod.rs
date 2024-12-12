@@ -139,7 +139,7 @@ impl<T> Analyzed<T> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
-    fn intermediate_polys_in_source_order(
+    pub fn intermediate_polys_in_source_order(
         &self,
     ) -> impl Iterator<Item = &(Symbol, Vec<AlgebraicExpression<T>>)> {
         self.source_order.iter().filter_map(move |statement| {
@@ -771,7 +771,7 @@ impl DegreeRange {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Hash)]
 pub struct Symbol {
     pub id: u64,
     pub source: SourceRef,
@@ -831,7 +831,7 @@ impl Symbol {
 /// The "kind" of a symbol. In the future, this will be mostly
 /// replaced by its type.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema, Hash,
 )]
 pub enum SymbolKind {
     /// Fixed, witness or intermediate polynomial
