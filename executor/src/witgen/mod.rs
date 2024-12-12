@@ -34,7 +34,7 @@ mod eval_result;
 pub mod evaluators;
 mod global_constraints;
 mod identity_processor;
-pub(crate) mod jit;
+mod jit;
 mod machines;
 mod processor;
 mod query_processor;

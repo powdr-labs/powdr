@@ -82,6 +82,17 @@ impl<T: FieldElement> RangeConstraint<T> {
         range_width(self.min, self.max)
     }
 
+    /// Returns true if `v` is an allowed value for this range constraint.
+    pub fn allows_value(&self, v: T) -> bool {
+        let in_range = if self.min <= self.max {
+            self.min <= v && v <= self.max
+        } else {
+            v <= self.min || self.max <= v
+        };
+        let in_mask = v.to_integer() & self.mask == v.to_integer();
+        in_range && in_mask
+    }
+
     /// The range constraint of the sum of two expressions.
     pub fn combine_sum(&self, other: &Self) -> Self {
         // TODO we could use "add_with_carry" to see if this created an overflow.
