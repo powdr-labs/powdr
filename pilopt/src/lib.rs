@@ -55,9 +55,7 @@ fn hash_pil_state<T: FieldElement>(pil: &Analyzed<T>) -> u64 {
         identity.hash(&mut hasher);
     }
 
-    let mut keys: Vec<_> = pil.definitions.keys().collect();
-    keys.sort();
-    for key in keys {
+    for (key, value) in pil.definitions.iter().sorted() {
         key.hash(&mut hasher);
         if let Some(v) = &pil.definitions[key].1 {
             v.hash(&mut hasher);
