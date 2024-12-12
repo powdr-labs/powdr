@@ -733,13 +733,17 @@ fn equal_constrained<T: FieldElement>(
             right,
         }) => match (left.as_ref(), right.as_ref()) {
             (AlgebraicExpression::Reference(l), AlgebraicExpression::Reference(r)) => {
-                let is_valid = |x: &AlgebraicReference| {
+                let is_valid = |x: &AlgebraicReference, left: bool| {
                     x.is_witness()
                         && !x.next
-                        && poly_id_to_array_elem.get(&x.poly_id).unwrap().1.is_none()
+                        && if left {
+                            poly_id_to_array_elem.get(&x.poly_id).unwrap().1.is_none()
+                        } else {
+                            true
+                        }
                 };
 
-                if is_valid(l) && is_valid(r) {
+                if is_valid(l, true) && is_valid(r, false) {
                     Some(if l.poly_id > r.poly_id {
                         ((l.name.clone(), l.poly_id), (r.name.clone(), r.poly_id))
                     } else {
@@ -757,7 +761,7 @@ fn equal_constrained<T: FieldElement>(
 
 fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let poly_id_to_array_elem = build_poly_id_to_definition_name_lookup(pil_file);
-    let substitutions: Vec<_> = pil_file
+    let mut substitutions: BTreeMap<(String, PolyID), (String, PolyID)> = pil_file
         .identities
         .iter()
         .filter_map(|id| {
@@ -769,11 +773,11 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
         })
         .collect();
 
-    let substitutions = resolve_transitive_substitutions(substitutions);
+    resolve_transitive_substitutions(&mut substitutions);
 
     let (subs_by_id, subs_by_name): (HashMap<_, _>, HashMap<_, _>) = substitutions
         .iter()
-        .map(|((name, id), to_keep)| ((id, to_keep), (name, to_keep)))
+        .map(|(k, v)| ((k.1, v), (&k.0, v)))
         .unzip();
 
     pil_file.post_visit_expressions_in_identities_mut(&mut |e: &mut AlgebraicExpression<_>| {
@@ -794,27 +798,28 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
     });
 }
 
-fn resolve_transitive_substitutions(
-    subs: Vec<((String, PolyID), (String, PolyID))>,
-) -> Vec<((String, PolyID), (String, PolyID))> {
-    let mut result = subs.clone();
+fn resolve_transitive_substitutions(subs: &mut BTreeMap<(String, PolyID), (String, PolyID)>) {
     let mut changed = true;
-
     while changed {
         changed = false;
-        for i in 0..result.len() {
-            let (_, target1) = &result[i].1;
-            if let Some(j) = result
-                .iter()
-                .position(|((_, source2), _)| source2 == target1)
-            {
-                let ((name1, source1), _) = &result[i];
-                let (_, (name3, target2)) = &result[j];
-                result[i] = ((name1.clone(), *source1), (name3.clone(), *target2));
+        let keys: Vec<_> = subs
+            .keys()
+            .map(|(name, id)| (name.to_string(), *id))
+            .collect();
+
+        for key in keys {
+            let Some(target_key) = subs.get(&key) else {
+                continue;
+            };
+
+            let Some(new_target) = subs.get(target_key) else {
+                continue;
+            };
+
+            if subs.get(&key).unwrap() != new_target {
+                subs.insert(key, new_target.clone());
                 changed = true;
             }
         }
     }
-
-    result
 }

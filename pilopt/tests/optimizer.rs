@@ -416,15 +416,17 @@ fn equal_constrained_array_elements_query() {
 fn equal_constrained_array_elements() {
     let input = r#"namespace N(65536);
         col witness w[20];
+        col witness x;
         w[4] = w[7];
         w[3] = w[5];
-        w[7] + w[1] = 5;
+        x = w[3];
+        w[7] + w[1] + x = 5;
     "#;
     let expectation = r#"namespace N(65536);
     col witness w[20];
     N::w[4] = N::w[7];
     N::w[3] = N::w[5];
-    N::w[7] + N::w[1] = 5;
+    N::w[7] + N::w[1] + N::w[3] = 5;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
