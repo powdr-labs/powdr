@@ -345,7 +345,12 @@ mod test {
         }
     }
 
-    fn solve_on_rows(input: &str, rows: &[i32], known_cells: Vec<(&str, i32)>) -> String {
+    fn solve_on_rows(
+        input: &str,
+        rows: &[i32],
+        known_cells: Vec<(&str, i32)>,
+        expected_complete: Option<usize>,
+    ) -> String {
         let analyzed: Analyzed<GoldilocksField> =
             powdr_pil_analyzer::analyze_string(input).unwrap();
         let fixed_col_vals = constant_evaluator::generate(&analyzed);
@@ -365,7 +370,8 @@ mod test {
         let mut witgen = WitgenInference::new(&fixed_data, ref_eval, known_cells);
         let mut complete = HashSet::new();
         let mut counter = 0;
-        while complete.len() != retained_identities.len() * rows.len() {
+        let expected_complete = expected_complete.unwrap_or(retained_identities.len() * rows.len());
+        while complete.len() != expected_complete {
             counter += 1;
             for row in rows {
                 for id in retained_identities.iter() {
@@ -382,14 +388,14 @@ mod test {
     #[test]
     fn simple_polynomial_solving() {
         let input = "let X; let Y; let Z; X = 1; Y = X + 1; Z * Y = X + 10;";
-        let code = solve_on_rows(input, &[0], vec![]);
+        let code = solve_on_rows(input, &[0], vec![], None);
         assert_eq!(code, "X[0] = 1;\nY[0] = 2;\nZ[0] = -9223372034707292155;");
     }
 
     #[test]
     fn fib() {
         let input = "let X; let Y; X' = Y; Y' = X + Y;";
-        let code = solve_on_rows(input, &[0, 1], vec![("X", 0), ("Y", 0)]);
+        let code = solve_on_rows(input, &[0, 1], vec![("X", 0), ("Y", 0)], None);
         assert_eq!(
             code,
             "X[1] = Y[0];\nY[1] = (X[0] + Y[0]);\nX[2] = Y[1];\nY[2] = (X[1] + Y[1]);"
@@ -409,7 +415,7 @@ mod test {
             x' - y = 0;
             y' - (x + y) = 0;
         ";
-        let code = solve_on_rows(&input, &[0, 1, 2, 3], vec![]);
+        let code = solve_on_rows(&input, &[0, 1, 2, 3], vec![], None);
         assert_eq!(
             code,
             "Fib::y[0] = 1;
@@ -460,6 +466,7 @@ namespace Xor(256 * 256);
                 ("Xor::A", 7),
                 ("Xor::C", 7), // We solve it in reverse, just for fun.
             ],
+            Some(16),
         );
         assert_eq!(
             code,
@@ -477,17 +484,17 @@ Xor::C_byte[5] = ((Xor::C[6] & 16711680) // 65536);
 Xor::C[5] = (Xor::C[6] & 65535);
 assert Xor::C[6] == (Xor::C[6] | 16777215);
 lookup(0, [Known(Xor::A_byte[6]), Unknown(Xor::B_byte[6]), Known(Xor::C_byte[6])]);
-Xor::A_byte[4] = (65280 // 256);
-Xor::A[4] = 255;
-assert 65535 == 65535;
-Xor::C_byte[4] = (65280 // 256);
-Xor::C[4] = 255;
-assert 65535 == 65535;
+Xor::A_byte[4] = ((Xor::A[5] & 65280) // 256);
+Xor::A[4] = (Xor::A[5] & 255);
+assert Xor::A[5] == (Xor::A[5] | 65535);
+Xor::C_byte[4] = ((Xor::C[5] & 65280) // 256);
+Xor::C[4] = (Xor::C[5] & 255);
+assert Xor::C[5] == (Xor::C[5] | 65535);
 lookup(0, [Known(Xor::A_byte[5]), Unknown(Xor::B_byte[5]), Known(Xor::C_byte[5])]);
-Xor::A_byte[3] = 255;
-Xor::C_byte[3] = 255;
+Xor::A_byte[3] = Xor::A[4];
+Xor::C_byte[3] = Xor::C[4];
 lookup(0, [Known(Xor::A_byte[4]), Unknown(Xor::B_byte[4]), Known(Xor::C_byte[4])]);
-lookup(0, [Known(255), Unknown(Xor::B_byte[3]), Known(255)]);
+lookup(0, [Known(Xor::A_byte[3]), Unknown(Xor::B_byte[3]), Known(Xor::C_byte[3])]);
 Xor::B[4] = Xor::B_byte[3];
 Xor::B[5] = (Xor::B[4] + (Xor::B_byte[4] * 256));
 Xor::B[6] = (Xor::B[5] + (Xor::B_byte[5] * 65536));
