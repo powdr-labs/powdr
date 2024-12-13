@@ -57,7 +57,7 @@ impl PaddedBitVec {
                 let bit_in_last_word = self.bits_in_last_row % 32;
                 *last_word |= 1 << bit_in_last_word;
             }
-            self.bits_in_last_row = self.bits_in_last_row + 1;
+            self.bits_in_last_row += 1;
         }
     }
 
