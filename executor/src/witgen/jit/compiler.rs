@@ -267,11 +267,22 @@ impl std::ops::Mul<FieldElement> for FieldElement {{
 impl std::ops::Div<FieldElement> for FieldElement {{
     type Output = Self;
     #[inline]
-    fn div(self, _b: FieldElement) -> FieldElement {{
-        // TODO we could generate the algorithm we use for goldilocks
-        // for a generic prime field.
-        todo!()
+    fn div(self, b: FieldElement) -> FieldElement {{
+        if b.0 == 0 {{
+            panic!("Division by zero");
+        }}
+        let uint_result = self.0 / b.0;
+        if uint_result * b.0 == self.0 {{
+            return Self(uint_result);
+        }}
+        // TODO we could also try signed integer division.
+        full_field_div(self, b)
     }}
+}}
+fn full_field_div(a: FieldElement, b: FieldElement) -> FieldElement {{
+    todo!()
+    // TODO generate the algorithm we use for goldilocks
+    // for a generic prime field.
 }}
 #[inline]
 fn integer_div(a: FieldElement, b: FieldElement) -> FieldElement {{
