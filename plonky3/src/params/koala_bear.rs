@@ -16,7 +16,7 @@ use p3_poseidon2::{poseidon2_round_numbers_128, Poseidon2, Poseidon2ExternalMatr
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 use p3_uni_stark::StarkConfig;
 
-use crate::params::poseidon2::{poseidon2_external_constants, poseidon2_internal_constants};
+use crate::params::poseidon2;
 
 use powdr_number::KoalaBearField;
 
@@ -59,10 +59,10 @@ lazy_static! {
     static ref ROUNDS_P: usize = ROUNDS.1;
     static ref PERM_BB: Perm = Perm::new(
         *ROUNDS_F,
-        poseidon2_external_constants(*ROUNDS_F),
+        poseidon2::external_constants(*ROUNDS_F),
         Poseidon2ExternalMatrixGeneral,
         *ROUNDS_P,
-        poseidon2_internal_constants(*ROUNDS_P),
+        poseidon2::internal_constants(*ROUNDS_P),
         DiffusionMatrixKoalaBear::default()
     );
 }
@@ -102,5 +102,12 @@ impl FieldElementMap for KoalaBearField {
         let pcs = MyPcs::new(dft, val_mmcs, fri_config);
 
         Self::Config::new(pcs)
+    }
+
+    fn degree_bound() -> usize {
+        // Currently, Plonky3 can't compute evaluations other than those already computed for the
+        // FRI commitment. This introduces the following dependency between the blowup factor and
+        // the degree bound:
+        (1 << FRI_LOG_BLOWUP) + 1
     }
 }

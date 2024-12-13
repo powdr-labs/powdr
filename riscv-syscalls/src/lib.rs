@@ -2,10 +2,20 @@
 
 macro_rules! syscalls {
     ($(($num:expr, $identifier:ident, $name:expr)),* $(,)?) => {
+        /// We use repr(u8) to make sure the enum discriminant will fit into the
+        /// 12 bits of the immediate field of the `addi` instruction,
         #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-        #[repr(u32)]
+        #[repr(u8)]
         pub enum Syscall {
             $($identifier = $num),*
+        }
+
+        impl Syscall {
+            pub fn name(&self) -> &'static str {
+                match self {
+                    $(Syscall::$identifier => $name),*
+                }
+            }
         }
 
         impl core::fmt::Display for Syscall {
@@ -26,15 +36,15 @@ macro_rules! syscalls {
             }
         }
 
-        impl From<Syscall> for u32 {
+        impl From<Syscall> for u8 {
             fn from(syscall: Syscall) -> Self {
                 syscall as Self
             }
         }
 
-        impl core::convert::TryFrom<u32> for Syscall {
+        impl core::convert::TryFrom<u8> for Syscall {
             type Error = ();
-            fn try_from(value: u32) -> Result<Self, Self::Error> {
+            fn try_from(value: u8) -> Result<Self, Self::Error> {
                 match value {
                     $($num => Ok(Syscall::$identifier)),*,
                     _ => Err(()),
@@ -55,4 +65,8 @@ syscalls!(
     (7, KeccakF, "keccakf"),
     (8, Mod256, "mod_256"),
     (9, Halt, "halt"),
+    (10, Poseidon2GL, "poseidon2_gl"),
+    (11, NativeHash, "native_hash"),
+    (12, CommitPublic, "commit_public"),
+    (13, InvertGL, "invert_gl"),
 );

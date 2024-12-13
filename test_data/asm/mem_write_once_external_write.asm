@@ -4,7 +4,7 @@ use std::machines::write_once_memory::WriteOnceMemory;
 // As a result, this only works if the content of the `value` column has
 // been provided externally.
 machine Main with degree: 256 {
-    WriteOnceMemory memory;
+    WriteOnceMemory memory(256, 256);
 
     reg pc[@pc];
     reg X[<=];

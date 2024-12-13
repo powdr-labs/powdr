@@ -28,9 +28,10 @@ machine Main with degree: 4 {
     utils::constrain_incremented_by(x, 0);
 
     // We define an instruction that uses a complicated way to increment a register.
-    instr incr_a { A = utils::incremented(A) }
+    instr incr_a { A' = utils::incremented(A) }
 
     function main {
+        incr_a;
         return;
     }
 }

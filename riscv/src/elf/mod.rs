@@ -14,6 +14,7 @@ use goblin::elf::{
 };
 use itertools::{Either, Itertools};
 use powdr_isa_utils::SingleDataValue;
+use powdr_riscv_syscalls::Syscall;
 use raki::{
     decode::Decode,
     instruction::{Extensions, Instruction as Ins, OpcodeKind as Op},
@@ -782,6 +783,30 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     self.composed_immediate(*hi, *lo, *rd_lui, *rd_addi, insn2_addr, is_address)?;
 
                 HighLevelInsn { op, args, loc }
+            }
+            (
+                // inline-able system call:
+                //   addi t0, x0, immediate
+                //   ecall
+                Ins {
+                    opc: Op::ADDI,
+                    rd: Some(5),
+                    rs1: Some(0),
+                    imm: Some(opcode),
+                    ..
+                },
+                Ins { opc: Op::ECALL, .. },
+            ) => {
+                // If this is not a know system call, we just let the executor deal with the problem.
+                let syscall = u8::try_from(*opcode)
+                    .ok()
+                    .and_then(|opcode| Syscall::try_from(opcode).ok())?;
+
+                HighLevelInsn {
+                    loc,
+                    op: syscall.name(),
+                    args: Default::default(),
+                }
             }
             (
                 // All other double instructions we can lift start with auipc.

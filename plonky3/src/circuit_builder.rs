@@ -14,6 +14,8 @@ use alloc::{
 };
 use itertools::Itertools;
 use p3_field::AbstractField;
+use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
+use tracing::info_span;
 
 use crate::{
     params::{Commitment, FieldElementMap, Plonky3Field, ProverData},
@@ -22,14 +24,14 @@ use crate::{
 use p3_air::{Air, AirBuilder, BaseAir, PairBuilder};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReferenceThin,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Identity, PolyID, PolynomialType,
 };
 
 use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 
-use powdr_executor::witgen::WitgenCallback;
+use powdr_executor_utils::WitgenCallback;
 use powdr_number::{FieldElement, LargeInt};
 
 /// A description of the constraint system.
@@ -40,9 +42,11 @@ pub struct ConstraintSystem<T> {
     witness_columns: BTreeMap<PolyID, (usize, usize)>,
     // for each fixed column, the index of this column in the fixed columns
     fixed_columns: BTreeMap<PolyID, usize>,
+    // for each intermediate polynomial, the expression
+    intermediates: BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     identities: Vec<Identity<T>>,
-    // for each public column, the name, poly_id, index in the witness columns, and stage
-    pub(crate) publics_by_stage: Vec<Vec<(String, PolyID, usize)>>,
+    // for each stage, for each public input of that stage, the name, the column name, the poly_id, the row index
+    pub(crate) publics_by_stage: Vec<Vec<(String, String, PolyID, usize)>>,
     constant_count: usize,
     // for each stage, the number of witness columns. There is always a least one stage, possibly empty
     stage_widths: Vec<usize>,
@@ -51,7 +55,7 @@ pub struct ConstraintSystem<T> {
 
 impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
     fn from(analyzed: &Analyzed<T>) -> Self {
-        let identities = analyzed.identities_with_inlined_intermediate_polynomials();
+        let identities = analyzed.identities.clone();
         let constant_count = analyzed.constant_count();
         let stage_widths = (0..analyzed.stage_count() as u32)
             .map(|stage| {
@@ -72,6 +76,8 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
             .map(|(index, (_, id))| (id, index))
             .collect();
 
+        let intermediates = analyzed.intermediate_definitions();
+
         let witness_columns = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .into_group_map_by(|(s, _)| s.stage.unwrap_or_default())
@@ -87,19 +93,26 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
             })
             .collect();
 
-        let mut challenges_by_stage = vec![vec![]; analyzed.stage_count()];
+        // we use a set to collect all used challenges
+        let mut challenges_by_stage = vec![BTreeSet::new(); analyzed.stage_count()];
         for identity in &identities {
             identity.pre_visit_expressions(&mut |expr| {
                 if let AlgebraicExpression::Challenge(challenge) = expr {
-                    challenges_by_stage[challenge.stage as usize].push(challenge.id);
+                    challenges_by_stage[challenge.stage as usize].insert(challenge.id);
                 }
             });
         }
 
+        // finally, we convert the set to a vector
+        let challenges_by_stage = challenges_by_stage
+            .into_iter()
+            .map(|set| set.into_iter().collect())
+            .collect();
+
         let publics_by_stage = analyzed.get_publics().into_iter().fold(
             vec![vec![]; analyzed.stage_count()],
-            |mut acc, (name, id, row, stage)| {
-                acc[stage as usize].push((name, id, row));
+            |mut acc, (name, column_name, id, row, stage)| {
+                acc[stage as usize].push((name, column_name, id, row));
                 acc
             },
         );
@@ -111,6 +124,7 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
             stage_widths,
             witness_columns,
             fixed_columns,
+            intermediates,
             challenges_by_stage,
         }
     }
@@ -143,12 +157,12 @@ where
     /// For stages in which there are no public values, return an empty vector
     pub fn public_values_so_far(
         &self,
-        witness: &[(String, Vec<T>)],
+        witness_by_machine: &BTreeMap<String, Vec<(String, Vec<T>)>>,
     ) -> BTreeMap<String, Vec<Vec<Option<T>>>> {
-        let witness = witness
-            .iter()
+        let witness = witness_by_machine
+            .values()
             // this map seems redundant but it turns a reference over a tuple into a tuple of references
-            .map(|(name, values)| (name, values))
+            .flat_map(|machine_witness| machine_witness.iter().map(|(n, v)| (n, v)))
             .collect::<BTreeMap<_, _>>();
 
         self.split
@@ -160,7 +174,7 @@ where
                     .map(|publics| {
                         publics
                             .iter()
-                            .map(|(name, _, row)| witness.get(name).map(|column| column[*row]))
+                            .map(|(_, name, _, row)| witness.get(name).map(|column| column[*row]))
                             .collect()
                     })
                     .collect();
@@ -228,6 +242,7 @@ where
         e: &AlgebraicExpression<T>,
         traces_by_stage: &[AB::M],
         fixed: &AB::M,
+        intermediate_cache: &mut BTreeMap<AlgebraicReferenceThin, AB::Expr>,
         publics: &BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>,
         challenges: &[BTreeMap<&u64, <AB as MultistageAirBuilder>::Challenge>],
     ) -> AB::Expr {
@@ -248,7 +263,21 @@ where
                         fixed.row_slice(r.next as usize)[index].into()
                     }
                     PolynomialType::Intermediate => {
-                        unreachable!("intermediate polynomials should have been inlined")
+                        let r = r.to_thin();
+                        if let Some(expr) = intermediate_cache.get(&r) {
+                            expr.clone()
+                        } else {
+                            let value = self.to_plonky3_expr::<AB>(
+                                &self.constraint_system.intermediates[&r],
+                                traces_by_stage,
+                                fixed,
+                                intermediate_cache,
+                                publics,
+                                challenges,
+                            );
+                            assert!(intermediate_cache.insert(r, value.clone()).is_none());
+                            value
+                        }
                     }
                 }
             }
@@ -267,6 +296,7 @@ where
                         left,
                         traces_by_stage,
                         fixed,
+                        intermediate_cache,
                         publics,
                         challenges,
                     );
@@ -278,10 +308,22 @@ where
                 _ => unimplemented!("pow with non-constant exponent"),
             },
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                let left =
-                    self.to_plonky3_expr::<AB>(left, traces_by_stage, fixed, publics, challenges);
-                let right =
-                    self.to_plonky3_expr::<AB>(right, traces_by_stage, fixed, publics, challenges);
+                let left = self.to_plonky3_expr::<AB>(
+                    left,
+                    traces_by_stage,
+                    fixed,
+                    intermediate_cache,
+                    publics,
+                    challenges,
+                );
+                let right = self.to_plonky3_expr::<AB>(
+                    right,
+                    traces_by_stage,
+                    fixed,
+                    intermediate_cache,
+                    publics,
+                    challenges,
+                );
 
                 match op {
                     Add => left + right,
@@ -291,8 +333,14 @@ where
                 }
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-                let expr: <AB as AirBuilder>::Expr =
-                    self.to_plonky3_expr::<AB>(expr, traces_by_stage, fixed, publics, challenges);
+                let expr: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(
+                    expr,
+                    traces_by_stage,
+                    fixed,
+                    intermediate_cache,
+                    publics,
+                    challenges,
+                );
 
                 match op {
                     AlgebraicUnaryOperator::Minus => -expr,
@@ -334,6 +382,7 @@ where
         let traces_by_stage: Vec<AB::M> =
             (0..stage_count).map(|i| builder.stage_trace(i)).collect();
         let fixed = builder.preprocessed();
+        let mut intermediate_cache = BTreeMap::new();
         let public_input_values_by_stage = (0..stage_count)
             .map(|i| builder.stage_public_values(i))
             .collect_vec();
@@ -362,13 +411,13 @@ where
             );
 
         // public constraints
-        let public_vals_by_id = self
+        let public_vals_by_name = self
             .constraint_system
             .publics_by_stage
             .iter()
             .zip_eq(public_input_values_by_stage)
             .flat_map(|(publics, values)| publics.iter().zip_eq(values.iter()))
-            .map(|((id, _, _), pi)| (id, *pi))
+            .map(|((name, _, _, _), pi)| (name, *pi))
             .collect::<BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>>();
 
         // constrain public inputs using witness columns in stage 0
@@ -380,11 +429,11 @@ where
             .iter()
             .flatten()
             .enumerate()
-            .for_each(|(index, (pub_id, poly_id, _))| {
+            .for_each(|(index, (name, _, poly_id, _))| {
                 let selector = fixed_local[public_offset + index];
                 let (stage, index) = self.constraint_system.witness_columns[poly_id];
                 let witness_col = traces_by_stage[stage].row_slice(0)[index];
-                let public_value = public_vals_by_id[pub_id];
+                let public_value = public_vals_by_name[name];
 
                 // constraining s(i) * (pub[i] - x(i)) = 0
                 builder.assert_zero(selector * (public_value.into() - witness_col));
@@ -398,7 +447,8 @@ where
                         &identity.expression,
                         &traces_by_stage,
                         &fixed,
-                        &public_vals_by_id,
+                        &mut intermediate_cache,
+                        &public_vals_by_name,
                         &challenges_by_stage,
                     );
 
@@ -409,6 +459,11 @@ where
                     unimplemented!("Plonky3 does not support permutations")
                 }
                 Identity::Connect(..) => unimplemented!("Plonky3 does not support connections"),
+                Identity::PhantomPermutation(_)
+                | Identity::PhantomLookup(_)
+                | Identity::PhantomBusInteraction(_) => {
+                    // phantom identities are only used in witgen
+                }
             }
         }
     }
@@ -457,7 +512,7 @@ where
         &self,
         trace_stage: u8,
         new_challenge_values: &[Plonky3Field<T>],
-        witness: &mut Vec<(String, Vec<T>)>,
+        witness_by_machine: &mut BTreeMap<String, Vec<(String, Vec<T>)>>,
     ) -> CallbackResult<Plonky3Field<T>> {
         let previous_stage_challenges: BTreeSet<&u64> = self
             .split
@@ -472,37 +527,46 @@ where
             .into_iter()
             .zip(new_challenge_values)
             .map(|(c, v)| (*c, T::from_p3_field(*v)))
-            .collect();
+            .collect::<BTreeMap<_, _>>();
 
         // remember the columns we already know about
-        let columns_before: BTreeSet<String> =
-            witness.iter().map(|(name, _)| name.clone()).collect();
+        let columns_before: BTreeSet<String> = witness_by_machine
+            .iter()
+            .flat_map(|(_, cols)| cols.iter().map(|(name, _)| name.clone()))
+            .collect();
 
-        // call the witgen callback, updating the witness
-        *witness = {
-            self.witgen_callback.as_ref().unwrap().next_stage_witness(
-                witness,
-                challenge_map,
-                trace_stage,
-            )
-        };
+        // Compute next-stage witness for each machine in parallel.
+        *witness_by_machine = info_span!("Witness generation for next stage").in_scope(|| {
+            witness_by_machine
+                .par_iter()
+                .map(|(machine_name, machine_witness)| {
+                    let new_witness = self.witgen_callback.as_ref().unwrap().next_stage_witness(
+                        &self.split[machine_name].0,
+                        machine_witness,
+                        challenge_map.clone(),
+                        trace_stage,
+                    );
+                    (machine_name.clone(), new_witness)
+                })
+                .collect()
+        });
 
-        let public_values = self.public_values_so_far(witness);
+        let public_values = self.public_values_so_far(witness_by_machine);
 
         // generate the next trace in the format p3 expects
-        // since the witgen callback returns the entire witness so far,
-        // we filter out the columns we already know about
-        let air_stages = witness
+        let air_stages = witness_by_machine
             .iter()
-            .filter(|(name, _)| !columns_before.contains(name))
-            .map(|(name, values)| (name, values.as_ref()))
-            .into_group_map_by(|(name, _)| name.split("::").next().unwrap())
-            .into_iter()
             .map(|(table_name, columns)| {
+                // since the witgen callback returns the entire witness so far,
+                // we filter out the columns we already know about
+                let witness = columns
+                    .iter()
+                    .filter(|(name, _)| !columns_before.contains(name))
+                    .map(|(name, values)| (name, values.as_ref()));
                 (
                     table_name.to_string(),
                     AirStage {
-                        trace: generate_matrix(columns.into_iter()),
+                        trace: generate_matrix(witness),
                         public_values: public_values[table_name][trace_stage as usize]
                             .iter()
                             .map(|v| v.expect("public value for stage {trace_stage} should be available at this point").into_p3_field())

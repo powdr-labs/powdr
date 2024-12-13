@@ -9,5 +9,8 @@ repository = { workspace = true }
 
 [dependencies]
 
-[lints.clippy]
-uninlined_format_args = "deny"
+[lints]
+workspace = true
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458

@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     iter,
-    ops::ControlFlow,
     str::FromStr,
 };
 
@@ -9,14 +8,16 @@ use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, Analyzed, Identity, LookupIdentity, PermutationIdentity,
-        StatementIdentifier, Symbol, SymbolKind,
+        PhantomLookupIdentity, PhantomPermutationIdentity, Reference, StatementIdentifier, Symbol,
+        SymbolKind,
     },
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
-        visitor::{ExpressionVisitable, VisitOrder},
+        visitor::AllChildren,
+        Expression,
     },
 };
-use powdr_executor::constant_evaluator::VariablySizedColumn;
+use powdr_executor_utils::VariablySizedColumn;
 use powdr_number::{DegreeType, FieldElement};
 
 const DUMMY_COLUMN_NAME: &str = "__dummy";
@@ -49,6 +50,16 @@ pub fn machine_witness_columns<F: FieldElement>(
         all_witness_columns,
         machine_pil.committed_polys_in_source_order(),
     );
+
+    let dummy_column_name = format!("{machine_name}::{DUMMY_COLUMN_NAME}");
+
+    if machine_columns
+        .iter()
+        .any(|(name, _)| name == &dummy_column_name)
+    {
+        return machine_columns.into_iter().cloned().collect();
+    }
+
     let size = machine_columns
         .iter()
         .map(|(_, column)| column.len())
@@ -64,7 +75,6 @@ pub fn machine_witness_columns<F: FieldElement>(
                 panic!("Machine {machine_name} has witness columns of different sizes")
             }
         });
-    let dummy_column_name = format!("{machine_name}::{DUMMY_COLUMN_NAME}");
     let dummy_column = vec![F::zero(); size];
     iter::once((dummy_column_name, dummy_column))
         .chain(machine_columns.into_iter().cloned())
@@ -135,29 +145,34 @@ fn extract_namespace(name: &str) -> String {
     namespace.relative_to(&Default::default()).to_string()
 }
 
-/// From an identity, get the namespaces of the symbols it references.
-fn referenced_namespaces<F: FieldElement>(
-    expression_visitable: &impl ExpressionVisitable<AlgebraicExpression<F>>,
+/// From e.g. an identity or expression, get the namespaces of the symbols it references.
+pub fn referenced_namespaces_algebraic_expression<F: FieldElement>(
+    expression_visitable: &impl AllChildren<AlgebraicExpression<F>>,
 ) -> BTreeSet<String> {
-    let mut namespaces = BTreeSet::new();
-    expression_visitable.visit_expressions(
-        &mut (|expr| {
-            match expr {
-                AlgebraicExpression::Reference(reference) => {
-                    namespaces.insert(extract_namespace(&reference.name));
-                }
-                AlgebraicExpression::PublicReference(_) => unimplemented!(),
-                AlgebraicExpression::Challenge(_) => {}
-                AlgebraicExpression::Number(_) => {}
-                AlgebraicExpression::BinaryOperation(_) => {}
-                AlgebraicExpression::UnaryOperation(_) => {}
-            }
-            ControlFlow::Continue::<()>(())
-        }),
-        VisitOrder::Pre,
-    );
+    expression_visitable
+        .all_children()
+        .filter_map(|expr| match expr {
+            AlgebraicExpression::Reference(reference) => Some(extract_namespace(&reference.name)),
+            AlgebraicExpression::PublicReference(_) => unimplemented!(),
+            AlgebraicExpression::Challenge(_)
+            | AlgebraicExpression::Number(_)
+            | AlgebraicExpression::BinaryOperation(_)
+            | AlgebraicExpression::UnaryOperation(_) => None,
+        })
+        .collect()
+}
 
-    namespaces
+/// From a parsed expression, get the namespaces of the symbols it references.
+fn referenced_namespaces_parsed_expression(
+    expression: &impl AllChildren<Expression<Reference>>,
+) -> BTreeSet<String> {
+    expression
+        .all_children()
+        .filter_map(|expr| match expr {
+            Expression::Reference(_, Reference::Poly(p)) => Some(extract_namespace(&p.name)),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Organizes the PIL statements by namespace:
@@ -171,20 +186,33 @@ fn split_by_namespace<F: FieldElement>(
 ) -> BTreeMap<String, Vec<StatementIdentifier>> {
     let mut current_namespace = "".to_string();
 
+    // Publics end up in the empty namespace, but we can find the correct namespace by looking
+    // at the referenced polynomial.
+    let public_to_namespace = pil
+        .public_declarations
+        .iter()
+        .map(|(public_name, public)| {
+            let ns = extract_namespace(&public.polynomial.name);
+            (public_name.clone(), ns)
+        })
+        .collect::<BTreeMap<_, _>>();
+
     pil.source_order
         .iter()
         // split, filtering out some statements
         .filter_map(|statement| match &statement {
-            StatementIdentifier::Definition(name)
-            | StatementIdentifier::PublicDeclaration(name) => {
+            StatementIdentifier::Definition(name) => {
                 let namespace = extract_namespace(name);
                 current_namespace = namespace.clone();
                 // add `statement` to `namespace`
                 Some((namespace, statement))
             }
+            StatementIdentifier::PublicDeclaration(name) => {
+                Some((public_to_namespace[name].clone(), statement))
+            }
             StatementIdentifier::ProofItem(i) => {
                 let identity = &pil.identities[*i];
-                let namespaces = referenced_namespaces(identity);
+                let namespaces = referenced_namespaces_algebraic_expression(identity);
 
                 match namespaces.len() {
                     0 => panic!("Identity references no namespace: {identity}"),
@@ -193,14 +221,20 @@ fn split_by_namespace<F: FieldElement>(
                         .then(|| (current_namespace.clone(), statement)),
                     _ => match identity {
                         Identity::Lookup(LookupIdentity { left, right, .. })
-                        | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
+                        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
+                        | Identity::Permutation(PermutationIdentity { left, right, .. })
+                        | Identity::PhantomPermutation(PhantomPermutationIdentity {
+                            left,
+                            right,
+                            ..
+                        }) => {
                             assert_eq!(
-                                referenced_namespaces(left).len(),
+                                referenced_namespaces_algebraic_expression(left).len(),
                                 1,
                                 "LHS of identity references multiple namespaces: {identity}"
                             );
                             assert_eq!(
-                                referenced_namespaces(right).len(),
+                                referenced_namespaces_algebraic_expression(right).len(),
                                 1,
                                 "RHS of identity references multiple namespaces: {identity}"
                             );
@@ -213,7 +247,21 @@ fn split_by_namespace<F: FieldElement>(
                     },
                 }
             }
-            StatementIdentifier::ProverFunction(_) => None,
+            StatementIdentifier::ProverFunction(i) => {
+                let prover_function = &pil.prover_functions[*i];
+                let namespaces = referenced_namespaces_parsed_expression(prover_function)
+                    .into_iter()
+                    .filter(|namespace| !namespace.starts_with("std::"))
+                    .collect::<BTreeSet<_>>();
+                match namespaces.len() {
+                    1 => Some((namespaces.into_iter().next().unwrap().clone(), statement)),
+                    0 => panic!("Prover function references no namespace: {prover_function}"),
+                    _ => {
+                        panic!("Prover function references multiple namespaces: {prover_function}")
+                    }
+                }
+            }
+            StatementIdentifier::TraitImplementation(_) => None,
         })
         // collect into a map
         .fold(Default::default(), |mut acc, (namespace, statement)| {
@@ -270,17 +318,22 @@ fn build_machine_pil<F: FieldElement>(
         source_order: statements,
         ..pil
     };
-    let pil_string = add_dummy_witness_column(&pil.to_string());
+    let pil_string = ensure_dummy_witness_column(&pil.to_string());
     let parsed_string = powdr_parser::parse(None, &pil_string).unwrap();
     powdr_pil_analyzer::analyze_ast(parsed_string).unwrap()
 }
 
 /// Insert a dummy witness column and identity into the PIL string, just after the namespace.
 /// This ensures that all machine PILs have at least one witness column and identity, which is
-/// assumed by most backends.
+/// assumed by most backends. If a dummy column is already there, this is a no-op.
 /// In the future, this will always be the case, as interacting with the bus will require
 /// at least one witness column & identity, so this is only necessary for now.
-fn add_dummy_witness_column(pil_string: &str) -> String {
+fn ensure_dummy_witness_column(pil_string: &str) -> String {
+    // check if we already have a dummy column
+    if pil_string.contains(DUMMY_COLUMN_NAME) {
+        return pil_string.to_string();
+    }
+
     let dummy_column = format!("    col witness {DUMMY_COLUMN_NAME};");
     let dummy_constraint = format!("    {DUMMY_COLUMN_NAME} = {DUMMY_COLUMN_NAME};");
     let mut has_inserted_dummy_lines = false;
@@ -297,4 +350,23 @@ fn add_dummy_witness_column(pil_string: &str) -> String {
             }
         })
         .join("\n")
+}
+
+#[cfg(test)]
+mod test {
+    use powdr_ast::analyzed::Analyzed;
+    use powdr_number::GoldilocksField;
+
+    #[test]
+    fn test_idempotence() {
+        let src = r#"namespace main;
+col witness a;
+"#;
+        let pil: Analyzed<GoldilocksField> =
+            powdr_pil_analyzer::analyze_ast(powdr_parser::parse(None, src).unwrap()).unwrap();
+        let split = super::split_pil(&pil).into_iter().next().unwrap().1;
+        let split_str = split.to_string();
+        let split_again = super::split_pil(&split).into_iter().next().unwrap().1;
+        assert_eq!(split_str, split_again.to_string());
+    }
 }

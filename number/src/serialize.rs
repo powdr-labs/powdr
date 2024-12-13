@@ -74,6 +74,10 @@ pub fn read_polys_csv_file<T: FieldElement>(file: impl Read) -> Vec<(String, Vec
     for result in reader.records() {
         let record = result.unwrap();
         for (idx, value) in record.iter().enumerate() {
+            // shorter polys/columns end in empty cells
+            if value.trim().is_empty() {
+                continue;
+            }
             let value = if let Some(value) = value.strip_prefix("0x") {
                 T::from_str_radix(value, 16).unwrap()
             } else if let Some(value) = value.strip_prefix('-') {

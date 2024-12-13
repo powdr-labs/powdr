@@ -23,7 +23,7 @@ fn analyze_string(input: &str) -> Analyzed<GoldilocksField> {
 fn parse_print_analyzed() {
     // This is rather a test for the Display trait than for the analyzer.
     let input = r#"    let N: int = 65536_int;
-public P = T::pc(2);
+    public P = T::pc(2);
 namespace Bin(65536);
     col witness bla;
 namespace std::prover(65536);
@@ -161,7 +161,7 @@ namespace N(65536);
 
 #[test]
 fn reparse_arrays() {
-    let input = r#"public out = N::y[1](2);
+    let input = r#"    public out = N::y[1](2);
 namespace N(16);
     col witness y[3];
     N::y[1] - 2 = 0;
@@ -933,6 +933,64 @@ fn typed_literals() {
     let c: int = -120_int;
     let d: int[] = [1_int, 0_int, 2_int];
     let e: expr = -24_expr;
+"#;
+    let analyzed = analyze_string(input);
+    assert_eq!(analyzed.to_string(), expected);
+}
+
+#[test]
+fn traits_and_impls() {
+    let input = "
+    namespace N;
+        trait X<T> {
+            f: -> T,
+            g: T -> T,
+        }
+        impl X<()> {
+            f: || (),
+            g: |()| (),
+        }
+    namespace Q;
+        let a: int = N::X::f();
+        impl N::X<int> {
+            f: || 1,
+            g: |x| x + 1,
+        }
+        ";
+    let expected = r#"namespace N;
+    trait X<T> {
+        f: -> T,
+        g: T -> T,
+    }
+    impl N::X<()> {
+        f: || (),
+        g: |()| (),
+    }
+namespace Q;
+    let a: int = N::X::f::<int>();
+    impl N::X<int> {
+        f: || 1_int,
+        g: |x| x + 1_int,
+    }
+"#;
+    let analyzed = analyze_string(input);
+    assert_eq!(analyzed.to_string(), expected);
+}
+
+#[test]
+fn same_publics_in_different_namespace() {
+    let input = "
+    namespace A;
+        public x = B::w(0);
+    namespace B(8);
+        let w;
+        public x = w(1);
+        ";
+    let expected = r#"namespace A;
+    public x = B::w(0);
+namespace B(8);
+    col witness w;
+    public x = B::w(1);
 "#;
     let analyzed = analyze_string(input);
     assert_eq!(analyzed.to_string(), expected);

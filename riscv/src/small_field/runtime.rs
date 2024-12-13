@@ -5,12 +5,8 @@ use powdr_riscv_syscalls::Syscall;
 use itertools::Itertools;
 
 use crate::code_gen::Register;
-use crate::small_field::code_gen::{u32_high, u32_low};
 
-use crate::runtime::{
-    parse_function_statement, parse_instruction_declaration, SubMachine, SyscallImpl,
-    EXTRA_REG_PREFIX,
-};
+use crate::runtime::{parse_instruction_declaration, SubMachine, SyscallImpl, EXTRA_REG_PREFIX};
 use crate::RuntimeLibs;
 
 /// RISCV powdr assembly runtime.
@@ -18,14 +14,14 @@ use crate::RuntimeLibs;
 #[derive(Clone)]
 pub struct Runtime {
     submachines: BTreeMap<String, SubMachine>,
-    syscalls: BTreeMap<Syscall, SyscallImpl>,
+    syscalls: BTreeMap<&'static str, SyscallImpl>,
 }
 
 impl Runtime {
     pub fn new(libs: RuntimeLibs, continuations: bool) -> Self {
-        let mut runtime = Runtime::base();
-        if libs.poseidon {
-            runtime = runtime.with_poseidon(continuations);
+        let mut runtime = Runtime::base(continuations);
+        if libs.poseidon2 {
+            runtime = runtime.with_poseidon2();
         }
         if libs.keccak {
             runtime = runtime.with_keccak();
@@ -36,7 +32,7 @@ impl Runtime {
         runtime
     }
 
-    pub fn base() -> Self {
+    pub fn base(continuations: bool) -> Self {
         let mut r = Runtime {
             submachines: Default::default(),
             syscalls: Default::default(),
@@ -48,7 +44,7 @@ impl Runtime {
             "std::machines::small_field::binary::Binary",
             None,
             "binary",
-            vec!["byte_binary"],
+            vec!["byte_binary", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
             [
                 r#"instr and XL, YL, ZH, ZL, WL
                             link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
@@ -70,122 +66,69 @@ impl Runtime {
                             link ~> regs.mstore(0, WL, STEP + 3, tmp4_h, tmp4_l);"#,
             ],
             0,
-            ["and 0, 0, 0, 0, 0;"],
         );
 
         r.add_submachine(
             "std::machines::small_field::shift::Shift",
             None,
             "shift",
-            vec!["byte_shift"],
+            vec!["byte_shift", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
             [
                 r#"instr shl XL, YL, ZH, ZL, WL
                     link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
-                    link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP)
+                    link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
                     link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
                     link ~> (tmp4_l, tmp4_h) = shift.shl(tmp1_l, tmp1_h, tmp3_l)
                     link ~> regs.mstore(0, WL, STEP + 3, tmp4_h, tmp4_l);
 "#,
                 r#"instr shr XL, YL, ZH, ZL, WL
                     link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
-                    link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP)
+                    link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
                     link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
                     link ~> (tmp4_l, tmp4_h) = shift.shr(tmp1_l, tmp1_h, tmp3_l)
                     link ~> regs.mstore(0, WL, STEP + 3, tmp4_h, tmp4_l);
 "#,
             ],
             0,
-            ["shl 0, 0, 0, 0, 0;"],
         );
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Bit2",
-            None,
-            "bit2",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Bit2", None, "bit2", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Bit6",
-            None,
-            "bit6",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Bit6", None, "bit6", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Bit7",
-            None,
-            "bit7",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Bit7", None, "bit7", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Byte",
-            None,
-            "byte",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Byte", None, "byte", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Bit12",
-            None,
-            "bit12",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Bit12", None, "bit12", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Byte2",
-            None,
-            "byte2",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Byte2", None, "byte2", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
+        r.add_submachine::<&str, _>(
             "std::machines::binary::ByteBinary",
             None,
             "byte_binary",
             vec![],
             [],
             0,
-            [],
         );
 
-        r.add_submachine::<&str, _, _>(
+        r.add_submachine::<&str, _>(
             "std::machines::small_field::shift::ByteShift",
             None,
             "byte_shift",
             vec![],
             [],
             0,
-            [],
         );
 
-        r.add_submachine::<&str, _, _>(
+        r.add_submachine::<&str, _>(
             "std::machines::split::ByteCompare",
             None,
             "byte_compare",
             vec![],
             [],
             0,
-            [],
         );
 
         // Base syscalls
@@ -214,7 +157,9 @@ impl Runtime {
 
         r.add_syscall(Syscall::Halt, ["return;"]);
 
-        r
+        r.add_syscall(Syscall::CommitPublic, ["commit_public 10, 11;"]);
+
+        r.with_poseidon(continuations)
     }
 
     fn with_keccak(self) -> Self {
@@ -222,7 +167,7 @@ impl Runtime {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn add_submachine<S: AsRef<str>, I1: IntoIterator<Item = S>, I2: IntoIterator<Item = S>>(
+    fn add_submachine<S: AsRef<str>, I1: IntoIterator<Item = S>>(
         &mut self,
         path: &str,
         alias: Option<&str>,
@@ -230,7 +175,6 @@ impl Runtime {
         arguments: Vec<&str>,
         instructions: I1,
         extra_registers: u8,
-        init_call: I2,
     ) {
         let subm = SubMachine {
             path: str::parse(path).expect("invalid submachine path"),
@@ -242,10 +186,6 @@ impl Runtime {
                 .map(|s| parse_instruction_declaration(s.as_ref()))
                 .collect(),
             extra_registers,
-            init_call: init_call
-                .into_iter()
-                .map(|s| parse_function_statement(s.as_ref()))
-                .collect(),
         };
         assert!(
             self.submachines
@@ -260,19 +200,35 @@ impl Runtime {
         syscall: Syscall,
         implementation: I,
     ) {
-        let implementation = SyscallImpl(
-            implementation
+        let implementation = SyscallImpl {
+            syscall,
+            statements: implementation
                 .into_iter()
-                .map(|s| parse_function_statement(s.as_ref()))
+                .map(|s| s.as_ref().to_string())
                 .collect(),
-        );
+        };
 
-        if self.syscalls.insert(syscall, implementation).is_some() {
+        if self
+            .syscalls
+            .insert(syscall.name(), implementation)
+            .is_some()
+        {
             panic!("duplicate syscall {syscall}");
         }
     }
 
-    fn with_poseidon(self, _continuations: bool) -> Self {
+    // TODO This implementation is just a placeholder,
+    // needed by the runtime "finalize" code.
+    fn with_poseidon(mut self, continuations: bool) -> Self {
+        assert!(!continuations);
+
+        let implementation = std::iter::once("affine 0, 0, 0, 0, 0, 0;".to_string());
+
+        self.add_syscall(Syscall::NativeHash, implementation);
+        self
+    }
+
+    fn with_poseidon2(self) -> Self {
         todo!()
     }
 
@@ -282,14 +238,6 @@ impl Runtime {
 
     fn with_arith(self) -> Self {
         todo!()
-    }
-
-    pub fn submachines_init(&self) -> Vec<String> {
-        self.submachines
-            .values()
-            .flat_map(|m| m.init_call.iter())
-            .map(|s| s.to_string())
-            .collect()
     }
 
     pub fn submachines_import(&self) -> String {
@@ -331,17 +279,19 @@ impl Runtime {
         ]
         .into_iter();
 
-        let jump_table = self.syscalls.keys().map(|s| {
-            let s32_h = u32_high(*s as u32);
-            let s32_l = u32_low(*s as u32);
-            format!("branch_if_diff_equal 5, 0, {s32_h}, {s32_l}, __ecall_handler_{s};",)
+        let jump_table = self.syscalls.values().map(|s| {
+            let opcode = s.syscall as u8;
+            format!(
+                "branch_if_diff_equal 5, 0, 0, {opcode}, __ecall_handler_{};",
+                s.syscall
+            )
         });
 
         let invalid_handler = ["__invalid_syscall:".to_string(), "fail;".to_string()].into_iter();
 
         let handlers = self.syscalls.iter().flat_map(|(syscall, implementation)| {
             std::iter::once(format!("__ecall_handler_{syscall}:"))
-                .chain(implementation.0.iter().map(|i| i.to_string()))
+                .chain(implementation.statements.iter().cloned())
                 .chain([format!("jump_dyn 1, {};", Register::from("tmp1").addr())])
         });
 
@@ -351,5 +301,9 @@ impl Runtime {
             .chain(handlers)
             .chain(std::iter::once("// end of ecall handler".to_string()))
             .collect()
+    }
+
+    pub fn get_syscall_impl(&self, syscall_name: &str) -> Option<&SyscallImpl> {
+        self.syscalls.get(syscall_name)
     }
 }

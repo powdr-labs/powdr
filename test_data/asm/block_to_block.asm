@@ -1,6 +1,7 @@
+let N: int = 8;
+
 // calls a constrained machine from a constrained machine
 machine Arith with
-    degree: 8,
     latch: latch,
     operation_id: operation_id
 {
@@ -15,11 +16,11 @@ machine Arith with
 }
 
 machine Main with
-    degree: 8,
+    degree: N,
     latch: latch,
     operation_id: operation_id
 {
-    Arith arith;
+    Arith arith(N, N);
 
     // return `3*x + 3*y`, adding twice locally and twice externally
     operation main<0>;

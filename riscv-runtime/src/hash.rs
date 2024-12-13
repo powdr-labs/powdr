@@ -1,35 +1,41 @@
 use core::arch::asm;
 use core::convert::TryInto;
-use core::mem;
+use core::mem::{self, MaybeUninit};
 
+use crate::goldilocks::Goldilocks;
 use powdr_riscv_syscalls::Syscall;
 
-const GOLDILOCKS: u64 = 0xffffffff00000001;
-
-/// Calls the low level Poseidon PIL machine, where the last 4 elements are the
-/// "cap", the return value is placed in data[..4] and the reference to this
-/// sub-array is returned.
-///
-/// This is unsafe because it does not check if the u64 elements fit the
-/// Goldilocks field.
-pub fn poseidon_gl_unsafe(data: &mut [u64; 12]) -> &[u64; 4] {
+pub fn native_hash(data: &mut [u64; 12]) -> &[u64; 4] {
     unsafe {
-        asm!("ecall", in("a0") data as *mut [u64; 12], in("t0") u32::from(Syscall::PoseidonGL));
+        ecall!(Syscall::NativeHash, in("a0") data);
     }
     data[..4].try_into().unwrap()
 }
 
 /// Calls the low level Poseidon PIL machine, where the last 4 elements are the
-/// "cap" and the return value is placed in data[0:4].
-///
-/// This function will panic if any of the u64 elements doesn't fit the
-/// Goldilocks field.
-pub fn poseidon_gl(data: &mut [u64; 12]) -> &[u64; 4] {
-    for &n in data.iter() {
-        assert!(n < GOLDILOCKS);
+/// "cap", the return value is placed in data[..4] and the reference to this
+/// sub-array is returned.
+pub fn poseidon_gl(data: &mut [Goldilocks; 12]) -> &[Goldilocks; 4] {
+    unsafe {
+        ecall!(Syscall::PoseidonGL, in("a0") data);
     }
+    data[..4].try_into().unwrap()
+}
 
-    poseidon_gl_unsafe(data)
+/// Perform one Poseidon2 permutation with 8 Goldilocks field elements in-place.
+pub fn poseidon2_gl_inplace(data: &mut [Goldilocks; 8]) {
+    unsafe {
+        ecall!(Syscall::Poseidon2GL, in("a0") data, in("a1") data);
+    }
+}
+
+/// Perform one Poseidon2 permutation with 8 Goldilocks field elements.
+pub fn poseidon2_gl(data: &[Goldilocks; 8]) -> [Goldilocks; 8] {
+    unsafe {
+        let mut output: MaybeUninit<[Goldilocks; 8]> = MaybeUninit::uninit();
+        ecall!(Syscall::Poseidon2GL, in("a0") data, in("a1") output.as_mut_ptr());
+        output.assume_init()
+    }
 }
 
 /// Calls the keccakf machine.
@@ -37,7 +43,7 @@ pub fn poseidon_gl(data: &mut [u64; 12]) -> &[u64; 4] {
 pub fn keccakf(input: &[u64; 25], output: &mut [u64; 25]) {
     unsafe {
         // Syscall inputs: memory pointer to input array and memory pointer to output array.
-        asm!("ecall", in("a0") input, in("a1") output, in("t0") u32::from(Syscall::KeccakF));
+        ecall!(Syscall::KeccakF, in("a0") input, in("a1") output);
     }
 }
 

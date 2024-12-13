@@ -6,6 +6,7 @@ use std::utils::new_bool;
 use std::utils::sum;
 use std::convert::expr;
 use std::machines::small_field::memory::Memory;
+use std::machines::small_field::pointer_arith::increment_ptr;
 use std::machines::split::split_bb::SplitBB;
 
 // Implements the Poseidon permutation for the BabyBear field with the following parameters:
@@ -22,7 +23,6 @@ use std::machines::split::split_bb::SplitBB;
 // with memory directly to fetch its inputs and write its outputs.
 machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     latch: CLK_0,
-    operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
@@ -38,12 +38,10 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     // (in canonical form).
     //
     // Reads happen at the provided time step; writes happen at the next time step.
-    operation poseidon_permutation<0>
+    operation poseidon_permutation
         input_addr_high, input_addr_low,
         output_addr_high, output_addr_low,
         time_step ->;
-
-    let operation_id;
 
     // Number of field elements in the state
     let STATE_SIZE: int = 16;
@@ -98,26 +96,11 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     CLK[STATE_SIZE] * (high_addr - output_addr_high) = 0;
     CLK[STATE_SIZE] * (low_addr - output_addr_low) = 0;
 
-    // How far away from overflowing the low limb is:
-    let low_diff = low_addr - (0x10000 - 4);
-    // Is one if low limb is about to overflow:
-    let low_overflow;
-    low_overflow = 1 - low_diff_inv * low_diff;
-    // Helper to allow low_overflow to be boolean
-    let low_diff_inv;
-    // Ensures that (low_diff_inv * low_diff) is boolean,
-    // and that low_diff_inv is not 0 when low_diff is not 0:
-    (low_diff_inv * low_diff - 1) * low_diff = 0;
-
-    // Increment the low limb if address is not being set:
-    (1 - is_addr_set') * (
-        // If low limb is about to overflow, next value must be 0:
-        low_overflow * low_addr' +
-        // Otherwise, next value is current plus 4:
-        (1 - low_overflow) * (low_addr + 4 - low_addr')
-    ) = 0;
-    // Set high limb, incremented if low overflowed:
-    (1 - is_addr_set') * (high_addr' - high_addr - low_overflow) = 0;
+    // Increment the address by 4 in every row but the ones it is set.
+    std::array::map(
+        increment_ptr(4, high_addr, low_addr, high_addr', low_addr'),
+        |c| std::constraints::make_conditional(c, (1 - is_addr_set'))
+    );
 
     // One-hot encoding of the row number (for the first <STATE_SIZE + OUTPUT_SIZE> rows)
     assert(STATE_SIZE + OUTPUT_SIZE < ROWS_PER_HASH, || "Not enough rows to do memory read / write");

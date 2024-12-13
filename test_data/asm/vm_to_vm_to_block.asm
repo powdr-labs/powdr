@@ -51,6 +51,7 @@ machine Pythagoras with degree: N {
 }
 
 machine Arith with
+    degree: N,
     latch: latch,
     operation_id: operation_id,
 {

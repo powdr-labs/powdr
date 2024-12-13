@@ -1,7 +1,10 @@
 use std::machines::binary::ByteBinary;
 use std::machines::large_field::binary::Binary;
 
-machine Main with degree: 262144 {
+let main_degree: int = 2**7;
+let binary_degree: int = 2**7;
+
+machine Main with degree: main_degree {
     reg pc[@pc];
     reg X0[<=];
     reg X1[<=];
@@ -9,7 +12,7 @@ machine Main with degree: 262144 {
     reg A;
 
     ByteBinary byte_binary;
-    Binary binary(byte_binary);
+    Binary binary(byte_binary, binary_degree, binary_degree);
 
     instr and X0, X1 -> X2 link ~> X2 = binary.and(X0, X1);
     instr or X0, X1 -> X2 link ~> X2 = binary.or(X0, X1);

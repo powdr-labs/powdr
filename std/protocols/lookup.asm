@@ -20,6 +20,7 @@ use std::math::fp2::constrain_eq_ext;
 use std::math::fp2::required_extension_size;
 use std::math::fp2::needs_extension;
 use std::protocols::fingerprint::fingerprint;
+use std::protocols::fingerprint::fingerprint_inter;
 use std::utils::unwrap_or_else;
 
 let unpack_lookup_constraint: Constr -> (expr, expr[], expr, expr[]) = |lookup_constraint| match lookup_constraint {
@@ -36,8 +37,8 @@ let unpack_lookup_constraint: Constr -> (expr, expr[], expr, expr[]) = |lookup_c
 let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = query |acc, alpha, beta, lookup_constraint, multiplicities| {
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
     
-    let lhs_denom = sub_ext(beta, fingerprint(lhs, alpha));
-    let rhs_denom = sub_ext(beta, fingerprint(rhs, alpha));
+    let lhs_denom = sub_ext(eval_ext(beta), fingerprint(array::eval(lhs), alpha));
+    let rhs_denom = sub_ext(eval_ext(beta), fingerprint(array::eval(rhs), alpha));
     let m_ext = from_base(multiplicities);
     
     // acc' = acc + 1/(beta-a_i) * lhs_selector - m_i/(beta-b_i) * rhs_selector
@@ -45,10 +46,10 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = quer
         eval_ext(acc),
         sub_ext(
             mul_ext(
-                inv_ext(eval_ext(lhs_denom)), 
+                inv_ext(lhs_denom), 
                 eval_ext(from_base(lhs_selector))),
             mul_ext(
-                mul_ext(eval_ext(m_ext), inv_ext(eval_ext(rhs_denom))),
+                mul_ext(eval_ext(m_ext), inv_ext(rhs_denom)),
                 eval_ext(from_base(rhs_selector))
         )
     ));
@@ -58,13 +59,7 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = quer
 /// Transforms a single lookup constraint to identity constraints, challenges and
 /// higher-stage witness columns.
 /// Use this function if the backend does not support lookup constraints natively.
-/// WARNING: This function can currently not be used multiple times since
-/// the used challenges would overlap.
-/// TODO: Implement this for an array of constraints.
-/// Arguments:
-/// - lookup_constraint: The lookup constraint
-/// - multiplicities: A multiplicities column which shows how many times each row of the RHS value appears in the LHS                  
-let lookup: Constr, expr -> () = constr |lookup_constraint, multiplicities| {
+let lookup: Constr -> () = constr |lookup_constraint| {
     std::check::assert(required_extension_size() <= 2, || "Invalid extension size");
     // Alpha is used to compress the LHS and RHS arrays.
     let alpha = fp2_from_array(array::new(required_extension_size(), |i| challenge(0, i + 1)));
@@ -73,8 +68,9 @@ let lookup: Constr, expr -> () = constr |lookup_constraint, multiplicities| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
 
-    let lhs_denom = sub_ext(beta, fingerprint(lhs, alpha));
-    let rhs_denom = sub_ext(beta, fingerprint(rhs, alpha));
+    let lhs_denom = sub_ext(beta, fingerprint_inter(lhs, alpha));
+    let rhs_denom = sub_ext(beta, fingerprint_inter(rhs, alpha));
+    let multiplicities;
     let m_ext = from_base(multiplicities);
 
     let acc = array::new(required_extension_size(), |i| std::prover::new_witness_col_at_stage("acc", 1));
@@ -113,11 +109,9 @@ let lookup: Constr, expr -> () = constr |lookup_constraint, multiplicities| {
     is_first * acc_2 = 0;
     constrain_eq_ext(update_expr, from_base(0));
 
-    // Build an annotation for witness generation
-    let witgen_annotation = to_phantom_lookup(lookup_constraint, multiplicities);
-    // TODO: Adding it to the constraint set currently fails
-    // witgen_annotation;
-
+    // Add an annotation for witness generation
+    to_phantom_lookup(lookup_constraint, multiplicities);
+    
     // In the extension field, we need a prover function for the accumulator.
     if needs_extension() {
         // TODO: Helper columns, because we can't access the previous row in hints

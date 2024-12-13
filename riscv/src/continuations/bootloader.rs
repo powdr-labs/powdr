@@ -28,7 +28,7 @@ pub const PAGE_NUMBER_MASK: usize = (1 << N_LEAVES_LOG) - 1;
 pub const WORDS_PER_HASH: usize = 8;
 pub const BOOTLOADER_INPUTS_PER_PAGE: usize =
     WORDS_PER_PAGE + 1 + WORDS_PER_HASH + (MERKLE_TREE_DEPTH - 1) * WORDS_PER_HASH;
-pub const MEMORY_HASH_START_INDEX: usize = 2 * REGISTER_NAMES.len();
+pub const MEMORY_HASH_START_INDEX: usize = 2 * (REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len());
 pub const NUM_PAGES_INDEX: usize = MEMORY_HASH_START_INDEX + WORDS_PER_HASH * 2;
 pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 
@@ -42,7 +42,7 @@ pub fn shutdown_routine_upper_bound(num_pages: usize) -> usize {
     // - Assert all register values are correct (except the PC)
     // - Start the page loop
     // - Jump to shutdown sink
-    let constant_overhead = 6 + REGISTER_NAMES.len() - 1;
+    let constant_overhead = 6 + (REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len()) - 1;
 
     // For each page, we have to:
     // TODO is 14 still the true number?
@@ -75,63 +75,61 @@ pub fn bootloader_preamble(field: KnownField) -> String {
     }
 }
 
-pub fn bootloader_and_shutdown_routine(
-    field: KnownField,
-    submachine_initialization: &[String],
-) -> String {
+pub fn bootloader_and_shutdown_routine(field: KnownField) -> String {
     match field.field_size() {
         FieldSize::Small => {
             todo!()
         }
-        FieldSize::Large => {
-            large_field::bootloader::bootloader_and_shutdown_routine(submachine_initialization)
-        }
+        FieldSize::Large => large_field::bootloader::bootloader_and_shutdown_routine(),
     }
 }
 
 /// The names of the registers in the order in which they are expected by the bootloader.
-pub const REGISTER_NAMES: [&str; 37] = [
-    "main.x1",
-    "main.x2",
-    "main.x3",
-    "main.x4",
-    "main.x5",
-    "main.x6",
-    "main.x7",
-    "main.x8",
-    "main.x9",
-    "main.x10",
-    "main.x11",
-    "main.x12",
-    "main.x13",
-    "main.x14",
-    "main.x15",
-    "main.x16",
-    "main.x17",
-    "main.x18",
-    "main.x19",
-    "main.x20",
-    "main.x21",
-    "main.x22",
-    "main.x23",
-    "main.x24",
-    "main.x25",
-    "main.x26",
-    "main.x27",
-    "main.x28",
-    "main.x29",
-    "main.x30",
-    "main.x31",
-    "main.tmp1",
-    "main.tmp2",
-    "main.tmp3",
-    "main.tmp4",
-    "main.lr_sc_reservation",
-    "main.pc",
+/// These are the names of the RISCV registers that are stored in memory.
+pub const REGISTER_MEMORY_NAMES: [&str; 36] = [
+    "main::x1",
+    "main::x2",
+    "main::x3",
+    "main::x4",
+    "main::x5",
+    "main::x6",
+    "main::x7",
+    "main::x8",
+    "main::x9",
+    "main::x10",
+    "main::x11",
+    "main::x12",
+    "main::x13",
+    "main::x14",
+    "main::x15",
+    "main::x16",
+    "main::x17",
+    "main::x18",
+    "main::x19",
+    "main::x20",
+    "main::x21",
+    "main::x22",
+    "main::x23",
+    "main::x24",
+    "main::x25",
+    "main::x26",
+    "main::x27",
+    "main::x28",
+    "main::x29",
+    "main::x30",
+    "main::x31",
+    "main::tmp1",
+    "main::tmp2",
+    "main::tmp3",
+    "main::tmp4",
+    "main::lr_sc_reservation",
 ];
 
+/// List of machine registers, declared in the asm machine.
+pub const REGISTER_NAMES: [&str; 3] = ["main::query_arg_1", "main::query_arg_2", "main::pc"];
+
 /// Index of the PC in the bootloader input.
-pub const PC_INDEX: usize = REGISTER_NAMES.len() - 1;
+pub const PC_INDEX: usize = REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len() - 1;
 
 /// The default PC that can be used in first chunk, will just continue with whatever comes after the bootloader.
 ///
@@ -211,7 +209,7 @@ pub fn create_input<F: FieldElement, Pages: ExactSizeIterator<Item = u32>>(
 }
 
 pub fn default_register_values<F: FieldElement>() -> Vec<F> {
-    let mut register_values = vec![0.into(); REGISTER_NAMES.len()];
+    let mut register_values = vec![0.into(); REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len()];
     register_values[PC_INDEX] = DEFAULT_PC.into();
     register_values
 }

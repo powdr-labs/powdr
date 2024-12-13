@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter, Result};
 
 use crate::{asm_analysis::combine_flags, write_items_indented};
 
-use super::{Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph};
+use super::{Link, LinkFrom, LinkTo, Location, Machine, MachineInstanceGraph, Object, Operation};
 
 impl Display for Location {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -10,7 +10,7 @@ impl Display for Location {
     }
 }
 
-impl Display for PILGraph {
+impl Display for MachineInstanceGraph {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "// Utilities")?;
         for (module_path, statements) in &self.statements {

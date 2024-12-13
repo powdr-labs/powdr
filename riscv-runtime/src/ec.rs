@@ -1,116 +1,82 @@
 use core::arch::asm;
 
-use crate::arith::{be_to_u32, u32_to_be};
+use crate::arith::{bes_to_u32, u32x16_to_be};
 use powdr_riscv_syscalls::Syscall;
 
 /// Add two k256 ec points. Coordinates are big-endian u8 arrays.
-pub fn add_u8_be(
-    mut ax: [u8; 32],
-    mut ay: [u8; 32],
-    bx: [u8; 32],
-    by: [u8; 32],
-) -> ([u8; 32], [u8; 32]) {
-    let mut ax1: [u32; 8] = Default::default();
-    let mut ay1: [u32; 8] = Default::default();
-    let mut bx1: [u32; 8] = Default::default();
-    let mut by1: [u32; 8] = Default::default();
+pub fn add_u8_be(ax: [u8; 32], ay: [u8; 32], bx: [u8; 32], by: [u8; 32]) -> [u8; 64] {
+    let mut a1: [u32; 16] = Default::default();
+    let mut b1: [u32; 16] = Default::default();
 
-    be_to_u32(&ax, &mut ax1);
-    be_to_u32(&ay, &mut ay1);
-    be_to_u32(&bx, &mut bx1);
-    be_to_u32(&by, &mut by1);
+    bes_to_u32(&ax, &ay, &mut a1);
+    bes_to_u32(&bx, &by, &mut b1);
 
     unsafe {
-        asm!("ecall",
-             in("a0") &mut ax1 as *mut [u32; 8],
-             in("a1") &mut ay1 as *mut [u32; 8],
-             in("a2") &mut bx1 as *mut [u32; 8],
-             in("a3") &mut by1 as *mut [u32; 8],
-             in("t0") u32::from(Syscall::EcAdd));
+        ecall!(Syscall::EcAdd,
+            in("a0") a1.as_mut_ptr(),
+            in("a1") b1.as_mut_ptr(),
+            in("a2") a1.as_mut_ptr());
     }
 
-    u32_to_be(&ax1, &mut ax);
-    u32_to_be(&ay1, &mut ay);
-
-    (ax, ay)
+    let mut res = [0u8; 64];
+    u32x16_to_be(&a1, &mut res);
+    res
 }
 
 /// Add two k256 ec points. Coordinates are little-endian u8 arrays.
-pub fn add_u8_le(
-    mut ax: [u8; 32],
-    mut ay: [u8; 32],
-    mut bx: [u8; 32],
-    mut by: [u8; 32],
-) -> ([u8; 32], [u8; 32]) {
+pub fn add_u8_le(mut a: [u8; 64], b: [u8; 64]) -> [u8; 64] {
     unsafe {
-        asm!("ecall",
-             in("a0") ax.as_mut_ptr() as *mut [u32; 8],
-             in("a1") ay.as_mut_ptr() as *mut [u32; 8],
-             in("a2") bx.as_mut_ptr() as *mut [u32; 8],
-             in("a3") by.as_mut_ptr() as *mut [u32; 8],
-             in("t0") u32::from(Syscall::EcAdd));
+        ecall!(Syscall::EcAdd,
+            in("a0") a.as_mut_ptr(),
+            in("a1") b.as_ptr(),
+            in("a2") a.as_mut_ptr());
     }
-    (ax, ay)
+    a
 }
 
 /// Add two k256 ec points. Coordinates are little-endian u32 arrays.
-pub fn add_u32_le(
-    mut ax: [u32; 8],
-    mut ay: [u32; 8],
-    mut bx: [u32; 8],
-    mut by: [u32; 8],
-) -> ([u32; 8], [u32; 8]) {
+pub fn add_u32_le(mut a: [u32; 16], b: [u32; 16]) -> [u32; 16] {
     unsafe {
-        asm!("ecall",
-             in("a0") &mut ax as *mut [u32; 8],
-             in("a1") &mut ay as *mut [u32; 8],
-             in("a2") &mut bx as *mut [u32; 8],
-             in("a3") &mut by as *mut [u32; 8],
-             in("t0") u32::from(Syscall::EcAdd));
+        ecall!(Syscall::EcAdd,
+            in("a0") a.as_mut_ptr(),
+            in("a1") b.as_ptr(),
+            in("a2") a.as_mut_ptr());
     }
-    (ax, ay)
+    a
 }
 
 /// Double a k256 ec point. Coordinates are big-endian u8 arrays.
-pub fn double_u8_be(mut x: [u8; 32], mut y: [u8; 32]) -> ([u8; 32], [u8; 32]) {
-    let mut x1: [u32; 8] = Default::default();
-    let mut y1: [u32; 8] = Default::default();
-
-    be_to_u32(&x, &mut x1);
-    be_to_u32(&y, &mut y1);
+pub fn double_u8_be(x: [u8; 32], y: [u8; 32]) -> [u8; 64] {
+    let mut res = [0u32; 16];
+    bes_to_u32(&x, &y, &mut res);
 
     unsafe {
-        asm!("ecall",
-             in("a0") &mut x1 as *mut [u32; 8],
-             in("a1") &mut y1 as *mut [u32; 8],
-             in("t0") u32::from(Syscall::EcDouble));
+        ecall!(Syscall::EcDouble,
+            in("a0") res.as_mut_ptr(),
+            in("a1") res.as_mut_ptr());
     }
 
-    u32_to_be(&x1, &mut x);
-    u32_to_be(&y1, &mut y);
-
-    (x, y)
+    let mut res_u8 = [0u8; 64];
+    u32x16_to_be(&res, &mut res_u8);
+    res_u8
 }
 
 /// Double a k256 ec point. Coordinates are little-endian u8 arrays.
-pub fn double_u8_le(mut x: [u8; 32], mut y: [u8; 32]) -> ([u8; 32], [u8; 32]) {
+pub fn double_u8_le(mut x: [u8; 64]) -> [u8; 64] {
     unsafe {
-        asm!("ecall",
-             in("a0") x.as_mut_ptr() as *mut [u32; 8],
-             in("a1") y.as_mut_ptr() as *mut [u32; 8],
-             in("t0") u32::from(Syscall::EcDouble));
+        ecall!(Syscall::EcDouble,
+            in("a0") x.as_mut_ptr(),
+            in("a1") x.as_mut_ptr());
     }
-
-    (x, y)
+    x
 }
 
 /// Double a k256 ec point. Coordinates are little-endian u32 arrays.
-pub fn double_u32_le(mut x: [u32; 8], mut y: [u32; 8]) -> ([u32; 8], [u32; 8]) {
+pub fn double_u32_le(mut x: [u32; 16]) -> [u32; 16] {
     unsafe {
-        asm!("ecall",
-             in("a0") &mut x as *mut [u32; 8],
-             in("a1") &mut y as *mut [u32; 8],
-             in("t0") u32::from(Syscall::EcDouble));
+        ecall!(Syscall::EcDouble,
+            in("a0") x.as_mut_ptr(),
+            in("a1") x.as_mut_ptr());
     }
-    (x, y)
+    x
 }

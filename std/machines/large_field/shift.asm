@@ -9,13 +9,11 @@ use std::check::require_field_bits;
 // TODO this way, we cannot prove anything that shifts by more than 31 bits.
 machine ByteShift with
     latch: latch,
-    operation_id: operation_id,
     degree: 65536
 {
-    operation run<0> P_operation, P_A, P_B, P_ROW -> P_C;
+    operation run P_operation, P_A, P_B, P_ROW -> P_C;
 
     col fixed latch = [1]*;
-    col fixed operation_id = [0]*;
 
     let bit_counts = [256, 32, 4, 2];
     let min_degree = std::array::product(bit_counts);
@@ -67,5 +65,11 @@ machine Shift(byte_shift: ByteShift) with
     unchanged_until(B, latch);
     C' = C * (1 - latch) + C_part;
 
-    link => C_part = byte_shift.run(operation_id', A_byte, B', FACTOR_ROW);
+    // TODO: Currently, the bus linker does not support next references in operations and links.
+    //       We add an extra witness columns to make the Goldilocks RISC-V machine work for now.
+    //       This will be fixed with #2140.
+    col witness operation_id_next, B_next;
+    operation_id' = operation_id_next;
+    B' = B_next;
+    link => C_part = byte_shift.run(operation_id_next, A_byte, B_next, FACTOR_ROW);
 }
