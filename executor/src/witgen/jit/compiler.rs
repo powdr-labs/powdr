@@ -1,9 +1,8 @@
-use std::{ffi::CString, iter, mem, sync::Arc};
+use std::{iter, mem, sync::Arc};
 
 use auto_enums::auto_enum;
 use itertools::Itertools;
 use libloading::Library;
-use powdr_jit_compiler::compiler::call_cargo;
 use powdr_number::FieldElement;
 
 use crate::witgen::{jit::affine_symbolic_expression::MachineCallArgument, machines::LookupCell};
@@ -35,7 +34,7 @@ pub fn compile_effects<T: FieldElement>(
     let witgen_code = witgen_code(known_inputs, effects);
     let code = format!("{utils}\n//-------------------------------\n{witgen_code}");
 
-    let lib_path = powdr_jit_compiler::compiler::call_cargo(&code)
+    let lib_path = powdr_jit_compiler::call_cargo(&code)
         .map_err(|e| format!("Failed to compile generated code: {e}"))?;
 
     let library = Arc::new(unsafe { libloading::Library::new(&lib_path.path).unwrap() });
