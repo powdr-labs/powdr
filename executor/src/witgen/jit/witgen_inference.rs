@@ -89,6 +89,22 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.ingest_effects(result)
     }
 
+    // TODO: Docstring
+    pub fn set(
+        &mut self,
+        expression: &Expression<T>,
+        offset: i32,
+        value: AffineSymbolicExpression<T, Variable>,
+    ) -> ProcessSummary {
+        let expression = self
+            .evaluate(expression, offset)
+            .expect("Expected affine expression");
+        let result = (expression - value)
+            .solve()
+            .expect("Expected solvable expression");
+        self.ingest_effects(result)
+    }
+
     fn process_polynomial_identity(
         &self,
         expression: &Expression<T>,
