@@ -44,7 +44,7 @@ pub fn compile_effects<T: FieldElement>(
 }
 
 fn witgen_code<T: FieldElement>(known_inputs: &[Cell], effects: &[Effect<T, Cell>]) -> String {
-    let assign_inputs = known_inputs
+    let load_known_cells = known_inputs
         .iter()
         .map(|c| {
             format!(
@@ -95,7 +95,7 @@ extern "C" fn witgen(
     let data = data_to_slice(data, len);
     let known = known_to_slice(known, len);
 
-{assign_inputs}
+{load_known_cells}
 
 {main_code}
 
