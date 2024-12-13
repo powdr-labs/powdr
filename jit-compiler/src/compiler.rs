@@ -215,6 +215,10 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
         .output()
         .unwrap();
     if !out.status.success() {
+        println!(
+            "{}",
+            from_utf8(&out.stderr).unwrap_or("UTF-8 error in error message.")
+        );
         if log::log_enabled!(log::Level::Debug) {
             let stderr = from_utf8(&out.stderr).unwrap_or("UTF-8 error in error message.");
             return Err(format!(

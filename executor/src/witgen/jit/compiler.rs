@@ -19,7 +19,7 @@ pub struct WitgenFunctionParams<T> {
     known: *mut u32,
     len: u64,
     row_offset: u64,
-    call_machine: fn(u64, &mut [LookupCell<'_, T>]) -> bool,
+    call_machine: extern "C" fn(u64, *mut LookupCell<'_, T>, usize) -> bool,
 }
 
 pub type WitgenFunction<T> = extern "C" fn(WitgenFunctionParams<T>);
@@ -56,15 +56,27 @@ fn witgen_code<T: FieldElement>(known_inputs: &[Cell], effects: &[Effect<T, Cell
         })
         .format("\n");
     let main_code = effects.iter().map(format_effect).format("\n");
-    let store_values = effects
+    let cells_known = effects
         .iter()
         .flat_map(written_cells_in_effect)
+        .collect_vec();
+    let store_values = cells_known
+        .iter()
         .map(|cell| {
             format!(
                 "    set(data, row_offset, {}, {}, {});",
                 cell.row_offset,
                 cell.id,
                 cell_to_var_name(cell)
+            )
+        })
+        .format("\n");
+    let store_known = cells_known
+        .iter()
+        .map(|cell| {
+            format!(
+                "    set_known(known, row_offset, {}, {});",
+                cell.row_offset, cell.id
             )
         })
         .format("\n");
@@ -80,12 +92,17 @@ extern "C" fn witgen(
         call_machine
     }}: WitgenFunctionParams,
 ) {{
-    let data: &mut [FieldElement] = unsafe {{ std::slice::from_raw_parts_mut(data as *mut FieldElement, len as usize) }};
+    let data = data_to_slice(data, len);
+    let known = known_to_slice(known, len);
+
 {assign_inputs}
+
 {main_code}
+
 {store_values}
-    // TODO store_known
-    }}
+
+{store_known}
+}}
 "#
     )
 }
@@ -204,7 +221,6 @@ fn util_code<T: FieldElement>(first_column_id: u64, column_count: usize) -> Resu
 
     Ok(format!(
         r#"#![allow(non_snake_case)]
-use std::ffi::c_void;
 
 #[derive(Clone, Copy, Default)]
 #[repr(transparent)]
@@ -277,6 +293,18 @@ impl std::ops::BitOr<FieldElement> for FieldElement {{
 }}
 
 #[inline]
+fn data_to_slice<'a>(data: *mut FieldElement, len: u64) -> &'a mut [FieldElement] {{
+    unsafe {{ std::slice::from_raw_parts_mut(data, len as usize) }}
+}}
+#[inline]
+fn known_to_slice<'a>(known: *mut u32, len: u64) -> &'a mut [u32] {{
+    let words_per_row = ({column_count} + 31) / 32;
+    let rows = len / {column_count};
+    let known_len = rows * words_per_row;
+    unsafe {{ std::slice::from_raw_parts_mut(known, known_len as usize) }}
+}}
+
+#[inline]
 fn index(global_offset: u64, local_offset: i32, column: u64) -> usize {{
     let column = column - {first_column_id};
     let row = (global_offset as i64 + local_offset as i64) as u64;
@@ -322,7 +350,7 @@ struct WitgenFunctionParams {{
     known: *mut u32,
     len: u64,
     row_offset: u64,
-    call_machine: fn(u64, &mut [LookupCell<'_, FieldElement>]) -> bool,
+    call_machine: fn(u64, *mut [LookupCell<'_, FieldElement>], usize) -> bool,
 }}
     "#
     ))
@@ -352,6 +380,21 @@ mod tests {
         }
     }
 
+    fn symbol(cell: &Cell) -> SymbolicExpression<GoldilocksField, Cell> {
+        SymbolicExpression::from_symbol(cell.clone(), None)
+    }
+
+    fn number(n: u64) -> SymbolicExpression<GoldilocksField, Cell> {
+        SymbolicExpression::from(GoldilocksField::from(n))
+    }
+
+    fn assignment(
+        cell: &Cell,
+        e: SymbolicExpression<GoldilocksField, Cell>,
+    ) -> Effect<GoldilocksField, Cell> {
+        Effect::Assignment(cell.clone(), e)
+    }
+
     #[test]
     fn simple_effects() {
         let a0 = cell("a", 2, 0);
@@ -359,29 +402,20 @@ mod tests {
         let ym1 = cell("y", 1, -1);
         let yp1 = cell("y", 1, 1);
         let effects = vec![
-            Effect::Assignment(
-                x0.clone(),
-                SymbolicExpression::from(GoldilocksField::from(7))
-                    * SymbolicExpression::from_symbol(a0.clone(), None),
-            ),
-            Effect::Assignment(
-                ym1.clone(),
-                SymbolicExpression::from_symbol(x0.clone(), None),
-            ),
-            Effect::Assignment(
-                yp1.clone(),
-                SymbolicExpression::from_symbol(ym1.clone(), None)
-                    + SymbolicExpression::from_symbol(x0.clone(), None),
-            ),
+            assignment(&x0, number(7) * symbol(&a0)),
+            assignment(&ym1, symbol(&x0)),
+            assignment(&yp1, symbol(&ym1) + symbol(&x0)),
             Effect::Assertion(Assertion {
-                lhs: SymbolicExpression::from_symbol(ym1.clone(), None),
-                rhs: SymbolicExpression::from_symbol(x0.clone(), None),
+                lhs: symbol(&ym1),
+                rhs: symbol(&x0),
                 expected_equal: true,
             }),
         ];
         let known_inputs = vec![a0.clone()];
         let code = witgen_code(&known_inputs, &effects);
-        assert_eq!(code, "
+        assert_eq!(
+            code,
+            "
 #[no_mangle]
 extern \"C\" fn witgen(
     WitgenFunctionParams{
@@ -392,39 +426,58 @@ extern \"C\" fn witgen(
         call_machine
     }: WitgenFunctionParams,
 ) {
-    let data: &mut [FieldElement] = unsafe { std::slice::from_raw_parts_mut(data as *mut FieldElement, len as usize) };
+    let data = data_to_slice(data, len);
+    let known = known_to_slice(known, len);
+
     let a_d0 = get(data, row_offset, 0, 2);
+
     let x_d0 = (FieldElement::from(7) * a_d0);
     let y_u1 = x_d0;
     let y_d1 = (y_u1 + x_d0);
     assert!(y_u1 == x_d0);
+
     set(data, row_offset, 0, 0, x_d0);
     set(data, row_offset, -1, 1, y_u1);
     set(data, row_offset, 1, 1, y_d1);
-    // TODO store_known
+
+    set_known(known, row_offset, 0, 0);
+    set_known(known, row_offset, -1, 1);
+    set_known(known, row_offset, 1, 1);
+}
+"
+        );
     }
-");
+
+    extern "C" fn no_call_machine(
+        _: u64,
+        _: *mut LookupCell<'_, GoldilocksField>,
+        _: usize,
+    ) -> bool {
+        false
     }
 
     #[test]
     fn load_code() {
         let x = cell("x", 0, 0);
-        let effects = vec![Effect::Assignment(
-            x.clone(),
-            GoldilocksField::from(7).into(),
-        )];
+        let y = cell("y", 1, 0);
+        let effects = vec![
+            assignment(&x, number(7)),
+            assignment(&y, symbol(&x) + number(2)),
+        ];
         let (_lib, f) = compile_effects(0, 1, &[], &effects).unwrap();
-        let mut data = vec![GoldilocksField::from(0); 20];
-        let mut known = vec![0; 20];
+        let mut data = vec![GoldilocksField::from(0); 2];
+        let mut known = vec![0; 1];
         let params = WitgenFunctionParams {
             data: data.as_mut_ptr(),
             known: known.as_mut_ptr(),
-            len: 20,
+            len: data.len() as u64,
             row_offset: 0,
-            call_machine: |_, _| false,
+            call_machine: no_call_machine,
         };
         f(params);
         assert_eq!(data[0], GoldilocksField::from(7));
+        assert_eq!(data[1], GoldilocksField::from(9));
+        assert_eq!(known[0], 3);
     }
 
     #[test]
@@ -438,27 +491,38 @@ extern \"C\" fn witgen(
             x.clone(),
             GoldilocksField::from(9).into(),
         )];
-        let (_lib1, f1) = compile_effects(0, 1, &[], &effects1).unwrap();
-        let (_lib2, f2) = compile_effects(0, 1, &[], &effects2).unwrap();
-        let mut data = vec![GoldilocksField::from(0); 20];
-        let mut known = vec![0; 20];
+        let row_count = 2;
+        let column_count = 2;
+        let data_len = column_count * row_count;
+        let (_lib1, f1) = compile_effects(0, column_count, &[], &effects1).unwrap();
+        let (_lib2, f2) = compile_effects(0, column_count, &[], &effects2).unwrap();
+        let mut data = vec![GoldilocksField::from(0); data_len];
+        let mut known = vec![0; row_count];
         let params1 = WitgenFunctionParams {
             data: data.as_mut_ptr(),
             known: known.as_mut_ptr(),
-            len: 20,
+            len: data_len as u64,
             row_offset: 0,
-            call_machine: |_, _| false,
+            call_machine: no_call_machine,
         };
         f1(params1);
         assert_eq!(data[0], GoldilocksField::from(7));
+        assert_eq!(data[1], GoldilocksField::from(0));
+        assert_eq!(data[2], GoldilocksField::from(0));
+        assert_eq!(data[3], GoldilocksField::from(0));
+        assert_eq!(known, vec![1, 0]);
         let params2 = WitgenFunctionParams {
             data: data.as_mut_ptr(),
             known: known.as_mut_ptr(),
-            len: 20,
+            len: data_len as u64,
             row_offset: 1,
-            call_machine: |_, _| false,
+            call_machine: no_call_machine,
         };
         f2(params2);
-        assert_eq!(data[1], GoldilocksField::from(9));
+        assert_eq!(data[0], GoldilocksField::from(7));
+        assert_eq!(data[1], GoldilocksField::from(0));
+        assert_eq!(data[2], GoldilocksField::from(9));
+        assert_eq!(data[3], GoldilocksField::from(0));
+        assert_eq!(known, vec![1, 1]);
     }
 }
