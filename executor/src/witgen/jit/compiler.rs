@@ -1,11 +1,12 @@
-use std::{ffi::CString, mem, sync::Arc};
+use std::{ffi::CString, iter, mem, sync::Arc};
 
+use auto_enums::auto_enum;
 use itertools::Itertools;
 use libloading::Library;
 use powdr_jit_compiler::compiler::call_cargo;
 use powdr_number::FieldElement;
 
-use crate::witgen::machines::LookupCell;
+use crate::witgen::{jit::affine_symbolic_expression::MachineCallArgument, machines::LookupCell};
 
 use super::{
     affine_symbolic_expression::{Assertion, Effect},
@@ -30,31 +31,20 @@ pub fn compile_effects<T: FieldElement>(
     known_inputs: &[Cell],
     effects: &[Effect<T, Cell>],
 ) -> Result<(Arc<Library>, WitgenFunction<T>), String> {
-    // // TODO what happen if there is a conflict in function names? Should we
-    // // encode the ID and the known inputs?
-    let fun_name = "witgen";
-
     let utils = util_code::<T>(first_column_id, column_count)?;
-    let witgen_code = witgen_code(fun_name, known_inputs, effects);
+    let witgen_code = witgen_code(known_inputs, effects);
     let code = format!("{utils}\n//-------------------------------\n{witgen_code}");
 
     let lib_path = powdr_jit_compiler::compiler::call_cargo(&code)
         .map_err(|e| format!("Failed to compile generated code: {e}"))?;
 
     let library = Arc::new(unsafe { libloading::Library::new(&lib_path.path).unwrap() });
-
-    let fun_name_terminated = CString::new(fun_name).unwrap();
-    let witgen_fun =
-        unsafe { library.get::<WitgenFunction<T>>(fun_name_terminated.as_bytes()) }.unwrap();
+    let witgen_fun = unsafe { library.get::<WitgenFunction<T>>(b"witgen\0") }.unwrap();
 
     Ok((library.clone(), *witgen_fun))
 }
 
-fn witgen_code<T: FieldElement>(
-    fun_name: &str,
-    known_inputs: &[Cell],
-    effects: &[Effect<T, Cell>],
-) -> String {
+fn witgen_code<T: FieldElement>(known_inputs: &[Cell], effects: &[Effect<T, Cell>]) -> String {
     let assign_inputs = known_inputs
         .iter()
         .map(|c| {
@@ -67,11 +57,22 @@ fn witgen_code<T: FieldElement>(
         })
         .format("\n");
     let main_code = effects.iter().map(format_effect).format("\n");
-    let store_values = ""; // TODO
+    let store_values = effects
+        .iter()
+        .flat_map(written_cells_in_effect)
+        .map(|cell| {
+            format!(
+                "    set(data, row_offset, {}, {}, {});",
+                cell.row_offset,
+                cell.id,
+                cell_to_var_name(cell)
+            )
+        })
+        .format("\n");
     format!(
         r#"
 #[no_mangle]
-extern "C" fn {fun_name}(
+extern "C" fn witgen(
     WitgenFunctionParams{{
         data,
         known,
@@ -88,6 +89,22 @@ extern "C" fn {fun_name}(
     }}
 "#
     )
+}
+
+/// Returns an iterator over all cells written to in the effect.
+#[auto_enum(Iterator)]
+fn written_cells_in_effect<T: FieldElement>(
+    effect: &Effect<T, Cell>,
+) -> impl Iterator<Item = &Cell> + '_ {
+    match effect {
+        Effect::Assignment(cell, _) => iter::once(cell),
+        Effect::RangeConstraint(..) => unreachable!(),
+        Effect::Assertion(..) => iter::empty(),
+        Effect::MachineCall(_, arguments) => arguments.iter().flat_map(|e| match e {
+            MachineCallArgument::Unknown(e) => Some(e.single_unknown_variable().unwrap()),
+            MachineCallArgument::Known(_) => None,
+        }),
+    }
 }
 
 fn format_effect<T: FieldElement>(effect: &Effect<T, Cell>) -> String {
@@ -364,7 +381,7 @@ mod tests {
             }),
         ];
         let known_inputs = vec![a0.clone()];
-        let code = witgen_code("witgen", &known_inputs, &effects);
+        let code = witgen_code(&known_inputs, &effects);
         assert_eq!(code, "
 #[no_mangle]
 extern \"C\" fn witgen(
@@ -382,9 +399,67 @@ extern \"C\" fn witgen(
     let y_u1 = x_d0;
     let y_d1 = (y_u1 + x_d0);
     assert!(y_u1 == x_d0);
-
+    set(data, row_offset, 0, 0, x_d0);
+    set(data, row_offset, -1, 1, y_u1);
+    set(data, row_offset, 1, 1, y_d1);
     // TODO store_known
     }
 ");
+    }
+
+    #[test]
+    fn load_code() {
+        let x = cell("x", 0, 0);
+        let effects = vec![Effect::Assignment(
+            x.clone(),
+            GoldilocksField::from(7).into(),
+        )];
+        let (_lib, f) = compile_effects(0, 1, &[], &effects).unwrap();
+        let mut data = vec![GoldilocksField::from(0); 20];
+        let mut known = vec![0; 20];
+        let params = WitgenFunctionParams {
+            data: data.as_mut_ptr(),
+            known: known.as_mut_ptr(),
+            len: 20,
+            row_offset: 0,
+            call_machine: |_, _| false,
+        };
+        f(params);
+        assert_eq!(data[0], GoldilocksField::from(7));
+    }
+
+    #[test]
+    fn load_twice() {
+        let x = cell("x", 0, 0);
+        let effects1 = vec![Effect::Assignment(
+            x.clone(),
+            GoldilocksField::from(7).into(),
+        )];
+        let effects2 = vec![Effect::Assignment(
+            x.clone(),
+            GoldilocksField::from(9).into(),
+        )];
+        let (_lib1, f1) = compile_effects(0, 1, &[], &effects1).unwrap();
+        let (_lib2, f2) = compile_effects(0, 1, &[], &effects2).unwrap();
+        let mut data = vec![GoldilocksField::from(0); 20];
+        let mut known = vec![0; 20];
+        let params1 = WitgenFunctionParams {
+            data: data.as_mut_ptr(),
+            known: known.as_mut_ptr(),
+            len: 20,
+            row_offset: 0,
+            call_machine: |_, _| false,
+        };
+        f1(params1);
+        assert_eq!(data[0], GoldilocksField::from(7));
+        let params2 = WitgenFunctionParams {
+            data: data.as_mut_ptr(),
+            known: known.as_mut_ptr(),
+            len: 20,
+            row_offset: 1,
+            call_machine: |_, _| false,
+        };
+        f2(params2);
+        assert_eq!(data[1], GoldilocksField::from(9));
     }
 }
