@@ -11,6 +11,7 @@ pub enum Variable {
     /// A witness cell in the current block machine.
     Cell(Cell),
     /// A parameter (input or output) of the machine.
+    #[allow(dead_code)]
     Param(usize),
 }
 
