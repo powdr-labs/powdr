@@ -191,6 +191,7 @@ fn compile_program<P>(
     }
 
     let powdr_asm = translator(input_program, options);
+    let powdr_asm = powdr_asm.replace("_start", "__real_start");
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());

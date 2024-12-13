@@ -27,6 +27,7 @@ pub struct SessionBuilder {
     guest_path: String,
     out_path: String,
     asm_file: Option<String>,
+    riscv_elf_file: Option<String>,
     chunk_size_log2: Option<u8>,
     precompiles: RuntimeLibs,
 }
@@ -48,11 +49,18 @@ const DEFAULT_MIN_MAX_DEGREE_LOG: u8 = 18;
 impl SessionBuilder {
     /// Builds a session with the given parameters.
     pub fn build(self) -> Session {
-        let pipeline = match self.asm_file {
-            Some(asm_file) => Pipeline::<GoldilocksField>::default()
+        let pipeline = match (self.riscv_elf_file, self.asm_file) {
+            (_, Some(asm_file)) => Pipeline::<GoldilocksField>::default()
                 .from_asm_file(asm_file.into())
                 .with_output(Path::new(&self.out_path).to_path_buf(), true),
-            None => pipeline_from_guest(
+            (Some(riscv_elf_file), None) => pipeline_from_riscv_elf(
+                &riscv_elf_file,
+                Path::new(&self.out_path),
+                DEFAULT_MIN_DEGREE_LOG,
+                self.chunk_size_log2.unwrap_or(DEFAULT_MAX_DEGREE_LOG),
+                self.precompiles,
+            ),
+            (None, None) => pipeline_from_guest(
                 &self.guest_path,
                 Path::new(&self.out_path),
                 DEFAULT_MIN_DEGREE_LOG,
@@ -70,6 +78,12 @@ impl SessionBuilder {
     /// Sets the path to the guest program.
     pub fn guest_path(mut self, guest_path: &str) -> Self {
         self.guest_path = guest_path.into();
+        self
+    }
+
+    /// Sets the path to the RISCV ELF binary.
+    pub fn riscv_elf_path(mut self, riscv_elf_path: &str) -> Self {
+        self.riscv_elf_file = Some(riscv_elf_path.into());
         self
     }
 
@@ -266,6 +280,37 @@ pub fn pipeline_from_guest(
         max_degree_log,
         precompiles,
     );
+
+    // Create a pipeline from the asm program
+    Pipeline::<GoldilocksField>::default()
+        .from_asm_string(asm_contents.clone(), Some(asm_file_path.clone()))
+        .with_output(out_path.into(), true)
+}
+
+pub fn pipeline_from_riscv_elf(
+    riscv_elf_path: &str,
+    out_path: &Path,
+    min_degree_log: u8,
+    max_degree_log: u8,
+    precompiles: RuntimeLibs,
+) -> Pipeline<GoldilocksField> {
+    println!("Compiling RISCV ELF binary to powdr-asm...");
+
+    let options = CompilerOptions::new_gl()
+        .with_runtime_libs(precompiles)
+        .with_continuations()
+        .with_min_degree_log(min_degree_log)
+        .with_max_degree_log(max_degree_log);
+
+    let (asm_file_path, asm_contents) = riscv::compile_riscv_elf(
+        riscv_elf_path,
+        Path::new(riscv_elf_path),
+        options,
+        out_path,
+        true,
+    )
+    .ok_or_else(|| vec!["could not translate RISC-V executable".to_string()])
+    .unwrap();
 
     // Create a pipeline from the asm program
     Pipeline::<GoldilocksField>::default()
