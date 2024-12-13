@@ -261,6 +261,7 @@ impl std::ops::Mul<FieldElement> for FieldElement {{
     type Output = Self;
     #[inline]
     fn mul(self, b: FieldElement) -> FieldElement {{
+        // TODO this is inefficient.
         Self(IntType::try_from((DoubleIntType::from(self.0) * b.0 as DoubleIntType) % DoubleIntType::from(MODULUS)).unwrap())
     }}
 }}
@@ -572,5 +573,30 @@ extern \"C\" fn witgen(
         assert_eq!(data[2], -GoldilocksField::from(4));
         assert_eq!(data[3], -GoldilocksField::from(4));
         assert_eq!(data[4], GoldilocksField::from(4));
+    }
+
+    #[test]
+    fn field_multiplication() {
+        let x = cell("x", 0, 0);
+        let y = cell("y", 1, 0);
+        let z = cell("z", 2, 0);
+        let effects = vec![assignment(&x, symbol(&y) * symbol(&z))];
+        let known_inputs = vec![y.clone(), z.clone()];
+        let (_lib, f) = compile_effects(0, 3, &known_inputs, &effects).unwrap();
+        let mut data = vec![
+            GoldilocksField::from(0),
+            GoldilocksField::from(3),
+            -GoldilocksField::from(4),
+        ];
+        let mut known = vec![0; 1];
+        let params = WitgenFunctionParams {
+            data: data.as_mut_ptr(),
+            known: known.as_mut_ptr(),
+            len: data.len() as u64,
+            row_offset: 0,
+            call_machine: no_call_machine,
+        };
+        f(params);
+        assert_eq!(data[0], -GoldilocksField::from(12));
     }
 }
