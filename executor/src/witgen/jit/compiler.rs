@@ -169,7 +169,7 @@ fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Cell>) -> String
         SymbolicExpression::UnaryOperation(op, inner, _) => {
             let inner = format_expression(inner);
             match op {
-                UnaryOperator::Neg => format!("-{}", inner),
+                UnaryOperator::Neg => format!("-{inner}"),
             }
         }
     }
