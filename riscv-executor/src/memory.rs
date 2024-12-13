@@ -9,8 +9,6 @@ struct Op<F: FieldElement> {
     step: u32,
     value: F,
     write: F,
-    // each machine that's called via permutation has a selector array, with one entry per incoming permutation.
-    // This is the idx assigned to the `link` triggering the memory operation.
     selector_idx: u8,
 }
 
@@ -51,16 +49,24 @@ impl<F: FieldElement> Submachine<F> for MemoryMachine<F> {
         &self.namespace
     }
 
-    fn add_operation(&mut self, selector_idx: Option<u8>, lookup_args: &[F], _extra: &[F]) {
+    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F], _extra: &[F]) {
         let [op_id, addr, step, value] = lookup_args[..] else {
             panic!()
         };
+        // get the idx from the selector
+        let selector_idx = selector
+            .map(|s| {
+                let start = s.find('[').unwrap() + 1;
+                let end = s.find(']').unwrap();
+                s[start..end].parse::<u8>().unwrap()
+            })
+            .unwrap();
         self.ops.push(Op {
             addr: addr.to_integer().try_into_u32().unwrap(),
             step: step.to_integer().try_into_u32().unwrap(),
             value,
             write: op_id,
-            selector_idx: selector_idx.unwrap(),
+            selector_idx,
         });
     }
 

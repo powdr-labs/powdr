@@ -4,6 +4,10 @@ use powdr_number::{FieldElement, LargeInt};
 
 use std::collections::HashMap;
 
+fn only_column_name(name: &str) -> &str {
+    name.rfind("::").map(|i| &name[i + 2..]).unwrap_or(name)
+}
+
 /// Each submachine kind (i.e., binary, shift) must implement this trait
 trait SubmachineKind {
     /// Which of the witness columns are selectors, if any
@@ -13,8 +17,7 @@ trait SubmachineKind {
     /// Add an operation to the submachine trace
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        // pil lookup RHS values (including selector idx, if present)
-        selector_idx: Option<u8>,
+        selector: Option<&str>,
         lookup_args: &[F],
         // extra info provided by the executor
         extra: &[F],
@@ -44,7 +47,7 @@ pub trait Submachine<F: FieldElement> {
     /// current number of rows
     fn len(&self) -> u32;
     /// add a new operation to the trace
-    fn add_operation(&mut self, selector_idx: Option<u8>, lookup_args: &[F], extra: &[F]);
+    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F], extra: &[F]);
     /// finish the trace, padding to the given degree and returning the machine columns.
     /// Ideally we'd take `self` here, but this is called from a `dyn Trait`...
     fn finish(&mut self, degree: u32) -> Vec<(String, Vec<F>)>;
@@ -89,8 +92,8 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
         self.trace.len()
     }
 
-    fn add_operation(&mut self, selector_idx: Option<u8>, lookup_args: &[F], extra: &[F]) {
-        M::add_operation(&mut self.trace, selector_idx, lookup_args, extra);
+    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F], extra: &[F]) {
+        M::add_operation(&mut self.trace, selector, lookup_args, extra);
     }
 
     fn finish(&mut self, degree: u32) -> Vec<(String, Vec<F>)> {
@@ -222,12 +225,12 @@ impl SubmachineKind for BinaryMachine {
 
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        selector_idx: Option<u8>,
+        selector: Option<&str>,
         lookup_args: &[F],
         extra: &[F],
     ) {
         assert!(extra.is_empty());
-        let selector_idx = selector_idx.unwrap();
+        let selector = only_column_name(selector.unwrap());
         let [op_id, a, b, c] = lookup_args[..] else {
             panic!();
         };
@@ -310,7 +313,7 @@ impl SubmachineKind for BinaryMachine {
         trace.set_current_row("B", b);
         trace.set_current_row("C", c);
         // latch row: set selector
-        trace.set_current_row(&format!("{}[{}]", Self::SELECTORS, selector_idx), 1.into());
+        trace.set_current_row(selector, 1.into());
     }
 }
 
@@ -322,12 +325,12 @@ impl SubmachineKind for ShiftMachine {
 
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        selector_idx: Option<u8>,
+        selector: Option<&str>,
         lookup_args: &[F],
         extra: &[F],
     ) {
         assert!(extra.is_empty());
-        let selector_idx = selector_idx.unwrap();
+        let selector = only_column_name(selector.unwrap());
         let [op_id, a, b, c] = lookup_args[..] else {
             panic!();
         };
@@ -406,7 +409,7 @@ impl SubmachineKind for ShiftMachine {
         trace.set_current_row("A", a);
         trace.set_current_row("B", b);
         trace.set_current_row("C", c);
-        trace.set_current_row(&format!("{}[{}]", Self::SELECTORS, selector_idx), 1.into());
+        trace.set_current_row(selector, 1.into());
     }
 }
 
@@ -418,12 +421,12 @@ impl SubmachineKind for SplitGlMachine {
 
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        selector_idx: Option<u8>,
+        selector: Option<&str>,
         lookup_args: &[F],
         extra: &[F],
     ) {
         assert!(extra.is_empty());
-        let selector_idx = selector_idx.unwrap();
+        let selector = only_column_name(selector.unwrap());
         let [_input, output_lo, output_hi] = lookup_args[..] else {
             panic!();
         };
@@ -544,7 +547,7 @@ impl SubmachineKind for SplitGlMachine {
 
         // 7: bytes/lt/gt/was_lt are set by the next row
         trace.push_row();
-        trace.set_current_row(&format!("{}[{}]", Self::SELECTORS, selector_idx), 1.into());
+        trace.set_current_row(selector, 1.into());
         trace.set_current_row("output_low", lo.into());
         trace.set_current_row("output_high", hi.into());
         trace.set_current_row("in_acc", hi_and_lo(hi, lo));
@@ -557,11 +560,11 @@ impl SubmachineKind for PublicsMachine {
     const BLOCK_SIZE: u32 = 1;
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        selector_idx: Option<u8>,
+        selector: Option<&str>,
         lookup_args: &[F],
         extra: &[F],
     ) {
-        assert!(selector_idx.is_none());
+        assert!(selector.is_none());
         assert!(extra.is_empty());
         let [addr, value] = lookup_args[..] else {
             panic!();
@@ -590,14 +593,14 @@ impl SubmachineKind for PoseidonGlMachine {
 
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        selector_idx: Option<u8>,
+        selector: Option<&str>,
         lookup_args: &[F],
         extra: &[F],
     ) {
         const STATE_SIZE: usize = 12;
         const OUTPUT_SIZE: usize = 4;
 
-        let selector_idx = selector_idx.unwrap();
+        let selector = only_column_name(selector.unwrap());
         let [input_addr, output_addr, time_step] = lookup_args[..] else {
             panic!();
         };
@@ -720,11 +723,7 @@ impl SubmachineKind for PoseidonGlMachine {
         trace.set_current_block(Self::BLOCK_SIZE, "input_addr", input_addr);
         trace.set_current_block(Self::BLOCK_SIZE, "output_addr", output_addr);
         // set selector
-        trace.set_current_block(
-            Self::BLOCK_SIZE,
-            &format!("{}[{}]", Self::SELECTORS, selector_idx),
-            1.into(),
-        );
+        trace.set_current_block(Self::BLOCK_SIZE, selector, 1.into());
         for i in 0..STATE_SIZE {
             trace.set_current_block(Self::BLOCK_SIZE, INPUT_COLS[i], input[i]);
         }
