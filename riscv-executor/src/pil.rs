@@ -50,6 +50,9 @@ pub fn selector_for_link<F: FieldElement>(links: &[Identity<F>], id: u64) -> Opt
     panic!("identity {id} doesnt exist")
 }
 
+/// Find links referencing columns containing the string `from` on the LHS and `to` on the RHS.
+/// For permutations, only looks at the identity selectors.
+/// For lookups, looks at the left selector and the right expression.
 pub fn find_links<F: FieldElement>(
     links: &[Identity<F>],
     from: &str,
@@ -77,6 +80,52 @@ pub fn find_links<F: FieldElement>(
                 let left = id.left.selector.expr_any(|e| {
                     if let AlgebraicExpression::Reference(r) = e {
                         return r.name.contains(from);
+                    }
+                    false
+                });
+                let right = id.right.expr_any(|e| {
+                    if let AlgebraicExpression::Reference(r) = e {
+                        return r.name.contains(to);
+                    }
+                    false
+                });
+                left && right
+            }
+            _ => false,
+        })
+        .cloned()
+        .collect()
+}
+
+/// Find links referencing the exact `instruction_flag` on the LHS.
+/// On the RHS it looks for columns containing the string `to`.
+pub fn find_instruction_links<F: FieldElement>(
+    links: &[Identity<F>],
+    instruction_flag: &str,
+    to: &str,
+) -> Vec<Identity<F>> {
+    links
+        .iter()
+        .filter(|id| match id {
+            Identity::Permutation(id) => {
+                let left = id.left.selector.expr_any(|e| {
+                    if let AlgebraicExpression::Reference(r) = e {
+                        return r.name == instruction_flag;
+                    }
+                    false
+                });
+                let right = id.right.selector.expr_any(|e| {
+                    if let AlgebraicExpression::Reference(r) = e {
+                        return r.name.contains(to);
+                    }
+                    false
+                });
+                left && right
+            }
+            Identity::Lookup(id) => {
+                let left = id.left.selector.expr_any(|e| {
+                    if let AlgebraicExpression::Reference(r) = e {
+                        return r.name == instruction_flag;
                     }
                     false
                 });
