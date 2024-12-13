@@ -58,19 +58,119 @@ struct SubmachineOp<F: FieldElement> {
     extra: Vec<F>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[allow(non_camel_case_types)]
-enum MachineInstance {
-    main_memory,
-    main_regs,
-    main_publics,
-    main_binary,
-    main_shift,
-    main_split_gl,
-    main_poseidon_gl,
-    // main_poseidon2_gl,
-    // main_keccakf,
-    // main_arith,
+/// This enum helps us avoid raw strings for instruction names/columns
+macro_rules! instructions {
+    ($($name:ident),*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[allow(non_camel_case_types)]
+        enum Instruction {
+            $($name,)*
+        }
+
+        impl Instruction {
+            fn from_name(s: &str) -> Option<Self> {
+                match s {
+                    $(stringify!($name) => Some(Self::$name),)*
+                    _ => None
+                }
+            }
+
+            fn column(&self) -> &'static str {
+                match *self {
+                    $(Self::$name => concat!("main::instr_", stringify!($name)),)*
+                }
+            }
+        }
+    };
+}
+
+instructions! {
+    set_reg,
+    get_reg,
+    affine,
+    mstore,
+    mstore_bootloader,
+    mload,
+    load_bootloader_input,
+    assert_bootloader_input,
+    load_label,
+    jump,
+    jump_dyn,
+    jump_to_bootloader_input,
+    branch_if_diff_nonzero,
+    branch_if_diff_equal,
+    skip_if_equal,
+    branch_if_diff_greater_than,
+    is_diff_greater_than,
+    is_equal_zero,
+    is_not_equal,
+    add_wrap,
+    wrap16,
+    sub_wrap_with_offset,
+    sign_extend_byte,
+    sign_extend_16_bits,
+    to_signed,
+    divremu,
+    mul,
+    and,
+    or,
+    xor,
+    shl,
+    shr,
+    invert_gl,
+    split_gl,
+    poseidon_gl,
+    poseidon2_gl,
+    affine_256,
+    mod_256,
+    ec_add,
+    ec_double,
+    commit_public,
+    fail
+}
+
+macro_rules! machine_instances {
+    ($($name:ident),*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[allow(non_camel_case_types)]
+        enum MachineInstance {
+            $($name,)*
+        }
+
+        impl MachineInstance {
+            // fn from_name(s: &str) -> Option<Self> {
+            //     match s {
+            //         $(stringify!($name) => Some(Self::$name),)*
+            //         _ => None
+            //     }
+            // }
+
+            fn name(&self) -> &'static str {
+                match *self {
+                    $(Self::$name => stringify!($name),)*
+                }
+            }
+
+            // fn namespace(&self) -> &'static str {
+            //     match *self {
+            //         $(Self::$name => concat!("main_", stringify!($name)),)*
+            //     }
+            // }
+        }
+    };
+}
+
+machine_instances! {
+    memory,
+    regs,
+    publics,
+    binary,
+    shift,
+    split_gl,
+    poseidon_gl
+    // poseidon2_gl,
+    // keccakf,
+    // arith,
 }
 
 /// Initial value of the PC.
@@ -755,7 +855,7 @@ mod builder {
 
         pub(crate) fn set_mem(&mut self, addr: u32, val: u32, step: u32, identity_id: u64) {
             self.submachine_op(
-                MachineInstance::main_memory,
+                MachineInstance::memory,
                 identity_id,
                 &[1.into(), addr.into(), step.into(), val.into()],
                 &[],
@@ -774,7 +874,7 @@ mod builder {
         pub(crate) fn get_mem(&mut self, addr: u32, step: u32, identity_id: u64) -> u32 {
             let val = *self.mem.get(&addr).unwrap_or(&0);
             self.submachine_op(
-                MachineInstance::main_memory,
+                MachineInstance::memory,
                 identity_id,
                 &[0.into(), addr.into(), step.into(), val.into()],
                 &[],
@@ -841,15 +941,7 @@ mod builder {
             let links = pil::links_from_pil(pil);
             let mut link_selector = HashMap::new();
             for (m, ops) in self.trace.submachine_ops {
-                let m = match m {
-                    MachineInstance::main_memory => "memory",
-                    MachineInstance::main_regs => "regs",
-                    MachineInstance::main_binary => "binary",
-                    MachineInstance::main_shift => "shift",
-                    MachineInstance::main_publics => "publics",
-                    MachineInstance::main_split_gl => "split_gl",
-                    MachineInstance::main_poseidon_gl => "poseidon_gl",
-                };
+                let m = m.name();
                 for op in ops {
                     let selector = link_selector
                         .entry(op.identity_id)
@@ -1049,7 +1141,7 @@ struct Executor<'a, 'b, F: FieldElement> {
     mode: ExecMode,
 
     pil_links: Vec<Identity<F>>,
-    pil_instruction_links: HashMap<(String, String), Vec<Identity<F>>>,
+    pil_instruction_links: HashMap<(&'static str, &'static str), Vec<Identity<F>>>,
 }
 
 impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
@@ -1095,7 +1187,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     fn reg_read(&mut self, step_offset: u32, reg: u32, identity_id: u64) -> Elem<F> {
         let val = self.proc.get_reg_mem(reg);
         self.proc.submachine_op(
-            MachineInstance::main_regs,
+            MachineInstance::regs,
             identity_id,
             &[
                 0.into(),
@@ -1111,7 +1203,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     /// write value to register, updating the register memory machine
     fn reg_write(&mut self, step_offset: u32, reg: u32, val: Elem<F>, identity_id: u64) {
         self.proc.submachine_op(
-            MachineInstance::main_regs,
+            MachineInstance::regs,
             identity_id,
             &[
                 1.into(),
@@ -1141,13 +1233,20 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         }
     }
 
-    /// Gets the identity id for a link associated with a given instruction. Idx
-    /// is based on the order of links in the optimized pil.
-    fn link_id(&mut self, from: &str, target: &str, idx: usize) -> u64 {
+    /// Gets the identity id for a link associated with a given instruction.
+    /// idx is based on the order link appear in the assembly (assumed to be the same in the optimized pil).
+    fn link_id(&mut self, from: &'static str, target: &'static str, idx: usize) -> u64 {
         let entries = self
             .pil_instruction_links
-            .entry((from.to_string(), target.to_string()))
+            .entry((from, target))
             .or_insert_with(|| pil::find_links(&self.pil_links, from, target));
+        println!("{from}->{target} entries: {:?}", entries.len());
+        for s in entries
+            .iter()
+            .map(|e| pil::selector_for_link(&self.pil_links, e.id()))
+        {
+            println!("\t{s:?}");
+        }
         entries.get(idx).unwrap().id()
     }
 
@@ -1192,12 +1291,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         self.proc
             .set_col(&format!("main::instr_{name}"), Elem::from_u32_as_fe(1));
 
-        let r = match name {
-            "set_reg" => {
+        let instr = Instruction::from_name(name).expect("unknown instruction");
+
+        let r = match instr {
+            Instruction::set_reg => {
                 let addr = args[0].u();
                 let val = args[1];
 
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 self.reg_write(0, addr, val, lid);
 
                 set_col!(Y, val);
@@ -1209,17 +1310,17 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(set_reg,);
                 Vec::new()
             }
-            "get_reg" => {
+            Instruction::get_reg => {
                 let addr = args[0].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val = self.reg_read(0, addr, lid);
 
                 main_op!(get_reg,);
                 vec![val]
             }
-            "affine" => {
+            Instruction::affine => {
                 let read_reg = args[0].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val1 = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
                 let factor = args[2];
@@ -1234,16 +1335,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Vec::new()
             }
 
-            "mstore" | "mstore_bootloader" => {
+            Instruction::mstore | Instruction::mstore_bootloader => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let addr1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let addr2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2].bin();
                 let read_reg3 = args[3].u();
-                let lid = self.link_id(name, "main_regs", 2);
+                let lid = self.link_id(instr.column(), "main_regs", 2);
                 let value = self.reg_read(2, read_reg3, lid);
 
                 let addr = addr1.bin() - addr2.bin() + offset;
@@ -1261,7 +1362,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
 
                 let addr = addr as u32;
-                let lid = self.link_id(name, "main_memory", 0);
+                let lid = self.link_id(instr.column(), "main_memory", 0);
                 self.proc.set_mem(addr, value.u(), self.step + 3, lid);
 
                 set_col!(tmp1_col, addr1);
@@ -1281,9 +1382,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
                 Vec::new()
             }
-            "mload" => {
+            Instruction::mload => {
                 let read_reg = args[0].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let addr1 = self.reg_read(0, read_reg, lid);
                 let offset = args[1].bin();
                 let write_addr1 = args[2].u();
@@ -1291,15 +1392,15 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let addr = addr1.bin() + offset;
 
-                let lid = self.link_id(name, "main_memory", 0);
+                let lid = self.link_id(instr.column(), "main_memory", 0);
                 let val = self
                     .proc
                     .get_mem(addr as u32 & 0xfffffffc, self.step + 1, lid);
                 let rem = addr % 4;
 
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 self.reg_write(2, write_addr1, val.into(), lid);
-                let lid = self.link_id(name, "main_regs", 2);
+                let lid = self.link_id(instr.column(), "main_regs", 2);
                 self.reg_write(3, write_addr2, rem.into(), lid);
 
                 set_col!(tmp1_col, addr1);
@@ -1321,8 +1422,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Vec::new()
             }
             // TODO: update to witness generation for continuations
-            "load_bootloader_input" => {
-                let lid = self.link_id(name, "main_regs", 0);
+            Instruction::load_bootloader_input => {
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let addr = self.reg_read(0, args[0].u(), lid);
                 let write_addr = args[1].u();
                 let factor = args[2].bin();
@@ -1331,17 +1432,17 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let addr = addr.bin() * factor + offset;
                 let val = self.bootloader_inputs[addr as usize];
 
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 self.reg_write(2, write_addr, val, lid);
 
                 main_op!(load_bootloader_input,);
                 Vec::new()
             }
             // TODO: update to witness generation for continuations
-            "assert_bootloader_input" => {
-                let lid = self.link_id(name, "main_regs", 0);
+            Instruction::assert_bootloader_input => {
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let addr = self.reg_read(0, args[0].u(), lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let val = self.reg_read(1, args[1].u(), lid);
                 let factor = args[2].bin();
                 let offset = args[3].bin();
@@ -1354,10 +1455,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(assert_bootloader_input,);
                 Vec::new()
             }
-            "load_label" => {
+            Instruction::load_label => {
                 let write_reg = args[0].u();
                 let label = args[1];
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 self.reg_write(0, write_reg, label, lid);
 
                 set_col!(tmp1_col, label);
@@ -1367,12 +1468,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(load_label,);
                 Vec::new()
             }
-            "jump" => {
+            Instruction::jump => {
                 let label = args[0];
                 let next_pc = self.proc.get_pc().u() + 1;
                 let write_reg = args[1].u();
 
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 self.reg_write(0, write_reg, next_pc.into(), lid);
 
                 self.proc.set_pc(label);
@@ -1382,14 +1483,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(jump,);
                 Vec::new()
             }
-            "jump_dyn" => {
+            Instruction::jump_dyn => {
                 let read_reg = args[0].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let addr = self.reg_read(0, read_reg, lid);
                 let next_pc = self.proc.get_pc().u() + 1;
                 let write_reg = args[1].u();
 
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 self.reg_write(0, write_reg, next_pc.into(), lid);
 
                 self.proc.set_pc(addr);
@@ -1400,7 +1501,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Vec::new()
             }
             // TODO: update to witness generation for continuations
-            "jump_to_bootloader_input" => {
+            Instruction::jump_to_bootloader_input => {
                 let bootloader_input_idx = args[0].bin() as usize;
                 let addr = self.bootloader_inputs[bootloader_input_idx];
                 self.proc.set_pc(addr);
@@ -1408,12 +1509,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(jump_to_bootloader_input,);
                 Vec::new()
             }
-            "branch_if_diff_nonzero" => {
+            Instruction::branch_if_diff_nonzero => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
 
                 let val: Elem<F> = val1.sub(&val2);
@@ -1436,12 +1537,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(branch_if_diff_nonzero,);
                 Vec::new()
             }
-            "branch_if_diff_equal" => {
+            Instruction::branch_if_diff_equal => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2];
                 let val: Elem<F> = val1.sub(&val2).sub(&offset);
@@ -1465,12 +1566,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(branch_if_diff_equal,);
                 Vec::new()
             }
-            "skip_if_equal" => {
+            Instruction::skip_if_equal => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2];
                 let cond = args[3];
@@ -1492,14 +1593,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(skip_if_equal,);
                 Vec::new()
             }
-            "branch_if_diff_greater_than" => {
+            Instruction::branch_if_diff_greater_than => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 // We can't call u() because input registers may have come from
                 // a call to `to_signed`, which stores a signed integer.
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2];
                 let val: Elem<F> = val1.sub(&val2).sub(&offset);
@@ -1536,12 +1637,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(branch_if_diff_greater_than,);
                 Vec::new()
             }
-            "is_diff_greater_than" => {
+            Instruction::is_diff_greater_than => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
 
                 let offset = args[2];
@@ -1549,7 +1650,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val = val1.sub(&val2).sub(&offset);
 
                 let r = if val.bin() > 0 { 1 } else { 0 };
-                let lid = self.link_id(name, "main_regs", 2);
+                let lid = self.link_id(instr.column(), "main_regs", 2);
                 self.reg_write(2, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val1);
@@ -1568,14 +1669,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(is_diff_greater_than,);
                 Vec::new()
             }
-            "is_equal_zero" => {
+            Instruction::is_equal_zero => {
                 let read_reg = args[0].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
 
                 let r = if val.is_zero() { 1 } else { 0 };
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 self.reg_write(2, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val);
@@ -1588,18 +1689,18 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(is_equal_zero,);
                 Vec::new()
             }
-            "is_not_equal" => {
+            Instruction::is_not_equal => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let write_reg = args[2].u();
                 let val: Elem<F> = (val1.bin() - val2.bin()).into();
 
                 let r = if !val.is_zero() { 1 } else { 0 };
-                let lid = self.link_id(name, "main_regs", 2);
+                let lid = self.link_id(instr.column(), "main_regs", 2);
                 self.reg_write(2, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val1);
@@ -1614,12 +1715,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(is_not_equal,);
                 Vec::new()
             }
-            "add_wrap" => {
+            Instruction::add_wrap => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
@@ -1633,7 +1734,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // don't use .u() here: we are deliberately discarding the
                 // higher bits
                 let r = val.bin() as u32;
-                let lid = self.link_id(name, "main_regs", 2);
+                let lid = self.link_id(instr.column(), "main_regs", 2);
                 self.reg_write(2, write_reg, r.into(), lid);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
@@ -1655,9 +1756,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(add_wrap,);
                 Vec::new()
             }
-            "wrap16" => {
+            Instruction::wrap16 => {
                 let read_reg = args[0].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val = self.reg_read(0, read_reg, lid);
                 let factor = args[1].bin();
                 let write_reg = args[2].u();
@@ -1666,7 +1767,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // don't use .u() here: we are deliberately discarding the
                 // higher bits
                 let r = val_offset.bin() as u32;
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 self.reg_write(3, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val);
@@ -1686,12 +1787,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(wrap16,);
                 Vec::new()
             }
-            "sub_wrap_with_offset" => {
+            Instruction::sub_wrap_with_offset => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2];
                 let write_reg = args[3].u();
@@ -1699,7 +1800,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let r_i64: i64 = val.bin() + 0x100000000;
                 let r = r_i64 as u32;
-                let lid = self.link_id(name, "main_regs", 2);
+                let lid = self.link_id(instr.column(), "main_regs", 2);
                 self.reg_write(2, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val1);
@@ -1723,16 +1824,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(sub_wrap_with_offset,);
                 Vec::new()
             }
-            "sign_extend_byte" => {
+            Instruction::sign_extend_byte => {
                 let read_reg = args[0].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
 
                 // Sign extend the byte
                 let byte_val = (val.u() as u8) as i8;
                 let extended_val = byte_val as i32 as u32;
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 self.reg_write(3, write_reg, extended_val.into(), lid);
 
                 set_col!(tmp1_col, val);
@@ -1758,9 +1859,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(sign_extend_byte,);
                 Vec::new()
             }
-            "sign_extend_16_bits" => {
+            Instruction::sign_extend_16_bits => {
                 let read_reg = args[0].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
 
@@ -1771,7 +1872,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 } else {
                     val.u() & 0x0000FFFF
                 };
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 self.reg_write(3, write_reg, extended_val.into(), lid);
 
                 set_col!(tmp1_col, val);
@@ -1797,14 +1898,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(sign_extend_16_bits,);
                 Vec::new()
             }
-            "to_signed" => {
+            Instruction::to_signed => {
                 let read_reg = args[0].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
                 let r = val.u() as i32;
 
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 self.reg_write(1, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val);
@@ -1828,16 +1929,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(to_signed,);
                 Vec::new()
             }
-            "fail" => {
+            Instruction::fail => {
                 // TODO: handle it better
                 panic!("reached a fail instruction")
             }
-            "divremu" => {
+            Instruction::divremu => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let write_reg1 = args[2].u();
                 let write_reg2 = args[3].u();
@@ -1854,9 +1955,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     rem = y;
                 }
 
-                let lid = self.link_id(name, "main_regs", 2);
+                let lid = self.link_id(instr.column(), "main_regs", 2);
                 self.reg_write(2, write_reg1, div.into(), lid);
-                let lid = self.link_id(name, "main_regs", 3);
+                let lid = self.link_id(instr.column(), "main_regs", 3);
                 self.reg_write(3, write_reg2, rem.into(), lid);
 
                 set_col!(tmp1_col, val1);
@@ -1894,12 +1995,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(divremu,);
                 Vec::new()
             }
-            "mul" => {
+            Instruction::mul => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let write_reg1 = args[2].u();
                 let write_reg2 = args[3].u();
@@ -1908,9 +2009,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lo = r as u32;
                 let hi = (r >> 32) as u32;
 
-                let lid = self.link_id(name, "main_regs", 2);
+                let lid = self.link_id(instr.column(), "main_regs", 2);
                 self.reg_write(2, write_reg1, lo.into(), lid);
-                let lid = self.link_id(name, "main_regs", 3);
+                let lid = self.link_id(instr.column(), "main_regs", 3);
                 self.reg_write(3, write_reg2, hi.into(), lid);
 
                 set_col!(tmp1_col, val1);
@@ -1918,17 +2019,17 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp3_col, Elem::from_u32_as_fe(lo));
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
-                let lid = self.link_id(name, "main_split_gl", 0);
-                submachine_op!(main_split_gl, lid, &[r.into(), lo.into(), hi.into()],);
+                let lid = self.link_id(instr.column(), "main_split_gl", 0);
+                submachine_op!(split_gl, lid, &[r.into(), lo.into(), hi.into()],);
                 main_op!(mul,);
                 Vec::new()
             }
-            "and" | "or" | "xor" => {
+            Instruction::and | Instruction::or | Instruction::xor => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2].bin();
                 let write_reg = args[3].u();
@@ -1953,9 +2054,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     _ => unreachable!(),
                 };
 
-                let lid = self.link_id(name, "main_binary", 0);
+                let lid = self.link_id(instr.column(), "main_binary", 0);
                 submachine_op!(
-                    main_binary,
+                    binary,
                     lid,
                     &[
                         op_id.into(),
@@ -1965,19 +2066,19 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     ],
                 );
 
-                let lid = self.link_id(name, "main_regs", 2);
+                let lid = self.link_id(instr.column(), "main_regs", 2);
                 self.reg_write(3, write_reg, r.into(), lid);
 
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
                 Vec::new()
             }
-            "shl" | "shr" => {
+            Instruction::shl | Instruction::shr => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2].bin();
                 let write_reg = args[3].u();
@@ -1995,9 +2096,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     _ => unreachable!(),
                 };
 
-                let lid = self.link_id(name, "main_shift", 0);
+                let lid = self.link_id(instr.column(), "main_shift", 0);
                 submachine_op!(
-                    main_shift,
+                    shift,
                     lid,
                     &[
                         op_id.into(),
@@ -2007,7 +2108,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     ],
                 );
 
-                let lid = self.link_id(name, "main_regs", 2);
+                let lid = self.link_id(instr.column(), "main_regs", 2);
                 self.reg_write(3, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val1);
@@ -2016,19 +2117,19 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "invert_gl" => {
+            Instruction::invert_gl => {
                 let low_addr = args[0].u();
                 let high_addr = args[1].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let low = self.reg_read(0, low_addr, lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let high = self.reg_read(1, high_addr, lid);
                 let inv = F::one() / F::from((high.u() as u64) << 32 | low.u() as u64);
                 let inv_u64 = inv.to_integer().try_into_u64().unwrap();
                 let (low_inv, high_inv) = (inv_u64 as u32, (inv_u64 >> 32) as u32);
-                let lid = self.link_id(name, "main_regs", 2);
+                let lid = self.link_id(instr.column(), "main_regs", 2);
                 self.reg_write(2, low_addr, low_inv.into(), lid);
-                let lid = self.link_id(name, "main_regs", 3);
+                let lid = self.link_id(instr.column(), "main_regs", 3);
                 self.reg_write(3, high_addr, high_inv.into(), lid);
 
                 set_col!(tmp1_col, low);
@@ -2037,14 +2138,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp4_col, Elem::from_u32_as_fe(high_inv));
                 set_col!(XX_inv, Elem::Field(inv));
 
-                let lid = self.link_id(name, "main_split_gl", 0);
-                submachine_op!(main_split_gl, lid, &[inv, low_inv.into(), high_inv.into()],);
+                let lid = self.link_id(instr.column(), "main_split_gl", 0);
+                submachine_op!(split_gl, lid, &[inv, low_inv.into(), high_inv.into()],);
                 main_op!(invert_gl,);
                 Vec::new()
             }
-            "split_gl" => {
+            Instruction::split_gl => {
                 let read_reg = args[0].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let val1 = self.reg_read(0, read_reg, lid);
                 let write_reg1 = args[1].u();
                 let write_reg2 = args[2].u();
@@ -2056,27 +2157,27 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lo = (value & 0xffffffff) as u32;
                 let hi = (value >> 32) as u32;
 
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 self.reg_write(2, write_reg1, lo.into(), lid);
-                let lid = self.link_id(name, "main_regs", 2);
+                let lid = self.link_id(instr.column(), "main_regs", 2);
                 self.reg_write(3, write_reg2, hi.into(), lid);
 
                 set_col!(tmp1_col, val1);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(lo));
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
-                let lid = self.link_id(name, "main_split_gl", 0);
-                submachine_op!(main_split_gl, lid, &[value.into(), lo.into(), hi.into()],);
+                let lid = self.link_id(instr.column(), "main_split_gl", 0);
+                submachine_op!(split_gl, lid, &[value.into(), lo.into(), hi.into()],);
                 main_op!(split_gl,);
                 Vec::new()
             }
-            "poseidon_gl" => {
+            Instruction::poseidon_gl => {
                 let reg1 = args[0].u();
                 let reg2 = args[1].u();
-                let lid = self.link_id(name, "main_regs", 0);
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let input_ptr = self.reg_read(0, reg1, lid);
                 assert!(is_multiple_of_4(input_ptr.u()));
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let output_ptr = self.reg_read(1, reg2, lid);
                 assert!(is_multiple_of_4(output_ptr.u()));
 
@@ -2116,19 +2217,19 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     let hi = (val >> 32) as u32;
                     let lo = (val & 0xffffffff) as u32;
                     // memory writes from the poseidon machine
-                    let lid = self.link_id("poseidon_gl", "main_memory", 2);
+                    let lid = self.link_id("main_poseidon_gl", "main_memory", 2);
                     self.proc
                         .set_mem(output_ptr.u() + 8 * i as u32, lo, self.step + 1, lid);
-                    let lid = self.link_id("poseidon_gl", "main_memory", 3);
+                    let lid = self.link_id("main_poseidon_gl", "main_memory", 3);
                     self.proc
                         .set_mem(output_ptr.u() + 8 * i as u32 + 4, hi, self.step + 1, lid);
-                    let lid = self.link_id("poseidon_gl", "main_split_gl", 0);
-                    submachine_op!(main_split_gl, lid, &[*v, lo.into(), hi.into()],);
+                    let lid = self.link_id("main_poseidon_gl", "main_split_gl", 0);
+                    submachine_op!(split_gl, lid, &[*v, lo.into(), hi.into()],);
                 });
 
-                let lid = self.link_id(name, "main_poseidon_gl", 0);
+                let lid = self.link_id(instr.column(), "main_poseidon_gl", 0);
                 submachine_op!(
-                    main_poseidon_gl,
+                    poseidon_gl,
                     lid,
                     &[input_ptr.into_fe(), output_ptr.into_fe(), self.step.into()],
                     inputs[0],
@@ -2151,7 +2252,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(poseidon_gl,);
                 vec![]
             }
-            "poseidon2_gl" => {
+            Instruction::poseidon2_gl => {
                 let input_ptr = self.proc.get_reg_mem(args[0].u()).u();
                 assert!(is_multiple_of_4(input_ptr));
 
@@ -2181,7 +2282,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(poseidon2_gl,);
                 vec![]
             }
-            "affine_256" => {
+            Instruction::affine_256 => {
                 // a * b + c = d
                 let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
                 assert!(is_multiple_of_4(input_ptr_a));
@@ -2224,7 +2325,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(affine_256,);
                 vec![]
             }
-            "mod_256" => {
+            Instruction::mod_256 => {
                 // a mod b = c
                 let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
                 assert!(is_multiple_of_4(input_ptr_a));
@@ -2257,7 +2358,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(mod_256,);
                 vec![]
             }
-            "ec_add" => {
+            Instruction::ec_add => {
                 // a + b = c
                 let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
                 assert!(is_multiple_of_4(input_ptr_a));
@@ -2301,7 +2402,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(ec_add,);
                 vec![]
             }
-            "ec_double" => {
+            Instruction::ec_double => {
                 // a * 2 = b
                 let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
                 assert!(is_multiple_of_4(input_ptr_a));
@@ -2337,21 +2438,18 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(ec_double,);
                 vec![]
             }
-            "commit_public" => {
-                let lid = self.link_id(name, "main_regs", 0);
+            Instruction::commit_public => {
+                let lid = self.link_id(instr.column(), "main_regs", 0);
                 let idx = self.reg_read(0, args[0].u(), lid);
-                let lid = self.link_id(name, "main_regs", 1);
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 let limb = self.reg_read(0, args[1].u(), lid);
                 set_col!(tmp1_col, idx);
                 set_col!(tmp2_col, limb);
                 log::debug!("Committing public: idx={idx}, limb={limb}");
-                let lid = self.link_id(name, "main_publics", 0);
-                submachine_op!(main_publics, lid, &[idx.into_fe(), limb.into_fe()],);
+                let lid = self.link_id(instr.column(), "main_publics", 0);
+                submachine_op!(publics, lid, &[idx.into_fe(), limb.into_fe()],);
                 main_op!(commit_public,);
                 vec![]
-            }
-            instr => {
-                panic!("unknown instruction: {instr}");
             }
         };
 
