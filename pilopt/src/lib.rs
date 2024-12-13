@@ -481,8 +481,7 @@ fn remove_constant_intermediate_columns<T: FieldElement>(pil_file: &mut Analyzed
                     match definition {
                         AlgebraicExpression::Number(value) => {
                             log::debug!(
-                                "Determined fixed column {} to be constant {value}. Removing.",
-                                name
+                                "Determined intermediate column {name} to be constant {value}. Removing.",
                             );
                             Some(((name.clone(), poly_id), value.to_arbitrary_integer()))
                         }
