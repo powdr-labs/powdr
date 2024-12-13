@@ -271,13 +271,23 @@ impl std::ops::Div<FieldElement> for FieldElement {{
         if b.0 == 0 {{
             panic!("Division by zero");
         }}
-        let uint_result = self.0 / b.0;
-        if uint_result * b.0 == self.0 {{
-            return Self(uint_result);
+
+        if let Some(result) = try_integer_div_without_remainder(self.0, b.0) {{
+            Self(result)
+        }} else if let Some(result) = try_integer_div_without_remainder(self.0, MODULUS - b.0) {{
+            Self(MODULUS - result)
+        }} else if let Some(result) = try_integer_div_without_remainder(MODULUS - self.0, b.0) {{
+            Self(MODULUS - result)
+        }} else if let Some(result) = try_integer_div_without_remainder(MODULUS - self.0, MODULUS - b.0) {{
+            Self(result)
+        }} else {{
+            full_field_div(self, b)
         }}
-        // TODO we could also try signed integer division.
-        full_field_div(self, b)
     }}
+}}
+#[inline]
+fn try_integer_div_without_remainder(a: IntType, b: IntType) -> Option<IntType> {{
+    (a % b == 0).then(|| a / b)
 }}
 fn full_field_div(a: FieldElement, b: FieldElement) -> FieldElement {{
     todo!()
@@ -377,10 +387,7 @@ mod tests {
 
     #[test]
     fn compile_util_code() {
-        if let Err(e) = compile_effects::<GoldilocksField>(0, 2, &[], &[]) {
-            println!("{e}");
-            panic!()
-        }
+        compile_effects::<GoldilocksField>(0, 2, &[], &[]).unwrap();
     }
 
     fn cell(column_name: &str, id: u64, row_offset: i32) -> Cell {
@@ -535,5 +542,35 @@ extern \"C\" fn witgen(
         assert_eq!(data[2], GoldilocksField::from(9));
         assert_eq!(data[3], GoldilocksField::from(0));
         assert_eq!(known, vec![1, 1]);
+    }
+
+    #[test]
+    fn field_div_via_integer() {
+        let effects = vec![
+            assignment(&cell("x", 0, 0), number(8).field_div(&number(2))),
+            assignment(&cell("x", 0, 1), number(1 << 60).field_div(&number(8))),
+            assignment(&cell("x", 0, 2), (-number(8)).field_div(&number(2))),
+            assignment(&cell("x", 0, 3), number(8).field_div(&-number(2))),
+            assignment(&cell("x", 0, 4), (-number(8)).field_div(&-number(2))),
+        ];
+        let (_lib, f) = compile_effects(0, 1, &[], &effects).unwrap();
+        let mut data = vec![GoldilocksField::from(0); 5];
+        let mut known = vec![0; 1];
+        let params = WitgenFunctionParams {
+            data: data.as_mut_ptr(),
+            known: known.as_mut_ptr(),
+            len: data.len() as u64,
+            row_offset: 0,
+            call_machine: no_call_machine,
+        };
+        f(params);
+        assert_eq!(data[0], GoldilocksField::from(4));
+        assert_eq!(
+            data[1],
+            GoldilocksField::from(1u64 << 60) / GoldilocksField::from(8)
+        );
+        assert_eq!(data[2], -GoldilocksField::from(4));
+        assert_eq!(data[3], -GoldilocksField::from(4));
+        assert_eq!(data[4], GoldilocksField::from(4));
     }
 }
