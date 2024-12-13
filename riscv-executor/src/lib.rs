@@ -1236,11 +1236,17 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     /// Gets the identity id for a link associated with a given instruction.
     /// idx is based on the order link appear in the assembly (assumed to be the same in the optimized pil).
     fn instr_link_id(&mut self, instr: Instruction, target: &'static str, idx: usize) -> u64 {
-        let entries = self
-            .pil_instruction_links
-            .entry((instr.flag(), target))
-            .or_insert_with(|| pil::find_instruction_links(&self.pil_links, instr.flag(), target));
-        entries.get(idx).unwrap().id()
+        if let ExecMode::Trace = self.mode {
+            let entries = self
+                .pil_instruction_links
+                .entry((instr.flag(), target))
+                .or_insert_with(|| {
+                    pil::find_instruction_links(&self.pil_links, instr.flag(), target)
+                });
+            entries.get(idx).unwrap().id()
+        } else {
+            0 // we don't care about identity ids outside trace mode
+        }
     }
 
     /// Find the identity id of a link.
