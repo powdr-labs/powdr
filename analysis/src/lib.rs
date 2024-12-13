@@ -1,5 +1,3 @@
-#![deny(clippy::print_stdout)]
-
 pub mod machine_check;
 mod vm;
 

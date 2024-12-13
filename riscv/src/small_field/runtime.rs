@@ -76,14 +76,14 @@ impl Runtime {
             [
                 r#"instr shl XL, YL, ZH, ZL, WL
                     link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
-                    link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP)
+                    link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
                     link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
                     link ~> (tmp4_l, tmp4_h) = shift.shl(tmp1_l, tmp1_h, tmp3_l)
                     link ~> regs.mstore(0, WL, STEP + 3, tmp4_h, tmp4_l);
 "#,
                 r#"instr shr XL, YL, ZH, ZL, WL
                     link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
-                    link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP)
+                    link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
                     link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
                     link ~> (tmp4_l, tmp4_h) = shift.shr(tmp1_l, tmp1_h, tmp3_l)
                     link ~> regs.mstore(0, WL, STEP + 3, tmp4_h, tmp4_l);

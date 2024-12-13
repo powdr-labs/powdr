@@ -328,97 +328,49 @@ impl Runtime {
 
     fn with_arith(mut self) -> Self {
         self.add_submachine(
-            "std::machines::large_field::arith::Arith",
+            "std::machines::large_field::arith256_memory::Arith256Memory",
             None,
             "arith",
-            vec![],
+            vec!["memory", "MIN_DEGREE", "MAIN_MAX_DEGREE"],
             [
-                format!(
-                    "instr affine_256 link ~> {};",
-                    instr_link("arith.affine_256", 24, 16)
-                ),
-                format!(
-                    "instr ec_add link ~> {};",
-                    instr_link("arith.ec_add", 32, 16)
-                ),
-                format!(
-                    "instr ec_double link ~> {};",
-                    instr_link("arith.ec_double", 16, 16)
-                ),
-                format!(
-                    "instr mod_256 link ~> {};",
-                    instr_link("arith.mod_256", 24, 8)
-                ),
+                r#"instr affine_256 X, Y, Z, W
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP)
+                    link ~> tmp3_col = regs.mload(Z, STEP)
+                    link ~> tmp4_col = regs.mload(W, STEP)
+                    link ~> arith.affine_256(STEP, tmp1_col, tmp2_col, tmp3_col, tmp4_col);
+            "#,
+                r#"instr ec_add X, Y, W
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP)
+                    link ~> tmp4_col = regs.mload(W, STEP)
+                    link ~> arith.ec_add(STEP, tmp1_col, tmp2_col, tmp4_col);
+            "#,
+                r#"instr ec_double X, W
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp4_col = regs.mload(W, STEP)
+                    link ~> arith.ec_double(STEP, tmp1_col, tmp4_col);
+            "#,
+                r#"instr mod_256 X, Y, W
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP)
+                    link ~> tmp4_col = regs.mload(W, STEP)
+                    link ~> arith.mod_256(STEP, tmp1_col, tmp2_col, tmp4_col);
+            "#,
             ],
-            32,
+            0,
         );
 
-        // The affine_256 syscall takes as input the addresses of x1, y1 and x2.
-        let affine256 =
-            // Load x1 in 0..8
-            (0..8).flat_map(|i| load_word(10, i as u32 *4 , &reg(i)))
-            // Load y1 in 8..16
-            .chain((0..8).flat_map(|i| load_word(11, i as u32 *4 , &reg(i + 8))))
-            // Load x2 in 16..24
-            .chain((0..8).flat_map(|i| load_word(12, i as u32 *4 , &reg(i + 16))))
-            // Call instruction
-            .chain(std::iter::once("affine_256;".to_string()))
-            // Store result y2 in x1's memory
-            .chain((0..8).flat_map(|i| store_word(10, i as u32 *4 , &reg(i))))
-            // Store result y3 in y1's memory
-            .chain((0..8).flat_map(|i| store_word(11, i as u32 *4 , &reg(i + 8))));
-
+        let affine256 = std::iter::once("affine_256 10, 11, 12, 13;".to_string());
         self.add_syscall(Syscall::Affine256, affine256);
 
-        // The mod_256 syscall takes as input the addresses of y2, y3, and x1.
-        let mod256 =
-            // Load y2 in 0..8
-            (0..8).flat_map(|i| load_word(10, i as u32 *4 , &reg(i)))
-            // Load y3 in 8..16
-            .chain((0..8).flat_map(|i| load_word(11, i as u32 *4 , &reg(i + 8))))
-            // Load x1 in 16..24
-            .chain((0..8).flat_map(|i| load_word(12, i as u32 *4 , &reg(i + 16))))
-            // Call instruction
-            .chain(std::iter::once("mod_256;".to_string()))
-            // Store result x2 in y2's memory
-            .chain((0..8).flat_map(|i| store_word(10, i as u32 *4 , &reg(i))));
-
+        let mod256 = std::iter::once("mod_256 10, 11, 12;".to_string());
         self.add_syscall(Syscall::Mod256, mod256);
 
-        // The ec_add syscall takes as input the four addresses of x1, y1, x2, y2.
-        let ec_add =
-            // Load x1 in 0..8
-            (0..8).flat_map(|i| load_word(10, i as u32 * 4, &reg(i)))
-            // Load y1 in 8..16
-            .chain((0..8).flat_map(|i| load_word(11, i as u32 * 4, &reg(i + 8))))
-            // Load x2 in 16..24
-            .chain((0..8).flat_map(|i| load_word(12, i as u32 * 4, &reg(i + 16))))
-            // Load y2 in 24..32
-            .chain((0..8).flat_map(|i| load_word(13, i as u32 * 4, &reg(i + 24))))
-            // Call instruction
-            .chain(std::iter::once("ec_add;".to_string()))
-            // Save result x3 in x1
-            .chain((0..8).flat_map(|i| store_word(10, i as u32 * 4, &reg(i))))
-            // Save result y3 in y1
-            .chain((0..8).flat_map(|i| store_word(11, i as u32 * 4, &reg(i + 8))));
-
+        let ec_add = std::iter::once("ec_add 10, 11, 12;".to_string());
         self.add_syscall(Syscall::EcAdd, ec_add);
 
-        // The ec_double syscall takes as input the addresses of x and y in x10 and x11 respectively.
-        // We load x and y from memory into registers 0..8 and registers 8..16 respectively.
-        // We then store the result from those registers into the same addresses (x10 and x11).
-        let ec_double =
-            // Load x in 0..8
-            (0..8).flat_map(|i| load_word(10, i as u32 * 4, &reg(i)))
-            // Load y in 8..16
-            .chain((0..8).flat_map(|i| load_word(11, i as u32 * 4, &reg(i + 8))))
-            // Call instruction
-            .chain(std::iter::once("ec_double;".to_string()))
-            // Store result in x
-            .chain((0..8).flat_map(|i| store_word(10, i as u32 * 4, &reg(i))))
-            // Store result in y
-            .chain((0..8).flat_map(|i| store_word(11, i as u32 * 4, &reg(i + 8))));
-
+        let ec_double = std::iter::once("ec_double 10, 11;".to_string());
         self.add_syscall(Syscall::EcDouble, ec_double);
 
         self
@@ -489,57 +441,4 @@ impl Runtime {
     pub fn get_syscall_impl(&self, syscall_name: &str) -> Option<&SyscallImpl> {
         self.syscalls.get(syscall_name)
     }
-}
-
-/// Helper function for register names used in instruction params
-fn reg(idx: usize) -> String {
-    format!("{EXTRA_REG_PREFIX}{idx}")
-}
-
-/// Helper function to generate instr link for large number input/output registers
-fn instr_link(call: &str, inputs: usize, outputs: usize) -> String {
-    format!(
-        "{}{}({})",
-        if outputs > 0 {
-            format!(
-                "({}) = ",
-                (0..outputs).map(|i| format!("{}'", reg(i))).join(", ")
-            )
-        } else {
-            "".to_string()
-        },
-        call,
-        (0..inputs).map(reg).join(", ")
-    )
-}
-
-/// Load word from addr+offset into register
-fn load_word(addr_reg_id: u32, offset: u32, reg: &str) -> [String; 2] {
-    let tmp1 = Register::from("tmp1");
-    let tmp2 = Register::from("tmp2");
-    [
-        format!(
-            "mload {addr_reg_id}, {offset}, {}, {};",
-            tmp1.addr(),
-            tmp2.addr()
-        ),
-        format!("{reg} <=X= get_reg({});", tmp1.addr()),
-    ]
-}
-
-/// Store word from register into addr+offset
-fn store_word(addr_reg_id: u32, offset: u32, reg: &str) -> [String; 3] {
-    let tmp1 = Register::from("tmp1");
-    let tmp2 = Register::from("tmp2");
-    [
-        // split_gl ensures we store a 32-bit value
-        format!("set_reg {}, {reg};", tmp1.addr()),
-        format!(
-            "split_gl {}, {}, {};",
-            tmp1.addr(),
-            tmp1.addr(),
-            tmp2.addr()
-        ),
-        format!("mstore {addr_reg_id}, 0, {offset}, {};", tmp1.addr()),
-    ]
 }

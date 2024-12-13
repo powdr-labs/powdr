@@ -20,7 +20,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
     data: Option<&[(u32, S)]>,
     executor_witgen: bool,
 ) {
-    let temp_dir = mktemp::Temp::new_dir().unwrap().release();
+    let temp_dir = mktemp::Temp::new_dir().unwrap();
 
     let mut pipeline = Pipeline::default()
         .with_prover_inputs(inputs.to_vec())
@@ -29,18 +29,6 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
 
     if let Some(data) = data {
         pipeline = pipeline.add_data_vec(data);
-    }
-
-    // Compute the witness once for all tests that follow.
-    pipeline.compute_witness().unwrap();
-
-    test_mock_backend(pipeline.clone());
-
-    // verify with PILCOM
-    if T::known_field().unwrap() == KnownField::GoldilocksField {
-        let pipeline_gl: Pipeline<GoldilocksField> =
-            unsafe { std::mem::transmute(pipeline.clone()) };
-        run_pilcom_with_backend_variant(pipeline_gl, BackendVariant::Composite).unwrap();
     }
 
     // Test with the fast RISCV executor.
@@ -54,6 +42,18 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
             &[],
             None,
         );
+    }
+
+    // Compute the witness once for all tests that follow.
+    pipeline.compute_witness().unwrap();
+
+    test_mock_backend(pipeline.clone());
+
+    // verify with PILCOM
+    if T::known_field().unwrap() == KnownField::GoldilocksField {
+        let pipeline_gl: Pipeline<GoldilocksField> =
+            unsafe { std::mem::transmute(pipeline.clone()) };
+        run_pilcom_with_backend_variant(pipeline_gl, BackendVariant::Composite).unwrap();
     }
 
     test_plonky3_pipeline::<T>(pipeline.clone());

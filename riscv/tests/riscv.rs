@@ -242,7 +242,7 @@ fn function_pointer() {
 fn runtime_ec_double() {
     let case = "ec_double";
     let options = CompilerOptions::new_gl().with_arith();
-    verify_riscv_crate_gl_with_options(case, vec![], options, false);
+    verify_riscv_crate_gl_with_options(case, Default::default(), options, false);
 }
 
 #[test]
@@ -250,7 +250,7 @@ fn runtime_ec_double() {
 fn runtime_ec_add() {
     let case = "ec_add";
     let options = CompilerOptions::new_gl().with_arith();
-    verify_riscv_crate_gl_with_options(case, vec![], options, false);
+    verify_riscv_crate_gl_with_options(case, Default::default(), options, false);
 }
 
 #[test]
@@ -258,7 +258,7 @@ fn runtime_ec_add() {
 fn runtime_affine_256() {
     let case = "affine_256";
     let options = CompilerOptions::new_gl().with_arith();
-    verify_riscv_crate_gl_with_options(case, vec![], options, false);
+    verify_riscv_crate_gl_with_options(case, Default::default(), options, false);
 }
 
 #[test]
@@ -266,7 +266,7 @@ fn runtime_affine_256() {
 fn runtime_modmul_256() {
     let case = "modmul_256";
     let options = CompilerOptions::new_gl().with_arith();
-    verify_riscv_crate_gl_with_options(case, vec![], options, false);
+    verify_riscv_crate_gl_with_options(case, Default::default(), options, false);
 }
 
 /*
@@ -495,7 +495,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
         &from_elf,
         &[expected.into()],
         None,
-        true,
+        false,
     );
 
     // "add_two"
@@ -513,7 +513,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
         &from_elf,
         &[expected.into()],
         None,
-        true,
+        false,
     );
 
     // "add_two" and "add_three"
@@ -531,7 +531,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
         &from_elf,
         &[expected.into()],
         None,
-        true,
+        false,
     );
 }
 
@@ -615,12 +615,12 @@ fn many_chunks_memory() {
 }
 
 fn verify_riscv_crate(case: &str, inputs: &[u64], executor_witgen: bool) {
-    verify_riscv_crate_bb(case, inputs.iter().map(|&x| x.into()).collect());
     verify_riscv_crate_gl(
         case,
         inputs.iter().map(|&x| x.into()).collect(),
         executor_witgen,
     );
+    verify_riscv_crate_bb(case, inputs.iter().map(|&x| x.into()).collect());
 }
 
 fn verify_riscv_crate_bb(case: &str, inputs: Vec<BabyBearField>) {

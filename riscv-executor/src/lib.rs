@@ -531,10 +531,10 @@ mod builder {
             let mut ret = Self {
                 pc_idx,
                 curr_pc: PC_INITIAL_VAL.into(),
+                regs_machine: MemoryMachine::new("main_regs", &witness_cols),
+                memory_machine: MemoryMachine::new("main_memory", &witness_cols),
                 trace: ExecutionTrace::new(witness_cols, reg_map, reg_writes, PC_INITIAL_VAL + 1),
                 submachines,
-                regs_machine: MemoryMachine::new("main_regs"),
-                memory_machine: MemoryMachine::new("main_memory"),
                 next_statement_line: 1,
                 batch_to_line_map,
                 max_rows: max_rows_len,
@@ -699,28 +699,30 @@ mod builder {
             self.set_next_pc().and(Some(st_line))
         }
 
-        pub(crate) fn set_mem(&mut self, addr: u32, val: u32) {
+        pub(crate) fn set_mem(&mut self, addr: u32, val: u32, step: u32, selector: u32) {
             if let ExecMode::Trace = self.mode {
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Write,
                     address: addr,
                 });
+                self.memory_machine.write(step, addr, val.into(), selector);
             }
 
             self.mem.insert(addr, val);
         }
 
-        pub(crate) fn get_mem(&mut self, addr: u32) -> u32 {
+        pub(crate) fn get_mem(&mut self, addr: u32, step: u32, selector: u32) -> u32 {
+            let val = *self.mem.get(&addr).unwrap_or(&0);
             if let ExecMode::Trace = self.mode {
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Read,
                     address: addr,
                 });
+                self.memory_machine.read(step, addr, val.into(), selector);
             }
-
-            *self.mem.get(&addr).unwrap_or(&0)
+            val
         }
 
         pub(crate) fn set_reg_mem(&mut self, addr: u32, val: Elem<F>) {
@@ -777,17 +779,16 @@ mod builder {
             // add submachine traces to main trace
             // ----------------------------
             for mut machine in self.submachines.into_values().map(|m| m.into_inner()) {
-                if machine.len() == 0 {
-                    // ignore empty machines
-                    continue;
-                }
-                machine.final_row_override();
-                let range = namespace_degree_range(pil, machine.namespace());
-                // extend with dummy blocks up to the required machine degree
-                let machine_degree =
-                    std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
-                while machine.len() < machine_degree {
-                    machine.push_dummy_block(machine_degree as usize);
+                // if the machine is not empty, we need to fill it up to the degree
+                if machine.len() > 0 {
+                    machine.final_row_override();
+                    let range = namespace_degree_range(pil, machine.namespace());
+                    // extend with dummy blocks up to the required machine degree
+                    let machine_degree =
+                        std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
+                    while machine.len() < machine_degree {
+                        machine.push_dummy_block(machine_degree as usize);
+                    }
                 }
                 for (col_name, col) in machine.take_cols() {
                     assert!(self.trace.cols.insert(col_name, col).is_none());
@@ -1022,9 +1023,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     /// read register value, updating the register memory machine
     fn reg_read(&mut self, step_offset: u32, reg: u32, selector_idx: u32) -> Elem<F> {
         let val = self.proc.get_reg_mem(reg);
-        self.proc
-            .regs_machine
-            .read(self.step + step_offset, reg, val, selector_idx);
+        if let ExecMode::Trace = self.mode {
+            self.proc
+                .regs_machine
+                .read(self.step + step_offset, reg, val, selector_idx);
+        }
         val
     }
 
@@ -1142,10 +1145,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
 
                 let addr = addr as u32;
-                self.proc.set_mem(addr, value.u());
-                self.proc
-                    .memory_machine
-                    .write(self.step + 3, addr, value, 1);
+                self.proc.set_mem(addr, value.u(), self.step + 3, 1);
 
                 set_col!(tmp1_col, addr1);
                 set_col!(tmp2_col, addr2);
@@ -1168,7 +1168,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let addr = addr1.bin() + offset;
 
-                let val = self.proc.get_mem(addr as u32 & 0xfffffffc);
+                let val = self
+                    .proc
+                    .get_mem(addr as u32 & 0xfffffffc, self.step + 1, 0);
                 let rem = addr % 4;
 
                 self.reg_write(2, write_addr1, val.into(), 3);
@@ -1187,13 +1189,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(
                     wrap_bit,
                     Elem::from_u32_as_fe(((v as u64 >> 32) & 1) as u32)
-                );
-
-                self.proc.memory_machine.read(
-                    self.step + 1,
-                    addr as u32 & 0xfffffffc,
-                    val.into(),
-                    0,
                 );
 
                 Vec::new()
@@ -1870,9 +1865,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let reg1 = args[0].u();
                 let reg2 = args[1].u();
                 let input_ptr = self.reg_read(0, reg1, 0);
-                assert_eq!(input_ptr.u() % 4, 0);
+                assert!(is_multiple_of_4(input_ptr.u()));
                 let output_ptr = self.reg_read(1, reg2, 1);
-                assert_eq!(output_ptr.u() % 4, 0);
+                assert!(is_multiple_of_4(output_ptr.u()));
 
                 set_col!(tmp1_col, input_ptr);
                 set_col!(tmp2_col, output_ptr);
@@ -1893,23 +1888,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let inputs = (0..12)
                     .map(|i| {
-                        let lo = self.proc.get_mem(input_ptr.u() + 8 * i);
-                        let hi = self.proc.get_mem(input_ptr.u() + 8 * i + 4);
-                        // memory reads of the poseidon machine
-                        if let ExecMode::Trace = self.mode {
-                            self.proc.memory_machine.read(
-                                self.step,
-                                input_ptr.u() + 8 * i,
-                                lo.into(),
-                                2,
-                            );
-                            self.proc.memory_machine.read(
-                                self.step,
-                                input_ptr.u() + 8 * i + 4,
-                                hi.into(),
-                                3,
-                            );
-                        }
+                        // step/selector of memory reads from the poseidon machine
+                        let lo = self.proc.get_mem(input_ptr.u() + 8 * i, self.step, 2);
+                        let hi = self.proc.get_mem(input_ptr.u() + 8 * i + 4, self.step, 3);
                         F::from(((hi as u64) << 32) | lo as u64)
                     })
                     .collect::<Vec<_>>();
@@ -1921,8 +1902,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     let v = v.to_integer().try_into_u64().unwrap();
                     let hi = (v >> 32) as u32;
                     let lo = (v & 0xffffffff) as u32;
-                    self.proc.set_mem(output_ptr.u() + 8 * i as u32, lo);
-                    self.proc.set_mem(output_ptr.u() + 8 * i as u32 + 4, hi);
+                    // step/selector of memory writes from the poseidon machine
+                    self.proc
+                        .set_mem(output_ptr.u() + 8 * i as u32, lo, self.step + 1, 4);
+                    self.proc
+                        .set_mem(output_ptr.u() + 8 * i as u32 + 4, hi, self.step + 1, 5);
                     if let ExecMode::Trace = self.mode {
                         // split gl of the poseidon machine
                         self.proc.submachine("split_gl").add_operation(
@@ -1930,19 +1914,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                             &[hi.into(), lo.into()],
                             Some(1),
                             &[],
-                        );
-                        // memory writes of the poseidon machine
-                        self.proc.memory_machine.write(
-                            self.step + 1,
-                            output_ptr.u() + 8 * i as u32,
-                            lo.into(),
-                            4,
-                        );
-                        self.proc.memory_machine.write(
-                            self.step + 1,
-                            output_ptr.u() + 8 * i as u32 + 4,
-                            hi.into(),
-                            5,
                         );
                     }
                 });
@@ -1980,10 +1951,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             "poseidon2_gl" => {
                 let input_ptr = self.proc.get_reg_mem(args[0].u()).u();
-                assert_eq!(input_ptr % 4, 0);
+                assert!(is_multiple_of_4(input_ptr));
 
                 let inputs: [u64; 8] = (0..16)
-                    .map(|i| self.proc.get_mem(input_ptr + i * 4))
+                    .map(|i| self.proc.get_mem(input_ptr + i * 4, 0, 0)) // TODO: step/selector for poseidon2
                     .chunks(2)
                     .into_iter()
                     .map(|mut chunk| {
@@ -2000,104 +1971,157 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .flat_map(|v| vec![(v & 0xffffffff) as u32, (v >> 32) as u32]);
 
                 let output_ptr = self.proc.get_reg_mem(args[1].u()).u();
-                assert_eq!(output_ptr % 4, 0);
+                assert!(is_multiple_of_4(output_ptr));
                 result.enumerate().for_each(|(i, v)| {
-                    self.proc.set_mem(output_ptr + i as u32 * 4, v);
+                    self.proc.set_mem(output_ptr + i as u32 * 4, v, 0, 0); // TODO: step/selector for poseidon2
                 });
 
                 vec![]
             }
             "affine_256" => {
-                assert!(args.is_empty());
-                // take input from registers
-                let x1 = (0..8)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i)).into_fe())
+                // a * b + c = d
+                let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
+                assert!(is_multiple_of_4(input_ptr_a));
+                let input_ptr_b = self.proc.get_reg_mem(args[1].u()).u();
+                assert!(is_multiple_of_4(input_ptr_b));
+                let input_ptr_c = self.proc.get_reg_mem(args[2].u()).u();
+                assert!(is_multiple_of_4(input_ptr_c));
+                let output_ptr_d = self.proc.get_reg_mem(args[3].u()).u();
+                assert!(is_multiple_of_4(output_ptr_d));
+
+                let a = (0..8)
+                    .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
                     .collect::<Vec<_>>();
-                let y1 = (0..8)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i + 8)).into_fe())
+                let b = (0..8)
+                    .map(|i| F::from(self.proc.get_mem(input_ptr_b + i * 4, 0, 0)))
                     .collect::<Vec<_>>();
-                let x2 = (0..8)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i + 16)).into_fe())
+                let c = (0..8)
+                    .map(|i| F::from(self.proc.get_mem(input_ptr_c + i * 4, 0, 0)))
                     .collect::<Vec<_>>();
-                let result = arith::affine_256(&x1, &y1, &x2);
-                // store result in registers
-                (0..8).for_each(|i| {
-                    self.proc
-                        .set_reg(&register_by_idx(i), Elem::Field(result.0[i]))
+                let result = arith::affine_256(&a, &b, &c);
+
+                result.0.iter().enumerate().for_each(|(i, &v)| {
+                    self.proc.set_mem(
+                        output_ptr_d + i as u32 * 4,
+                        v.to_integer().try_into_u32().unwrap(),
+                        1,
+                        1,
+                    );
                 });
-                (0..8).for_each(|i| {
-                    self.proc
-                        .set_reg(&register_by_idx(i + 8), Elem::Field(result.1[i]))
+                result.1.iter().enumerate().for_each(|(i, &v)| {
+                    self.proc.set_mem(
+                        output_ptr_d + (result.0.len() as u32 * 4) + (i as u32 * 4),
+                        v.to_integer().try_into_u32().unwrap(),
+                        1,
+                        1,
+                    );
                 });
 
                 vec![]
             }
             "mod_256" => {
-                assert!(args.is_empty());
-                // take input from registers
-                let y2 = (0..8)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i)).into_fe())
+                // a mod b = c
+                let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
+                assert!(is_multiple_of_4(input_ptr_a));
+                let input_ptr_b = self.proc.get_reg_mem(args[1].u()).u();
+                assert!(is_multiple_of_4(input_ptr_b));
+                let output_ptr_c = self.proc.get_reg_mem(args[2].u()).u();
+                assert!(is_multiple_of_4(output_ptr_c));
+
+                let ah = (0..8)
+                    .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
                     .collect::<Vec<_>>();
-                let y3 = (0..8)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i + 8)).into_fe())
+                let al = (8..16)
+                    .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
                     .collect::<Vec<_>>();
-                let x1 = (0..8)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i + 16)).into_fe())
+                let b = (0..8)
+                    .map(|i| F::from(self.proc.get_mem(input_ptr_b + i * 4, 0, 0)))
                     .collect::<Vec<_>>();
-                let result = arith::mod_256(&y2, &y3, &x1);
-                // store result in registers
-                (0..8).for_each(|i| {
-                    self.proc
-                        .set_reg(&register_by_idx(i), Elem::Field(result[i]))
+                let result = arith::mod_256(&ah, &al, &b);
+
+                result.iter().enumerate().for_each(|(i, &v)| {
+                    self.proc.set_mem(
+                        output_ptr_c + i as u32 * 4,
+                        v.to_integer().try_into_u32().unwrap(),
+                        1,
+                        1,
+                    );
                 });
+
                 vec![]
             }
             "ec_add" => {
-                assert!(args.is_empty());
-                // take input from registers
-                let x1 = (0..8)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i)).into_fe())
+                // a + b = c
+                let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
+                assert!(is_multiple_of_4(input_ptr_a));
+                let input_ptr_b = self.proc.get_reg_mem(args[1].u()).u();
+                assert!(is_multiple_of_4(input_ptr_b));
+                let output_ptr_c = self.proc.get_reg_mem(args[2].u()).u();
+                assert!(is_multiple_of_4(output_ptr_c));
+
+                let ax = (0..8)
+                    .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
                     .collect::<Vec<_>>();
-                let y1 = (0..8)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i + 8)).into_fe())
+                let ay = (8..16)
+                    .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
                     .collect::<Vec<_>>();
-                let x2 = (0..8)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i + 16)).into_fe())
+                let bx = (0..8)
+                    .map(|i| F::from(self.proc.get_mem(input_ptr_b + i * 4, 0, 0)))
                     .collect::<Vec<_>>();
-                let y2 = (0..8)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i + 24)).into_fe())
+                let by = (8..16)
+                    .map(|i| F::from(self.proc.get_mem(input_ptr_b + i * 4, 0, 0)))
                     .collect::<Vec<_>>();
-                let result = arith::ec_add(&x1, &y1, &x2, &y2);
-                // store result in registers
-                (0..8).for_each(|i| {
-                    self.proc
-                        .set_reg(&register_by_idx(i), Elem::Field(result.0[i]))
+
+                let result = arith::ec_add(&ax, &ay, &bx, &by);
+                result.0.iter().enumerate().for_each(|(i, &v)| {
+                    self.proc.set_mem(
+                        output_ptr_c + i as u32 * 4,
+                        v.to_integer().try_into_u32().unwrap(),
+                        1,
+                        1,
+                    );
                 });
-                (0..8).for_each(|i| {
-                    self.proc
-                        .set_reg(&register_by_idx(i + 8), Elem::Field(result.1[i]))
+                result.1.iter().enumerate().for_each(|(i, &v)| {
+                    self.proc.set_mem(
+                        output_ptr_c + (result.0.len() as u32 * 4) + (i as u32 * 4),
+                        v.to_integer().try_into_u32().unwrap(),
+                        1,
+                        1,
+                    );
                 });
 
                 vec![]
             }
             "ec_double" => {
-                assert!(args.is_empty());
-                // take input from registers
-                let x = (0..8)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i)).into_fe())
+                // a * 2 = b
+                let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
+                assert!(is_multiple_of_4(input_ptr_a));
+                let output_ptr_b = self.proc.get_reg_mem(args[1].u()).u();
+                assert!(is_multiple_of_4(output_ptr_b));
+
+                let ax = (0..8)
+                    .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
                     .collect::<Vec<_>>();
-                let y = (0..8)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i + 8)).into_fe())
+                let ay = (8..16)
+                    .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
                     .collect::<Vec<_>>();
-                let result = arith::ec_double(&x, &y);
-                // store result in registers
-                (0..8).for_each(|i| {
-                    self.proc
-                        .set_reg(&register_by_idx(i), Elem::Field(result.0[i]))
+
+                let result = arith::ec_double(&ax, &ay);
+                result.0.iter().enumerate().for_each(|(i, &v)| {
+                    self.proc.set_mem(
+                        output_ptr_b + i as u32 * 4,
+                        v.to_integer().try_into_u32().unwrap(),
+                        1,
+                        1,
+                    );
                 });
-                (0..8).for_each(|i| {
-                    self.proc
-                        .set_reg(&register_by_idx(i + 8), Elem::Field(result.1[i]))
+                result.1.iter().enumerate().for_each(|(i, &v)| {
+                    self.proc.set_mem(
+                        output_ptr_b + (result.0.len() as u32 * 4) + (i as u32 * 4),
+                        v.to_integer().try_into_u32().unwrap(),
+                        1,
+                        1,
+                    );
                 });
 
                 vec![]
@@ -2318,7 +2342,7 @@ enum ExecMode {
 pub fn execute_fast<F: FieldElement>(
     asm: &AnalysisASMFile,
     initial_memory: MemoryState,
-    inputs: &Callback<F>,
+    prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     profiling: Option<ProfilerOptions>,
 ) -> usize {
@@ -2328,7 +2352,7 @@ pub fn execute_fast<F: FieldElement>(
         None,
         None,
         initial_memory,
-        inputs,
+        prover_ctx,
         bootloader_inputs,
         usize::MAX,
         ExecMode::Fast,
@@ -2344,7 +2368,7 @@ pub fn execute<F: FieldElement>(
     opt_pil: &Analyzed<F>,
     fixed: FixedColumns<F>,
     initial_memory: MemoryState,
-    inputs: &Callback<F>,
+    prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     max_steps_to_execute: Option<usize>,
     profiling: Option<ProfilerOptions>,
@@ -2355,18 +2379,12 @@ pub fn execute<F: FieldElement>(
         Some(opt_pil),
         Some(fixed),
         initial_memory,
-        inputs,
+        prover_ctx,
         bootloader_inputs,
         max_steps_to_execute.unwrap_or(usize::MAX),
         ExecMode::Trace,
         profiling,
     )
-}
-
-/// FIXME: copied from `riscv/runtime.rs` instead of adding dependency.
-/// Helper function for register names used in submachine instruction params.
-fn register_by_idx(idx: usize) -> String {
-    format!("xtra{idx}")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2375,7 +2393,7 @@ fn execute_inner<F: FieldElement>(
     opt_pil: Option<&Analyzed<F>>,
     fixed: Option<FixedColumns<F>>,
     initial_memory: MemoryState,
-    inputs: &Callback<F>,
+    prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     max_steps_to_execute: usize,
     mode: ExecMode,
@@ -2437,10 +2455,12 @@ fn execute_inner<F: FieldElement>(
         .map(|v| Elem::try_from_fe_as_bin(v).unwrap_or(Elem::Field(*v)))
         .collect();
 
+    // We clear the QueryCallback's virtual FS before the execution.
+    (prover_ctx)("Clear").unwrap();
     let mut e = Executor {
         proc,
         label_map,
-        inputs,
+        inputs: prover_ctx,
         bootloader_inputs,
         fixed: fixed.unwrap_or_default(),
         program_cols,
@@ -2655,4 +2675,8 @@ pub fn write_executor_csv<F: FieldElement, P: AsRef<Path>>(
         powdr_number::CsvRenderMode::Hex,
         &columns[..],
     );
+}
+
+fn is_multiple_of_4(n: u32) -> bool {
+    n % 4 == 0
 }

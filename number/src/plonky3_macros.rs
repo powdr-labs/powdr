@@ -117,6 +117,11 @@ macro_rules! powdr_field_plonky3 {
             fn try_into_i32(&self) -> Option<i32> {
                 Some(self.to_canonical_u32() as i32)
             }
+
+            fn has_direct_repr() -> bool {
+                // No direct repr, because 'mod' is not always applied.
+                false
+            }
         }
 
         impl LowerHex for $name {
@@ -133,7 +138,17 @@ macro_rules! powdr_field_plonky3 {
 
         impl From<i64> for $name {
             fn from(n: i64) -> Self {
-                From::<u64>::from(n as u64)
+                Self::from(if n < 0 {
+                    // If n < 0, then this is guaranteed to overflow since
+                    // both arguments have their high bit set, so the result
+                    // is in the canonical range.
+                    Self::modulus()
+                        .try_into_u64()
+                        .unwrap()
+                        .wrapping_add(n as u64)
+                } else {
+                    n as u64
+                })
             }
         }
 

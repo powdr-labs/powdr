@@ -47,40 +47,42 @@ pub fn make_prepared_pipeline<T: FieldElement>(
     pipeline
 }
 
-/// Tests witness generation, pilcom, halo2, estark and plonky3.
-pub fn regular_test(file_name: &str, inputs: &[i32]) {
-    let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
-    let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
+/// Tests witness generation, mock prover, pilcom and plonky3 with
+/// Goldilocks, BabyBear and KoalaBear.
+pub fn regular_test_all_fields(file_name: &str, inputs: &[i32]) {
+    regular_test_gl(file_name, inputs);
+    regular_test_small_field(file_name, inputs);
+}
 
-    test_mock_backend(pipeline_gl.clone());
-    run_pilcom_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite).unwrap();
-    gen_estark_proof_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite);
-    test_plonky3_pipeline(pipeline_gl);
+pub fn regular_test_small_field(file_name: &str, inputs: &[i32]) {
+    regular_test_bb(file_name, inputs);
+    regular_test_kb(file_name, inputs);
+}
 
-    let inputs_bn = inputs.iter().map(|x| Bn254Field::from(*x)).collect();
-    let pipeline_bn = make_prepared_pipeline(file_name, inputs_bn, vec![]);
-    test_halo2_with_backend_variant(pipeline_bn, BackendVariant::Composite);
-
+/// Tests witness generation, mock prover, pilcom and plonky3 with BabyBear.
+pub fn regular_test_bb(file_name: &str, inputs: &[i32]) {
     let inputs_bb = inputs.iter().map(|x| BabyBearField::from(*x)).collect();
     let pipeline_bb = make_prepared_pipeline(file_name, inputs_bb, vec![]);
+    test_mock_backend(pipeline_bb.clone());
     test_plonky3_pipeline(pipeline_bb);
+}
 
+/// Tests witness generation, mock prover, pilcom and plonky3 with BabyBear and KoalaBear.
+pub fn regular_test_kb(file_name: &str, inputs: &[i32]) {
     let inputs_kb = inputs.iter().map(|x| KoalaBearField::from(*x)).collect();
     let pipeline_kb = make_prepared_pipeline(file_name, inputs_kb, vec![]);
+    test_mock_backend(pipeline_kb.clone());
     test_plonky3_pipeline(pipeline_kb);
 }
 
-pub fn regular_test_without_small_field(file_name: &str, inputs: &[i32]) {
+/// Tests witness generation, mock prover, pilcom and plonky3 with Goldilocks.
+pub fn regular_test_gl(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
     let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
 
     test_mock_backend(pipeline_gl.clone());
     run_pilcom_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite).unwrap();
-    gen_estark_proof_with_backend_variant(pipeline_gl, BackendVariant::Composite);
-
-    let inputs_bn = inputs.iter().map(|x| Bn254Field::from(*x)).collect();
-    let pipeline_bn = make_prepared_pipeline(file_name, inputs_bn, vec![]);
-    test_halo2_with_backend_variant(pipeline_bn, BackendVariant::Composite);
+    test_plonky3_pipeline(pipeline_gl);
 }
 
 pub fn test_pilcom(pipeline: Pipeline<GoldilocksField>) {
@@ -607,6 +609,28 @@ pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
         .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
     pipeline.verify(&proof, &[publics]).unwrap();
+}
+#[cfg(feature = "stwo")]
+pub fn assert_proofs_fail_for_invalid_witnesses_stwo(
+    file_name: &str,
+    witness: &[(String, Vec<u64>)],
+) {
+    let pipeline = Pipeline::<Mersenne31Field>::default()
+        .from_file(resolve_test_file(file_name))
+        .set_witness(convert_witness(witness));
+
+    assert!(pipeline
+        .clone()
+        .with_backend(powdr_backend::BackendType::Stwo, None)
+        .compute_proof()
+        .is_err());
+}
+
+#[cfg(not(feature = "stwo"))]
+pub fn assert_proofs_fail_for_invalid_witnesses_stwo(
+    _file_name: &str,
+    _witness: &[(String, Vec<u64>)],
+) {
 }
 
 #[cfg(not(feature = "stwo"))]

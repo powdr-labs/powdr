@@ -13,12 +13,11 @@ use crate::witgen::Constraint;
 use super::{
     affine_expression::{AffineExpression, AffineResult, AlgebraicVariable},
     data_structures::column_map::WitnessColumnMap,
-    expression_evaluator::ExpressionEvaluator,
+    evaluators::symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},
     global_constraints::RangeConstraintSet,
     machines::MachineParts,
     range_constraints::RangeConstraint,
-    symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},
-    FixedData,
+    FixedData, PartialExpressionEvaluator,
 };
 
 /// A small wrapper around a row index, which knows the total number of rows.
@@ -222,6 +221,27 @@ impl<T: FieldElement> Row<T> {
                 (CellValue::Known(_), _) => {}
                 _ => *cell1 = cell2.clone(),
             });
+        Ok(())
+    }
+
+    /// Merges a list of known values into the current row.
+    /// Returns an error if there is a conflict.
+    pub fn merge_with_values(
+        &mut self,
+        values: impl Iterator<Item = (PolyID, T)>,
+    ) -> Result<(), ()> {
+        let stored = self.values.clone();
+
+        for (poly_id, value) in values {
+            let v = &mut self.values[&poly_id];
+            if let CellValue::Known(stored_value) = v {
+                if *stored_value != value {
+                    self.values = stored;
+                    return Err(());
+                }
+            }
+            *v = CellValue::Known(value);
+        }
         Ok(())
     }
 
@@ -472,7 +492,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         // Note that because we instantiate a fresh evaluator here, we don't benefit from caching
         // of intermediate values across calls of `RowPair::evaluate`. In practice, we only call
         // it many times for the same RowPair though.
-        ExpressionEvaluator::new(variables, &self.fixed_data.intermediate_definitions)
+        PartialExpressionEvaluator::new(variables, &self.fixed_data.intermediate_definitions)
             .evaluate(expr)
     }
 }

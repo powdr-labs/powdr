@@ -313,12 +313,20 @@ machine Arith256Memory(mem: Memory) with
     *
     *****/
 
-    link => byte2.check(sum(16, |i| x1[i] * CLK32[i]) + sum(16, |i| y1[i] * CLK32[16 + i]));
-    link => byte2.check(sum(16, |i| x2[i] * CLK32[i]) + sum(16, |i| y2[i] * CLK32[16 + i]));
-    link => byte2.check(sum(16, |i| x3[i] * CLK32[i]) + sum(16, |i| y3[i] * CLK32[16 + i]));
+    // The sums were extracted out of the checks because of a bug
+    // in the bus linker code that prepends the constraints with the current namespace.
+    // TODO Revert when that's fixed.
+    let range_arg1 = sum(16, |i| x1[i] * CLK32[i]) + sum(16, |i| y1[i] * CLK32[16 + i]);
+    link => byte2.check(range_arg1);
+    let range_arg2 = sum(16, |i| x2[i] * CLK32[i]) + sum(16, |i| y2[i] * CLK32[16 + i]);
+    link => byte2.check(range_arg2);
+    let range_arg3 = sum(16, |i| x3[i] * CLK32[i]) + sum(16, |i| y3[i] * CLK32[16 + i]);
+    link => byte2.check(range_arg3);
     // Note that for q0-q2, we only range-constrain the first 15 limbs here
-    link => byte2.check(sum(16, |i| s[i] * CLK32[i]) + sum(15, |i| q0[i] * CLK32[16 + i]));
-    link => byte2.check(sum(15, |i| q1[i] * CLK32[i]) + sum(15, |i| q2[i] * CLK32[16 + i]));
+    let range_arg4 = sum(15, |i| s[i] * CLK32[i]) + sum(15, |i| q0[i] * CLK32[16 + i]);
+    link => byte2.check(range_arg4);
+    let range_arg5 = sum(15, |i| q1[i] * CLK32[i]) + sum(15, |i| q2[i] * CLK32[16 + i]);
+    link => byte2.check(range_arg5);
 
     // The most significant limbs of q0-q2 are constrained to be 32 bits
     // In Polygon's version they are 19 bits, but that requires increasing the minimum degree
@@ -351,7 +359,15 @@ machine Arith256Memory(mem: Memory) with
     /// returns a(0) * b(0) + ... + a(n - 1) * b(n - 1)
     let dot_prod = |n, a, b| sum(n, |i| a(i) * b(i));
     /// returns |n| a(0) * b(n) + ... + a(n) * b(0)
-    let product = |a, b| |n| dot_prod(n + 1, a, |i| b(n - i));
+    let product = constr |a, b| constr |n| {
+        // TODO: To reduce the degree of the constraints, we materialize the intermediate result here.
+        // this introduces ~256 additional witness columns & constraints.
+        let product_res;
+        product_res = dot_prod(n + 1, a, |i| b(n - i));
+        product_res
+    };
+    // Same as `product`, but does not materialize the result. Use this to multiply by constants (like `p`).
+    let product_inline = |a, b| |n| dot_prod(n + 1, a, |i| b(n - i));
     /// Converts array to function, extended by zeros.
     let array_as_fun: expr[] -> (int -> expr) = |arr| |i| if 0 <= i && i < array::len(arr) {
         arr[i]
@@ -372,7 +388,7 @@ machine Arith256Memory(mem: Memory) with
     let q2f = array_as_fun(q2);
 
     // Defined for arguments from 0 to 31 (inclusive)
-    let eq0 = |nr|
+    let eq0 = constr |nr|
         product(x1f, y1f)(nr)
         + x2f(nr)
         - shift_right(y2f, 16)(nr)
@@ -388,9 +404,9 @@ machine Arith256Memory(mem: Memory) with
 
     // The "- 4 * shift_right(p, 16)" effectively subtracts 4 * (p << 16 * 16) = 2 ** 258 * p
     // As a result, the term computes `(x - 2 ** 258) * p`.
-    let product_with_p = |x| |nr| product(p, x)(nr) - 4 * shift_right(p, 16)(nr);
+    let product_with_p = |x| |nr| product_inline(p, x)(nr) - 4 * shift_right(p, 16)(nr);
 
-    let eq1 = |nr| product(sf, x2f)(nr) - product(sf, x1f)(nr) - y2f(nr) + y1f(nr) + product_with_p(q0f)(nr);
+    let eq1 = constr |nr| product(sf, x2f)(nr) - product(sf, x1f)(nr) - y2f(nr) + y1f(nr) + product_with_p(q0f)(nr);
 
     /*******
     *
@@ -398,7 +414,7 @@ machine Arith256Memory(mem: Memory) with
     *
     *******/
 
-    let eq2 = |nr| 2 * product(sf, y1f)(nr) - 3 * product(x1f, x1f)(nr) + product_with_p(q0f)(nr);
+    let eq2 = constr |nr| 2 * product(sf, y1f)(nr) - 3 * product(x1f, x1f)(nr) + product_with_p(q0f)(nr);
 
     /*******
     *
@@ -409,7 +425,7 @@ machine Arith256Memory(mem: Memory) with
     // If we're doing the ec_double operation, x2 is so far unconstrained and should be set to x1
     array::new(16, |i| is_ec_double * (x1[i] - x2[i]) = 0);
 
-    let eq3 = |nr| product(sf, sf)(nr) - x1f(nr) - x2f(nr) - x3f(nr) + product_with_p(q1f)(nr);
+    let eq3 = constr |nr| product(sf, sf)(nr) - x1f(nr) - x2f(nr) - x3f(nr) + product_with_p(q1f)(nr);
 
 
     /*******
@@ -418,7 +434,7 @@ machine Arith256Memory(mem: Memory) with
     *
     *******/
 
-    let eq4 = |nr| product(sf, x1f)(nr) - product(sf, x3f)(nr) - y1f(nr) - y3f(nr) + product_with_p(q2f)(nr);
+    let eq4 = constr |nr| product(sf, x1f)(nr) - product(sf, x3f)(nr) - y1f(nr) - y3f(nr) + product_with_p(q2f)(nr);
 
 
     /*******
@@ -471,7 +487,10 @@ machine Arith256Memory(mem: Memory) with
     * Putting everything together
     *
     *******/
-    
+
+    // TODO: To reduce the degree of the constraints, these intermediate columns should be materialized.
+    // However, witgen doesn't work currently if we do, likely because for some operations, not all inputs are
+    // available.
     col eq0_sum = sum(32, |i| eq0(i) * CLK32[i]);
     col eq1_sum = sum(32, |i| eq1(i) * CLK32[i]);
     col eq2_sum = sum(32, |i| eq2(i) * CLK32[i]);

@@ -185,6 +185,12 @@ pub trait FieldElement:
     /// As conventional, negative values are in relation to 0 in the field.
     /// Returns None if out of the range [0 - 2^31, 2^31).
     fn try_into_i32(&self) -> Option<i32>;
+
+    /// Returns `true` if values of this type are directly stored as their integer
+    /// value (i.e. not in montgomery representation and there are also no
+    /// additional fields), i.e. the `to_integer` function can be implemented as
+    /// a mem::transmute operation on pointers.
+    fn has_direct_repr() -> bool;
 }
 
 #[cfg(test)]

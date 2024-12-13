@@ -4,7 +4,7 @@ use std::machines::large_field::memory::Memory;
 let main_degree: int = 2**7;
 let memory_degree: int = 2**5;
 
-machine Main with degree: 65536 {
+  machine Main with degree: main_degree {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

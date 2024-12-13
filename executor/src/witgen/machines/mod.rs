@@ -17,6 +17,7 @@ use self::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
 use self::double_sorted_witness_machine_32::DoubleSortedWitnesses32;
 pub use self::fixed_lookup_machine::FixedLookup;
 use self::profiling::{record_end, record_start};
+use self::second_stage_machine::SecondStageMachine;
 use self::sorted_witness_machine::SortedWitnesses;
 use self::write_once_memory::WriteOnceMemory;
 
@@ -30,6 +31,7 @@ mod dynamic_machine;
 mod fixed_lookup_machine;
 pub mod machine_extractor;
 pub mod profiling;
+mod second_stage_machine;
 mod sorted_witness_machine;
 mod write_once_memory;
 
@@ -64,6 +66,19 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         result
     }
 
+    /// Like 'process_lookup_direct', but also records the time spent in this machine.
+    fn process_lookup_direct_timed<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        mutable_state: &'b MutableState<'a, T, Q>,
+        identity_id: u64,
+        values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        record_start(self.name());
+        let result = self.process_lookup_direct(mutable_state, identity_id, values);
+        record_end(self.name());
+        result
+    }
+
     /// Returns a unique name for this machine.
     fn name(&self) -> &str;
 
@@ -89,12 +104,10 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// An error is always unrecoverable.
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b MutableState<'a, T, Q>,
-        _identity_id: u64,
-        _values: Vec<LookupCell<'c, T>>,
-    ) -> Result<bool, EvalError<T>> {
-        unimplemented!("Direct lookup is not supported for this machine.");
-    }
+        mutable_state: &'b MutableState<'a, T, Q>,
+        identity_id: u64,
+        values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>>;
 
     /// Returns the final values of the witness columns.
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -106,6 +119,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn identity_ids(&self) -> Vec<u64>;
 }
 
+#[repr(C)]
 pub enum LookupCell<'a, T> {
     /// Value is known (i.e. an input)
     Input(&'a T),
@@ -117,6 +131,7 @@ pub enum LookupCell<'a, T> {
 /// This allows us to treat machines uniformly without putting them into a `Box`,
 /// which requires that all lifetime parameters are 'static.
 pub enum KnownMachine<'a, T: FieldElement> {
+    SecondStageMachine(SecondStageMachine<'a, T>),
     SortedWitnesses(SortedWitnesses<'a, T>),
     DoubleSortedWitnesses16(DoubleSortedWitnesses16<'a, T>),
     DoubleSortedWitnesses32(DoubleSortedWitnesses32<'a, T>),
@@ -129,6 +144,7 @@ pub enum KnownMachine<'a, T: FieldElement> {
 impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
         match self {
+            KnownMachine::SecondStageMachine(m) => m.run(mutable_state),
             KnownMachine::SortedWitnesses(m) => m.run(mutable_state),
             KnownMachine::DoubleSortedWitnesses16(m) => m.run(mutable_state),
             KnownMachine::DoubleSortedWitnesses32(m) => m.run(mutable_state),
@@ -146,6 +162,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
         match self {
+            KnownMachine::SecondStageMachine(m) => {
+                m.process_plookup(mutable_state, identity_id, caller_rows)
+            }
             KnownMachine::SortedWitnesses(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
@@ -170,8 +189,43 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         }
     }
 
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        mutable_state: &'b MutableState<'a, T, Q>,
+        identity_id: u64,
+        values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        match self {
+            KnownMachine::SecondStageMachine(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+            KnownMachine::SortedWitnesses(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+            KnownMachine::DoubleSortedWitnesses16(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+            KnownMachine::DoubleSortedWitnesses32(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+            KnownMachine::WriteOnceMemory(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+            KnownMachine::BlockMachine(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+            KnownMachine::DynamicMachine(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+            KnownMachine::FixedLookup(m) => {
+                m.process_lookup_direct(mutable_state, identity_id, values)
+            }
+        }
+    }
+
     fn name(&self) -> &str {
         match self {
+            KnownMachine::SecondStageMachine(m) => m.name(),
             KnownMachine::SortedWitnesses(m) => m.name(),
             KnownMachine::DoubleSortedWitnesses16(m) => m.name(),
             KnownMachine::DoubleSortedWitnesses32(m) => m.name(),
@@ -187,6 +241,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         match self {
+            KnownMachine::SecondStageMachine(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::SortedWitnesses(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::DoubleSortedWitnesses16(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::DoubleSortedWitnesses32(m) => m.take_witness_col_values(mutable_state),
@@ -199,6 +254,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
 
     fn identity_ids(&self) -> Vec<u64> {
         match self {
+            KnownMachine::SecondStageMachine(m) => m.identity_ids(),
             KnownMachine::SortedWitnesses(m) => m.identity_ids(),
             KnownMachine::DoubleSortedWitnesses16(m) => m.identity_ids(),
             KnownMachine::DoubleSortedWitnesses32(m) => m.identity_ids(),

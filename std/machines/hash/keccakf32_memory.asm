@@ -9,21 +9,174 @@ use std::prelude::set_hint;
 use std::prelude::Query;
 use std::prover::eval;
 use std::prover::provide_value;
+use std::machines::large_field::memory::Memory;
 
-machine Keccakf16 with
+machine Keccakf32Memory(mem: Memory) with
     latch: final_step,
-    operation_id: operation_id,
     call_selectors: sel,
 {
+    /*
+    ------------- Begin memory read / write ---------------
+    Additional columns compared to the non-memory version:
+    - 1 column for user input address (of first byte of input).
+    - 1 column for user output address (of first byte of output).
+    - 1 column for time step.
+    Overall, given that there are 2,600+ columns in the non-memory version, this isn't a huge cost
+    Methodology description:
+    1. The latch with the input and output addresses + time step is in the last row of each block.
+    2. User input address is copied to the first row.
+    3. Input addresses for all bytes are calculated from user input address in the first row.
+    4. Load all input bytes from memory to the preimage columns.
+    5. Keccak is computed from top to bottom.
+    6. Output addresses for all bytes are calculated from user output address in the last row.
+    7. Store all output bytes from keccak computation columns to memory.
+    Essentially, we conduct all memory reads in the first row and all memory writes in the last row.
+    Our current methodology performs all memory reads at once in the first row, then immediately does the keccak computation,
+    and finally performs all memory writes at once in the last row, and thus only requires one pass with auto witgen.
+    Though note that input address need to be first copied from the last row to the first row.
+    */
+
+    operation keccakf32_memory input_addr, output_addr, time_step ->;
+
+    // Get an intermediate column that indicates that we're in an
+    // actual block, not a default block. Its value is constant
+    // within the block.
+    let used = array::sum(sel);
+    array::map(sel, |s| unchanged_until(s, final_step + is_last));
+    std::utils::force_bool(used);
+    let first_step_used: expr = used * first_step;
+    let final_step_used: expr = used * final_step;
+
+    // Repeat the time step and input address in the whole block.
+    col witness time_step;
+    unchanged_until(time_step, final_step + is_last);
+
+    // Input address for the first byte of input array from the user.
+    // Copied from user input in the last row to the first row.
+    col witness input_addr;
+    unchanged_until(input_addr, final_step + is_last);
+
+    // Output address for the first byte of output array from the user.
+    // Used in the last row directly from user input.
+    col witness output_addr;
+
+    // Load memory while converting to little endian format for keccak computation.
+    // Specifically, this keccakf32 machine accepts big endian inputs in memory.
+    // However the keccak computation constraints are written for little endian iputs.
+    // Therefore memory load converts big endian inputs to little endian for the preimage.
+    link if first_step_used ~> preimage[1] = mem.mload(input_addr, time_step);
+    link if first_step_used ~> preimage[0] = mem.mload(input_addr + 4, time_step);
+    link if first_step_used ~> preimage[3] = mem.mload(input_addr + 8, time_step);
+    link if first_step_used ~> preimage[2] = mem.mload(input_addr + 12, time_step);
+    link if first_step_used ~> preimage[5] = mem.mload(input_addr + 16, time_step);
+    link if first_step_used ~> preimage[4] = mem.mload(input_addr + 20, time_step);
+    link if first_step_used ~> preimage[7] = mem.mload(input_addr + 24, time_step);
+    link if first_step_used ~> preimage[6] = mem.mload(input_addr + 28, time_step);
+    link if first_step_used ~> preimage[9] = mem.mload(input_addr + 32, time_step);
+    link if first_step_used ~> preimage[8] = mem.mload(input_addr + 36, time_step);
+    link if first_step_used ~> preimage[11] = mem.mload(input_addr + 40, time_step);
+    link if first_step_used ~> preimage[10] = mem.mload(input_addr + 44, time_step);
+    link if first_step_used ~> preimage[13] = mem.mload(input_addr + 48, time_step);
+    link if first_step_used ~> preimage[12] = mem.mload(input_addr + 52, time_step);
+    link if first_step_used ~> preimage[15] = mem.mload(input_addr + 56, time_step);
+    link if first_step_used ~> preimage[14] = mem.mload(input_addr + 60, time_step);
+    link if first_step_used ~> preimage[17] = mem.mload(input_addr + 64, time_step);
+    link if first_step_used ~> preimage[16] = mem.mload(input_addr + 68, time_step);
+    link if first_step_used ~> preimage[19] = mem.mload(input_addr + 72, time_step);
+    link if first_step_used ~> preimage[18] = mem.mload(input_addr + 76, time_step);
+    link if first_step_used ~> preimage[21] = mem.mload(input_addr + 80, time_step);
+    link if first_step_used ~> preimage[20] = mem.mload(input_addr + 84, time_step);
+    link if first_step_used ~> preimage[23] = mem.mload(input_addr + 88, time_step);
+    link if first_step_used ~> preimage[22] = mem.mload(input_addr + 92, time_step);
+    link if first_step_used ~> preimage[25] = mem.mload(input_addr + 96, time_step);
+    link if first_step_used ~> preimage[24] = mem.mload(input_addr + 100, time_step);
+    link if first_step_used ~> preimage[27] = mem.mload(input_addr + 104, time_step);
+    link if first_step_used ~> preimage[26] = mem.mload(input_addr + 108, time_step);
+    link if first_step_used ~> preimage[29] = mem.mload(input_addr + 112, time_step);
+    link if first_step_used ~> preimage[28] = mem.mload(input_addr + 116, time_step);
+    link if first_step_used ~> preimage[31] = mem.mload(input_addr + 120, time_step);
+    link if first_step_used ~> preimage[30] = mem.mload(input_addr + 124, time_step);
+    link if first_step_used ~> preimage[33] = mem.mload(input_addr + 128, time_step);
+    link if first_step_used ~> preimage[32] = mem.mload(input_addr + 132, time_step);
+    link if first_step_used ~> preimage[35] = mem.mload(input_addr + 136, time_step);
+    link if first_step_used ~> preimage[34] = mem.mload(input_addr + 140, time_step);
+    link if first_step_used ~> preimage[37] = mem.mload(input_addr + 144, time_step);
+    link if first_step_used ~> preimage[36] = mem.mload(input_addr + 148, time_step);
+    link if first_step_used ~> preimage[39] = mem.mload(input_addr + 152, time_step);
+    link if first_step_used ~> preimage[38] = mem.mload(input_addr + 156, time_step);
+    link if first_step_used ~> preimage[41] = mem.mload(input_addr + 160, time_step);
+    link if first_step_used ~> preimage[40] = mem.mload(input_addr + 164, time_step);
+    link if first_step_used ~> preimage[43] = mem.mload(input_addr + 168, time_step);
+    link if first_step_used ~> preimage[42] = mem.mload(input_addr + 172, time_step);
+    link if first_step_used ~> preimage[45] = mem.mload(input_addr + 176, time_step);
+    link if first_step_used ~> preimage[44] = mem.mload(input_addr + 180, time_step);
+    link if first_step_used ~> preimage[47] = mem.mload(input_addr + 184, time_step);
+    link if first_step_used ~> preimage[46] = mem.mload(input_addr + 188, time_step);
+    link if first_step_used ~> preimage[49] = mem.mload(input_addr + 192, time_step);
+    link if first_step_used ~> preimage[48] = mem.mload(input_addr + 196, time_step);
+
+    // Expects input of 25 64-bit numbers decomposed to 25 chunks of 2 32-bit little endian limbs. 
+    // The output is a_prime_prime_prime_0_0_limbs for the first 2 and a_prime_prime for the rest.
+
+    // Write memory while converting output to big endian format.
+    // Specifically, output obtained from the keccak computation are little endian.
+    // However, this keccakf32_memory machine produces big endian outputs in memory.
+    // Therefore, memory write converts little endian from keccak computation to big endian for the output in memory.
+    link if final_step_used ~> mem.mstore(output_addr, time_step + 1, a_prime_prime_prime_0_0_limbs[1]);
+    link if final_step_used ~> mem.mstore(output_addr + 4, time_step + 1, a_prime_prime_prime_0_0_limbs[0]);
+    link if final_step_used ~> mem.mstore(output_addr + 8, time_step + 1, a_prime_prime[3]);
+    link if final_step_used ~> mem.mstore(output_addr + 12, time_step + 1, a_prime_prime[2]);
+    link if final_step_used ~> mem.mstore(output_addr + 16, time_step + 1, a_prime_prime[5]);
+    link if final_step_used ~> mem.mstore(output_addr + 20, time_step + 1, a_prime_prime[4]);
+    link if final_step_used ~> mem.mstore(output_addr + 24, time_step + 1, a_prime_prime[7]);
+    link if final_step_used ~> mem.mstore(output_addr + 28, time_step + 1, a_prime_prime[6]);
+    link if final_step_used ~> mem.mstore(output_addr + 32, time_step + 1, a_prime_prime[9]);
+    link if final_step_used ~> mem.mstore(output_addr + 36, time_step + 1, a_prime_prime[8]);
+    link if final_step_used ~> mem.mstore(output_addr + 40, time_step + 1, a_prime_prime[11]);
+    link if final_step_used ~> mem.mstore(output_addr + 44, time_step + 1, a_prime_prime[10]);
+    link if final_step_used ~> mem.mstore(output_addr + 48, time_step + 1, a_prime_prime[13]);
+    link if final_step_used ~> mem.mstore(output_addr + 52, time_step + 1, a_prime_prime[12]);
+    link if final_step_used ~> mem.mstore(output_addr + 56, time_step + 1, a_prime_prime[15]);
+    link if final_step_used ~> mem.mstore(output_addr + 60, time_step + 1, a_prime_prime[14]);
+    link if final_step_used ~> mem.mstore(output_addr + 64, time_step + 1, a_prime_prime[17]);
+    link if final_step_used ~> mem.mstore(output_addr + 68, time_step + 1, a_prime_prime[16]);
+    link if final_step_used ~> mem.mstore(output_addr + 72, time_step + 1, a_prime_prime[19]);
+    link if final_step_used ~> mem.mstore(output_addr + 76, time_step + 1, a_prime_prime[18]);
+    link if final_step_used ~> mem.mstore(output_addr + 80, time_step + 1, a_prime_prime[21]);
+    link if final_step_used ~> mem.mstore(output_addr + 84, time_step + 1, a_prime_prime[20]);
+    link if final_step_used ~> mem.mstore(output_addr + 88, time_step + 1, a_prime_prime[23]);
+    link if final_step_used ~> mem.mstore(output_addr + 92, time_step + 1, a_prime_prime[22]);
+    link if final_step_used ~> mem.mstore(output_addr + 96, time_step + 1, a_prime_prime[25]);
+    link if final_step_used ~> mem.mstore(output_addr + 100, time_step + 1, a_prime_prime[24]);
+    link if final_step_used ~> mem.mstore(output_addr + 104, time_step + 1, a_prime_prime[27]);
+    link if final_step_used ~> mem.mstore(output_addr + 108, time_step + 1, a_prime_prime[26]);
+    link if final_step_used ~> mem.mstore(output_addr + 112, time_step + 1, a_prime_prime[29]);
+    link if final_step_used ~> mem.mstore(output_addr + 116, time_step + 1, a_prime_prime[28]);
+    link if final_step_used ~> mem.mstore(output_addr + 120, time_step + 1, a_prime_prime[31]);
+    link if final_step_used ~> mem.mstore(output_addr + 124, time_step + 1, a_prime_prime[30]);
+    link if final_step_used ~> mem.mstore(output_addr + 128, time_step + 1, a_prime_prime[33]);
+    link if final_step_used ~> mem.mstore(output_addr + 132, time_step + 1, a_prime_prime[32]);
+    link if final_step_used ~> mem.mstore(output_addr + 136, time_step + 1, a_prime_prime[35]);
+    link if final_step_used ~> mem.mstore(output_addr + 140, time_step + 1, a_prime_prime[34]);
+    link if final_step_used ~> mem.mstore(output_addr + 144, time_step + 1, a_prime_prime[37]);
+    link if final_step_used ~> mem.mstore(output_addr + 148, time_step + 1, a_prime_prime[36]);
+    link if final_step_used ~> mem.mstore(output_addr + 152, time_step + 1, a_prime_prime[39]);
+    link if final_step_used ~> mem.mstore(output_addr + 156, time_step + 1, a_prime_prime[38]);
+    link if final_step_used ~> mem.mstore(output_addr + 160, time_step + 1, a_prime_prime[41]);
+    link if final_step_used ~> mem.mstore(output_addr + 164, time_step + 1, a_prime_prime[40]);
+    link if final_step_used ~> mem.mstore(output_addr + 168, time_step + 1, a_prime_prime[43]);
+    link if final_step_used ~> mem.mstore(output_addr + 172, time_step + 1, a_prime_prime[42]);
+    link if final_step_used ~> mem.mstore(output_addr + 176, time_step + 1, a_prime_prime[45]);
+    link if final_step_used ~> mem.mstore(output_addr + 180, time_step + 1, a_prime_prime[44]);
+    link if final_step_used ~> mem.mstore(output_addr + 184, time_step + 1, a_prime_prime[47]);
+    link if final_step_used ~> mem.mstore(output_addr + 188, time_step + 1, a_prime_prime[46]);
+    link if final_step_used ~> mem.mstore(output_addr + 192, time_step + 1, a_prime_prime[49]);
+    link if final_step_used ~> mem.mstore(output_addr + 196, time_step + 1, a_prime_prime[48]);
+    // ------------- End memory read / write ---------------
+
     // Adapted from Plonky3 implementation of Keccak: https://github.com/Plonky3/Plonky3/tree/main/keccak-air/src
 
-    std::check::require_field_bits(16, || "The field modulus should be at least 2^16 - 1 to work in the keccakf16 machine.");
-
-    // Expects input of 25 64-bit numbers decomposed to 25 chunks of 4 16-bit little endian limbs. 
-    // The output is a_prime_prime_prime_0_0_limbs for the first 4 and a_prime_prime for the rest.
-    operation keccakf16<0> preimage[0], preimage[1], preimage[2], preimage[3], preimage[4], preimage[5], preimage[6], preimage[7], preimage[8], preimage[9], preimage[10], preimage[11], preimage[12], preimage[13], preimage[14], preimage[15], preimage[16], preimage[17], preimage[18], preimage[19], preimage[20], preimage[21], preimage[22], preimage[23], preimage[24], preimage[25], preimage[26], preimage[27], preimage[28], preimage[29], preimage[30], preimage[31], preimage[32], preimage[33], preimage[34], preimage[35], preimage[36], preimage[37], preimage[38], preimage[39], preimage[40], preimage[41], preimage[42], preimage[43], preimage[44], preimage[45], preimage[46], preimage[47], preimage[48], preimage[49], preimage[50], preimage[51], preimage[52], preimage[53], preimage[54], preimage[55], preimage[56], preimage[57], preimage[58], preimage[59], preimage[60], preimage[61], preimage[62], preimage[63], preimage[64], preimage[65], preimage[66], preimage[67], preimage[68], preimage[69], preimage[70], preimage[71], preimage[72], preimage[73], preimage[74], preimage[75], preimage[76], preimage[77], preimage[78], preimage[79], preimage[80], preimage[81], preimage[82], preimage[83], preimage[84], preimage[85], preimage[86], preimage[87], preimage[88], preimage[89], preimage[90], preimage[91], preimage[92], preimage[93], preimage[94], preimage[95], preimage[96], preimage[97], preimage[98], preimage[99] -> a_prime_prime_prime_0_0_limbs[0], a_prime_prime_prime_0_0_limbs[1], a_prime_prime_prime_0_0_limbs[2], a_prime_prime_prime_0_0_limbs[3], a_prime_prime[4], a_prime_prime[5], a_prime_prime[6], a_prime_prime[7], a_prime_prime[8], a_prime_prime[9], a_prime_prime[10], a_prime_prime[11], a_prime_prime[12], a_prime_prime[13], a_prime_prime[14], a_prime_prime[15], a_prime_prime[16], a_prime_prime[17], a_prime_prime[18], a_prime_prime[19], a_prime_prime[20], a_prime_prime[21], a_prime_prime[22], a_prime_prime[23], a_prime_prime[24], a_prime_prime[25], a_prime_prime[26], a_prime_prime[27], a_prime_prime[28], a_prime_prime[29], a_prime_prime[30], a_prime_prime[31], a_prime_prime[32], a_prime_prime[33], a_prime_prime[34], a_prime_prime[35], a_prime_prime[36], a_prime_prime[37], a_prime_prime[38], a_prime_prime[39], a_prime_prime[40], a_prime_prime[41], a_prime_prime[42], a_prime_prime[43], a_prime_prime[44], a_prime_prime[45], a_prime_prime[46], a_prime_prime[47], a_prime_prime[48], a_prime_prime[49], a_prime_prime[50], a_prime_prime[51], a_prime_prime[52], a_prime_prime[53], a_prime_prime[54], a_prime_prime[55], a_prime_prime[56], a_prime_prime[57], a_prime_prime[58], a_prime_prime[59], a_prime_prime[60], a_prime_prime[61], a_prime_prime[62], a_prime_prime[63], a_prime_prime[64], a_prime_prime[65], a_prime_prime[66], a_prime_prime[67], a_prime_prime[68], a_prime_prime[69], a_prime_prime[70], a_prime_prime[71], a_prime_prime[72], a_prime_prime[73], a_prime_prime[74], a_prime_prime[75], a_prime_prime[76], a_prime_prime[77], a_prime_prime[78], a_prime_prime[79], a_prime_prime[80], a_prime_prime[81], a_prime_prime[82], a_prime_prime[83], a_prime_prime[84], a_prime_prime[85], a_prime_prime[86], a_prime_prime[87], a_prime_prime[88], a_prime_prime[89], a_prime_prime[90], a_prime_prime[91], a_prime_prime[92], a_prime_prime[93], a_prime_prime[94], a_prime_prime[95], a_prime_prime[96], a_prime_prime[97], a_prime_prime[98], a_prime_prime[99];
-
-    col witness operation_id;
+    std::check::require_field_bits(32, || "The field modulus should be at least 2^32 - 1 to work in the keccakf32 machine.");
 
     let NUM_ROUNDS: int = 24;
 
@@ -72,17 +225,17 @@ machine Keccakf16 with
     //     pub a_prime_prime_prime_0_0_limbs: [T; U64_LIMBS],
     // }
 
-    pol commit preimage[5 * 5 * 4];
-    pol commit a[5 * 5 * 4];
-    pol commit c[5 * 64];
+    col witness preimage[5 * 5 * 2];
+    col witness a[5 * 5 * 2];
+    col witness c[5 * 64];
     array::map(c, |i| force_bool(i));
-    pol commit c_prime[5 * 64];
-    pol commit a_prime[5 * 5 * 64];
+    col witness c_prime[5 * 64];
+    col witness a_prime[5 * 5 * 64];
     array::map(a_prime, |i| force_bool(i));
-    pol commit a_prime_prime[5 * 5 * 4];
-    pol commit a_prime_prime_0_0_bits[64];
+    col witness a_prime_prime[5 * 5 * 2];
+    col witness a_prime_prime_0_0_bits[64];
     array::map(a_prime_prime_0_0_bits, |i| force_bool(i));
-    pol commit a_prime_prime_prime_0_0_limbs[4];
+    col witness a_prime_prime_prime_0_0_limbs[2];
 
     // Initially, the first step flag should be 1 while the others should be 0.
     // builder.when_first_row().assert_one(local.step_flags[0]);
@@ -217,13 +370,13 @@ machine Keccakf16 with
 
     let bits_to_value_be: expr[] -> expr = |bits_be| array::fold(bits_be, 0, |acc, e| (acc * 2 + e));
 
-    array::new(100, |i| {
-        let y = i / 20;
-        let x = (i / 4) % 5;
-        let limb = i % 4;
+    array::new(50, |i| {
+        let y = i / 10;
+        let x = (i / 2) % 5;
+        let limb = i % 2;
         let get_bit: int -> expr = |z| xor3(a_prime[y * 320 + x * 64 + z], c[x * 64 + z], c_prime[x * 64 + z]);
 
-        let limb_bits_be: expr[] = array::reverse(array::new(16, |z| get_bit(limb * 16 + z)));
+        let limb_bits_be: expr[] = array::reverse(array::new(32, |z| get_bit(limb * 32 + z)));
         a[i] = bits_to_value_be(limb_bits_be)
     });
 
@@ -268,15 +421,15 @@ machine Keccakf16 with
     //     }
     // }
 
-    array::new(100, |i| {
-        let y = i / 20;
-        let x = (i / 4) % 5;
-        let limb = i % 4;
+    array::new(50, |i| {
+        let y = i / 10;
+        let x = (i / 2) % 5;
+        let limb = i % 2;
 
         let get_bit: int -> expr = |z| {
             xor(b(x, y, z), andn(b((x + 1) % 5, y, z), b((x + 2) % 5, y, z)))
         };
-        let limb_bits_be: expr[] = array::reverse(array::new(16, |z| get_bit(limb * 16 + z)));
+        let limb_bits_be: expr[] = array::reverse(array::new(32, |z| get_bit(limb * 32 + z)));
         a_prime_prime[i] = bits_to_value_be(limb_bits_be)
     });
 
@@ -316,8 +469,8 @@ machine Keccakf16 with
     //     builder.assert_eq(computed_a_prime_prime_0_0_limb, a_prime_prime_0_0_limb);
     // }
 
-    array::new(4, |limb| {
-        let limb_bits_be: expr[] = array::reverse(array::new(16, |z| a_prime_prime_0_0_bits[limb * 16 + z]));
+    array::new(2, |limb| {
+        let limb_bits_be: expr[] = array::reverse(array::new(32, |z| a_prime_prime_0_0_bits[limb * 32 + z]));
         a_prime_prime[limb] = bits_to_value_be(limb_bits_be)
     });
 
@@ -346,8 +499,8 @@ machine Keccakf16 with
     //     );
     // }
 
-    array::new(4, |limb| {
-        let limb_bits_be: expr[] = array::reverse(array::new(16, |z| get_xored_bit(limb * 16 + z)));
+    array::new(2, |limb| {
+        let limb_bits_be: expr[] = array::reverse(array::new(32, |z| get_xored_bit(limb * 32 + z)));
         a_prime_prime_prime_0_0_limbs[limb] = bits_to_value_be(limb_bits_be)
     });
 
@@ -367,10 +520,10 @@ machine Keccakf16 with
 
     // final_step and is_last should never be 1 at the same time, because final_step is 1 at multiples of 24 and can never be 1 at power of 2.
     // (1 - final_step - is_last) is used to deactivate constraints that reference the next row, whenever we are at the latch row or the last row of the trace (so that we don't incorrectly cycle to the first row).
-    array::new(100, |i| {
-        let y = i / 20;
-        let x = (i / 4) % 5;
-        let limb = i % 4;
+    array::new(50, |i| {
+        let y = i / 10;
+        let x = (i / 2) % 5;
+        let limb = i % 2;
         (1 - final_step - is_last) * (a_prime_prime_prime(y, x, limb) - a[i]') = 0
     });
 
@@ -386,7 +539,7 @@ machine Keccakf16 with
     //     }
     // }
 
-    let a_prime_prime_prime: int, int, int -> expr = |y, x, limb| if y == 0 && x == 0 { a_prime_prime_prime_0_0_limbs[limb] } else { a_prime_prime[y * 20 + x * 4 + limb] };
+    let a_prime_prime_prime: int, int, int -> expr = |y, x, limb| if y == 0 && x == 0 { a_prime_prime_prime_0_0_limbs[limb] } else { a_prime_prime[y * 10 + x * 2 + limb] };
 
     let R: int[] = [
         0, 36, 3, 41, 18, 
@@ -447,7 +600,7 @@ machine Keccakf16 with
     let query_c: int, int, int -> int = query |x, limb, bit_in_limb|
         utils::fold(
             5, 
-            |y| (int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1, 
+            |y| (int(eval(a[y * 10 + x * 2 + limb])) >> bit_in_limb) & 0x1, 
             0, 
             |acc, e| acc ^ e
         );
@@ -456,8 +609,8 @@ machine Keccakf16 with
         let _ = array::map_enumerated(c, |i, c_i| {
             let x = i / 64;
             let z = i % 64;
-            let limb = z / 16;
-            let bit_in_limb = z % 16;
+            let limb = z / 32;
+            let bit_in_limb = z % 32;
 
             provide_value(c_i, row, fe(query_c(x, limb, bit_in_limb)));
         });
@@ -505,7 +658,7 @@ machine Keccakf16 with
     // }
 
     let query_a_prime: int, int, int, int, int -> int = query |x, y, z, limb, bit_in_limb| 
-        ((int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1) ^ 
+        ((int(eval(a[y * 10 + x * 2 + limb])) >> bit_in_limb) & 0x1) ^ 
         int(eval(c[x * 64 + z])) ^ 
         int(eval(c_prime[x * 64 + z]));
 
@@ -514,8 +667,8 @@ machine Keccakf16 with
             let y = i / 320;
             let x = (i / 64) % 5;
             let z = i % 64;
-            let limb = z / 16;
-            let bit_in_limb = z % 16;
+            let limb = z / 32;
+            let bit_in_limb = z % 32;
 
             provide_value(a_i, row, fe(query_a_prime(x, y, z, limb, bit_in_limb)));
         });
@@ -541,20 +694,20 @@ machine Keccakf16 with
 
     let query_a_prime_prime: int, int, int -> int = query |x, y, limb| 
         utils::fold(
-            16, 
+            32, 
             |z| 
-                int(eval(b(x, y, (limb + 1) * 16 - 1 - z))) ^ 
-                int(eval(andn(b((x + 1) % 5, y, (limb + 1) * 16 - 1 - z), 
-                b((x + 2) % 5, y, (limb + 1) * 16 - 1 - z)))), 
+                int(eval(b(x, y, (limb + 1) * 32 - 1 - z))) ^ 
+                int(eval(andn(b((x + 1) % 5, y, (limb + 1) * 32 - 1 - z), 
+                b((x + 2) % 5, y, (limb + 1) * 32 - 1 - z)))), 
             0, 
             |acc, e| acc * 2 + e
         );
 
     query |row| {
         let _ = array::map_enumerated(a_prime_prime, |i, a_i| {
-            let y = i / 20;
-            let x = (i / 4) % 5;
-            let limb = i % 4;
+            let y = i / 10;
+            let x = (i / 2) % 5;
+            let limb = i % 2;
 
             provide_value(a_i, row, fe(query_a_prime_prime(x, y, limb)));
         });
@@ -579,8 +732,8 @@ machine Keccakf16 with
 
     query |row| {
         let _ = array::map_enumerated(a_prime_prime_0_0_bits, |i, a_i| {
-            let limb = i / 16;
-            let bit_in_limb = i % 16;
+            let limb = i / 32;
+            let bit_in_limb = i % 32;
 
             provide_value(
                 a_i, 
@@ -599,10 +752,10 @@ machine Keccakf16 with
 
     let query_a_prime_prime_prime_0_0_limbs: int, int -> int = query |round, limb| 
         int(eval(a_prime_prime[limb])) ^ 
-        ((RC[round] >> (limb * 16)) & 0xffff);
+        ((RC[round] >> (limb * 32)) & 0xffffffff);
 
     query |row| {
-        let _ = array::new(4, |limb| {
+        let _ = array::new(2, |limb| {
             provide_value(
                 a_prime_prime_prime_0_0_limbs[limb], 
                 row, 

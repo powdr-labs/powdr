@@ -38,5 +38,8 @@ env_logger = "0.10.0"
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]
 
-[lints.clippy]
-uninlined_format_args = "deny"
+[lints]
+workspace = true
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458

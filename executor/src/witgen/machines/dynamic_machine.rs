@@ -11,7 +11,11 @@ use crate::witgen::processor::{OuterQuery, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use crate::witgen::vm_processor::VmProcessor;
-use crate::witgen::{AlgebraicVariable, EvalResult, EvalValue, FixedData, QueryCallback};
+use crate::witgen::{
+    AlgebraicVariable, EvalError, EvalResult, EvalValue, FixedData, QueryCallback,
+};
+
+use super::LookupCell;
 
 struct ProcessResult<'a, T: FieldElement> {
     eval_value: EvalValue<AlgebraicVariable<'a>, T>,
@@ -31,6 +35,15 @@ pub struct DynamicMachine<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b MutableState<'a, T, Q>,
+        _identity_id: u64,
+        _values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup not supported by machine {}.", self.name())
+    }
+
     fn identity_ids(&self) -> Vec<u64> {
         self.parts.identity_ids()
     }
@@ -230,6 +243,8 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
             &self.parts,
             SolverState::new(data, self.publics.clone()),
             mutable_state,
+            self.degree,
+            true,
         );
         if let Some(outer_query) = outer_query {
             processor = processor.with_outer_query(outer_query);

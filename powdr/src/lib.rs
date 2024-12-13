@@ -12,8 +12,8 @@ pub use powdr_riscv_executor as riscv_executor;
 pub use powdr_pipeline::Pipeline;
 
 pub use powdr_number::Bn254Field;
-pub use powdr_number::FieldElement;
 pub use powdr_number::GoldilocksField;
+pub use powdr_number::{FieldElement, LargeInt};
 
 use riscv::{CompilerOptions, RuntimeLibs};
 
@@ -26,6 +26,7 @@ use std::time::Instant;
 pub struct SessionBuilder {
     guest_path: String,
     out_path: String,
+    asm_file: Option<String>,
     chunk_size_log2: Option<u8>,
     precompiles: RuntimeLibs,
 }
@@ -47,14 +48,20 @@ const DEFAULT_MIN_MAX_DEGREE_LOG: u8 = 18;
 impl SessionBuilder {
     /// Builds a session with the given parameters.
     pub fn build(self) -> Session {
-        Session {
-            pipeline: pipeline_from_guest(
+        let pipeline = match self.asm_file {
+            Some(asm_file) => Pipeline::<GoldilocksField>::default()
+                .from_asm_file(asm_file.into())
+                .with_output(Path::new(&self.out_path).to_path_buf(), true),
+            None => pipeline_from_guest(
                 &self.guest_path,
                 Path::new(&self.out_path),
                 DEFAULT_MIN_DEGREE_LOG,
                 self.chunk_size_log2.unwrap_or(DEFAULT_MAX_DEGREE_LOG),
                 self.precompiles,
             ),
+        };
+        Session {
+            pipeline,
             out_path: self.out_path,
         }
         .with_backend(powdr_backend::BackendType::Plonky3)
@@ -69,6 +76,12 @@ impl SessionBuilder {
     /// Sets the output path for the artifacts.
     pub fn out_path(mut self, out_path: &str) -> Self {
         self.out_path = out_path.into();
+        self
+    }
+
+    /// Re-use a previously compiled guest program.
+    pub fn asm_file(mut self, asm_file: &str) -> Self {
+        self.asm_file = Some(asm_file.into());
         self
     }
 
@@ -190,6 +203,27 @@ impl Session {
         let file = File::create(path).unwrap();
 
         self.pipeline.export_verification_key(file).unwrap();
+    }
+
+    pub fn publics(&self) -> [u32; 8] {
+        let pubs: Vec<u32> = self
+            .pipeline
+            .publics()
+            .unwrap()
+            .iter()
+            .map(|(_, v)| v.unwrap().to_integer().try_into_u32().unwrap())
+            .collect();
+        pubs.try_into().expect("There should be exactly 8 publics")
+    }
+
+    pub fn stdout<S: serde::de::DeserializeOwned>(&self) -> S {
+        let host = self.pipeline.host_context();
+        host.read(1).unwrap()
+    }
+
+    pub fn stderr<S: serde::de::DeserializeOwned>(&self) -> S {
+        let host = self.pipeline.host_context();
+        host.read(2).unwrap()
     }
 }
 

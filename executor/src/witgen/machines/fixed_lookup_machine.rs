@@ -9,6 +9,7 @@ use powdr_ast::analyzed::{AlgebraicReference, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
+use crate::witgen::data_structures::caller_data::CallerData;
 use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
@@ -198,73 +199,42 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         }
     }
 
-    fn process_plookup_internal<'b, Q: QueryCallback<T>>(
+    fn process_plookup_internal<Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b MutableState<'a, T, Q>,
+        mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
         rows: &RowPair<'_, 'a, T>,
-        left: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        outer_query: OuterQuery<'a, '_, T>,
         mut right: Peekable<impl Iterator<Item = &'a AlgebraicReference>>,
     ) -> EvalResult<'a, T> {
-        if left.len() == 1
-            && !left.first().unwrap().is_constant()
+        if outer_query.left.len() == 1
+            && !outer_query.left.first().unwrap().is_constant()
             && right.peek().unwrap().poly_id.ptype == PolynomialType::Constant
         {
             // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
             return self.process_range_check(
                 rows,
-                left.first().unwrap(),
+                outer_query.left.first().unwrap(),
                 AlgebraicVariable::Column(right.peek().unwrap()),
             );
         }
 
         // Split the left-hand-side into known input values and unknown output expressions.
-        let mut data = vec![T::zero(); left.len()];
-        let values = left
-            .iter()
-            .zip(&mut data)
-            .map(|(l, d)| {
-                if let Some(value) = l.constant_value() {
-                    *d = value;
-                    LookupCell::Input(d)
-                } else {
-                    LookupCell::Output(d)
-                }
-            })
-            .collect::<Vec<_>>();
+        let mut values = CallerData::from(&outer_query);
 
-        if !self.process_lookup_direct(mutable_state, identity_id, values)? {
+        if !self.process_lookup_direct(mutable_state, identity_id, &mut values.as_lookup_cells())? {
             // multiple matches, we stop and learnt nothing
             return Ok(EvalValue::incomplete(
                 IncompleteCause::MultipleLookupMatches,
             ));
         };
 
-        let mut result = EvalValue::complete(vec![]);
-        for (l, v) in left.iter().zip(data) {
-            if !l.is_constant() {
-                let evaluated = l.clone() - v.into();
-                // TODO we could use bit constraints here
-                match evaluated.solve() {
-                    Ok(constraints) => {
-                        result.combine(constraints);
-                    }
-                    Err(_) => {
-                        // Fail the whole lookup
-                        return Err(EvalError::ConstraintUnsatisfiable(format!(
-                            "Constraint is invalid ({l} != {v}).",
-                        )));
-                    }
-                }
-            }
-        }
-
-        Ok(result)
+        values.into()
     }
 
     fn process_range_check(
         &self,
-        rows: &RowPair<'_, 'a, T>,
+        rows: &RowPair<'_, '_, T>,
         lhs: &AffineExpression<AlgebraicVariable<'a>, T>,
         rhs: AlgebraicVariable<'a>,
     ) -> EvalResult<'a, T> {
@@ -327,11 +297,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         "FixedLookup"
     }
 
-    fn process_plookup<'b, Q: crate::witgen::QueryCallback<T>>(
+    fn process_plookup<Q: crate::witgen::QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b MutableState<'a, T, Q>,
+        mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &'b RowPair<'b, 'a, T>,
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         let identity = self.connections[&identity_id];
         let right = identity.right;
@@ -344,20 +314,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .peekable();
 
         let outer_query = OuterQuery::new(caller_rows, identity);
-        self.process_plookup_internal(
-            mutable_state,
-            identity_id,
-            caller_rows,
-            &outer_query.left,
-            right,
-        )
+        self.process_plookup_internal(mutable_state, identity_id, caller_rows, outer_query, right)
     }
 
-    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+    fn process_lookup_direct<'c, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b MutableState<'a, T, Q>,
+        _mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        values: Vec<LookupCell<'c, T>>,
+        values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         let mut input_values = vec![];
 
@@ -407,14 +371,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         self.multiplicity_counter.increment_at_row(identity_id, row);
 
         values
-            .into_iter()
+            .iter_mut()
             .filter_map(|v| match v {
                 LookupCell::Output(e) => Some(e),
                 _ => None,
             })
             .zip(output)
             .for_each(|(e, v)| {
-                *e = *v;
+                **e = *v;
             });
         Ok(true)
     }

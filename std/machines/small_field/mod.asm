@@ -8,3 +8,4 @@ mod memory;
 mod pointer_arith;
 mod rotate;
 mod shift;
+mod keccakf16;

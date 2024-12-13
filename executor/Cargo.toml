@@ -15,6 +15,7 @@ powdr-parser-util.workspace = true
 powdr-pil-analyzer.workspace = true
 powdr-jit-compiler.workspace = true
 
+auto_enums = "0.8.5"
 itertools = "0.13"
 log = { version = "0.4.17" }
 rayon = "1.7.0"
@@ -33,5 +34,8 @@ pretty_assertions = "1.4.0"
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]
 
-[lints.clippy]
-uninlined_format_args = "deny"
+[lints]
+workspace = true
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458

@@ -60,7 +60,9 @@ impl<T: FieldElement> ExpressionCounter for Identity<T> {
                 connect_identity.left.len() + connect_identity.right.len()
             }
             // phantom identities are not relevant in this context
-            Identity::PhantomLookup(..) | Identity::PhantomPermutation(..) => 0,
+            Identity::PhantomLookup(..)
+            | Identity::PhantomPermutation(..)
+            | Identity::PhantomBusInteraction(..) => 0,
         }
     }
 }

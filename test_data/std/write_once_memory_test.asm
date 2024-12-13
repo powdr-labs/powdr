@@ -3,7 +3,7 @@ use std::machines::write_once_memory::WriteOnceMemory;
 let main_degree: int = 256;
 let memory_degree: int = 256;
 
-machine Main with degree: 256 {
+machine Main with degree: main_degree {
     WriteOnceMemory memory(memory_degree, memory_degree);
 
     reg pc[@pc];

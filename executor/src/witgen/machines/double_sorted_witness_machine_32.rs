@@ -3,15 +3,16 @@ use std::iter::once;
 
 use itertools::Itertools;
 
-use super::{Machine, MachineParts};
+use super::{LookupCell, Machine, MachineParts};
+use crate::witgen::data_structures::caller_data::CallerData;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::compute_size_and_log;
+use crate::witgen::processor::OuterQuery;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{EvalError, EvalResult, FixedData, QueryCallback};
-use crate::witgen::{EvalValue, IncompleteCause};
+use crate::witgen::{EvalError, EvalResult, EvalValue, FixedData, IncompleteCause, QueryCallback};
 
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement, LargeInt};
 
 use powdr_ast::analyzed::{DegreeRange, PolyID};
 
@@ -54,8 +55,8 @@ pub struct DoubleSortedWitnesses32<'a, T: FieldElement> {
     //witness_positions: HashMap<String, usize>,
     /// (addr, step) -> value
     trace: BTreeMap<(T, T), Operation<T>>,
-    /// A map addr -> value, the current content of the memory.
-    data: BTreeMap<T, T>,
+    /// The current contents of memory.
+    data: PagedData<T>,
     is_initialized: BTreeMap<T, bool>,
     namespace: String,
     name: String,
@@ -184,6 +185,15 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b MutableState<'a, T, Q>,
+        identity_id: u64,
+        values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        self.process_plookup_internal(identity_id, values)
+    }
+
     fn identity_ids(&self) -> Vec<u64> {
         self.selector_ids.keys().cloned().collect()
     }
@@ -194,11 +204,33 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
 
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &MutableState<'a, T, Q>,
+        mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, caller_rows)
+        let connection = self.parts.connections[&identity_id];
+        let outer_query = OuterQuery::new(caller_rows, connection);
+        let mut data = CallerData::from(&outer_query);
+        if self.process_lookup_direct(mutable_state, identity_id, &mut data.as_lookup_cells())? {
+            Ok(EvalResult::from(data)?.report_side_effect())
+        } else {
+            // One of the required arguments was not set, find out which:
+            let data = data.as_lookup_cells();
+            Ok(EvalValue::incomplete(
+                IncompleteCause::NonConstantRequiredArgument(
+                    match (&data[0], &data[1], &data[2], &data[3]) {
+                        (LookupCell::Output(_), _, _, _) => "operation_id",
+                        (_, LookupCell::Output(_), _, _) => "m_addr",
+                        (_, _, LookupCell::Output(_), _) => "m_step",
+                        // Note that for the mload operation, we'd expect this to be an output.
+                        // But since process_lookup_direct returned false and all other arguments are set,
+                        // we must have been in the mstore operation, in which case the value is required.
+                        (_, _, _, LookupCell::Output(_)) => "m_value",
+                        _ => unreachable!(),
+                    },
+                ),
+            ))
+        }
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -343,8 +375,8 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
     fn process_plookup_internal(
         &mut self,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
-    ) -> EvalResult<'a, T> {
+        values: &mut [LookupCell<'_, T>],
+    ) -> Result<bool, EvalError<T>> {
         // We blindly assume the lookup is of the form
         // OP { operation_id, ADDR, STEP, X } is <selector> { operation_id, m_addr, m_step, m_value }
         // Where:
@@ -352,66 +384,39 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
         // - operation_id == 1: Write
         // - operation_id == 2: Bootloader write
 
-        let args = self.parts.connections[&identity_id]
-            .left
-            .expressions
-            .iter()
-            .map(|e| caller_rows.evaluate(e).unwrap())
-            .collect::<Vec<_>>();
-
-        let operation_id = match args[0].constant_value() {
-            Some(v) => v,
-            None => {
-                return Ok(EvalValue::incomplete(
-                    IncompleteCause::NonConstantRequiredArgument("operation_id"),
-                ))
-            }
+        let operation_id = match values[0] {
+            LookupCell::Input(v) => v,
+            LookupCell::Output(_) => return Ok(false),
         };
+        let addr = match values[1] {
+            LookupCell::Input(v) => v,
+            LookupCell::Output(_) => return Ok(false),
+        };
+        let step = match values[2] {
+            LookupCell::Input(v) => v,
+            LookupCell::Output(_) => return Ok(false),
+        };
+        let value_ptr = &mut values[3];
 
         let selector_id = *self.selector_ids.get(&identity_id).unwrap();
 
-        let is_normal_write = operation_id == T::from(OPERATION_ID_WRITE);
-        let is_bootloader_write = operation_id == T::from(OPERATION_ID_BOOTLOADER_WRITE);
+        let is_normal_write = operation_id == &T::from(OPERATION_ID_WRITE);
+        let is_bootloader_write = operation_id == &T::from(OPERATION_ID_BOOTLOADER_WRITE);
         let is_write = is_bootloader_write || is_normal_write;
-        let addr = match args[1].constant_value() {
-            Some(v) => v,
-            None => {
-                return Ok(EvalValue::incomplete(
-                    IncompleteCause::NonConstantRequiredArgument("m_addr"),
-                ))
-            }
-        };
 
         if self.has_bootloader_write_column {
-            let is_initialized = self.is_initialized.get(&addr).cloned().unwrap_or_default();
+            let is_initialized = self.is_initialized.get(addr).cloned().unwrap_or_default();
             if !is_initialized && !is_bootloader_write {
                 panic!("Memory address {addr:x} must be initialized with a bootloader write",);
             }
-            self.is_initialized.insert(addr, true);
+            self.is_initialized.insert(*addr, true);
         }
 
-        let step = args[2]
-            .constant_value()
-            .ok_or_else(|| format!("Step must be known but is: {}", args[2]))?;
-
-        let value_expr = &args[3];
-
-        log::trace!(
-            "Query addr={:x}, step={step}, write: {is_write}, value: {}",
-            addr.to_arbitrary_integer(),
-            value_expr
-        );
-
         // TODO this does not check any of the failure modes
-        let mut assignments = EvalValue::complete(vec![]);
-        let has_side_effect = if is_write {
-            let value = match value_expr.constant_value() {
-                Some(v) => v,
-                None => {
-                    return Ok(EvalValue::incomplete(
-                        IncompleteCause::NonConstantRequiredArgument("m_value"),
-                    ))
-                }
+        let added_memory_access = if is_write {
+            let value = match value_ptr {
+                LookupCell::Input(v) => *v,
+                LookupCell::Output(_) => return Ok(false),
             };
 
             log::trace!(
@@ -419,31 +424,10 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
                 addr,
                 value
             );
-            self.data.insert(addr, value);
+            self.data.write(*addr, *value);
             self.trace
                 .insert(
-                    (addr, step),
-                    Operation {
-                        is_normal_write,
-                        is_bootloader_write,
-                        value,
-                        selector_id,
-                    },
-                )
-                .is_none()
-        } else {
-            let value = self.data.entry(addr).or_default();
-            log::trace!(
-                "Memory read: addr={:x}, step={step}, value={:x}",
-                addr,
-                value
-            );
-            let ass =
-                (value_expr.clone() - (*value).into()).solve_with_range_constraints(caller_rows)?;
-            assignments.combine(ass);
-            self.trace
-                .insert(
-                    (addr, step),
+                    (*addr, *step),
                     Operation {
                         is_normal_write,
                         is_bootloader_write,
@@ -452,17 +436,107 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
                     },
                 )
                 .is_none()
+        } else {
+            let value = self.data.read(*addr);
+            log::trace!(
+                "Memory read: addr={:x}, step={step}, value={:x}",
+                addr,
+                value
+            );
+            match value_ptr {
+                LookupCell::Input(v) => {
+                    if *v != &value {
+                        return Err(EvalError::ConstraintUnsatisfiable(format!(
+                            "{v} != {value} (address 0x{addr:x}, time step)"
+                        )));
+                    }
+                }
+                LookupCell::Output(v) => **v = value,
+            };
+
+            self.trace
+                .insert(
+                    (*addr, *step),
+                    Operation {
+                        is_normal_write,
+                        is_bootloader_write,
+                        value,
+                        selector_id,
+                    },
+                )
+                .is_none()
         };
         assert!(
-            has_side_effect,
+            added_memory_access,
             "Already had a memory access for address 0x{addr:x} and time step {step}!"
         );
-        assignments = assignments.report_side_effect();
 
         if self.trace.len() > (self.degree as usize) {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
-        Ok(assignments)
+        Ok(true)
+    }
+}
+
+/// A paged key-value store. Addresses do not overlap, every address can store
+/// a full field element.
+struct PagedData<T> {
+    /// All pages except the first.
+    pages: HashMap<u64, Vec<T>>,
+    /// The first page, to optimize for small memory addresses.
+    first_page: Vec<T>,
+}
+
+impl<T: FieldElement> Default for PagedData<T> {
+    fn default() -> Self {
+        Self {
+            pages: Default::default(),
+            first_page: Self::fresh_page(),
+        }
+    }
+}
+
+impl<T: FieldElement> PagedData<T> {
+    /// Tuning parameters.
+    /// On the dev machine, only the combination of "PAGE_SIZE_LOG2 <= 8" and the introduction
+    /// of "page zero" gives a 2x improvement in the register machine (and 20% in regular
+    /// memory as well actually) relative to non-paged.
+    /// This should be continuously monitored.
+    const PAGE_SIZE_LOG2: u64 = 8;
+    const PAGE_SIZE: u64 = (1 << Self::PAGE_SIZE_LOG2);
+    const PAGE_MASK: u64 = Self::PAGE_SIZE - 1;
+
+    fn page_offset(addr: T) -> (u64, usize) {
+        let addr = addr.to_integer().try_into_u64().unwrap();
+        (
+            addr >> Self::PAGE_SIZE_LOG2,
+            (addr & Self::PAGE_MASK) as usize,
+        )
+    }
+
+    fn fresh_page() -> Vec<T> {
+        vec![0.into(); Self::PAGE_SIZE as usize]
+    }
+
+    pub fn write(&mut self, addr: T, value: T) {
+        let (page, offset) = Self::page_offset(addr);
+        if page == 0 {
+            self.first_page[offset] = value;
+        } else {
+            self.pages.entry(page).or_insert_with(Self::fresh_page)[offset] = value;
+        }
+    }
+
+    pub fn read(&mut self, addr: T) -> T {
+        let (page, offset) = Self::page_offset(addr);
+        if page == 0 {
+            self.first_page[offset]
+        } else {
+            self.pages
+                .get(&page)
+                .map(|page| page[offset])
+                .unwrap_or_default()
+        }
     }
 }

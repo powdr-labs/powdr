@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::iter::{self};
 
-use super::{compute_size_and_log, ConnectionKind, EvalResult, FixedData, MachineParts};
+use super::{
+    compute_size_and_log, ConnectionKind, EvalResult, FixedData, LookupCell, MachineParts,
+};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::analysis::detect_connection_type_and_block_size;
@@ -10,6 +12,7 @@ use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::jit::jit_processor::JitProcessor;
 use crate::witgen::processor::{OuterQuery, Processor, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
@@ -70,6 +73,9 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
     processing_sequence_cache: ProcessingSequenceCache,
+    /// The JIT processor for this machine, i.e. the component that tries to generate
+    /// witgen code based on which elements of the connection are known.
+    jit_processor: JitProcessor<'a, T>,
     name: String,
     multiplicity_counter: MultiplicityCounter,
 }
@@ -130,6 +136,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 latch_row,
                 parts.identities.len(),
             ),
+            jit_processor: JitProcessor::new(fixed_data, parts.clone(), block_size, latch_row),
         })
     }
 }
@@ -137,6 +144,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.parts.connections.keys().copied().collect()
+    }
+
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b MutableState<'a, T, Q>,
+        _identity_id: u64,
+        _values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup not supported by machine {}.", self.name())
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -320,6 +336,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - <Latch>));
     /// This function fixes this exception by setting _operation_id_no_change to 0.
     fn handle_last_row(&self, data: &mut HashMap<PolyID, Vec<T>>) {
+        #[allow(clippy::iter_over_hash_type)]
+        // This is deterministic because there is no shared state.
         for (poly_id, col) in data.iter_mut() {
             if self
                 .parts
@@ -343,12 +361,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         RowIndex::from_i64(self.rows() as i64 - 1, self.degree)
     }
 
-    fn get_row(&self, row: RowIndex) -> &Row<T> {
-        // The first block is a dummy block corresponding to rows (-block_size, 0),
-        // so we have to add the block size to the row index.
-        &self.data[(row + self.block_size).into()]
-    }
-
     fn process_plookup_internal<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
@@ -359,8 +371,18 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
-        for l in &outer_query.left {
-            log::trace!("  {}", l);
+        if log::log_enabled!(log::Level::Trace) {
+            for l in &outer_query.left {
+                log::trace!("  {}", l);
+            }
+        }
+
+        let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
+        if self
+            .jit_processor
+            .can_answer_lookup(identity_id, &known_inputs)
+        {
+            return self.process_lookup_via_jit(mutable_state, identity_id, outer_query);
         }
 
         // TODO this assumes we are always using the same lookup for this machine.
@@ -418,6 +440,35 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
     }
 
+    fn process_lookup_via_jit<'b, Q: QueryCallback<T>>(
+        &mut self,
+        mutable_state: &MutableState<'a, T, Q>,
+        identity_id: u64,
+        outer_query: OuterQuery<'a, 'b, T>,
+    ) -> EvalResult<'a, T> {
+        let mut input_output_data = vec![T::zero(); outer_query.left.len()];
+        let values = outer_query.prepare_for_direct_lookup(&mut input_output_data);
+
+        assert!(
+            (self.rows() + self.block_size as DegreeType) < self.degree,
+            "Block machine is full (this should have been checked before)"
+        );
+        self.data
+            .finalize_range(self.first_in_progress_row..self.data.len());
+        self.first_in_progress_row = self.data.len() + self.block_size;
+        //TODO can we properly access the last row of the dummy block?
+        let data = self.data.append_new_finalized_rows(self.block_size);
+
+        let success =
+            self.jit_processor
+                .process_lookup_direct(mutable_state, identity_id, values, data)?;
+        assert!(success);
+
+        Ok(outer_query
+            .direct_lookup_to_eval_result(input_output_data)?
+            .report_side_effect())
+    }
+
     fn process<'b, Q: QueryCallback<T>>(
         &self,
         mutable_state: &MutableState<'a, T, Q>,
@@ -468,7 +519,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         new_block
             .get_mut(0)
             .unwrap()
-            .merge_with(self.get_row(self.last_row_index()))
+            .merge_with_values(self.data.known_values_in_row(self.data.len() - 1))
             .map_err(|_| {
                 EvalError::Generic(
                     "Block machine overwrites existing value with different value!".to_string(),

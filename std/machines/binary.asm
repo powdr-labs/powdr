@@ -4,13 +4,11 @@ use std::utils::cross_product;
 // Binary for single bytes using an exhaustive table
 machine ByteBinary with
     latch: latch,
-    operation_id: operation_id,
     degree: 262144
 {
-    operation run<0> P_operation, P_A, P_B -> P_C;
+    operation run P_operation, P_A, P_B -> P_C;
 
     col fixed latch = [1]*;
-    col fixed operation_id = [0]*;
 
     let bit_counts = [256, 256, 3];
     let min_degree = std::array::product(bit_counts);
