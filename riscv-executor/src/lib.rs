@@ -1328,6 +1328,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let res = val1.mul(&factor).add(&offset);
 
+                let lid = self.link_id(instr.column(), "main_regs", 1);
                 self.reg_write(1, write_reg, res, lid);
                 set_col!(tmp1_col, val1);
 
