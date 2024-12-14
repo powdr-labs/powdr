@@ -48,7 +48,7 @@ use crate::profiler::Profiler;
 /// proof initialization.
 ///
 /// TODO: get this value from some authoritative place
-const PC_INITIAL_VAL: usize = 2;
+const PC_INITIAL_VAL: usize = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Elem<F: FieldElement> {
@@ -2612,22 +2612,12 @@ fn execute_inner<F: FieldElement>(
     if let ExecMode::Trace = mode {
         let sink_id = e.sink_id();
 
-        // reset
+        // jump_to_operation
         e.proc.set_col("main::pc_update", 0.into());
         e.proc.set_pc(0.into());
         assert!(e.proc.advance().is_none());
         e.proc.push_row();
         e.set_program_columns(0);
-        e.proc.set_col("main::_operation_id", sink_id.into());
-
-        // jump_to_operation
-        e.proc.set_col("main::pc_update", 1.into());
-        e.proc.set_pc(1.into());
-        e.proc.set_reg("query_arg_1", 0);
-        e.proc.set_reg("query_arg_2", 0);
-        assert!(e.proc.advance().is_none());
-        e.proc.push_row();
-        e.set_program_columns(1);
         e.proc.set_col("main::_operation_id", sink_id.into());
 
         // loop
