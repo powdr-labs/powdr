@@ -3,7 +3,7 @@
 Patterns are a way to destructure or match certain values. They are valid in `match` arms,
 function parameters or left hand sides of let statements in blocks.
 
-A pattern is built up in from the following components:
+A pattern is built up from the following components:
 
 - `_` - the "catch all" pattern that matches anything
 - `x` - for an identifier `x`, matches anything and assigns the value to the new local variable of that name
