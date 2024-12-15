@@ -9,10 +9,10 @@ recursion to create a proof that we know we will be able to verify on Ethereum.
 A recursive SNARK works by generating a proof for a circuit that verifies
 another proof. The circuit we are using here to prove our initial proof
 recursively is [PSE's snark-verifier](https://github.com/privacy-scaling-explorations/snark-verifier/). This circuit is large enough
-to be able to prove complex programs that were proven initial with the Poseidon
+to be able to prove complex programs that were proven initially with the Poseidon
 transcript, like our first example. Because of that our aggregation setup
 `params` and `verification key` are going to be larger than before and take
-longer to compute. The good news are that (i) we can use a pre-computed setup
+longer to compute. The good news is that (i) we can use a pre-computed setup
 from a previous ceremony, and (ii) the verification key only has to be computed
 once per program.
 
