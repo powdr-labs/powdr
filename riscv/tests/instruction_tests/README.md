@@ -18,7 +18,7 @@ For instance, the `tail` pseudoinstruction, which expands to `auipc` + `jarl`,
 is supposed to leave the high bits of the return address in `x6`. This does not
 happen in Powdr!
 
-Following there is a list of tests from the test suite that we do not support:
+The following is a list of tests from the test suite that we do not support:
 
 ## From the basic instruction set (rv32ui):
 
@@ -57,7 +57,7 @@ These instructions are not yet implemented.
 - `amoxor_w`
 
 We do not (yet) support the instructions of these tests, but should be easy to
-implement, following `amoadd_w` suit.
+implement, following the `amoadd_w` suit.
 
 ## From the "C" (compressed) extension (rv32uc):
 
