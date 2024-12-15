@@ -86,7 +86,7 @@ let plus_one_squared = |x| { let y = x + 1; y * y };
 
 Let statements with value can be used everywhere, they just bind an expression to a local variable
 and allow to avoid repeating the expression. You can use [patterns](./patterns.md) for the
-left hand side of let statements to destructure values.
+left-hand side of let statements to destructure values.
 
 Example:
 
