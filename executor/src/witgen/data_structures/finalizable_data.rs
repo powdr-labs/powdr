@@ -107,13 +107,13 @@ impl<T: FieldElement> CompactData<T> {
     }
 
     pub fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (u64, &T)> {
-        (0..self.column_count).filter_map(move |i| {
-            self.known_cells.get(row, i as u64).then(|| {
+        (0..self.column_count)
+            .filter(move |i| self.known_cells.get(row, *i as u64))
+            .map(move |i| {
                 let col = self.first_column_id + i as u64;
                 let idx = self.index(row, col);
                 (col, &self.data[idx])
             })
-        })
     }
 }
 
