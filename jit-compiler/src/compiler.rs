@@ -222,8 +222,9 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
         .output()
         .unwrap();
     if !out.status.success() {
-        if log::log_enabled!(log::Level::Debug) {
+        if true || log::log_enabled!(log::Level::Debug) {
             let stderr = from_utf8(&out.stderr).unwrap_or("UTF-8 error in error message.");
+            println!("{stderr}");
             return Err(format!(
                 "Rust compiler error when JIT-compiling. Will use interpreter instead. Error message:\n{stderr}."
             ));
