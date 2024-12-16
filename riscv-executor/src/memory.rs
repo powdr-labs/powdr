@@ -96,7 +96,7 @@ impl<F: FieldElement> Submachine<F> for MemoryMachine<F> {
 
         let mut cols: Vec<_> = std::mem::take(&mut self.witness_cols)
             .into_iter()
-            .map(|n| (n, vec![]))
+            .map(|n| (n, Vec::with_capacity(self.ops.len())))
             .collect();
         let selector_count = cols.len() - Cols::Selectors as usize;
 
