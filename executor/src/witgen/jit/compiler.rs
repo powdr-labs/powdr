@@ -45,17 +45,20 @@ impl<T: FieldElement> WitgenFunction<T> {
             known: known.as_mut_ptr(),
             row_offset,
             params: params.into(),
-            call_machine,
+            call_machine: call_machine::<T, Q>,
         });
     }
 }
 
-extern "C" fn call_machine<T>(
+extern "C" fn call_machine<T: FieldElement, Q: QueryCallback<T>>(
     mutable_state: *const c_void,
     identity_id: u64,
     params: MutSlice<LookupCell<T>>,
 ) -> bool {
-    false
+    let mutable_state = unsafe { &*(mutable_state as *const MutableState<T, Q>) };
+    mutable_state
+        .call_direct(identity_id, params.into())
+        .unwrap()
 }
 
 /// Compile the given inferred effects into machine code and load it.
@@ -118,27 +121,9 @@ impl<T> From<&mut [T]> for MutSlice<T> {
     }
 }
 
-impl<T> Default for ConstSlice<T> {
-    fn default() -> Self {
-        ConstSlice {
-            data: std::ptr::null(),
-            len: 0,
-        }
-    }
-}
-
-#[repr(C)]
-struct ConstSlice<T> {
-    data: *const T,
-    len: u64,
-}
-
-impl<T> From<&[T]> for ConstSlice<T> {
-    fn from(slice: &[T]) -> Self {
-        ConstSlice {
-            data: slice.as_ptr(),
-            len: slice.len() as u64,
-        }
+impl<T> From<MutSlice<T>> for &mut [T] {
+    fn from(slice: MutSlice<T>) -> Self {
+        unsafe { std::slice::from_raw_parts_mut(slice.data, slice.len as usize) }
     }
 }
 
@@ -524,22 +509,6 @@ impl<T> MutSlice<T> {{
     fn to_mut_slice<'a>(self) -> &'a mut [T] {{
         unsafe {{ std::slice::from_raw_parts_mut(self.data, self.len as usize) }}
     }}  
-}}
-
-#[repr(C)]
-pub struct ConstSlice<T> {{
-    data: *const T,
-    len: u64,
-}}
-
-impl<T> From<&[T]> for ConstSlice<T> {{
-    #[inline]
-    fn from(slice: &[T]) -> Self {{
-        ConstSlice {{
-            data: slice.as_ptr(),
-            len: slice.len() as u64,
-        }}
-    }}
 }}
 
 #[repr(C)]
