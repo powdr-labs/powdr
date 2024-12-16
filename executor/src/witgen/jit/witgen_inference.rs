@@ -313,7 +313,7 @@ impl<'a, T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'a, T
     fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
         assert!(var.is_fixed());
         let values = self.0.fixed_cols[&var.poly_id].values_max_size();
-        let row = (row_offset as usize + var.next as usize) % values.len();
+        let row = (row_offset + var.next as i32 + values.len() as i32) as usize % values.len();
         Some(values[row])
     }
 }
