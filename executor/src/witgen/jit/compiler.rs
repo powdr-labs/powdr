@@ -19,68 +19,6 @@ use super::{
     variable::{Cell, Variable},
 };
 
-#[repr(C)]
-pub struct MutSlice<T> {
-    data: *mut T,
-    len: u64,
-}
-
-impl<T> Default for MutSlice<T> {
-    fn default() -> Self {
-        MutSlice {
-            data: std::ptr::null_mut(),
-            len: 0,
-        }
-    }
-}
-
-impl<T> From<&mut [T]> for MutSlice<T> {
-    fn from(slice: &mut [T]) -> Self {
-        MutSlice {
-            data: slice.as_mut_ptr(),
-            len: slice.len() as u64,
-        }
-    }
-}
-
-impl<T> Default for ConstSlice<T> {
-    fn default() -> Self {
-        ConstSlice {
-            data: std::ptr::null(),
-            len: 0,
-        }
-    }
-}
-
-#[repr(C)]
-pub struct ConstSlice<T> {
-    data: *const T,
-    len: u64,
-}
-
-impl<T> From<&[T]> for ConstSlice<T> {
-    fn from(slice: &[T]) -> Self {
-        ConstSlice {
-            data: slice.as_ptr(),
-            len: slice.len() as u64,
-        }
-    }
-}
-
-#[repr(C)]
-pub struct WitgenFunctionParams<'a, T: 'a> {
-    /// A mutable slice to the full trace table. It has to have enough pre-allocated space.
-    data: MutSlice<T>,
-    /// A pointer to the data area of the "known" PaddedBitVec.
-    known: *mut u32,
-    /// The offset of the row considered to be "row zero".
-    row_offset: u64,
-    /// Input and output parameters if this is a machine call.
-    params: MutSlice<LookupCell<'a, T>>,
-    /// A callback to call submachines.
-    call_machine: extern "C" fn(*const c_void, u64, MutSlice<LookupCell<'_, T>>) -> bool,
-}
-
 pub struct WitgenFunction<T> {
     // TODO We might want to pass arguments as direct function parameters
     // (instead of a struct), so that
@@ -92,6 +30,7 @@ pub struct WitgenFunction<T> {
 impl<T: FieldElement> WitgenFunction<T> {
     /// Call the witgen function to fill the data and "known" tables
     /// given a slice of parameters.
+    /// The `row_offset` is the index inside `data` of the row considered to be "row zero".
     /// This function always succeeds (unless it panics).
     pub fn call<Q: QueryCallback<T>>(
         &self,
@@ -139,6 +78,68 @@ pub fn compile_effects<T: FieldElement>(
         function: *witgen_fun,
         library,
     })
+}
+
+#[repr(C)]
+struct WitgenFunctionParams<'a, T: 'a> {
+    /// A mutable slice to the full trace table. It has to have enough pre-allocated space.
+    data: MutSlice<T>,
+    /// A pointer to the data area of the "known" PaddedBitVec.
+    known: *mut u32,
+    /// The offset of the row considered to be "row zero".
+    row_offset: u64,
+    /// Input and output parameters if this is a machine call.
+    params: MutSlice<LookupCell<'a, T>>,
+    /// A callback to call submachines.
+    call_machine: extern "C" fn(*const c_void, u64, MutSlice<LookupCell<'_, T>>) -> bool,
+}
+
+#[repr(C)]
+struct MutSlice<T> {
+    data: *mut T,
+    len: u64,
+}
+
+impl<T> Default for MutSlice<T> {
+    fn default() -> Self {
+        MutSlice {
+            data: std::ptr::null_mut(),
+            len: 0,
+        }
+    }
+}
+
+impl<T> From<&mut [T]> for MutSlice<T> {
+    fn from(slice: &mut [T]) -> Self {
+        MutSlice {
+            data: slice.as_mut_ptr(),
+            len: slice.len() as u64,
+        }
+    }
+}
+
+impl<T> Default for ConstSlice<T> {
+    fn default() -> Self {
+        ConstSlice {
+            data: std::ptr::null(),
+            len: 0,
+        }
+    }
+}
+
+#[repr(C)]
+struct ConstSlice<T> {
+    data: *const T,
+    len: u64,
+}
+
+impl<T> From<&[T]> for ConstSlice<T> {
+    fn from(slice: &[T]) -> Self {
+        ConstSlice {
+            data: slice.as_ptr(),
+            len: slice.len() as u64,
+        }
+    }
 }
 
 fn witgen_code<T: FieldElement>(
