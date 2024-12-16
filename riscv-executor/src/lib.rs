@@ -50,6 +50,8 @@ use crate::profiler::Profiler;
 /// TODO: get this value from some authoritative place
 const PC_INITIAL_VAL: usize = 1;
 
+const MAIN_OPERATION_ID: usize = 1;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Elem<F: FieldElement> {
     /// Only the ranges of i32 and u32 are actually valid for a Binary value.
@@ -280,7 +282,7 @@ impl<F: FieldElement> ExecutionTrace<F> {
         let cols: HashMap<String, _> = witness_cols
             .into_iter()
             .filter(|n| n.starts_with("main::"))
-            .map(|n| (n, vec![Elem::Field(F::zero()), Elem::Field(F::zero())]))
+            .map(|n| (n, vec![]))
             .collect();
 
         ExecutionTrace {
@@ -983,23 +985,12 @@ struct Executor<'a, 'b, F: FieldElement> {
 
 impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     fn init(&mut self) {
-        self.step = 4;
-        for i in 0..2 {
-            for (fixed, col) in &self.program_cols {
-                let val = Elem::Field(
-                    *self
-                        .get_fixed(fixed)
-                        .unwrap_or(&Vec::new())
-                        .get(i as usize)
-                        .unwrap_or(&F::zero()),
-                );
-                self.proc.set_col_idx(col, i as usize, val);
-            }
-            self.proc
-                .set_col_idx("main::_operation_id", i as usize, 2.into());
-            self.proc
-                .set_col_idx("main::pc_update", i as usize, (i + 1).into());
-        }
+        self.step = 0;
+        self.proc.push_row();
+        self.set_program_columns(0);
+        self.proc
+            .set_col("main::_operation_id", MAIN_OPERATION_ID.into());
+        self.proc.set_col("main::pc_update", 1.into());
     }
 
     fn get_fixed(&self, name: &str) -> Option<&Vec<F>> {
@@ -1041,6 +1032,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         self.proc.set_reg_mem(reg, val);
     }
 
+    /// update current row with the program definition for the given PC
     fn set_program_columns(&mut self, pc: u32) {
         if let ExecMode::Trace = self.mode {
             // set witness from the program definition
@@ -1054,7 +1046,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
                 self.proc.set_col(col, val);
             }
-            self.proc.set_col("main::_operation_id", 2.into());
+            self.proc
+                .set_col("main::_operation_id", MAIN_OPERATION_ID.into());
         }
     }
 
@@ -2597,8 +2590,14 @@ fn execute_inner<F: FieldElement>(
 
         curr_pc = match e.proc.advance() {
             Some(pc) => {
-                // We set pc_update=PC here, after the PC has been updated but before "pushing" the next row
+                // We set the PC and write register update columns here, after
+                // the registers have been writen but before "pushing" the next
+                // row
                 e.proc.set_col("main::pc_update", e.proc.get_pc());
+                e.proc
+                    .set_col("main::query_arg_1_update", e.proc.get_reg("query_arg_1"));
+                e.proc
+                    .set_col("main::query_arg_2_update", e.proc.get_reg("query_arg_2"));
                 pc
             }
             None => break,
@@ -2615,6 +2614,10 @@ fn execute_inner<F: FieldElement>(
         // jump_to_operation
         e.proc.set_col("main::pc_update", 0.into());
         e.proc.set_pc(0.into());
+        e.proc.set_col("main::query_arg_1_update", 0.into());
+        e.proc.set_reg("query_arg_1", 0);
+        e.proc.set_col("main::query_arg_2_update", 0.into());
+        e.proc.set_reg("query_arg_2", 0);
         assert!(e.proc.advance().is_none());
         e.proc.push_row();
         e.set_program_columns(0);
