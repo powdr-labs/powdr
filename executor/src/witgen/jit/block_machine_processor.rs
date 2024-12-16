@@ -44,8 +44,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .enumerate()
             .filter_map(|(i, is_input)| is_input.then_some(Variable::Param(i)))
             .collect::<HashSet<_>>();
-        let fixed_evaluator = FixedEvaluatorForFixedData(self.fixed_data);
-        let mut witgen = WitgenInference::new(self.fixed_data, fixed_evaluator, known_variables);
+        let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables);
 
         // In the latch row, set the RHS selector to 1.
         witgen
@@ -86,10 +85,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
     /// Repeatedly processes all identities on all rows, until no progress is made.
     /// Fails iff there are incomplete machine calls in the latch row.
-    fn solve_block(
-        &self,
-        witgen: &mut WitgenInference<T, FixedEvaluatorForFixedData<T>>,
-    ) -> Result<(), String> {
+    fn solve_block(&self, witgen: &mut WitgenInference<T, &Self>) -> Result<(), String> {
         let mut complete = HashSet::new();
         for i in 0.. {
             let mut progress = false;
@@ -143,11 +139,10 @@ fn is_machine_call<T>(identity: &Identity<T>) -> bool {
     )
 }
 
-pub struct FixedEvaluatorForFixedData<'a, T: FieldElement>(pub &'a FixedData<'a, T>);
-impl<'a, T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'a, T> {
+impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
     fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
         assert!(var.is_fixed());
-        let values = self.0.fixed_cols[&var.poly_id].values_max_size();
+        let values = self.fixed_data.fixed_cols[&var.poly_id].values_max_size();
         let row = (row_offset + var.next as i32 + values.len() as i32) as usize % values.len();
         Some(values[row])
     }
