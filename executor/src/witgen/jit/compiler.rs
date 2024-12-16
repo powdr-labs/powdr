@@ -357,7 +357,7 @@ impl std::ops::Add for FieldElement {{
     #[inline]
     fn add(self, b: Self) -> Self {{
         // TODO this is inefficient.
-        Self(IntType::try_from((DoubleIntType::from(self.0) + DoubleIntType::from(b.0)) % DoubleIntType::from(MODULUS)).unwrap())
+        Self(IntType::try_from(((self.0 as DoubleIntType) + (b.0 as DoubleIntType)) % (MODULUS as DoubleIntType)).unwrap())
     }}
 }}
 impl std::ops::Sub for FieldElement {{
@@ -365,7 +365,7 @@ impl std::ops::Sub for FieldElement {{
     #[inline]
     fn sub(self, b: Self) -> Self {{
         // TODO this is inefficient.
-        Self(IntType::try_from((DoubleIntType::from(self.0) + DoubleIntType::from(MODULUS) - DoubleIntType::from(b.0)) % DoubleIntType::from(MODULUS)).unwrap())
+        Self(IntType::try_from(((self.0 as DoubleIntType) + (MODULUS as DoubleIntType) - (b.0 as DoubleIntType)) % (MODULUS as DoubleIntType)).unwrap())
     }}
 }}
 impl std::ops::Mul<FieldElement> for FieldElement {{
@@ -373,7 +373,7 @@ impl std::ops::Mul<FieldElement> for FieldElement {{
     #[inline]
     fn mul(self, b: FieldElement) -> FieldElement {{
         // TODO this is inefficient.
-        Self(IntType::try_from((DoubleIntType::from(self.0) * b.0 as DoubleIntType) % DoubleIntType::from(MODULUS)).unwrap())
+        Self(IntType::try_from(((self.0 as DoubleIntType) * (b.0 as DoubleIntType)) % (MODULUS as DoubleIntType)).unwrap())
     }}
 }}
 impl std::ops::Div<FieldElement> for FieldElement {{
