@@ -14,6 +14,7 @@ use std::{
     fmt::{self, Display, Formatter},
     path::Path,
     sync::Arc,
+    time::Instant,
 };
 
 use builder::TraceBuilder;
@@ -58,7 +59,7 @@ struct SubmachineOp<F: FieldElement> {
     extra: Vec<F>,
 }
 
-/// This enum helps us avoid raw strings for instruction names/columns
+/// Enum with asm machine RISCV instruction. Helps avoid using raw strings in the code.
 macro_rules! instructions {
     ($($name:ident),*) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -129,6 +130,7 @@ instructions! {
     fail
 }
 
+/// Enum with submachines used in the RISCV vm
 macro_rules! machine_instances {
     ($($name:ident),*) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -137,25 +139,19 @@ macro_rules! machine_instances {
             $($name,)*
         }
 
+        #[allow(unused)]
         impl MachineInstance {
-            // fn from_name(s: &str) -> Option<Self> {
-            //     match s {
-            //         $(stringify!($name) => Some(Self::$name),)*
-            //         _ => None
-            //     }
-            // }
-
             fn name(&self) -> &'static str {
                 match *self {
                     $(Self::$name => stringify!($name),)*
                 }
             }
 
-            // fn namespace(&self) -> &'static str {
-            //     match *self {
-            //         $(Self::$name => concat!("main_", stringify!($name)),)*
-            //     }
-            // }
+            fn namespace(&self) -> &'static str {
+                match *self {
+                    $(Self::$name => concat!("main_", stringify!($name)),)*
+                }
+            }
         }
     };
 }
@@ -503,13 +499,15 @@ impl<F: FieldElement> RegisterMemory<F> {
 }
 
 mod builder {
-    use std::{cell::RefCell, cmp, collections::HashMap};
+    use std::{cell::RefCell, cmp, collections::HashMap, time::Instant};
 
     use powdr_ast::{
         analyzed::{Analyzed, DegreeRange},
         asm_analysis::{Machine, RegisterTy},
     };
     use powdr_number::FieldElement;
+    use rayon::iter::IntoParallelIterator;
+    use rayon::iter::ParallelIterator;
 
     use crate::{
         pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MachineInstance, MainOp,
@@ -546,7 +544,7 @@ mod builder {
     pub struct TraceBuilder<'b, F: FieldElement> {
         trace: ExecutionTrace<F>,
 
-        submachines: HashMap<String, RefCell<Box<dyn Submachine<F>>>>,
+        submachines: HashMap<MachineInstance, RefCell<Box<dyn Submachine<F>>>>,
 
         /// Maximum rows we can run before we stop the execution.
         max_rows: usize,
@@ -619,36 +617,36 @@ mod builder {
             let mut regs = vec![0.into(); reg_len];
             regs[pc_idx as usize] = PC_INITIAL_VAL.into();
 
-            let submachines: HashMap<String, RefCell<Box<dyn Submachine<F>>>> =
+            let submachines: HashMap<_, RefCell<Box<dyn Submachine<F>>>> =
                 if let ExecMode::Trace = mode {
                     [
                         (
-                            "memory".to_string(),
+                            MachineInstance::memory,
                             RefCell::new(Box::new(MemoryMachine::new("main_memory", &witness_cols)))
                                 as RefCell<Box<dyn Submachine<F>>>, // this first `as` is needed to coerce the type of the array
                         ),
                         (
-                            "regs".to_string(),
+                            MachineInstance::regs,
                             RefCell::new(Box::new(MemoryMachine::new("main_regs", &witness_cols))),
                         ),
                         (
-                            "binary".to_string(),
+                            MachineInstance::binary,
                             RefCell::new(BinaryMachine::new_boxed("main_binary", &witness_cols)),
                         ),
                         (
-                            "shift".to_string(),
+                            MachineInstance::shift,
                             RefCell::new(ShiftMachine::new_boxed("main_shift", &witness_cols)),
                         ),
                         (
-                            "split_gl".to_string(),
+                            MachineInstance::split_gl,
                             RefCell::new(SplitGlMachine::new_boxed("main_split_gl", &witness_cols)),
                         ),
                         (
-                            "publics".to_string(),
+                            MachineInstance::publics,
                             RefCell::new(PublicsMachine::new_boxed("main_publics", &witness_cols)),
                         ),
                         (
-                            "poseidon_gl".to_string(),
+                            MachineInstance::poseidon_gl,
                             RefCell::new(PoseidonGlMachine::new_boxed(
                                 "main_poseidon_gl",
                                 &witness_cols,
@@ -930,65 +928,67 @@ mod builder {
             };
 
             // turn register write operations into witness columns
+            let start = Instant::now();
             let main_regs = self.trace.generate_registers_trace();
             self.trace.cols.extend(main_regs);
 
             // fill up main trace to degree
             self.extend_rows(main_degree);
+            log::info!(
+                "Finalizing main machine trace took {}s",
+                start.elapsed().as_secs_f64(),
+            );
 
             // generate witness for submachines
             // ----------------------------
             let links = pil::links_from_pil(pil);
-            let mut link_selector = HashMap::new();
-            for (m, ops) in self.trace.submachine_ops {
-                let m = m.name();
-                for op in ops {
-                    let selector = link_selector
-                        .entry(op.identity_id)
-                        .or_insert_with(|| pil::selector_for_link(&links, op.identity_id));
-                    self.submachines[m].borrow_mut().add_operation(
-                        selector.as_deref(),
-                        &op.lookup_args,
-                        &op.extra,
-                    );
-                }
-            }
 
-            // add submachine traces to main trace
-            // ----------------------------
-            for (name, mut machine) in self
-                .submachines
+            let start = Instant::now();
+            let m_ops: Vec<_> = self
+                .trace
+                .submachine_ops
                 .into_iter()
-                .map(|(n, m)| (n, m.into_inner()))
-            {
-                // finalize and extend the submachine traces and add to full trace
-                if machine.len() > 0 {
-                    let range = namespace_degree_range(pil, machine.namespace());
-                    // extend with dummy blocks up to the required machine degree
-                    let machine_degree =
-                        std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
-                    for (col_name, col) in machine.finish(machine_degree) {
-                        assert!(self.trace.cols.insert(col_name, col).is_none());
-                    }
-                } else if name == "publics" {
-                    // for the publics machine, even with no operations being
-                    // issued, the declared "publics" force the cells to be
-                    // filled. We add operations here to emulate that.
-                    if machine.len() == 0 {
-                        for i in 0..8 {
-                            machine.add_operation(None, &[i.into(), 0.into()], &[]);
+                .map(|(m, ops)| {
+                    let machine = self.submachines.remove(&m).unwrap().into_inner();
+                    (m, machine, ops)
+                })
+                .collect();
+            let cols = m_ops
+                .into_par_iter()
+                .flat_map(|(m, mut machine, ops)| {
+                    ops.into_iter().for_each(|op| {
+                        let selector = pil::selector_for_link(&links, op.identity_id);
+                        machine.add_operation(selector.as_deref(), &op.lookup_args, &op.extra);
+                    });
+
+                    // finalize and extend the submachine traces and add to full trace
+                    if machine.len() > 0 {
+                        let range = namespace_degree_range(pil, machine.namespace());
+                        // extend with dummy blocks up to the required machine degree
+                        let machine_degree =
+                            std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
+                        machine.finish(machine_degree)
+                    } else if m == MachineInstance::publics {
+                        // for the publics machine, even with no operations being
+                        // issued, the declared "publics" force the cells to be
+                        // filled. We add operations here to emulate that.
+                        if machine.len() == 0 {
+                            for i in 0..8 {
+                                machine.add_operation(None, &[i.into(), 0.into()], &[]);
+                            }
                         }
+                        machine.finish(8)
+                    } else {
+                        // keep machine columns empty
+                        machine.finish(0)
                     }
-                    for (col_name, col) in machine.finish(8) {
-                        assert!(self.trace.cols.insert(col_name, col).is_none());
-                    }
-                } else {
-                    // keep machine columns empty
-                    for (col_name, col) in machine.finish(0) {
-                        assert!(self.trace.cols.insert(col_name, col).is_none());
-                    }
-                }
-            }
+                })
+                .collect::<Vec<_>>();
+            self.trace.cols.extend(cols);
+            log::info!(
+                "Generating submachine traces took {}s",
+                start.elapsed().as_secs_f64(),
+            );
 
             Execution {
                 trace_len: self.trace.len,
@@ -2052,16 +2052,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
 
-                let (r, op_id) = match name {
-                    "and" => {
+                let (r, op_id) = match instr {
+                    Instruction::and => {
                         main_op!(and);
                         (val1.u() & val2_offset.u(), 0)
                     }
-                    "or" => {
+                    Instruction::or => {
                         main_op!(or);
                         (val1.u() | val2_offset.u(), 1)
                     }
-                    "xor" => {
+                    Instruction::xor => {
                         main_op!(xor);
                         (val1.u() ^ val2_offset.u(), 2)
                     }
@@ -2098,12 +2098,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let write_reg = args[3].u();
                 let val2_offset: Elem<F> = (val2.bin() + offset).into();
 
-                let (r, op_id) = match name {
-                    "shl" => {
+                let (r, op_id) = match instr {
+                    Instruction::shl => {
                         main_op!(shl);
                         (val1.u() << val2_offset.u(), 0)
                     }
-                    "shr" => {
+                    Instruction::shr => {
                         main_op!(shr);
                         (val1.u() >> val2_offset.u(), 1)
                     }
@@ -2720,6 +2720,7 @@ fn execute_inner<F: FieldElement>(
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
 ) -> Execution<F> {
+    let start = Instant::now();
     let main_machine = get_main_machine(asm);
 
     let PreprocessedMain {
@@ -2799,12 +2800,25 @@ fn execute_inner<F: FieldElement>(
         profiling.map(|opt| Profiler::new(opt, &debug_files[..], function_starts, location_starts));
 
     let mut curr_pc = 0u32;
+    let mut last = Instant::now();
+    let mut count = 0;
     loop {
         let stm = statements[curr_pc as usize];
 
         log::trace!("l {curr_pc}: {stm}",);
 
         e.step += 4;
+
+        count += 1;
+        if count % 10000 == 0 {
+            let now = Instant::now();
+            let elapsed = now - last;
+            if elapsed.as_secs_f64() > 1.0 {
+                last = now;
+                log::debug!("instructions/s: {}", count as f64 / elapsed.as_secs_f64(),);
+                count = 0;
+            }
+        }
 
         match stm {
             FunctionStatement::Assignment(a) => {
@@ -2964,6 +2978,11 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_col("main::pc_update", sink_id.into());
         e.proc.set_col("main::_operation_id", sink_id.into());
     }
+
+    log::info!(
+        "Program execution took {}s",
+        start.elapsed().as_secs_f64()
+    );
 
     e.proc.finish(opt_pil)
 }

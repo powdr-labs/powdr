@@ -9,7 +9,7 @@ fn only_column_name(name: &str) -> &str {
 }
 
 /// Each submachine kind (i.e., binary, shift) must implement this trait
-trait SubmachineKind {
+trait SubmachineKind: Send {
     /// Which of the witness columns are selectors, if any
     const SELECTORS: &'static str;
     /// Row block size
@@ -41,7 +41,7 @@ impl<F: FieldElement, M: SubmachineKind + 'static> SubmachineBoxed<F> for M {
 /// Each specific submachine only needs to implement the SubmachineKind trait.
 /// Trace is built by calling these methods.
 /// It being a trait also allows us to put different submachines in the same hashmap.
-pub trait Submachine<F: FieldElement> {
+pub trait Submachine<F: FieldElement>: Send {
     /// submachine namespace
     fn namespace(&self) -> &str;
     /// current number of rows
