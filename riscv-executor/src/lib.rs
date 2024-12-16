@@ -506,7 +506,7 @@ mod builder {
         asm_analysis::{Machine, RegisterTy},
     };
     use powdr_number::FieldElement;
-    use rayon::iter::{ParallelBridge, ParallelIterator};
+    use rayon::iter::{ParallelBridge, ParallelExtend, ParallelIterator};
 
     use crate::{
         pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MachineInstance, MainOp,
@@ -981,9 +981,8 @@ mod builder {
                         // keep machine columns empty
                         machine.finish(0)
                     }
-                })
-                .collect::<Vec<_>>();
-            self.trace.cols.extend(cols);
+                });
+            self.trace.cols.par_extend(cols);
             log::debug!(
                 "Generating submachine traces took {}s",
                 start.elapsed().as_secs_f64(),
