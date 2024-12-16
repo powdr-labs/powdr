@@ -71,7 +71,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
     /// Repeatedly processes all identities on all rows, until no progress is made.
     /// Fails iff there are incomplete machine calls in the latch row.
-    fn solve_block(&self, witgen: &mut WitgenInference<T, &Self>) -> Result<(), String> {
+    fn solve_block(&self, witgen: &mut WitgenInference<'a, T, &Self>) -> Result<(), String> {
         let mut complete = HashSet::new();
         for iteration in 0.. {
             let mut progress = false;
