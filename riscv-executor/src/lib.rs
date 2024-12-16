@@ -753,13 +753,13 @@ mod builder {
         }
 
         pub(crate) fn set_mem(&mut self, addr: u32, val: u32, step: u32, selector: u8) {
-            self.submachine_op(
-                MachineInstance::main_memory,
-                Some(selector),
-                &[1.into(), addr.into(), step.into(), val.into()],
-                &[],
-            );
             if let ExecMode::Trace = self.mode {
+                self.submachine_op(
+                    MachineInstance::main_memory,
+                    Some(selector),
+                    &[1.into(), addr.into(), step.into(), val.into()],
+                    &[],
+                );
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Write,
@@ -772,13 +772,13 @@ mod builder {
 
         pub(crate) fn get_mem(&mut self, addr: u32, step: u32, selector: u8) -> u32 {
             let val = *self.mem.get(&addr).unwrap_or(&0);
-            self.submachine_op(
-                MachineInstance::main_memory,
-                Some(selector),
-                &[0.into(), addr.into(), step.into(), val.into()],
-                &[],
-            );
             if let ExecMode::Trace = self.mode {
+                self.submachine_op(
+                    MachineInstance::main_memory,
+                    Some(selector),
+                    &[0.into(), addr.into(), step.into(), val.into()],
+                    &[],
+                );
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Read,
@@ -1147,6 +1147,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         }
 
         macro_rules! main_op {
+            ($insn:ident) => {
+                self.proc
+                    .main_op(stringify!($insn), self.proc.get_pc().u(), vec![])
+            };
             ($insn:ident, $($args:expr),*) => {
                 self.proc
                     .main_op(stringify!($insn), self.proc.get_pc().u(), vec![$($args, )*])
@@ -1185,14 +1189,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(Y_free_value, val);
                 }
 
-                main_op!(set_reg,);
+                main_op!(set_reg);
                 Vec::new()
             }
             "get_reg" => {
                 let addr = args[0].u();
                 let val = self.reg_read(0, addr, 0);
 
-                main_op!(get_reg,);
+                main_op!(get_reg);
                 vec![val]
             }
             "affine" => {
@@ -1207,7 +1211,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.reg_write(1, write_reg, res, 3);
                 set_col!(tmp1_col, val1);
 
-                main_op!(affine,);
+                main_op!(affine);
                 Vec::new()
             }
 
@@ -1248,9 +1252,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
 
                 if name == "mstore" {
-                    main_op!(mstore,);
+                    main_op!(mstore);
                 } else {
-                    main_op!(mstore_bootloader,);
+                    main_op!(mstore_bootloader);
                 }
                 Vec::new()
             }
@@ -1286,7 +1290,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     Elem::from_u32_as_fe(((v as u64 >> 32) & 1) as u32)
                 );
 
-                main_op!(mload,);
+                main_op!(mload);
                 Vec::new()
             }
             // TODO: update to witness generation for continuations
@@ -1301,7 +1305,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.reg_write(2, write_addr, val, 3);
 
-                main_op!(load_bootloader_input,);
+                main_op!(load_bootloader_input);
                 Vec::new()
             }
             // TODO: update to witness generation for continuations
@@ -1316,7 +1320,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 assert_eq!(val, actual_val);
 
-                main_op!(assert_bootloader_input,);
+                main_op!(assert_bootloader_input);
                 Vec::new()
             }
             "load_label" => {
@@ -1328,7 +1332,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.proc.set_col("main::instr_load_label_param_l", label);
 
-                main_op!(load_label,);
+                main_op!(load_label);
                 Vec::new()
             }
             "jump" => {
@@ -1342,7 +1346,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.proc.set_col("main::instr_jump_param_l", label);
 
-                main_op!(jump,);
+                main_op!(jump);
                 Vec::new()
             }
             "jump_dyn" => {
@@ -1357,7 +1361,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(tmp1_col, addr);
 
-                main_op!(jump_dyn,);
+                main_op!(jump_dyn);
                 Vec::new()
             }
             // TODO: update to witness generation for continuations
@@ -1366,7 +1370,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let addr = self.bootloader_inputs[bootloader_input_idx];
                 self.proc.set_pc(addr);
 
-                main_op!(jump_to_bootloader_input,);
+                main_op!(jump_to_bootloader_input);
                 Vec::new()
             }
             "branch_if_diff_nonzero" => {
@@ -1392,7 +1396,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.proc
                     .set_col("main::instr_branch_if_diff_nonzero_param_l", label);
 
-                main_op!(branch_if_diff_nonzero,);
+                main_op!(branch_if_diff_nonzero);
                 Vec::new()
             }
             "branch_if_diff_equal" => {
@@ -1419,7 +1423,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.proc
                     .set_col("main::instr_branch_if_diff_equal_param_l", label);
 
-                main_op!(branch_if_diff_equal,);
+                main_op!(branch_if_diff_equal);
                 Vec::new()
             }
             "skip_if_equal" => {
@@ -1444,7 +1448,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
-                main_op!(skip_if_equal,);
+                main_op!(skip_if_equal);
                 Vec::new()
             }
             "branch_if_diff_greater_than" => {
@@ -1486,7 +1490,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_op!(branch_if_diff_greater_than,);
+                main_op!(branch_if_diff_greater_than);
                 Vec::new()
             }
             "is_diff_greater_than" => {
@@ -1515,7 +1519,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
                 set_col!(wrap_bit, Elem::from_u32_as_fe(r));
 
-                main_op!(is_diff_greater_than,);
+                main_op!(is_diff_greater_than);
                 Vec::new()
             }
             "is_equal_zero" => {
@@ -1533,7 +1537,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
-                main_op!(is_equal_zero,);
+                main_op!(is_equal_zero);
                 Vec::new()
             }
             "is_not_equal" => {
@@ -1556,7 +1560,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
-                main_op!(is_not_equal,);
+                main_op!(is_not_equal);
                 Vec::new()
             }
             "add_wrap" => {
@@ -1594,7 +1598,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_op!(add_wrap,);
+                main_op!(add_wrap);
                 Vec::new()
             }
             "wrap16" => {
@@ -1623,7 +1627,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(Y_b5, Elem::from_u32_as_fe(b5.into()));
                 set_col!(Y_b6, Elem::from_u32_as_fe(b6.into()));
 
-                main_op!(wrap16,);
+                main_op!(wrap16);
                 Vec::new()
             }
             "sub_wrap_with_offset" => {
@@ -1657,7 +1661,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_op!(sub_wrap_with_offset,);
+                main_op!(sub_wrap_with_offset);
                 Vec::new()
             }
             "sign_extend_byte" => {
@@ -1690,7 +1694,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_op!(sign_extend_byte,);
+                main_op!(sign_extend_byte);
                 Vec::new()
             }
             "sign_extend_16_bits" => {
@@ -1727,7 +1731,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_op!(sign_extend_16_bits,);
+                main_op!(sign_extend_16_bits);
                 Vec::new()
             }
             "to_signed" => {
@@ -1756,7 +1760,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(Y_7bit, Elem::from_u32_as_fe(b4 as u32 & 0x7f));
 
-                main_op!(to_signed,);
+                main_op!(to_signed);
                 Vec::new()
             }
             "fail" => {
@@ -1818,7 +1822,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(Y_b8, Elem::from_u32_as_fe(b8.into()));
                 }
 
-                main_op!(divremu,);
+                main_op!(divremu);
                 Vec::new()
             }
             "mul" => {
@@ -1847,7 +1851,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     Some(selector),
                     &[r.into(), lo.into(), hi.into()],
                 );
-                main_op!(mul,);
+                main_op!(mul);
                 Vec::new()
             }
             "and" | "or" | "xor" => {
@@ -1864,15 +1868,15 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let (r, op_id, selector) = match name {
                     "and" => {
-                        main_op!(and,);
+                        main_op!(and);
                         (val1.u() & val2_offset.u(), 0, 0)
                     }
                     "or" => {
-                        main_op!(or,);
+                        main_op!(or);
                         (val1.u() | val2_offset.u(), 1, 1)
                     }
                     "xor" => {
-                        main_op!(xor,);
+                        main_op!(xor);
                         (val1.u() ^ val2_offset.u(), 2, 2)
                     }
                     _ => unreachable!(),
@@ -1906,11 +1910,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let (r, op_id, selector) = match name {
                     "shl" => {
-                        main_op!(shl,);
+                        main_op!(shl);
                         (val1.u() << val2_offset.u(), 0, 0)
                     }
                     "shr" => {
-                        main_op!(shr,);
+                        main_op!(shr);
                         (val1.u() >> val2_offset.u(), 1, 1)
                     }
                     _ => unreachable!(),
@@ -1958,7 +1962,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     Some(selector),
                     &[inv, low_inv.into(), high_inv.into()],
                 );
-                main_op!(invert_gl,);
+                main_op!(invert_gl);
                 Vec::new()
             }
             "split_gl" => {
@@ -1987,7 +1991,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     Some(selector),
                     &[value.into(), lo.into(), hi.into()],
                 );
-                main_op!(split_gl,);
+                main_op!(split_gl);
                 Vec::new()
             }
             "poseidon_gl" => {
@@ -2062,7 +2066,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     outputs[2],
                     outputs[3]
                 );
-                main_op!(poseidon_gl,);
+                main_op!(poseidon_gl);
                 vec![]
             }
             "poseidon2_gl" => {
@@ -2092,7 +2096,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc.set_mem(output_ptr + i as u32 * 4, v, 0, 0); // TODO: step/selector for poseidon2
                 });
 
-                main_op!(poseidon2_gl,);
+                main_op!(poseidon2_gl);
                 vec![]
             }
             "affine_256" => {
@@ -2135,7 +2139,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
 
                 // TODO: main_arith event
-                main_op!(affine_256,);
+                main_op!(affine_256);
                 vec![]
             }
             "mod_256" => {
@@ -2168,7 +2172,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
 
                 // TODO: main_arith event
-                main_op!(mod_256,);
+                main_op!(mod_256);
                 vec![]
             }
             "ec_add" => {
@@ -2212,7 +2216,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
 
                 // TODO: main_arith event
-                main_op!(ec_add,);
+                main_op!(ec_add);
                 vec![]
             }
             "ec_double" => {
@@ -2248,7 +2252,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
 
                 // TODO: main_arith event
-                main_op!(ec_double,);
+                main_op!(ec_double);
                 vec![]
             }
             "commit_public" => {
@@ -2258,7 +2262,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp2_col, limb);
                 log::debug!("Committing public: idx={idx}, limb={limb}");
                 submachine_op!(main_publics, None, &[idx.into_fe(), limb.into_fe()],);
-                main_op!(commit_public,);
+                main_op!(commit_public);
                 vec![]
             }
             instr => {
