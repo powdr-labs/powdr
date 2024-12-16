@@ -933,7 +933,7 @@ mod builder {
 
             // fill up main trace to degree
             self.extend_rows(main_degree);
-            log::info!(
+            log::debug!(
                 "Finalizing main machine trace took {}s",
                 start.elapsed().as_secs_f64(),
             );
@@ -984,7 +984,7 @@ mod builder {
                 })
                 .collect::<Vec<_>>();
             self.trace.cols.extend(cols);
-            log::info!(
+            log::debug!(
                 "Generating submachine traces took {}s",
                 start.elapsed().as_secs_f64(),
             );
@@ -2978,7 +2978,7 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_col("main::_operation_id", sink_id.into());
     }
 
-    log::info!("Program execution took {}s", start.elapsed().as_secs_f64());
+    log::debug!("Program execution took {}s", start.elapsed().as_secs_f64());
 
     e.proc.finish(opt_pil)
 }
