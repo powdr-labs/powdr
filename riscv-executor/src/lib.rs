@@ -1236,21 +1236,22 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     /// Gets the identity id for a link associated with a given instruction.
     /// idx is based on the order link appear in the assembly (assumed to be the same in the optimized pil).
     fn instr_link_id(&mut self, instr: Instruction, target: &'static str, idx: usize) -> u64 {
-        if let ExecMode::Trace = self.mode {
-            let entries = self
-                .pil_instruction_links
-                .entry((instr.flag(), target))
-                .or_insert_with(|| {
-                    pil::find_instruction_links(&self.pil_links, instr.flag(), target)
-                });
-            entries.get(idx).unwrap().id()
-        } else {
-            0 // we don't care about identity ids outside trace mode
+        if let ExecMode::Fast = self.mode {
+            return 0; // we don't care about identity ids in fast mode
         }
+
+        let entries = self
+            .pil_instruction_links
+            .entry((instr.flag(), target))
+            .or_insert_with(|| pil::find_instruction_links(&self.pil_links, instr.flag(), target));
+        entries.get(idx).unwrap().id()
     }
 
     /// Find the identity id of a link.
     fn link_id(&mut self, from: &'static str, target: &'static str, idx: usize) -> u64 {
+        if let ExecMode::Fast = self.mode {
+            return 0; // we don't care about identity ids in fast mode
+        }
         let entries = self
             .pil_instruction_links
             .entry((from, target))
@@ -2214,9 +2215,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let inputs = (0..12)
                     .map(|i| {
                         // memory reads from the poseidon machine
-                        let lid = self.link_id("poseidon_gl", "memory", 0);
+                        let lid = self.link_id("main_poseidon_gl", "main_memory", 0);
                         let lo = self.proc.get_mem(input_ptr.u() + 8 * i, self.step, lid);
-                        let lid = self.link_id("poseidon_gl", "memory", 1);
+                        let lid = self.link_id("main_poseidon_gl", "main_memory", 1);
                         let hi = self.proc.get_mem(input_ptr.u() + 8 * i + 4, self.step, lid);
                         F::from(((hi as u64) << 32) | lo as u64)
                     })
@@ -2692,7 +2693,7 @@ pub fn execute<F: FieldElement>(
     max_steps_to_execute: Option<usize>,
     profiling: Option<ProfilerOptions>,
 ) -> Execution<F> {
-    log::info!("Executing...");
+    log::info!("Executing (trace generation)...");
 
     execute_inner(
         asm,
