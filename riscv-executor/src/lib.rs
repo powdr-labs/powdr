@@ -506,8 +506,8 @@ mod builder {
         asm_analysis::{Machine, RegisterTy},
     };
     use powdr_number::FieldElement;
-    use rayon::iter::IntoParallelIterator;
     use rayon::iter::ParallelIterator;
+    use rayon::iter::{IntoParallelIterator, ParallelBridge};
 
     use crate::{
         pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MachineInstance, MainOp,
@@ -944,18 +944,18 @@ mod builder {
             let links = pil::links_from_pil(pil);
 
             let start = Instant::now();
-            let m_ops: Vec<_> = self
+            let cols = self
                 .trace
                 .submachine_ops
                 .into_iter()
+                // take each submachine and its operations
                 .map(|(m, ops)| {
                     let machine = self.submachines.remove(&m).unwrap().into_inner();
                     (m, machine, ops)
                 })
-                .collect();
-            let cols = m_ops
-                .into_par_iter()
+                .par_bridge()
                 .flat_map(|(m, mut machine, ops)| {
+                    // apply the operation to the submachine
                     ops.into_iter().for_each(|op| {
                         let selector = pil::selector_for_link(&links, op.identity_id);
                         machine.add_operation(selector.as_deref(), &op.lookup_args, &op.extra);
@@ -2979,10 +2979,7 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_col("main::_operation_id", sink_id.into());
     }
 
-    log::info!(
-        "Program execution took {}s",
-        start.elapsed().as_secs_f64()
-    );
+    log::info!("Program execution took {}s", start.elapsed().as_secs_f64());
 
     e.proc.finish(opt_pil)
 }
