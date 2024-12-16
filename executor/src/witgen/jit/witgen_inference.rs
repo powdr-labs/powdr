@@ -24,8 +24,11 @@ use super::{
     variable::{Cell, Variable},
 };
 
+/// Summary of the effect of processing an action.
 pub struct ProcessSummary {
+    /// The action has been fully completed, processing it again will not have any effect.
     pub complete: bool,
+    /// Processing the action changed the state of the inference.
     pub progress: bool,
 }
 
@@ -59,8 +62,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 
     /// Process an identity on a certain row.
-    /// Returns true if this identity/row pair was fully processed and
-    /// should not be considered again.
     pub fn process_identity(&mut self, id: &Identity<T>, row_offset: i32) -> ProcessSummary {
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
@@ -158,7 +159,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         ProcessResult::empty()
     }
 
-    /// Ingests effects. Returns true if any progress was made.
     fn ingest_effects(&mut self, process_result: ProcessResult<T, Variable>) -> ProcessSummary {
         let mut progress = false;
         for e in process_result.effects {
@@ -285,7 +285,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// combining global range constraints and newly derived local range constraints.
     fn range_constraint(&self, variable: Variable) -> Option<RangeConstraint<T>> {
         variable
-            .to_poly_id()
+            .try_to_witness_poly_id()
             .and_then(|poly_id| {
                 self.fixed_data
                     .global_range_constraints
@@ -336,6 +336,16 @@ mod test {
     };
 
     use super::*;
+
+    pub struct FixedEvaluatorForFixedData<'a, T: FieldElement>(pub &'a FixedData<'a, T>);
+    impl<'a, T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'a, T> {
+        fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
+            assert!(var.is_fixed());
+            let values = self.0.fixed_cols[&var.poly_id].values_max_size();
+            let row = (row_offset + var.next as i32 + values.len() as i32) as usize % values.len();
+            Some(values[row])
+        }
+    }
 
     fn solve_on_rows(
         input: &str,

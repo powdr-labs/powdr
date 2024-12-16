@@ -4,3 +4,4 @@ pub mod copy_constraints;
 pub mod finalizable_data;
 pub mod multiplicity_counter;
 pub mod mutable_state;
+pub mod padded_bitvec;

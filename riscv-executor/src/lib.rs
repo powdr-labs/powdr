@@ -42,6 +42,36 @@ use memory::*;
 
 use crate::profiler::Profiler;
 
+// TODO: we don't do anything with these yet. Idea is to keep info that is to be given to witgen
+#[allow(unused)]
+struct MainOp<F: FieldElement>(&'static str, u32, Vec<F>);
+
+#[derive(Debug)]
+struct SubmachineOp<F: FieldElement> {
+    // TODO: if we move to using witgen here, this will probably be an `identity_id` instead
+    selector: Option<u8>,
+    // these are the RHS values of the lookup (i.e., inside brackets in the PIL lookup)
+    lookup_args: Vec<F>,
+    // TODO: this is just for the hand-written poseidon_gl submachine,
+    // we give it the input values because it doesn't have access to memory
+    extra: Vec<F>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[allow(non_camel_case_types)]
+enum MachineInstance {
+    main_memory,
+    main_regs,
+    main_publics,
+    main_binary,
+    main_shift,
+    main_split_gl,
+    main_poseidon_gl,
+    // main_poseidon2_gl,
+    // main_keccakf,
+    // main_arith,
+}
+
 /// Initial value of the PC.
 ///
 /// To match the ZK proof witness, the PC must start after some offset used for
@@ -74,10 +104,6 @@ impl<F: FieldElement> Elem<F> {
     }
 
     pub fn from_i32_as_fe(value: i32) -> Self {
-        Self::Field(F::from(value))
-    }
-
-    pub fn from_u64_as_fe_unchecked(value: u64) -> Self {
         Self::Field(F::from(value))
     }
 
@@ -122,13 +148,6 @@ impl<F: FieldElement> Elem<F> {
 
     fn s(&self) -> i32 {
         self.bin().try_into().unwrap()
-    }
-
-    fn fe(&self) -> F {
-        match self {
-            Self::Binary(_) => panic!(),
-            Self::Field(f) => *f,
-        }
     }
 
     fn is_zero(&self) -> bool {
@@ -266,8 +285,14 @@ pub struct ExecutionTrace<F: FieldElement> {
     /// The length of the trace, after applying the reg_writes.
     len: usize,
 
+    /// Main machine instructions
+    main_ops: Vec<MainOp<F>>,
+
+    /// Calls into submachines
+    submachine_ops: HashMap<MachineInstance, Vec<SubmachineOp<F>>>,
+
     /// witness columns
-    cols: HashMap<String, Vec<Elem<F>>>,
+    cols: HashMap<String, Vec<F>>,
 }
 
 impl<F: FieldElement> ExecutionTrace<F> {
@@ -280,7 +305,7 @@ impl<F: FieldElement> ExecutionTrace<F> {
         let cols: HashMap<String, _> = witness_cols
             .into_iter()
             .filter(|n| n.starts_with("main::"))
-            .map(|n| (n, vec![Elem::Field(F::zero()), Elem::Field(F::zero())]))
+            .map(|n| (n, vec![F::zero(), F::zero()]))
             .collect();
 
         ExecutionTrace {
@@ -288,6 +313,8 @@ impl<F: FieldElement> ExecutionTrace<F> {
             reg_writes,
             mem_ops: Vec::new(),
             len: pc,
+            main_ops: Vec::new(),
+            submachine_ops: HashMap::new(),
             cols,
         }
     }
@@ -304,9 +331,8 @@ impl<F: FieldElement> ExecutionTrace<F> {
     }
 
     /// transpose the register write operations into value columns
-    fn generate_registers_trace(&self) -> Vec<(String, Vec<Elem<F>>)> {
-        let mut reg_values: HashMap<&str, Vec<Elem<F>>> =
-            HashMap::with_capacity(self.reg_map.len());
+    fn generate_registers_trace(&self) -> Vec<(String, Vec<F>)> {
+        let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(self.reg_map.len());
 
         let mut rows = self.replay();
         while let Some(row) = rows.next_row() {
@@ -314,7 +340,7 @@ impl<F: FieldElement> ExecutionTrace<F> {
                 reg_values
                     .entry(reg_name)
                     .or_default()
-                    .push(Elem::Field(row[index as usize]));
+                    .push(row[index as usize]);
             }
         }
 
@@ -376,11 +402,7 @@ impl<F: FieldElement> RegisterMemory<F> {
 }
 
 mod builder {
-    use std::{
-        cell::{RefCell, RefMut},
-        cmp,
-        collections::HashMap,
-    };
+    use std::{cell::RefCell, cmp, collections::HashMap};
 
     use powdr_ast::{
         analyzed::{Analyzed, DegreeRange},
@@ -389,9 +411,10 @@ mod builder {
     use powdr_number::FieldElement;
 
     use crate::{
-        BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MemOperation, MemOperationKind,
-        MemoryMachine, MemoryState, PoseidonGlMachine, PublicsMachine, RegWrite, RegisterMemory,
-        ShiftMachine, SplitGlMachine, Submachine, SubmachineBoxed, PC_INITIAL_VAL,
+        BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MachineInstance, MainOp,
+        MemOperation, MemOperationKind, MemoryMachine, MemoryState, PoseidonGlMachine,
+        PublicsMachine, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine, Submachine,
+        SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
     };
 
     fn namespace_degree_range<F: FieldElement>(
@@ -423,8 +446,6 @@ mod builder {
         trace: ExecutionTrace<F>,
 
         submachines: HashMap<String, RefCell<Box<dyn Submachine<F>>>>,
-        pub regs_machine: MemoryMachine<F>,
-        pub memory_machine: MemoryMachine<F>,
 
         /// Maximum rows we can run before we stop the execution.
         max_rows: usize,
@@ -501,28 +522,39 @@ mod builder {
                 if let ExecMode::Trace = mode {
                     [
                         (
-                            "binary",
-                            BinaryMachine::new_boxed("main_binary", &witness_cols).into(),
+                            "memory".to_string(),
+                            RefCell::new(Box::new(MemoryMachine::new("main_memory", &witness_cols)))
+                                as RefCell<Box<dyn Submachine<F>>>, // this first `as` is needed to coerce the type of the array
                         ),
                         (
-                            "shift",
-                            ShiftMachine::new_boxed("main_shift", &witness_cols).into(),
+                            "regs".to_string(),
+                            RefCell::new(Box::new(MemoryMachine::new("main_regs", &witness_cols))),
                         ),
                         (
-                            "split_gl",
-                            SplitGlMachine::new_boxed("main_split_gl", &witness_cols).into(),
+                            "binary".to_string(),
+                            RefCell::new(BinaryMachine::new_boxed("main_binary", &witness_cols)),
                         ),
                         (
-                            "publics",
-                            PublicsMachine::new_boxed("main_publics", &witness_cols).into(),
+                            "shift".to_string(),
+                            RefCell::new(ShiftMachine::new_boxed("main_shift", &witness_cols)),
                         ),
                         (
-                            "poseidon_gl",
-                            PoseidonGlMachine::new_boxed("main_poseidon_gl", &witness_cols).into(),
+                            "split_gl".to_string(),
+                            RefCell::new(SplitGlMachine::new_boxed("main_split_gl", &witness_cols)),
+                        ),
+                        (
+                            "publics".to_string(),
+                            RefCell::new(PublicsMachine::new_boxed("main_publics", &witness_cols)),
+                        ),
+                        (
+                            "poseidon_gl".to_string(),
+                            RefCell::new(PoseidonGlMachine::new_boxed(
+                                "main_poseidon_gl",
+                                &witness_cols,
+                            )),
                         ),
                     ]
                     .into_iter()
-                    .map(|(name, m)| (name.to_string(), m))
                     .collect()
                 } else {
                     Default::default()
@@ -531,8 +563,6 @@ mod builder {
             let mut ret = Self {
                 pc_idx,
                 curr_pc: PC_INITIAL_VAL.into(),
-                regs_machine: MemoryMachine::new("main_regs", &witness_cols),
-                memory_machine: MemoryMachine::new("main_memory", &witness_cols),
                 trace: ExecutionTrace::new(witness_cols, reg_map, reg_writes, PC_INITIAL_VAL + 1),
                 submachines,
                 next_statement_line: 1,
@@ -548,6 +578,32 @@ mod builder {
                 Err(Box::new(ret.finish(opt_pil)))
             } else {
                 Ok(ret)
+            }
+        }
+
+        pub(crate) fn main_op(&mut self, ev: &'static str, pc: u32, args: Vec<F>) {
+            if let ExecMode::Trace = self.mode {
+                self.trace.main_ops.push(MainOp(ev, pc, args));
+            }
+        }
+
+        pub(crate) fn submachine_op(
+            &mut self,
+            m: MachineInstance,
+            selector: Option<u8>,
+            lookup_args: &[F],
+            extra: &[F],
+        ) {
+            if let ExecMode::Trace = self.mode {
+                self.trace
+                    .submachine_ops
+                    .entry(m)
+                    .or_default()
+                    .push(SubmachineOp {
+                        selector,
+                        lookup_args: lookup_args.to_vec(),
+                        extra: extra.to_vec(),
+                    });
             }
         }
 
@@ -631,7 +687,7 @@ mod builder {
                     .cols
                     .get_mut(name)
                     .unwrap_or_else(|| panic!("col not found: {name}"));
-                *col.get_mut(idx).unwrap() = value;
+                *col.get_mut(idx).unwrap() = value.into_fe();
             }
         }
 
@@ -642,7 +698,7 @@ mod builder {
                     .cols
                     .get_mut(name)
                     .unwrap_or_else(|| panic!("col not found: {name}"));
-                *col.last_mut().unwrap() = value;
+                *col.last_mut().unwrap() = value.into_fe();
             }
         }
 
@@ -653,7 +709,7 @@ mod builder {
                     .cols
                     .get(name)
                     .unwrap_or_else(|| panic!("col not found: {name}"));
-                *col.last().unwrap()
+                Elem::Field(*col.last().unwrap())
             } else {
                 Elem::Field(F::zero())
             }
@@ -661,10 +717,7 @@ mod builder {
 
         pub fn push_row(&mut self) {
             if let ExecMode::Trace = self.mode {
-                self.trace
-                    .cols
-                    .values_mut()
-                    .for_each(|v| v.push(Elem::Field(0.into())));
+                self.trace.cols.values_mut().for_each(|v| v.push(F::zero()));
             }
         }
 
@@ -699,28 +752,38 @@ mod builder {
             self.set_next_pc().and(Some(st_line))
         }
 
-        pub(crate) fn set_mem(&mut self, addr: u32, val: u32, step: u32, selector: u32) {
+        pub(crate) fn set_mem(&mut self, addr: u32, val: u32, step: u32, selector: u8) {
             if let ExecMode::Trace = self.mode {
+                self.submachine_op(
+                    MachineInstance::main_memory,
+                    Some(selector),
+                    &[1.into(), addr.into(), step.into(), val.into()],
+                    &[],
+                );
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Write,
                     address: addr,
                 });
-                self.memory_machine.write(step, addr, val.into(), selector);
             }
 
             self.mem.insert(addr, val);
         }
 
-        pub(crate) fn get_mem(&mut self, addr: u32, step: u32, selector: u32) -> u32 {
+        pub(crate) fn get_mem(&mut self, addr: u32, step: u32, selector: u8) -> u32 {
             let val = *self.mem.get(&addr).unwrap_or(&0);
             if let ExecMode::Trace = self.mode {
+                self.submachine_op(
+                    MachineInstance::main_memory,
+                    Some(selector),
+                    &[0.into(), addr.into(), step.into(), val.into()],
+                    &[],
+                );
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Read,
                     address: addr,
                 });
-                self.memory_machine.read(step, addr, val.into(), selector);
             }
             val
         }
@@ -742,10 +805,6 @@ mod builder {
 
         pub(crate) fn backup_reg_mem(&mut self) {
             self.reg_mem.second_last = self.reg_mem.last.clone();
-        }
-
-        pub(crate) fn submachine(&self, name: &str) -> RefMut<'_, Box<dyn Submachine<F>>> {
-            self.submachines[name].borrow_mut()
         }
 
         pub fn finish(mut self, opt_pil: Option<&Analyzed<F>>) -> Execution<F> {
@@ -776,65 +835,68 @@ mod builder {
             // fill up main trace to degree
             self.extend_rows(main_degree);
 
+            // generate witness for submachines
+            // ----------------------------
+            for (m, ops) in self.trace.submachine_ops {
+                let m = match m {
+                    MachineInstance::main_memory => "memory",
+                    MachineInstance::main_regs => "regs",
+                    MachineInstance::main_binary => "binary",
+                    MachineInstance::main_shift => "shift",
+                    MachineInstance::main_publics => "publics",
+                    MachineInstance::main_split_gl => "split_gl",
+                    MachineInstance::main_poseidon_gl => "poseidon_gl",
+                };
+                for op in ops {
+                    self.submachines[m].borrow_mut().add_operation(
+                        op.selector,
+                        &op.lookup_args,
+                        &op.extra,
+                    );
+                }
+            }
+
             // add submachine traces to main trace
             // ----------------------------
-            for mut machine in self.submachines.into_values().map(|m| m.into_inner()) {
-                // if the machine is not empty, we need to fill it up to the degree
+            for (name, mut machine) in self
+                .submachines
+                .into_iter()
+                .map(|(n, m)| (n, m.into_inner()))
+            {
+                // finalize and extend the submachine traces and add to full trace
                 if machine.len() > 0 {
-                    machine.final_row_override();
                     let range = namespace_degree_range(pil, machine.namespace());
                     // extend with dummy blocks up to the required machine degree
                     let machine_degree =
                         std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
-                    while machine.len() < machine_degree {
-                        machine.push_dummy_block(machine_degree as usize);
+                    for (col_name, col) in machine.finish(machine_degree) {
+                        assert!(self.trace.cols.insert(col_name, col).is_none());
+                    }
+                } else if name == "publics" {
+                    // for the publics machine, even with no operations being
+                    // issued, the declared "publics" force the cells to be
+                    // filled. We add operations here to emulate that.
+                    if machine.len() == 0 {
+                        for i in 0..8 {
+                            machine.add_operation(None, &[i.into(), 0.into()], &[]);
+                        }
+                    }
+                    for (col_name, col) in machine.finish(8) {
+                        assert!(self.trace.cols.insert(col_name, col).is_none());
+                    }
+                } else {
+                    // keep machine columns empty
+                    for (col_name, col) in machine.finish(0) {
+                        assert!(self.trace.cols.insert(col_name, col).is_none());
                     }
                 }
-                for (col_name, col) in machine.take_cols() {
-                    assert!(self.trace.cols.insert(col_name, col).is_none());
-                }
-            }
-
-            // add regs memory trace
-            // ----------------------------
-            let regs_degree = {
-                let range = namespace_degree_range(pil, &self.regs_machine.namespace);
-                std::cmp::max(
-                    self.regs_machine.len().next_power_of_two(),
-                    range.min as u32,
-                )
-            };
-            for (col_name, col) in self.regs_machine.take_cols(regs_degree) {
-                assert!(self.trace.cols.insert(col_name, col).is_none());
-            }
-
-            // add main memory trace
-            // ----------------------------
-            let mem_degree = {
-                let range = namespace_degree_range(pil, &self.memory_machine.namespace);
-                std::cmp::max(
-                    self.memory_machine.len().next_power_of_two(),
-                    range.min as u32,
-                )
-            };
-            for (col_name, col) in self.memory_machine.take_cols(mem_degree) {
-                assert!(self.trace.cols.insert(col_name, col).is_none());
             }
 
             Execution {
                 trace_len: self.trace.len,
                 memory: self.mem,
                 memory_accesses: std::mem::take(&mut self.trace.mem_ops),
-                trace: self
-                    .trace
-                    .cols
-                    .into_iter()
-                    // convert Elem<F> into F
-                    .map(|(name, elems)| {
-                        let fes = elems.into_iter().map(|e| e.into_fe()).collect();
-                        (name, fes)
-                    })
-                    .collect(),
+                trace: self.trace.cols,
                 register_memory: self.reg_mem.for_bootloader(),
             }
         }
@@ -1021,23 +1083,35 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     }
 
     /// read register value, updating the register memory machine
-    fn reg_read(&mut self, step_offset: u32, reg: u32, selector_idx: u32) -> Elem<F> {
+    fn reg_read(&mut self, step_offset: u32, reg: u32, selector: u8) -> Elem<F> {
         let val = self.proc.get_reg_mem(reg);
-        if let ExecMode::Trace = self.mode {
-            self.proc
-                .regs_machine
-                .read(self.step + step_offset, reg, val, selector_idx);
-        }
+        self.proc.submachine_op(
+            MachineInstance::main_regs,
+            Some(selector),
+            &[
+                0.into(),
+                reg.into(),
+                (self.step + step_offset).into(),
+                val.into_fe(),
+            ],
+            &[],
+        );
         val
     }
 
     /// write value to register, updating the register memory machine
-    fn reg_write(&mut self, step_offset: u32, reg: u32, val: Elem<F>, selector_idx: u32) {
-        if let ExecMode::Trace = self.mode {
-            self.proc
-                .regs_machine
-                .write(self.step + step_offset, reg, val, selector_idx);
-        }
+    fn reg_write(&mut self, step_offset: u32, reg: u32, val: Elem<F>, selector: u8) {
+        self.proc.submachine_op(
+            MachineInstance::main_regs,
+            Some(selector),
+            &[
+                1.into(),
+                reg.into(),
+                (self.step + step_offset).into(),
+                val.into_fe(),
+            ],
+            &[],
+        );
         self.proc.set_reg_mem(reg, val);
     }
 
@@ -1072,6 +1146,23 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             };
         }
 
+        macro_rules! main_op {
+            ($insn:ident) => {
+                self.proc
+                    .main_op(stringify!($insn), self.proc.get_pc().u(), vec![])
+            };
+            ($insn:ident, $($args:expr),*) => {
+                self.proc
+                    .main_op(stringify!($insn), self.proc.get_pc().u(), vec![$($args, )*])
+            };
+        }
+
+        macro_rules! submachine_op {
+            ($machine:ident, $selector:expr, $args:expr, $($extra:expr),*) => {
+                self.proc.submachine_op(MachineInstance::$machine, $selector, $args, &[$($extra, )*])
+            };
+        }
+
         let args = args
             .iter()
             .map(|expr| self.eval_expression(expr)[0])
@@ -1098,12 +1189,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(Y_free_value, val);
                 }
 
+                main_op!(set_reg);
                 Vec::new()
             }
             "get_reg" => {
                 let addr = args[0].u();
                 let val = self.reg_read(0, addr, 0);
 
+                main_op!(get_reg);
                 vec![val]
             }
             "affine" => {
@@ -1118,6 +1211,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.reg_write(1, write_reg, res, 3);
                 set_col!(tmp1_col, val1);
 
+                main_op!(affine);
                 Vec::new()
             }
 
@@ -1157,6 +1251,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(X_b3, Elem::from_u32_as_fe(b3.into()));
                 set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
 
+                if name == "mstore" {
+                    main_op!(mstore);
+                } else {
+                    main_op!(mstore_bootloader);
+                }
                 Vec::new()
             }
             "mload" => {
@@ -1191,6 +1290,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     Elem::from_u32_as_fe(((v as u64 >> 32) & 1) as u32)
                 );
 
+                main_op!(mload);
                 Vec::new()
             }
             // TODO: update to witness generation for continuations
@@ -1205,6 +1305,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.reg_write(2, write_addr, val, 3);
 
+                main_op!(load_bootloader_input);
                 Vec::new()
             }
             // TODO: update to witness generation for continuations
@@ -1219,6 +1320,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 assert_eq!(val, actual_val);
 
+                main_op!(assert_bootloader_input);
                 Vec::new()
             }
             "load_label" => {
@@ -1230,6 +1332,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.proc.set_col("main::instr_load_label_param_l", label);
 
+                main_op!(load_label);
                 Vec::new()
             }
             "jump" => {
@@ -1243,6 +1346,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.proc.set_col("main::instr_jump_param_l", label);
 
+                main_op!(jump);
                 Vec::new()
             }
             "jump_dyn" => {
@@ -1257,6 +1361,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(tmp1_col, addr);
 
+                main_op!(jump_dyn);
                 Vec::new()
             }
             // TODO: update to witness generation for continuations
@@ -1265,6 +1370,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let addr = self.bootloader_inputs[bootloader_input_idx];
                 self.proc.set_pc(addr);
 
+                main_op!(jump_to_bootloader_input);
                 Vec::new()
             }
             "branch_if_diff_nonzero" => {
@@ -1290,6 +1396,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.proc
                     .set_col("main::instr_branch_if_diff_nonzero_param_l", label);
 
+                main_op!(branch_if_diff_nonzero);
                 Vec::new()
             }
             "branch_if_diff_equal" => {
@@ -1316,6 +1423,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.proc
                     .set_col("main::instr_branch_if_diff_equal_param_l", label);
 
+                main_op!(branch_if_diff_equal);
                 Vec::new()
             }
             "skip_if_equal" => {
@@ -1340,6 +1448,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
+                main_op!(skip_if_equal);
                 Vec::new()
             }
             "branch_if_diff_greater_than" => {
@@ -1381,6 +1490,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
+                main_op!(branch_if_diff_greater_than);
                 Vec::new()
             }
             "is_diff_greater_than" => {
@@ -1409,6 +1519,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
                 set_col!(wrap_bit, Elem::from_u32_as_fe(r));
 
+                main_op!(is_diff_greater_than);
                 Vec::new()
             }
             "is_equal_zero" => {
@@ -1426,6 +1537,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
+                main_op!(is_equal_zero);
                 Vec::new()
             }
             "is_not_equal" => {
@@ -1448,6 +1560,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
+                main_op!(is_not_equal);
                 Vec::new()
             }
             "add_wrap" => {
@@ -1485,6 +1598,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
+                main_op!(add_wrap);
                 Vec::new()
             }
             "wrap16" => {
@@ -1513,6 +1627,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(Y_b5, Elem::from_u32_as_fe(b5.into()));
                 set_col!(Y_b6, Elem::from_u32_as_fe(b6.into()));
 
+                main_op!(wrap16);
                 Vec::new()
             }
             "sub_wrap_with_offset" => {
@@ -1546,6 +1661,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
+                main_op!(sub_wrap_with_offset);
                 Vec::new()
             }
             "sign_extend_byte" => {
@@ -1578,6 +1694,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
+                main_op!(sign_extend_byte);
                 Vec::new()
             }
             "sign_extend_16_bits" => {
@@ -1614,6 +1731,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
+                main_op!(sign_extend_16_bits);
                 Vec::new()
             }
             "to_signed" => {
@@ -1642,6 +1760,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(Y_7bit, Elem::from_u32_as_fe(b4 as u32 & 0x7f));
 
+                main_op!(to_signed);
                 Vec::new()
             }
             "fail" => {
@@ -1703,6 +1822,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(Y_b8, Elem::from_u32_as_fe(b8.into()));
                 }
 
+                main_op!(divremu);
                 Vec::new()
             }
             "mul" => {
@@ -1725,15 +1845,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp3_col, Elem::from_u32_as_fe(lo));
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("split_gl").add_operation(
-                        "split_gl",
-                        &[hi.into(), lo.into()],
-                        Some(0),
-                        &[],
-                    );
-                }
-
+                let selector = 0;
+                submachine_op!(
+                    main_split_gl,
+                    Some(selector),
+                    &[r.into(), lo.into(), hi.into()],
+                );
+                main_op!(mul);
                 Vec::new()
             }
             "and" | "or" | "xor" => {
@@ -1748,21 +1866,32 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
 
-                let (r, sel) = match name {
-                    "and" => (val1.u() & val2_offset.u(), 0),
-                    "or" => (val1.u() | val2_offset.u(), 1),
-                    "xor" => (val1.u() ^ val2_offset.u(), 2),
+                let (r, op_id, selector) = match name {
+                    "and" => {
+                        main_op!(and);
+                        (val1.u() & val2_offset.u(), 0, 0)
+                    }
+                    "or" => {
+                        main_op!(or);
+                        (val1.u() | val2_offset.u(), 1, 1)
+                    }
+                    "xor" => {
+                        main_op!(xor);
+                        (val1.u() ^ val2_offset.u(), 2, 2)
+                    }
                     _ => unreachable!(),
                 };
 
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("binary").add_operation(
-                        name,
-                        &[val1, val2_offset, r.into()],
-                        Some(sel),
-                        &[],
-                    );
-                }
+                submachine_op!(
+                    main_binary,
+                    Some(selector),
+                    &[
+                        op_id.into(),
+                        val1.into_fe(),
+                        val2_offset.into_fe(),
+                        r.into()
+                    ],
+                );
 
                 self.reg_write(3, write_reg, r.into(), 3);
 
@@ -1779,26 +1908,34 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let write_reg = args[3].u();
                 let val2_offset: Elem<F> = (val2.bin() + offset).into();
 
-                let (r, sel) = match name {
-                    "shl" => (val1.u() << val2_offset.u(), 0),
-                    "shr" => (val1.u() >> val2_offset.u(), 1),
+                let (r, op_id, selector) = match name {
+                    "shl" => {
+                        main_op!(shl);
+                        (val1.u() << val2_offset.u(), 0, 0)
+                    }
+                    "shr" => {
+                        main_op!(shr);
+                        (val1.u() >> val2_offset.u(), 1, 1)
+                    }
                     _ => unreachable!(),
                 };
+
+                submachine_op!(
+                    main_shift,
+                    Some(selector),
+                    &[
+                        op_id.into(),
+                        val1.into_fe(),
+                        val2_offset.into_fe(),
+                        r.into()
+                    ],
+                );
 
                 self.reg_write(3, write_reg, r.into(), 3);
 
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
-
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("shift").add_operation(
-                        name,
-                        &[val1, val2_offset, r.into()],
-                        Some(sel),
-                        &[],
-                    );
-                }
 
                 Vec::new()
             }
@@ -1819,15 +1956,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp4_col, Elem::from_u32_as_fe(high_inv));
                 set_col!(XX_inv, Elem::Field(inv));
 
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("split_gl").add_operation(
-                        "split_gl",
-                        &[high_inv.into(), low_inv.into()],
-                        Some(0),
-                        &[],
-                    );
-                }
-
+                let selector = 0;
+                submachine_op!(
+                    main_split_gl,
+                    Some(selector),
+                    &[inv, low_inv.into(), high_inv.into()],
+                );
+                main_op!(invert_gl);
                 Vec::new()
             }
             "split_gl" => {
@@ -1836,10 +1971,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let write_reg1 = args[1].u();
                 let write_reg2 = args[2].u();
 
-                let value = val1.into_fe().to_integer();
+                let value_fe = val1.into_fe();
                 // This instruction is only for Goldilocks, so the value must
                 // fit into a u64.
-                let value = value.try_into_u64().unwrap();
+                let value = value_fe.to_integer().try_into_u64().unwrap();
                 let lo = (value & 0xffffffff) as u32;
                 let hi = (value >> 32) as u32;
 
@@ -1850,15 +1985,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp3_col, Elem::from_u32_as_fe(lo));
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("split_gl").add_operation(
-                        "split_gl",
-                        &[hi.into(), lo.into()],
-                        Some(0),
-                        &[],
-                    );
-                }
-
+                let selector = 0;
+                submachine_op!(
+                    main_split_gl,
+                    Some(selector),
+                    &[value.into(), lo.into(), hi.into()],
+                );
+                main_op!(split_gl);
                 Vec::new()
             }
             "poseidon_gl" => {
@@ -1899,54 +2032,41 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 outputs.iter().enumerate().rev().for_each(|(i, v)| {
                     // the .rev() is not necessary, but makes the split_gl
                     // operations in the same "order" as automatic witgen
-                    let v = v.to_integer().try_into_u64().unwrap();
-                    let hi = (v >> 32) as u32;
-                    let lo = (v & 0xffffffff) as u32;
+                    let val = v.to_integer().try_into_u64().unwrap();
+                    let hi = (val >> 32) as u32;
+                    let lo = (val & 0xffffffff) as u32;
                     // step/selector of memory writes from the poseidon machine
                     self.proc
                         .set_mem(output_ptr.u() + 8 * i as u32, lo, self.step + 1, 4);
                     self.proc
                         .set_mem(output_ptr.u() + 8 * i as u32 + 4, hi, self.step + 1, 5);
-                    if let ExecMode::Trace = self.mode {
-                        // split gl of the poseidon machine
-                        self.proc.submachine("split_gl").add_operation(
-                            "split_gl",
-                            &[hi.into(), lo.into()],
-                            Some(1),
-                            &[],
-                        );
-                    }
+                    let selector = 1;
+                    submachine_op!(main_split_gl, Some(selector), &[*v, lo.into(), hi.into()],);
                 });
 
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("poseidon_gl").add_operation(
-                        "poseidon_gl",
-                        &[
-                            input_ptr,
-                            output_ptr,
-                            self.step.into(),
-                            Elem::Field(inputs[0]),
-                            Elem::Field(inputs[1]),
-                            Elem::Field(inputs[2]),
-                            Elem::Field(inputs[3]),
-                            Elem::Field(inputs[4]),
-                            Elem::Field(inputs[5]),
-                            Elem::Field(inputs[6]),
-                            Elem::Field(inputs[7]),
-                            Elem::Field(inputs[8]),
-                            Elem::Field(inputs[9]),
-                            Elem::Field(inputs[10]),
-                            Elem::Field(inputs[11]),
-                            Elem::Field(outputs[0]),
-                            Elem::Field(outputs[1]),
-                            Elem::Field(outputs[2]),
-                            Elem::Field(outputs[3]),
-                        ],
-                        Some(0),
-                        &[],
-                    );
-                }
-
+                let selector = 0;
+                submachine_op!(
+                    main_poseidon_gl,
+                    Some(selector),
+                    &[input_ptr.into_fe(), output_ptr.into_fe(), self.step.into()],
+                    inputs[0],
+                    inputs[1],
+                    inputs[2],
+                    inputs[3],
+                    inputs[4],
+                    inputs[5],
+                    inputs[6],
+                    inputs[7],
+                    inputs[8],
+                    inputs[9],
+                    inputs[10],
+                    inputs[11],
+                    outputs[0],
+                    outputs[1],
+                    outputs[2],
+                    outputs[3]
+                );
+                main_op!(poseidon_gl);
                 vec![]
             }
             "poseidon2_gl" => {
@@ -1976,6 +2096,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc.set_mem(output_ptr + i as u32 * 4, v, 0, 0); // TODO: step/selector for poseidon2
                 });
 
+                main_op!(poseidon2_gl);
                 vec![]
             }
             "affine_256" => {
@@ -2017,6 +2138,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     );
                 });
 
+                // TODO: main_arith event
+                main_op!(affine_256);
                 vec![]
             }
             "mod_256" => {
@@ -2048,6 +2171,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     );
                 });
 
+                // TODO: main_arith event
+                main_op!(mod_256);
                 vec![]
             }
             "ec_add" => {
@@ -2090,6 +2215,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     );
                 });
 
+                // TODO: main_arith event
+                main_op!(ec_add);
                 vec![]
             }
             "ec_double" => {
@@ -2124,6 +2251,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     );
                 });
 
+                // TODO: main_arith event
+                main_op!(ec_double);
                 vec![]
             }
             "commit_public" => {
@@ -2132,14 +2261,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, idx);
                 set_col!(tmp2_col, limb);
                 log::debug!("Committing public: idx={idx}, limb={limb}");
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("publics").add_operation(
-                        "access",
-                        &[idx, limb],
-                        None,
-                        &[],
-                    );
-                }
+                submachine_op!(main_publics, None, &[idx.into_fe(), limb.into_fe()],);
+                main_op!(commit_public);
                 vec![]
             }
             instr => {
