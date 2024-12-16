@@ -1,22 +1,23 @@
 #![allow(unused)]
-use std::{iter, mem, sync::Arc};
+use std::{ffi::c_void, iter, mem, sync::Arc};
 
 use auto_enums::auto_enum;
 use itertools::Itertools;
 use libloading::Library;
 use powdr_number::FieldElement;
 
-use crate::witgen::{jit::affine_symbolic_expression::MachineCallArgument, machines::LookupCell};
+use crate::witgen::{
+    data_structures::{finalizable_data::CompactData, mutable_state::MutableState},
+    jit::affine_symbolic_expression::MachineCallArgument,
+    machines::LookupCell,
+    QueryCallback,
+};
 
 use super::{
     affine_symbolic_expression::{Assertion, Effect},
     symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
     variable::{Cell, Variable},
 };
-
-// TODO We might want to pass arguments as direct function parameters
-// (instead of a struct), so that
-// they are stored in registers instead of the stack. Should be checked.
 
 #[repr(C)]
 pub struct MutSlice<T> {
@@ -68,22 +69,63 @@ impl<T> From<&[T]> for ConstSlice<T> {
 
 #[repr(C)]
 pub struct WitgenFunctionParams<'a, T: 'a> {
+    /// A mutable slice to the full trace table. It has to have enough pre-allocated space.
     data: MutSlice<T>,
+    /// A pointer to the data area of the "known" PaddedBitVec.
     known: *mut u32,
+    /// The offset of the row considered to be "row zero".
     row_offset: u64,
+    /// Input and output parameters if this is a machine call.
     params: MutSlice<LookupCell<'a, T>>,
-    call_machine: extern "C" fn(u64, MutSlice<LookupCell<'_, T>>) -> bool,
+    /// A callback to call submachines.
+    call_machine: extern "C" fn(*const c_void, u64, MutSlice<LookupCell<'_, T>>) -> bool,
 }
 
-pub type WitgenFunction<T> = extern "C" fn(WitgenFunctionParams<T>);
+pub struct WitgenFunction<T> {
+    // TODO We might want to pass arguments as direct function parameters
+    // (instead of a struct), so that
+    // they are stored in registers instead of the stack. Should be checked.
+    function: extern "C" fn(WitgenFunctionParams<T>),
+    library: Arc<Library>,
+}
 
+impl<T: FieldElement> WitgenFunction<T> {
+    /// Call the witgen function to fill the data and "known" tables
+    /// given a slice of parameters.
+    /// This function always succeeds (unless it panics).
+    pub fn call<Q: QueryCallback<T>>(
+        &self,
+        mutable_state: &MutableState<'_, T, Q>,
+        params: &mut [LookupCell<T>],
+        data: &mut CompactData<T>,
+        row_offset: u64,
+    ) {
+        let (data, known) = data.as_mut_slices();
+        (self.function)(WitgenFunctionParams {
+            data: data.into(),
+            known: known.as_mut_ptr(),
+            row_offset,
+            params: params.into(),
+            call_machine,
+        });
+    }
+}
+
+extern "C" fn call_machine<T>(
+    mutable_state: *const c_void,
+    identity_id: u64,
+    params: MutSlice<LookupCell<T>>,
+) -> bool {
+    false
+}
+
+/// Compile the given inferred effects into machine code and load it.
 pub fn compile_effects<T: FieldElement>(
     first_column_id: u64,
     column_count: usize,
     known_inputs: &[Variable],
-    //    params: &[LookupCell<'_, T>],
     effects: &[Effect<T, Variable>],
-) -> Result<(Arc<Library>, WitgenFunction<T>), String> {
+) -> Result<WitgenFunction<T>, String> {
     let utils = util_code::<T>(first_column_id, column_count)?;
     let witgen_code = witgen_code(known_inputs, effects);
     let code = format!("{utils}\n//-------------------------------\n{witgen_code}");
@@ -92,9 +134,11 @@ pub fn compile_effects<T: FieldElement>(
         .map_err(|e| format!("Failed to compile generated code: {e}"))?;
 
     let library = Arc::new(unsafe { libloading::Library::new(&lib_path.path).unwrap() });
-    let witgen_fun = unsafe { library.get::<WitgenFunction<T>>(b"witgen\0") }.unwrap();
-
-    Ok((library.clone(), *witgen_fun))
+    let witgen_fun = unsafe { library.get(b"witgen\0") }.unwrap();
+    Ok(WitgenFunction {
+        function: *witgen_fun,
+        library,
+    })
 }
 
 fn witgen_code<T: FieldElement>(
@@ -503,7 +547,7 @@ pub struct WitgenFunctionParams<'a, T: 'a> {{
     known: *mut u32,
     row_offset: u64,
     params: MutSlice<LookupCell<'a, T>>,
-    call_machine: extern "C" fn(u64, MutSlice<LookupCell<'_, T>>) -> bool,
+    call_machine: extern "C" fn(*const std::ffi::c_void, u64, MutSlice<LookupCell<'_, T>>) -> bool,
 }}
     "#
     ))
@@ -603,7 +647,11 @@ extern \"C\" fn witgen(
         );
     }
 
-    extern "C" fn no_call_machine(_: u64, _: MutSlice<LookupCell<'_, GoldilocksField>>) -> bool {
+    extern "C" fn no_call_machine(
+        _: *const c_void,
+        _: u64,
+        _: MutSlice<LookupCell<'_, GoldilocksField>>,
+    ) -> bool {
         false
     }
 
@@ -615,7 +663,7 @@ extern \"C\" fn witgen(
             assignment(&x, number(7)),
             assignment(&y, symbol(&x) + number(2)),
         ];
-        let (_lib, f) = compile_effects(0, 1, &[], &effects).unwrap();
+        let f = compile_effects(0, 1, &[], &effects).unwrap();
         let mut data = vec![GoldilocksField::from(0); 2];
         let mut known = vec![0; 1];
         let params = WitgenFunctionParams {
@@ -625,7 +673,7 @@ extern \"C\" fn witgen(
             params: Default::default(),
             call_machine: no_call_machine,
         };
-        f(params);
+        (f.function)(params);
         assert_eq!(data[0], GoldilocksField::from(7));
         assert_eq!(data[1], GoldilocksField::from(9));
         assert_eq!(known[0], 3);
@@ -645,8 +693,8 @@ extern \"C\" fn witgen(
         let row_count = 2;
         let column_count = 2;
         let data_len = column_count * row_count;
-        let (_lib1, f1) = compile_effects(0, column_count, &[], &effects1).unwrap();
-        let (_lib2, f2) = compile_effects(0, column_count, &[], &effects2).unwrap();
+        let f1 = compile_effects(0, column_count, &[], &effects1).unwrap();
+        let f2 = compile_effects(0, column_count, &[], &effects2).unwrap();
         let mut data = vec![GoldilocksField::from(0); data_len];
         let mut known = vec![0; row_count];
         let params1 = WitgenFunctionParams {
@@ -656,7 +704,7 @@ extern \"C\" fn witgen(
             params: Default::default(),
             call_machine: no_call_machine,
         };
-        f1(params1);
+        (f1.function)(params1);
         assert_eq!(data[0], GoldilocksField::from(7));
         assert_eq!(data[1], GoldilocksField::from(0));
         assert_eq!(data[2], GoldilocksField::from(0));
@@ -669,7 +717,7 @@ extern \"C\" fn witgen(
             params: Default::default(),
             call_machine: no_call_machine,
         };
-        f2(params2);
+        (f2.function)(params2);
         assert_eq!(data[0], GoldilocksField::from(7));
         assert_eq!(data[1], GoldilocksField::from(0));
         assert_eq!(data[2], GoldilocksField::from(9));
@@ -686,7 +734,7 @@ extern \"C\" fn witgen(
             assignment(&cell("x", 0, 3), number(8).field_div(&-number(2))),
             assignment(&cell("x", 0, 4), (-number(8)).field_div(&-number(2))),
         ];
-        let (_lib, f) = compile_effects(0, 1, &[], &effects).unwrap();
+        let f = compile_effects(0, 1, &[], &effects).unwrap();
         let mut data = vec![GoldilocksField::from(0); 5];
         let mut known = vec![0; 1];
         let params = WitgenFunctionParams {
@@ -696,7 +744,7 @@ extern \"C\" fn witgen(
             params: Default::default(),
             call_machine: no_call_machine,
         };
-        f(params);
+        (f.function)(params);
         assert_eq!(data[0], GoldilocksField::from(4));
         assert_eq!(
             data[1],
@@ -714,7 +762,7 @@ extern \"C\" fn witgen(
         let z = cell("z", 2, 0);
         let effects = vec![assignment(&x, symbol(&y) * symbol(&z))];
         let known_inputs = vec![y.clone(), z.clone()];
-        let (_lib, f) = compile_effects(0, 3, &known_inputs, &effects).unwrap();
+        let f = compile_effects(0, 3, &known_inputs, &effects).unwrap();
         let mut data = vec![
             GoldilocksField::from(0),
             GoldilocksField::from(3),
@@ -728,7 +776,7 @@ extern \"C\" fn witgen(
             params: Default::default(),
             call_machine: no_call_machine,
         };
-        f(params);
+        (f.function)(params);
         assert_eq!(data[0], -GoldilocksField::from(12));
     }
 
@@ -739,7 +787,7 @@ extern \"C\" fn witgen(
         let x_val: GoldilocksField = 7.into();
         let mut y_val: GoldilocksField = 9.into();
         let effects = vec![assignment(&y, symbol(&x) + number(7))];
-        let (_lib, f) = compile_effects(0, 1, &[x], &effects).unwrap();
+        let f = compile_effects(0, 1, &[x], &effects).unwrap();
         let mut data = vec![];
         let mut known = vec![];
         let mut params = vec![LookupCell::Input(&x_val), LookupCell::Output(&mut y_val)];
@@ -750,7 +798,7 @@ extern \"C\" fn witgen(
             params: params.as_mut_slice().into(),
             call_machine: no_call_machine,
         };
-        f(params);
+        (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(7 * 2));
     }
 }

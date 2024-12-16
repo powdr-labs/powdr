@@ -213,7 +213,7 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
             "RUSTFLAGS",
             format!(
                 "-C target-cpu=native{}",
-                output_asm.then(|| " --emit asm").unwrap_or("")
+                if output_asm { " --emit asm" } else { "" }
             ),
         )
         .arg("build")
@@ -222,9 +222,8 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
         .output()
         .unwrap();
     if !out.status.success() {
-        if true || log::log_enabled!(log::Level::Debug) {
+        if log::log_enabled!(log::Level::Debug) {
             let stderr = from_utf8(&out.stderr).unwrap_or("UTF-8 error in error message.");
-            println!("{stderr}");
             return Err(format!(
                 "Rust compiler error when JIT-compiling. Will use interpreter instead. Error message:\n{stderr}."
             ));
@@ -232,6 +231,7 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
             return Err("Rust compiler error when JIT-compiling. Will use interpreter instead. Set log level to DEBUG for reason.".to_string());
         }
     }
+    #[allow(clippy::print_stdout)]
     if output_asm {
         let asm_file = dir
             .join("target")

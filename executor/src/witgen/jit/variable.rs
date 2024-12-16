@@ -36,7 +36,7 @@ impl Variable {
     }
 
     /// If this variable corresponds to a witness cell, return the corresponding polynomial ID.
-    pub fn to_poly_id(&self) -> Option<powdr_ast::analyzed::PolyID> {
+    pub fn try_to_witness_poly_id(&self) -> Option<powdr_ast::analyzed::PolyID> {
         match self {
             Variable::Cell(cell) => Some(PolyID {
                 id: cell.id,
