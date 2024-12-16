@@ -7,5 +7,5 @@ let new_col_with_hint: -> expr = constr || {
 machine Main with degree: 4 {
     let x;
     let w = new_col_with_hint();
-    x = w;
+    x = w + 1;
 }

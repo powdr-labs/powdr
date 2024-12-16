@@ -20,7 +20,7 @@ use builder::TraceBuilder;
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::Analyzed,
+    analyzed::{AlgebraicExpression, Analyzed, Identity, LookupIdentity},
     asm_analysis::{AnalysisASMFile, CallableSymbol, FunctionStatement, LabelStatement, Machine},
     parsed::{
         asm::{parse_absolute_path, AssignmentRegister, DebugDirective},
@@ -659,6 +659,18 @@ mod builder {
             }
         }
 
+        pub fn try_get_col(&self, name: &str) -> Option<Elem<F>> {
+            if let ExecMode::Trace = self.mode {
+                self.trace
+                    .cols
+                    .get(name)
+                    .and_then(|col| col.last())
+                    .copied()
+            } else {
+                None
+            }
+        }
+
         pub fn push_row(&mut self) {
             if let ExecMode::Trace = self.mode {
                 self.trace
@@ -1079,10 +1091,21 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         self.proc.backup_reg_mem();
 
-        set_col!(X, get_col!(X_const));
-        set_col!(Y, get_col!(Y_const));
-        set_col!(Z, get_col!(Z_const));
-        set_col!(W, get_col!(W_const));
+        if let Some(x_const) = self.proc.try_get_col("main::X_const") {
+            set_col!(X, x_const);
+        }
+
+        if let Some(y_const) = self.proc.try_get_col("main::Y_const") {
+            set_col!(Y, y_const);
+        }
+
+        if let Some(z_const) = self.proc.try_get_col("main::Z_const") {
+            set_col!(Z, z_const);
+        }
+
+        if let Some(w_const) = self.proc.try_get_col("main::W_const") {
+            set_col!(W, w_const);
+        }
         self.proc
             .set_col(&format!("main::instr_{name}"), Elem::from_u32_as_fe(1));
 
@@ -2419,23 +2442,36 @@ fn execute_inner<F: FieldElement>(
         .unwrap_or_default();
 
     // program columns to witness columns
-    let program_cols: HashMap<_, _> = if let Some(fixed) = &fixed {
-        fixed
-            .iter()
-            .filter_map(|(name, _col)| {
-                if !name.starts_with("main__rom::p_") {
-                    return None;
-                }
-                let wit_name = format!("main::{}", name.strip_prefix("main__rom::p_").unwrap());
-                if !witness_cols.contains(&wit_name) {
-                    return None;
-                }
-                Some((name.clone(), wit_name))
-            })
-            .collect()
-    } else {
-        Default::default()
-    };
+    let program_cols: HashMap<_, _> = opt_pil
+        .map(|pil| {
+            pil.identities
+                .iter()
+                .flat_map(|id| match id {
+                    Identity::Lookup(LookupIdentity { left, right, .. }) => left
+                        .expressions
+                        .iter()
+                        .zip(right.expressions.iter())
+                        .filter_map(|(l, r)| match (l, r) {
+                            (
+                                AlgebraicExpression::Reference(l),
+                                AlgebraicExpression::Reference(r),
+                            ) => {
+                                if r.name.starts_with("main__rom::p_")
+                                    && witness_cols.contains(&l.name)
+                                {
+                                    Some((r.name.clone(), l.name.clone()))
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>(),
+                    _ => vec![],
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
     let proc = match TraceBuilder::<'_, F>::new(
         main_machine,
