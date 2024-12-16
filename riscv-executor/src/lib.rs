@@ -506,8 +506,7 @@ mod builder {
         asm_analysis::{Machine, RegisterTy},
     };
     use powdr_number::FieldElement;
-    use rayon::iter::ParallelIterator;
-    use rayon::iter::{IntoParallelIterator, ParallelBridge};
+    use rayon::iter::{ParallelBridge, ParallelIterator};
 
     use crate::{
         pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MachineInstance, MainOp,
