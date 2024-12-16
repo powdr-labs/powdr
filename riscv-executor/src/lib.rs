@@ -626,17 +626,6 @@ mod builder {
             self.regs[idx as usize] = value;
         }
 
-        pub fn set_col_idx(&mut self, name: &str, idx: usize, value: Elem<F>) {
-            if let ExecMode::Trace = self.mode {
-                let col = self
-                    .trace
-                    .cols
-                    .get_mut(name)
-                    .unwrap_or_else(|| panic!("col not found: {name}"));
-                *col.get_mut(idx).unwrap() = value;
-            }
-        }
-
         pub fn set_col(&mut self, name: &str, value: Elem<F>) {
             if let ExecMode::Trace = self.mode {
                 let col = self
