@@ -1,5 +1,9 @@
 #![allow(unused)]
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+    hash::Hash,
+};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
@@ -17,42 +21,47 @@ use crate::witgen::{
 use super::{
     super::{range_constraints::RangeConstraint, FixedData},
     affine_symbolic_expression::{AffineSymbolicExpression, Effect, ProcessResult},
-    cell::Cell,
+    variable::{Cell, Variable},
 };
+
+pub struct ProcessSummary {
+    pub complete: bool,
+    pub progress: bool,
+}
 
 /// This component can generate code that solves identities.
 /// It needs a driver that tells it which identities to process on which rows.
 pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_evaluator: FixedEval,
-    derived_range_constraints: HashMap<Cell, RangeConstraint<T>>,
-    known_cells: HashSet<Cell>,
-    code: Vec<Effect<T, Cell>>,
+    derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
+    known_variables: HashSet<Variable>,
+    code: Vec<Effect<T, Variable>>,
 }
 
 impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, FixedEval> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         fixed_evaluator: FixedEval,
-        known_cells: impl IntoIterator<Item = Cell>,
+        known_variables: impl IntoIterator<Item = Variable>,
     ) -> Self {
         Self {
             fixed_data,
             fixed_evaluator,
             derived_range_constraints: Default::default(),
-            known_cells: known_cells.into_iter().collect(),
+            known_variables: known_variables.into_iter().collect(),
             code: Default::default(),
         }
     }
 
-    pub fn code(self) -> Vec<Effect<T, Cell>> {
+    pub fn code(self) -> Vec<Effect<T, Variable>> {
         self.code
     }
 
     /// Process an identity on a certain row.
     /// Returns true if this identity/row pair was fully processed and
     /// should not be considered again.
-    pub fn process_identity(&mut self, id: &Identity<T>, row_offset: i32) -> bool {
+    pub fn process_identity(&mut self, id: &Identity<T>, row_offset: i32) -> ProcessSummary {
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                 self.process_polynomial_identity(expression, row_offset)
@@ -76,15 +85,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             }
             Identity::Connect(_) => ProcessResult::empty(),
         };
-        self.ingest_effects(result.effects);
-        result.complete
+        self.ingest_effects(result)
     }
 
     fn process_polynomial_identity(
         &self,
-        expression: &'a Expression<T>,
+        expression: &Expression<T>,
         offset: i32,
-    ) -> ProcessResult<T, Cell> {
+    ) -> ProcessResult<T, Variable> {
         if let Some(r) = self.evaluate(expression, offset) {
             // TODO propagate or report error properly.
             // If solve returns an error, it means that the constraint is conflicting.
@@ -102,7 +110,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         left: &SelectedExpressions<T>,
         right: &SelectedExpressions<T>,
         offset: i32,
-    ) -> ProcessResult<T, Cell> {
+    ) -> ProcessResult<T, Variable> {
         // TODO: In the future, call the 'mutable state' to check if the
         // lookup can always be answered.
 
@@ -150,69 +158,84 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         ProcessResult::empty()
     }
 
-    fn ingest_effects(&mut self, effects: Vec<Effect<T, Cell>>) {
-        for e in effects {
+    /// Ingests effects. Returns true if any progress was made.
+    fn ingest_effects(&mut self, process_result: ProcessResult<T, Variable>) -> ProcessSummary {
+        let mut progress = false;
+        for e in process_result.effects {
             match &e {
-                Effect::Assignment(cell, assignment) => {
-                    self.known_cells.insert(cell.clone());
+                Effect::Assignment(variable, assignment) => {
+                    assert!(self.known_variables.insert(variable.clone()));
                     if let Some(rc) = assignment.range_constraint() {
-                        // If the cell was determined to be a constant, we add this
+                        // If the variable was determined to be a constant, we add this
                         // as a range constraint, so we can use it in future evaluations.
-                        self.add_range_constraint(cell.clone(), rc);
+                        self.add_range_constraint(variable.clone(), rc);
                     }
+                    progress = true;
                     self.code.push(e);
                 }
-                Effect::RangeConstraint(cell, rc) => {
-                    self.add_range_constraint(cell.clone(), rc.clone());
+                Effect::RangeConstraint(variable, rc) => {
+                    progress |= self.add_range_constraint(variable.clone(), rc.clone());
                 }
                 Effect::MachineCall(_, arguments) => {
                     for arg in arguments {
                         if let MachineCallArgument::Unknown(expr) = arg {
-                            let cell = expr.single_unknown_variable().unwrap();
-                            self.known_cells.insert(cell.clone());
+                            let variable = expr.single_unknown_variable().unwrap();
+                            self.known_variables.insert(variable.clone());
                         }
                     }
+                    progress = true;
                     self.code.push(e);
                 }
                 Effect::Assertion(_) => self.code.push(e),
             }
         }
+        ProcessSummary {
+            complete: process_result.complete,
+            progress,
+        }
     }
 
-    fn add_range_constraint(&mut self, cell: Cell, rc: RangeConstraint<T>) {
+    /// Adds a range constraint to the set of derived range constraints. Returns true if progress was made.
+    fn add_range_constraint(&mut self, variable: Variable, rc: RangeConstraint<T>) -> bool {
         let rc = self
-            .range_constraint(cell.clone())
+            .range_constraint(variable.clone())
             .map_or(rc.clone(), |existing_rc| existing_rc.conjunction(&rc));
-        if !self.known_cells.contains(&cell) {
+        if !self.known_variables.contains(&variable) {
             if let Some(v) = rc.try_to_single_value() {
-                // Special case: Cell is fixed to a constant by range constraints only.
-                self.known_cells.insert(cell.clone());
-                self.code.push(Effect::Assignment(cell.clone(), v.into()));
+                // Special case: Variable is fixed to a constant by range constraints only.
+                self.known_variables.insert(variable.clone());
+                self.code
+                    .push(Effect::Assignment(variable.clone(), v.into()));
             }
         }
-        self.derived_range_constraints.insert(cell.clone(), rc);
+        let old_rc = self
+            .derived_range_constraints
+            .insert(variable.clone(), rc.clone());
+
+        // If the range constraint changed, we made progress.
+        old_rc != Some(rc)
     }
 
     fn evaluate(
         &self,
         expr: &Expression<T>,
         offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Cell>> {
+    ) -> Option<AffineSymbolicExpression<T, Variable>> {
         Some(match expr {
             Expression::Reference(r) => {
                 if r.is_fixed() {
                     self.fixed_evaluator.evaluate(r, offset)?.into()
                 } else {
-                    let cell = Cell::from_reference(r, offset);
-                    // If a cell is known and has a compile-time constant value,
+                    let variable = Variable::from_reference(r, offset);
+                    // If a variable is known and has a compile-time constant value,
                     // that value is stored in the range constraints.
-                    let rc = self.range_constraint(cell.clone());
+                    let rc = self.range_constraint(variable.clone());
                     if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
                         val.into()
-                    } else if self.known_cells.contains(&cell) {
-                        AffineSymbolicExpression::from_known_symbol(cell, rc)
+                    } else if self.known_variables.contains(&variable) {
+                        AffineSymbolicExpression::from_known_symbol(variable, rc)
                     } else {
-                        AffineSymbolicExpression::from_unknown_variable(cell, rc)
+                        AffineSymbolicExpression::from_unknown_variable(variable, rc)
                     }
                 }
             }
@@ -230,7 +253,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         &self,
         op: &AlgebraicBinaryOperation<T>,
         offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Cell>> {
+    ) -> Option<AffineSymbolicExpression<T, Variable>> {
         let left = self.evaluate(&op.left, offset)?;
         let right = self.evaluate(&op.right, offset)?;
         match op.op {
@@ -251,28 +274,29 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         &self,
         op: &AlgebraicUnaryOperation<T>,
         offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Cell>> {
+    ) -> Option<AffineSymbolicExpression<T, Variable>> {
         let expr = self.evaluate(&op.expr, offset)?;
         match op.op {
             AlgebraicUnaryOperator::Minus => Some(-&expr),
         }
     }
 
-    /// Returns the current best-known range constraint on the given cell
+    /// Returns the current best-known range constraint on the given variable
     /// combining global range constraints and newly derived local range constraints.
-    fn range_constraint(&self, cell: Cell) -> Option<RangeConstraint<T>> {
-        self.fixed_data
-            .global_range_constraints
-            .range_constraint(&AlgebraicReference {
-                name: Default::default(),
-                poly_id: PolyID {
-                    id: cell.id,
-                    ptype: PolynomialType::Committed,
-                },
-                next: false,
+    fn range_constraint(&self, variable: Variable) -> Option<RangeConstraint<T>> {
+        variable
+            .to_poly_id()
+            .and_then(|poly_id| {
+                self.fixed_data
+                    .global_range_constraints
+                    .range_constraint(&AlgebraicReference {
+                        name: Default::default(),
+                        poly_id,
+                        next: false,
+                    })
             })
             .iter()
-            .chain(self.derived_range_constraints.get(&cell))
+            .chain(self.derived_range_constraints.get(&variable))
             .cloned()
             .reduce(|gc, rc| gc.conjunction(&rc))
     }
@@ -281,6 +305,16 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 pub trait FixedEvaluator<T: FieldElement> {
     fn evaluate(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
         None
+    }
+}
+
+pub struct FixedEvaluatorForFixedData<'a, T: FieldElement>(pub &'a FixedData<'a, T>);
+impl<'a, T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'a, T> {
+    fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
+        assert!(var.is_fixed());
+        let values = self.0.fixed_cols[&var.poly_id].values_max_size();
+        let row = (row_offset as usize + var.next as usize) % values.len();
+        Some(values[row])
     }
 }
 
@@ -294,53 +328,14 @@ mod test {
 
     use crate::{
         constant_evaluator,
-        witgen::{global_constraints, jit::affine_symbolic_expression::Assertion, FixedData},
+        witgen::{
+            global_constraints,
+            jit::{affine_symbolic_expression::Assertion, test_util::format_code},
+            FixedData,
+        },
     };
 
     use super::*;
-
-    fn format_code(effects: &[Effect<GoldilocksField, Cell>]) -> String {
-        effects
-            .iter()
-            .map(|effect| match effect {
-                Effect::Assignment(v, expr) => format!("{v} = {expr};"),
-                Effect::Assertion(Assertion {
-                    lhs,
-                    rhs,
-                    expected_equal,
-                }) => {
-                    format!(
-                        "assert {lhs} {} {rhs};",
-                        if *expected_equal { "==" } else { "!=" }
-                    )
-                }
-                Effect::MachineCall(id, args) => {
-                    format!(
-                        "lookup({id}, [{}]);",
-                        args.iter()
-                            .map(|arg| match arg {
-                                MachineCallArgument::Known(k) => format!("Known({k})"),
-                                MachineCallArgument::Unknown(u) => format!("Unknown({u})"),
-                            })
-                            .join(", ")
-                    )
-                }
-                Effect::RangeConstraint(..) => {
-                    panic!("Range constraints should not be part of the code.")
-                }
-            })
-            .join("\n")
-    }
-
-    struct FixedEvaluatorForFixedData<'a>(&'a FixedData<'a, GoldilocksField>);
-    impl<'a> FixedEvaluator<GoldilocksField> for FixedEvaluatorForFixedData<'a> {
-        fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<GoldilocksField> {
-            assert!(var.is_fixed());
-            let values = self.0.fixed_cols[&var.poly_id].values_max_size();
-            let row = (row_offset as usize + var.next as usize) % values.len();
-            Some(values[row])
-        }
-    }
 
     fn solve_on_rows(
         input: &str,
@@ -354,13 +349,14 @@ mod test {
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let (fixed_data, retained_identities) =
             global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
+
         let known_cells = known_cells.iter().map(|(name, row_offset)| {
             let id = fixed_data.try_column_by_name(name).unwrap().id;
-            Cell {
+            Variable::Cell(Cell {
                 column_name: name.to_string(),
                 id,
                 row_offset: *row_offset,
-            }
+            })
         });
 
         let ref_eval = FixedEvaluatorForFixedData(&fixed_data);
@@ -372,7 +368,9 @@ mod test {
             counter += 1;
             for row in rows {
                 for id in retained_identities.iter() {
-                    if !complete.contains(&(id.id(), *row)) && witgen.process_identity(id, *row) {
+                    if !complete.contains(&(id.id(), *row))
+                        && witgen.process_identity(id, *row).complete
+                    {
                         complete.insert((id.id(), *row));
                     }
                 }
@@ -480,18 +478,18 @@ assert Xor::A[6] == (Xor::A[6] | 16777215);
 Xor::C_byte[5] = ((Xor::C[6] & 16711680) // 65536);
 Xor::C[5] = (Xor::C[6] & 65535);
 assert Xor::C[6] == (Xor::C[6] | 16777215);
-lookup(0, [Known(Xor::A_byte[6]), Unknown(Xor::B_byte[6]), Known(Xor::C_byte[6])]);
+machine_call(0, [Known(Xor::A_byte[6]), Unknown(Xor::B_byte[6]), Known(Xor::C_byte[6])]);
 Xor::A_byte[4] = ((Xor::A[5] & 65280) // 256);
 Xor::A[4] = (Xor::A[5] & 255);
 assert Xor::A[5] == (Xor::A[5] | 65535);
 Xor::C_byte[4] = ((Xor::C[5] & 65280) // 256);
 Xor::C[4] = (Xor::C[5] & 255);
 assert Xor::C[5] == (Xor::C[5] | 65535);
-lookup(0, [Known(Xor::A_byte[5]), Unknown(Xor::B_byte[5]), Known(Xor::C_byte[5])]);
+machine_call(0, [Known(Xor::A_byte[5]), Unknown(Xor::B_byte[5]), Known(Xor::C_byte[5])]);
 Xor::A_byte[3] = Xor::A[4];
 Xor::C_byte[3] = Xor::C[4];
-lookup(0, [Known(Xor::A_byte[4]), Unknown(Xor::B_byte[4]), Known(Xor::C_byte[4])]);
-lookup(0, [Known(Xor::A_byte[3]), Unknown(Xor::B_byte[3]), Known(Xor::C_byte[3])]);
+machine_call(0, [Known(Xor::A_byte[4]), Unknown(Xor::B_byte[4]), Known(Xor::C_byte[4])]);
+machine_call(0, [Known(Xor::A_byte[3]), Unknown(Xor::B_byte[3]), Known(Xor::C_byte[3])]);
 Xor::B[4] = Xor::B_byte[3];
 Xor::B[5] = (Xor::B[4] + (Xor::B_byte[4] * 256));
 Xor::B[6] = (Xor::B[5] + (Xor::B_byte[5] * 65536));
