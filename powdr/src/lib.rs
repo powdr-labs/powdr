@@ -132,6 +132,10 @@ impl Session {
         }
     }
 
+    pub fn write_data<S: serde::Serialize>(&mut self, data: &S) {
+        self.pipeline.add_initial_data(data);
+    }
+
     pub fn run(&mut self) {
         run(&mut self.pipeline);
     }
@@ -278,7 +282,26 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
     let start = Instant::now();
 
     let asm = pipeline.compute_analyzed_asm().unwrap().clone();
-    let initial_memory = riscv::continuations::load_initial_memory(&asm);
+    let mut initial_memory = riscv::continuations::load_initial_memory(&asm);
+
+    let mut user_init_data = pipeline.initial_data();
+    if user_init_data.len() % 4 != 0 {
+        let padding_needed = 4 - (user_init_data.len() % 4);
+        user_init_data.extend(std::iter::repeat(0).take(padding_needed));
+    }
+
+    let mut data = core::mem::ManuallyDrop::new(user_init_data); // Prevent Vec<u8> from being dropped
+    let ptr = data.as_mut_ptr() as *mut u32;
+    let len = data.len() / 4;
+    let capacity = data.capacity() / 4;
+
+    let user_init_data = unsafe { Vec::from_raw_parts(ptr, len, capacity) };
+
+    user_init_data.iter().enumerate().for_each(|(i, data)| {
+        println!("Inserting data {data:x} at address: {}", i as u32 * 4);
+        initial_memory.insert(i as u32 * 4, *data);
+    });
+    initial_memory.insert(user_init_data.len() as u32 * 4, 0);
     let trace_len = riscv_executor::execute_fast(
         &asm,
         initial_memory,
