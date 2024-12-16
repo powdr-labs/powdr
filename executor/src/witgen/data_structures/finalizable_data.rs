@@ -94,20 +94,22 @@ impl<T: FieldElement> CompactData<T> {
 
     pub fn get(&self, row: usize, col: u64) -> (T, bool) {
         let idx = self.index(row, col);
-        (self.data[idx], self.known_cells.get(row, col))
+        let relative_col = col - self.first_column_id;
+        (self.data[idx], self.known_cells.get(row, relative_col))
     }
 
     pub fn set(&mut self, row: usize, col: u64, value: T) {
         let idx = self.index(row, col);
-        assert!(!self.known_cells.get(row, col) || self.data[idx] == value);
+        let relative_col = col - self.first_column_id;
+        assert!(!self.known_cells.get(row, relative_col) || self.data[idx] == value);
         self.data[idx] = value;
-        self.known_cells.set(row, col, true);
+        self.known_cells.set(row, relative_col, true);
     }
 
     pub fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (u64, &T)> {
         (0..self.column_count).filter_map(move |i| {
-            let col = self.first_column_id + i as u64;
-            self.known_cells.get(row, col).then(|| {
+            self.known_cells.get(row, i as u64).then(|| {
+                let col = self.first_column_id + i as u64;
                 let idx = self.index(row, col);
                 (col, &self.data[idx])
             })
