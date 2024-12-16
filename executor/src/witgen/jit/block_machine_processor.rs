@@ -73,7 +73,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         for (index, expr) in connection.right.expressions.iter().enumerate() {
             if !known_args[index] {
                 let param_i =
-                    AffineSymbolicExpression::from_known_symbol(Variable::Param(index), None);
+                    AffineSymbolicExpression::from_unknown_variable(Variable::Param(index), None);
                 witgen
                     .assign(expr, self.latch_row as i32, param_i)
                     .map_err(|_| format!("Could not solve for params[{index}]"))?;
