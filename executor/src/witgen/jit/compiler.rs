@@ -751,6 +751,36 @@ extern \"C\" fn witgen(
     }
 
     #[test]
+    fn integer_division() {
+        let x = cell("x", 0, 0);
+        let y = cell("y", 1, 0);
+        let z = cell("z", 2, 0);
+        let effects = vec![
+            assignment(&y, symbol(&x).integer_div(&number(10))),
+            assignment(&z, symbol(&x).integer_div(&-number(10))),
+        ];
+        let known_inputs = vec![x.clone()];
+        let f = compile_effects(0, 3, &known_inputs, &effects).unwrap();
+        let mut data = vec![
+            GoldilocksField::from(23),
+            GoldilocksField::from(0),
+            GoldilocksField::from(0),
+        ];
+        let mut known = vec![0; 1];
+        let params = WitgenFunctionParams {
+            data: data.as_mut_slice().into(),
+            known: known.as_mut_ptr(),
+            row_offset: 0,
+            params: Default::default(),
+            call_machine: no_call_machine,
+        };
+        (f.function)(params);
+        assert_eq!(data[0], GoldilocksField::from(23));
+        assert_eq!(data[1], GoldilocksField::from(2));
+        assert_eq!(data[2], GoldilocksField::from(0));
+    }
+
+    #[test]
     fn input_output() {
         let x = param(0);
         let y = param(1);
