@@ -66,6 +66,19 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         result
     }
 
+    /// Like 'process_lookup_direct', but also records the time spent in this machine.
+    fn process_lookup_direct_timed<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        mutable_state: &'b MutableState<'a, T, Q>,
+        identity_id: u64,
+        values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        record_start(self.name());
+        let result = self.process_lookup_direct(mutable_state, identity_id, values);
+        record_end(self.name());
+        result
+    }
+
     /// Returns a unique name for this machine.
     fn name(&self) -> &str;
 
@@ -106,6 +119,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn identity_ids(&self) -> Vec<u64>;
 }
 
+#[repr(C)]
 pub enum LookupCell<'a, T> {
     /// Value is known (i.e. an input)
     Input(&'a T),

@@ -9,6 +9,8 @@ struct Op<F: FieldElement> {
     step: u32,
     value: F,
     write: F,
+    // each machine that's called via permutation has a selector array, with one entry per incoming permutation.
+    // This is the idx assigned to the `link` triggering the memory operation.
     selector_idx: u8,
 }
 
