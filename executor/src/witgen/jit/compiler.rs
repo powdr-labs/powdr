@@ -1,3 +1,4 @@
+#![allow(unused)]
 use std::{iter, mem, sync::Arc};
 
 use auto_enums::auto_enum;
@@ -66,13 +67,11 @@ impl<T> From<&[T]> for ConstSlice<T> {
 }
 
 #[repr(C)]
-pub struct WitgenFunctionParams<T> {
+pub struct WitgenFunctionParams<'a, T: 'a> {
     data: MutSlice<T>,
     known: *mut u32,
     row_offset: u64,
-    // TODO do we really want to reshuffle?
-    input_params: MutSlice<*mut T>,
-    output_params: ConstSlice<*const T>,
+    params: MutSlice<LookupCell<'a, T>>,
     call_machine: extern "C" fn(u64, MutSlice<LookupCell<'_, T>>) -> bool,
 }
 
@@ -105,16 +104,14 @@ fn witgen_code<T: FieldElement>(
     let load_known_inputs = known_inputs
         .iter()
         .map(|v| {
-            format!(
-                "    let {} = {};",
-                variable_to_string(v),
-                match v {
-                    Variable::Cell(c) => {
-                        format!("get(data, row_offset, {}, {})", c.row_offset, c.id)
-                    }
-                    Variable::Param(i) => format!("params[{i}]",),
+            let var_name = variable_to_string(v);
+            let value = match v {
+                Variable::Cell(c) => {
+                    format!("get(data, row_offset, {}, {})", c.row_offset, c.id)
                 }
-            )
+                Variable::Param(i) => format!("get_param(params, {i})"),
+            };
+            format!("    let {var_name} = {value};")
         })
         .format("\n");
     let main_code = effects.iter().map(format_effect).format("\n");
@@ -134,7 +131,7 @@ fn witgen_code<T: FieldElement>(
                     )
                 }
                 Variable::Param(i) => {
-                    format!("    params[{i}] = {value};")
+                    format!("    set_param(params, {i}, {value});")
                 }
             }
         })
@@ -162,13 +159,13 @@ extern "C" fn witgen(
         data,
         known,
         row_offset,
-        input_params,
-        output_params,
+        params,
         call_machine
     }}: WitgenFunctionParams<FieldElement>,
 ) {{
     let known = known_to_slice(known, data.len);
-    let data = data_to_slice(data.data, data.len);
+    let data = data.to_mut_slice();
+    let params = params.to_mut_slice();
 
 {load_known_inputs}
 
@@ -275,7 +272,7 @@ fn format_row_offset(row_offset: i32) -> String {
     if row_offset < 0 {
         format!("m{}", -row_offset)
     } else {
-        format!("{}", row_offset)
+        format!("{row_offset}")
     }
 }
 
@@ -304,7 +301,7 @@ fn util_code<T: FieldElement>(first_column_id: u64, column_count: usize) -> Resu
     let modulus = T::modulus();
 
     Ok(format!(
-        r#"#![allow(non_snake_case)]
+        r#"#![allow(non_snake_case, unused_parens)]
 
 #[derive(Clone, Copy, Default)]
 #[repr(transparent)]
@@ -374,7 +371,7 @@ impl std::ops::Div<FieldElement> for FieldElement {{
 fn try_integer_div_without_remainder(a: IntType, b: IntType) -> Option<IntType> {{
     (a % b == 0).then(|| a / b)
 }}
-fn full_field_div(a: FieldElement, b: FieldElement) -> FieldElement {{
+fn full_field_div(_: FieldElement, _: FieldElement) -> FieldElement {{
     todo!()
     // TODO generate the algorithm we use for goldilocks
     // for a generic prime field.
@@ -398,10 +395,6 @@ impl std::ops::BitOr<FieldElement> for FieldElement {{
     }}
 }}
 
-#[inline]
-fn data_to_slice<'a>(data: *mut FieldElement, len: u64) -> &'a mut [FieldElement] {{
-    unsafe {{ std::slice::from_raw_parts_mut(data, len as usize) }}
-}}
 #[inline]
 fn known_to_slice<'a>(known: *mut u32, len: u64) -> &'a mut [u32] {{
     let words_per_row = ({column_count} + 31) / 32;
@@ -442,6 +435,21 @@ fn set_known(known: &mut [u32], global_offset: u64, local_offset: i32, column: u
     known[known_idx as usize] |= 1 << (known_bit);
 }}
 
+#[inline]
+fn get_param(params: &[LookupCell<FieldElement>], i: usize) -> FieldElement {{
+    match params[i] {{
+        LookupCell::Input(v) => *v,
+        LookupCell::Output(_) => panic!("Output cell used as input"),
+    }}
+}}
+#[inline]
+fn set_param(params: &mut [LookupCell<FieldElement>], i: usize, value: FieldElement) {{
+    match &mut params[i] {{
+        LookupCell::Input(_) => panic!("Input cell used as output"),
+        LookupCell::Output(v) => **v = value,
+    }}
+}}
+
 #[repr(C)]
 enum LookupCell<'a, T> {{
     /// Value is known (i.e. an input)
@@ -457,12 +465,20 @@ pub struct MutSlice<T> {{
 }}
 
 impl<T> From<&mut [T]> for MutSlice<T> {{
+    #[inline]
     fn from(slice: &mut [T]) -> Self {{
         MutSlice {{
             data: slice.as_mut_ptr(),
             len: slice.len() as u64,
         }}
     }}
+}}
+
+impl<T> MutSlice<T> {{
+    #[inline]
+    fn to_mut_slice<'a>(self) -> &'a mut [T] {{
+        unsafe {{ std::slice::from_raw_parts_mut(self.data, self.len as usize) }}
+    }}  
 }}
 
 #[repr(C)]
@@ -472,6 +488,7 @@ pub struct ConstSlice<T> {{
 }}
 
 impl<T> From<&[T]> for ConstSlice<T> {{
+    #[inline]
     fn from(slice: &[T]) -> Self {{
         ConstSlice {{
             data: slice.as_ptr(),
@@ -481,12 +498,11 @@ impl<T> From<&[T]> for ConstSlice<T> {{
 }}
 
 #[repr(C)]
-pub struct WitgenFunctionParams<T> {{
+pub struct WitgenFunctionParams<'a, T: 'a> {{
     data: MutSlice<T>,
     known: *mut u32,
     row_offset: u64,
-    input_params: MutSlice<*mut T>,
-    output_params: ConstSlice<*const T>,
+    params: MutSlice<LookupCell<'a, T>>,
     call_machine: extern "C" fn(u64, MutSlice<LookupCell<'_, T>>) -> bool,
 }}
     "#
@@ -512,6 +528,10 @@ mod tests {
             row_offset,
             id,
         })
+    }
+
+    fn param(i: usize) -> Variable {
+        Variable::Param(i)
     }
 
     fn symbol(var: &Variable) -> SymbolicExpression<GoldilocksField, Variable> {
@@ -556,13 +576,13 @@ extern \"C\" fn witgen(
         data,
         known,
         row_offset,
-        input_params,
-        output_params,
+        params,
         call_machine
     }: WitgenFunctionParams<FieldElement>,
 ) {
     let known = known_to_slice(known, data.len);
-    let data = data_to_slice(data.data, data.len);
+    let data = data.to_mut_slice();
+    let params = params.to_mut_slice();
 
     let c_a_2_0 = get(data, row_offset, 0, 2);
 
@@ -602,8 +622,7 @@ extern \"C\" fn witgen(
             data: MutSlice::from(data.as_mut_slice()),
             known: known.as_mut_ptr(),
             row_offset: 0,
-            input_params: Default::default(),
-            output_params: Default::default(),
+            params: Default::default(),
             call_machine: no_call_machine,
         };
         f(params);
@@ -634,8 +653,7 @@ extern \"C\" fn witgen(
             data: MutSlice::from(data.as_mut_slice()),
             known: known.as_mut_ptr(),
             row_offset: 0,
-            input_params: Default::default(),
-            output_params: Default::default(),
+            params: Default::default(),
             call_machine: no_call_machine,
         };
         f1(params1);
@@ -648,8 +666,7 @@ extern \"C\" fn witgen(
             data: MutSlice::from(data.as_mut_slice()),
             known: known.as_mut_ptr(),
             row_offset: 1,
-            input_params: Default::default(),
-            output_params: Default::default(),
+            params: Default::default(),
             call_machine: no_call_machine,
         };
         f2(params2);
@@ -676,8 +693,7 @@ extern \"C\" fn witgen(
             data: data.as_mut_slice().into(),
             known: known.as_mut_ptr(),
             row_offset: 0,
-            input_params: Default::default(),
-            output_params: Default::default(),
+            params: Default::default(),
             call_machine: no_call_machine,
         };
         f(params);
@@ -709,11 +725,32 @@ extern \"C\" fn witgen(
             data: data.as_mut_slice().into(),
             known: known.as_mut_ptr(),
             row_offset: 0,
-            input_params: Default::default(),
-            output_params: Default::default(),
+            params: Default::default(),
             call_machine: no_call_machine,
         };
         f(params);
         assert_eq!(data[0], -GoldilocksField::from(12));
+    }
+
+    #[test]
+    fn input_output() {
+        let x = param(0);
+        let y = param(1);
+        let x_val: GoldilocksField = 7.into();
+        let mut y_val: GoldilocksField = 9.into();
+        let effects = vec![assignment(&y, symbol(&x) + number(7))];
+        let (_lib, f) = compile_effects(0, 1, &[x], &effects).unwrap();
+        let mut data = vec![];
+        let mut known = vec![];
+        let mut params = vec![LookupCell::Input(&x_val), LookupCell::Output(&mut y_val)];
+        let params = WitgenFunctionParams {
+            data: data.as_mut_slice().into(),
+            known: known.as_mut_ptr(),
+            row_offset: 0,
+            params: params.as_mut_slice().into(),
+            call_machine: no_call_machine,
+        };
+        f(params);
+        assert_eq!(y_val, GoldilocksField::from(7 * 2));
     }
 }
