@@ -1,6 +1,5 @@
 use super::decompose_lower32;
 use super::poseidon_gl;
-use super::Elem;
 use powdr_number::{FieldElement, LargeInt};
 
 use std::collections::HashMap;
@@ -14,10 +13,11 @@ trait SubmachineKind {
     /// Add an operation to the submachine trace
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        name: &str,
-        args: &[Elem<F>],
-        selector: Option<u32>,
-        submachines: &[&mut dyn Submachine<F>],
+        // pil lookup RHS values (including selector idx, if present)
+        selector_idx: Option<u8>,
+        lookup_args: &[F],
+        // extra info provided by the executor
+        extra: &[F],
     );
     /// Some machines need more than simply copying first block
     fn dummy_block_fix<F: FieldElement>(_trace: &mut SubmachineTrace<F>, _rows: u32) {}
@@ -44,159 +44,163 @@ pub trait Submachine<F: FieldElement> {
     /// current number of rows
     fn len(&self) -> u32;
     /// add a new operation to the trace
-    fn add_operation(
-        &mut self,
-        name: &str,
-        args: &[Elem<F>],
-        selector: Option<u32>,
-        submachines: &[&mut dyn Submachine<F>],
-    );
-    /// apply final row overrides (needed because the trace is circular)
-    fn final_row_override(&mut self);
-    /// push a dummy block to the trace
-    fn push_dummy_block(&mut self, machine_max_degree: usize);
-    /// Consume the trace returning a list of columns.
-    /// Should be called only once.
-    fn take_cols(&mut self) -> Vec<(String, Vec<Elem<F>>)>;
+    fn add_operation(&mut self, selector_idx: Option<u8>, lookup_args: &[F], extra: &[F]);
+    /// finish the trace, padding to the given degree and returning the machine columns.
+    /// Ideally we'd take `self` here, but this is called from a `dyn Trait`...
+    fn finish(&mut self, degree: u32) -> Vec<(String, Vec<F>)>;
 }
 
 /// Concrete implementation of the Submachine trait
 struct SubmachineImpl<F: FieldElement, M: SubmachineKind> {
-    namespace: String,
     trace: SubmachineTrace<F>,
     m: std::marker::PhantomData<M>,
+    finished: bool,
 }
 
 impl<F: FieldElement, M: SubmachineKind> SubmachineImpl<F, M> {
     pub fn new(namespace: &str, witness_cols: &[String]) -> Self {
         // filter machine columns
         let prefix = format!("{namespace}::");
-        let witness_cols = witness_cols
+        let witness_cols: HashMap<_, _> = witness_cols
             .iter()
             .filter(|c| c.starts_with(namespace))
             .map(|c| (c.strip_prefix(&prefix).unwrap().to_string(), vec![]))
             .collect();
+        if witness_cols.is_empty() {
+            log::info!(
+                "namespace {} has no witness columns in the optimized pil",
+                namespace
+            );
+        }
         SubmachineImpl {
-            namespace: namespace.to_string(),
-            trace: SubmachineTrace::new(witness_cols),
+            trace: SubmachineTrace::new(namespace, witness_cols),
             m: std::marker::PhantomData,
+            finished: false,
         }
     }
 }
 
 impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> {
     fn namespace(&self) -> &str {
-        self.namespace.as_str()
+        self.trace.namespace.as_str()
     }
 
     fn len(&self) -> u32 {
         self.trace.len()
     }
 
-    fn add_operation(
-        &mut self,
-        name: &str,
-        args: &[Elem<F>],
-        selector: Option<u32>,
-        submachines: &[&mut dyn Submachine<F>],
-    ) {
-        M::add_operation(&mut self.trace, name, args, selector, submachines);
+    fn add_operation(&mut self, selector_idx: Option<u8>, lookup_args: &[F], extra: &[F]) {
+        M::add_operation(&mut self.trace, selector_idx, lookup_args, extra);
     }
 
-    fn final_row_override(&mut self) {
-        self.trace.final_row_override()
-    }
-
-    fn push_dummy_block(&mut self, machine_max_degree: usize) {
-        let prev_len = self.len();
-        self.trace
-            .push_dummy_block(machine_max_degree, M::BLOCK_SIZE, M::SELECTORS);
-        let dummy_size = self.len() - prev_len;
-        M::dummy_block_fix(&mut self.trace, dummy_size);
-    }
-
-    fn take_cols(&mut self) -> Vec<(String, Vec<Elem<F>>)> {
+    fn finish(&mut self, degree: u32) -> Vec<(String, Vec<F>)> {
+        assert!(self.len() <= degree);
+        assert!(!self.finished, "submachine finish called twice");
+        self.finished = true;
+        self.trace.final_row_override();
+        while self.len() < degree {
+            let prev_len = self.len();
+            self.trace
+                .push_dummy_block(degree, M::BLOCK_SIZE, M::SELECTORS);
+            let dummy_size = self.len() - prev_len;
+            M::dummy_block_fix(&mut self.trace, dummy_size);
+        }
         self.trace
             .take_cols()
-            .map(|(k, v)| (format!("{}::{}", self.namespace, k), v))
+            .map(|(k, v)| (format!("{}::{}", self.trace.namespace, k), v))
             .collect()
     }
 }
 
 /// Holds the submachine trace as a list of columns and a last row override
 struct SubmachineTrace<F: FieldElement> {
-    cols: HashMap<String, Vec<Elem<F>>>,
+    namespace: String,
+    cols: HashMap<String, Vec<F>>,
     // the trace is circular, so for the first block, we can only set the
     // previous row after the whole trace is built
-    last_row_overrides: HashMap<String, Option<Elem<F>>>,
+    last_row_overrides: HashMap<String, Option<F>>,
 }
 
 impl<F: FieldElement> SubmachineTrace<F> {
-    fn new(cols: HashMap<String, Vec<Elem<F>>>) -> Self {
-        assert!(!cols.is_empty(), "machine with no witness columns");
+    fn new(namespace: &str, cols: HashMap<String, Vec<F>>) -> Self {
         SubmachineTrace {
+            namespace: namespace.to_string(),
             last_row_overrides: cols.keys().map(|n| (n.clone(), None)).collect(),
             cols,
         }
     }
 
     fn len(&self) -> u32 {
+        if self.cols.is_empty() {
+            return 0;
+        }
         self.cols.values().next().unwrap().len().try_into().unwrap()
     }
 
     /// set the value of a column in all rows of the current block
-    fn set_current_block(&mut self, size: u32, col: &str, value: Elem<F>) {
+    fn set_current_block(&mut self, size: u32, col: &str, value: F) {
         for i in 0..size {
             let idx = self.len() - i - 1;
             *self
                 .cols
                 .get_mut(col)
-                .unwrap()
+                .unwrap_or_else(|| panic!("{} has no column {col}", self.namespace))
                 .get_mut(idx as usize)
                 .unwrap() = value;
         }
     }
 
     /// set the value of a column in the current
-    fn set_current_row(&mut self, col: &str, value: Elem<F>) {
-        *self.cols.get_mut(col).unwrap().last_mut().unwrap() = value;
+    fn set_current_row(&mut self, col: &str, value: F) {
+        *self
+            .cols
+            .get_mut(col)
+            .unwrap_or_else(|| panic!("{} has no column {col}", self.namespace))
+            .last_mut()
+            .unwrap() = value;
     }
 
     /// set the value of a column in the last row of the complete trace
-    fn set_final_row(&mut self, col: &str, value: Elem<F>) {
-        *self.last_row_overrides.get_mut(col).unwrap() = Some(value);
+    fn set_final_row(&mut self, col: &str, value: F) {
+        *self
+            .last_row_overrides
+            .get_mut(col)
+            .unwrap_or_else(|| panic!("{} has no column {col}", self.namespace)) = Some(value);
     }
 
     /// apply saved updates to the last row of the trace
     fn final_row_override(&mut self) {
         for (col, value) in self.last_row_overrides.iter() {
             if let Some(value) = value {
-                *self.cols.get_mut(col).unwrap().last_mut().unwrap() = *value;
+                *self
+                    .cols
+                    .get_mut(col)
+                    .unwrap_or_else(|| panic!("{} has no column {col}", self.namespace))
+                    .last_mut()
+                    .unwrap() = *value;
             }
         }
     }
 
     /// add new row of zeroes to the trce
     fn push_row(&mut self) {
-        self.cols
-            .values_mut()
-            .for_each(|v| v.push(Elem::Field(0.into())));
+        self.cols.values_mut().for_each(|v| v.push(0.into()));
     }
 
     /// Push a dummy block to the trace.
     /// A dummy block is a copy of the first block, with the final row updates applied to it, and selectors set to 0.
-    fn push_dummy_block(&mut self, machine_max_degree: usize, size: u32, selectors: &'static str) {
+    fn push_dummy_block(&mut self, machine_max_degree: u32, size: u32, selectors: &'static str) {
         let selector_pat = format!("{selectors}[");
 
         for i in 0..size {
-            if self.cols.values().next().unwrap().len() == machine_max_degree {
+            if self.cols.values().next().unwrap().len() as u32 == machine_max_degree {
                 break;
             }
             self.cols.iter_mut().for_each(|(col, values)| {
-                if !col.starts_with(&selector_pat) {
-                    values.push(values[i as usize])
+                if !selectors.is_empty() && col.starts_with(&selector_pat) {
+                    values.push(0.into()) // selectors always 0 in dummy blocks
                 } else {
-                    values.push(0.into())
+                    values.push(values[i as usize])
                 }
             });
         }
@@ -204,28 +208,8 @@ impl<F: FieldElement> SubmachineTrace<F> {
     }
 
     /// consume the trace, returning the columns
-    fn take_cols(&mut self) -> impl Iterator<Item = (String, Vec<Elem<F>>)> {
+    fn take_cols(&mut self) -> impl Iterator<Item = (String, Vec<F>)> {
         std::mem::take(&mut self.cols).into_iter()
-    }
-
-    /// helper for debugging purposes only
-    #[allow(dead_code)]
-    fn print_row_idx(&self, idx: i64) {
-        let idx: usize = if idx < 0 {
-            (self.len() as i64 + idx) as usize
-        } else {
-            idx as usize
-        };
-
-        print!("Row {idx} - ");
-        for (col, values) in &self.cols {
-            let val = format!(
-                "{col}: {:x}",
-                values[idx].into_fe().to_integer().try_into_u64().unwrap()
-            );
-            print!("{val:>15}, ");
-        }
-        println!();
     }
 }
 
@@ -237,29 +221,25 @@ impl SubmachineKind for BinaryMachine {
 
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        op: &str,
-        args: &[Elem<F>],
-        selector: Option<u32>,
-        _submachines: &[&mut dyn Submachine<F>],
+        selector_idx: Option<u8>,
+        lookup_args: &[F],
+        extra: &[F],
     ) {
-        let [a, b, c] = args[..] else {
+        assert!(extra.is_empty());
+        let selector_idx = selector_idx.unwrap();
+        let [op_id, a, b, c] = lookup_args[..] else {
             panic!();
         };
 
-        let op_id: Elem<F> = match op {
-            "and" => 0,
-            "or" => 1,
-            "xor" => 2,
-            _ => unreachable!(),
-        }
-        .into();
-
         // decompose A
-        let (a1, a2, a3, a4, _sign) = decompose_lower32(a.u().into());
+        let (a1, a2, a3, a4, _sign) =
+            decompose_lower32(a.to_integer().try_into_u32().unwrap().into());
         // decompose B
-        let (b1, b2, b3, b4, _sign) = decompose_lower32(b.u().into());
+        let (b1, b2, b3, b4, _sign) =
+            decompose_lower32(b.to_integer().try_into_u32().unwrap().into());
         // decompose C
-        let (c1, c2, c3, c4, _sign) = decompose_lower32(c.u().into());
+        let (c1, c2, c3, c4, _sign) =
+            decompose_lower32(c.to_integer().try_into_u32().unwrap().into());
 
         // set last row of the previous block
         if trace.len() > 0 {
@@ -281,9 +261,9 @@ impl SubmachineKind for BinaryMachine {
         trace.set_current_row("A_byte", (a2 as u32).into());
         trace.set_current_row("B_byte", (b2 as u32).into());
         trace.set_current_row("C_byte", (c2 as u32).into());
-        trace.set_current_row("A", (a.u() & 0xff).into());
-        trace.set_current_row("B", (b.u() & 0xff).into());
-        trace.set_current_row("C", (c.u() & 0xff).into());
+        trace.set_current_row("A", (a.to_integer().try_into_u32().unwrap() & 0xff).into());
+        trace.set_current_row("B", (b.to_integer().try_into_u32().unwrap() & 0xff).into());
+        trace.set_current_row("C", (c.to_integer().try_into_u32().unwrap() & 0xff).into());
 
         trace.push_row();
         trace.set_current_row("operation_id", op_id);
@@ -291,9 +271,18 @@ impl SubmachineKind for BinaryMachine {
         trace.set_current_row("A_byte", (a3 as u32).into());
         trace.set_current_row("B_byte", (b3 as u32).into());
         trace.set_current_row("C_byte", (c3 as u32).into());
-        trace.set_current_row("A", (a.u() & 0xffff).into());
-        trace.set_current_row("B", (b.u() & 0xffff).into());
-        trace.set_current_row("C", (c.u() & 0xffff).into());
+        trace.set_current_row(
+            "A",
+            (a.to_integer().try_into_u32().unwrap() & 0xffff).into(),
+        );
+        trace.set_current_row(
+            "B",
+            (b.to_integer().try_into_u32().unwrap() & 0xffff).into(),
+        );
+        trace.set_current_row(
+            "C",
+            (c.to_integer().try_into_u32().unwrap() & 0xffff).into(),
+        );
 
         trace.push_row();
         trace.set_current_row("operation_id", op_id);
@@ -301,9 +290,18 @@ impl SubmachineKind for BinaryMachine {
         trace.set_current_row("A_byte", (a4 as u32).into());
         trace.set_current_row("B_byte", (b4 as u32).into());
         trace.set_current_row("C_byte", (c4 as u32).into());
-        trace.set_current_row("A", (a.u() & 0xffffff).into());
-        trace.set_current_row("B", (b.u() & 0xffffff).into());
-        trace.set_current_row("C", (c.u() & 0xffffff).into());
+        trace.set_current_row(
+            "A",
+            (a.to_integer().try_into_u32().unwrap() & 0xffffff).into(),
+        );
+        trace.set_current_row(
+            "B",
+            (b.to_integer().try_into_u32().unwrap() & 0xffffff).into(),
+        );
+        trace.set_current_row(
+            "C",
+            (c.to_integer().try_into_u32().unwrap() & 0xffffff).into(),
+        );
 
         trace.push_row();
         trace.set_current_row("operation_id", op_id);
@@ -311,10 +309,7 @@ impl SubmachineKind for BinaryMachine {
         trace.set_current_row("B", b);
         trace.set_current_row("C", c);
         // latch row: set selector
-        trace.set_current_row(
-            &format!("{}[{}]", Self::SELECTORS, selector.unwrap()),
-            1.into(),
-        );
+        trace.set_current_row(&format!("{}[{}]", Self::SELECTORS, selector_idx), 1.into());
     }
 }
 
@@ -326,32 +321,31 @@ impl SubmachineKind for ShiftMachine {
 
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        op: &str,
-        args: &[Elem<F>],
-        selector: Option<u32>,
-        _submachines: &[&mut dyn Submachine<F>],
+        selector_idx: Option<u8>,
+        lookup_args: &[F],
+        extra: &[F],
     ) {
-        let [a, b, c] = args[..] else {
+        assert!(extra.is_empty());
+        let selector_idx = selector_idx.unwrap();
+        let [op_id, a, b, c] = lookup_args[..] else {
             panic!();
         };
 
-        let op_id: Elem<F>;
         let mut shl = 0;
         let mut shr = 0;
-        match op {
-            "shl" => {
-                op_id = 0.into();
-                shl = b.u();
+        match op_id.try_into_i32().unwrap() {
+            0 => {
+                shl = b.to_integer().try_into_u32().unwrap();
             }
-            "shr" => {
-                op_id = 1.into();
-                shr = b.u();
+            1 => {
+                shr = b.to_integer().try_into_u32().unwrap();
             }
             _ => unreachable!(),
         };
 
         // decompose A
-        let (b1, b2, b3, b4, _sign) = decompose_lower32(a.u().into());
+        let (b1, b2, b3, b4, _sign) =
+            decompose_lower32(a.to_integer().try_into_u32().unwrap().into());
 
         // set last row of the previous block
         if trace.len() > 0 {
@@ -374,7 +368,7 @@ impl SubmachineKind for ShiftMachine {
         let c_part_factor = (b2 as u32) << 8;
         let c_part = ((c_part_factor << shl) >> shr).into();
         trace.set_current_row("C_part", c_part);
-        let a_row = a.u() & 0xff;
+        let a_row = a.to_integer().try_into_u32().unwrap() & 0xff;
         trace.set_current_row("A", a_row.into());
         trace.set_current_row("B", b);
         trace.set_current_row("B_next", b);
@@ -387,7 +381,7 @@ impl SubmachineKind for ShiftMachine {
         let c_part_factor = (b3 as u32) << 16;
         let c_part = ((c_part_factor << shl) >> shr).into();
         trace.set_current_row("C_part", c_part);
-        let a_row = a.u() & 0xffff;
+        let a_row = a.to_integer().try_into_u32().unwrap() & 0xffff;
         trace.set_current_row("A", a_row.into());
         trace.set_current_row("B", b);
         trace.set_current_row("B_next", b);
@@ -400,7 +394,7 @@ impl SubmachineKind for ShiftMachine {
         let c_part_factor = (b4 as u32) << 24;
         let c_part = ((c_part_factor << shl) >> shr).into();
         trace.set_current_row("C_part", c_part);
-        let a_row = a.u() & 0xffffff;
+        let a_row = a.to_integer().try_into_u32().unwrap() & 0xffffff;
         trace.set_current_row("A", a_row.into());
         trace.set_current_row("B", b);
         trace.set_current_row("B_next", b);
@@ -411,10 +405,7 @@ impl SubmachineKind for ShiftMachine {
         trace.set_current_row("A", a);
         trace.set_current_row("B", b);
         trace.set_current_row("C", c);
-        trace.set_current_row(
-            &format!("{}[{}]", Self::SELECTORS, selector.unwrap()),
-            1.into(),
-        );
+        trace.set_current_row(&format!("{}[{}]", Self::SELECTORS, selector_idx), 1.into());
     }
 }
 
@@ -426,20 +417,21 @@ impl SubmachineKind for SplitGlMachine {
 
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        _op: &str,
-        args: &[Elem<F>],
-        selector: Option<u32>,
-        _submachines: &[&mut dyn Submachine<F>],
+        selector_idx: Option<u8>,
+        lookup_args: &[F],
+        extra: &[F],
     ) {
-        let [output_hi, output_low] = args[..] else {
+        assert!(extra.is_empty());
+        let selector_idx = selector_idx.unwrap();
+        let [_input, output_lo, output_hi] = lookup_args[..] else {
             panic!();
         };
 
-        let lo = output_low.u() as u64;
-        let hi = output_hi.u() as u64;
+        let lo = output_lo.to_integer().try_into_u32().unwrap() as u64;
+        let hi = output_hi.to_integer().try_into_u32().unwrap() as u64;
 
-        fn hi_and_lo<F: FieldElement>(hi: u64, lo: u64) -> Elem<F> {
-            Elem::from_u64_as_fe_unchecked((hi << 32) | lo)
+        fn hi_and_lo<F: FieldElement>(hi: u64, lo: u64) -> F {
+            ((hi << 32) | lo).into()
         }
 
         let (b0, b1, b2, b3, _) = decompose_lower32(lo as i64);
@@ -481,9 +473,9 @@ impl SubmachineKind for SplitGlMachine {
         // split_gl needs 8 rows:
         // 0
         trace.push_row();
-        trace.set_current_row("output_low", Elem::from_u64_as_fe_unchecked(lo & 0xff));
+        trace.set_current_row("output_low", (lo & 0xff).into());
         trace.set_current_row("output_high", 0.into());
-        trace.set_current_row("in_acc", Elem::from_u64_as_fe_unchecked(lo & 0xff));
+        trace.set_current_row("in_acc", (lo & 0xff).into());
         trace.set_current_row("bytes", b[1].into());
         trace.set_current_row("lt", lt[1].into());
         trace.set_current_row("gt", gt[1].into());
@@ -491,9 +483,9 @@ impl SubmachineKind for SplitGlMachine {
 
         // 1
         trace.push_row();
-        trace.set_current_row("output_low", Elem::from_u64_as_fe_unchecked(lo & 0xffff));
+        trace.set_current_row("output_low", (lo & 0xffff).into());
         trace.set_current_row("output_high", 0.into());
-        trace.set_current_row("in_acc", Elem::from_u64_as_fe_unchecked(lo & 0xffff));
+        trace.set_current_row("in_acc", (lo & 0xffff).into());
         trace.set_current_row("bytes", b[2].into());
         trace.set_current_row("lt", lt[2].into());
         trace.set_current_row("gt", gt[2].into());
@@ -501,9 +493,9 @@ impl SubmachineKind for SplitGlMachine {
 
         // 2
         trace.push_row();
-        trace.set_current_row("output_low", Elem::from_u64_as_fe_unchecked(lo & 0xffffff));
+        trace.set_current_row("output_low", (lo & 0xffffff).into());
         trace.set_current_row("output_high", 0.into());
-        trace.set_current_row("in_acc", Elem::from_u64_as_fe_unchecked(lo & 0xffffff));
+        trace.set_current_row("in_acc", (lo & 0xffffff).into());
         trace.set_current_row("bytes", b[3].into());
         trace.set_current_row("lt", lt[3].into());
         trace.set_current_row("gt", gt[3].into());
@@ -511,9 +503,9 @@ impl SubmachineKind for SplitGlMachine {
 
         // 3
         trace.push_row();
-        trace.set_current_row("output_low", Elem::from_u64_as_fe_unchecked(lo));
+        trace.set_current_row("output_low", lo.into());
         trace.set_current_row("output_high", 0.into());
-        trace.set_current_row("in_acc", Elem::from_u64_as_fe_unchecked(lo));
+        trace.set_current_row("in_acc", lo.into());
         trace.set_current_row("bytes", b[4].into());
         trace.set_current_row("lt", lt[4].into());
         trace.set_current_row("gt", gt[4].into());
@@ -521,8 +513,8 @@ impl SubmachineKind for SplitGlMachine {
 
         // 4
         trace.push_row();
-        trace.set_current_row("output_low", Elem::from_u64_as_fe_unchecked(lo));
-        trace.set_current_row("output_high", Elem::from_u64_as_fe_unchecked(hi & 0xff));
+        trace.set_current_row("output_low", lo.into());
+        trace.set_current_row("output_high", (hi & 0xff).into());
         trace.set_current_row("in_acc", hi_and_lo(hi & 0xff, lo));
         trace.set_current_row("bytes", b[5].into());
         trace.set_current_row("lt", lt[5].into());
@@ -531,8 +523,8 @@ impl SubmachineKind for SplitGlMachine {
 
         // 5
         trace.push_row();
-        trace.set_current_row("output_low", Elem::from_u64_as_fe_unchecked(lo));
-        trace.set_current_row("output_high", Elem::from_u64_as_fe_unchecked(hi & 0xffff));
+        trace.set_current_row("output_low", lo.into());
+        trace.set_current_row("output_high", (hi & 0xffff).into());
         trace.set_current_row("in_acc", hi_and_lo(hi & 0xffff, lo));
         trace.set_current_row("bytes", b[6].into());
         trace.set_current_row("lt", lt[6].into());
@@ -541,8 +533,8 @@ impl SubmachineKind for SplitGlMachine {
 
         // 6
         trace.push_row();
-        trace.set_current_row("output_low", Elem::from_u64_as_fe_unchecked(lo));
-        trace.set_current_row("output_high", Elem::from_u64_as_fe_unchecked(hi & 0xffffff));
+        trace.set_current_row("output_low", (lo).into());
+        trace.set_current_row("output_high", (hi & 0xffffff).into());
         trace.set_current_row("in_acc", hi_and_lo(hi & 0xffffff, lo));
         trace.set_current_row("bytes", b[7].into());
         trace.set_current_row("lt", lt[7].into());
@@ -551,12 +543,9 @@ impl SubmachineKind for SplitGlMachine {
 
         // 7: bytes/lt/gt/was_lt are set by the next row
         trace.push_row();
-        trace.set_current_row(
-            &format!("{}[{}]", Self::SELECTORS, selector.unwrap()),
-            1.into(),
-        );
-        trace.set_current_row("output_low", Elem::from_u64_as_fe_unchecked(lo));
-        trace.set_current_row("output_high", Elem::from_u64_as_fe_unchecked(hi));
+        trace.set_current_row(&format!("{}[{}]", Self::SELECTORS, selector_idx), 1.into());
+        trace.set_current_row("output_low", lo.into());
+        trace.set_current_row("output_high", hi.into());
         trace.set_current_row("in_acc", hi_and_lo(hi, lo));
     }
 }
@@ -567,27 +556,27 @@ impl SubmachineKind for PublicsMachine {
     const BLOCK_SIZE: u32 = 1;
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        _op: &str,
-        args: &[Elem<F>],
-        selector: Option<u32>,
-        _submachines: &[&mut dyn Submachine<F>],
+        selector_idx: Option<u8>,
+        lookup_args: &[F],
+        extra: &[F],
     ) {
-        assert!(selector.is_none());
-        let [addr, value] = args[..] else {
+        assert!(selector_idx.is_none());
+        assert!(extra.is_empty());
+        let [addr, value] = lookup_args[..] else {
             panic!();
         };
         assert!(
-            addr.u() < 8,
+            addr.to_integer().try_into_u32().unwrap() < 8,
             "publics machine only supports 8 public values"
         );
-        while addr.u() >= trace.len() {
+        while addr.to_integer().try_into_u32().unwrap() >= trace.len() {
             trace.push_row();
         }
         *trace
             .cols
             .get_mut("value")
             .unwrap()
-            .get_mut(addr.u() as usize)
+            .get_mut(addr.to_integer().try_into_u32().unwrap() as usize)
             .unwrap() = value;
     }
 }
@@ -600,13 +589,20 @@ impl SubmachineKind for PoseidonGlMachine {
 
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        _op: &str,
-        args: &[Elem<F>],
-        selector: Option<u32>,
-        _submachines: &[&mut dyn Submachine<F>],
+        selector_idx: Option<u8>,
+        lookup_args: &[F],
+        extra: &[F],
     ) {
         const STATE_SIZE: usize = 12;
         const OUTPUT_SIZE: usize = 4;
+
+        let selector_idx = selector_idx.unwrap();
+        let [input_addr, output_addr, time_step] = lookup_args[..] else {
+            panic!();
+        };
+
+        let input = extra[0..STATE_SIZE].to_vec();
+        let output = extra[STATE_SIZE..STATE_SIZE + OUTPUT_SIZE].to_vec();
 
         const INPUT_COLS: [&str; STATE_SIZE] = [
             "input[0]",
@@ -651,22 +647,16 @@ impl SubmachineKind for PoseidonGlMachine {
             "x7[9]", "x7[10]", "x7[11]",
         ];
 
-        let [input_addr, output_addr, time_step] = args[0..3] else {
-            panic!()
-        };
-        let input = args[3..3 + STATE_SIZE].to_vec();
-        let output = args[3 + STATE_SIZE..3 + STATE_SIZE + OUTPUT_SIZE].to_vec();
-
-        let mut state: Vec<F> = input.iter().map(|e| e.into_fe()).collect();
+        let mut state: Vec<F> = input.clone();
 
         for row in 0..(Self::BLOCK_SIZE - 1) as usize {
             trace.push_row();
             for i in 0..STATE_SIZE {
-                trace.set_current_row(STATE_COLS[i], Elem::Field(state[i]));
+                trace.set_current_row(STATE_COLS[i], state[i]);
             }
             // memory read/write columns
             if row < STATE_SIZE {
-                let v = input[row].fe().to_integer().try_into_u64().unwrap();
+                let v = input[row].to_integer().try_into_u64().unwrap();
                 let hi = (v >> 32) as u32;
                 let lo = (v & 0xffffffff) as u32;
                 trace.set_current_row("do_mload", 1.into());
@@ -674,7 +664,6 @@ impl SubmachineKind for PoseidonGlMachine {
                 trace.set_current_row("word_high", hi.into());
             } else if row < STATE_SIZE + OUTPUT_SIZE {
                 let v = output[row - STATE_SIZE]
-                    .fe()
                     .to_integer()
                     .try_into_u64()
                     .unwrap();
@@ -695,8 +684,8 @@ impl SubmachineKind for PoseidonGlMachine {
                 let a = state[i] + F::from(poseidon_gl::ROUND_CONSTANTS[i][row]);
                 let x3 = a.pow(3.into());
                 let x7 = x3.pow(2.into()) * a;
-                trace.set_current_row(X3_COLS[i], Elem::Field(x3));
-                trace.set_current_row(X7_COLS[i], Elem::Field(x7));
+                trace.set_current_row(X3_COLS[i], x3);
+                trace.set_current_row(X7_COLS[i], x7);
                 if i == 0 || is_full {
                     state[i] = x7;
                 } else {
@@ -720,10 +709,10 @@ impl SubmachineKind for PoseidonGlMachine {
             let a = state[i];
             let x3 = a.pow(3.into());
             let x7 = x3.pow(2.into()) * a;
-            trace.set_current_row(X3_COLS[i], Elem::Field(x3));
-            trace.set_current_row(X7_COLS[i], Elem::Field(x7));
+            trace.set_current_row(X3_COLS[i], x3);
+            trace.set_current_row(X7_COLS[i], x7);
             // set output
-            trace.set_current_row(STATE_COLS[i], Elem::Field(state[i]));
+            trace.set_current_row(STATE_COLS[i], state[i]);
         }
         // these are the same in the whole block
         trace.set_current_block(Self::BLOCK_SIZE, "time_step", time_step);
@@ -732,14 +721,14 @@ impl SubmachineKind for PoseidonGlMachine {
         // set selector
         trace.set_current_block(
             Self::BLOCK_SIZE,
-            &format!("{}[{}]", Self::SELECTORS, selector.unwrap()),
+            &format!("{}[{}]", Self::SELECTORS, selector_idx),
             1.into(),
         );
         for i in 0..STATE_SIZE {
             trace.set_current_block(Self::BLOCK_SIZE, INPUT_COLS[i], input[i]);
         }
         for i in 0..OUTPUT_SIZE {
-            trace.set_current_block(Self::BLOCK_SIZE, OUTPUT_COLS[i], Elem::Field(state[i]));
+            trace.set_current_block(Self::BLOCK_SIZE, OUTPUT_COLS[i], state[i]);
         }
     }
 
