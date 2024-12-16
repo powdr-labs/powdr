@@ -954,7 +954,6 @@ mod builder {
                 // handle submachines in parallel
                 .par_bridge()
                 .flat_map(|(m, mut machine, ops)| {
-                    println!("machine: {:?}", m.name());
                     // apply the operations to the submachine
                     ops.into_iter().for_each(|op| {
                         let selector = pil::selector_for_link(&links, op.identity_id);
