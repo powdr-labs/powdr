@@ -944,17 +944,18 @@ mod builder {
 
             let start = Instant::now();
             let cols = self
-                .trace
-                .submachine_ops
+                .submachines
                 .into_iter()
-                // take each submachine and its operations
-                .map(|(m, ops)| {
-                    let machine = self.submachines.remove(&m).unwrap().into_inner();
-                    (m, machine, ops)
+                // take each submachine and get its operations
+                .map(|(m, machine)| {
+                    let ops = self.trace.submachine_ops.remove(&m).unwrap_or_default();
+                    (m, machine.into_inner(), ops)
                 })
+                // handle submachines in parallel
                 .par_bridge()
                 .flat_map(|(m, mut machine, ops)| {
-                    // apply the operation to the submachine
+                    println!("machine: {:?}", m.name());
+                    // apply the operations to the submachine
                     ops.into_iter().for_each(|op| {
                         let selector = pil::selector_for_link(&links, op.identity_id);
                         machine.add_operation(selector.as_deref(), &op.lookup_args, &op.extra);
