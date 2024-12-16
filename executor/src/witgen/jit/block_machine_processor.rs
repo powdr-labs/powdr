@@ -48,29 +48,25 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let mut witgen = WitgenInference::new(self.fixed_data, fixed_evaluator, known_variables);
 
         // In the latch row, set the RHS selector to 1.
-        assert!(
-            witgen
-                .set(
-                    &connection.right.selector,
-                    self.latch_row as i32,
-                    T::one().into()
-                )
-                .complete
-        );
+        witgen
+            .assign(
+                &connection.right.selector,
+                self.latch_row as i32,
+                T::one().into(),
+            )
+            .unwrap();
 
         // For each known argument, transfer the value to the expression in the connection's RHS.
         for (index, expr) in connection.right.expressions.iter().enumerate() {
             if known_args[index] {
                 let lhs = Variable::Param(index);
-                assert!(
-                    witgen
-                        .set(
-                            expr,
-                            self.latch_row as i32,
-                            AffineSymbolicExpression::from_known_symbol(lhs, None)
-                        )
-                        .complete
-                );
+                witgen
+                    .assign(
+                        expr,
+                        self.latch_row as i32,
+                        AffineSymbolicExpression::from_known_symbol(lhs, None),
+                    )
+                    .unwrap();
             }
         }
 
@@ -82,16 +78,13 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         for (index, expr) in connection.right.expressions.iter().enumerate() {
             if !known_args[index] {
                 let lhs = Variable::Param(index);
-                if !witgen
-                    .set(
+                witgen
+                    .assign(
                         expr,
                         self.latch_row as i32,
                         AffineSymbolicExpression::from_unknown_variable(lhs, None),
                     )
-                    .complete
-                {
-                    return Err(format!("Could not solve for args[{index}]"));
-                };
+                    .map_err(|_| format!("Could not solve for params[{index}]"))?;
             }
         }
 
