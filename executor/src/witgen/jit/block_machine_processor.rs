@@ -59,14 +59,9 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         // For each known argument, transfer the value to the expression in the connection's RHS.
         for (index, expr) in connection.right.expressions.iter().enumerate() {
             if known_args[index] {
-                let lhs = Variable::Param(index);
-                witgen
-                    .assign(
-                        expr,
-                        self.latch_row as i32,
-                        AffineSymbolicExpression::from_known_symbol(lhs, None),
-                    )
-                    .unwrap();
+                let param_i =
+                    AffineSymbolicExpression::from_known_symbol(Variable::Param(index), None);
+                witgen.assign(expr, self.latch_row as i32, param_i).unwrap();
             }
         }
 
@@ -75,15 +70,13 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         self.solve_block(&mut witgen)?;
 
         // For each unknown argument, get the value from the expression in the connection's RHS.
+        // If assign() fails, it means that we weren't able to to solve for the operation's output.
         for (index, expr) in connection.right.expressions.iter().enumerate() {
             if !known_args[index] {
-                let lhs = Variable::Param(index);
+                let param_i =
+                    AffineSymbolicExpression::from_known_symbol(Variable::Param(index), None);
                 witgen
-                    .assign(
-                        expr,
-                        self.latch_row as i32,
-                        AffineSymbolicExpression::from_unknown_variable(lhs, None),
-                    )
+                    .assign(expr, self.latch_row as i32, param_i)
                     .map_err(|_| format!("Could not solve for params[{index}]"))?;
             }
         }
@@ -92,7 +85,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
     }
 
     /// Repeatedly processes all identities on all rows, until no progress is made.
-    /// Returns the set of incomplete (row, Identity) pairs.
+    /// Fails iff there are incomplete machine calls in the latch row.
     fn solve_block(
         &self,
         witgen: &mut WitgenInference<T, FixedEvaluatorForFixedData<T>>,
@@ -101,6 +94,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         for i in 0.. {
             let mut progress = false;
 
+            // TODO: This algorithm is assuming a rectangular block shape.
             for row in (0..self.block_size) {
                 for id in self.machine_parts.identities.iter() {
                     if !complete.contains(&(id.id(), row)) {
@@ -118,6 +112,9 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             }
         }
 
+        // If any machine call could not be completed, that's bad because machine calls typically have side effects.
+        // So, the underlying lookup / permutation / bus argument likely does not hold.
+        // TODO: This assumes a rectangular block shape.
         let has_incomplete_machine_calls = (0..self.block_size)
             .flat_map(|row| {
                 self.machine_parts
@@ -126,21 +123,24 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                     .map(move |id| (id, row))
             })
             .filter(|(identity, row)| !complete.contains(&(identity.id(), *row)))
-            .any(|(identity, _row)| {
-                matches!(
-                    identity,
-                    Identity::Lookup(_)
-                        | Identity::Permutation(_)
-                        | Identity::PhantomLookup(_)
-                        | Identity::PhantomPermutation(_)
-                )
-            });
+            .any(|(identity, _row)| !is_machine_call(identity));
 
         match has_incomplete_machine_calls {
             true => Err("Incomplete machine calls".to_string()),
             false => Ok(()),
         }
     }
+}
+
+fn is_machine_call<T>(identity: &Identity<T>) -> bool {
+    matches!(
+        identity,
+        Identity::Lookup(_)
+            | Identity::Permutation(_)
+            | Identity::PhantomLookup(_)
+            | Identity::PhantomPermutation(_)
+            | Identity::PhantomBusInteraction(_)
+    )
 }
 
 pub struct FixedEvaluatorForFixedData<'a, T: FieldElement>(pub &'a FixedData<'a, T>);
@@ -190,6 +190,8 @@ mod test {
         let (fixed_data, retained_identities) =
             global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
 
+        // Build a connection that encodes:
+        // [] is <selector_name> $ [<input_names...>, <output_names...>]
         let witnesses_by_name = analyzed
             .committed_polys_in_source_order()
             .flat_map(|(symbol, _)| symbol.array_elements())
@@ -212,9 +214,8 @@ mod test {
             selector: to_expr(selector_name),
             expressions: rhs,
         };
-        // Unused!
+        // The LHS is not used by the processor.
         let left = SelectedExpressions::default();
-
         let connection = Connection {
             id: 0,
             left: &left,
