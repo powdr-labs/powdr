@@ -190,7 +190,6 @@ impl<F: FieldElement> SubmachineTrace<F> {
     /// Push a dummy block to the trace.
     /// A dummy block is a copy of the first block, with the final row updates applied to it, and selectors set to 0.
     fn push_dummy_block(&mut self, machine_max_degree: u32, size: u32, selectors: &'static str) {
-        // TODO: use Optional selector argument
         let selector_pat = format!("{selectors}[");
 
         for i in 0..size {
@@ -198,10 +197,10 @@ impl<F: FieldElement> SubmachineTrace<F> {
                 break;
             }
             self.cols.iter_mut().for_each(|(col, values)| {
-                if !col.starts_with(&selector_pat) {
-                    values.push(values[i as usize])
+                if !selectors.is_empty() && col.starts_with(&selector_pat) {
+                    values.push(0.into()) // selectors always 0 in dummy blocks
                 } else {
-                    values.push(0.into())
+                    values.push(values[i as usize])
                 }
             });
         }
