@@ -13,7 +13,6 @@ fn main() {
     // Read input from prover data.
     let mut reader = ProverDataReader::new();
     let n: u32 = reader.next().unwrap();
-    println!("n = {}", n);
     let r = fib(n);
     // Write result to stdout.
     write(1, r);
