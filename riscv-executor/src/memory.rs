@@ -51,16 +51,24 @@ impl<F: FieldElement> Submachine<F> for MemoryMachine<F> {
         &self.namespace
     }
 
-    fn add_operation(&mut self, selector_idx: Option<u8>, lookup_args: &[F], _extra: &[F]) {
+    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F], _extra: &[F]) {
         let [op_id, addr, step, value] = lookup_args[..] else {
             panic!()
         };
+        // get the idx from the selector
+        let selector_idx = selector
+            .map(|s| {
+                let start = s.find('[').unwrap() + 1;
+                let end = s.find(']').unwrap();
+                s[start..end].parse::<u8>().unwrap()
+            })
+            .unwrap();
         self.ops.push(Op {
             addr: addr.to_integer().try_into_u32().unwrap(),
             step: step.to_integer().try_into_u32().unwrap(),
             value,
             write: op_id,
-            selector_idx: selector_idx.unwrap(),
+            selector_idx,
         });
     }
 
@@ -90,7 +98,7 @@ impl<F: FieldElement> Submachine<F> for MemoryMachine<F> {
 
         let mut cols: Vec<_> = std::mem::take(&mut self.witness_cols)
             .into_iter()
-            .map(|n| (n, vec![]))
+            .map(|n| (n, Vec::with_capacity(self.ops.len())))
             .collect();
         let selector_count = cols.len() - Cols::Selectors as usize;
 
