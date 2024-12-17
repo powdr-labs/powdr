@@ -46,7 +46,11 @@ use crate::profiler::Profiler;
 
 // TODO: we don't do anything with these yet. Idea is to keep info that is to be given to witgen
 #[allow(unused)]
-struct MainOp<F: FieldElement>(&'static str, u32, Vec<F>);
+struct MainOp<F: FieldElement> {
+    instr: Instruction,
+    pc: u32,
+    data: Vec<F>,
+}
 
 #[derive(Debug)]
 struct SubmachineOp<F: FieldElement> {
@@ -509,10 +513,10 @@ mod builder {
     use rayon::iter::{ParallelBridge, ParallelExtend, ParallelIterator};
 
     use crate::{
-        pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MachineInstance, MainOp,
-        MemOperation, MemOperationKind, MemoryMachine, MemoryState, PoseidonGlMachine,
-        PublicsMachine, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine, Submachine,
-        SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
+        pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, Instruction,
+        MachineInstance, MainOp, MemOperation, MemOperationKind, MemoryMachine, MemoryState,
+        PoseidonGlMachine, PublicsMachine, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine,
+        Submachine, SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
     };
 
     fn namespace_degree_range<F: FieldElement>(
@@ -679,9 +683,9 @@ mod builder {
             }
         }
 
-        pub(crate) fn main_op(&mut self, ev: &'static str, pc: u32, args: Vec<F>) {
+        pub(crate) fn main_op(&mut self, instr: Instruction, pc: u32, data: Vec<F>) {
             if let ExecMode::Trace = self.mode {
-                self.trace.main_ops.push(MainOp(ev, pc, args));
+                self.trace.main_ops.push(MainOp { instr, pc, data });
             }
         }
 
@@ -1274,7 +1278,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         macro_rules! main_op {
             ($insn:ident) => {
                 self.proc
-                    .main_op(stringify!($insn), self.proc.get_pc().u(), vec![])
+                    .main_op(Instruction::$insn, self.proc.get_pc().u(), vec![])
             };
             ($insn:ident, $($args:expr),*) => {
                 self.proc
