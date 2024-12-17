@@ -1,6 +1,6 @@
 use powdr_riscv_runtime;
 use powdr_riscv_runtime::commit;
-use powdr_riscv_runtime::io::{read, write};
+use powdr_riscv_runtime::io::{read, read_next, write};
 
 fn fib(n: u32) -> u32 {
     if n <= 1 {

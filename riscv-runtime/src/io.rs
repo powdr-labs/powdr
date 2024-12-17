@@ -1,4 +1,5 @@
 use core::arch::asm;
+use core::slice;
 
 extern crate alloc;
 
@@ -6,6 +7,18 @@ use powdr_riscv_syscalls::Syscall;
 
 use alloc::vec;
 use alloc::vec::Vec;
+
+static mut NEXT_INPUT_PTR: *const u8 = 0 as *const u8;
+
+pub fn read_next<T: DeserializeOwned>() -> Result<T, postcard::Error> {
+    unsafe {
+        let slice = core::slice::from_raw_parts(NEXT_INPUT_PTR, 1000000);
+        let (value, remaining) = postcard::take_from_bytes::<T>(slice)?;
+        crate::print!("remaining = {:#?}\n", remaining.as_ptr());
+        NEXT_INPUT_PTR = remaining.as_ptr();
+        Ok(value)
+    }
+}
 
 /// A single u32 from input channel 0.
 pub fn read_u32(idx: u32) -> u32 {

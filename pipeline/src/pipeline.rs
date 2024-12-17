@@ -148,6 +148,7 @@ pub struct Pipeline<T: FieldElement> {
     arguments: Arguments<T>,
     /// The context for the host.
     host_context: HostContext,
+    initial_memory: Vec<Vec<u8>>,
 }
 
 impl<T: FieldElement> Clone for Artifacts<T> {
@@ -193,6 +194,7 @@ where
             pilo: false,
             arguments: Arguments::default(),
             host_context: ctx,
+            initial_memory: vec![],
         }
         // We add the basic callback functionalities to support PrintChar and Hint.
         .add_query_callback(Arc::new(handle_simple_queries_callback()))
@@ -320,6 +322,15 @@ impl<T: FieldElement> Pipeline<T> {
         };
         self.arguments.query_callback = Some(query_callback);
         self
+    }
+
+    pub fn add_initial_data<S: serde::Serialize>(&mut self, data: &S) {
+        let bytes = postcard::to_stdvec(&data).unwrap();
+        self.initial_memory.push(bytes);
+    }
+
+    pub fn initial_data(&self) -> Vec<u8> {
+        self.initial_memory.concat()
     }
 
     pub fn add_data<S: serde::Serialize>(self, channel: u32, data: &S) -> Self {
