@@ -73,9 +73,14 @@ macro_rules! instructions {
         #[allow(non_camel_case_types)]
         enum Instruction {
             $($name,)*
+            Count
         }
 
         impl Instruction {
+            fn count() -> usize {
+                Self::Count as usize
+            }
+
             fn from_name(s: &str) -> Option<Self> {
                 match s {
                     $(stringify!($name) => Some(Self::$name),)*
@@ -86,6 +91,7 @@ macro_rules! instructions {
             fn flag(&self) -> &'static str {
                 match *self {
                     $(Self::$name => concat!("main::instr_", stringify!($name)),)*
+                    Self::Count => panic!(),
                 }
             }
         }
@@ -145,12 +151,12 @@ macro_rules! known_witness_col {
         #[repr(usize)]
         enum KnownWitnessCol {
             $($name,)*
-            Last // this is a sentinel so we know how many variants we have
+            Count // this is a sentinel so we know how many variants we have
         }
 
         impl KnownWitnessCol {
             fn count() -> usize {
-                Self::Last as usize
+                Self::Count as usize
             }
 
             fn all() -> Vec<Self> {
@@ -162,7 +168,7 @@ macro_rules! known_witness_col {
             fn name(&self) -> &'static str {
                 match *self {
                     $(Self::$name => concat!("main::", stringify!($name)),)*
-                    Self::Last => panic!(),
+                    Self::Count => panic!(),
                 }
             }
         }
@@ -258,10 +264,15 @@ macro_rules! machine_instances {
         #[repr(usize)]
         enum MachineInstance {
             $($name,)*
+            Count
         }
 
         #[allow(unused)]
         impl MachineInstance {
+            fn count() -> usize {
+                Self::Count as usize
+            }
+
             fn all() -> Vec<Self> {
                 vec![
                     $(Self::$name,)*
@@ -271,12 +282,14 @@ macro_rules! machine_instances {
             fn name(&self) -> &'static str {
                 match *self {
                     $(Self::$name => stringify!($name),)*
+                    Self::Count => panic!(),
                 }
             }
 
             fn namespace(&self) -> &'static str {
                 match *self {
                     $(Self::$name => concat!("main_", stringify!($name)),)*
+                    Self::Count => panic!(),
                 }
             }
         }
@@ -1323,8 +1336,10 @@ struct Executor<'a, 'b, F: FieldElement> {
     mode: ExecMode,
 
     pil_links: Vec<Identity<F>>,
-    // TODO(leandro): can we be more efficient here? some id instead of double string keys?
-    pil_instruction_links: HashMap<(&'static str, &'static str), Vec<Identity<F>>>,
+    // instead of a hash map (instruction,target), we keep a flat vec, and index
+    // using the instruction (rows) and target machine (columns).
+    pil_instruction_links: Vec<Option<Vec<Identity<F>>>>,
+    pil_other_links: HashMap<(&'static str, &'static str), Vec<Identity<F>>>,
     // these are "hot" fixed columns that are accessed directly by the executor
     cached_fixed_cols: Vec<Vec<F>>,
 }
@@ -1403,15 +1418,18 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
     /// Gets the identity id for a link associated with a given instruction.
     /// idx is based on the order link appear in the assembly (assumed to be the same in the optimized pil).
-    fn instr_link_id(&mut self, instr: Instruction, target: &'static str, idx: usize) -> u64 {
+    fn instr_link_id(&mut self, instr: Instruction, target: MachineInstance, idx: usize) -> u64 {
         if let ExecMode::Fast = self.mode {
             return 0; // we don't care about identity ids in fast mode
         }
 
         let entries = self
             .pil_instruction_links
-            .entry((instr.flag(), target))
-            .or_insert_with(|| pil::find_instruction_links(&self.pil_links, instr.flag(), target));
+            .get_mut(instr as usize * MachineInstance::count() + target as usize)
+            .unwrap()
+            .get_or_insert_with(|| {
+                pil::find_instruction_links(&self.pil_links, instr.flag(), target.namespace())
+            });
         entries.get(idx).unwrap().id()
     }
 
@@ -1421,7 +1439,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             return 0; // we don't care about identity ids in fast mode
         }
         let entries = self
-            .pil_instruction_links
+            .pil_other_links
             .entry((from, target))
             .or_insert_with(|| pil::find_links(&self.pil_links, from, target));
         entries.get(idx).unwrap().id()
@@ -1483,7 +1501,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let addr = args[0].u();
                 let val = args[1];
 
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 self.reg_write(0, addr, val, lid);
 
                 set_col!(Y, val);
@@ -1497,7 +1515,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             Instruction::get_reg => {
                 let addr = args[0].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val = self.reg_read(0, addr, lid);
 
                 main_op!(get_reg);
@@ -1505,7 +1523,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             Instruction::affine => {
                 let read_reg = args[0].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
                 let factor = args[2];
@@ -1513,7 +1531,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let res = val1.mul(&factor).add(&offset);
 
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 self.reg_write(1, write_reg, res, lid);
                 set_col!(tmp1_col, val1);
 
@@ -1524,13 +1542,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::mstore | Instruction::mstore_bootloader => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let addr1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let addr2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2].bin();
                 let read_reg3 = args[3].u();
-                let lid = self.instr_link_id(instr, "main_regs", 2);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
                 let value = self.reg_read(2, read_reg3, lid);
 
                 let addr = addr1.bin() - addr2.bin() + offset;
@@ -1548,7 +1566,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
 
                 let addr = addr as u32;
-                let lid = self.instr_link_id(instr, "main_memory", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::memory, 0);
                 self.proc.set_mem(addr, value.u(), self.step + 3, lid);
 
                 set_col!(tmp1_col, addr1);
@@ -1570,7 +1588,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             Instruction::mload => {
                 let read_reg = args[0].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let addr1 = self.reg_read(0, read_reg, lid);
                 let offset = args[1].bin();
                 let write_addr1 = args[2].u();
@@ -1578,15 +1596,15 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let addr = addr1.bin() + offset;
 
-                let lid = self.instr_link_id(instr, "main_memory", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::memory, 0);
                 let val = self
                     .proc
                     .get_mem(addr as u32 & 0xfffffffc, self.step + 1, lid);
                 let rem = addr % 4;
 
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 self.reg_write(2, write_addr1, val.into(), lid);
-                let lid = self.instr_link_id(instr, "main_regs", 2);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
                 self.reg_write(3, write_addr2, rem.into(), lid);
 
                 set_col!(tmp1_col, addr1);
@@ -1609,7 +1627,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             // TODO: update to witness generation for continuations
             Instruction::load_bootloader_input => {
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let addr = self.reg_read(0, args[0].u(), lid);
                 let write_addr = args[1].u();
                 let factor = args[2].bin();
@@ -1618,7 +1636,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let addr = addr.bin() * factor + offset;
                 let val = self.bootloader_inputs[addr as usize];
 
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 self.reg_write(2, write_addr, val, lid);
 
                 main_op!(load_bootloader_input);
@@ -1626,9 +1644,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             // TODO: update to witness generation for continuations
             Instruction::assert_bootloader_input => {
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let addr = self.reg_read(0, args[0].u(), lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let val = self.reg_read(1, args[1].u(), lid);
                 let factor = args[2].bin();
                 let offset = args[3].bin();
@@ -1644,7 +1662,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::load_label => {
                 let write_reg = args[0].u();
                 let label = args[1];
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 self.reg_write(0, write_reg, label, lid);
 
                 set_col!(tmp1_col, label);
@@ -1659,7 +1677,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let next_pc = self.proc.get_pc().u() + 1;
                 let write_reg = args[1].u();
 
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 self.reg_write(0, write_reg, next_pc.into(), lid);
 
                 self.proc.set_pc(label);
@@ -1671,12 +1689,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             Instruction::jump_dyn => {
                 let read_reg = args[0].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let addr = self.reg_read(0, read_reg, lid);
                 let next_pc = self.proc.get_pc().u() + 1;
                 let write_reg = args[1].u();
 
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 self.reg_write(0, write_reg, next_pc.into(), lid);
 
                 self.proc.set_pc(addr);
@@ -1698,9 +1716,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::branch_if_diff_nonzero => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
 
                 let val: Elem<F> = val1.sub(&val2);
@@ -1725,9 +1743,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::branch_if_diff_equal => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2];
                 let val: Elem<F> = val1.sub(&val2).sub(&offset);
@@ -1753,9 +1771,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::skip_if_equal => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2];
                 let cond = args[3];
@@ -1782,9 +1800,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg2 = args[1].u();
                 // We can't call u() because input registers may have come from
                 // a call to `to_signed`, which stores a signed integer.
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2];
                 let val: Elem<F> = val1.sub(&val2).sub(&offset);
@@ -1823,9 +1841,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::is_diff_greater_than => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
 
                 let offset = args[2];
@@ -1833,7 +1851,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val = val1.sub(&val2).sub(&offset);
 
                 let r = if val.bin() > 0 { 1 } else { 0 };
-                let lid = self.instr_link_id(instr, "main_regs", 2);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
                 self.reg_write(2, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val1);
@@ -1854,12 +1872,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             Instruction::is_equal_zero => {
                 let read_reg = args[0].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
 
                 let r = if val.is_zero() { 1 } else { 0 };
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 self.reg_write(2, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val);
@@ -1875,15 +1893,15 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::is_not_equal => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let write_reg = args[2].u();
                 let val: Elem<F> = (val1.bin() - val2.bin()).into();
 
                 let r = if !val.is_zero() { 1 } else { 0 };
-                let lid = self.instr_link_id(instr, "main_regs", 2);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
                 self.reg_write(2, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val1);
@@ -1901,9 +1919,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::add_wrap => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
@@ -1917,7 +1935,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // don't use .u() here: we are deliberately discarding the
                 // higher bits
                 let r = val.bin() as u32;
-                let lid = self.instr_link_id(instr, "main_regs", 2);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
                 self.reg_write(2, write_reg, r.into(), lid);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
@@ -1941,7 +1959,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             Instruction::wrap16 => {
                 let read_reg = args[0].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val = self.reg_read(0, read_reg, lid);
                 let factor = args[1].bin();
                 let write_reg = args[2].u();
@@ -1950,7 +1968,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // don't use .u() here: we are deliberately discarding the
                 // higher bits
                 let r = val_offset.bin() as u32;
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 self.reg_write(3, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val);
@@ -1974,9 +1992,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::sub_wrap_with_offset => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2];
                 let write_reg = args[3].u();
@@ -1984,7 +2002,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let r_i64: i64 = val.bin() + 0x100000000;
                 let r = r_i64 as u32;
-                let lid = self.instr_link_id(instr, "main_regs", 2);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
                 self.reg_write(2, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val1);
@@ -2010,14 +2028,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             Instruction::sign_extend_byte => {
                 let read_reg = args[0].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
 
                 // Sign extend the byte
                 let byte_val = (val.u() as u8) as i8;
                 let extended_val = byte_val as i32 as u32;
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 self.reg_write(3, write_reg, extended_val.into(), lid);
 
                 set_col!(tmp1_col, val);
@@ -2045,7 +2063,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             Instruction::sign_extend_16_bits => {
                 let read_reg = args[0].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
 
@@ -2056,7 +2074,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 } else {
                     val.u() & 0x0000FFFF
                 };
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 self.reg_write(3, write_reg, extended_val.into(), lid);
 
                 set_col!(tmp1_col, val);
@@ -2084,12 +2102,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             Instruction::to_signed => {
                 let read_reg = args[0].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
                 let r = val.u() as i32;
 
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 self.reg_write(1, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val);
@@ -2120,9 +2138,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::divremu => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let write_reg1 = args[2].u();
                 let write_reg2 = args[3].u();
@@ -2139,9 +2157,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     rem = y;
                 }
 
-                let lid = self.instr_link_id(instr, "main_regs", 2);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
                 self.reg_write(2, write_reg1, div.into(), lid);
-                let lid = self.instr_link_id(instr, "main_regs", 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 3);
                 self.reg_write(3, write_reg2, rem.into(), lid);
 
                 let tmp3_val = Elem::from_u32_as_fe(div);
@@ -2183,9 +2201,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::mul => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let write_reg1 = args[2].u();
                 let write_reg2 = args[3].u();
@@ -2194,9 +2212,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lo = r as u32;
                 let hi = (r >> 32) as u32;
 
-                let lid = self.instr_link_id(instr, "main_regs", 2);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
                 self.reg_write(2, write_reg1, lo.into(), lid);
-                let lid = self.instr_link_id(instr, "main_regs", 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 3);
                 self.reg_write(3, write_reg2, hi.into(), lid);
 
                 set_col!(tmp1_col, val1);
@@ -2204,7 +2222,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp3_col, Elem::from_u32_as_fe(lo));
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
-                let lid = self.instr_link_id(instr, "main_split_gl", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::split_gl, 0);
                 submachine_op!(split_gl, lid, &[r.into(), lo.into(), hi.into(), 0.into()],);
                 main_op!(mul);
                 None
@@ -2212,9 +2230,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::and | Instruction::or | Instruction::xor => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2].bin();
                 let write_reg = args[3].u();
@@ -2239,7 +2257,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     _ => unreachable!(),
                 };
 
-                let lid = self.instr_link_id(instr, "main_binary", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::binary, 0);
                 submachine_op!(
                     binary,
                     lid,
@@ -2251,7 +2269,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     ],
                 );
 
-                let lid = self.instr_link_id(instr, "main_regs", 2);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
                 self.reg_write(3, write_reg, r.into(), lid);
 
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
@@ -2261,9 +2279,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::shl | Instruction::shr => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2].bin();
                 let write_reg = args[3].u();
@@ -2281,7 +2299,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     _ => unreachable!(),
                 };
 
-                let lid = self.instr_link_id(instr, "main_shift", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::shift, 0);
                 submachine_op!(
                     shift,
                     lid,
@@ -2293,7 +2311,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     ],
                 );
 
-                let lid = self.instr_link_id(instr, "main_regs", 2);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
                 self.reg_write(3, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val1);
@@ -2305,16 +2323,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::invert_gl => {
                 let low_addr = args[0].u();
                 let high_addr = args[1].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let low = self.reg_read(0, low_addr, lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let high = self.reg_read(1, high_addr, lid);
                 let inv = F::one() / F::from((high.u() as u64) << 32 | low.u() as u64);
                 let inv_u64 = inv.to_integer().try_into_u64().unwrap();
                 let (low_inv, high_inv) = (inv_u64 as u32, (inv_u64 >> 32) as u32);
-                let lid = self.instr_link_id(instr, "main_regs", 2);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
                 self.reg_write(2, low_addr, low_inv.into(), lid);
-                let lid = self.instr_link_id(instr, "main_regs", 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 3);
                 self.reg_write(3, high_addr, high_inv.into(), lid);
 
                 set_col!(tmp1_col, low);
@@ -2323,7 +2341,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp4_col, Elem::from_u32_as_fe(high_inv));
                 set_col!(XX_inv, Elem::Field(inv));
 
-                let lid = self.instr_link_id(instr, "main_split_gl", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::split_gl, 0);
                 submachine_op!(
                     split_gl,
                     lid,
@@ -2334,7 +2352,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             Instruction::split_gl => {
                 let read_reg = args[0].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg, lid);
                 let write_reg1 = args[1].u();
                 let write_reg2 = args[2].u();
@@ -2346,16 +2364,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lo = (value & 0xffffffff) as u32;
                 let hi = (value >> 32) as u32;
 
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 self.reg_write(2, write_reg1, lo.into(), lid);
-                let lid = self.instr_link_id(instr, "main_regs", 2);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
                 self.reg_write(3, write_reg2, hi.into(), lid);
 
                 set_col!(tmp1_col, val1);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(lo));
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
-                let lid = self.instr_link_id(instr, "main_split_gl", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::split_gl, 0);
                 submachine_op!(
                     split_gl,
                     lid,
@@ -2367,10 +2385,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Instruction::poseidon_gl => {
                 let reg1 = args[0].u();
                 let reg2 = args[1].u();
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let input_ptr = self.reg_read(0, reg1, lid);
                 assert!(is_multiple_of_4(input_ptr.u()));
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let output_ptr = self.reg_read(1, reg2, lid);
                 assert!(is_multiple_of_4(output_ptr.u()));
 
@@ -2420,7 +2438,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     submachine_op!(split_gl, lid, &[*v, lo.into(), hi.into(), 0.into()],);
                 });
 
-                let lid = self.instr_link_id(instr, "main_poseidon_gl", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::poseidon_gl, 0);
                 submachine_op!(
                     poseidon_gl,
                     lid,
@@ -2637,14 +2655,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 None
             }
             Instruction::commit_public => {
-                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let idx = self.reg_read(0, args[0].u(), lid);
-                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let limb = self.reg_read(0, args[1].u(), lid);
                 set_col!(tmp1_col, idx);
                 set_col!(tmp2_col, limb);
                 log::debug!("Committing public: idx={idx}, limb={limb}");
-                let lid = self.instr_link_id(instr, "main_publics", 0);
+                let lid = self.instr_link_id(instr, MachineInstance::publics, 0);
                 submachine_op!(
                     publics,
                     lid,
@@ -2653,6 +2671,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(commit_public);
                 None
             }
+            Instruction::Count => unreachable!(),
         };
 
         r
@@ -2994,7 +3013,8 @@ fn execute_inner<F: FieldElement>(
         step: 0,
         mode,
         pil_links,
-        pil_instruction_links: Default::default(),
+        pil_instruction_links: vec![None; Instruction::count() * MachineInstance::count()],
+        pil_other_links: Default::default(),
         cached_fixed_cols: Default::default(),
     };
 
