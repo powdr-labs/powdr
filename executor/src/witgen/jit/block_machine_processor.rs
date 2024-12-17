@@ -251,7 +251,7 @@ params[2] = Add::c[0];"
 
     #[test]
     // TODO: Currently fails, because the machine has a non-rectangular block shape.
-    #[should_panic = "Incomplete machine calls"]
+    #[should_panic = "Unsolved assignments"]
     fn binary() {
         let input = read_to_string("../test_data/pil/binary.pil").unwrap();
         generate_for_block_machine(
