@@ -2,6 +2,7 @@
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
@@ -22,17 +23,32 @@ use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
-    remove_unreferenced_definitions(&mut pil_file);
-    remove_constant_fixed_columns(&mut pil_file);
-    deduplicate_fixed_columns(&mut pil_file);
-    simplify_identities(&mut pil_file);
-    extract_constant_lookups(&mut pil_file);
-    remove_constant_witness_columns(&mut pil_file);
-    remove_constant_intermediate_columns(&mut pil_file);
-    simplify_identities(&mut pil_file);
-    remove_trivial_identities(&mut pil_file);
-    remove_duplicate_identities(&mut pil_file);
-    remove_unreferenced_definitions(&mut pil_file);
+    loop {
+        let pil_hash = {
+            let mut hasher = DefaultHasher::new();
+            pil_file.hash(&mut hasher);
+            hasher.finish()
+        };
+        remove_unreferenced_definitions(&mut pil_file);
+        remove_constant_fixed_columns(&mut pil_file);
+        deduplicate_fixed_columns(&mut pil_file);
+        simplify_identities(&mut pil_file);
+        extract_constant_lookups(&mut pil_file);
+        remove_constant_witness_columns(&mut pil_file);
+        remove_constant_intermediate_columns(&mut pil_file);
+        simplify_identities(&mut pil_file);
+        remove_trivial_identities(&mut pil_file);
+        remove_duplicate_identities(&mut pil_file);
+
+        let new_hash = {
+            let mut hasher = DefaultHasher::new();
+            pil_file.hash(&mut hasher);
+            hasher.finish()
+        };
+        if pil_hash == new_hash {
+            break;
+        }
+    }
     let col_count_post = (pil_file.commitment_count(), pil_file.constant_count());
     log::info!(
         "Removed {} witness and {} fixed columns. Total count now: {} witness and {} fixed columns.",
