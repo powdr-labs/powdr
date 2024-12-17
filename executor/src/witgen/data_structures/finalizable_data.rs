@@ -115,6 +115,10 @@ impl<T: FieldElement> CompactData<T> {
                 (col, &self.data[idx])
             })
     }
+
+    pub fn as_mut_slices(&mut self) -> (&mut [T], &mut [u32]) {
+        (&mut self.data, self.known_cells.as_mut_slice())
+    }
 }
 
 /// A mutable reference into CompactData that is meant to be used

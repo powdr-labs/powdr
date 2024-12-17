@@ -85,6 +85,10 @@ impl PaddedBitVec {
             *word &= !(1 << (col % 32));
         }
     }
+
+    pub fn as_mut_slice(&mut self) -> &mut [u32] {
+        &mut self.data
+    }
 }
 
 #[cfg(test)]
