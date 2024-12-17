@@ -808,19 +808,6 @@ mod builder {
             }
         }
 
-        pub fn get_col(&self, name: &str) -> Elem<F> {
-            if let ExecMode::Trace = self.mode {
-                let col = self
-                    .trace
-                    .cols
-                    .get(name)
-                    .unwrap_or_else(|| panic!("col not found: {name}"));
-                Elem::Field(*col.last().unwrap())
-            } else {
-                Elem::Field(F::zero())
-            }
-        }
-
         pub fn push_row(&mut self) {
             if let ExecMode::Trace = self.mode {
                 self.trace.cols.values_mut().for_each(|v| v.push(F::zero()));
@@ -1259,18 +1246,17 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .set_col(concat!("main::", stringify!($name)), $val);
             };
         }
-        macro_rules! get_col {
-            ($name:ident) => {
-                self.proc.get_col(concat!("main::", stringify!($name)))
-            };
-        }
 
         macro_rules! get_fixed {
             ($name:ident) => {
-                Elem::Field(
-                    self.get_fixed(concat!("main__rom::p_", stringify!($name)))
-                        .unwrap()[self.proc.get_pc().u() as usize],
-                )
+                if let ExecMode::Trace = self.mode {
+                    Elem::Field(
+                        self.get_fixed(concat!("main__rom::p_", stringify!($name)))
+                            .unwrap()[self.proc.get_pc().u() as usize],
+                    )
+                } else {
+                    Elem::Field(F::zero())
+                }
             };
         }
 
@@ -1541,9 +1527,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
                 set_col!(XX, val);
-                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
-                if !get_col!(XX).is_zero() {
-                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
+                set_col!(XXIsZero, Elem::from_bool_as_fe(val.is_zero()));
+                if !val.is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
                 self.proc
@@ -1570,9 +1556,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
                 set_col!(XX, val);
-                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
-                if !get_col!(XX).is_zero() {
-                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
+                set_col!(XXIsZero, Elem::from_bool_as_fe(val.is_zero()));
+                if !val.is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
                 self.proc
@@ -1600,9 +1586,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
                 set_col!(XX, val);
-                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
-                if !get_col!(XX).is_zero() {
-                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
+                set_col!(XXIsZero, Elem::from_bool_as_fe(val.is_zero()));
+                if !val.is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
                 main_op!(skip_if_equal);
@@ -1696,9 +1682,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(tmp1_col, val);
                 set_col!(XX, val);
-                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
-                if !get_col!(XX).is_zero() {
-                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
+                set_col!(XXIsZero, Elem::from_bool_as_fe(val.is_zero()));
+                if !val.is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
                 main_op!(is_equal_zero);
@@ -1722,9 +1708,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp2_col, val2);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
                 set_col!(XX, val);
-                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
-                if !get_col!(XX).is_zero() {
-                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
+                set_col!(XXIsZero, Elem::from_bool_as_fe(val.is_zero()));
+                if !val.is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
                 main_op!(is_not_equal);
@@ -1786,9 +1772,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.reg_write(3, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val);
-                set_col!(tmp3_col, Elem::from_u32_as_fe(r));
+                let tmp3_val = Elem::from_u32_as_fe(r);
+                set_col!(tmp3_col, tmp3_val);
 
-                let v = get_col!(tmp3_col).as_i64_from_lower_bytes();
+                let v = tmp3_val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
                 set_col!(X_b2, Elem::from_u32_as_fe(b2.into()));
@@ -1854,7 +1841,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(extended_val));
 
-                let v = get_col!(tmp1_col).as_i64_from_lower_bytes();
+                let v = val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 // first 7bits
                 set_col!(Y_7bit, Elem::from_u32_as_fe((b1 & 0x7f).into()));
@@ -1893,7 +1880,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(extended_val));
 
-                let v = get_col!(tmp1_col).as_i64_from_lower_bytes();
+                let v = val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _) = decompose_lower32(v);
 
                 set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
@@ -1975,17 +1962,18 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lid = self.instr_link_id(instr, "main_regs", 3);
                 self.reg_write(3, write_reg2, rem.into(), lid);
 
+                let tmp3_val = Elem::from_u32_as_fe(div);
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
-                set_col!(tmp3_col, Elem::from_u32_as_fe(div));
+                set_col!(tmp3_col, tmp3_val);
                 set_col!(tmp4_col, Elem::from_u32_as_fe(rem));
                 set_col!(XX, val2);
-                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
-                if !get_col!(XX).is_zero() {
-                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
+                set_col!(XXIsZero, Elem::from_bool_as_fe(val2.is_zero()));
+                if !val2.is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / val2.into_fe()));
                 }
 
-                let v = get_col!(tmp3_col).as_i64_from_lower_bytes();
+                let v = tmp3_val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
                 set_col!(X_b2, Elem::from_u32_as_fe(b2.into()));
