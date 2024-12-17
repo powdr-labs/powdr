@@ -1275,6 +1275,15 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             };
         }
 
+        macro_rules! get_fixed {
+            ($name:ident) => {
+                Elem::Field(
+                    self.get_fixed(concat!("main__rom::p_", stringify!($name)))
+                        .unwrap()[self.proc.get_pc().u() as usize],
+                )
+            };
+        }
+
         macro_rules! main_op {
             ($insn:ident) => {
                 self.proc
@@ -1299,10 +1308,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         self.proc.backup_reg_mem();
 
-        set_col!(X, get_col!(X_const));
-        set_col!(Y, get_col!(Y_const));
-        set_col!(Z, get_col!(Z_const));
-        set_col!(W, get_col!(W_const));
+        set_col!(X, get_fixed!(X_const));
+        set_col!(Y, get_fixed!(Y_const));
+        set_col!(Z, get_fixed!(Z_const));
+        set_col!(W, get_fixed!(W_const));
         self.proc
             .set_col(&format!("main::instr_{name}"), Elem::from_u32_as_fe(1));
 
@@ -1318,7 +1327,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(Y, val);
 
-                if !get_col!(Y_read_free).is_zero() {
+                if !get_fixed!(Y_read_free).is_zero() {
                     set_col!(Y_free_value, val);
                 }
 
@@ -2837,7 +2846,8 @@ fn execute_inner<F: FieldElement>(
                 let asgn_reg = a.lhs_with_reg[0].1.clone();
                 if let AssignmentRegister::Register(x) = asgn_reg {
                     assert_eq!(x, "X"); // we currently only assign through X
-                    let x_const = e.proc.get_col("main::X_const");
+                    let x_const =
+                        Elem::Field(e.get_fixed("main__rom::p_X_const").unwrap()[pc as usize]);
 
                     match a.rhs.as_ref() {
                         Expression::FreeInput(_, _expr) => {
@@ -2852,7 +2862,9 @@ fn execute_inner<F: FieldElement>(
                             let x = results[0];
                             e.proc.set_col("main::X", x);
 
-                            let x_read_free = e.proc.get_col("main::X_read_free");
+                            let x_read_free = Elem::Field(
+                                e.get_fixed("main__rom::p_X_read_free").unwrap()[pc as usize],
+                            );
 
                             // We need to solve for X_free_value:
                             // X = X_const + X_read_free * X_free_value
