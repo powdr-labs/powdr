@@ -58,7 +58,7 @@ extern "C" fn sys_getenv(
     _varname: *const u8,
     _varname_len: usize,
 ) -> usize {
-    todo!()
+    0
 }
 
 #[no_mangle]
