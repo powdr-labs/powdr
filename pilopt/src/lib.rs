@@ -24,7 +24,11 @@ use referenced_symbols::{ReferencedSymbols, SymbolReference};
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
     loop {
-        let pil_hash = hash_pil_state(&pil_file);
+        let pil_hash = {
+            let mut hasher = DefaultHasher::new();
+            pil_file.hash(&mut hasher);
+            hasher.finish()
+        };
         remove_unreferenced_definitions(&mut pil_file);
         remove_constant_fixed_columns(&mut pil_file);
         deduplicate_fixed_columns(&mut pil_file);
@@ -35,7 +39,12 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         remove_trivial_identities(&mut pil_file);
         remove_duplicate_identities(&mut pil_file);
 
-        if pil_hash == hash_pil_state(&pil_file) {
+        let new_hash = {
+            let mut hasher = DefaultHasher::new();
+            pil_file.hash(&mut hasher);
+            hasher.finish()
+        };
+        if pil_hash == new_hash {
             break;
         }
     }
@@ -49,49 +58,6 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         col_count_post.1
     );
     pil_file
-}
-
-fn hash_pil_state<T: FieldElement>(pil: &Analyzed<T>) -> u64 {
-    let mut hasher = DefaultHasher::new();
-
-    for identity in &pil.identities {
-        identity.hash(&mut hasher);
-    }
-
-    for (key, (_, value)) in pil.definitions.iter().sorted_by(|a, b| a.0.cmp(b.0)) {
-        key.hash(&mut hasher);
-        if let Some(v) = value {
-            v.hash(&mut hasher);
-        }
-    }
-
-    for (key, (_, value)) in pil
-        .intermediate_columns
-        .iter()
-        .sorted_by(|a, b| a.0.cmp(b.0))
-    {
-        key.hash(&mut hasher);
-        value.hash(&mut hasher);
-    }
-
-    for pf in &pil.prover_functions {
-        pf.hash(&mut hasher);
-    }
-
-    for (key, value) in pil
-        .public_declarations
-        .iter()
-        .sorted_by(|a, b| a.0.cmp(b.0))
-    {
-        key.hash(&mut hasher);
-        value.hash(&mut hasher);
-    }
-
-    for _impl in &pil.trait_impls {
-        _impl.hash(&mut hasher);
-    }
-
-    hasher.finish()
 }
 
 /// Removes all definitions that are not referenced by an identity, public declaration

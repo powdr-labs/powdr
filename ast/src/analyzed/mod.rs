@@ -25,7 +25,7 @@ use crate::parsed::{
     TraitDeclaration, TraitImplementation, TypeDeclaration,
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
 pub enum StatementIdentifier {
     /// Either an intermediate column or a definition.
     Definition(String),
@@ -515,6 +515,57 @@ impl<T: FieldElement> Analyzed<T> {
 
     pub fn deserialize(bytes: &[u8]) -> Result<Self, String> {
         serde_cbor::from_slice(bytes).map_err(|e| format!("Failed to deserialize analyzed: {e}"))
+    }
+}
+
+impl<T: FieldElement> Hash for Analyzed<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        for identity in &self.identities {
+            identity.hash(state);
+        }
+
+        for (key, (_, value)) in self.definitions.iter().sorted_by(|a, b| a.0.cmp(b.0)) {
+            key.hash(state);
+            if let Some(v) = value {
+                v.hash(state);
+            }
+        }
+
+        for (key, (_, value)) in self
+            .intermediate_columns
+            .iter()
+            .sorted_by(|a, b| a.0.cmp(b.0))
+        {
+            key.hash(state);
+            for v in value.iter() {
+                v.hash(state);
+            }
+        }
+
+        for pf in &self.prover_functions {
+            pf.hash(state);
+        }
+
+        for (key, value) in self
+            .public_declarations
+            .iter()
+            .sorted_by(|a, b| a.0.cmp(b.0))
+        {
+            key.hash(state);
+            value.hash(state);
+        }
+
+        for _impl in &self.trait_impls {
+            _impl.hash(state);
+        }
+
+        for order in &self.source_order {
+            order.hash(state);
+        }
+
+        for symbol in self.auto_added_symbols.iter().sorted() {
+            symbol.hash(state);
+        }
     }
 }
 
