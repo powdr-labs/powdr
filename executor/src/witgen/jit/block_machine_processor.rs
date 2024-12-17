@@ -35,8 +35,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         identity_id: u64,
         known_args: BitVec,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
-        let connection = self.machine_parts.connections[&identity_id];
-        assert_eq!(connection.right.expressions.len(), known_args.len());
+        let connection_rhs = self.machine_parts.connections[&identity_id].right;
+        assert_eq!(connection_rhs.expressions.len(), known_args.len());
 
         // Set up WitgenInference with known arguments.
         let known_variables = known_args
@@ -48,13 +48,13 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
         // In the latch row, set the RHS selector to 1.
         witgen.assign(
-            &connection.right.selector,
+            &connection_rhs.selector,
             self.latch_row as i32,
             T::one().into(),
         )?;
 
         // For each known argument, transfer the value to the expression in the connection's RHS.
-        for (index, expr) in connection.right.expressions.iter().enumerate() {
+        for (index, expr) in connection_rhs.expressions.iter().enumerate() {
             if known_args[index] {
                 let param_i =
                     AffineSymbolicExpression::from_known_symbol(Variable::Param(index), None);
@@ -68,7 +68,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
         // For each unknown argument, get the value from the expression in the connection's RHS.
         // If assign() fails, it means that we weren't able to to solve for the operation's output.
-        for (index, expr) in connection.right.expressions.iter().enumerate() {
+        for (index, expr) in connection_rhs.expressions.iter().enumerate() {
             if !known_args[index] {
                 let param_i =
                     AffineSymbolicExpression::from_unknown_variable(Variable::Param(index), None);
