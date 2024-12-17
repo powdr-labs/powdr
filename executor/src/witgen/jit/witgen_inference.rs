@@ -89,6 +89,27 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.ingest_effects(result)
     }
 
+    /// Process the constraint that the expression evaluated at the given offset equals the given affine expression.
+    /// Note that either the expression or the value might contain unknown variables, but if we are not able to
+    /// solve the equation, we return an error.
+    pub fn assign(
+        &mut self,
+        expression: &Expression<T>,
+        offset: i32,
+        value: AffineSymbolicExpression<T, Variable>,
+    ) -> Result<(), String> {
+        let affine_expression = self
+            .evaluate(expression, offset)
+            .ok_or_else(|| format!("Expression is not affine: {expression}"))?;
+        let result = (affine_expression - value.clone())
+            .solve()
+            .map_err(|err| format!("Could not solve ({expression} - {value}): {err}"))?;
+        match self.ingest_effects(result).complete {
+            true => Ok(()),
+            false => Err("Wasn't able to complete the assignment".to_string()),
+        }
+    }
+
     fn process_polynomial_identity(
         &self,
         expression: &Expression<T>,
