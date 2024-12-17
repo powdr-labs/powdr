@@ -47,36 +47,16 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables);
 
         // In the latch row, set the RHS selector to 1.
-        witgen.assign(
-            &connection_rhs.selector,
-            self.latch_row as i32,
-            T::one().into(),
-        )?;
+        witgen.assign_constant(&connection_rhs.selector, self.latch_row as i32, T::one());
 
-        // For each known argument, transfer the value to the expression in the connection's RHS.
+        // For each argument, connect the expression on the RHS with the formal parameter.
         for (index, expr) in connection_rhs.expressions.iter().enumerate() {
-            if known_args[index] {
-                let param_i =
-                    AffineSymbolicExpression::from_known_symbol(Variable::Param(index), None);
-                witgen.assign(expr, self.latch_row as i32, param_i)?;
-            }
+            witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
         }
 
         // Solve for the block witness.
         // Fails if any machine call cannot be completed.
         self.solve_block(&mut witgen)?;
-
-        // For each unknown argument, get the value from the expression in the connection's RHS.
-        // If assign() fails, it means that we weren't able to to solve for the operation's output.
-        for (index, expr) in connection_rhs.expressions.iter().enumerate() {
-            if !known_args[index] {
-                let param_i =
-                    AffineSymbolicExpression::from_unknown_variable(Variable::Param(index), None);
-                witgen
-                    .assign(expr, self.latch_row as i32, param_i)
-                    .map_err(|_| format!("Could not solve for params[{index}]"))?;
-            }
-        }
 
         Ok(witgen.code())
     }
@@ -104,6 +84,10 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 log::debug!("Finishing after {iteration} iterations");
                 break;
             }
+        }
+
+        if witgen.has_unsolved_assignments() {
+            return Err("Unsolved assignments".to_string());
         }
 
         // If any machine call could not be completed, that's bad because machine calls typically have side effects.
