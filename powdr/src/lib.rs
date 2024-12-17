@@ -282,6 +282,20 @@ pub fn pipeline_from_guest(
 }
 
 pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
+    run_internal(pipeline, None)
+}
+
+pub fn run_with_profiler(
+    pipeline: &mut Pipeline<GoldilocksField>,
+    profiler: riscv_executor::ProfilerOptions,
+) {
+    run_internal(pipeline, Some(profiler))
+}
+
+fn run_internal(
+    pipeline: &mut Pipeline<GoldilocksField>,
+    profiler: Option<riscv_executor::ProfilerOptions>,
+) {
     println!("Running powdr-riscv executor in fast mode...");
     let start = Instant::now();
 
@@ -293,7 +307,7 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
         initial_memory,
         pipeline.data_callback().unwrap(),
         &riscv::continuations::bootloader::default_input(&[]),
-        None,
+        profiler,
     );
 
     let duration = start.elapsed();
