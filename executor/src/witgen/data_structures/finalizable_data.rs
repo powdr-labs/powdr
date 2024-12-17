@@ -130,7 +130,7 @@ impl<T: FieldElement> CompactData<T> {
 /// It allows negative row indices as well.
 pub struct CompactDataRef<'a, T> {
     data: &'a mut CompactData<T>,
-    pub row_offset: usize,
+    row_offset: usize,
 }
 
 impl<'a, T: FieldElement> CompactDataRef<'a, T> {
@@ -142,6 +142,10 @@ impl<'a, T: FieldElement> CompactDataRef<'a, T> {
 
     pub fn as_mut_slices(&mut self) -> (&mut [T], &mut [u32]) {
         self.data.as_mut_slices()
+    }
+
+    pub fn row_offset(&self) -> usize {
+        self.row_offset
     }
 }
 

@@ -37,7 +37,7 @@ impl<T: FieldElement> WitgenFunction<T> {
         params: &mut [LookupCell<T>],
         mut data: CompactDataRef<'_, T>,
     ) {
-        let row_offset = data.row_offset.try_into().unwrap();
+        let row_offset = data.row_offset().try_into().unwrap();
         let (data, known) = data.as_mut_slices();
         (self.function)(WitgenFunctionParams {
             data: data.into(),
