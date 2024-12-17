@@ -249,14 +249,21 @@ known_witness_col! {
 /// Enum with submachines used in the RISCV vm
 macro_rules! machine_instances {
     ($($name:ident),*) => {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToPrimitive, FromPrimitive)]
         #[allow(non_camel_case_types)]
+        #[repr(usize)]
         enum MachineInstance {
             $($name,)*
         }
 
         #[allow(unused)]
         impl MachineInstance {
+            fn all() -> Vec<Self> {
+                vec![
+                    $(Self::$name,)*
+                ]
+            }
+
             fn name(&self) -> &'static str {
                 match *self {
                     $(Self::$name => stringify!($name),)*
@@ -502,7 +509,7 @@ pub struct ExecutionTrace<F: FieldElement> {
     main_ops: Vec<MainOp<F>>,
 
     /// Calls into submachines
-    submachine_ops: HashMap<MachineInstance, Vec<SubmachineOp<F>>>,
+    submachine_ops: Vec<Vec<SubmachineOp<F>>>,
 
     /// Columns directly accessed by the executor, indexed by the enum value for
     /// fast access. Some columns may be optimized away, so we rely on the PIL
@@ -531,7 +538,7 @@ impl<F: FieldElement> ExecutionTrace<F> {
             mem_ops: Vec::new(),
             len: pc,
             main_ops: Vec::new(),
-            submachine_ops: HashMap::new(),
+            submachine_ops: MachineInstance::all().iter().map(|_| Vec::new()).collect(),
             known_cols: KnownWitnessCol::all().iter().map(|_| vec![]).collect(),
             main_cols,
         }
@@ -821,8 +828,8 @@ mod builder {
             if let ExecMode::Trace = self.mode {
                 self.trace
                     .submachine_ops
-                    .entry(m)
-                    .or_default()
+                    .get_mut(m as usize)
+                    .unwrap()
                     .push(SubmachineOp {
                         identity_id,
                         lookup_args: lookup_args.to_vec(),
@@ -1092,7 +1099,8 @@ mod builder {
                 .into_iter()
                 // take each submachine and get its operations
                 .map(|(m, machine)| {
-                    let ops = self.trace.submachine_ops.remove(&m).unwrap_or_default();
+                    let ops =
+                        std::mem::take(self.trace.submachine_ops.get_mut(m as usize).unwrap());
                     (m, machine.into_inner(), ops)
                 })
                 // handle submachines in parallel
