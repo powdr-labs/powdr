@@ -17,6 +17,8 @@ use std::{
     time::Instant,
 };
 
+use num_derive::{FromPrimitive, ToPrimitive};
+
 use builder::TraceBuilder;
 
 use itertools::Itertools;
@@ -132,6 +134,116 @@ instructions! {
     ec_double,
     commit_public,
     fail
+}
+
+/// Enum with columns directly accessed by the executor (as to avoid matching on strings)
+macro_rules! known_witness_col {
+    ($first:ident, $($name:ident),*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToPrimitive, FromPrimitive)]
+        #[allow(non_camel_case_types)]
+        #[repr(usize)]
+        enum KnownWitnessCol {
+            $first = 0,
+            $($name,)*
+        }
+
+        impl KnownWitnessCol {
+            fn all() -> Vec<Self> {
+                vec![
+                    Self::$first,
+                    $(Self::$name,)*
+                ]
+            }
+
+            fn name(&self) -> &'static str {
+                match *self {
+                    Self::$first => concat!("main::", stringify!($first)),
+                    $(Self::$name => concat!("main::", stringify!($name)),)*
+                }
+            }
+        }
+    };
+}
+
+known_witness_col! {
+    _operation_id,
+    pc_update,
+    X,
+    Y,
+    Z,
+    W,
+    Y_free_value,
+    X_free_value,
+    tmp1_col,
+    tmp2_col,
+    tmp3_col,
+    tmp4_col,
+    X_b1,
+    X_b2,
+    X_b3,
+    X_b4,
+    XX,
+    XXIsZero,
+    XX_inv,
+    Y_b5,
+    Y_b6,
+    Y_b7,
+    Y_b8,
+    Y_7bit,
+    Y_15bit,
+    REM_b1,
+    REM_b2,
+    REM_b3,
+    REM_b4,
+    wrap_bit,
+    instr_load_label_param_l,
+    instr_jump_param_l,
+    instr_branch_if_diff_nonzero_param_l,
+    instr_branch_if_diff_equal_param_l,
+    instr_branch_if_diff_greater_than_param_l,
+    // instructions
+    instr_set_reg,
+    instr_get_reg,
+    instr_affine,
+    instr_mstore,
+    instr_mstore_bootloader,
+    instr_mload,
+    instr_load_bootloader_input,
+    instr_assert_bootloader_input,
+    instr_load_label,
+    instr_jump,
+    instr_jump_dyn,
+    instr_jump_to_bootloader_input,
+    instr_branch_if_diff_nonzero,
+    instr_branch_if_diff_equal,
+    instr_skip_if_equal,
+    instr_branch_if_diff_greater_than,
+    instr_is_diff_greater_than,
+    instr_is_equal_zero,
+    instr_is_not_equal,
+    instr_add_wrap,
+    instr_wrap16,
+    instr_sub_wrap_with_offset,
+    instr_sign_extend_byte,
+    instr_sign_extend_16_bits,
+    instr_to_signed,
+    instr_divremu,
+    instr_mul,
+    instr_and,
+    instr_or,
+    instr_xor,
+    instr_shl,
+    instr_shr,
+    instr_invert_gl,
+    instr_split_gl,
+    instr_poseidon_gl,
+    instr_poseidon2_gl,
+    instr_affine_256,
+    instr_mod_256,
+    instr_ec_add,
+    instr_ec_double,
+    instr_commit_public,
+    instr_fail
 }
 
 /// Enum with submachines used in the RISCV vm
@@ -392,8 +504,13 @@ pub struct ExecutionTrace<F: FieldElement> {
     /// Calls into submachines
     submachine_ops: HashMap<MachineInstance, Vec<SubmachineOp<F>>>,
 
-    /// witness columns
-    cols: HashMap<String, Vec<F>>,
+    /// Columns directly accessed by the executor, indexed by the enum value for
+    /// fast access. Some columns may be optimized away, so we rely on the PIL
+    /// columns to know what should be present in the end.
+    known_cols: Vec<Vec<F>>,
+
+    /// `main` witness columns obtained from the optimized pil.
+    main_cols: Vec<String>,
 }
 
 impl<F: FieldElement> ExecutionTrace<F> {
@@ -403,10 +520,9 @@ impl<F: FieldElement> ExecutionTrace<F> {
         reg_writes: Vec<RegWrite<F>>,
         pc: usize,
     ) -> Self {
-        let cols: HashMap<String, _> = witness_cols
+        let main_cols: Vec<String> = witness_cols
             .into_iter()
             .filter(|n| n.starts_with("main::"))
-            .map(|n| (n, vec![F::zero(), F::zero()]))
             .collect();
 
         ExecutionTrace {
@@ -416,7 +532,8 @@ impl<F: FieldElement> ExecutionTrace<F> {
             len: pc,
             main_ops: Vec::new(),
             submachine_ops: HashMap::new(),
-            cols,
+            known_cols: KnownWitnessCol::all().iter().map(|_| vec![]).collect(),
+            main_cols,
         }
     }
 
@@ -505,6 +622,7 @@ impl<F: FieldElement> RegisterMemory<F> {
 mod builder {
     use std::{cell::RefCell, cmp, collections::HashMap, time::Instant};
 
+    use num_traits::FromPrimitive;
     use powdr_ast::{
         analyzed::{Analyzed, DegreeRange},
         asm_analysis::{Machine, RegisterTy},
@@ -514,9 +632,9 @@ mod builder {
 
     use crate::{
         pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, Instruction,
-        MachineInstance, MainOp, MemOperation, MemOperationKind, MemoryMachine, MemoryState,
-        PoseidonGlMachine, PublicsMachine, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine,
-        Submachine, SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
+        KnownWitnessCol, MachineInstance, MainOp, MemOperation, MemOperationKind, MemoryMachine,
+        MemoryState, PoseidonGlMachine, PublicsMachine, RegWrite, RegisterMemory, ShiftMachine,
+        SplitGlMachine, Submachine, SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
     };
 
     fn namespace_degree_range<F: FieldElement>(
@@ -714,13 +832,7 @@ mod builder {
         }
 
         pub(crate) fn main_columns_len(&self) -> usize {
-            let cols_len = self
-                .trace
-                .cols
-                .values()
-                .next()
-                .map(|v| v.len())
-                .unwrap_or(0);
+            let cols_len = self.trace.known_cols[0].len();
 
             // sanity check
             assert!(self.trace.len <= cols_len);
@@ -786,40 +898,34 @@ mod builder {
             self.regs[idx as usize] = value;
         }
 
-        pub fn set_col_idx(&mut self, name: &str, idx: usize, value: Elem<F>) {
+        pub fn set_col_idx(&mut self, col: KnownWitnessCol, idx: usize, value: Elem<F>) {
             if let ExecMode::Trace = self.mode {
-                let col = self
+                let values = self
                     .trace
-                    .cols
-                    .get_mut(name)
-                    .unwrap_or_else(|| panic!("col not found: {name}"));
-                *col.get_mut(idx).unwrap() = value.into_fe();
+                    .known_cols
+                    .get_mut(col as usize)
+                    .unwrap_or_else(|| panic!("col not found: {}", col.name()));
+                *values.get_mut(idx).unwrap() = value.into_fe();
             }
         }
 
-        pub fn set_col(&mut self, name: &str, value: Elem<F>) {
+        pub fn set_col(&mut self, col: KnownWitnessCol, value: Elem<F>) {
             if let ExecMode::Trace = self.mode {
-                let col = self
+                let values = self
                     .trace
-                    .cols
-                    .get_mut(name)
-                    .unwrap_or_else(|| panic!("col not found: {name}"));
-                *col.last_mut().unwrap() = value.into_fe();
+                    .known_cols
+                    .get_mut(col as usize)
+                    .unwrap_or_else(|| panic!("col not found: {}", col.name()));
+                *values.last_mut().unwrap() = value.into_fe();
             }
         }
 
         pub fn push_row(&mut self) {
             if let ExecMode::Trace = self.mode {
-                self.trace.cols.values_mut().for_each(|v| v.push(F::zero()));
-            }
-        }
-
-        pub fn extend_rows(&mut self, len: u32) {
-            if let ExecMode::Trace = self.mode {
-                self.trace.cols.values_mut().for_each(|v| {
-                    let last = *v.last().unwrap();
-                    v.resize(len as usize, last);
-                });
+                self.trace
+                    .known_cols
+                    .iter_mut()
+                    .for_each(|v| v.push(F::zero()));
             }
         }
 
@@ -925,22 +1031,52 @@ mod builder {
                 )
             };
 
-            // turn register write operations into witness columns
             let start = Instant::now();
+
+            // turn register write operations into witness columns
             let main_regs = self.trace.generate_registers_trace();
-            self.trace.cols.extend(main_regs);
+
+            // convert the array of columns into a hashmap. This hashmap will be added to until we get the full witness.
+            let mut cols: HashMap<String, Vec<F>> = self
+                .trace
+                .known_cols
+                .into_iter()
+                .enumerate()
+                .map(|(i, values)| {
+                    (
+                        KnownWitnessCol::from_usize(i).unwrap().name().to_string(),
+                        values,
+                    )
+                })
+                // only keep the columns that are present in the pil
+                .filter(|(col, _values)| self.trace.main_cols.contains(col))
+                .collect();
+
+            // add reg columns to trace
+            cols.extend(main_regs);
 
             // sanity check that program columns and main trace have the same length
             assert_eq!(
-                self.trace.cols.values().next().unwrap().len(),
+                cols.values().next().unwrap().len(),
                 program_columns[0].1.len(),
             );
 
             // add program columns to main trace
-            self.trace.cols.extend(program_columns);
+            cols.extend(program_columns);
+
+            // sanity check
+            assert_eq!(
+                cols.len(),
+                self.trace.main_cols.len(),
+                "some witness column is missing from the executor",
+            );
 
             // fill up main trace to degree
-            self.extend_rows(main_degree);
+            cols.values_mut().for_each(|v| {
+                let last = *v.last().unwrap();
+                v.resize(main_degree as usize, last);
+            });
+
             log::debug!(
                 "Finalizing main machine trace took {}s",
                 start.elapsed().as_secs_f64(),
@@ -951,7 +1087,7 @@ mod builder {
             let links = pil::links_from_pil(pil);
 
             let start = Instant::now();
-            let cols = self
+            let subm_cols = self
                 .submachines
                 .into_iter()
                 // take each submachine and get its operations
@@ -988,7 +1124,7 @@ mod builder {
                         machine.finish(0)
                     }
                 });
-            self.trace.cols.par_extend(cols);
+            cols.par_extend(subm_cols);
 
             log::debug!(
                 "Generating submachine traces took {}s",
@@ -999,7 +1135,7 @@ mod builder {
                 trace_len: self.trace.len,
                 memory: self.mem,
                 memory_accesses: std::mem::take(&mut self.trace.mem_ops),
-                trace: self.trace.cols,
+                trace: cols,
                 register_memory: self.reg_mem.for_bootloader(),
             }
         }
@@ -1154,10 +1290,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         self.step = 4;
         for i in 0..2 {
             self.proc.main_op(None, i, vec![]);
+            self.proc.push_row();
             self.proc
-                .set_col_idx("main::_operation_id", i as usize, 2.into());
+                .set_col_idx(KnownWitnessCol::_operation_id, i as usize, 2.into());
             self.proc
-                .set_col_idx("main::pc_update", i as usize, (i + 1).into());
+                .set_col_idx(KnownWitnessCol::pc_update, i as usize, (i + 1).into());
         }
     }
 
@@ -1242,8 +1379,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         // shorthand macros for setting/getting main machine witness values in the current row
         macro_rules! set_col {
             ($name:ident, $val:expr) => {
-                self.proc
-                    .set_col(concat!("main::", stringify!($name)), $val);
+                self.proc.set_col(KnownWitnessCol::$name, $val);
             };
         }
 
@@ -1288,8 +1424,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         set_col!(Y, get_fixed!(Y_const));
         set_col!(Z, get_fixed!(Z_const));
         set_col!(W, get_fixed!(W_const));
-        self.proc
-            .set_col(&format!("main::instr_{name}"), Elem::from_u32_as_fe(1));
 
         let instr = Instruction::from_name(name).expect("unknown instruction");
 
@@ -1464,7 +1598,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(tmp1_col, label);
 
-                self.proc.set_col("main::instr_load_label_param_l", label);
+                set_col!(instr_load_label_param_l, label);
 
                 main_op!(load_label);
                 Vec::new()
@@ -1479,7 +1613,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.proc.set_pc(label);
 
-                self.proc.set_col("main::instr_jump_param_l", label);
+                set_col!(instr_jump_param_l, label);
 
                 main_op!(jump);
                 Vec::new()
@@ -1532,8 +1666,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
-                self.proc
-                    .set_col("main::instr_branch_if_diff_nonzero_param_l", label);
+                set_col!(instr_branch_if_diff_nonzero_param_l, label);
 
                 main_op!(branch_if_diff_nonzero);
                 Vec::new()
@@ -1561,8 +1694,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
-                self.proc
-                    .set_col("main::instr_branch_if_diff_equal_param_l", label);
+                set_col!(instr_branch_if_diff_equal_param_l, label);
 
                 main_op!(branch_if_diff_equal);
                 Vec::new()
@@ -1614,8 +1746,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
 
-                self.proc
-                    .set_col("main::instr_branch_if_diff_greater_than_param_l", label);
+                set_col!(instr_branch_if_diff_greater_than_param_l, label);
 
                 let p = Elem::from_u32_as_fe(u32::MAX);
                 let val_p = val.add(&p);
@@ -2828,7 +2959,7 @@ fn execute_inner<F: FieldElement>(
                 e.proc.push_row();
                 let pc = e.proc.get_pc().u();
                 e.proc.main_op(None, pc, vec![]);
-                e.proc.set_col("main::_operation_id", 2.into());
+                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
                 }
@@ -2846,14 +2977,14 @@ fn execute_inner<F: FieldElement>(
                         Expression::FreeInput(_, _expr) => {
                             // we currently only use X for free inputs
                             assert!(x_const.is_zero());
-                            e.proc.set_col("main::X", results[0]);
-                            e.proc.set_col("main::X_free_value", results[0]);
+                            e.proc.set_col(KnownWitnessCol::X, results[0]);
+                            e.proc.set_col(KnownWitnessCol::X_free_value, results[0]);
                         }
                         _ => {
                             // We're assinging a value or the result of an instruction.
                             // Currently, only X used as the assignment register in this case.
                             let x = results[0];
-                            e.proc.set_col("main::X", x);
+                            e.proc.set_col(KnownWitnessCol::X, x);
 
                             let x_read_free = Elem::Field(
                                 e.get_fixed("main__rom::p_X_read_free").unwrap()[pc as usize],
@@ -2868,7 +2999,7 @@ fn execute_inner<F: FieldElement>(
                             } else {
                                 x.sub(&x_const).div(&x_read_free)
                             };
-                            e.proc.set_col("main::X_free_value", x_free_value);
+                            e.proc.set_col(KnownWitnessCol::X_free_value, x_free_value);
                         }
                     }
                 } else {
@@ -2881,7 +3012,7 @@ fn execute_inner<F: FieldElement>(
             }
             FunctionStatement::Instruction(i) => {
                 e.proc.push_row();
-                e.proc.set_col("main::_operation_id", 2.into());
+                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
 
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
@@ -2920,7 +3051,7 @@ fn execute_inner<F: FieldElement>(
                 e.proc.push_row();
                 let pc = e.proc.get_pc().u();
                 e.proc.main_op(None, pc, vec![]);
-                e.proc.set_col("main::_operation_id", 2.into());
+                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
                 break;
             }
             FunctionStatement::DebugDirective(dd) => {
@@ -2944,7 +3075,7 @@ fn execute_inner<F: FieldElement>(
         curr_pc = match e.proc.advance() {
             Some(pc) => {
                 // We set pc_update=PC here, after the PC has been updated but before "pushing" the next row
-                e.proc.set_col("main::pc_update", e.proc.get_pc());
+                e.proc.set_col(KnownWitnessCol::pc_update, e.proc.get_pc());
                 pc
             }
             None => break,
@@ -2961,31 +3092,34 @@ fn execute_inner<F: FieldElement>(
         let sink_id = e.sink_id();
 
         // reset
-        e.proc.set_col("main::pc_update", 0.into());
+        e.proc.set_col(KnownWitnessCol::pc_update, 0.into());
         e.proc.set_pc(0.into());
         assert!(e.proc.advance().is_none());
         e.proc.push_row();
         e.proc.main_op(None, 0, vec![]);
-        e.proc.set_col("main::_operation_id", sink_id.into());
+        e.proc
+            .set_col(KnownWitnessCol::_operation_id, sink_id.into());
 
         // jump_to_operation
-        e.proc.set_col("main::pc_update", 1.into());
+        e.proc.set_col(KnownWitnessCol::pc_update, 1.into());
         e.proc.set_pc(1.into());
         e.proc.set_reg("query_arg_1", 0);
         e.proc.set_reg("query_arg_2", 0);
         assert!(e.proc.advance().is_none());
         e.proc.push_row();
         e.proc.main_op(None, 1, vec![]);
-        e.proc.set_col("main::_operation_id", sink_id.into());
+        e.proc
+            .set_col(KnownWitnessCol::_operation_id, sink_id.into());
 
         // loop
-        e.proc.set_col("main::pc_update", sink_id.into());
+        e.proc.set_col(KnownWitnessCol::pc_update, sink_id.into());
         e.proc.set_pc(sink_id.into());
         assert!(e.proc.advance().is_none());
         e.proc.push_row();
         e.proc.main_op(None, sink_id, vec![]);
-        e.proc.set_col("main::pc_update", sink_id.into());
-        e.proc.set_col("main::_operation_id", sink_id.into());
+        e.proc.set_col(KnownWitnessCol::pc_update, sink_id.into());
+        e.proc
+            .set_col(KnownWitnessCol::_operation_id, sink_id.into());
 
         let start = Instant::now();
         program_columns = e.generate_program_columns();
