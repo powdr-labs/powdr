@@ -2987,7 +2987,12 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_col("main::pc_update", sink_id.into());
         e.proc.set_col("main::_operation_id", sink_id.into());
 
+        let start = Instant::now();
         program_columns = e.generate_program_columns();
+        log::debug!(
+            "Generating program columns took {}s",
+            start.elapsed().as_secs_f64()
+        );
     }
 
     log::debug!("Program execution took {}s", start.elapsed().as_secs_f64());
