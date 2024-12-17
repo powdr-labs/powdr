@@ -16,13 +16,13 @@ use super::{
     variable::Variable,
 };
 
-pub struct JitProcessor<'a, T: FieldElement> {
+pub struct FunctionCache<'a, T: FieldElement> {
     processor: BlockMachineProcessor<'a, T>,
     column_layout: ColumnLayout,
     witgen_functions: BTreeMap<(u64, BitVec), Option<WitgenFunction<T>>>,
 }
 
-impl<'a, T: FieldElement> JitProcessor<'a, T> {
+impl<'a, T: FieldElement> FunctionCache<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         parts: MachineParts<'a, T>,
@@ -33,7 +33,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         let processor =
             BlockMachineProcessor::new(fixed_data, parts.clone(), block_size, latch_row);
 
-        JitProcessor {
+        FunctionCache {
             processor,
             column_layout: metadata,
             witgen_functions: BTreeMap::new(),
