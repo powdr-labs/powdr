@@ -47,7 +47,7 @@ use crate::profiler::Profiler;
 // TODO: we don't do anything with these yet. Idea is to keep info that is to be given to witgen
 #[allow(unused)]
 struct MainOp<F: FieldElement> {
-    instr: Instruction,
+    instr: Option<Instruction>,
     pc: u32,
     data: Vec<F>,
 }
@@ -677,13 +677,17 @@ mod builder {
             };
 
             if ret.has_enough_rows() || ret.set_next_pc().is_none() {
-                Err(Box::new(ret.finish(opt_pil)))
+                Err(Box::new(ret.finish(opt_pil, vec![])))
             } else {
                 Ok(ret)
             }
         }
 
-        pub(crate) fn main_op(&mut self, instr: Instruction, pc: u32, data: Vec<F>) {
+        pub(crate) fn main_ops(&self) -> &[MainOp<F>] {
+            &self.trace.main_ops
+        }
+
+        pub(crate) fn main_op(&mut self, instr: Option<Instruction>, pc: u32, data: Vec<F>) {
             if let ExecMode::Trace = self.mode {
                 self.trace.main_ops.push(MainOp { instr, pc, data });
             }
@@ -909,7 +913,11 @@ mod builder {
             self.reg_mem.second_last = self.reg_mem.last.clone();
         }
 
-        pub fn finish(mut self, opt_pil: Option<&Analyzed<F>>) -> Execution<F> {
+        pub fn finish(
+            mut self,
+            opt_pil: Option<&Analyzed<F>>,
+            program_columns: Vec<(String, Vec<F>)>,
+        ) -> Execution<F> {
             if let ExecMode::Fast = self.mode {
                 return Execution {
                     trace_len: self.trace.len,
@@ -934,6 +942,15 @@ mod builder {
             let start = Instant::now();
             let main_regs = self.trace.generate_registers_trace();
             self.trace.cols.extend(main_regs);
+
+            // sanity check that program columns and main trace have the same length
+            assert_eq!(
+                self.trace.cols.values().next().unwrap().len(),
+                program_columns[0].1.len(),
+            );
+
+            // add program columns to main trace
+            self.trace.cols.extend(program_columns);
 
             // fill up main trace to degree
             self.extend_rows(main_degree);
@@ -975,10 +992,8 @@ mod builder {
                         // for the publics machine, even with no operations being
                         // issued, the declared "publics" force the cells to be
                         // filled. We add operations here to emulate that.
-                        if machine.len() == 0 {
-                            for i in 0..8 {
-                                machine.add_operation(None, &[i.into(), 0.into()], &[]);
-                            }
+                        for i in 0..8 {
+                            machine.add_operation(None, &[i.into(), 0.into()], &[]);
                         }
                         machine.finish(8)
                     } else {
@@ -1150,16 +1165,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     fn init(&mut self) {
         self.step = 4;
         for i in 0..2 {
-            for (fixed, col) in &self.program_cols {
-                let val = Elem::Field(
-                    *self
-                        .get_fixed(fixed)
-                        .unwrap_or(&Vec::new())
-                        .get(i as usize)
-                        .unwrap_or(&F::zero()),
-                );
-                self.proc.set_col_idx(col, i as usize, val);
-            }
+            self.proc.main_op(None, i, vec![]);
             self.proc
                 .set_col_idx("main::_operation_id", i as usize, 2.into());
             self.proc
@@ -1218,23 +1224,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         self.proc.set_reg_mem(reg, val);
     }
 
-    fn set_program_columns(&mut self, pc: u32) {
-        if let ExecMode::Trace = self.mode {
-            // set witness from the program definition
-            for (fixed, col) in &self.program_cols {
-                let val = Elem::Field(
-                    *self
-                        .get_fixed(fixed)
-                        .unwrap_or(&Vec::new())
-                        .get(pc as usize)
-                        .unwrap_or(&F::zero()),
-                );
-                self.proc.set_col(col, val);
-            }
-            self.proc.set_col("main::_operation_id", 2.into());
-        }
-    }
-
     /// Gets the identity id for a link associated with a given instruction.
     /// idx is based on the order link appear in the assembly (assumed to be the same in the optimized pil).
     fn instr_link_id(&mut self, instr: Instruction, target: &'static str, idx: usize) -> u64 {
@@ -1287,7 +1276,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         macro_rules! main_op {
             ($insn:ident) => {
                 self.proc
-                    .main_op(Instruction::$insn, self.proc.get_pc().u(), vec![])
+                    .main_op(Some(Instruction::$insn), self.proc.get_pc().u(), vec![])
             };
             ($insn:ident, $($args:expr),*) => {
                 self.proc
@@ -2643,6 +2632,20 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Expression::StructExpression(_, _) => todo!(),
         }
     }
+
+    /// generate witness program columns from the pc values of the execution
+    fn generate_program_columns(&mut self) -> Vec<(String, Vec<F>)> {
+        let mut cols = vec![];
+        for (fcol, pcol) in &self.program_cols {
+            let mut values: Vec<F> = vec![];
+            let fixed_values = self.get_fixed(fcol).unwrap();
+            for op in self.proc.main_ops() {
+                values.push(fixed_values[op.pc as usize])
+            }
+            cols.push((pcol.to_string(), values))
+        }
+        cols
+    }
 }
 
 pub type FixedColumns<F> = Arc<Vec<(String, VariablySizedColumn<F>)>>;
@@ -2835,7 +2838,8 @@ fn execute_inner<F: FieldElement>(
             FunctionStatement::Assignment(a) => {
                 e.proc.push_row();
                 let pc = e.proc.get_pc().u();
-                e.set_program_columns(pc);
+                e.proc.main_op(None, pc, vec![]);
+                e.proc.set_col("main::_operation_id", 2.into());
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
                 }
@@ -2888,8 +2892,7 @@ fn execute_inner<F: FieldElement>(
             }
             FunctionStatement::Instruction(i) => {
                 e.proc.push_row();
-                let pc = e.proc.get_pc().u();
-                e.set_program_columns(pc);
+                e.proc.set_col("main::_operation_id", 2.into());
 
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
@@ -2927,7 +2930,8 @@ fn execute_inner<F: FieldElement>(
             FunctionStatement::Return(_) => {
                 e.proc.push_row();
                 let pc = e.proc.get_pc().u();
-                e.set_program_columns(pc);
+                e.proc.main_op(None, pc, vec![]);
+                e.proc.set_col("main::_operation_id", 2.into());
                 break;
             }
             FunctionStatement::DebugDirective(dd) => {
@@ -2962,6 +2966,8 @@ fn execute_inner<F: FieldElement>(
         p.finish();
     }
 
+    let mut program_columns = vec![];
+
     if let ExecMode::Trace = mode {
         let sink_id = e.sink_id();
 
@@ -2970,7 +2976,7 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_pc(0.into());
         assert!(e.proc.advance().is_none());
         e.proc.push_row();
-        e.set_program_columns(0);
+        e.proc.main_op(None, 0, vec![]);
         e.proc.set_col("main::_operation_id", sink_id.into());
 
         // jump_to_operation
@@ -2980,7 +2986,7 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_reg("query_arg_2", 0);
         assert!(e.proc.advance().is_none());
         e.proc.push_row();
-        e.set_program_columns(1);
+        e.proc.main_op(None, 1, vec![]);
         e.proc.set_col("main::_operation_id", sink_id.into());
 
         // loop
@@ -2988,14 +2994,16 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_pc(sink_id.into());
         assert!(e.proc.advance().is_none());
         e.proc.push_row();
-        e.set_program_columns(sink_id);
+        e.proc.main_op(None, sink_id, vec![]);
         e.proc.set_col("main::pc_update", sink_id.into());
         e.proc.set_col("main::_operation_id", sink_id.into());
+
+        program_columns = e.generate_program_columns();
     }
 
     log::debug!("Program execution took {}s", start.elapsed().as_secs_f64());
 
-    e.proc.finish(opt_pil)
+    e.proc.finish(opt_pil, program_columns)
 }
 
 /// Utility function for writing the executor witness CSV file.
