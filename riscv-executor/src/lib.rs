@@ -138,26 +138,23 @@ instructions! {
 
 /// Enum with columns directly accessed by the executor (as to avoid matching on strings)
 macro_rules! known_witness_col {
-    ($first:ident, $($name:ident),*) => {
+    ($($name:ident),*) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToPrimitive, FromPrimitive)]
         #[allow(non_camel_case_types)]
         #[repr(usize)]
         enum KnownWitnessCol {
-            $first = 0,
             $($name,)*
         }
 
         impl KnownWitnessCol {
             fn all() -> Vec<Self> {
                 vec![
-                    Self::$first,
                     $(Self::$name,)*
                 ]
             }
 
             fn name(&self) -> &'static str {
                 match *self {
-                    Self::$first => concat!("main::", stringify!($first)),
                     $(Self::$name => concat!("main::", stringify!($name)),)*
                 }
             }
@@ -290,6 +287,40 @@ machine_instances! {
     // poseidon2_gl,
     // keccakf,
     // arith,
+}
+
+macro_rules! known_fixed_col {
+    ($($name:ident),*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToPrimitive, FromPrimitive)]
+        #[allow(non_camel_case_types)]
+        #[repr(usize)]
+        enum KnownFixedCol {
+            $($name,)*
+        }
+
+        impl KnownFixedCol {
+            fn all() -> Vec<Self> {
+                vec![
+                    $(Self::$name,)*
+                ]
+            }
+
+            fn name(&self) -> &'static str {
+                match *self {
+                    $(Self::$name => concat!("main__rom::p_", stringify!($name)),)*
+                }
+            }
+        }
+    };
+}
+
+known_fixed_col! {
+    X_const,
+    Y_const,
+    Z_const,
+    W_const,
+    Y_read_free,
+    X_read_free
 }
 
 /// Initial value of the PC.
@@ -1291,6 +1322,8 @@ struct Executor<'a, 'b, F: FieldElement> {
 
     pil_links: Vec<Identity<F>>,
     pil_instruction_links: HashMap<(&'static str, &'static str), Vec<Identity<F>>>,
+    // these are "hot" fixed columns that are accessed directly by the executor
+    cached_fixed_cols: Vec<Vec<F>>,
 }
 
 impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
@@ -1304,6 +1337,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             self.proc
                 .set_col_idx(KnownWitnessCol::pc_update, i as usize, (i + 1).into());
         }
+        for c in KnownFixedCol::all() {
+            self.cached_fixed_cols
+                .push(self.get_fixed(c.name()).unwrap().clone());
+        }
     }
 
     fn get_fixed(&self, name: &str) -> Option<&Vec<F>> {
@@ -1312,6 +1349,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             .find(|(n, _)| n == name)
             // ROM is uniquely sized, which for now is all we looking at
             .map(|(_, v)| v.get_uniquely_sized().expect("not uniquely sized!"))
+    }
+
+    fn get_known_fixed(&self, col: KnownFixedCol) -> &Vec<F> {
+        &self.cached_fixed_cols[col as usize]
     }
 
     fn sink_id(&self) -> u32 {
@@ -1395,8 +1436,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             ($name:ident) => {
                 if let ExecMode::Trace = self.mode {
                     Elem::Field(
-                        self.get_fixed(concat!("main__rom::p_", stringify!($name)))
-                            .unwrap()[self.proc.get_pc().u() as usize],
+                        self.get_known_fixed(KnownFixedCol::$name)[self.proc.get_pc().u() as usize],
                     )
                 } else {
                     Elem::Field(F::zero())
@@ -2935,6 +2975,7 @@ fn execute_inner<F: FieldElement>(
         mode,
         pil_links,
         pil_instruction_links: Default::default(),
+        cached_fixed_cols: Default::default(),
     };
 
     e.init();
@@ -2980,7 +3021,7 @@ fn execute_inner<F: FieldElement>(
                 if let AssignmentRegister::Register(x) = asgn_reg {
                     assert_eq!(x, "X"); // we currently only assign through X
                     let x_const =
-                        Elem::Field(e.get_fixed("main__rom::p_X_const").unwrap()[pc as usize]);
+                        Elem::Field(e.get_known_fixed(KnownFixedCol::X_const)[pc as usize]);
 
                     match a.rhs.as_ref() {
                         Expression::FreeInput(_, _expr) => {
@@ -2997,7 +3038,7 @@ fn execute_inner<F: FieldElement>(
                             e.proc.set_col(KnownWitnessCol::X, x);
 
                             let x_read_free = Elem::Field(
-                                e.get_fixed("main__rom::p_X_read_free").unwrap()[pc as usize],
+                                e.get_known_fixed(KnownFixedCol::X_read_free)[pc as usize],
                             );
 
                             // We need to solve for X_free_value:
