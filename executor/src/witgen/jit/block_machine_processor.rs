@@ -266,6 +266,22 @@ params[2] = Add::c[0];"
     }
 
     #[test]
+    // TODO: Currently fails, because the machine has a non-rectangular block shape.
+    #[should_panic = "Incomplete machine calls"]
+    fn binary() {
+        let input = read_to_string("../test_data/pil/binary.pil").unwrap();
+        generate_for_block_machine(
+            &input,
+            4,
+            3,
+            "main_binary::sel[0]",
+            &["main_binary::A", "main_binary::B"],
+            &["main_binary::C"],
+        )
+        .unwrap();
+    }
+
+    #[test]
     fn poseidon() {
         let input = read_to_string("../test_data/pil/poseidon_gl.pil").unwrap();
         let array_element = |name: &str, i: usize| {
