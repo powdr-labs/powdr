@@ -285,7 +285,7 @@ params[2] = Add::c[0];"
     fn poseidon() {
         let input = read_to_string("../test_data/pil/poseidon_gl.pil").unwrap();
         let array_element = |name: &str, i: usize| {
-            &*Box::leak(format!("main_poseidon::{}[{}]", name, i).into_boxed_str())
+            &*Box::leak(format!("main_poseidon::{name}[{i}]").into_boxed_str())
         };
         generate_for_block_machine(
             &input,
