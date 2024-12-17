@@ -5,7 +5,7 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
     PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolynomialIdentity,
-    SelectedExpressions,
+    PolynomialType, SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
@@ -239,19 +239,24 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     ) -> Option<AffineSymbolicExpression<T, Variable>> {
         Some(match expr {
             Expression::Reference(r) => {
-                if r.is_fixed() {
-                    self.fixed_evaluator.evaluate(r, offset)?.into()
-                } else {
-                    let variable = Variable::from_reference(r, offset);
-                    // If a variable is known and has a compile-time constant value,
-                    // that value is stored in the range constraints.
-                    let rc = self.range_constraint(variable.clone());
-                    if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
-                        val.into()
-                    } else if self.known_variables.contains(&variable) {
-                        AffineSymbolicExpression::from_known_symbol(variable, rc)
-                    } else {
-                        AffineSymbolicExpression::from_unknown_variable(variable, rc)
+                match r.poly_id.ptype {
+                    PolynomialType::Constant => self.fixed_evaluator.evaluate(r, offset)?.into(),
+                    PolynomialType::Committed => {
+                        let variable = Variable::from_reference(r, offset);
+                        // If a variable is known and has a compile-time constant value,
+                        // that value is stored in the range constraints.
+                        let rc = self.range_constraint(variable.clone());
+                        if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
+                            val.into()
+                        } else if self.known_variables.contains(&variable) {
+                            AffineSymbolicExpression::from_known_symbol(variable, rc)
+                        } else {
+                            AffineSymbolicExpression::from_unknown_variable(variable, rc)
+                        }
+                    }
+                    PolynomialType::Intermediate => {
+                        let definition = &self.fixed_data.intermediate_definitions[&r.to_thin()];
+                        self.evaluate(definition, offset)?
                     }
                 }
             }
