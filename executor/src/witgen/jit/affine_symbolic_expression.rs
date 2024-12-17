@@ -276,7 +276,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             } else {
                 covered_bits |= mask;
             }
-            let masked = -&self.offset & T::from(mask).into();
+            let masked = -&self.offset & mask;
             effects.push(Effect::Assignment(
                 var.clone(),
                 masked.integer_div(&coeff.into()),
@@ -293,7 +293,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
         // We use the latter since we cannot properly bit-negate inside the field.
         effects.push(Assertion::assert_eq(
             -&self.offset,
-            -&self.offset | T::from(covered_bits).into(),
+            -&self.offset | covered_bits,
         ));
 
         ProcessResult::complete(effects)
