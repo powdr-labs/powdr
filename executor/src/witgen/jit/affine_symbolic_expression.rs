@@ -97,6 +97,17 @@ pub struct AffineSymbolicExpression<T: FieldElement, V> {
     range_constraints: BTreeMap<V, RangeConstraint<T>>,
 }
 
+impl<T: FieldElement, V> Default for AffineSymbolicExpression<T, V> {
+    // Deriving would require V: Default...
+    fn default() -> Self {
+        AffineSymbolicExpression {
+            coefficients: Default::default(),
+            offset: T::zero().into(),
+            range_constraints: Default::default(),
+        }
+    }
+}
+
 /// Display for affine symbolic expressions, for informational purposes only.
 impl<T: FieldElement, V: Display> Display for AffineSymbolicExpression<T, V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
@@ -421,15 +432,14 @@ impl<T: FieldElement, V: Clone + Ord> Mul<&SymbolicExpression<T, V>>
 
     fn mul(mut self, rhs: &SymbolicExpression<T, V>) -> Self::Output {
         if rhs.is_known_zero() {
-            self.coefficients.clear();
-            self.offset = SymbolicExpression::from(T::from(0));
+            Self::default()
         } else {
             for coeff in self.coefficients.values_mut() {
                 *coeff = &*coeff * rhs;
             }
             self.offset = &self.offset * rhs;
+            self
         }
-        self
     }
 }
 
