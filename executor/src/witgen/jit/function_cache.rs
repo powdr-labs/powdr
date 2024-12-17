@@ -16,10 +16,19 @@ use super::{
     variable::Variable,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct CacheKey {
+    identity_id: u64,
+    known_args: BitVec,
+}
+
 pub struct FunctionCache<'a, T: FieldElement> {
+    /// The processor that generates the JIT code
     processor: BlockMachineProcessor<'a, T>,
+    /// The cache of JIT functions. If the entry is None, we attempted to generate the function
+    /// but failed.
+    witgen_functions: BTreeMap<CacheKey, Option<WitgenFunction<T>>>,
     column_layout: ColumnLayout,
-    witgen_functions: BTreeMap<(u64, BitVec), Option<WitgenFunction<T>>>,
 }
 
 impl<'a, T: FieldElement> FunctionCache<'a, T> {
@@ -40,26 +49,29 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         }
     }
 
-    pub fn can_answer_lookup(&mut self, identity_id: u64, known_args: &BitVec) -> bool {
-        self.ensure_cache(identity_id, known_args);
-        self.witgen_functions
-            .get(&(identity_id, known_args.clone()))
-            .unwrap()
-            .is_some()
+    /// Compiles the JIT function for the given identity and known arguments.
+    /// Returns true if the function was successfully compiled.
+    pub fn compile_cached(&mut self, identity_id: u64, known_args: &BitVec) -> bool {
+        let cache_key = CacheKey {
+            identity_id,
+            known_args: known_args.clone(),
+        };
+        self.ensure_cache(&cache_key);
+        self.witgen_functions.get(&cache_key).unwrap().is_some()
     }
 
-    fn ensure_cache(&mut self, identity_id: u64, known_args: &BitVec) {
-        let cache_key = (identity_id, known_args.clone());
-        if self.witgen_functions.contains_key(&cache_key) {
+    fn ensure_cache(&mut self, cache_key: &CacheKey) {
+        if self.witgen_functions.contains_key(cache_key) {
             return;
         }
 
         let _f = self
             .processor
-            .generate_code(identity_id, known_args)
+            .generate_code(cache_key.identity_id, &cache_key.known_args)
             .ok()
             .and_then(|code| {
-                let known_inputs = known_args
+                let known_inputs = cache_key
+                    .known_args
                     .iter()
                     .enumerate()
                     .filter_map(|(i, b)| if b { Some(Variable::Param(i)) } else { None })
@@ -85,7 +97,10 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         // TODO: This always inserts None, so that we we don't actually use the JIT yet.
         // Currently, the JIT triggers a few "Row already finalized" errors.
         // This should be fixed in a follow-up PR.
-        assert!(self.witgen_functions.insert(cache_key, None).is_none())
+        assert!(self
+            .witgen_functions
+            .insert(cache_key.clone(), None)
+            .is_none())
     }
 
     pub fn process_lookup_direct<'c, 'd, Q: QueryCallback<T>>(
@@ -100,12 +115,17 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .map(|cell| cell.is_input())
             .collect::<BitVec>();
 
+        let cache_key = CacheKey {
+            identity_id: connection_id,
+            known_args,
+        };
+
         let f = self
             .witgen_functions
-            .get(&(connection_id, known_args))
-            .expect("Cache miss")
+            .get(&cache_key)
+            .expect("Need to call compile_cached() first!")
             .as_ref()
-            .expect("cannot answer call");
+            .expect("compile_cached() returned false!");
         f.call(mutable_state, &mut values, data);
 
         Ok(true)
