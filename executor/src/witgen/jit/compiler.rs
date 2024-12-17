@@ -254,7 +254,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>) -> String {
 fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable>) -> String {
     match e {
         SymbolicExpression::Concrete(v) => format!("FieldElement::from({v})"),
-        SymbolicExpression::Symbol(cell, _) => variable_to_string(cell),
+        SymbolicExpression::Symbol(symbol, _) => variable_to_string(symbol),
         SymbolicExpression::BinaryOperation(left, op, right, _) => {
             let left = format_expression(left);
             let right = format_expression(right);
