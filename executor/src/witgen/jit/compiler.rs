@@ -706,7 +706,7 @@ extern \"C\" fn witgen(
         ];
         let f = compile_effects(0, 1, &[], &effects).unwrap();
         let mut data = vec![GoldilocksField::from(0); 5];
-        let mut known = vec![0; 1];
+        let mut known = vec![0; 5];
         let params = WitgenFunctionParams {
             data: data.as_mut_slice().into(),
             known: known.as_mut_ptr(),
