@@ -118,6 +118,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             &parts.witnesses,
             (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
         );
+        let layout = data.layout();
         Some(BlockMachine {
             name,
             degree_range,
@@ -136,7 +137,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 latch_row,
                 parts.identities.len(),
             ),
-            jit_processor: JitProcessor::new(fixed_data, parts.clone(), block_size, latch_row),
+            jit_processor: JitProcessor::new(
+                fixed_data,
+                parts.clone(),
+                block_size,
+                latch_row,
+                layout,
+            ),
         })
     }
 }

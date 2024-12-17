@@ -127,6 +127,15 @@ pub enum LookupCell<'a, T> {
     Output(&'a mut T),
 }
 
+impl<'a, T> LookupCell<'a, T> {
+    pub fn is_input(&self) -> bool {
+        match self {
+            LookupCell::Input(_) => true,
+            LookupCell::Output(_) => false,
+        }
+    }
+}
+
 /// All known implementations of [Machine].
 /// This allows us to treat machines uniformly without putting them into a `Box`,
 /// which requires that all lifetime parameters are 'static.

@@ -1,4 +1,3 @@
-#![allow(unused)]
 use std::{ffi::c_void, iter, mem, sync::Arc};
 
 use auto_enums::auto_enum;
@@ -7,7 +6,7 @@ use libloading::Library;
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    data_structures::{finalizable_data::CompactData, mutable_state::MutableState},
+    data_structures::{finalizable_data::CompactDataRef, mutable_state::MutableState},
     jit::affine_symbolic_expression::MachineCallArgument,
     machines::LookupCell,
     QueryCallback,
@@ -16,7 +15,7 @@ use crate::witgen::{
 use super::{
     affine_symbolic_expression::{Assertion, Effect},
     symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
-    variable::{Cell, Variable},
+    variable::Variable,
 };
 
 pub struct WitgenFunction<T> {
@@ -24,7 +23,7 @@ pub struct WitgenFunction<T> {
     // (instead of a struct), so that
     // they are stored in registers instead of the stack. Should be checked.
     function: extern "C" fn(WitgenFunctionParams<T>),
-    library: Arc<Library>,
+    _library: Arc<Library>,
 }
 
 impl<T: FieldElement> WitgenFunction<T> {
@@ -34,11 +33,11 @@ impl<T: FieldElement> WitgenFunction<T> {
     /// This function always succeeds (unless it panics).
     pub fn call<Q: QueryCallback<T>>(
         &self,
-        mutable_state: &MutableState<'_, T, Q>,
+        _mutable_state: &MutableState<'_, T, Q>,
         params: &mut [LookupCell<T>],
-        data: &mut CompactData<T>,
-        row_offset: u64,
+        mut data: CompactDataRef<'_, T>,
     ) {
+        let row_offset = data.row_offset.try_into().unwrap();
         let (data, known) = data.as_mut_slices();
         (self.function)(WitgenFunctionParams {
             data: data.into(),
@@ -79,7 +78,7 @@ pub fn compile_effects<T: FieldElement>(
     let witgen_fun = unsafe { library.get(b"witgen\0") }.unwrap();
     Ok(WitgenFunction {
         function: *witgen_fun,
-        library,
+        _library: library,
     })
 }
 
@@ -528,6 +527,8 @@ mod tests {
     use pretty_assertions::assert_eq;
 
     use powdr_number::GoldilocksField;
+
+    use crate::witgen::jit::variable::Cell;
 
     use super::*;
 

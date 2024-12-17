@@ -1,26 +1,21 @@
-#![allow(unused)]
-use std::{
-    collections::{BTreeSet, HashSet},
-    fmt::Display,
-};
+use std::collections::HashSet;
 
 use bit_vec::BitVec;
 use powdr_ast::analyzed::{AlgebraicReference, Identity};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    evaluators::fixed_evaluator, jit::affine_symbolic_expression::AffineSymbolicExpression,
-    machines::MachineParts, FixedData,
+    jit::affine_symbolic_expression::AffineSymbolicExpression, machines::MachineParts, FixedData,
 };
 
 use super::{
     affine_symbolic_expression::Effect,
-    variable::{Cell, Variable},
+    variable::Variable,
     witgen_inference::{FixedEvaluator, WitgenInference},
 };
 
 /// A processor for generating JIT code for a block machine.
-struct BlockMachineProcessor<'a, T: FieldElement> {
+pub struct BlockMachineProcessor<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     machine_parts: MachineParts<'a, T>,
     block_size: usize,
@@ -28,12 +23,26 @@ struct BlockMachineProcessor<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
+    pub fn new(
+        fixed_data: &'a FixedData<'a, T>,
+        machine_parts: MachineParts<'a, T>,
+        block_size: usize,
+        latch_row: usize,
+    ) -> Self {
+        BlockMachineProcessor {
+            fixed_data,
+            machine_parts,
+            block_size,
+            latch_row,
+        }
+    }
+
     /// Generates the JIT code for a given combination of connection and known arguments.
     /// Fails if it cannot solve for the outputs, or if any sub-machine calls cannot be completed.
     pub fn generate_code(
         &self,
         identity_id: u64,
-        known_args: BitVec,
+        known_args: &BitVec,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
         let connection_rhs = self.machine_parts.connections[&identity_id].right;
         assert_eq!(connection_rhs.expressions.len(), known_args.len());
@@ -89,7 +98,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             let mut progress = false;
 
             // TODO: This algorithm is assuming a rectangular block shape.
-            for row in (0..self.block_size) {
+            for row in 0..self.block_size {
                 for id in &self.machine_parts.identities {
                     if !complete.contains(&(id.id(), row)) {
                         let result = witgen.process_identity(id, row as i32);
@@ -243,7 +252,7 @@ mod test {
                 .chain(output_names.iter().map(|_| false)),
         );
 
-        processor.generate_code(0, known_values)
+        processor.generate_code(0, &known_values)
     }
 
     #[test]

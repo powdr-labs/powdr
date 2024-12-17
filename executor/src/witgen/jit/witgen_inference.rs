@@ -1,16 +1,11 @@
-#![allow(unused)]
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Display,
-    hash::Hash,
-};
+use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
-    PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolyID,
-    PolynomialIdentity, PolynomialType, SelectedExpressions,
+    PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolynomialIdentity,
+    SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
@@ -21,7 +16,7 @@ use crate::witgen::{
 use super::{
     super::{range_constraints::RangeConstraint, FixedData},
     affine_symbolic_expression::{AffineSymbolicExpression, Effect, ProcessResult},
-    variable::{Cell, Variable},
+    variable::Variable,
 };
 
 /// Summary of the effect of processing an action.
@@ -341,7 +336,7 @@ mod test {
         constant_evaluator,
         witgen::{
             global_constraints,
-            jit::{affine_symbolic_expression::Assertion, test_util::format_code},
+            jit::{test_util::format_code, variable::Cell},
             FixedData,
         },
     };

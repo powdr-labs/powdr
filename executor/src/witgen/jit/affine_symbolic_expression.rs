@@ -203,7 +203,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
                 // Solve "coeff * X + self.offset = 0" by division.
                 assert!(
                     !coeff.is_known_zero(),
-                    "Zero coefficient has not been removed."
+                    "Zero coefficient has not been removed: {self}"
                 );
                 if coeff.is_known_nonzero() {
                     // In this case, we can always compute a solution.
@@ -420,10 +420,15 @@ impl<T: FieldElement, V: Clone + Ord> Mul<&SymbolicExpression<T, V>>
     type Output = AffineSymbolicExpression<T, V>;
 
     fn mul(mut self, rhs: &SymbolicExpression<T, V>) -> Self::Output {
-        for coeff in self.coefficients.values_mut() {
-            *coeff = &*coeff * rhs;
+        if rhs.is_known_zero() {
+            self.coefficients.clear();
+            self.offset = SymbolicExpression::from(T::from(0));
+        } else {
+            for coeff in self.coefficients.values_mut() {
+                *coeff = &*coeff * rhs;
+            }
+            self.offset = &self.offset * rhs;
         }
-        self.offset = &self.offset * rhs;
         self
     }
 }
