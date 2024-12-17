@@ -145,9 +145,14 @@ macro_rules! known_witness_col {
         #[repr(usize)]
         enum KnownWitnessCol {
             $($name,)*
+            Last // this is a sentinel so we know how many variants we have
         }
 
         impl KnownWitnessCol {
+            fn count() -> usize {
+                Self::Last as usize
+            }
+
             fn all() -> Vec<Self> {
                 vec![
                     $(Self::$name,)*
@@ -157,6 +162,7 @@ macro_rules! known_witness_col {
             fn name(&self) -> &'static str {
                 match *self {
                     $(Self::$name => concat!("main::", stringify!($name)),)*
+                    Self::Last => panic!(),
                 }
             }
         }
@@ -546,7 +552,8 @@ pub struct ExecutionTrace<F: FieldElement> {
     /// Columns directly accessed by the executor, indexed by the enum value for
     /// fast access. Some columns may be optimized away, so we rely on the PIL
     /// columns to know what should be present in the end.
-    known_cols: Vec<Vec<F>>,
+    /// We keep a row based flat vec for memory locality.
+    known_cols: Vec<F>,
 
     /// `main` witness columns obtained from the optimized pil.
     main_cols: Vec<String>,
@@ -571,7 +578,7 @@ impl<F: FieldElement> ExecutionTrace<F> {
             len: pc,
             main_ops: Vec::new(),
             submachine_ops: MachineInstance::all().iter().map(|_| Vec::new()).collect(),
-            known_cols: KnownWitnessCol::all().iter().map(|_| vec![]).collect(),
+            known_cols: vec![],
             main_cols,
         }
     }
@@ -661,13 +668,12 @@ impl<F: FieldElement> RegisterMemory<F> {
 mod builder {
     use std::{cell::RefCell, cmp, collections::HashMap, time::Instant};
 
-    use num_traits::FromPrimitive;
     use powdr_ast::{
         analyzed::{Analyzed, DegreeRange},
         asm_analysis::{Machine, RegisterTy},
     };
     use powdr_number::FieldElement;
-    use rayon::iter::{ParallelBridge, ParallelExtend, ParallelIterator};
+    use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelExtend, ParallelIterator};
 
     use crate::{
         pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, Instruction,
@@ -871,7 +877,7 @@ mod builder {
         }
 
         pub(crate) fn main_columns_len(&self) -> usize {
-            let cols_len = self.trace.known_cols[0].len();
+            let cols_len = self.trace.known_cols.len() / KnownWitnessCol::count();
 
             // sanity check
             assert!(self.trace.len <= cols_len);
@@ -939,32 +945,22 @@ mod builder {
 
         pub fn set_col_idx(&mut self, col: KnownWitnessCol, idx: usize, value: Elem<F>) {
             if let ExecMode::Trace = self.mode {
-                let values = self
-                    .trace
-                    .known_cols
-                    .get_mut(col as usize)
-                    .unwrap_or_else(|| panic!("col not found: {}", col.name()));
-                *values.get_mut(idx).unwrap() = value.into_fe();
+                let idx = (KnownWitnessCol::count() * idx) + col as usize;
+                *self.trace.known_cols.get_mut(idx).unwrap() = value.into_fe();
             }
         }
 
         pub fn set_col(&mut self, col: KnownWitnessCol, value: Elem<F>) {
             if let ExecMode::Trace = self.mode {
-                let values = self
-                    .trace
-                    .known_cols
-                    .get_mut(col as usize)
-                    .unwrap_or_else(|| panic!("col not found: {}", col.name()));
-                *values.last_mut().unwrap() = value.into_fe();
+                let idx = (self.trace.known_cols.len() - KnownWitnessCol::count()) + col as usize;
+                *self.trace.known_cols.get_mut(idx).unwrap() = value.into_fe();
             }
         }
 
         pub fn push_row(&mut self) {
             if let ExecMode::Trace = self.mode {
-                self.trace
-                    .known_cols
-                    .iter_mut()
-                    .for_each(|v| v.push(F::zero()));
+                let new_len = self.trace.known_cols.len() + KnownWitnessCol::count();
+                self.trace.known_cols.resize(new_len, F::zero());
             }
         }
 
@@ -1075,19 +1071,20 @@ mod builder {
             // turn register write operations into witness columns
             let main_regs = self.trace.generate_registers_trace();
 
-            // convert the array of columns into a hashmap. This hashmap will be added to until we get the full witness.
-            let mut cols: HashMap<String, Vec<F>> = self
-                .trace
-                .known_cols
-                .into_iter()
-                .enumerate()
-                .map(|(i, values)| {
-                    (
-                        KnownWitnessCol::from_usize(i).unwrap().name().to_string(),
-                        values,
-                    )
+            // convert the flat array of rows into a hashmap of columns.
+            // This hashmap will be added to until we get the full witness.
+            let main_columns_len = self.main_columns_len();
+            let mut cols: HashMap<String, Vec<F>> = KnownWitnessCol::all()
+                .into_par_iter()
+                .map(|col| {
+                    let mut values = Vec::with_capacity(main_degree as usize);
+                    for i in 0..main_columns_len {
+                        values.push(
+                            self.trace.known_cols[i * KnownWitnessCol::count() + col as usize],
+                        );
+                    }
+                    (col.name().to_string(), values)
                 })
-                // only keep the columns that are present in the pil
                 .filter(|(col, _values)| self.trace.main_cols.contains(col))
                 .collect();
 
@@ -1326,6 +1323,7 @@ struct Executor<'a, 'b, F: FieldElement> {
     mode: ExecMode,
 
     pil_links: Vec<Identity<F>>,
+    // TODO(leandro): can we be more efficient here? some id instead of double string keys?
     pil_instruction_links: HashMap<(&'static str, &'static str), Vec<Identity<F>>>,
     // these are "hot" fixed columns that are accessed directly by the executor
     cached_fixed_cols: Vec<Vec<F>>,
