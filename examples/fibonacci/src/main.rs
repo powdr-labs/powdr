@@ -8,9 +8,10 @@ fn main() {
         .guest_path("./guest")
         .out_path("powdr-target")
         .chunk_size_log2(18)
-        .build()
-        // Compute Fibonacci of 21 in the guest.
-        .write(0, &n);
+        .build();
+
+    // Compute Fibonacci of 21 in the guest.
+    session.write_data(&n);
 
     // Fast dry run to test execution.
     session.run();

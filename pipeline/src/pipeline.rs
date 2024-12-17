@@ -324,13 +324,13 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
-    pub fn add_initial_data<S: serde::Serialize>(&mut self, data: &S) {
+    pub fn add_prover_data<S: serde::Serialize>(&mut self, data: &S) {
         let bytes = postcard::to_stdvec(&data).unwrap();
         self.initial_memory.push(bytes);
     }
 
-    pub fn initial_data(&self) -> Vec<u8> {
-        self.initial_memory.concat()
+    pub fn prover_data(&self) -> &[Vec<u8>] {
+        &self.initial_memory
     }
 
     pub fn add_data<S: serde::Serialize>(self, channel: u32, data: &S) -> Self {

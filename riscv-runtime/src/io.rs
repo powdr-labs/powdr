@@ -8,14 +8,37 @@ use powdr_riscv_syscalls::Syscall;
 use alloc::vec;
 use alloc::vec::Vec;
 
-static mut NEXT_INPUT_PTR: *const u8 = 0 as *const u8;
+pub struct ProverDataReader {
+    remaining_data: &'static [u8],
+}
 
-pub fn read_next<T: DeserializeOwned>() -> Result<T, postcard::Error> {
-    unsafe {
-        let slice = core::slice::from_raw_parts(NEXT_INPUT_PTR, 1000000);
-        let (value, remaining) = postcard::take_from_bytes::<T>(slice)?;
-        crate::print!("remaining = {:#?}\n", remaining.as_ptr());
-        NEXT_INPUT_PTR = remaining.as_ptr();
+impl ProverDataReader {
+    pub fn new() -> Self {
+        extern "C"{
+            // The prover data start and end symbols. Their addresses are set by the linker.
+            static __powdr_prover_data_start: u8;
+            static __powdr_prover_data_end: u8;
+        }
+        const POWDR_PAGE_SIZE: isize = 2048;
+
+        unsafe {
+            // We skip the first page of the prover data, as it used as salt to
+            // make its merkle tree node random.
+            let region_start = &__powdr_prover_data_start as *const u8;
+            let data_start = region_start.offset(POWDR_PAGE_SIZE);
+            let data_end = &__powdr_prover_data_end as *const u8;
+
+            let remaining_data = slice::from_raw_parts(data_start, data_end.offset_from(data_start) as usize);
+            Self { remaining_data }
+        }
+    }
+
+    // TODO: make this a lower level function that returns a slice of bytes.
+    // This is specially important for performance, as the user can use
+    // zero-copy deserialization and save a lot of memcpy.
+    pub fn next<T: DeserializeOwned>(&mut self) -> Result<T, postcard::Error> {
+        let (value, remaining) = postcard::take_from_bytes::<T>(self.remaining_data)?;
+        self.remaining_data = remaining;
         Ok(value)
     }
 }

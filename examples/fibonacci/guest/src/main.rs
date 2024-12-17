@@ -1,6 +1,6 @@
 use powdr_riscv_runtime;
 use powdr_riscv_runtime::commit;
-use powdr_riscv_runtime::io::{read, read_next, write};
+use powdr_riscv_runtime::io::{ProverDataReader, write};
 
 fn fib(n: u32) -> u32 {
     if n <= 1 {
@@ -10,8 +10,10 @@ fn fib(n: u32) -> u32 {
 }
 
 fn main() {
-    // Read input from stdin.
-    let n: u32 = read(0);
+    // Read input from prover data.
+    let mut reader = ProverDataReader::new();
+    let n: u32 = reader.next().unwrap();
+    println!("n = {}", n);
     let r = fib(n);
     // Write result to stdout.
     write(1, r);
