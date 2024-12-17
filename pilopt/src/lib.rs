@@ -28,6 +28,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     simplify_identities(&mut pil_file);
     extract_constant_lookups(&mut pil_file);
     remove_constant_witness_columns(&mut pil_file);
+    remove_constant_intermediate_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
     remove_trivial_identities(&mut pil_file);
     remove_duplicate_identities(&mut pil_file);
@@ -464,6 +465,34 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     constant_polys.retain(|((_, id), _)| columns.contains(id));
 
     substitute_polynomial_references(pil_file, constant_polys);
+}
+
+/// Identifies intermediate columns that are constrained to a single value, replaces every
+/// reference to this column by the value and deletes the column.
+fn remove_constant_intermediate_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    let intermediate_polys = pil_file
+        .intermediate_polys_in_source_order()
+        .filter_map(|(symbol, definitions)| {
+            let mut symbols_and_definitions = symbol.array_elements().zip_eq(definitions);
+            match symbol.is_array() {
+                true => None,
+                false => {
+                    let ((name, poly_id), definition) = symbols_and_definitions.next().unwrap();
+                    match definition {
+                        AlgebraicExpression::Number(value) => {
+                            log::debug!(
+                                "Determined intermediate column {name} to be constant {value}. Removing.",
+                            );
+                            Some(((name.clone(), poly_id), value.to_arbitrary_integer()))
+                        }
+                        _ => None,
+                    }
+                }
+            }
+        })
+        .collect::<Vec<((String, PolyID), _)>>();
+
+    substitute_polynomial_references(pil_file, intermediate_polys);
 }
 
 /// Substitutes all references to certain polynomials by the given field elements.

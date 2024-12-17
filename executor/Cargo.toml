@@ -17,6 +17,7 @@ powdr-jit-compiler.workspace = true
 
 auto_enums = "0.8.5"
 itertools = "0.13"
+libloading = "0.8"
 log = { version = "0.4.17" }
 rayon = "1.7.0"
 bit-vec = "0.6.3"
