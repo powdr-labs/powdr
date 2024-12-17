@@ -1383,7 +1383,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         entries.get(idx).unwrap().id()
     }
 
-    fn exec_instruction(&mut self, name: &str, args: &[Expression]) -> Vec<Elem<F>> {
+    fn exec_instruction(&mut self, name: &str, args: &[Expression]) -> Option<Elem<F>> {
         // shorthand macros for setting/getting main machine witness values in the current row
         macro_rules! set_col {
             ($name:ident, $val:expr) => {
@@ -1423,11 +1423,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         let args = args
             .iter()
-            .map(|expr| self.eval_expression(expr)[0])
+            .map(|expr| self.eval_expression(expr).unwrap())
             .collect::<Vec<_>>();
 
         self.proc.backup_reg_mem();
 
+        // TODO(leandro): cache these columns to avoid the hashmap
         set_col!(X, get_fixed!(X_const));
         set_col!(Y, get_fixed!(Y_const));
         set_col!(Z, get_fixed!(Z_const));
@@ -1450,7 +1451,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
 
                 main_op!(set_reg);
-                Vec::new()
+                None
             }
             Instruction::get_reg => {
                 let addr = args[0].u();
@@ -1458,7 +1459,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val = self.reg_read(0, addr, lid);
 
                 main_op!(get_reg);
-                vec![val]
+                Some(val)
             }
             Instruction::affine => {
                 let read_reg = args[0].u();
@@ -1475,7 +1476,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val1);
 
                 main_op!(affine);
-                Vec::new()
+                None
             }
 
             Instruction::mstore | Instruction::mstore_bootloader => {
@@ -1523,7 +1524,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 } else {
                     main_op!(mstore_bootloader);
                 }
-                Vec::new()
+                None
             }
             Instruction::mload => {
                 let read_reg = args[0].u();
@@ -1562,7 +1563,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
 
                 main_op!(mload);
-                Vec::new()
+                None
             }
             // TODO: update to witness generation for continuations
             Instruction::load_bootloader_input => {
@@ -1579,7 +1580,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.reg_write(2, write_addr, val, lid);
 
                 main_op!(load_bootloader_input);
-                Vec::new()
+                None
             }
             // TODO: update to witness generation for continuations
             Instruction::assert_bootloader_input => {
@@ -1596,7 +1597,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 assert_eq!(val, actual_val);
 
                 main_op!(assert_bootloader_input);
-                Vec::new()
+                None
             }
             Instruction::load_label => {
                 let write_reg = args[0].u();
@@ -1609,7 +1610,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(instr_load_label_param_l, label);
 
                 main_op!(load_label);
-                Vec::new()
+                None
             }
             Instruction::jump => {
                 let label = args[0];
@@ -1624,7 +1625,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(instr_jump_param_l, label);
 
                 main_op!(jump);
-                Vec::new()
+                None
             }
             Instruction::jump_dyn => {
                 let read_reg = args[0].u();
@@ -1641,7 +1642,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, addr);
 
                 main_op!(jump_dyn);
-                Vec::new()
+                None
             }
             // TODO: update to witness generation for continuations
             Instruction::jump_to_bootloader_input => {
@@ -1650,7 +1651,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.proc.set_pc(addr);
 
                 main_op!(jump_to_bootloader_input);
-                Vec::new()
+                None
             }
             Instruction::branch_if_diff_nonzero => {
                 let read_reg1 = args[0].u();
@@ -1677,7 +1678,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(instr_branch_if_diff_nonzero_param_l, label);
 
                 main_op!(branch_if_diff_nonzero);
-                Vec::new()
+                None
             }
             Instruction::branch_if_diff_equal => {
                 let read_reg1 = args[0].u();
@@ -1705,7 +1706,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(instr_branch_if_diff_equal_param_l, label);
 
                 main_op!(branch_if_diff_equal);
-                Vec::new()
+                None
             }
             Instruction::skip_if_equal => {
                 let read_reg1 = args[0].u();
@@ -1732,7 +1733,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
 
                 main_op!(skip_if_equal);
-                Vec::new()
+                None
             }
             Instruction::branch_if_diff_greater_than => {
                 let read_reg1 = args[0].u();
@@ -1775,7 +1776,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
 
                 main_op!(branch_if_diff_greater_than);
-                Vec::new()
+                None
             }
             Instruction::is_diff_greater_than => {
                 let read_reg1 = args[0].u();
@@ -1807,7 +1808,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(wrap_bit, Elem::from_u32_as_fe(r));
 
                 main_op!(is_diff_greater_than);
-                Vec::new()
+                None
             }
             Instruction::is_equal_zero => {
                 let read_reg = args[0].u();
@@ -1827,7 +1828,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
 
                 main_op!(is_equal_zero);
-                Vec::new()
+                None
             }
             Instruction::is_not_equal => {
                 let read_reg1 = args[0].u();
@@ -1853,7 +1854,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
 
                 main_op!(is_not_equal);
-                Vec::new()
+                None
             }
             Instruction::add_wrap => {
                 let read_reg1 = args[0].u();
@@ -1894,7 +1895,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
 
                 main_op!(add_wrap);
-                Vec::new()
+                None
             }
             Instruction::wrap16 => {
                 let read_reg = args[0].u();
@@ -1926,7 +1927,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(Y_b6, Elem::from_u32_as_fe(b6.into()));
 
                 main_op!(wrap16);
-                Vec::new()
+                None
             }
             Instruction::sub_wrap_with_offset => {
                 let read_reg1 = args[0].u();
@@ -1963,7 +1964,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
 
                 main_op!(sub_wrap_with_offset);
-                Vec::new()
+                None
             }
             Instruction::sign_extend_byte => {
                 let read_reg = args[0].u();
@@ -1998,7 +1999,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
 
                 main_op!(sign_extend_byte);
-                Vec::new()
+                None
             }
             Instruction::sign_extend_16_bits => {
                 let read_reg = args[0].u();
@@ -2037,7 +2038,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
 
                 main_op!(sign_extend_16_bits);
-                Vec::new()
+                None
             }
             Instruction::to_signed => {
                 let read_reg = args[0].u();
@@ -2068,7 +2069,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(Y_7bit, Elem::from_u32_as_fe(b4 as u32 & 0x7f));
 
                 main_op!(to_signed);
-                Vec::new()
+                None
             }
             Instruction::fail => {
                 // TODO: handle it better
@@ -2135,7 +2136,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
 
                 main_op!(divremu);
-                Vec::new()
+                None
             }
             Instruction::mul => {
                 let read_reg1 = args[0].u();
@@ -2164,7 +2165,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lid = self.instr_link_id(instr, "main_split_gl", 0);
                 submachine_op!(split_gl, lid, &[r.into(), lo.into(), hi.into()],);
                 main_op!(mul);
-                Vec::new()
+                None
             }
             Instruction::and | Instruction::or | Instruction::xor => {
                 let read_reg1 = args[0].u();
@@ -2213,7 +2214,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
-                Vec::new()
+                None
             }
             Instruction::shl | Instruction::shr => {
                 let read_reg1 = args[0].u();
@@ -2257,7 +2258,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp2_col, val2);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
-                Vec::new()
+                None
             }
             Instruction::invert_gl => {
                 let low_addr = args[0].u();
@@ -2283,7 +2284,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lid = self.instr_link_id(instr, "main_split_gl", 0);
                 submachine_op!(split_gl, lid, &[inv, low_inv.into(), high_inv.into()],);
                 main_op!(invert_gl);
-                Vec::new()
+                None
             }
             Instruction::split_gl => {
                 let read_reg = args[0].u();
@@ -2311,7 +2312,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lid = self.instr_link_id(instr, "main_split_gl", 0);
                 submachine_op!(split_gl, lid, &[value.into(), lo.into(), hi.into()],);
                 main_op!(split_gl);
-                Vec::new()
+                None
             }
             Instruction::poseidon_gl => {
                 let reg1 = args[0].u();
@@ -2392,7 +2393,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     outputs[3]
                 );
                 main_op!(poseidon_gl);
-                vec![]
+                None
             }
             Instruction::poseidon2_gl => {
                 let input_ptr = self.proc.get_reg_mem(args[0].u()).u();
@@ -2422,7 +2423,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
 
                 main_op!(poseidon2_gl);
-                vec![]
+                None
             }
             Instruction::affine_256 => {
                 // a * b + c = d
@@ -2465,7 +2466,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 // TODO: main_arith event
                 main_op!(affine_256);
-                vec![]
+                None
             }
             Instruction::mod_256 => {
                 // a mod b = c
@@ -2498,7 +2499,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 // TODO: main_arith event
                 main_op!(mod_256);
-                vec![]
+                None
             }
             Instruction::ec_add => {
                 // a + b = c
@@ -2542,7 +2543,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 // TODO: main_arith event
                 main_op!(ec_add);
-                vec![]
+                None
             }
             Instruction::ec_double => {
                 // a * 2 = b
@@ -2578,7 +2579,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 // TODO: main_arith event
                 main_op!(ec_double);
-                vec![]
+                None
             }
             Instruction::commit_public => {
                 let lid = self.instr_link_id(instr, "main_regs", 0);
@@ -2591,14 +2592,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lid = self.instr_link_id(instr, "main_publics", 0);
                 submachine_op!(publics, lid, &[idx.into_fe(), limb.into_fe()],);
                 main_op!(commit_public);
-                vec![]
+                None
             }
         };
 
         r
     }
 
-    fn eval_expression(&mut self, expression: &Expression) -> Vec<Elem<F>> {
+    fn eval_expression(&mut self, expression: &Expression) -> Option<Elem<F>> {
         match expression {
             Expression::Reference(_, r) => {
                 // an identifier looks like this:
@@ -2611,7 +2612,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .get(name.as_str())
                     .cloned()
                     .unwrap_or_else(|| self.proc.get_reg(name.as_str()));
-                vec![val]
+                Some(val)
             }
             Expression::PublicReference(_, _) => todo!(),
             Expression::Number(_, Number { value: n, .. }) => {
@@ -2619,7 +2620,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .try_into()
                     .unwrap_or_else(|_| panic!("Value does not fit in 32 bits."));
 
-                vec![unsigned.into()]
+                Some(unsigned.into())
             }
             Expression::String(_, _) => todo!(),
             Expression::Tuple(_, _) => todo!(),
@@ -2633,8 +2634,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     right: r,
                 },
             ) => {
-                let l = &self.eval_expression(l)[0];
-                let r = &self.eval_expression(r)[0];
+                let l = &self.eval_expression(l).unwrap();
+                let r = &self.eval_expression(r).unwrap();
 
                 let result = match (l, r) {
                     (Elem::Binary(l), Elem::Binary(r)) => match op {
@@ -2682,17 +2683,17 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     _ => panic!("tried to operate a binary value with a field value"),
                 };
 
-                vec![result]
+                Some(result)
             }
             Expression::UnaryOperation(_, UnaryOperation { op, expr: arg }) => {
-                let arg = self.eval_expression(arg)[0].bin();
+                let arg = self.eval_expression(arg).unwrap().bin();
                 let result = match op {
                     powdr_ast::parsed::UnaryOperator::Minus => -arg,
                     powdr_ast::parsed::UnaryOperator::LogicalNot => todo!(),
                     powdr_ast::parsed::UnaryOperator::Next => unreachable!(),
                 };
 
-                vec![Elem::Binary(result)]
+                Some(Elem::Binary(result))
             }
             Expression::FunctionCall(
                 _,
@@ -2739,14 +2740,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .to_string();
                 let values = arguments
                     .iter()
-                    .map(|arg| self.eval_expression(arg)[0].to_string())
+                    .map(|arg| self.eval_expression(arg).unwrap().to_string())
                     .collect::<Vec<_>>();
                 let query = format!("{variant}({})", values.join(","));
                 match (self.inputs)(&query).unwrap() {
                     Some(val) => {
                         let e = Elem::try_from_fe_as_bin(&val)
                             .expect("field value does not fit into u32 or i32");
-                        vec![e]
+                        Some(e)
                     }
                     None => {
                         panic!("unknown query command: {query}");
@@ -2973,7 +2974,7 @@ fn execute_inner<F: FieldElement>(
                 }
 
                 let results = e.eval_expression(a.rhs.as_ref());
-                assert_eq!(a.lhs_with_reg.len(), results.len());
+                assert_eq!(a.lhs_with_reg.len(), 1);
 
                 let asgn_reg = a.lhs_with_reg[0].1.clone();
                 if let AssignmentRegister::Register(x) = asgn_reg {
@@ -2985,13 +2986,14 @@ fn execute_inner<F: FieldElement>(
                         Expression::FreeInput(_, _expr) => {
                             // we currently only use X for free inputs
                             assert!(x_const.is_zero());
-                            e.proc.set_col(KnownWitnessCol::X, results[0]);
-                            e.proc.set_col(KnownWitnessCol::X_free_value, results[0]);
+                            e.proc.set_col(KnownWitnessCol::X, results.unwrap());
+                            e.proc
+                                .set_col(KnownWitnessCol::X_free_value, results.unwrap());
                         }
                         _ => {
                             // We're assinging a value or the result of an instruction.
                             // Currently, only X used as the assignment register in this case.
-                            let x = results[0];
+                            let x = results.unwrap();
                             e.proc.set_col(KnownWitnessCol::X, x);
 
                             let x_read_free = Elem::Field(
@@ -3034,9 +3036,7 @@ fn execute_inner<F: FieldElement>(
                     // we can't use `get_pc/get_reg`, as its value is only updated when moving to the next row
                     let pc_after = e.proc.get_next_pc().u();
 
-                    let target_reg = e.eval_expression(&i.inputs[1]);
-                    assert_eq!(target_reg.len(), 1);
-                    let target_reg = target_reg[0].u();
+                    let target_reg = e.eval_expression(&i.inputs[1]).unwrap().u();
 
                     if let Some(p) = &mut profiler {
                         let pc_return = e.proc.get_reg_mem(target_reg).u();
