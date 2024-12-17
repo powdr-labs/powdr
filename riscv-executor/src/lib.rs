@@ -510,13 +510,13 @@ mod builder {
         asm_analysis::{Machine, RegisterTy},
     };
     use powdr_number::FieldElement;
-    use rayon::iter::{ParallelBridge, ParallelIterator};
+    use rayon::iter::{ParallelBridge, ParallelExtend, ParallelIterator};
 
     use crate::{
-        pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MachineInstance, MainOp,
-        MemOperation, MemOperationKind, MemoryMachine, MemoryState, PoseidonGlMachine,
-        PublicsMachine, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine, Submachine,
-        SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
+        pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, Instruction,
+        MachineInstance, MainOp, MemOperation, MemOperationKind, MemoryMachine, MemoryState,
+        PoseidonGlMachine, PublicsMachine, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine,
+        Submachine, SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
     };
 
     fn namespace_degree_range<F: FieldElement>(
@@ -1223,32 +1223,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             &[],
         );
         self.proc.set_reg_mem(reg, val);
-    }
-
-    /// Gets the identity id for a link associated with a given instruction.
-    /// idx is based on the order link appear in the assembly (assumed to be the same in the optimized pil).
-    fn instr_link_id(&mut self, instr: Instruction, target: &'static str, idx: usize) -> u64 {
-        if let ExecMode::Fast = self.mode {
-            return 0; // we don't care about identity ids in fast mode
-        }
-
-        let entries = self
-            .pil_instruction_links
-            .entry((instr.flag(), target))
-            .or_insert_with(|| pil::find_instruction_links(&self.pil_links, instr.flag(), target));
-        entries.get(idx).unwrap().id()
-    }
-
-    /// Find the identity id of a link.
-    fn link_id(&mut self, from: &'static str, target: &'static str, idx: usize) -> u64 {
-        if let ExecMode::Fast = self.mode {
-            return 0; // we don't care about identity ids in fast mode
-        }
-        let entries = self
-            .pil_instruction_links
-            .entry((from, target))
-            .or_insert_with(|| pil::find_links(&self.pil_links, from, target));
-        entries.get(idx).unwrap().id()
     }
 
     /// Gets the identity id for a link associated with a given instruction.
