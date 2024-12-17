@@ -19,7 +19,7 @@ trait SubmachineKind: Send {
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
         selector: Option<&str>,
-        lookup_args: &[F],
+        lookup_args: &[F; 4],
         // extra info provided by the executor
         extra: &[F],
     );
@@ -48,7 +48,7 @@ pub trait Submachine<F: FieldElement>: Send {
     /// current number of rows
     fn len(&self) -> u32;
     /// add a new operation to the trace
-    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F], extra: &[F]);
+    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F; 4], extra: &[F]);
     /// finish the trace, padding to the given degree and returning the machine columns.
     /// Ideally we'd take `self` here, but this is called from a `dyn Trait`...
     fn finish(&mut self, degree: u32) -> Vec<(String, Vec<F>)>;
@@ -93,7 +93,7 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
         self.trace.len()
     }
 
-    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F], extra: &[F]) {
+    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F; 4], extra: &[F]) {
         M::add_operation(&mut self.trace, selector, lookup_args, extra);
     }
 
@@ -226,7 +226,7 @@ impl SubmachineKind for BinaryMachine {
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
         selector: Option<&str>,
-        lookup_args: &[F],
+        lookup_args: &[F; 4],
         extra: &[F],
     ) {
         assert!(extra.is_empty());
@@ -326,7 +326,7 @@ impl SubmachineKind for ShiftMachine {
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
         selector: Option<&str>,
-        lookup_args: &[F],
+        lookup_args: &[F; 4],
         extra: &[F],
     ) {
         assert!(extra.is_empty());
@@ -422,12 +422,12 @@ impl SubmachineKind for SplitGlMachine {
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
         selector: Option<&str>,
-        lookup_args: &[F],
+        lookup_args: &[F; 4],
         extra: &[F],
     ) {
         assert!(extra.is_empty());
         let selector = only_column_name(selector.unwrap());
-        let [_input, output_lo, output_hi] = lookup_args[..] else {
+        let [_input, output_lo, output_hi, _] = lookup_args[..] else {
             panic!();
         };
 
@@ -561,12 +561,12 @@ impl SubmachineKind for PublicsMachine {
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
         selector: Option<&str>,
-        lookup_args: &[F],
+        lookup_args: &[F; 4],
         extra: &[F],
     ) {
         assert!(selector.is_none());
         assert!(extra.is_empty());
-        let [addr, value] = lookup_args[..] else {
+        let [addr, value, _, _] = lookup_args[..] else {
             panic!();
         };
         assert!(
@@ -594,14 +594,14 @@ impl SubmachineKind for PoseidonGlMachine {
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
         selector: Option<&str>,
-        lookup_args: &[F],
+        lookup_args: &[F; 4],
         extra: &[F],
     ) {
         const STATE_SIZE: usize = 12;
         const OUTPUT_SIZE: usize = 4;
 
         let selector = only_column_name(selector.unwrap());
-        let [input_addr, output_addr, time_step] = lookup_args[..] else {
+        let [input_addr, output_addr, time_step, _] = lookup_args[..] else {
             panic!();
         };
 

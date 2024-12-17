@@ -58,8 +58,9 @@ struct MainOp<F: FieldElement> {
 struct SubmachineOp<F: FieldElement> {
     // pil identity id of the link
     identity_id: u64,
-    // these are the RHS values of the lookup (i.e., inside brackets in the PIL lookup)
-    lookup_args: Vec<F>,
+    // these are the RHS values of the lookup (i.e., inside brackets in the PIL lookup).
+    // This is a fixed size to avoid allocations in the common case.
+    lookup_args: [F; 4],
     // TODO: this is just for the hand-written poseidon_gl submachine,
     // we give it the input values because it doesn't have access to memory
     extra: Vec<F>,
@@ -863,7 +864,7 @@ mod builder {
                     .unwrap()
                     .push(SubmachineOp {
                         identity_id,
-                        lookup_args: lookup_args.to_vec(),
+                        lookup_args: lookup_args.try_into().unwrap(),
                         extra: extra.to_vec(),
                     });
             }
@@ -1155,7 +1156,11 @@ mod builder {
                         // issued, the declared "publics" force the cells to be
                         // filled. We add operations here to emulate that.
                         for i in 0..8 {
-                            machine.add_operation(None, &[i.into(), 0.into()], &[]);
+                            machine.add_operation(
+                                None,
+                                &[i.into(), 0.into(), 0.into(), 0.into()],
+                                &[],
+                            );
                         }
                         machine.finish(8)
                     } else {
@@ -1468,7 +1473,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         self.proc.backup_reg_mem();
 
-        // TODO(leandro): cache these columns to avoid the hashmap
         set_col!(X, get_fixed!(X_const));
         set_col!(Y, get_fixed!(Y_const));
         set_col!(Z, get_fixed!(Z_const));
@@ -2203,7 +2207,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
                 let lid = self.instr_link_id(instr, "main_split_gl", 0);
-                submachine_op!(split_gl, lid, &[r.into(), lo.into(), hi.into()],);
+                submachine_op!(split_gl, lid, &[r.into(), lo.into(), hi.into(), 0.into()],);
                 main_op!(mul);
                 None
             }
@@ -2322,7 +2326,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(XX_inv, Elem::Field(inv));
 
                 let lid = self.instr_link_id(instr, "main_split_gl", 0);
-                submachine_op!(split_gl, lid, &[inv, low_inv.into(), high_inv.into()],);
+                submachine_op!(
+                    split_gl,
+                    lid,
+                    &[inv, low_inv.into(), high_inv.into(), 0.into()],
+                );
                 main_op!(invert_gl);
                 None
             }
@@ -2350,7 +2358,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
                 let lid = self.instr_link_id(instr, "main_split_gl", 0);
-                submachine_op!(split_gl, lid, &[value.into(), lo.into(), hi.into()],);
+                submachine_op!(
+                    split_gl,
+                    lid,
+                    &[value.into(), lo.into(), hi.into(), 0.into()],
+                );
                 main_op!(split_gl);
                 None
             }
@@ -2407,14 +2419,19 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc
                         .set_mem(output_ptr.u() + 8 * i as u32 + 4, hi, self.step + 1, lid);
                     let lid = self.link_id("main_poseidon_gl", "main_split_gl", 0);
-                    submachine_op!(split_gl, lid, &[*v, lo.into(), hi.into()],);
+                    submachine_op!(split_gl, lid, &[*v, lo.into(), hi.into(), 0.into()],);
                 });
 
                 let lid = self.instr_link_id(instr, "main_poseidon_gl", 0);
                 submachine_op!(
                     poseidon_gl,
                     lid,
-                    &[input_ptr.into_fe(), output_ptr.into_fe(), self.step.into()],
+                    &[
+                        input_ptr.into_fe(),
+                        output_ptr.into_fe(),
+                        self.step.into(),
+                        0.into()
+                    ],
                     inputs[0],
                     inputs[1],
                     inputs[2],
@@ -2630,7 +2647,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp2_col, limb);
                 log::debug!("Committing public: idx={idx}, limb={limb}");
                 let lid = self.instr_link_id(instr, "main_publics", 0);
-                submachine_op!(publics, lid, &[idx.into_fe(), limb.into_fe()],);
+                submachine_op!(
+                    publics,
+                    lid,
+                    &[idx.into_fe(), limb.into_fe(), 0.into(), 0.into()],
+                );
                 main_op!(commit_public);
                 None
             }
