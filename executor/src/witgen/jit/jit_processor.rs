@@ -5,6 +5,7 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
+    jit::affine_symbolic_expression::Effect,
     machines::{LookupCell, MachineParts},
     EvalError, FixedData, MutableState, QueryCallback,
 };
@@ -53,7 +54,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
             return;
         }
 
-        let f = self
+        let _f = self
             .processor
             .generate_code(identity_id, known_args)
             .ok()
@@ -63,6 +64,15 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
                     .enumerate()
                     .filter_map(|(i, b)| if b { Some(Variable::Param(i)) } else { None })
                     .collect::<Vec<_>>();
+
+                if code
+                    .iter()
+                    .any(|effect| matches!(effect, Effect::MachineCall(_, _)))
+                {
+                    // TODO: Machine calls trigger a unimplemented!() in compile_effects()
+                    return None;
+                }
+
                 compile_effects(
                     self.column_layout.first_column_id,
                     self.column_layout.column_count,
@@ -72,7 +82,10 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
                 // TODO: This should never fail, but right now it does!
                 .ok()
             });
-        assert!(self.witgen_functions.insert(cache_key, f).is_none())
+        // TODO: This always inserts None, so that we we don't actually use the JIT yet.
+        // Currently, the JIT triggers a few "Row already finalized" errors.
+        // This should be fixed in a follow-up PR.
+        assert!(self.witgen_functions.insert(cache_key, None).is_none())
     }
 
     pub fn process_lookup_direct<'c, 'd, Q: QueryCallback<T>>(
