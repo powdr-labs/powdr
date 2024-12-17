@@ -2829,6 +2829,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         for (fcol, pcol) in &self.program_cols {
             let mut values: Vec<F> = vec![];
             let fixed_values = self.get_fixed(fcol).unwrap();
+            values.reserve(self.proc.main_ops().len());
             for op in self.proc.main_ops() {
                 values.push(fixed_values[op.pc as usize])
             }
