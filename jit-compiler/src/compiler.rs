@@ -207,8 +207,15 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
     fs::write(dir.join("Cargo.toml"), CARGO_TOML).unwrap();
     fs::create_dir(dir.join("src")).unwrap();
     fs::write(dir.join("src").join("lib.rs"), code).unwrap();
+    let output_asm = false;
     let out = Command::new("cargo")
-        .env("RUSTFLAGS", "-C target-cpu=native")
+        .env(
+            "RUSTFLAGS",
+            format!(
+                "-C target-cpu=native{}",
+                if output_asm { " --emit asm" } else { "" }
+            ),
+        )
         .arg("build")
         .arg("--release")
         .current_dir(dir.clone())
@@ -218,11 +225,20 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
         if log::log_enabled!(log::Level::Debug) {
             let stderr = from_utf8(&out.stderr).unwrap_or("UTF-8 error in error message.");
             return Err(format!(
-                "Rust compiler error when JIT-compiling. Will use evaluator for all symbols. Error message:\n{stderr}."
+                "Rust compiler error when JIT-compiling. Will use interpreter instead. Error message:\n{stderr}."
             ));
         } else {
-            return Err("Rust compiler error when JIT-compiling. Will use evaluator for all symbols. Set log level to DEBUG for reason.".to_string());
+            return Err("Rust compiler error when JIT-compiling. Will use interpreter instead. Set log level to DEBUG for reason.".to_string());
         }
+    }
+    #[allow(clippy::print_stdout)]
+    if output_asm {
+        let asm_file = dir
+            .join("target")
+            .join("release")
+            .join("deps")
+            .join("powdr_jit_compiled.s");
+        println!("{}", fs::read_to_string(&asm_file).unwrap());
     }
     let extension = if cfg!(target_os = "windows") {
         "dll"
