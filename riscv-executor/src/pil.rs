@@ -43,11 +43,12 @@ pub fn selector_for_link<F: FieldElement>(links: &[Identity<F>], id: u64) -> Opt
         }
         if let Identity::Lookup(lookup) = l {
             if lookup.id == id {
+                // lookups don't have selectors
                 return None;
             }
         }
     }
-    panic!("identity {id} doesnt exist")
+    panic!("identity {id} doesn't exist")
 }
 
 /// Find links referencing columns containing the string `from` on the LHS and `to` on the RHS.

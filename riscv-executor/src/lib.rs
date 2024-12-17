@@ -510,13 +510,13 @@ mod builder {
         asm_analysis::{Machine, RegisterTy},
     };
     use powdr_number::FieldElement;
-    use rayon::iter::{ParallelBridge, ParallelExtend, ParallelIterator};
+    use rayon::iter::{ParallelBridge, ParallelIterator};
 
     use crate::{
-        pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, Instruction,
-        MachineInstance, MainOp, MemOperation, MemOperationKind, MemoryMachine, MemoryState,
-        PoseidonGlMachine, PublicsMachine, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine,
-        Submachine, SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
+        pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MachineInstance, MainOp,
+        MemOperation, MemOperationKind, MemoryMachine, MemoryState, PoseidonGlMachine,
+        PublicsMachine, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine, Submachine,
+        SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
     };
 
     fn namespace_degree_range<F: FieldElement>(
@@ -965,17 +965,17 @@ mod builder {
 
             let start = Instant::now();
             let cols = self
-                .trace
-                .submachine_ops
+                .submachines
                 .into_iter()
-                // take each submachine and its operations
-                .map(|(m, ops)| {
-                    let machine = self.submachines.remove(&m).unwrap().into_inner();
-                    (m, machine, ops)
+                // take each submachine and get its operations
+                .map(|(m, machine)| {
+                    let ops = self.trace.submachine_ops.remove(&m).unwrap_or_default();
+                    (m, machine.into_inner(), ops)
                 })
+                // handle submachines in parallel
                 .par_bridge()
                 .flat_map(|(m, mut machine, ops)| {
-                    // apply the operation to the submachine
+                    // apply the operations to the submachine
                     ops.into_iter().for_each(|op| {
                         let selector = pil::selector_for_link(&links, op.identity_id);
                         machine.add_operation(selector.as_deref(), &op.lookup_args, &op.extra);
@@ -1002,6 +1002,7 @@ mod builder {
                     }
                 });
             self.trace.cols.par_extend(cols);
+
             log::debug!(
                 "Generating submachine traces took {}s",
                 start.elapsed().as_secs_f64(),
@@ -1222,6 +1223,32 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             &[],
         );
         self.proc.set_reg_mem(reg, val);
+    }
+
+    /// Gets the identity id for a link associated with a given instruction.
+    /// idx is based on the order link appear in the assembly (assumed to be the same in the optimized pil).
+    fn instr_link_id(&mut self, instr: Instruction, target: &'static str, idx: usize) -> u64 {
+        if let ExecMode::Fast = self.mode {
+            return 0; // we don't care about identity ids in fast mode
+        }
+
+        let entries = self
+            .pil_instruction_links
+            .entry((instr.flag(), target))
+            .or_insert_with(|| pil::find_instruction_links(&self.pil_links, instr.flag(), target));
+        entries.get(idx).unwrap().id()
+    }
+
+    /// Find the identity id of a link.
+    fn link_id(&mut self, from: &'static str, target: &'static str, idx: usize) -> u64 {
+        if let ExecMode::Fast = self.mode {
+            return 0; // we don't care about identity ids in fast mode
+        }
+        let entries = self
+            .pil_instruction_links
+            .entry((from, target))
+            .or_insert_with(|| pil::find_links(&self.pil_links, from, target));
+        entries.get(idx).unwrap().id()
     }
 
     /// Gets the identity id for a link associated with a given instruction.

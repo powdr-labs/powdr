@@ -5,6 +5,7 @@ use powdr_number::{FieldElement, LargeInt};
 use std::collections::HashMap;
 
 fn only_column_name(name: &str) -> &str {
+    // look backwards the "::" and return only the part after it
     name.rfind("::").map(|i| &name[i + 2..]).unwrap_or(name)
 }
 
