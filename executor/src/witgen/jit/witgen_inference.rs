@@ -89,7 +89,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.ingest_effects(result)
     }
 
-    /// Makes sure that the expression evaluated at the given offset equals the given affine expression.
+    /// Process the constraint that the expression evaluated at the given offset equals the given affine expression.
+    /// Note that either the expression or the value might contain unknown variables, but if we are not able to
+    /// solve the equation, we return an error.
     pub fn assign(
         &mut self,
         expression: &Expression<T>,

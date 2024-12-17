@@ -47,20 +47,18 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables);
 
         // In the latch row, set the RHS selector to 1.
-        witgen
-            .assign(
-                &connection.right.selector,
-                self.latch_row as i32,
-                T::one().into(),
-            )
-            .unwrap();
+        witgen.assign(
+            &connection.right.selector,
+            self.latch_row as i32,
+            T::one().into(),
+        )?;
 
         // For each known argument, transfer the value to the expression in the connection's RHS.
         for (index, expr) in connection.right.expressions.iter().enumerate() {
             if known_args[index] {
                 let param_i =
                     AffineSymbolicExpression::from_known_symbol(Variable::Param(index), None);
-                witgen.assign(expr, self.latch_row as i32, param_i).unwrap();
+                witgen.assign(expr, self.latch_row as i32, param_i)?;
             }
         }
 
@@ -87,12 +85,12 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
     /// Fails iff there are incomplete machine calls in the latch row.
     fn solve_block(&self, witgen: &mut WitgenInference<T, &Self>) -> Result<(), String> {
         let mut complete = HashSet::new();
-        for i in 0.. {
+        for iteration in 0.. {
             let mut progress = false;
 
             // TODO: This algorithm is assuming a rectangular block shape.
             for row in (0..self.block_size) {
-                for id in self.machine_parts.identities.iter() {
+                for id in &self.machine_parts.identities {
                     if !complete.contains(&(id.id(), row)) {
                         let result = witgen.process_identity(id, row as i32);
                         if result.complete {
@@ -103,7 +101,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 }
             }
             if !progress {
-                log::debug!("Finishing after {} iterations", i);
+                log::debug!("Finishing after {iteration} iterations");
                 break;
             }
         }
@@ -116,10 +114,10 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 self.machine_parts
                     .identities
                     .iter()
+                    .filter(|id| is_machine_call(id))
                     .map(move |id| (id, row))
             })
-            .filter(|(identity, row)| !complete.contains(&(identity.id(), *row)))
-            .any(|(identity, _row)| !is_machine_call(identity));
+            .any(|(identity, row)| !complete.contains(&(identity.id(), row)));
 
         match has_incomplete_machine_calls {
             true => Err("Incomplete machine calls".to_string()),
@@ -129,14 +127,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 }
 
 fn is_machine_call<T>(identity: &Identity<T>) -> bool {
-    matches!(
-        identity,
+    match identity {
         Identity::Lookup(_)
-            | Identity::Permutation(_)
-            | Identity::PhantomLookup(_)
-            | Identity::PhantomPermutation(_)
-            | Identity::PhantomBusInteraction(_)
-    )
+        | Identity::Permutation(_)
+        | Identity::PhantomLookup(_)
+        | Identity::PhantomPermutation(_)
+        | Identity::PhantomBusInteraction(_) => true,
+        Identity::Polynomial(_) | Identity::Connect(_) => false,
+    }
 }
 
 impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
@@ -192,8 +190,11 @@ mod test {
             .flat_map(|(symbol, _)| symbol.array_elements())
             .collect::<BTreeMap<_, _>>();
         let to_expr = |name: &str| {
-            let next = name.ends_with("'");
-            let column_name = if next { &name[..name.len() - 1] } else { name };
+            let (column_name, next) = if let Some(name) = name.strip_suffix("'") {
+                (name, true)
+            } else {
+                (name, false)
+            };
             AlgebraicExpression::Reference(AlgebraicReference {
                 name: name.to_string(),
                 poly_id: witnesses_by_name[column_name],
