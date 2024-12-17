@@ -310,7 +310,7 @@ impl<T: FieldElement, V: Clone> BitAnd<T::Integer> for SymbolicExpression<T, V> 
                     rhs
                 },
             ));
-            SymbolicExpression::BitOperation(Rc::new(self), BitOperator::And, rhs.clone(), rc)
+            SymbolicExpression::BitOperation(Rc::new(self), BitOperator::And, rhs, rc)
         }
     }
 }
@@ -324,7 +324,7 @@ impl<T: FieldElement, V: Clone> BitOr<T::Integer> for SymbolicExpression<T, V> {
         if rhs.is_zero() {
             self
         } else {
-            SymbolicExpression::BitOperation(Rc::new(self), BitOperator::Or, rhs.clone(), None)
+            SymbolicExpression::BitOperation(Rc::new(self), BitOperator::Or, rhs, None)
         }
     }
 }

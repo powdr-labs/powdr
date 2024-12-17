@@ -813,19 +813,19 @@ extern \"C\" fn witgen(
         let x = cell("x", 1, 0);
         let y = cell("y", 2, 0);
         // Test that the operators & and | work with numbers larger than the modulus.
+        let large_num =
+            <powdr_number::GoldilocksField as powdr_number::FieldElement>::Integer::from(
+                0xffffffffffffffff_u64,
+            );
+        assert!(large_num.to_string().parse::<u64>().unwrap() == 0xffffffffffffffff_u64);
+        assert!(large_num > GoldilocksField::modulus());
         let effects = vec![
-            assignment(&x, symbol(&a) | 0xffffffffffffffff_u64.into()),
-            assignment(&y, symbol(&a) & 0xffffffffffffffff_u64.into()),
+            assignment(&x, symbol(&a) | large_num),
+            assignment(&y, symbol(&a) & large_num),
         ];
         let known_inputs = vec![a.clone()];
         let code = witgen_code(&known_inputs, &effects);
-        assert!(
-            <powdr_number::GoldilocksField as powdr_number::FieldElement>::Integer::from(
-                0xffffffffffffffff_u64
-            ) > GoldilocksField::modulus()
-        );
-        assert!(0xffffffffffffffff_u64 == 18446744073709551615_u64);
-        assert!(code.contains("let c_x_1_0 = (c_a_0_0 | 18446744073709551615);"));
-        assert!(code.contains("let c_y_2_0 = (c_a_0_0 & 18446744073709551615);"));
+        assert!(code.contains(&format!("let c_x_1_0 = (c_a_0_0 | {large_num});")));
+        assert!(code.contains(&format!("let c_y_2_0 = (c_a_0_0 & {large_num});")));
     }
 }
