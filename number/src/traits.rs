@@ -192,6 +192,7 @@ pub trait FieldElement:
     /// - values are always canonical (i.e. smaller than the modulus)
     /// - there are no additional fields and
     /// - `repr(transparent)` is used.
+    ///
     /// In other words, the `to_integer` function can be implemented as
     /// a mem::transmute operation on pointers.
     fn has_direct_repr() -> bool;
