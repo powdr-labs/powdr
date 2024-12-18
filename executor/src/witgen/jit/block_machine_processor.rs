@@ -48,21 +48,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .collect::<HashSet<_>>();
         let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables);
 
-        let latch_row = self.latch_row as i32;
-        let assignments = [Assignment::constant(
-            &connection_rhs.selector,
-            latch_row,
-            T::one(),
-        )]
-        .into_iter()
-        .chain(
-            connection_rhs
-                .expressions
-                .iter()
-                .enumerate()
-                .map(|(i, expr)| Assignment::variable(expr, latch_row, Variable::Param(i))),
-        )
-        .collect::<Vec<_>>();
+        let assignments =
+            Assignment::from_selected_expression(&connection_rhs, self.latch_row as i32);
 
         // Solve for the block witness.
         // Fails if any machine call cannot be completed.

@@ -340,20 +340,28 @@ pub struct Assignment<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> Assignment<'a, T> {
-    pub fn constant(expression: &'a Expression<T>, offset: i32, value: T) -> Self {
-        Self {
-            expression,
+    pub fn from_selected_expression(
+        selected_expression: &'a SelectedExpressions<T>,
+        offset: i32,
+    ) -> Vec<Self> {
+        [Assignment {
+            expression: &selected_expression.selector,
             offset,
-            value: VariableOrValue::Value(value),
-        }
-    }
-
-    pub fn variable(expression: &'a Expression<T>, offset: i32, value: Variable) -> Self {
-        Self {
-            expression,
-            offset,
-            value: VariableOrValue::Variable(value),
-        }
+            value: VariableOrValue::Value(T::one()),
+        }]
+        .into_iter()
+        .chain(
+            selected_expression
+                .expressions
+                .iter()
+                .enumerate()
+                .map(|(i, expr)| Assignment {
+                    expression: expr,
+                    offset,
+                    value: VariableOrValue::Variable(Variable::Param(i)),
+                }),
+        )
+        .collect::<Vec<_>>()
     }
 }
 
