@@ -536,12 +536,6 @@ pub struct RegWrite<F: FieldElement> {
 pub struct ExecutionTrace<F: FieldElement> {
     reg_map: HashMap<String, u16>,
 
-    /// Values of the registers in the execution trace.
-    ///
-    /// Each N elements is a row with all registers, where N is the number of
-    /// registers.
-    reg_writes: Vec<RegWrite<F>>,
-
     /// Writes and reads to memory.
     mem_ops: Vec<MemOperation>,
 
@@ -550,6 +544,11 @@ pub struct ExecutionTrace<F: FieldElement> {
 
     /// the pc value at each row
     pc_trace: Vec<u32>,
+    /// Values of the non-pc asm registers in the execution trace.
+    ///
+    /// Each N elements is a row with all registers, where N is the number of
+    /// registers.
+    reg_writes: Vec<RegWrite<F>>,
 
     /// Calls into submachines
     submachine_ops: Vec<Vec<SubmachineOp<F>>>,
@@ -588,70 +587,32 @@ impl<F: FieldElement> ExecutionTrace<F> {
         }
     }
 
-    /// Replay the execution and get the register values per trace row.
-    fn replay(&self) -> TraceReplay<F> {
-        TraceReplay {
-            trace: self,
-            regs: vec![0.into(); self.reg_map.len()],
-            pc_idx: self.reg_map["pc"] as usize,
-            next_write: 0,
-            next_r: 0,
-        }
-    }
-
     /// transpose the register write operations into value columns
     fn generate_registers_trace(&self) -> Vec<(String, Vec<F>)> {
-        let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(self.reg_map.len());
+        let mut reg_values: Vec<Vec<F>> = vec![vec![]; self.reg_map.len()];
 
-        let mut rows = self.replay();
-        while let Some(row) = rows.next_row() {
-            for (reg_name, &index) in self.reg_map.iter() {
-                reg_values
-                    .entry(reg_name)
-                    .or_default()
-                    .push(row[index as usize]);
+        // reverse lookup
+        let idx_reg: HashMap<u16, &str> =
+            self.reg_map.iter().map(|(k, &v)| (v, k.as_str())).collect();
+
+        for i in 0..self.reg_map.len() {
+            let reg = idx_reg[&(i as u16)];
+            if reg == "pc" {
+                reg_values[i].extend(self.pc_trace.iter().map(|&v| F::from(v)));
+            } else {
+                reg_values[i] = vec![0.into(); self.pc_trace.len()];
             }
+        }
+
+        for w in &self.reg_writes {
+            reg_values[w.reg_idx as usize][w.row] = w.val;
         }
 
         reg_values
             .into_iter()
-            .map(|(n, c)| (format!("main::{n}"), c))
+            .enumerate()
+            .map(|(i, values)| (format!("main::{}", idx_reg[&(i as u16)]), values))
             .collect()
-    }
-}
-
-pub struct TraceReplay<'a, F: FieldElement> {
-    trace: &'a ExecutionTrace<F>,
-    regs: Vec<F>,
-    pc_idx: usize,
-    next_write: usize,
-    next_r: usize,
-}
-
-impl<'a, F: FieldElement> TraceReplay<'a, F> {
-    /// Returns the next row's registers value.
-    ///
-    /// Just like an iterator's next(), but returns the value borrowed from self.
-    pub fn next_row(&mut self) -> Option<&[F]> {
-        if self.next_r == self.trace.len {
-            return None;
-        }
-
-        // we optimistically increment the PC, if it is a jump or special case,
-        // one of the writes will overwrite it
-        self.regs[self.pc_idx] += 1.into();
-
-        while let Some(next_write) = self.trace.reg_writes.get(self.next_write) {
-            if next_write.row > self.next_r {
-                break;
-            }
-            self.next_write += 1;
-
-            self.regs[next_write.reg_idx as usize] = next_write.val;
-        }
-
-        self.next_r += 1;
-        Some(&self.regs[..])
     }
 }
 
@@ -776,17 +737,10 @@ mod builder {
             // u16, so panic if it doesn't fit (it obviously will fit for RISC-V).
             <usize as TryInto<u16>>::try_into(reg_len).unwrap();
 
-            // To avoid a special case when replaying the trace, we create a
-            // special write operation that sets the PC with 0 in the first row.
             let pc_idx = reg_map["pc"];
-            let reg_writes = vec![RegWrite {
-                row: 0,
-                reg_idx: pc_idx,
-                val: 0.into(),
-            }];
-
             let mut regs = vec![0.into(); reg_len];
             regs[pc_idx as usize] = PC_INITIAL_VAL.into();
+            let reg_writes = vec![];
 
             let submachines: HashMap<_, RefCell<Box<dyn Submachine<F>>>> =
                 if let ExecMode::Trace = mode {
@@ -936,13 +890,15 @@ mod builder {
 
         /// raw set next value of register by register index instead of name
         fn set_reg_idx(&mut self, idx: u16, value: Elem<F>) {
-            // Record register write in trace. Only for non-assignment registers.
+            // Record register write in trace. Only for non-pc, non-assignment registers.
             if let ExecMode::Trace = self.mode {
-                self.trace.reg_writes.push(RegWrite {
-                    row: self.trace.len,
-                    reg_idx: idx,
-                    val: value.into_fe(),
-                });
+                if idx != self.pc_idx {
+                    self.trace.reg_writes.push(RegWrite {
+                        row: self.trace.len,
+                        reg_idx: idx,
+                        val: value.into_fe(),
+                    });
+                }
             }
 
             self.regs[idx as usize] = value;
