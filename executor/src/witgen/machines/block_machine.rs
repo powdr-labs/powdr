@@ -326,7 +326,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 }
 
 impl<'a, T: FieldElement> BlockMachine<'a, T> {
-    /// The characteristic of a block machine is that that all fixed columns are
+    /// The characteristic of a block machine is that all fixed columns are
     /// periodic. However, there are exceptions to handle wrapping.
     /// This becomes a problem when a witness polynomial depends on a fixed column
     /// that is not periodic, because values of committed polynomials are copy-pasted
@@ -527,7 +527,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             })?;
 
         // 3. Remove the last row of the previous block from data
-        self.data.pop().unwrap();
+        self.data.truncate(self.data.len() - 1);
 
         // 4. Finalize everything so far (except the dummy block)
         if self.data.len() > self.block_size {

@@ -9,13 +9,16 @@ use powdr_number::FieldElement;
 use crate::witgen::{
     data_structures::{finalizable_data::CompactData, mutable_state::MutableState},
     jit::affine_symbolic_expression::MachineCallArgument,
-    machines::LookupCell,
+    machines::{
+        profiling::{record_end, record_start},
+        LookupCell,
+    },
     QueryCallback,
 };
 
 use super::{
     affine_symbolic_expression::{Assertion, Effect},
-    symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
+    symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator},
     variable::{Cell, Variable},
 };
 
@@ -72,8 +75,10 @@ pub fn compile_effects<T: FieldElement>(
     let witgen_code = witgen_code(known_inputs, effects);
     let code = format!("{utils}\n//-------------------------------\n{witgen_code}");
 
-    let lib_path = powdr_jit_compiler::call_cargo(&code)
-        .map_err(|e| format!("Failed to compile generated code: {e}"))?;
+    record_start("JIT-compilation");
+    let r = powdr_jit_compiler::call_cargo(&code);
+    record_end("JIT-compilation");
+    let lib_path = r.map_err(|e| format!("Failed to compile generated code: {e}"))?;
 
     let library = Arc::new(unsafe { libloading::Library::new(&lib_path.path).unwrap() });
     let witgen_fun = unsafe { library.get(b"witgen\0") }.unwrap();
@@ -264,14 +269,18 @@ fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable>) -> St
                 BinaryOperator::Mul => format!("({left} * {right})"),
                 BinaryOperator::Div => format!("({left} / {right})"),
                 BinaryOperator::IntegerDiv => format!("integer_div({left}, {right})"),
-                BinaryOperator::BitAnd => format!("({left} & {right})"),
-                BinaryOperator::BitOr => format!("({left} | {right})"),
             }
         }
         SymbolicExpression::UnaryOperation(op, inner, _) => {
             let inner = format_expression(inner);
             match op {
                 UnaryOperator::Neg => format!("-{inner}"),
+            }
+        }
+        SymbolicExpression::BitOperation(left, op, right, _) => {
+            let left = format_expression(left);
+            match op {
+                BitOperator::And => format!("({left} & {right})"),
             }
         }
     }
@@ -366,6 +375,17 @@ impl std::ops::Sub for FieldElement {{
     fn sub(self, b: Self) -> Self {{
         // TODO this is inefficient.
         Self(IntType::try_from(((self.0 as DoubleIntType) + (MODULUS as DoubleIntType) - (b.0 as DoubleIntType)) % (MODULUS as DoubleIntType)).unwrap())
+    }}
+}}
+impl std::ops::Neg for FieldElement {{
+    type Output = Self;
+    #[inline]
+    fn neg(self) -> Self {{
+        if self.0 == 0 {{
+            self
+        }} else {{
+            Self(MODULUS - self.0)
+        }}
     }}
 }}
 impl std::ops::Mul<FieldElement> for FieldElement {{
@@ -800,5 +820,22 @@ extern \"C\" fn witgen(
         };
         (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(7 * 2));
+    }
+
+    #[test]
+    fn bit_ops() {
+        let a = cell("a", 0, 0);
+        let x = cell("x", 1, 0);
+        // Test that the operators & and | work with numbers larger than the modulus.
+        let large_num =
+            <powdr_number::GoldilocksField as powdr_number::FieldElement>::Integer::from(
+                0xffffffffffffffff_u64,
+            );
+        assert!(large_num.to_string().parse::<u64>().unwrap() == 0xffffffffffffffff_u64);
+        assert!(large_num > GoldilocksField::modulus());
+        let effects = vec![assignment(&x, symbol(&a) & large_num)];
+        let known_inputs = vec![a.clone()];
+        let code = witgen_code(&known_inputs, &effects);
+        assert!(code.contains(&format!("let c_x_1_0 = (c_a_0_0 & {large_num});")));
     }
 }

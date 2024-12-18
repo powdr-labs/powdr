@@ -1532,7 +1532,7 @@ fn process_instruction<A: InstructionArgs>(
             // save ra/x1
             push_register("x1")
                 .into_iter()
-                // jump to to handler
+                // jump to handler
                 .chain(["jump __ecall_handler, 1;".to_string()])
                 // restore ra/x1
                 .chain(pop_register("x1"))
