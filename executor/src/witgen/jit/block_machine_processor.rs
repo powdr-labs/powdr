@@ -56,34 +56,22 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables);
 
         // In the latch row, set the RHS selector to 1.
-        witgen.assign(
-            &connection_rhs.selector,
-            self.latch_row as i32,
-            T::one().into(),
-        )?;
+        witgen.assign_constant(&connection_rhs.selector, self.latch_row as i32, T::one());
 
-        // For each known argument, transfer the value to the expression in the connection's RHS.
+        // For each argument, connect the expression on the RHS with the formal parameter.
         for (index, expr) in connection_rhs.expressions.iter().enumerate() {
-            if known_args[index] {
-                let param_i =
-                    AffineSymbolicExpression::from_known_symbol(Variable::Param(index), None);
-                witgen.assign(expr, self.latch_row as i32, param_i)?;
-            }
+            witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
         }
 
         // Solve for the block witness.
         // Fails if any machine call cannot be completed.
         self.solve_block(&mut witgen)?;
 
-        // For each unknown argument, get the value from the expression in the connection's RHS.
-        // If assign() fails, it means that we weren't able to to solve for the operation's output.
         for (index, expr) in connection_rhs.expressions.iter().enumerate() {
-            if !known_args[index] {
-                let param_i =
-                    AffineSymbolicExpression::from_unknown_variable(Variable::Param(index), None);
-                witgen
-                    .assign(expr, self.latch_row as i32, param_i)
-                    .map_err(|_| format!("Could not solve for params[{index}]"))?;
+            if !witgen.is_known(&Variable::Param(index)) {
+                return Err(format!(
+                    "Unable to derive algorithm to compute output value \"{expr}\""
+                ));
             }
         }
 
@@ -271,6 +259,29 @@ Add::a[0] = params[0];
 Add::b[0] = params[1];
 Add::c[0] = (Add::a[0] + Add::b[0]);
 params[2] = Add::c[0];"
+        );
+    }
+
+    #[test]
+    fn unconstrained_output() {
+        let input = "
+        namespace Unconstrained(256);
+            col witness sel, a, b, c;
+            a + b = 0;
+        ";
+        let err_str = generate_for_block_machine(
+            input,
+            1,
+            0,
+            "Unconstrained::sel",
+            &["Unconstrained::a", "Unconstrained::b"],
+            &["Unconstrained::c"],
+        )
+        .err()
+        .unwrap();
+        assert_eq!(
+            err_str,
+            "Unable to derive algorithm to compute output value \"Unconstrained::c\""
         );
     }
 
