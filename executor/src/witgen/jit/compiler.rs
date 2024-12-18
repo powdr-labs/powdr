@@ -373,7 +373,7 @@ impl std::ops::Neg for FieldElement {{
     #[inline]
     fn neg(self) -> Self {{
         if self.0 == 0 {{
-            Self(0)
+            self
         }} else {{
             Self(MODULUS - self.0)
         }}
