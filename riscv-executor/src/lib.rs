@@ -1127,6 +1127,15 @@ mod builder {
             // ----------------------------
             let links = pil::links_from_pil(pil);
 
+            // cache for identity_id->selector
+            let mut id_sel = Vec::new(); // TODO: assumes identity_ids are small enough!
+            for l in links.iter() {
+                if id_sel.len() <= l.id() as usize {
+                    id_sel.resize(l.id() as usize + 1, None);
+                }
+                id_sel[l.id() as usize] = pil::extract_selector(l);
+            }
+
             let start = Instant::now();
             let subm_cols = self
                 .submachines
@@ -1142,7 +1151,7 @@ mod builder {
                 .flat_map(|(m, mut machine, ops)| {
                     // apply the operations to the submachine
                     ops.into_iter().for_each(|op| {
-                        let selector = pil::selector_for_link(&links, op.identity_id);
+                        let selector = &id_sel[op.identity_id as usize];
                         machine.add_operation(selector.as_deref(), &op.lookup_args, &op.extra);
                     });
 
