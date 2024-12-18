@@ -58,6 +58,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         // Fails if any machine call cannot be completed.
         self.solve_block(&mut witgen)?;
 
+        for (index, expr) in connection_rhs.expressions.iter().enumerate() {
+            if !witgen.is_known(&Variable::Param(index)) {
+                return Err(format!(
+                    "Unable to derive algorithm to compute output value \"{expr}\""
+                ));
+            }
+        }
+
         Ok(witgen.code())
     }
 
@@ -84,10 +92,6 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 log::debug!("Finishing after {iteration} iterations");
                 break;
             }
-        }
-
-        if witgen.has_unsolved_assignments() {
-            return Err("Unsolved assignments".to_string());
         }
 
         // If any machine call could not be completed, that's bad because machine calls typically have side effects.
@@ -250,8 +254,31 @@ params[2] = Add::c[0];"
     }
 
     #[test]
+    fn unconstrained_output() {
+        let input = "
+        namespace Unconstrained(256);
+            col witness sel, a, b, c;
+            a + b = 0;
+        ";
+        let err_str = generate_for_block_machine(
+            input,
+            1,
+            0,
+            "Unconstrained::sel",
+            &["Unconstrained::a", "Unconstrained::b"],
+            &["Unconstrained::c"],
+        )
+        .err()
+        .unwrap();
+        assert_eq!(
+            err_str,
+            "Unable to derive algorithm to compute output value \"Unconstrained::c\""
+        );
+    }
+
+    #[test]
     // TODO: Currently fails, because the machine has a non-rectangular block shape.
-    #[should_panic = "Unsolved assignments"]
+    #[should_panic = "Incomplete machine calls"]
     fn binary() {
         let input = read_to_string("../test_data/pil/binary.pil").unwrap();
         generate_for_block_machine(

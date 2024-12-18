@@ -64,6 +64,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.code
     }
 
+    pub fn is_known(&self, variable: &Variable) -> bool {
+        self.known_variables.contains(variable)
+    }
+
     /// Process an identity on a certain row.
     pub fn process_identity(&mut self, id: &Identity<T>, row_offset: i32) -> ProcessSummary {
         let result = match id {
