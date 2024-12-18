@@ -1,6 +1,6 @@
 use std::{
     fmt::{self, Display, Formatter},
-    ops::{Add, BitAnd, BitOr, Mul, Neg},
+    ops::{Add, BitAnd, Mul, Neg},
     rc::Rc,
 };
 
@@ -48,7 +48,6 @@ pub enum BinaryOperator {
 #[derive(Debug, Clone)]
 pub enum BitOperator {
     And,
-    Or,
 }
 
 #[derive(Debug, Clone)]
@@ -152,7 +151,6 @@ impl Display for BitOperator {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             BitOperator::And => write!(f, "&"),
-            BitOperator::Or => write!(f, "|"),
         }
     }
 }
@@ -311,20 +309,6 @@ impl<T: FieldElement, V: Clone> BitAnd<T::Integer> for SymbolicExpression<T, V> 
                 },
             ));
             SymbolicExpression::BitOperation(Rc::new(self), BitOperator::And, rhs, rc)
-        }
-    }
-}
-
-impl<T: FieldElement, V: Clone> BitOr<T::Integer> for SymbolicExpression<T, V> {
-    type Output = SymbolicExpression<T, V>;
-
-    fn bitor(self, rhs: T::Integer) -> Self::Output {
-        // If self is concrete or known zero, the result might be outside the field range,
-        // so we cannot simplify
-        if rhs.is_zero() {
-            self
-        } else {
-            SymbolicExpression::BitOperation(Rc::new(self), BitOperator::Or, rhs, None)
         }
     }
 }

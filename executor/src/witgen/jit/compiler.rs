@@ -276,7 +276,6 @@ fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable>) -> St
             let left = format_expression(left);
             match op {
                 BitOperator::And => format!("({left} & {right})"),
-                BitOperator::Or => format!("({left} | {right})"),
             }
         }
     }
@@ -822,7 +821,6 @@ extern \"C\" fn witgen(
     fn bit_ops() {
         let a = cell("a", 0, 0);
         let x = cell("x", 1, 0);
-        let y = cell("y", 2, 0);
         // Test that the operators & and | work with numbers larger than the modulus.
         let large_num =
             <powdr_number::GoldilocksField as powdr_number::FieldElement>::Integer::from(
@@ -830,13 +828,9 @@ extern \"C\" fn witgen(
             );
         assert!(large_num.to_string().parse::<u64>().unwrap() == 0xffffffffffffffff_u64);
         assert!(large_num > GoldilocksField::modulus());
-        let effects = vec![
-            assignment(&x, symbol(&a) | large_num),
-            assignment(&y, symbol(&a) & large_num),
-        ];
+        let effects = vec![assignment(&x, symbol(&a) & large_num)];
         let known_inputs = vec![a.clone()];
         let code = witgen_code(&known_inputs, &effects);
-        assert!(code.contains(&format!("let c_x_1_0 = (c_a_0_0 | {large_num});")));
-        assert!(code.contains(&format!("let c_y_2_0 = (c_a_0_0 & {large_num});")));
+        assert!(code.contains(&format!("let c_x_1_0 = (c_a_0_0 & {large_num});")));
     }
 }
