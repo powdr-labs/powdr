@@ -9,7 +9,7 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [features]
-default = [] # complex-tests is disabled by default
+default = []                                       # complex-tests is disabled by default
 
 # features below only affects tests
 # not sure this is the best approach
