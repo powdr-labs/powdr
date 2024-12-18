@@ -91,22 +91,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.ingest_effects(result)
     }
 
-    /// Turns the given variable either to a known symbolic value or an unknown symbolic value
-    /// depending on if it is known or not.
-    /// If it is known to be range-constrained to a single value, that value is used.
-    fn variable_to_expression(&self, variable: Variable) -> AffineSymbolicExpression<T, Variable> {
-        // If a variable is known and has a compile-time constant value,
-        // that value is stored in the range constraints.
-        let rc = self.range_constraint(variable.clone());
-        if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
-            val.into()
-        } else if self.known_variables.contains(&variable) {
-            AffineSymbolicExpression::from_known_symbol(variable, rc)
-        } else {
-            AffineSymbolicExpression::from_unknown_variable(variable, rc)
-        }
-    }
-
     /// Process the constraint that the expression evaluated at the given offset equals the given value.
     /// This does not have to be solvable right away, but is always processed as soon as we have progress.
     /// Note that all variables in the expression can be unknown and their status can also change over time.
@@ -214,7 +198,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 .into_iter()
                 .flat_map(|assignment| {
                     let rhs = match &assignment.rhs {
-                        VariableOrValue::Variable(v) => self.variable_to_expression(v.clone()),
+                        VariableOrValue::Variable(v) => {
+                            Evaluator::new(self).evaluate_variable(v.clone())
+                        }
                         VariableOrValue::Value(v) => (*v).into(),
                     };
                     let r =
@@ -292,20 +278,63 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         old_rc != Some(rc)
     }
 
+    /// Returns the current best-known range constraint on the given variable
+    /// combining global range constraints and newly derived local range constraints.
+    fn range_constraint(&self, variable: Variable) -> Option<RangeConstraint<T>> {
+        variable
+            .try_to_witness_poly_id()
+            .and_then(|poly_id| {
+                self.fixed_data
+                    .global_range_constraints
+                    .range_constraint(&AlgebraicReference {
+                        name: Default::default(),
+                        poly_id,
+                        next: false,
+                    })
+            })
+            .iter()
+            .chain(self.derived_range_constraints.get(&variable))
+            .cloned()
+            .reduce(|gc, rc| gc.conjunction(&rc))
+    }
+
     fn evaluate(
+        &self,
+        expr: &Expression<T>,
+        offset: i32,
+    ) -> Option<AffineSymbolicExpression<T, Variable>> {
+        Evaluator::new(self).evaluate(expr, offset)
+    }
+}
+
+struct Evaluator<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
+    witgen_inference: &'a WitgenInference<'a, T, FixedEval>,
+}
+
+impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEval> {
+    pub fn new(witgen_inference: &'a WitgenInference<'a, T, FixedEval>) -> Self {
+        Self { witgen_inference }
+    }
+
+    pub fn evaluate(
         &self,
         expr: &Expression<T>,
         offset: i32,
     ) -> Option<AffineSymbolicExpression<T, Variable>> {
         Some(match expr {
             Expression::Reference(r) => match r.poly_id.ptype {
-                PolynomialType::Constant => self.fixed_evaluator.evaluate(r, offset)?.into(),
+                PolynomialType::Constant => self
+                    .witgen_inference
+                    .fixed_evaluator
+                    .evaluate(r, offset)?
+                    .into(),
                 PolynomialType::Committed => {
                     let variable = Variable::from_reference(r, offset);
-                    self.variable_to_expression(variable)
+                    self.evaluate_variable(variable)
                 }
                 PolynomialType::Intermediate => {
-                    let definition = &self.fixed_data.intermediate_definitions[&r.to_thin()];
+                    let definition =
+                        &self.witgen_inference.fixed_data.intermediate_definitions[&r.to_thin()];
                     self.evaluate(definition, offset)?
                 }
             },
@@ -317,6 +346,22 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             Expression::BinaryOperation(op) => self.evaluate_binary_operation(op, offset)?,
             Expression::UnaryOperation(op) => self.evaluate_unary_operation(op, offset)?,
         })
+    }
+
+    /// Turns the given variable either to a known symbolic value or an unknown symbolic value
+    /// depending on if it is known or not.
+    /// If it is known to be range-constrained to a single value, that value is used.
+    pub fn evaluate_variable(&self, variable: Variable) -> AffineSymbolicExpression<T, Variable> {
+        // If a variable is known and has a compile-time constant value,
+        // that value is stored in the range constraints.
+        let rc = self.witgen_inference.range_constraint(variable.clone());
+        if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
+            val.into()
+        } else if self.witgen_inference.is_known(&variable) {
+            AffineSymbolicExpression::from_known_symbol(variable, rc)
+        } else {
+            AffineSymbolicExpression::from_unknown_variable(variable, rc)
+        }
     }
 
     fn evaluate_binary_operation(
@@ -339,7 +384,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             }
         }
     }
-
     fn evaluate_unary_operation(
         &self,
         op: &AlgebraicUnaryOperation<T>,
@@ -349,26 +393,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         match op.op {
             AlgebraicUnaryOperator::Minus => Some(-&expr),
         }
-    }
-
-    /// Returns the current best-known range constraint on the given variable
-    /// combining global range constraints and newly derived local range constraints.
-    fn range_constraint(&self, variable: Variable) -> Option<RangeConstraint<T>> {
-        variable
-            .try_to_witness_poly_id()
-            .and_then(|poly_id| {
-                self.fixed_data
-                    .global_range_constraints
-                    .range_constraint(&AlgebraicReference {
-                        name: Default::default(),
-                        poly_id,
-                        next: false,
-                    })
-            })
-            .iter()
-            .chain(self.derived_range_constraints.get(&variable))
-            .cloned()
-            .reduce(|gc, rc| gc.conjunction(&rc))
     }
 }
 
