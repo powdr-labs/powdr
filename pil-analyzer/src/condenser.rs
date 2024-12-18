@@ -800,6 +800,7 @@ fn to_constraint<T: FieldElement>(
                 Value::Array(fields) => fields.iter().map(|f| to_expr(f)).collect(),
                 _ => panic!("Expected array, got {:?}", fields[1]),
             }),
+            latch: to_expr(&fields[2]),
         }
         .into(),
         _ => panic!("Expected constraint but got {constraint}"),
