@@ -4,7 +4,7 @@ use std::{ffi::c_void, iter, mem, sync::Arc};
 use auto_enums::auto_enum;
 use itertools::Itertools;
 use libloading::Library;
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, GoldilocksField, KnownField};
 
 use crate::witgen::{
     data_structures::{finalizable_data::CompactData, mutable_state::MutableState},
@@ -367,225 +367,55 @@ fn util_code<T: FieldElement>(first_column_id: u64, column_count: usize) -> Resu
         ));
     }
 
-    let int_type = if mem::size_of::<T>() == 8 {
-        "u64"
-    } else {
-        "u32"
+    let field_impl = match T::known_field() {
+        Some(KnownField::GoldilocksField) => {
+            include_str!("includes/field_goldilocks.rs").to_string()
+        }
+        _ => {
+            let int_type = if mem::size_of::<T>() == 8 {
+                "u64"
+            } else {
+                "u32"
+            };
+            let double_int_type = if mem::size_of::<T>() == 8 {
+                "u128"
+            } else {
+                "u64"
+            };
+            let modulus = T::modulus();
+
+            format!(
+                "\
+                #[derive(Clone, Copy, Default)]\n\
+                #[repr(transparent)]\n\
+                struct FieldElement({int_type});\n\
+                \n\
+                type IntType = {int_type};\n\
+                type DoubleIntType = {double_int_type};\n\
+                const MODULUS: IntType = {modulus}_{int_type};\n\
+                {}\
+                ",
+                include_str!("includes/field_generic_up_to_64.rs")
+            )
+        }
     };
-    let double_int_type = if mem::size_of::<T>() == 8 {
-        "u128"
-    } else {
-        "u64"
-    };
-    let modulus = T::modulus();
+
+    let interface = format!(
+        "\
+        const column_count: u64 = {column_count};\n\
+        const first_column_id: u64 = {first_column_id};\n\
+        {}",
+        include_str!("includes/interface.rs")
+    );
 
     Ok(format!(
-        r#"#![allow(non_snake_case, unused_parens)]
-
-#[derive(Clone, Copy, Default)]
-#[repr(transparent)]
-struct FieldElement({int_type});
-
-type IntType = {int_type};
-type DoubleIntType = {double_int_type};
-const MODULUS: IntType = {modulus}_{int_type};
-
-impl std::fmt::Display for FieldElement {{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{
-        write!(f, "{{}}", self.0)
-    }}
-}}
-impl From<IntType> for FieldElement {{
-    #[inline]
-    fn from(i: IntType) -> Self {{
-        Self(i)
-    }}
-}}
-impl std::ops::Add for FieldElement {{
-    type Output = Self;
-    #[inline]
-    fn add(self, b: Self) -> Self {{
-        // TODO this is inefficient.
-        Self(IntType::try_from(((self.0 as DoubleIntType) + (b.0 as DoubleIntType)) % (MODULUS as DoubleIntType)).unwrap())
-    }}
-}}
-impl std::ops::Sub for FieldElement {{
-    type Output = Self;
-    #[inline]
-    fn sub(self, b: Self) -> Self {{
-        // TODO this is inefficient.
-        Self(IntType::try_from(((self.0 as DoubleIntType) + (MODULUS as DoubleIntType) - (b.0 as DoubleIntType)) % (MODULUS as DoubleIntType)).unwrap())
-    }}
-}}
-impl std::ops::Neg for FieldElement {{
-    type Output = Self;
-    #[inline]
-    fn neg(self) -> Self {{
-        if self.0 == 0 {{
-            self
-        }} else {{
-            Self(MODULUS - self.0)
-        }}
-    }}
-}}
-impl std::ops::Mul<FieldElement> for FieldElement {{
-    type Output = Self;
-    #[inline]
-    fn mul(self, b: FieldElement) -> FieldElement {{
-        // TODO this is inefficient.
-        Self(IntType::try_from(((self.0 as DoubleIntType) * (b.0 as DoubleIntType)) % (MODULUS as DoubleIntType)).unwrap())
-    }}
-}}
-impl std::ops::Div<FieldElement> for FieldElement {{
-    type Output = Self;
-    #[inline]
-    fn div(self, b: FieldElement) -> FieldElement {{
-        if b.0 == 0 {{
-            panic!("Division by zero");
-        }}
-
-        if let Some(result) = try_integer_div_without_remainder(self.0, b.0) {{
-            Self(result)
-        }} else if let Some(result) = try_integer_div_without_remainder(self.0, MODULUS - b.0) {{
-            Self(MODULUS - result)
-        }} else if let Some(result) = try_integer_div_without_remainder(MODULUS - self.0, b.0) {{
-            Self(MODULUS - result)
-        }} else if let Some(result) = try_integer_div_without_remainder(MODULUS - self.0, MODULUS - b.0) {{
-            Self(result)
-        }} else {{
-            full_field_div(self, b)
-        }}
-    }}
-}}
-#[inline]
-fn try_integer_div_without_remainder(a: IntType, b: IntType) -> Option<IntType> {{
-    (a % b == 0).then(|| a / b)
-}}
-fn full_field_div(_: FieldElement, _: FieldElement) -> FieldElement {{
-    todo!()
-    // TODO generate the algorithm we use for goldilocks
-    // for a generic prime field.
-}}
-#[inline]
-fn integer_div(a: FieldElement, b: FieldElement) -> FieldElement {{
-    FieldElement(a.0 / b.0)
-}}
-impl std::ops::BitAnd<FieldElement> for FieldElement {{
-    type Output = Self;
-    #[inline]
-    fn bitand(self, b: FieldElement) -> FieldElement {{
-        Self(self.0 & b.0)
-    }}
-}}
-impl std::ops::BitOr<FieldElement> for FieldElement {{
-    type Output = Self;
-    #[inline]
-    fn bitor(self, b: FieldElement) -> FieldElement {{
-        Self(self.0 | b.0)
-    }}
-}}
-
-#[inline]
-fn known_to_slice<'a>(known: *mut u32, len: u64) -> &'a mut [u32] {{
-    let words_per_row = ({column_count} + 31) / 32;
-    let rows = len / {column_count};
-    let known_len = rows * words_per_row;
-    unsafe {{ std::slice::from_raw_parts_mut(known, known_len as usize) }}
-}}
-
-#[inline]
-fn index(global_offset: u64, local_offset: i32, column: u64) -> usize {{
-    let column = column - {first_column_id};
-    let row = (global_offset as i64 + local_offset as i64) as u64;
-    (row * {column_count} + column) as usize
-}}
-
-#[inline]
-fn index_known(global_offset: u64, local_offset: i32, column: u64) -> (u64, u64) {{
-    let column = column - {first_column_id};
-    let row = (global_offset as i64 + local_offset as i64) as u64;
-    let words_per_row = ({column_count} + 31) / 32;
-    (row * words_per_row + column / 32, column % 32)
-}}
-
-#[inline]
-fn get(data: &[FieldElement], global_offset: u64, local_offset: i32, column: u64) -> FieldElement {{
-    data[index(global_offset, local_offset, column)]
-}}
-
-#[inline]
-fn set(data: &mut [FieldElement], global_offset: u64, local_offset: i32, column: u64, value: FieldElement) {{
-    let i = index(global_offset, local_offset, column);
-    data[i] = value;
-}}
-
-#[inline]
-fn set_known(known: &mut [u32], global_offset: u64, local_offset: i32, column: u64) {{
-    let (known_idx, known_bit) = index_known(global_offset, local_offset, column);
-    known[known_idx as usize] |= 1 << (known_bit);
-}}
-
-#[inline]
-fn get_param(params: &[LookupCell<FieldElement>], i: usize) -> FieldElement {{
-    match params[i] {{
-        LookupCell::Input(v) => *v,
-        LookupCell::Output(_) => panic!("Output cell used as input"),
-    }}
-}}
-#[inline]
-fn set_param(params: &mut [LookupCell<FieldElement>], i: usize, value: FieldElement) {{
-    match &mut params[i] {{
-        LookupCell::Input(_) => panic!("Input cell used as output"),
-        LookupCell::Output(v) => **v = value,
-    }}
-}}
-
-#[repr(C)]
-enum LookupCell<'a, T> {{
-    /// Value is known (i.e. an input)
-    Input(&'a T),
-    /// Value is not known (i.e. an output)
-    Output(&'a mut T),
-}}
-
-#[repr(C)]
-pub struct MutSlice<T> {{
-    data: *mut T,
-    len: u64,
-}}
-
-impl<T> From<&mut [T]> for MutSlice<T> {{
-    #[inline]
-    fn from(slice: &mut [T]) -> Self {{
-        MutSlice {{
-            data: slice.as_mut_ptr(),
-            len: slice.len() as u64,
-        }}
-    }}
-}}
-
-impl<T> MutSlice<T> {{
-    #[inline]
-    fn to_mut_slice<'a>(self) -> &'a mut [T] {{
-        unsafe {{ std::slice::from_raw_parts_mut(self.data, self.len as usize) }}
-    }}  
-}}
-
-#[repr(C)]
-pub struct WitgenFunctionParams<'a, T: 'a> {{
-    data: MutSlice<T>,
-    known: *mut u32,
-    row_offset: u64,
-    params: MutSlice<LookupCell<'a, T>>,
-    mutable_state: *const std::ffi::c_void,
-    call_machine: extern "C" fn(*const std::ffi::c_void, u64, MutSlice<LookupCell<'_, T>>) -> bool,
-}}
-    "#
+        "#![allow(non_snake_case, unused_parens, unused_variables)]\n{field_impl}\n{interface}"
     ))
 }
 
 #[cfg(test)]
 mod tests {
+    use powdr_number::KoalaBearField;
     use pretty_assertions::assert_eq;
 
     use powdr_number::GoldilocksField;
@@ -595,9 +425,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn compile_util_code() {
+    fn compile_util_code_goldilocks() {
         compile_effects::<GoldilocksField>(0, 2, &[], &[]).unwrap();
     }
+
+    // We would like to test the generic field implementation, but
+    // we need direct representation and this is not clear.
+    // #[test]
+    // fn compile_util_code_koalabear() {
+    //     compile_effects::<KoalaBearField>(0, 2, &[], &[]).unwrap();
+    // }
 
     fn cell(column_name: &str, id: u64, row_offset: i32) -> Variable {
         Variable::Cell(Cell {
