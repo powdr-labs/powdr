@@ -55,9 +55,8 @@ fn create_index<T: FieldElement>(
     application: &Application,
     connections: &BTreeMap<u64, Connection<'_, T>>,
 ) -> HashMap<Vec<T>, IndexValue<T>> {
-    let connection = &connections[&application.identity_id];
-    assert!(connection.right.selector.is_one());
-    let right = connection.right;
+    let right = connections[&application.identity_id].right;
+    assert!(right.selector.is_one());
 
     let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
         .expressions
