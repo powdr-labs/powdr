@@ -148,6 +148,9 @@ impl std::ops::Div for GoldilocksField {
         if b.0 == 0 {
             panic!("Division by zero");
         }
+        if self.0 == 0 {
+            return self;
+        }
 
         let MODULUS = Self::ORDER;
 
