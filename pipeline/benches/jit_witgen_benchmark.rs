@@ -15,11 +15,11 @@ fn jit_witgen_benchmark(c: &mut Criterion) {
     pipeline.compute_optimized_pil().unwrap();
     pipeline.compute_fixed_cols().unwrap();
 
-    group.bench_function("keccak", |b| {
+    group.bench_function("jit_witgen_benchmark", |b| {
         b.iter(|| pipeline.clone().compute_witness().unwrap())
     });
     group.finish();
 }
 
-criterion_group!(benches_riscv, jit_witgen_benchmark);
-criterion_main!(benches_riscv);
+criterion_group!(benches_jit_witgen, jit_witgen_benchmark);
+criterion_main!(benches_jit_witgen);
