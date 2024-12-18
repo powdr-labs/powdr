@@ -1,5 +1,5 @@
 use std::protocols::bus::bus_send;
-use std::protocols::bus::bus_receive;
+use std::protocols::bus::bus_receive_with_latch;
 use std::protocols::lookup::unpack_lookup_constraint;
 use std::constraints::to_phantom_lookup;
 
@@ -20,7 +20,7 @@ let lookup_receive: expr, Constr -> () = constr |id, lookup_constraint| {
     let multiplicities;
     (1 - rhs_selector) * multiplicities = 0;
     
-    bus_receive(id, rhs, multiplicities);
+    bus_receive_with_latch(id, rhs, multiplicities, rhs_selector);
     
     // Add an annotation for witness generation
     to_phantom_lookup(lookup_constraint, multiplicities);

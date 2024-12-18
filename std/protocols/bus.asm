@@ -20,6 +20,10 @@ use std::field::known_field;
 use std::field::KnownField;
 use std::check::panic;
 
+let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity| {
+    bus_interaction_with_latch(id, tuple, multiplicity, 1)
+};
+
 /// Sends the tuple (id, tuple...) to the bus by adding
 /// `multiplicity / (beta - fingerprint(id, tuple...))` to `acc`
 /// It is the callers responsibility to properly constrain the multiplicity (e.g. constrain
@@ -29,13 +33,14 @@ use std::check::panic;
 /// - id: Interaction Id
 /// - tuple: An array of columns to be sent to the bus
 /// - multiplicity: The multiplicity which shows how many times a column will be sent
-let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity| {
+/// - latch: a binary expression which indicates where the multiplicity can be non-zero.
+let bus_interaction_with_latch: expr, expr[], expr, expr -> () = constr |id, tuple, multiplicity, latch| {
 
     std::check::assert(required_extension_size() <= 2, || "Invalid extension size");
 
     // Add phantom bus interaction
     let full_tuple = [id] + tuple;
-    Constr::PhantomBusInteraction(multiplicity, full_tuple);
+    Constr::PhantomBusInteraction(multiplicity, full_tuple, latch);
 
     // Alpha is used to compress the LHS and RHS arrays.
     let alpha = fp2_from_array(array::new(required_extension_size(), |i| challenge(0, i + 1)));
@@ -123,6 +128,6 @@ let bus_send: expr, expr[], expr -> () = constr |id, tuple, multiplicity| {
 };
 
 /// Convenience function for bus interaction to receive columns
-let bus_receive: expr, expr[], expr -> () = constr |id, tuple, multiplicity| {
-    bus_interaction(id, tuple, -1 * multiplicity);
+let bus_receive_with_latch: expr, expr[], expr, expr -> () = constr |id, tuple, multiplicity, latch| {
+    bus_interaction_with_latch(id, tuple, -1 * multiplicity, latch);
 };

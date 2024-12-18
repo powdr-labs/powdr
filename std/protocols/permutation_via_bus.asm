@@ -1,5 +1,5 @@
 use std::protocols::bus::bus_send;
-use std::protocols::bus::bus_receive;
+use std::protocols::bus::bus_receive_with_latch;
 use std::protocols::permutation::unpack_permutation_constraint;
 use std::constraints::to_phantom_permutation;
 
@@ -18,7 +18,7 @@ let permutation_send: expr, Constr -> () = constr |id, permutation_constraint| {
 let permutation_receive: expr, Constr -> () = constr |id, permutation_constraint| {
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
     
-    bus_receive(id, rhs, rhs_selector);
+    bus_receive_with_latch(id, rhs, rhs_selector, rhs_selector);
     
     // Add an annotation for witness generation
     to_phantom_permutation(permutation_constraint);

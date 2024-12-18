@@ -431,9 +431,10 @@ impl<T: Display> Display for PhantomBusInteractionIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "Constr::PhantomBusInteraction({}, [{}]);",
+            "Constr::PhantomBusInteraction({}, [{}], {});",
             self.multiplicity,
             self.tuple.0.iter().map(ToString::to_string).format(", "),
+            self.latch,
         )
     }
 }
