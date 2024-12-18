@@ -1355,9 +1355,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             self.proc
                 .set_col_idx(KnownWitnessCol::pc_update, i as usize, (i + 1).into());
         }
-        for c in KnownFixedCol::all() {
-            self.cached_fixed_cols
-                .push(self.get_fixed(c.name()).unwrap().clone());
+        if let ExecMode::Trace = self.mode {
+            for c in KnownFixedCol::all() {
+                self.cached_fixed_cols
+                    .push(self.get_fixed(c.name()).unwrap().clone());
+            }
         }
     }
 
