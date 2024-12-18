@@ -9,8 +9,13 @@ use powdr_ast::analyzed::{AlgebraicReference, Identity};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    evaluators::fixed_evaluator, jit::affine_symbolic_expression::AffineSymbolicExpression,
-    machines::MachineParts, FixedData,
+    evaluators::fixed_evaluator,
+    jit::{
+        affine_symbolic_expression::AffineSymbolicExpression,
+        witgen_inference::{Assignment, VariableOrValue},
+    },
+    machines::MachineParts,
+    FixedData,
 };
 
 use super::{
@@ -46,35 +51,61 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .collect::<HashSet<_>>();
         let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables);
 
-        // In the latch row, set the RHS selector to 1.
-        witgen.assign_constant(&connection_rhs.selector, self.latch_row as i32, T::one());
-
-        // For each argument, connect the expression on the RHS with the formal parameter.
-        for (index, expr) in connection_rhs.expressions.iter().enumerate() {
-            witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
-        }
+        let assignments = [Assignment {
+            expression: &connection_rhs.selector,
+            offset: self.latch_row as i32,
+            value: VariableOrValue::Value(T::one()),
+        }]
+        .into_iter()
+        .chain(
+            connection_rhs
+                .expressions
+                .iter()
+                .enumerate()
+                .map(|(i, expr)| Assignment {
+                    expression: expr,
+                    offset: self.latch_row as i32,
+                    value: VariableOrValue::Variable(Variable::Param(i)),
+                }),
+        )
+        .collect::<Vec<_>>();
 
         // Solve for the block witness.
         // Fails if any machine call cannot be completed.
-        self.solve_block(&mut witgen)?;
+        self.solve_block(&mut witgen, &assignments)?;
 
         Ok(witgen.code())
     }
 
     /// Repeatedly processes all identities on all rows, until no progress is made.
     /// Fails iff there are incomplete machine calls in the latch row.
-    fn solve_block(&self, witgen: &mut WitgenInference<T, &Self>) -> Result<(), String> {
-        let mut complete = HashSet::new();
+    fn solve_block(
+        &self,
+        witgen: &mut WitgenInference<T, &Self>,
+        assignments: &[Assignment<T>],
+    ) -> Result<(), String> {
+        let mut complete_identities = HashSet::new();
+        let mut complete_assignments = HashSet::new();
         for iteration in 0.. {
             let mut progress = false;
+
+            for (i, assignment) in assignments.iter().enumerate() {
+                if !complete_assignments.contains(&i) {
+                    let result = witgen.process_assignment(assignment);
+                    if result.complete {
+                        complete_assignments.insert(i);
+                    }
+                    progress |= result.progress;
+                }
+            }
 
             // TODO: This algorithm is assuming a rectangular block shape.
             for row in (0..self.block_size) {
                 for id in &self.machine_parts.identities {
-                    if !complete.contains(&(id.id(), row)) {
+                    if !complete_identities.contains(&(id.id(), row)) {
                         let result = witgen.process_identity(id, row as i32);
                         if result.complete {
-                            complete.insert((id.id(), row));
+                            complete_identities.insert((id.id(), row));
                         }
                         progress |= result.progress;
                     }
@@ -86,8 +117,26 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             }
         }
 
-        if witgen.has_unsolved_assignments() {
-            return Err("Unsolved assignments".to_string());
+        let unsolved_assignments = assignments
+            .iter()
+            .enumerate()
+            .filter(|(i, assignment)| !complete_assignments.contains(&i))
+            .map(|(i, assignment)| {
+                let value_str = match &assignment.value {
+                    VariableOrValue::Variable(var) => var.to_string(),
+                    VariableOrValue::Value(value) => value.to_string(),
+                };
+                format!(
+                    "{}[{}] = {}",
+                    assignment.expression, assignment.offset, value_str
+                )
+            })
+            .collect::<Vec<_>>();
+        if !unsolved_assignments.is_empty() {
+            return Err(format!(
+                "Unsolved assignments:\n  {}",
+                unsolved_assignments.join("\n  ")
+            ));
         }
 
         // If any machine call could not be completed, that's bad because machine calls typically have side effects.
@@ -101,7 +150,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                     .filter(|id| is_machine_call(id))
                     .map(move |id| (id, row))
             })
-            .any(|(identity, row)| !complete.contains(&(identity.id(), row)));
+            .any(|(identity, row)| !complete_identities.contains(&(identity.id(), row)));
 
         match has_incomplete_machine_calls {
             true => Err("Incomplete machine calls".to_string()),
@@ -251,7 +300,7 @@ params[2] = Add::c[0];"
 
     #[test]
     // TODO: Currently fails, because the machine has a non-rectangular block shape.
-    #[should_panic = "Unsolved assignments"]
+    #[should_panic = "Unsolved assignments:\\n  main_binary::C[3] = params[2]"]
     fn binary() {
         let input = read_to_string("../test_data/pil/binary.pil").unwrap();
         generate_for_block_machine(

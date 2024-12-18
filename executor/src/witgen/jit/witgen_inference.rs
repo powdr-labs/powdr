@@ -39,8 +39,6 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     fixed_evaluator: FixedEval,
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
     known_variables: HashSet<Variable>,
-    /// Internal equalities we were not able to solve yet.
-    assignments: Vec<(&'a Expression<T>, i32, VariableOrValue<T, Variable>)>,
     code: Vec<Effect<T, Variable>>,
 }
 
@@ -55,7 +53,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             fixed_evaluator,
             derived_range_constraints: Default::default(),
             known_variables: known_variables.into_iter().collect(),
-            assignments: Default::default(),
             code: Default::default(),
         }
     }
@@ -92,6 +89,15 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.ingest_effects(result)
     }
 
+    pub fn process_assignment(&mut self, assignment: &Assignment<T>) -> ProcessSummary {
+        let v = match &assignment.value {
+            VariableOrValue::Variable(v) => self.variable_to_expression(v.clone()),
+            VariableOrValue::Value(v) => (*v).into(),
+        };
+        let r = self.process_polynomial_identity(&assignment.expression, assignment.offset, v);
+        self.ingest_effects(r)
+    }
+
     /// Turns the given variable either to a known symbolic value or an unknown symbolic value
     /// depending on if it is known or not.
     /// If it is known to be range-constrained to a single value, that value is used.
@@ -106,53 +112,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         } else {
             AffineSymbolicExpression::from_unknown_variable(variable, rc)
         }
-    }
-
-    /// Process the constraint that the expression evaluated at the given offset equals the given value.
-    /// This does not have to be solvable right away, but is always processed as soon as we have progress.
-    /// Note that either the expression or the value might contain unknown variables.
-    pub fn assign_constant(
-        &mut self,
-        expression: &'a Expression<T>,
-        offset: i32,
-        value: T,
-    ) -> ProcessSummary {
-        self.assign(expression, offset, VariableOrValue::Value(value))
-    }
-
-    /// Process the constraint that the expression evaluated at the given offset equals the given formal variable.
-    /// This does not have to be solvable right away, but is always processed as soon as we have progress.
-    /// Note that either the expression or the value might contain unknown variables.
-    pub fn assign_variable(
-        &mut self,
-        expression: &'a Expression<T>,
-        offset: i32,
-        variable: Variable,
-    ) -> ProcessSummary {
-        self.assign(expression, offset, VariableOrValue::Variable(variable))
-    }
-
-    pub fn has_unsolved_assignments(&self) -> bool {
-        !self.assignments.is_empty()
-    }
-
-    fn assign(
-        &mut self,
-        expression: &'a Expression<T>,
-        offset: i32,
-        var_or_val: VariableOrValue<T, Variable>,
-    ) -> ProcessSummary {
-        let v = match &var_or_val {
-            VariableOrValue::Variable(v) => self.variable_to_expression(v.clone()),
-            VariableOrValue::Value(v) => (*v).into(),
-        };
-        let r = self.process_polynomial_identity(expression, offset, v);
-        let summary = self.ingest_effects(r);
-        if !summary.complete {
-            // Put it into the queue.
-            self.assignments.push((expression, offset, var_or_val));
-        }
-        summary
     }
 
     fn process_polynomial_identity(
@@ -254,13 +213,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     self.code.push(e);
                 }
                 Effect::Assertion(_) => self.code.push(e),
-            }
-        }
-        if progress {
-            let mut new_assignments = Vec::new();
-            std::mem::swap(&mut new_assignments, &mut self.assignments);
-            for (expr, offset, value) in new_assignments {
-                self.assign(expr, offset, value);
             }
         }
         ProcessSummary {
@@ -367,9 +319,15 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 }
 
-enum VariableOrValue<T, V> {
-    Variable(V),
+pub enum VariableOrValue<T> {
+    Variable(Variable),
     Value(T),
+}
+
+pub struct Assignment<'a, T: FieldElement> {
+    pub expression: &'a Expression<T>,
+    pub offset: i32,
+    pub value: VariableOrValue<T>,
 }
 
 pub trait FixedEvaluator<T: FieldElement> {
