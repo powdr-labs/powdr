@@ -1040,7 +1040,7 @@ fn search_text_addrs(
 
 /// Lift the instructions back to higher-level instructions.
 ///
-/// Turn addresses into labels and and merge instructions into
+/// Turn addresses into labels and merge instructions into
 /// pseudoinstructions.
 fn lift_instructions(
     base_addr: u32,
