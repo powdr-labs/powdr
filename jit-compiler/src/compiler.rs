@@ -205,9 +205,7 @@ fn cargo_toml() -> String {
         Ok(opt_level) => {
             format!("{CARGO_TOML}\n\n[profile.release]\nopt-level = {opt_level}\n",)
         }
-        Err(_) => {
-            return CARGO_TOML.to_string();
-        }
+        Err(_) => CARGO_TOML.to_string(),
     }
 }
 
