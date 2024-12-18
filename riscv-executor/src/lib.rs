@@ -3179,6 +3179,8 @@ fn execute_inner<F: FieldElement>(
 
     let mut program_columns = vec![];
 
+    log::debug!("Program execution took {}s", start.elapsed().as_secs_f64());
+
     if let ExecMode::Trace = mode {
         let sink_id = e.sink_id();
 
@@ -3219,8 +3221,6 @@ fn execute_inner<F: FieldElement>(
             start.elapsed().as_secs_f64()
         );
     }
-
-    log::debug!("Program execution took {}s", start.elapsed().as_secs_f64());
 
     e.proc.finish(opt_pil, program_columns)
 }
