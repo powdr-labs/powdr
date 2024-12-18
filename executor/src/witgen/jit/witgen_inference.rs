@@ -141,10 +141,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.process_assignments();
     }
 
-    pub fn has_unsolved_assignments(&self) -> bool {
-        !self.assignments.is_empty()
-    }
-
     fn process_equality_on_row(
         &self,
         lhs: &Expression<T>,
