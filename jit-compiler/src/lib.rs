@@ -8,11 +8,13 @@ use std::{
 };
 
 use codegen::CodeGenerator;
-use compiler::{call_cargo, generate_glue_code, load_library};
+use compiler::{generate_glue_code, load_library};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::FieldElement;
+
+pub use compiler::call_cargo;
 
 pub struct CompiledPIL {
     #[allow(dead_code)]
@@ -73,7 +75,7 @@ pub fn compile<T: FieldElement>(
         let successful_hash = successful_symbol_names.iter().collect::<HashSet<_>>();
         // TODO this should be changed back to Info after the introduction of the ToCol trait.
         log::debug!(
-            "Unable to generate code during JIT-compilation for the following symbols. Will use evaluator instead.\n{}",
+            "Unable to generate code during JIT-compilation for the following symbols. Will use interpreter instead.\n{}",
             requested_symbols
                 .iter()
                 .filter(|&sym| !successful_hash.contains(sym))

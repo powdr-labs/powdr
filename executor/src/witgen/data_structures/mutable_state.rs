@@ -1,12 +1,12 @@
 use std::{
-    cell::RefCell,
+    cell::{RefCell, RefMut},
     collections::{BTreeMap, HashMap},
 };
 
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    machines::{KnownMachine, Machine},
+    machines::{KnownMachine, LookupCell, Machine},
     rows::RowPair,
     EvalError, EvalResult, QueryCallback,
 };
@@ -52,19 +52,35 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
     /// Call the machine responsible for the right-hand-side of an identity given its ID
     /// and the row pair of the caller.
     pub fn call(&self, identity_id: u64, caller_rows: &RowPair<'_, 'a, T>) -> EvalResult<'a, T> {
+        self.responsible_machine(identity_id)?
+            .process_plookup_timed(self, identity_id, caller_rows)
+    }
+
+    /// Call the machine responsible for the right-hand-side of an identity given its ID,
+    /// use the direct interface.
+    #[allow(unused)]
+    pub fn call_direct(
+        &self,
+        identity_id: u64,
+        values: &mut [LookupCell<'_, T>],
+    ) -> Result<bool, EvalError<T>> {
+        self.responsible_machine(identity_id)?
+            .process_lookup_direct_timed(self, identity_id, values)
+    }
+
+    fn responsible_machine(
+        &self,
+        identity_id: u64,
+    ) -> Result<RefMut<KnownMachine<'a, T>>, EvalError<T>> {
         let machine_index = *self
             .identity_to_machine_index
             .get(&identity_id)
             .unwrap_or_else(|| panic!("No executor machine matched identity ID: {identity_id}"));
-
-        self.machines[machine_index]
-            .try_borrow_mut()
-            .map_err(|_| {
-                EvalError::RecursiveMachineCalls(format!(
-                    "Detected when processing identity with ID {identity_id}"
-                ))
-            })?
-            .process_plookup_timed(self, identity_id, caller_rows)
+        self.machines[machine_index].try_borrow_mut().map_err(|_| {
+            EvalError::RecursiveMachineCalls(format!(
+                "Detected when processing identity with ID {identity_id}"
+            ))
+        })
     }
 
     /// Extracts the witness column values from the machines.
