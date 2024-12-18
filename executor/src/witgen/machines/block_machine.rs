@@ -326,7 +326,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 }
 
 impl<'a, T: FieldElement> BlockMachine<'a, T> {
-    /// The characteristic of a block machine is that that all fixed columns are
+    /// The characteristic of a block machine is that all fixed columns are
     /// periodic. However, there are exceptions to handle wrapping.
     /// This becomes a problem when a witness polynomial depends on a fixed column
     /// that is not periodic, because values of committed polynomials are copy-pasted
