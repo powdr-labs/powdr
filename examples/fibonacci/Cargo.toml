@@ -8,17 +8,17 @@ default = []
 simd = ["powdr/plonky3-simd"]
 
 [dependencies]
-powdr = { path = "../../powdr" }
-
-# { git = "https://github.com/powdr-labs/powdr", tag = "v0.1.2", features = [
-#  "plonky3",
-#] }
+powdr = { git = "https://github.com/powdr-labs/powdr", tag = "v0.1.2", features = [
+  "plonky3",
+] }
 serde = { version = "1.0", default-features = false, features = [
   "alloc",
   "derive",
   "rc",
 ] }
-postcard = { version = "1.1.1", features = ["use-std"] }
+serde_cbor = { version = "0.11.2", default-features = false, features = [
+  "alloc",
+] }
 
 env_logger = "0.10.2"
 log = "0.4.17"
