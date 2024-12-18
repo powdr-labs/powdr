@@ -189,7 +189,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
     fn can_process_call_fully(
         &mut self,
-        _identity_id: u64,
+        identity_id: u64,
         known_arguments: &BitVec,
         range_constraints: &[Option<RangeConstraint<T>>],
     ) -> bool {
