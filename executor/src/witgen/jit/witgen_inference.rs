@@ -40,7 +40,7 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
     known_variables: HashSet<Variable>,
     /// Internal equalities we were not able to solve yet.
-    assignments: Vec<(&'a Expression<T>, i32, VariableOrValue<T, Variable>)>,
+    assignments: Vec<Assignment<'a, T>>,
     code: Vec<Effect<T, Variable>>,
 }
 
@@ -111,9 +111,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Process the constraint that the expression evaluated at the given offset equals the given value.
     /// This does not have to be solvable right away, but is always processed as soon as we have progress.
     /// Note that all variables in the expression can be unknown and their status can also change over time.
-    pub fn assign_constant(&mut self, expression: &'a Expression<T>, offset: i32, value: T) {
-        self.assignments
-            .push((expression, offset, VariableOrValue::Value(value)));
+    pub fn assign_constant(&mut self, expression: &'a Expression<T>, row_offset: i32, value: T) {
+        self.assignments.push(Assignment {
+            lhs: expression,
+            row_offset,
+            rhs: VariableOrValue::Value(value),
+        });
         self.process_assignments();
     }
 
@@ -123,11 +126,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     pub fn assign_variable(
         &mut self,
         expression: &'a Expression<T>,
-        offset: i32,
+        row_offset: i32,
         variable: Variable,
     ) {
-        self.assignments
-            .push((expression, offset, VariableOrValue::Variable(variable)));
+        self.assignments.push(Assignment {
+            lhs: expression,
+            row_offset,
+            rhs: VariableOrValue::Variable(variable),
+        });
         self.process_assignments();
     }
 
@@ -212,12 +218,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             let new_assignments = std::mem::take(&mut self.assignments)
                 .into_iter()
                 .flat_map(|assignment| {
-                    let (expr, offset, var_or_val) = &assignment;
-                    let rhs = match var_or_val {
+                    let rhs = match &assignment.rhs {
                         VariableOrValue::Variable(v) => self.variable_to_expression(v.clone()),
                         VariableOrValue::Value(v) => (*v).into(),
                     };
-                    let r = self.process_equality_on_row(expr, *offset, rhs);
+                    let r =
+                        self.process_equality_on_row(assignment.lhs, assignment.row_offset, rhs);
                     let summary = self.ingest_effects(r);
                     progress |= summary.progress;
                     // If it is not complete, queue it again.
@@ -366,6 +372,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .cloned()
             .reduce(|gc, rc| gc.conjunction(&rc))
     }
+}
+
+/// An equality constraint between an algebraic expression evaluated
+/// on a certain row offset and a variable or fixed constant value.
+struct Assignment<'a, T: FieldElement> {
+    lhs: &'a Expression<T>,
+    row_offset: i32,
+    rhs: VariableOrValue<T, Variable>,
 }
 
 enum VariableOrValue<T, V> {
