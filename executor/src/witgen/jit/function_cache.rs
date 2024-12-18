@@ -51,13 +51,17 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
 
     /// Compiles the JIT function for the given identity and known arguments.
     /// Returns true if the function was successfully compiled.
-    pub fn compile_cached(&mut self, identity_id: u64, known_args: &BitVec) -> bool {
+    pub fn compile_cached(
+        &mut self,
+        identity_id: u64,
+        known_args: &BitVec,
+    ) -> &Option<WitgenFunction<T>> {
         let cache_key = CacheKey {
             identity_id,
             known_args: known_args.clone(),
         };
         self.ensure_cache(&cache_key);
-        self.witgen_functions.get(&cache_key).unwrap().is_some()
+        self.witgen_functions.get(&cache_key).unwrap()
     }
 
     fn ensure_cache(&mut self, cache_key: &CacheKey) {
@@ -97,15 +101,17 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
 
                 log::trace!("Compiling effects...");
 
-                Some(
-                    compile_effects(
-                        self.column_layout.first_column_id,
-                        self.column_layout.column_count,
-                        &known_inputs,
-                        &code,
-                    )
-                    .unwrap(),
+                compile_effects(
+                    self.column_layout.first_column_id,
+                    self.column_layout.column_count,
+                    &known_inputs,
+                    &code,
                 )
+                // TODO: This filters out any machines for which compile_effects() failed.
+                // This includes cases like cargo no being available, in which case we do want to
+                // fall back to run-time witgen. But we should detect whether there was a compilation
+                // error and panic in that case.
+                .ok()
             })
     }
 

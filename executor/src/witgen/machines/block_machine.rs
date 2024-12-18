@@ -387,6 +387,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         if self
             .function_cache
             .compile_cached(identity_id, &known_inputs)
+            .is_some()
         {
             return self.process_lookup_via_jit(mutable_state, identity_id, outer_query);
         }
