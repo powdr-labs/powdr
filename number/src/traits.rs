@@ -187,8 +187,12 @@ pub trait FieldElement:
     fn try_into_i32(&self) -> Option<i32>;
 
     /// Returns `true` if values of this type are directly stored as their integer
-    /// value (i.e. not in montgomery representation and there are also no
-    /// additional fields), i.e. the `to_integer` function can be implemented as
+    /// value, i.e
+    /// - montgomery representation is not used
+    /// - values are always canonical (i.e. smaller than the modulus)
+    /// - there are no additional fields and
+    /// - `repr(transparent)` is used.
+    /// In other words, the `to_integer` function can be implemented as
     /// a mem::transmute operation on pointers.
     fn has_direct_repr() -> bool;
 }
