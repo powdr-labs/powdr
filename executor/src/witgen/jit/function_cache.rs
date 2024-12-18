@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use bit_vec::BitVec;
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
@@ -65,11 +65,21 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             return;
         }
 
-        let _f = self
-            .processor
+        let f = match T::known_field() {
+            // Currently, we only support the Goldilocks fields
+            Some(KnownField::GoldilocksField) => self.compile_witgen_function(cache_key),
+            _ => None,
+        };
+        assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none())
+    }
+
+    fn compile_witgen_function(&self, cache_key: &CacheKey) -> Option<WitgenFunction<T>> {
+        log::trace!("Compiling JIT function for {:?}", cache_key);
+        self.processor
             .generate_code(cache_key.identity_id, &cache_key.known_args)
             .ok()
             .and_then(|code| {
+                log::trace!("Generated code ({} steps)", code.len());
                 let known_inputs = cache_key
                     .known_args
                     .iter()
@@ -85,22 +95,18 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
                     return None;
                 }
 
-                compile_effects(
-                    self.column_layout.first_column_id,
-                    self.column_layout.column_count,
-                    &known_inputs,
-                    &code,
+                log::trace!("Compiling effects...");
+
+                Some(
+                    compile_effects(
+                        self.column_layout.first_column_id,
+                        self.column_layout.column_count,
+                        &known_inputs,
+                        &code,
+                    )
+                    .unwrap(),
                 )
-                // TODO: This should never fail, but right now it does!
-                .ok()
-            });
-        // TODO: This always inserts None, so that we we don't actually use the JIT yet.
-        // Currently, the JIT triggers a few "Row already finalized" errors.
-        // This should be fixed in a follow-up PR.
-        assert!(self
-            .witgen_functions
-            .insert(cache_key.clone(), None)
-            .is_none())
+            })
     }
 
     pub fn process_lookup_direct<'c, 'd, Q: QueryCallback<T>>(
