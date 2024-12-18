@@ -309,11 +309,22 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 
 struct Evaluator<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     witgen_inference: &'a WitgenInference<'a, T, FixedEval>,
+    only_concrete_known: bool,
 }
 
 impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEval> {
     pub fn new(witgen_inference: &'a WitgenInference<'a, T, FixedEval>) -> Self {
-        Self { witgen_inference }
+        Self {
+            witgen_inference,
+            only_concrete_known: false,
+        }
+    }
+
+    pub fn only_concrete_known(self) -> Self {
+        Self {
+            witgen_inference: self.witgen_inference,
+            only_concrete_known: true,
+        }
     }
 
     pub fn evaluate(
@@ -357,7 +368,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
         let rc = self.witgen_inference.range_constraint(variable.clone());
         if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
             val.into()
-        } else if self.witgen_inference.is_known(&variable) {
+        } else if !self.only_concrete_known && self.witgen_inference.is_known(&variable) {
             AffineSymbolicExpression::from_known_symbol(variable, rc)
         } else {
             AffineSymbolicExpression::from_unknown_variable(variable, rc)
