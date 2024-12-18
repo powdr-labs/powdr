@@ -184,6 +184,9 @@ name = "powdr_jit_compiled"
 version = "0.1.0"
 edition = "2021"
 
+[profile.release]
+opt-level = 1
+
 [lib]
 crate-type = ["cdylib"]
 
