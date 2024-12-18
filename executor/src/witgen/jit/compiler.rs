@@ -9,7 +9,10 @@ use powdr_number::FieldElement;
 use crate::witgen::{
     data_structures::{finalizable_data::CompactData, mutable_state::MutableState},
     jit::affine_symbolic_expression::MachineCallArgument,
-    machines::LookupCell,
+    machines::{
+        profiling::{record_end, record_start},
+        LookupCell,
+    },
     QueryCallback,
 };
 
@@ -72,8 +75,10 @@ pub fn compile_effects<T: FieldElement>(
     let witgen_code = witgen_code(known_inputs, effects);
     let code = format!("{utils}\n//-------------------------------\n{witgen_code}");
 
-    let lib_path = powdr_jit_compiler::call_cargo(&code)
-        .map_err(|e| format!("Failed to compile generated code: {e}"))?;
+    record_start("JIT-compilation");
+    let r = powdr_jit_compiler::call_cargo(&code);
+    record_end("JIT-compilation");
+    let lib_path = r.map_err(|e| format!("Failed to compile generated code: {e}"))?;
 
     let library = Arc::new(unsafe { libloading::Library::new(&lib_path.path).unwrap() });
     let witgen_fun = unsafe { library.get(b"witgen\0") }.unwrap();
