@@ -75,8 +75,8 @@ impl Iterator for ProverDataReader {
         if self.remaining_data.is_empty() {
             (0, Some(0))
         } else {
-            // At the lowest, the next slice can contain all remaining words;
-            // At the highest, every remaining word might define a new slice with 0 elements.
+            // At the minimum the size is 1 (the next slice can contain all remaining words);
+            // At the maximum the size is len (every remaining word define a new slice with 0 elements).
             (1, Some(self.remaining_data.len()))
         }
     }
