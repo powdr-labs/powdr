@@ -39,6 +39,8 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     fixed_evaluator: FixedEval,
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
     known_variables: HashSet<Variable>,
+    /// Internal equalities we were not able to solve yet.
+    assignments: Vec<Assignment<'a, T>>,
     code: Vec<Effect<T, Variable>>,
 }
 
@@ -53,6 +55,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             fixed_evaluator,
             derived_range_constraints: Default::default(),
             known_variables: known_variables.into_iter().collect(),
+            assignments: Default::default(),
             code: Default::default(),
         }
     }
@@ -61,11 +64,15 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.code
     }
 
+    pub fn is_known(&self, variable: &Variable) -> bool {
+        self.known_variables.contains(variable)
+    }
+
     /// Process an identity on a certain row.
     pub fn process_identity(&mut self, id: &Identity<T>, row_offset: i32) -> ProcessSummary {
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                self.process_polynomial_identity(expression, row_offset)
+                self.process_equality_on_row(expression, row_offset, T::from(0).into())
             }
             Identity::Lookup(LookupIdentity {
                 id, left, right, ..
@@ -89,38 +96,63 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.ingest_effects(result)
     }
 
-    /// Process the constraint that the expression evaluated at the given offset equals the given affine expression.
-    /// Note that either the expression or the value might contain unknown variables, but if we are not able to
-    /// solve the equation, we return an error.
-    pub fn assign(
-        &mut self,
-        expression: &Expression<T>,
-        offset: i32,
-        value: AffineSymbolicExpression<T, Variable>,
-    ) -> Result<(), String> {
-        let affine_expression = self
-            .evaluate(expression, offset)
-            .ok_or_else(|| format!("Expression is not affine: {expression}"))?;
-        let result = (affine_expression - value.clone())
-            .solve()
-            .map_err(|err| format!("Could not solve ({expression} - {value}): {err}"))?;
-        match self.ingest_effects(result).complete {
-            true => Ok(()),
-            false => Err("Wasn't able to complete the assignment".to_string()),
+    /// Turns the given variable either to a known symbolic value or an unknown symbolic value
+    /// depending on if it is known or not.
+    /// If it is known to be range-constrained to a single value, that value is used.
+    fn variable_to_expression(&self, variable: Variable) -> AffineSymbolicExpression<T, Variable> {
+        // If a variable is known and has a compile-time constant value,
+        // that value is stored in the range constraints.
+        let rc = self.range_constraint(variable.clone());
+        if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
+            val.into()
+        } else if self.known_variables.contains(&variable) {
+            AffineSymbolicExpression::from_known_symbol(variable, rc)
+        } else {
+            AffineSymbolicExpression::from_unknown_variable(variable, rc)
         }
     }
 
-    fn process_polynomial_identity(
+    /// Process the constraint that the expression evaluated at the given offset equals the given value.
+    /// This does not have to be solvable right away, but is always processed as soon as we have progress.
+    /// Note that all variables in the expression can be unknown and their status can also change over time.
+    pub fn assign_constant(&mut self, expression: &'a Expression<T>, row_offset: i32, value: T) {
+        self.assignments.push(Assignment {
+            lhs: expression,
+            row_offset,
+            rhs: VariableOrValue::Value(value),
+        });
+        self.process_assignments();
+    }
+
+    /// Process the constraint that the expression evaluated at the given offset equals the given formal variable.
+    /// This does not have to be solvable right away, but is always processed as soon as we have progress.
+    /// Note that all variables in the expression can be unknown and their status can also change over time.
+    pub fn assign_variable(
+        &mut self,
+        expression: &'a Expression<T>,
+        row_offset: i32,
+        variable: Variable,
+    ) {
+        self.assignments.push(Assignment {
+            lhs: expression,
+            row_offset,
+            rhs: VariableOrValue::Variable(variable),
+        });
+        self.process_assignments();
+    }
+
+    fn process_equality_on_row(
         &self,
-        expression: &Expression<T>,
+        lhs: &Expression<T>,
         offset: i32,
+        rhs: AffineSymbolicExpression<T, Variable>,
     ) -> ProcessResult<T, Variable> {
-        if let Some(r) = self.evaluate(expression, offset) {
+        if let Some(r) = self.evaluate(lhs, offset) {
             // TODO propagate or report error properly.
             // If solve returns an error, it means that the constraint is conflicting.
             // In the future, we might run this in a runtime-conditional, so an error
             // could just mean that this case cannot happen in practice.
-            r.solve().unwrap()
+            (r - rhs).solve().unwrap()
         } else {
             ProcessResult::empty()
         }
@@ -180,6 +212,31 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         ProcessResult::empty()
     }
 
+    fn process_assignments(&mut self) {
+        loop {
+            let mut progress = false;
+            let new_assignments = std::mem::take(&mut self.assignments)
+                .into_iter()
+                .flat_map(|assignment| {
+                    let rhs = match &assignment.rhs {
+                        VariableOrValue::Variable(v) => self.variable_to_expression(v.clone()),
+                        VariableOrValue::Value(v) => (*v).into(),
+                    };
+                    let r =
+                        self.process_equality_on_row(assignment.lhs, assignment.row_offset, rhs);
+                    let summary = self.ingest_effects(r);
+                    progress |= summary.progress;
+                    // If it is not complete, queue it again.
+                    (!summary.complete).then_some(assignment)
+                })
+                .collect_vec();
+            self.assignments.extend(new_assignments);
+            if !progress {
+                break;
+            }
+        }
+    }
+
     fn ingest_effects(&mut self, process_result: ProcessResult<T, Variable>) -> ProcessSummary {
         let mut progress = false;
         for e in process_result.effects {
@@ -209,6 +266,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 }
                 Effect::Assertion(_) => self.code.push(e),
             }
+        }
+        if progress {
+            self.process_assignments();
         }
         ProcessSummary {
             complete: process_result.complete,
@@ -248,16 +308,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     self.fixed_evaluator.evaluate(r, offset)?.into()
                 } else {
                     let variable = Variable::from_reference(r, offset);
-                    // If a variable is known and has a compile-time constant value,
-                    // that value is stored in the range constraints.
-                    let rc = self.range_constraint(variable.clone());
-                    if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
-                        val.into()
-                    } else if self.known_variables.contains(&variable) {
-                        AffineSymbolicExpression::from_known_symbol(variable, rc)
-                    } else {
-                        AffineSymbolicExpression::from_unknown_variable(variable, rc)
-                    }
+                    self.variable_to_expression(variable)
                 }
             }
             Expression::PublicReference(_) | Expression::Challenge(_) => {
@@ -321,6 +372,19 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .cloned()
             .reduce(|gc, rc| gc.conjunction(&rc))
     }
+}
+
+/// An equality constraint between an algebraic expression evaluated
+/// on a certain row offset and a variable or fixed constant value.
+struct Assignment<'a, T: FieldElement> {
+    lhs: &'a Expression<T>,
+    row_offset: i32,
+    rhs: VariableOrValue<T, Variable>,
+}
+
+enum VariableOrValue<T, V> {
+    Variable(V),
+    Value(T),
 }
 
 pub trait FixedEvaluator<T: FieldElement> {
