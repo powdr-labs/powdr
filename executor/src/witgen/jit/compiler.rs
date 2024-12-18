@@ -3,7 +3,7 @@ use std::{ffi::c_void, iter, mem, sync::Arc};
 use auto_enums::auto_enum;
 use itertools::Itertools;
 use libloading::Library;
-use powdr_number::{FieldElement, GoldilocksField, KnownField};
+use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::{finalizable_data::CompactDataRef, mutable_state::MutableState},
@@ -377,7 +377,6 @@ fn util_code<T: FieldElement>(first_column_id: u64, column_count: usize) -> Resu
 
 #[cfg(test)]
 mod tests {
-    use powdr_number::KoalaBearField;
     use pretty_assertions::assert_eq;
 
     use powdr_number::GoldilocksField;
