@@ -368,6 +368,17 @@ impl std::ops::Sub for FieldElement {{
         Self(IntType::try_from(((self.0 as DoubleIntType) + (MODULUS as DoubleIntType) - (b.0 as DoubleIntType)) % (MODULUS as DoubleIntType)).unwrap())
     }}
 }}
+impl std::ops::Neg for FieldElement {{
+    type Output = Self;
+    #[inline]
+    fn neg(self) -> Self {{
+        if self.0 == 0 {{
+            self
+        }} else {{
+            Self(MODULUS - self.0)
+        }}
+    }}
+}}
 impl std::ops::Mul<FieldElement> for FieldElement {{
     type Output = Self;
     #[inline]
