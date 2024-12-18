@@ -370,6 +370,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .or_insert_with_key(|application| {
                 create_index(self.fixed_data, application, &self.connections)
             });
+
         let index_value = index.get(&input_values).ok_or_else(|| {
             let right = self.connections[&identity_id].right;
             let input_assignment = values

@@ -1,11 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
+use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
-    PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolynomialIdentity,
-    PolynomialType, SelectedExpressions,
+    PermutationIdentity, PhantomBusInteractionIdentity, PhantomLookupIdentity,
+    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialType, SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
@@ -29,9 +30,15 @@ pub struct ProcessSummary {
 
 /// This component can generate code that solves identities.
 /// It needs a driver that tells it which identities to process on which rows.
-pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
+pub struct WitgenInference<
+    'a,
+    T: FieldElement,
+    FixedEval: FixedEvaluator<T>,
+    CanProcess: CanProcessCall<T>,
+> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_evaluator: FixedEval,
+    can_process_call: CanProcess,
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
     known_variables: HashSet<Variable>,
     /// Internal equalities we were not able to solve yet.
@@ -39,15 +46,19 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     code: Vec<Effect<T, Variable>>,
 }
 
-impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, FixedEval> {
+impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>, CanProcess: CanProcessCall<T>>
+    WitgenInference<'a, T, FixedEval, CanProcess>
+{
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         fixed_evaluator: FixedEval,
+        can_process_call: CanProcess,
         known_variables: impl IntoIterator<Item = Variable>,
     ) -> Self {
         Self {
             fixed_data,
             fixed_evaluator,
+            can_process_call,
             derived_range_constraints: Default::default(),
             known_variables: known_variables.into_iter().collect(),
             assignments: Default::default(),
@@ -80,12 +91,13 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             })
             | Identity::PhantomLookup(PhantomLookupIdentity {
                 id, left, right, ..
-            }) => self.process_lookup(*id, left, right, row_offset),
-            Identity::PhantomBusInteraction(_) => {
-                // TODO(bus_interaction) Once we have a concept of "can_be_answered", bus interactions
-                // should be as easy as lookups.
-                ProcessResult::empty()
-            }
+            }) => self.try_process_call(*id, &left.selector, &left.expressions, row_offset),
+            Identity::PhantomBusInteraction(PhantomBusInteractionIdentity {
+                id,
+                multiplicity,
+                tuple,
+                ..
+            }) => self.try_process_call(*id, multiplicity, &tuple.0, row_offset),
             Identity::Connect(_) => ProcessResult::empty(),
         };
         self.ingest_effects(result)
@@ -153,58 +165,68 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    fn process_lookup(
+    /// If this submachine call can be processed, return the effect.
+    fn try_process_call(
         &self,
         lookup_id: u64,
-        left: &SelectedExpressions<T>,
-        right: &SelectedExpressions<T>,
+        selector: &Expression<T>,
+        arguments: &[Expression<T>],
         offset: i32,
-    ) -> ProcessResult<T, Variable> {
-        // TODO: In the future, call the 'mutable state' to check if the
-        // lookup can always be answered.
+    ) -> Option<Effect<T, Variable>> {
+        if self
+            .evaluate(&selector, offset)
+            .and_then(|s| s.try_to_known().map(|k| k.is_known_one()))
+            != Some(true)
+        {
+            return None;
+        }
+        let arguments = arguments
+            .iter()
+            .map(|a| self.evaluate(a, offset))
+            .collect::<Option<Vec<_>>>()?;
+        let (known, rcs) = self.expression_list_to_known_and_range_constraints(&arguments)?;
 
-        // If the RHS is fully fixed columns...
-        if right.expressions.iter().all(|e| match e {
-            Expression::Reference(r) => r.is_fixed(),
-            Expression::Number(_) => true,
-            _ => false,
-        }) {
-            // and the selector is known to be 1...
-            if self
-                .evaluate(&left.selector, offset)
-                .and_then(|s| s.try_to_known().map(|k| k.is_known_one()))
-                == Some(true)
-            {
-                if let Some(lhs) = left
-                    .expressions
-                    .iter()
-                    .map(|e| self.evaluate(e, offset))
-                    .collect::<Option<Vec<_>>>()
-                {
-                    // and all except one expression is known on the LHS.
-                    let unknown = lhs
-                        .iter()
-                        .filter(|e| e.try_to_known().is_none())
-                        .collect_vec();
-                    if unknown.len() == 1 && unknown[0].single_unknown_variable().is_some() {
-                        let effects = vec![Effect::MachineCall(
-                            lookup_id,
-                            lhs.into_iter()
-                                .map(|e| {
-                                    if let Some(val) = e.try_to_known() {
-                                        MachineCallArgument::Known(val.clone())
-                                    } else {
-                                        MachineCallArgument::Unknown(e)
-                                    }
-                                })
-                                .collect(),
-                        )];
-                        return ProcessResult::complete(effects);
-                    }
-                }
+        if !self
+            .can_process_call
+            .can_process_call(lookup_id, &known, &rcs)
+        {
+            return None;
+        }
+
+        Some(Effect::MachineCall(
+            lookup_id,
+            arguments
+                .iter()
+                .zip(known)
+                .zip(rcs)
+                .map(|((expr, known), range_constraint)| {
+                    Some(if known {
+                        MachineCallArgument::Known(expr.try_to_known().unwrap().clone())
+                    } else {
+                        let v = expr.single_unknown_variable()?;
+                        MachineCallArgument::Unknown(expr.clone())
+                    })
+                })
+                .collect::<Option<_>>()?,
+        ))
+    }
+
+    fn expression_list_to_known_and_range_constraints(
+        &self,
+        expressions: &[AffineSymbolicExpression<T, Variable>],
+    ) -> Option<(BitVec, Vec<Option<RangeConstraint<T>>>)> {
+        let mut known = BitVec::new();
+        let mut range_constraints = Vec::new();
+        for e in expressions {
+            if let Some(e) = e.try_to_known() {
+                known.push(true);
+                range_constraints.push(e.range_constraint());
+            } else {
+                known.push(false);
+                range_constraints.push(None);
             }
         }
-        ProcessResult::empty()
+        Some((known, range_constraints))
     }
 
     fn process_assignments(&mut self) {
@@ -389,6 +411,14 @@ pub trait FixedEvaluator<T: FieldElement> {
     fn evaluate(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
         None
     }
+}
+
+pub trait CanProcessCall<T: FieldElement> {
+    /// Returns true if a call to the machine that handles the given identity
+    /// can always be processed with the given known inputs and range constraints
+    /// on the parameters.
+    /// @see Machine::can_process_call
+    fn can_process_call(&mut self, _identity_id: u64, _known_inputs: &BitVec) -> bool;
 }
 
 #[cfg(test)]
