@@ -55,7 +55,9 @@ fn create_index<T: FieldElement>(
     application: &Application,
     connections: &BTreeMap<u64, Connection<'_, T>>,
 ) -> HashMap<Vec<T>, IndexValue<T>> {
-    let right = connections[&application.identity_id].right;
+    let connection = &connections[&application.identity_id];
+    assert!(connection.right.selector.is_one());
+    let right = connection.right;
 
     let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
         .expressions
@@ -297,6 +299,28 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         "FixedLookup"
     }
 
+    fn can_process_call_fully(
+        &mut self,
+        identity_id: u64,
+        known_arguments: &BitVec,
+        _range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool {
+        if !Self::is_responsible(&self.connections[&identity_id]) {
+            return false;
+        }
+        let index = self
+            .indices
+            .entry(Application {
+                identity_id,
+                inputs: known_arguments.clone(),
+            })
+            .or_insert_with_key(|application| {
+                create_index(self.fixed_data, application, &self.connections)
+            });
+        // Check that if there is a match, it is unique.
+        index.values().all(|value| value.0.is_some())
+    }
+
     fn process_plookup<Q: crate::witgen::QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
@@ -347,6 +371,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .or_insert_with_key(|application| {
                 create_index(self.fixed_data, application, &self.connections)
             });
+
         let index_value = index.get(&input_values).ok_or_else(|| {
             let right = self.connections[&identity_id].right;
             let input_assignment = values
