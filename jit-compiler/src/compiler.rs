@@ -1,5 +1,6 @@
 use mktemp::Temp;
 use std::{
+    env,
     fs::{self},
     process::Command,
     str::from_utf8,
@@ -199,12 +200,21 @@ pub struct PathInTempDir {
     pub path: String,
 }
 
+fn cargo_toml() -> String {
+    match env::var("POWDR_JIT_OPT_LEVEL") {
+        Ok(opt_level) => {
+            format!("{CARGO_TOML}\n\n[profile.release]\nopt-level = {opt_level}\n",)
+        }
+        Err(_) => CARGO_TOML.to_string(),
+    }
+}
+
 /// Compiles the given code and returns the path to the
 /// temporary directory containing the compiled library
 /// and the path to the compiled library.
 pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
     let dir = mktemp::Temp::new_dir().unwrap();
-    fs::write(dir.join("Cargo.toml"), CARGO_TOML).unwrap();
+    fs::write(dir.join("Cargo.toml"), cargo_toml()).unwrap();
     fs::create_dir(dir.join("src")).unwrap();
     fs::write(dir.join("src").join("lib.rs"), code).unwrap();
     let output_asm = false;
