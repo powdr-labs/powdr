@@ -7,6 +7,7 @@ use super::{
 };
 
 /// The effect of solving a symbolic equation.
+#[derive(Clone)]
 pub enum Effect<T: FieldElement, V> {
     /// Variable can be assigned a value.
     Assignment(V, SymbolicExpression<T, V>),
@@ -19,6 +20,7 @@ pub enum Effect<T: FieldElement, V> {
 }
 
 /// A run-time assertion. If this fails, we have conflicting constraints.
+#[derive(Clone)]
 pub struct Assertion<T: FieldElement, V> {
     pub lhs: SymbolicExpression<T, V>,
     pub rhs: SymbolicExpression<T, V>,
@@ -53,6 +55,7 @@ impl<T: FieldElement, V> Assertion<T, V> {
     }
 }
 
+#[derive(Clone)]
 pub enum MachineCallArgument<T: FieldElement, V> {
     Known(SymbolicExpression<T, V>),
     Unknown(AffineSymbolicExpression<T, V>),
