@@ -1,4 +1,5 @@
 use core::arch::asm;
+use core::iter::FusedIterator;
 use core::slice;
 
 extern crate alloc;
@@ -8,40 +9,80 @@ use powdr_riscv_syscalls::Syscall;
 use alloc::vec;
 use alloc::vec::Vec;
 
+/// An iterator over the static prover data.
+#[derive(Copy, Clone)]
 pub struct ProverDataReader {
-    remaining_data: &'static [u8],
+    remaining_data: &'static [u32],
 }
 
 impl ProverDataReader {
+    /// Creates an iterator over the static prover data.
+    /// 
+    /// A newly created iterator will start at the beginning of the prover data.
     pub fn new() -> Self {
         extern "C"{
             // The prover data start and end symbols. Their addresses are set by the linker.
-            static __powdr_prover_data_start: u8;
-            static __powdr_prover_data_end: u8;
+            static __powdr_prover_data_start: u32;
+            static __powdr_prover_data_end: u32;
         }
         const POWDR_PAGE_SIZE: isize = 2048;
 
         unsafe {
             // We skip the first page of the prover data, as it used as salt to
-            // make its merkle tree node random.
-            let region_start = &__powdr_prover_data_start as *const u8;
-            let data_start = region_start.offset(POWDR_PAGE_SIZE);
-            let data_end = &__powdr_prover_data_end as *const u8;
+            // randomize its merkle tree node.
+            let region_start: *const u32 = &__powdr_prover_data_start;
+            let data_start = region_start.byte_offset(POWDR_PAGE_SIZE);
+            let data_end: *const u32 = &__powdr_prover_data_end;
 
-            let remaining_data = slice::from_raw_parts(data_start, data_end.offset_from(data_start) as usize);
+            let prover_data_section = slice::from_raw_parts(data_start, data_end.offset_from(data_start) as usize);
+
+            // The first word of the prover data section is the total number of words the user wrote.
+            let (&total_words, remaining_data) = prover_data_section.split_first().unwrap();
+
+            let remaining_data = &remaining_data[..total_words as usize];
             Self { remaining_data }
         }
     }
+}
 
-    // TODO: make this a lower level function that returns a slice of bytes.
-    // This is specially important for performance, as the user can use
-    // zero-copy deserialization and save a lot of memcpy.
-    pub fn next<T: DeserializeOwned>(&mut self) -> Result<T, postcard::Error> {
-        let (value, remaining) = postcard::take_from_bytes::<T>(self.remaining_data)?;
+impl Iterator for ProverDataReader {
+    type Item = &'static [u8];
+
+    /// Returns the next slice of prover data.
+    /// 
+    /// Because it is in static memory, the reference can be stored, passed around and will always be valid.
+    /// 
+    /// The start of the slice is guaranteed to be 4-bytes aligned.
+    fn next(&mut self) -> Option<&'static[u8]>
+    {
+        if self.remaining_data.is_empty() {
+            return None;
+        }
+
+        let (&len_bytes, remaining) = self.remaining_data.split_first().unwrap();
+        let len_words = (len_bytes + 3) / 4;
+        let (data, remaining) = remaining.split_at(len_words as usize);
         self.remaining_data = remaining;
-        Ok(value)
+
+        // SAFETY: It is safe to cast an u32 slice to an u8 slice, which is the most general type.
+        unsafe {
+            let data_ptr = data.as_ptr() as *const u8;
+            Some(slice::from_raw_parts(data_ptr, len_bytes as usize))
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        if self.remaining_data.is_empty() {
+            (0, Some(0))
+        } else {
+            // At the lowest, the next slice can contain all remaining words;
+            // At the highest, every remaining word might define a new slice with 0 elements.
+            (1, Some(self.remaining_data.len()))
+        }
     }
 }
+
+impl FusedIterator for ProverDataReader {}
 
 /// A single u32 from input channel 0.
 pub fn read_u32(idx: u32) -> u32 {

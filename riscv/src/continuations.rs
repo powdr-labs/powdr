@@ -234,27 +234,47 @@ pub fn load_initial_memory(program: &AnalysisASMFile, prover_data: &[Vec<u8>]) -
     }
 
     // Actually fill the prover data
-    let mut word_addr = prover_data_start + PAGE_SIZE_BYTES;
-    let mut bit_shift = 0;
-    let mut word_value = 0;
-    for byte in prover_data.iter().flat_map(|v| v.iter().copied()) {
-        if word_addr >= prover_data_end {
-            panic!("Prover data is too large to fit in the prover_data region");
-        }
 
-        word_value |= (byte as u32) << bit_shift;
-        if bit_shift == (3 * 8) {
-            initial_memory.insert(word_addr, word_value);
-            bit_shift = 0;
-            word_addr += 1;
-            word_value = 0;
-        } else {
-            bit_shift += 8;
+    // Setup an iterator for the addresses to be filled. If the iterator runs out before
+    // we are done, it means that the prover data is too large to fit in the reserved space.
+    let mut word_addr_iter =
+        ((prover_data_start + PAGE_SIZE_BYTES) / 4..prover_data_end / 4).map(|i| i * 4);
+
+    // The first word is the total number of words that will follow in the user data.
+    // We save tha address to write it later, when we know it.
+    let total_word_count_addr = word_addr_iter.next().unwrap();
+
+    // Then we have a sequence of chunks.
+    for chunk in prover_data {
+        // The first word of the chunk is the length of the chunk, in bytes:
+        initial_memory.insert(word_addr_iter.next().unwrap(), (chunk.len() as u32).to_le());
+
+        // followed by the chunk data:
+        // TODO: this would be more elegant with the slice::as_chunks() method,
+        // but as of this writing, it is still unstable.
+        let mut remaining = &chunk[..];
+        while let Some((word, rest)) = remaining.split_first_chunk::<4>() {
+            initial_memory.insert(word_addr_iter.next().unwrap(), u32::from_le_bytes(*word));
+            remaining = rest;
+        }
+        if !remaining.is_empty() {
+            // last word is not full, pad with zeros
+            let mut last_word = [0u8; 4];
+            last_word[..remaining.len()].copy_from_slice(remaining);
+            initial_memory.insert(
+                word_addr_iter.next().unwrap(),
+                u32::from_le_bytes(last_word),
+            );
         }
     }
-    if bit_shift != 0 {
-        initial_memory.insert(word_addr, word_value);
-    }
+
+    // Calculate how many words have been written to the prover data
+    // (don't count the first word, as it is weird to count itself).
+    let word_past_end = word_addr_iter.next().unwrap_or(prover_data_end);
+    let total_word_count = (word_past_end - prover_data_start) / 4 - 1;
+
+    // Write the total number of words in the prover data.
+    initial_memory.insert(total_word_count_addr, total_word_count.to_le());
 
     initial_memory
 }

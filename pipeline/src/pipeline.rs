@@ -324,9 +324,8 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
-    pub fn add_prover_data<S: serde::Serialize>(&mut self, data: &S) {
-        let bytes = postcard::to_stdvec(&data).unwrap();
-        self.initial_memory.push(bytes);
+    pub fn add_prover_data(&mut self, data: Vec<u8>) {
+        self.initial_memory.push(data);
     }
 
     pub fn prover_data(&self) -> &[Vec<u8>] {

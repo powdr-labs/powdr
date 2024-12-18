@@ -132,7 +132,7 @@ impl Session {
         }
     }
 
-    pub fn write_data<S: serde::Serialize>(&mut self, data: &S) {
+    pub fn write_data(&mut self, data: Vec<u8>) {
         self.pipeline.add_prover_data(data);
     }
 

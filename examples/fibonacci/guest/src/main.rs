@@ -12,7 +12,10 @@ fn fib(n: u32) -> u32 {
 fn main() {
     // Read input from prover data.
     let mut reader = ProverDataReader::new();
-    let n: u32 = reader.next().unwrap();
+    // postcard is an overkill for this example, but it is serde compatible
+    // and can be used for structs, arrays and other complex types.
+    let n: u32 = postcard::from_bytes(reader.next().unwrap()).unwrap();
+    powdr_riscv_runtime::print!("n = {n}\n");
     let r = fib(n);
     // Write result to stdout.
     write(1, r);

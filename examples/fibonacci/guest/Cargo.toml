@@ -8,5 +8,6 @@ powdr-riscv-syscalls = { path = "../../../riscv-syscalls" } #{ git = "https://gi
 powdr-riscv-runtime = { path = "../../../riscv-runtime", features = [ # { git = "https://github.com/powdr-labs/powdr", tag = "v0.1.2", features = [
   "std",
 ] }
+postcard = { version = "1.1.1" }
 
 [workspace]
