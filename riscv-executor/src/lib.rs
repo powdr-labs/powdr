@@ -46,14 +46,6 @@ mod pil;
 
 use crate::profiler::Profiler;
 
-// TODO: we don't do anything with these yet. Idea is to keep info that is to be given to witgen
-#[allow(unused)]
-struct MainOp<F: FieldElement> {
-    instr: Option<Instruction>,
-    pc: u32,
-    data: Vec<F>,
-}
-
 #[derive(Debug)]
 struct SubmachineOp<F: FieldElement> {
     // pil identity id of the link
@@ -556,8 +548,8 @@ pub struct ExecutionTrace<F: FieldElement> {
     /// The length of the trace, after applying the reg_writes.
     len: usize,
 
-    /// Main machine instructions
-    main_ops: Vec<MainOp<F>>,
+    /// the pc value at each row
+    pc_trace: Vec<u32>,
 
     /// Calls into submachines
     submachine_ops: Vec<Vec<SubmachineOp<F>>>,
@@ -589,7 +581,7 @@ impl<F: FieldElement> ExecutionTrace<F> {
             reg_writes,
             mem_ops: Vec::new(),
             len: pc,
-            main_ops: Vec::new(),
+            pc_trace: Vec::new(),
             submachine_ops: MachineInstance::all().iter().map(|_| Vec::new()).collect(),
             known_cols: vec![],
             main_cols,
@@ -689,10 +681,10 @@ mod builder {
     use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelExtend, ParallelIterator};
 
     use crate::{
-        pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, Instruction,
-        KnownWitnessCol, MachineInstance, MainOp, MemOperation, MemOperationKind, MemoryMachine,
-        MemoryState, PoseidonGlMachine, PublicsMachine, RegWrite, RegisterMemory, ShiftMachine,
-        SplitGlMachine, Submachine, SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
+        pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, KnownWitnessCol,
+        MachineInstance, MemOperation, MemOperationKind, MemoryMachine, MemoryState,
+        PoseidonGlMachine, PublicsMachine, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine,
+        Submachine, SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
     };
 
     fn namespace_degree_range<F: FieldElement>(
@@ -859,13 +851,13 @@ mod builder {
             }
         }
 
-        pub(crate) fn main_ops(&self) -> &[MainOp<F>] {
-            &self.trace.main_ops
+        pub(crate) fn pc_trace(&self) -> &[u32] {
+            &self.trace.pc_trace
         }
 
-        pub(crate) fn main_op(&mut self, instr: Option<Instruction>, pc: u32, data: Vec<F>) {
+        pub(crate) fn pc_trace_add(&mut self, pc: u32) {
             if let ExecMode::Trace = self.mode {
-                self.trace.main_ops.push(MainOp { instr, pc, data });
+                self.trace.pc_trace.push(pc);
             }
         }
 
@@ -1348,7 +1340,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     fn init(&mut self) {
         self.step = 4;
         for i in 0..2 {
-            self.proc.main_op(None, i, vec![]);
+            self.proc.pc_trace_add(i);
             self.proc.push_row();
             self.proc
                 .set_col_idx(KnownWitnessCol::_operation_id, i as usize, 2.into());
@@ -1467,17 +1459,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             };
         }
 
-        macro_rules! main_op {
-            ($insn:ident) => {
-                self.proc
-                    .main_op(Some(Instruction::$insn), self.proc.get_pc().u(), vec![])
-            };
-            ($insn:ident, $($args:expr),*) => {
-                self.proc
-                    .main_op(stringify!($insn), self.proc.get_pc().u(), vec![$($args, )*])
-            };
-        }
-
         macro_rules! submachine_op {
             ($machine:ident, $selector:expr, $args:expr, $($extra:expr),*) => {
                 self.proc.submachine_op(MachineInstance::$machine, $selector, $args, &[$($extra, )*])
@@ -1497,6 +1478,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         set_col!(W, get_fixed!(W_const));
 
         let instr = Instruction::from_name(name).expect("unknown instruction");
+        self.proc.pc_trace_add(self.proc.get_pc().u());
 
         let r = match instr {
             Instruction::set_reg => {
@@ -1512,7 +1494,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(Y_free_value, val);
                 }
 
-                main_op!(set_reg);
                 None
             }
             Instruction::get_reg => {
@@ -1520,7 +1501,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val = self.reg_read(0, addr, lid);
 
-                main_op!(get_reg);
                 Some(val)
             }
             Instruction::affine => {
@@ -1537,7 +1517,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.reg_write(1, write_reg, res, lid);
                 set_col!(tmp1_col, val1);
 
-                main_op!(affine);
                 None
             }
 
@@ -1581,11 +1560,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(X_b3, Elem::from_u32_as_fe(b3.into()));
                 set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
 
-                if name == "mstore" {
-                    main_op!(mstore);
-                } else {
-                    main_op!(mstore_bootloader);
-                }
                 None
             }
             Instruction::mload => {
@@ -1624,7 +1598,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     Elem::from_u32_as_fe(((v as u64 >> 32) & 1) as u32)
                 );
 
-                main_op!(mload);
                 None
             }
             // TODO: update to witness generation for continuations
@@ -1641,7 +1614,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 self.reg_write(2, write_addr, val, lid);
 
-                main_op!(load_bootloader_input);
                 None
             }
             // TODO: update to witness generation for continuations
@@ -1658,7 +1630,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 assert_eq!(val, actual_val);
 
-                main_op!(assert_bootloader_input);
                 None
             }
             Instruction::load_label => {
@@ -1671,7 +1642,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(instr_load_label_param_l, label);
 
-                main_op!(load_label);
                 None
             }
             Instruction::jump => {
@@ -1686,7 +1656,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(instr_jump_param_l, label);
 
-                main_op!(jump);
                 None
             }
             Instruction::jump_dyn => {
@@ -1703,7 +1672,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(tmp1_col, addr);
 
-                main_op!(jump_dyn);
                 None
             }
             // TODO: update to witness generation for continuations
@@ -1712,7 +1680,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let addr = self.bootloader_inputs[bootloader_input_idx];
                 self.proc.set_pc(addr);
 
-                main_op!(jump_to_bootloader_input);
                 None
             }
             Instruction::branch_if_diff_nonzero => {
@@ -1739,7 +1706,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(instr_branch_if_diff_nonzero_param_l, label);
 
-                main_op!(branch_if_diff_nonzero);
                 None
             }
             Instruction::branch_if_diff_equal => {
@@ -1767,7 +1733,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(instr_branch_if_diff_equal_param_l, label);
 
-                main_op!(branch_if_diff_equal);
                 None
             }
             Instruction::skip_if_equal => {
@@ -1794,7 +1759,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
-                main_op!(skip_if_equal);
                 None
             }
             Instruction::branch_if_diff_greater_than => {
@@ -1837,7 +1801,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_op!(branch_if_diff_greater_than);
                 None
             }
             Instruction::is_diff_greater_than => {
@@ -1869,7 +1832,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
                 set_col!(wrap_bit, Elem::from_u32_as_fe(r));
 
-                main_op!(is_diff_greater_than);
                 None
             }
             Instruction::is_equal_zero => {
@@ -1889,7 +1851,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
-                main_op!(is_equal_zero);
                 None
             }
             Instruction::is_not_equal => {
@@ -1915,7 +1876,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
-                main_op!(is_not_equal);
                 None
             }
             Instruction::add_wrap => {
@@ -1956,7 +1916,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_op!(add_wrap);
                 None
             }
             Instruction::wrap16 => {
@@ -1988,7 +1947,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(Y_b5, Elem::from_u32_as_fe(b5.into()));
                 set_col!(Y_b6, Elem::from_u32_as_fe(b6.into()));
 
-                main_op!(wrap16);
                 None
             }
             Instruction::sub_wrap_with_offset => {
@@ -2025,7 +1983,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_op!(sub_wrap_with_offset);
                 None
             }
             Instruction::sign_extend_byte => {
@@ -2060,7 +2017,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_op!(sign_extend_byte);
                 None
             }
             Instruction::sign_extend_16_bits => {
@@ -2099,7 +2055,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                main_op!(sign_extend_16_bits);
                 None
             }
             Instruction::to_signed => {
@@ -2130,7 +2085,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(Y_7bit, Elem::from_u32_as_fe(b4 as u32 & 0x7f));
 
-                main_op!(to_signed);
                 None
             }
             Instruction::fail => {
@@ -2197,7 +2151,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(Y_b8, Elem::from_u32_as_fe(b8.into()));
                 }
 
-                main_op!(divremu);
                 None
             }
             Instruction::mul => {
@@ -2226,7 +2179,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let lid = self.instr_link_id(instr, MachineInstance::split_gl, 0);
                 submachine_op!(split_gl, lid, &[r.into(), lo.into(), hi.into(), 0.into()],);
-                main_op!(mul);
                 None
             }
             Instruction::and | Instruction::or | Instruction::xor => {
@@ -2244,18 +2196,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp2_col, val2);
 
                 let (r, op_id) = match instr {
-                    Instruction::and => {
-                        main_op!(and);
-                        (val1.u() & val2_offset.u(), 0)
-                    }
-                    Instruction::or => {
-                        main_op!(or);
-                        (val1.u() | val2_offset.u(), 1)
-                    }
-                    Instruction::xor => {
-                        main_op!(xor);
-                        (val1.u() ^ val2_offset.u(), 2)
-                    }
+                    Instruction::and => (val1.u() & val2_offset.u(), 0),
+                    Instruction::or => (val1.u() | val2_offset.u(), 1),
+                    Instruction::xor => (val1.u() ^ val2_offset.u(), 2),
                     _ => unreachable!(),
                 };
 
@@ -2290,14 +2233,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val2_offset: Elem<F> = (val2.bin() + offset).into();
 
                 let (r, op_id) = match instr {
-                    Instruction::shl => {
-                        main_op!(shl);
-                        (val1.u() << val2_offset.u(), 0)
-                    }
-                    Instruction::shr => {
-                        main_op!(shr);
-                        (val1.u() >> val2_offset.u(), 1)
-                    }
+                    Instruction::shl => (val1.u() << val2_offset.u(), 0),
+                    Instruction::shr => (val1.u() >> val2_offset.u(), 1),
                     _ => unreachable!(),
                 };
 
@@ -2349,7 +2286,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     lid,
                     &[inv, low_inv.into(), high_inv.into(), 0.into()],
                 );
-                main_op!(invert_gl);
                 None
             }
             Instruction::split_gl => {
@@ -2381,7 +2317,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     lid,
                     &[value.into(), lo.into(), hi.into(), 0.into()],
                 );
-                main_op!(split_gl);
                 None
             }
             Instruction::poseidon_gl => {
@@ -2467,7 +2402,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     outputs[2],
                     outputs[3]
                 );
-                main_op!(poseidon_gl);
                 None
             }
             Instruction::poseidon2_gl => {
@@ -2497,7 +2431,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc.set_mem(output_ptr + i as u32 * 4, v, 0, 0);
                 });
 
-                main_op!(poseidon2_gl);
                 None
             }
             Instruction::affine_256 => {
@@ -2540,7 +2473,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
 
                 // TODO: main_arith event
-                main_op!(affine_256);
                 None
             }
             Instruction::mod_256 => {
@@ -2573,7 +2505,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
 
                 // TODO: main_arith event
-                main_op!(mod_256);
                 None
             }
             Instruction::ec_add => {
@@ -2617,7 +2548,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
 
                 // TODO: main_arith event
-                main_op!(ec_add);
                 None
             }
             Instruction::ec_double => {
@@ -2653,7 +2583,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 });
 
                 // TODO: main_arith event
-                main_op!(ec_double);
                 None
             }
             Instruction::commit_public => {
@@ -2670,7 +2599,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     lid,
                     &[idx.into_fe(), limb.into_fe(), 0.into(), 0.into()],
                 );
-                main_op!(commit_public);
                 None
             }
             Instruction::Count => unreachable!(),
@@ -2848,9 +2776,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         for (fcol, pcol) in &self.program_cols {
             let mut values: Vec<F> = vec![];
             let fixed_values = self.get_fixed(fcol).unwrap();
-            values.reserve(self.proc.main_ops().len());
-            for op in self.proc.main_ops() {
-                values.push(fixed_values[op.pc as usize])
+            values.reserve(self.proc.pc_trace().len());
+            for pc in self.proc.pc_trace() {
+                values.push(fixed_values[*pc as usize])
             }
             cols.push((pcol.to_string(), values))
         }
@@ -3050,7 +2978,7 @@ fn execute_inner<F: FieldElement>(
             FunctionStatement::Assignment(a) => {
                 e.proc.push_row();
                 let pc = e.proc.get_pc().u();
-                e.proc.main_op(None, pc, vec![]);
+                e.proc.pc_trace_add(pc);
                 e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
@@ -3141,7 +3069,7 @@ fn execute_inner<F: FieldElement>(
             FunctionStatement::Return(_) => {
                 e.proc.push_row();
                 let pc = e.proc.get_pc().u();
-                e.proc.main_op(None, pc, vec![]);
+                e.proc.pc_trace_add(pc);
                 e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
                 break;
             }
@@ -3189,7 +3117,7 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_pc(0.into());
         assert!(e.proc.advance().is_none());
         e.proc.push_row();
-        e.proc.main_op(None, 0, vec![]);
+        e.proc.pc_trace_add(0);
         e.proc
             .set_col(KnownWitnessCol::_operation_id, sink_id.into());
 
@@ -3200,7 +3128,7 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_reg("query_arg_2", 0);
         assert!(e.proc.advance().is_none());
         e.proc.push_row();
-        e.proc.main_op(None, 1, vec![]);
+        e.proc.pc_trace_add(1);
         e.proc
             .set_col(KnownWitnessCol::_operation_id, sink_id.into());
 
@@ -3209,7 +3137,7 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_pc(sink_id.into());
         assert!(e.proc.advance().is_none());
         e.proc.push_row();
-        e.proc.main_op(None, sink_id, vec![]);
+        e.proc.pc_trace_add(sink_id);
         e.proc.set_col(KnownWitnessCol::pc_update, sink_id.into());
         e.proc
             .set_col(KnownWitnessCol::_operation_id, sink_id.into());
