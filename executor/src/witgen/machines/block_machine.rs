@@ -12,7 +12,7 @@ use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::data_structures::mutable_state::MutableState;
-use crate::witgen::jit::jit_processor::JitProcessor;
+use crate::witgen::jit::function_cache::FunctionCache;
 use crate::witgen::processor::{OuterQuery, Processor, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
@@ -73,9 +73,8 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
     processing_sequence_cache: ProcessingSequenceCache,
-    /// The JIT processor for this machine, i.e. the component that tries to generate
-    /// witgen code based on which elements of the connection are known.
-    jit_processor: JitProcessor<'a, T>,
+    /// If this block machine can be JITed, we store the witgen functions here.
+    function_cache: FunctionCache<'a, T>,
     name: String,
     multiplicity_counter: MultiplicityCounter,
 }
@@ -118,6 +117,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             &parts.witnesses,
             (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
         );
+        let layout = data.layout();
         Some(BlockMachine {
             name,
             degree_range,
@@ -136,7 +136,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 latch_row,
                 parts.identities.len(),
             ),
-            jit_processor: JitProcessor::new(fixed_data, parts.clone(), block_size, latch_row),
+            function_cache: FunctionCache::new(
+                fixed_data,
+                parts.clone(),
+                block_size,
+                latch_row,
+                layout,
+            ),
         })
     }
 }
@@ -379,8 +385,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
         if self
-            .jit_processor
-            .can_answer_lookup(identity_id, &known_inputs)
+            .function_cache
+            .compile_cached(identity_id, &known_inputs)
+            .is_some()
         {
             return self.process_lookup_via_jit(mutable_state, identity_id, outer_query);
         }
@@ -460,7 +467,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let data = self.data.append_new_finalized_rows(self.block_size);
 
         let success =
-            self.jit_processor
+            self.function_cache
                 .process_lookup_direct(mutable_state, identity_id, values, data)?;
         assert!(success);
 
