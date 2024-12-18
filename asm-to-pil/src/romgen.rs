@@ -93,7 +93,7 @@ pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, 
         // add the beginning of the dispatcher
         rom.extend(vec![
             Batch::from(vec![
-                parse_function_statement("_start:"),
+                parse_function_statement("_powdr_start:"),
                 parse_function_statement(&format!("{RESET_NAME};")),
             ])
             .reason(IncompatibleSet::from(Incompatible::Unimplemented)),
@@ -290,7 +290,7 @@ mod tests {
                 .to_string()
                 .replace('\t', "    "),
             r#"
-_start:
+_powdr_start:
 _reset;
 // END BATCH Unimplemented
 _jump_to_operation;
@@ -328,7 +328,7 @@ _loop;
                 .to_string()
                 .replace('\t', "    "),
             r#"
-_start:
+_powdr_start:
 _reset;
 // END BATCH Unimplemented
 _jump_to_operation;
@@ -387,7 +387,7 @@ _loop;
                 .to_string()
                 .replace('\t', "    "),
             r#"
-_start:
+_powdr_start:
 _reset;
 // END BATCH Unimplemented
 _jump_to_operation;
