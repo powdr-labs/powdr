@@ -65,7 +65,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     pub fn process_identity(&mut self, id: &Identity<T>, row_offset: i32) -> ProcessSummary {
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                self.process_polynomial_identity(expression, row_offset)
+                self.process_polynomial_identity(expression, row_offset, T::from(0).into())
             }
             Identity::Lookup(LookupIdentity {
                 id, left, right, ..
@@ -89,24 +89,28 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.ingest_effects(result)
     }
 
-    /// Process the constraint that the expression evaluated at the given offset equals the given affine expression.
-    /// Note that either the expression or the value might contain unknown variables, but if we are not able to
-    /// solve the equation, we return an error.
-    pub fn assign(
-        &mut self,
-        expression: &Expression<T>,
-        offset: i32,
-        value: AffineSymbolicExpression<T, Variable>,
-    ) -> Result<(), String> {
-        let affine_expression = self
-            .evaluate(expression, offset)
-            .ok_or_else(|| format!("Expression is not affine: {expression}"))?;
-        let result = (affine_expression - value.clone())
-            .solve()
-            .map_err(|err| format!("Could not solve ({expression} - {value}): {err}"))?;
-        match self.ingest_effects(result).complete {
-            true => Ok(()),
-            false => Err("Wasn't able to complete the assignment".to_string()),
+    pub fn process_assignment(&mut self, assignment: &Assignment<T>) -> ProcessSummary {
+        let v = match &assignment.value {
+            VariableOrValue::Variable(v) => self.variable_to_expression(v.clone()),
+            VariableOrValue::Value(v) => (*v).into(),
+        };
+        let r = self.process_polynomial_identity(assignment.expression, assignment.offset, v);
+        self.ingest_effects(r)
+    }
+
+    /// Turns the given variable either to a known symbolic value or an unknown symbolic value
+    /// depending on if it is known or not.
+    /// If it is known to be range-constrained to a single value, that value is used.
+    fn variable_to_expression(&self, variable: Variable) -> AffineSymbolicExpression<T, Variable> {
+        // If a variable is known and has a compile-time constant value,
+        // that value is stored in the range constraints.
+        let rc = self.range_constraint(variable.clone());
+        if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
+            val.into()
+        } else if self.known_variables.contains(&variable) {
+            AffineSymbolicExpression::from_known_symbol(variable, rc)
+        } else {
+            AffineSymbolicExpression::from_unknown_variable(variable, rc)
         }
     }
 
@@ -114,13 +118,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         &self,
         expression: &Expression<T>,
         offset: i32,
+        value: AffineSymbolicExpression<T, Variable>,
     ) -> ProcessResult<T, Variable> {
         if let Some(r) = self.evaluate(expression, offset) {
             // TODO propagate or report error properly.
             // If solve returns an error, it means that the constraint is conflicting.
             // In the future, we might run this in a runtime-conditional, so an error
             // could just mean that this case cannot happen in practice.
-            r.solve().unwrap()
+            (r - value).solve().unwrap()
         } else {
             ProcessResult::empty()
         }
@@ -248,16 +253,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     self.fixed_evaluator.evaluate(r, offset)?.into()
                 } else {
                     let variable = Variable::from_reference(r, offset);
-                    // If a variable is known and has a compile-time constant value,
-                    // that value is stored in the range constraints.
-                    let rc = self.range_constraint(variable.clone());
-                    if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
-                        val.into()
-                    } else if self.known_variables.contains(&variable) {
-                        AffineSymbolicExpression::from_known_symbol(variable, rc)
-                    } else {
-                        AffineSymbolicExpression::from_unknown_variable(variable, rc)
-                    }
+                    self.variable_to_expression(variable)
                 }
             }
             Expression::PublicReference(_) | Expression::Challenge(_) => {
@@ -320,6 +316,58 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .chain(self.derived_range_constraints.get(&variable))
             .cloned()
             .reduce(|gc, rc| gc.conjunction(&rc))
+    }
+}
+
+enum VariableOrValue<T> {
+    Variable(Variable),
+    Value(T),
+}
+
+impl<T: Display> Display for VariableOrValue<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VariableOrValue::Variable(v) => write!(f, "{v}"),
+            VariableOrValue::Value(v) => write!(f, "{v}"),
+        }
+    }
+}
+
+pub struct Assignment<'a, T: FieldElement> {
+    expression: &'a Expression<T>,
+    offset: i32,
+    value: VariableOrValue<T>,
+}
+
+impl<'a, T: FieldElement> Assignment<'a, T> {
+    pub fn from_selected_expression(
+        selected_expression: &'a SelectedExpressions<T>,
+        offset: i32,
+    ) -> Vec<Self> {
+        [Assignment {
+            expression: &selected_expression.selector,
+            offset,
+            value: VariableOrValue::Value(T::one()),
+        }]
+        .into_iter()
+        .chain(
+            selected_expression
+                .expressions
+                .iter()
+                .enumerate()
+                .map(|(i, expr)| Assignment {
+                    expression: expr,
+                    offset,
+                    value: VariableOrValue::Variable(Variable::Param(i)),
+                }),
+        )
+        .collect::<Vec<_>>()
+    }
+}
+
+impl<'a, T: FieldElement> Display for Assignment<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}[{}] = {}", self.expression, self.offset, self.value)
     }
 }
 
