@@ -68,7 +68,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     pub fn process_identity(&mut self, id: &Identity<T>, row_offset: i32) -> ProcessSummary {
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                self.process_polynomial_identity(expression, row_offset, T::from(0).into())
+                self.process_equality_on_row(expression, row_offset, T::from(0).into())
             }
             Identity::Lookup(LookupIdentity {
                 id, left, right, ..
@@ -110,63 +110,43 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 
     /// Process the constraint that the expression evaluated at the given offset equals the given value.
     /// This does not have to be solvable right away, but is always processed as soon as we have progress.
-    /// Note that either the expression or the value might contain unknown variables.
-    pub fn assign_constant(
-        &mut self,
-        expression: &'a Expression<T>,
-        offset: i32,
-        value: T,
-    ) -> ProcessSummary {
-        self.assign(expression, offset, VariableOrValue::Value(value))
+    /// Note that all variables in the expression can be unknown and their status can also change over time.
+    pub fn assign_constant(&mut self, expression: &'a Expression<T>, offset: i32, value: T) {
+        self.assignments
+            .push((expression, offset, VariableOrValue::Value(value)));
+        self.process_assignments();
     }
 
     /// Process the constraint that the expression evaluated at the given offset equals the given formal variable.
     /// This does not have to be solvable right away, but is always processed as soon as we have progress.
-    /// Note that either the expression or the value might contain unknown variables.
+    /// Note that all variables in the expression can be unknown and their status can also change over time.
     pub fn assign_variable(
         &mut self,
         expression: &'a Expression<T>,
         offset: i32,
         variable: Variable,
-    ) -> ProcessSummary {
-        self.assign(expression, offset, VariableOrValue::Variable(variable))
+    ) {
+        self.assignments
+            .push((expression, offset, VariableOrValue::Variable(variable)));
+        self.process_assignments();
     }
 
     pub fn has_unsolved_assignments(&self) -> bool {
         !self.assignments.is_empty()
     }
 
-    fn assign(
-        &mut self,
-        expression: &'a Expression<T>,
-        offset: i32,
-        var_or_val: VariableOrValue<T, Variable>,
-    ) -> ProcessSummary {
-        let v = match &var_or_val {
-            VariableOrValue::Variable(v) => self.variable_to_expression(v.clone()),
-            VariableOrValue::Value(v) => (*v).into(),
-        };
-        let r = self.process_polynomial_identity(expression, offset, v);
-        let summary = self.ingest_effects(r);
-        if !summary.complete {
-            // Put it into the queue.
-            self.assignments.push((expression, offset, var_or_val));
-        }
-        summary
-    }
-
-    fn process_polynomial_identity(
+    fn process_equality_on_row(
         &self,
-        expression: &Expression<T>,
+        lhs: &Expression<T>,
         offset: i32,
-        value: AffineSymbolicExpression<T, Variable>,
+        rhs: AffineSymbolicExpression<T, Variable>,
     ) -> ProcessResult<T, Variable> {
-        if let Some(r) = self.evaluate(expression, offset) {
+        if let Some(r) = self.evaluate(lhs, offset) {
             // TODO propagate or report error properly.
             // If solve returns an error, it means that the constraint is conflicting.
             // In the future, we might run this in a runtime-conditional, so an error
             // could just mean that this case cannot happen in practice.
-            (r - value).solve().unwrap()
+            (r - rhs).solve().unwrap()
         } else {
             ProcessResult::empty()
         }
@@ -226,6 +206,31 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         ProcessResult::empty()
     }
 
+    fn process_assignments(&mut self) {
+        loop {
+            let mut progress = false;
+            let new_assignments = std::mem::take(&mut self.assignments)
+                .into_iter()
+                .flat_map(|assignment| {
+                    let (expr, offset, var_or_val) = &assignment;
+                    let rhs = match var_or_val {
+                        VariableOrValue::Variable(v) => self.variable_to_expression(v.clone()),
+                        VariableOrValue::Value(v) => (*v).into(),
+                    };
+                    let r = self.process_equality_on_row(expr, *offset, rhs);
+                    let summary = self.ingest_effects(r);
+                    progress |= summary.progress;
+                    // If it is not complete, queue it again.
+                    (!summary.complete).then_some(assignment)
+                })
+                .collect_vec();
+            self.assignments.extend(new_assignments);
+            if !progress {
+                break;
+            }
+        }
+    }
+
     fn ingest_effects(&mut self, process_result: ProcessResult<T, Variable>) -> ProcessSummary {
         let mut progress = false;
         for e in process_result.effects {
@@ -257,11 +262,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             }
         }
         if progress {
-            let mut new_assignments = Vec::new();
-            std::mem::swap(&mut new_assignments, &mut self.assignments);
-            for (expr, offset, value) in new_assignments {
-                self.assign(expr, offset, value);
-            }
+            self.process_assignments();
         }
         ProcessSummary {
             complete: process_result.complete,
