@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::HashMap, hash::Hash};
 
 use bit_vec::BitVec;
 use powdr_number::{FieldElement, KnownField};
@@ -16,7 +16,7 @@ use super::{
     variable::Variable,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct CacheKey {
     identity_id: u64,
     known_args: BitVec,
@@ -27,7 +27,7 @@ pub struct FunctionCache<'a, T: FieldElement> {
     processor: BlockMachineProcessor<'a, T>,
     /// The cache of JIT functions. If the entry is None, we attempted to generate the function
     /// but failed.
-    witgen_functions: BTreeMap<CacheKey, Option<WitgenFunction<T>>>,
+    witgen_functions: HashMap<CacheKey, Option<WitgenFunction<T>>>,
     column_layout: ColumnLayout,
 }
 
@@ -45,7 +45,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         FunctionCache {
             processor,
             column_layout: metadata,
-            witgen_functions: BTreeMap::new(),
+            witgen_functions: HashMap::new(),
         }
     }
 
