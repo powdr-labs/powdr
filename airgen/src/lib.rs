@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use powdr_ast::{
     asm_analysis::{self, combine_flags, AnalysisASMFile, LinkDefinition, MachineDegree},
-    object::{Link, LinkFrom, LinkTo, Location, Machine, MachineInstanceGraph, Object, Operation},
+    object::{Link, LinkFrom, LinkTo, Location, MachineInstanceGraph, Object, Operation},
     parsed::{
         asm::{parse_absolute_path, AbsoluteSymbolPath, CallableRef, MachineParams},
         Expression, PilStatement,
@@ -35,12 +35,6 @@ pub fn compile(input: AnalysisASMFile) -> MachineInstanceGraph {
         0 => {
             // There is no machine. Create an empty main machine but retain
             // all PIL utility definitions.
-            let main = Machine {
-                location: main_location.clone(),
-                latch: None,
-                operation_id: None,
-                call_selectors: None,
-            };
             let zero_expr = Expression::from(BigUint::from(0u8));
             let degree = MachineDegree {
                 min: Some(zero_expr.clone()),
@@ -51,7 +45,7 @@ pub fn compile(input: AnalysisASMFile) -> MachineInstanceGraph {
                 ..Default::default()
             };
             return MachineInstanceGraph {
-                main,
+                main: main_location.clone(),
                 entry_points: Default::default(),
                 objects: [(main_location, obj)].into(),
                 statements: module_level_pil_statements(input),
@@ -178,12 +172,12 @@ pub fn compile(input: AnalysisASMFile) -> MachineInstanceGraph {
 
     let main_ty = &input.get_machine(&main_ty).unwrap();
 
-    let main = powdr_ast::object::Machine {
-        location: main_location,
-        latch: main_ty.latch.clone(),
-        operation_id: main_ty.operation_id.clone(),
-        call_selectors: main_ty.call_selectors.clone(),
-    };
+    let main = main_location;
+
+    //     latch: main_ty.latch.clone(),
+    //     operation_id: main_ty.operation_id.clone(),
+    //     call_selectors: main_ty.call_selectors.clone(),
+
     let entry_points = main_ty
         .operations()
         .map(|o| Operation {
@@ -341,7 +335,7 @@ impl<'a> ASMPILConverter<'a> {
             if link.is_permutation {
                 let count = self
                     .incoming_permutations
-                    .get_mut(&link.to.machine.location)
+                    .get_mut(&link.to.machine)
                     .unwrap();
                 link.to.selector_idx = Some(*count);
                 *count += 1;
@@ -350,6 +344,7 @@ impl<'a> ASMPILConverter<'a> {
 
         Object {
             degree,
+            operation_id: input.operation_id,
             pil: self.pil,
             links,
             latch: input.latch,
@@ -419,12 +414,7 @@ impl<'a> ASMPILConverter<'a> {
                 .operation_definitions()
                 .find(|o| o.name == callable)
                 .map(|d| LinkTo {
-                    machine: powdr_ast::object::Machine {
-                        location: instance.location.clone(),
-                        latch: instance_ty.latch.clone(),
-                        call_selectors: instance_ty.call_selectors.clone(),
-                        operation_id: instance_ty.operation_id.clone(),
-                    },
+                    machine: instance.location.clone(),
                     operation: Operation {
                         name: d.name.to_string(),
                         id: d.operation.id.id.clone(),
@@ -464,7 +454,7 @@ impl<'a> ASMPILConverter<'a> {
             let link = self.handle_link_def(l.clone());
             let info = LinkInfo {
                 from: self.location.clone(),
-                to: link.to.machine.location.clone(),
+                to: link.to.machine.clone(),
                 operation: link.to.operation.clone(),
                 is_permutation: link.is_permutation,
             };

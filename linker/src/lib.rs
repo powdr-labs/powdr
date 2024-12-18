@@ -46,12 +46,42 @@ pub enum DegreeMode {
     Vadcop,
 }
 
+struct Interaction {
+    operation_id: u32,
+    interaction_id: Expression,
+    left_selector: Expression,
+    left: Vec<Expression>,
+    right_selector: Expression,
+    right: Vec<Expression>,
+    ty: InteractionType,
+}
+
+struct ProofObject {
+    operation_id: String,
+    statements: Vec<PilStatement>,
+    sends: Vec<Interaction>,
+    receives: Vec<Interaction>,
+    more_statements: Vec<PilStatement>,
+}
+
+impl ProofObject {
+    fn new(operation_id: String) -> Self {
+        Self {
+            operation_id,
+            statements: vec![],
+            sends: vec![],
+            receives: vec![],
+            more_statements: vec![],
+        }
+    }
+}
+
 #[derive(Default)]
 struct Linker {
     params: LinkerParams,
     max_degree: Option<Number>,
-    /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
-    namespaces: BTreeMap<String, (Vec<PilStatement>, Vec<PilStatement>)>,
+    // the inner statements and sends, the receives: for each operation, the list of (interaction_id, )
+    namespaces: BTreeMap<String, ProofObject>,
     next_interaction_id: u32,
 }
 
@@ -85,6 +115,7 @@ impl Linker {
         let common_definitions = process_definitions(graph.statements);
 
         for (location, object) in graph.objects {
+            let operation_id = object.operation_id.clone();
             self.process_object(location.clone(), object);
 
             if location == Location::main() {
@@ -94,12 +125,11 @@ impl Linker {
                     .find(|f| f.name == MAIN_OPERATION_NAME)
                 {
                     let main_operation_id = main_operation.id.clone();
-                    let operation_id = main_machine.operation_id.clone();
                     match (operation_id, main_operation_id) {
                         (Some(operation_id), Some(main_operation_id)) => {
                             // call the main operation by initializing `operation_id` to that of the main operation
                             let linker_first_step = "_linker_first_step";
-                            self.namespaces.get_mut(&location.to_string()).unwrap().1.extend([
+                            self.namespaces.get_mut(&location.to_string()).unwrap().more_statements.extend([
                                 parse_pil_statement(&format!(
                                     "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
                                 )),
@@ -118,11 +148,12 @@ impl Linker {
         Ok(PILFile(
             common_definitions
                 .into_iter()
-                .chain(
-                    self.namespaces
+                .chain(self.namespaces.into_iter().flat_map(|(_, object)| {
+                    object
+                        .statements
                         .into_iter()
-                        .flat_map(|(_, (statements, links))| statements.into_iter().chain(links)),
-                )
+                        .chain(object.receives.into_iter().map(|r| unimplemented!()))
+                }))
                 .collect(),
         ))
     }
@@ -138,7 +169,12 @@ impl Linker {
 
         let namespace = location.to_string();
 
-        let (pil, _) = self.namespaces.entry(namespace.clone()).or_default();
+        let proof_object = self
+            .namespaces
+            .entry(namespace.clone())
+            .or_insert_with(|| ProofObject::new(object.operation_id.clone().unwrap()));
+
+        let pil = &mut proof_object.statements;
 
         // create a namespace for this object
         pil.push(PilStatement::Namespace(
@@ -153,28 +189,31 @@ impl Linker {
         }
     }
 
+    fn get_object(&self, location: &Location) -> &Object {
+        unimplemented!()
+    }
+
     fn process_link(&mut self, link: Link, from_namespace: String) {
         let from = link.from;
         let to = link.to;
 
-        let to_namespace = to.machine.location.clone().to_string();
+        let to_namespace = to.machine.clone().to_string();
 
         let op_id = to.operation.id.iter().cloned().map(|n| n.into());
 
         // lhs is `flag { operation_id, inputs, outputs }`
-        let lhs = selected(
-            combine_flags(from.instr_flag, from.link_flag),
-            ArrayLiteral {
-                items: op_id
-                    .chain(from.params.inputs)
-                    .chain(from.params.outputs)
-                    .collect(),
-            }
-            .into(),
-        );
+        let lhs_selector = combine_flags(from.instr_flag, from.link_flag);
+        let lhs_op_id = op_id.clone();
+        let lhs = from
+            .params
+            .inputs
+            .into_iter()
+            .chain(from.params.outputs)
+            .collect();
 
-        let op_id = to
-            .machine
+        let to_object = self.get_object(&to.machine).clone();
+
+        let op_id = to_object
             .operation_id
             .map(|oid| namespaced_reference(to_namespace.clone(), oid))
             .into_iter();
@@ -194,8 +233,8 @@ impl Linker {
         if link.is_permutation {
             // permutation rhs is `(latch * selector[idx]) { operation_id, inputs, outputs }`
 
-            let latch = namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap());
-            let rhs_selector = if let Some(call_selectors) = to.machine.call_selectors {
+            let latch = namespaced_reference(to_namespace.clone(), to_object.latch.unwrap());
+            let rhs_selector = if let Some(call_selectors) = to_object.call_selectors {
                 let call_selector_array =
                     namespaced_reference(to_namespace.clone(), call_selectors);
                 let call_selector =
@@ -205,8 +244,6 @@ impl Linker {
                 latch
             };
 
-            let rhs = selected(rhs_selector, rhs_list);
-
             self.insert_interaction(
                 InteractionType::Permutation,
                 from_namespace,
@@ -215,7 +252,7 @@ impl Linker {
                 rhs,
             );
         } else {
-            let latch = namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap());
+            let latch = namespaced_reference(to_namespace.clone(), to_object.latch.unwrap());
 
             // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
             let rhs = selected(latch, rhs_list);
@@ -243,41 +280,48 @@ impl Linker {
 
         match self.params.mode {
             LinkerMode::Native => {
-                self.namespaces.entry(from_namespace).or_default().1.push(
-                    PilStatement::Expression(
+                self.namespaces
+                    .get_mut(&from_namespace)
+                    .unwrap()
+                    .statements
+                    .push(PilStatement::Expression(
                         SourceRef::unknown(),
                         match interaction_type {
                             InteractionType::Lookup => lookup(lhs, rhs),
                             InteractionType::Permutation => permutation(lhs, rhs),
                         },
-                    ),
-                );
+                    ));
             }
             LinkerMode::Bus => {
                 // send in the origin
                 self.namespaces
-                    .entry(from_namespace.clone())
-                    .or_default()
-                    .1
-                    .push(PilStatement::Expression(
-                        SourceRef::unknown(),
-                        send(interaction_type, lhs.clone(), rhs.clone(), interaction_id),
-                    ));
+                    .get_mut(&from_namespace)
+                    .unwrap()
+                    .sends
+                    .push(Interaction {
+                        operation_id: interaction_id,
+                        interaction_id: interaction_id.into(),
+                        left_selector: lhs.clone(),
+                        left: vec![lhs],
+                        right_selector: rhs.clone(),
+                        right: vec![rhs],
+                        ty: interaction_type,
+                    });
 
                 // receive in the destination
                 self.namespaces
-                    .entry(to_namespace)
-                    .or_default()
-                    .1
-                    .push(PilStatement::Expression(
-                        SourceRef::unknown(),
-                        receive(
-                            interaction_type,
-                            namespaced_expression(from_namespace, lhs),
-                            rhs,
-                            interaction_id,
-                        ),
-                    ));
+                    .get_mut(&to_namespace)
+                    .unwrap()
+                    .receives
+                    .push(Interaction {
+                        operation_id: interaction_id,
+                        interaction_id: interaction_id.into(),
+                        left_selector: lhs,
+                        left: vec![lhs],
+                        right_selector: rhs,
+                        right: vec![rhs],
+                        ty: interaction_type,
+                    });
             }
         }
     }
