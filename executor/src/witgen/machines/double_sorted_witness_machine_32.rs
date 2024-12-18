@@ -193,7 +193,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
         known_arguments: &BitVec,
         range_constraints: &[Option<RangeConstraint<T>>],
     ) -> bool {
-        // We igore the identity ID and assume it is correct.
+        assert!(self.parts.connections.contains_key(&identity_id));
         assert_eq!(known_arguments.len(), 4);
         assert_eq!(range_constraints.len(), 4);
 
