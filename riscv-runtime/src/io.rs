@@ -17,10 +17,10 @@ pub struct ProverDataReader {
 
 impl ProverDataReader {
     /// Creates an iterator over the static prover data.
-    /// 
+    ///
     /// A newly created iterator will start at the beginning of the prover data.
     pub fn new() -> Self {
-        extern "C"{
+        extern "C" {
             // The prover data start and end symbols. Their addresses are set by the linker.
             static __powdr_prover_data_start: u32;
             static __powdr_prover_data_end: u32;
@@ -34,7 +34,8 @@ impl ProverDataReader {
             let data_start = region_start.byte_offset(POWDR_PAGE_SIZE);
             let data_end: *const u32 = &__powdr_prover_data_end;
 
-            let prover_data_section = slice::from_raw_parts(data_start, data_end.offset_from(data_start) as usize);
+            let prover_data_section =
+                slice::from_raw_parts(data_start, data_end.offset_from(data_start) as usize);
 
             // The first word of the prover data section is the total number of words the user wrote.
             let (&total_words, remaining_data) = prover_data_section.split_first().unwrap();
@@ -49,12 +50,11 @@ impl Iterator for ProverDataReader {
     type Item = &'static [u8];
 
     /// Returns the next slice of prover data.
-    /// 
+    ///
     /// Because it is in static memory, the reference can be stored, passed around and will always be valid.
-    /// 
+    ///
     /// The start of the slice is guaranteed to be 4-bytes aligned.
-    fn next(&mut self) -> Option<&'static[u8]>
-    {
+    fn next(&mut self) -> Option<&'static [u8]> {
         if self.remaining_data.is_empty() {
             return None;
         }
