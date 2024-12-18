@@ -287,7 +287,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             } else {
                 covered_bits |= mask;
             }
-            let masked = -&self.offset & T::from(mask).into();
+            let masked = -&self.offset & mask;
             effects.push(Effect::Assignment(
                 var.clone(),
                 masked.integer_div(&coeff.into()),
@@ -300,11 +300,10 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
 
         // We need to assert that the masks cover "-offset",
         // otherwise the equation is not solvable.
-        // We assert -offset & !masks == 0 <=> -offset == -offset | masks.
-        // We use the latter since we cannot properly bit-negate inside the field.
+        // We assert -offset & !masks == 0
         effects.push(Assertion::assert_eq(
-            -&self.offset,
-            -&self.offset | T::from(covered_bits).into(),
+            -&self.offset & !covered_bits,
+            T::from(0).into(),
         ));
 
         ProcessResult::complete(effects)
@@ -581,7 +580,7 @@ mod test {
             "a = ((-(10 + Z) & 65280) // 256);
 b = ((-(10 + Z) & 16711680) // 65536);
 c = ((-(10 + Z) & 4278190080) // 16777216);
-assert -(10 + Z) == (-(10 + Z) | 4294967040);
+assert (-(10 + Z) & 18446744069414584575) == 0;
 "
         );
     }
