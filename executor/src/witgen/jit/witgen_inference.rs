@@ -94,7 +94,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             VariableOrValue::Variable(v) => self.variable_to_expression(v.clone()),
             VariableOrValue::Value(v) => (*v).into(),
         };
-        let r = self.process_polynomial_identity(&assignment.expression, assignment.offset, v);
+        let r = self.process_polynomial_identity(assignment.expression, assignment.offset, v);
         self.ingest_effects(r)
     }
 
@@ -319,15 +319,48 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 }
 
-pub enum VariableOrValue<T> {
+enum VariableOrValue<T> {
     Variable(Variable),
     Value(T),
 }
 
+impl<T: Display> Display for VariableOrValue<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VariableOrValue::Variable(v) => write!(f, "{v}"),
+            VariableOrValue::Value(v) => write!(f, "{v}"),
+        }
+    }
+}
+
 pub struct Assignment<'a, T: FieldElement> {
-    pub expression: &'a Expression<T>,
-    pub offset: i32,
-    pub value: VariableOrValue<T>,
+    expression: &'a Expression<T>,
+    offset: i32,
+    value: VariableOrValue<T>,
+}
+
+impl<'a, T: FieldElement> Assignment<'a, T> {
+    pub fn constant(expression: &'a Expression<T>, offset: i32, value: T) -> Self {
+        Self {
+            expression,
+            offset,
+            value: VariableOrValue::Value(value),
+        }
+    }
+
+    pub fn variable(expression: &'a Expression<T>, offset: i32, value: Variable) -> Self {
+        Self {
+            expression,
+            offset,
+            value: VariableOrValue::Variable(value),
+        }
+    }
+}
+
+impl<'a, T: FieldElement> Display for Assignment<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}[{}] = {}", self.expression, self.offset, self.value)
+    }
 }
 
 pub trait FixedEvaluator<T: FieldElement> {

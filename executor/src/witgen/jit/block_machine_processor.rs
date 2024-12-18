@@ -10,10 +10,7 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     evaluators::fixed_evaluator,
-    jit::{
-        affine_symbolic_expression::AffineSymbolicExpression,
-        witgen_inference::{Assignment, VariableOrValue},
-    },
+    jit::{affine_symbolic_expression::AffineSymbolicExpression, witgen_inference::Assignment},
     machines::MachineParts,
     FixedData,
 };
@@ -51,22 +48,19 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .collect::<HashSet<_>>();
         let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables);
 
-        let assignments = [Assignment {
-            expression: &connection_rhs.selector,
-            offset: self.latch_row as i32,
-            value: VariableOrValue::Value(T::one()),
-        }]
+        let latch_row = self.latch_row as i32;
+        let assignments = [Assignment::constant(
+            &connection_rhs.selector,
+            latch_row,
+            T::one(),
+        )]
         .into_iter()
         .chain(
             connection_rhs
                 .expressions
                 .iter()
                 .enumerate()
-                .map(|(i, expr)| Assignment {
-                    expression: expr,
-                    offset: self.latch_row as i32,
-                    value: VariableOrValue::Variable(Variable::Param(i)),
-                }),
+                .map(|(i, expr)| Assignment::variable(expr, latch_row, Variable::Param(i))),
         )
         .collect::<Vec<_>>();
 
@@ -120,17 +114,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let unsolved_assignments = assignments
             .iter()
             .enumerate()
-            .filter(|(i, assignment)| !complete_assignments.contains(&i))
-            .map(|(i, assignment)| {
-                let value_str = match &assignment.value {
-                    VariableOrValue::Variable(var) => var.to_string(),
-                    VariableOrValue::Value(value) => value.to_string(),
-                };
-                format!(
-                    "{}[{}] = {}",
-                    assignment.expression, assignment.offset, value_str
-                )
-            })
+            .filter(|(i, assignment)| !complete_assignments.contains(i))
+            .map(|(i, assignment)| assignment.to_string())
             .collect::<Vec<_>>();
         if !unsolved_assignments.is_empty() {
             return Err(format!(
