@@ -203,7 +203,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
                 // Solve "coeff * X + self.offset = 0" by division.
                 assert!(
                     !coeff.is_known_zero(),
-                    "Zero coefficient has not been removed."
+                    "Zero coefficient has not been removed: {self}"
                 );
                 if coeff.is_known_nonzero() {
                     // In this case, we can always compute a solution.
@@ -276,7 +276,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             } else {
                 covered_bits |= mask;
             }
-            let masked = -&self.offset & T::from(mask).into();
+            let masked = -&self.offset & mask;
             effects.push(Effect::Assignment(
                 var.clone(),
                 masked.integer_div(&coeff.into()),
@@ -289,11 +289,10 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
 
         // We need to assert that the masks cover "-offset",
         // otherwise the equation is not solvable.
-        // We assert -offset & !masks == 0 <=> -offset == -offset | masks.
-        // We use the latter since we cannot properly bit-negate inside the field.
+        // We assert -offset & !masks == 0
         effects.push(Assertion::assert_eq(
-            -&self.offset,
-            -&self.offset | T::from(covered_bits).into(),
+            -&self.offset & !covered_bits,
+            T::from(0).into(),
         ));
 
         ProcessResult::complete(effects)
@@ -420,11 +419,15 @@ impl<T: FieldElement, V: Clone + Ord> Mul<&SymbolicExpression<T, V>>
     type Output = AffineSymbolicExpression<T, V>;
 
     fn mul(mut self, rhs: &SymbolicExpression<T, V>) -> Self::Output {
-        for coeff in self.coefficients.values_mut() {
-            *coeff = &*coeff * rhs;
+        if rhs.is_known_zero() {
+            T::zero().into()
+        } else {
+            for coeff in self.coefficients.values_mut() {
+                *coeff = &*coeff * rhs;
+            }
+            self.offset = &self.offset * rhs;
+            self
         }
-        self.offset = &self.offset * rhs;
-        self
     }
 }
 
@@ -566,7 +569,7 @@ mod test {
             "a = ((-(10 + Z) & 65280) // 256);
 b = ((-(10 + Z) & 16711680) // 65536);
 c = ((-(10 + Z) & 4278190080) // 16777216);
-assert -(10 + Z) == (-(10 + Z) | 4294967040);
+assert (-(10 + Z) & 18446744069414584575) == 0;
 "
         );
     }

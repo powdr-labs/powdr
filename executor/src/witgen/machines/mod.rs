@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 
+use bit_vec::BitVec;
 use dynamic_machine::DynamicMachine;
 use powdr_ast::analyzed::{
     self, AlgebraicExpression, DegreeRange, PermutationIdentity, PhantomPermutationIdentity, PolyID,
@@ -21,6 +22,7 @@ use self::second_stage_machine::SecondStageMachine;
 use self::sorted_witness_machine::SortedWitnesses;
 use self::write_once_memory::WriteOnceMemory;
 
+use super::range_constraints::RangeConstraint;
 use super::rows::RowPair;
 use super::{EvalError, EvalResult, FixedData, QueryCallback};
 
@@ -51,6 +53,23 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
             "Running machine {} without a machine call is not supported.",
             self.name()
         );
+    }
+
+    /// Returns true if this machine can alway fully process a call via the given
+    /// identity, the set of known arguments and a list of range constraints
+    /// on the parameters. Note that the range constraints can be imposed both
+    /// on inputs and on outputs.
+    /// If this returns true, then corresponding calls to `process_lookup_direct`
+    /// are safe.
+    /// The function requires `&mut self` because it usually builds an index structure
+    /// or something similar.
+    fn can_process_call_fully(
+        &mut self,
+        _identity_id: u64,
+        _known_arguments: &BitVec,
+        _range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool {
+        false
     }
 
     /// Like `process_plookup`, but also records the time spent in this machine.
@@ -127,6 +146,15 @@ pub enum LookupCell<'a, T> {
     Output(&'a mut T),
 }
 
+impl<'a, T> LookupCell<'a, T> {
+    pub fn is_input(&self) -> bool {
+        match self {
+            LookupCell::Input(_) => true,
+            LookupCell::Output(_) => false,
+        }
+    }
+}
+
 /// All known implementations of [Machine].
 /// This allows us to treat machines uniformly without putting them into a `Box`,
 /// which requires that all lifetime parameters are 'static.
@@ -152,6 +180,40 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::BlockMachine(m) => m.run(mutable_state),
             KnownMachine::DynamicMachine(m) => m.run(mutable_state),
             KnownMachine::FixedLookup(m) => m.run(mutable_state),
+        }
+    }
+
+    fn can_process_call_fully(
+        &mut self,
+        identity_id: u64,
+        known_arguments: &BitVec,
+        range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool {
+        match self {
+            KnownMachine::SecondStageMachine(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
+            KnownMachine::SortedWitnesses(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
+            KnownMachine::DoubleSortedWitnesses16(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
+            KnownMachine::DoubleSortedWitnesses32(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
+            KnownMachine::WriteOnceMemory(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
+            KnownMachine::BlockMachine(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
+            KnownMachine::DynamicMachine(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
+            KnownMachine::FixedLookup(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
         }
     }
 

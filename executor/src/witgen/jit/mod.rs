@@ -1,5 +1,7 @@
 pub(crate) mod affine_symbolic_expression;
-pub(crate) mod jit_processor;
+mod block_machine_processor;
+mod compiler;
+pub(crate) mod function_cache;
 mod symbolic_expression;
 mod variable;
 pub(crate) mod witgen_inference;
