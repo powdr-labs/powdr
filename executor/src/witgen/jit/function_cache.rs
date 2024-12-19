@@ -5,7 +5,6 @@ use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
-    jit::affine_symbolic_expression::Effect,
     machines::{LookupCell, MachineParts},
     EvalError, FixedData, MutableState, QueryCallback,
 };
@@ -82,7 +81,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         self.processor
             .generate_code(cache_key.identity_id, &cache_key.known_args)
             .ok()
-            .and_then(|code| {
+            .map(|code| {
                 log::trace!("Generated code ({} steps)", code.len());
                 let known_inputs = cache_key
                     .known_args
@@ -99,11 +98,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
                     &known_inputs,
                     &code,
                 )
-                // TODO: This filters out any machines for which compile_effects() failed.
-                // This includes cases like cargo no being available, in which case we do want to
-                // fall back to run-time witgen. But we should detect whether there was a compilation
-                // error and panic in that case.
-                .ok()
+                .unwrap()
             })
     }
 
