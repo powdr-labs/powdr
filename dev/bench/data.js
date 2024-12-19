@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1734650456023,
+  "lastUpdate": 1734651278265,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -33505,6 +33505,158 @@ window.BENCHMARK_DATA = {
             "name": "jit-benchmark/sort_2700",
             "value": 30846097,
             "range": "± 79279",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "powdr-labs",
+            "username": "powdr-labs"
+          },
+          "committer": {
+            "name": "powdr-labs",
+            "username": "powdr-labs"
+          },
+          "id": "3710c191b641febc15a08c0cf5aa0528e6f71f4e",
+          "message": "Bisect range constraints.",
+          "timestamp": "2024-12-19T17:12:00Z",
+          "url": "https://github.com/powdr-labs/powdr/pull/2270/commits/3710c191b641febc15a08c0cf5aa0528e6f71f4e"
+        },
+        "date": 1734651277685,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "evaluator-benchmark/std::math::ff::inverse",
+            "value": 6858,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/std::math::ff::reduce",
+            "value": 614,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/std::math::ff::mul",
+            "value": 1063,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_879882356",
+            "value": 28930,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_1882356",
+            "value": 24173,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_1187956",
+            "value": 24125,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_56",
+            "value": 17061,
+            "range": "± 11",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_33",
+            "value": 797019,
+            "range": "± 1353",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_100",
+            "value": 2742861,
+            "range": "± 4192",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_300",
+            "value": 9678961,
+            "range": "± 26531",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_900",
+            "value": 35392939,
+            "range": "± 159504",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_2700",
+            "value": 141494367,
+            "range": "± 1083114",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_879882356",
+            "value": 3665,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_1882356",
+            "value": 2923,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_1187956",
+            "value": 2876,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_56",
+            "value": 1676,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_33",
+            "value": 100577,
+            "range": "± 91",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_100",
+            "value": 373885,
+            "range": "± 466",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_300",
+            "value": 1440433,
+            "range": "± 1656",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_900",
+            "value": 6253656,
+            "range": "± 64817",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_2700",
+            "value": 31656598,
+            "range": "± 317439",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "executor-benchmark/keccak",
+            "value": 8873389583,
+            "range": "± 71208408",
             "unit": "ns/iter"
           }
         ]
