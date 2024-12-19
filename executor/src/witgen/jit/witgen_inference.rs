@@ -199,7 +199,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         let (known, rcs) = self.expression_list_to_known_and_range_constraints(&arguments)?;
 
         if !can_process_call.can_process_call_fully(lookup_id, &known, &rcs) {
-            log::debug!(
+            log::trace!(
                 "Sub-machine cannot process call fully (will retry later): {lookup_id}, arguments: {}",
                 call_arguments.iter().zip(known).map(|(arg, known)| {
                     format!("{arg} [{}]", if known { "known" } else { "unknown" })
