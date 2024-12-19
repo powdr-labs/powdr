@@ -127,7 +127,8 @@ instructions! {
     ec_add,
     ec_double,
     commit_public,
-    fail
+    fail,
+    keccakf
 }
 
 /// Enum with submachines used in the RISCV vm
@@ -163,9 +164,9 @@ machine_instances! {
     binary,
     shift,
     split_gl,
-    poseidon_gl
+    poseidon_gl,
     // poseidon2_gl,
-    // keccakf,
+    keccakf
     // arith,
 }
 
@@ -2464,25 +2465,21 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 main_op!(commit_public);
                 vec![]
             }
-            "keccakf" => {
-                let input_ptr = self.proc.get_reg_mem(args[0].u());
-                let output_ptr = self.proc.get_reg_mem(args[1].u());
-                //println!("keccakf: input_ptr={input_ptr}, output_ptr={output_ptr}");
+            Instruction::keccakf => {
+                let reg1 = args[0].u();
+                let reg2 = args[1].u();
+                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let input_ptr = self.reg_read(0, reg1, lid);
+                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let output_ptr = self.reg_read(1, reg2, lid);
 
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("keccakf").add_operation(
-                        "keccakf32_memory",
-                        &[input_ptr, output_ptr],
-                        None,
-                        &[],
-                    );
-                }
+                set_col!(tmp1_col, input_ptr);
+                set_col!(tmp2_col, output_ptr);
+                let lid = self.instr_link_id(instr, "main_publics", 0);
+                submachine_op!(keccakf, lid, &[input_ptr.into_fe(), output_ptr.into_fe()],);
+                main_op!(keccakf32_memory);
                 vec![]
             }
-            instr => {
-                panic!("unknown instruction: {instr}");
-            }
-
         };
 
         r
