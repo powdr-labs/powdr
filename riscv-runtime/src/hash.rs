@@ -52,7 +52,6 @@ pub struct Keccak {
     buffer: [u8; 136],
     buffer_pos: usize,
     rate: usize,
-    output_size: usize,
 }
 
 impl Keccak {
@@ -98,9 +97,7 @@ impl Keccak {
 
         let state_in = self.state;
         let mut state_out = [0u64; 25];
-        unsafe {
-            keccakf(&state_in, &mut state_out);
-        }
+        keccakf(&state_in, &mut state_out);
         self.state = state_out;
     }
 
