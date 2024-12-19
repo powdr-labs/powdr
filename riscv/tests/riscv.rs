@@ -695,7 +695,11 @@ fn profiler_sanity_check() {
         None,
     );
 
-    let options = CompilerOptions::new(KnownField::GoldilocksField, RuntimeLibs::new(), false);
+    let options = CompilerOptions::new(
+        KnownField::GoldilocksField,
+        RuntimeLibs::new().with_keccak(),
+        false,
+    );
     let asm = powdr_riscv::elf::translate(&executable, options);
 
     let temp_dir = mktemp::Temp::new_dir().unwrap().release();
