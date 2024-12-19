@@ -203,6 +203,7 @@ known_witness_col! {
     instr_branch_if_diff_nonzero_param_l,
     instr_branch_if_diff_equal_param_l,
     instr_branch_if_diff_greater_than_param_l,
+    jump_to_shutdown_routine,
     // instructions
     instr_set_reg,
     instr_get_reg,
