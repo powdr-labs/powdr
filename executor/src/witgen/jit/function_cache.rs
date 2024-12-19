@@ -91,14 +91,6 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
                     .filter_map(|(i, b)| if b { Some(Variable::Param(i)) } else { None })
                     .collect::<Vec<_>>();
 
-                if code
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::MachineCall(_, _)))
-                {
-                    // TODO: Machine calls trigger a unimplemented!() in compile_effects()
-                    return None;
-                }
-
                 log::trace!("Compiling effects...");
 
                 compile_effects(
