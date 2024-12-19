@@ -319,6 +319,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
         }
     }
 
+    #[allow(unused)]
     pub fn only_concrete_known(self) -> Self {
         Self {
             witgen_inference: self.witgen_inference,
