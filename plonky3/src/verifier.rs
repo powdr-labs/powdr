@@ -34,7 +34,7 @@ where
     public_values_by_stage: &'a [Vec<Val<T::Config>>],
 }
 
-impl<'a, T: FieldElementMap> Table<'a, T>
+impl<T: FieldElementMap> Table<'_, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,

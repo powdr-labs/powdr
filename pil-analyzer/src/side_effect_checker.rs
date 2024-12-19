@@ -32,7 +32,7 @@ struct SideEffectChecker<'a> {
     context: FunctionKind,
 }
 
-impl<'a> SideEffectChecker<'a> {
+impl SideEffectChecker<'_> {
     fn check(&mut self, e: &Expression) -> Result<(), Error> {
         match e {
             Expression::Reference(source, Reference::Poly(r)) => {
