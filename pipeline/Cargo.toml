@@ -62,6 +62,10 @@ walkdir = "2.4.0"
 name = "evaluator_benchmark"
 harness = false
 
+[[bench]]
+name = "jit_witgen_benchmark"
+harness = false
+
 [lints]
 workspace = true
 
