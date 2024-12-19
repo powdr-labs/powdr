@@ -6,7 +6,7 @@ use std::{
 use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
-use super::affine_symbolic_expression::MachineCallArgument;
+use super::effect::MachineCallArgument;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
 /// A variable that can be used in the inference engine.
