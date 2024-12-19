@@ -4,9 +4,7 @@ use bit_vec::BitVec;
 use powdr_ast::analyzed::{AlgebraicReference, Identity};
 use powdr_number::FieldElement;
 
-use crate::witgen::{
-    machines::MachineParts, FixedData,
-};
+use crate::witgen::{machines::MachineParts, FixedData};
 
 use super::{
     affine_symbolic_expression::Effect,
@@ -161,6 +159,7 @@ mod test {
             global_constraints,
             jit::test_util::format_code,
             machines::{Connection, ConnectionKind},
+            range_constraints::RangeConstraint,
         },
     };
 
