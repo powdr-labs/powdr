@@ -39,23 +39,6 @@ pub fn extract_selector<F: FieldElement>(ident: &Identity<F>) -> Option<String> 
     }
 }
 
-// pub fn selector_for_link<F: FieldElement>(links: &[Identity<F>], id: u64) -> Option<String> {
-//     for l in links.iter() {
-//         if let Identity::Permutation(perm) = l {
-//             if perm.id == id {
-//                 return extract_selector(perm);
-//             }
-//         }
-//         if let Identity::Lookup(lookup) = l {
-//             if lookup.id == id {
-//                 // lookups don't have selectors
-//                 return None;
-//             }
-//         }
-//     }
-//     panic!("identity {id} doesn't exist")
-// }
-
 /// Find links referencing columns containing the string `from` on the LHS and `to` on the RHS.
 /// For permutations, only looks at the identity selectors.
 /// For lookups, looks at the left selector and the right expression.
