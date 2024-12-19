@@ -5,8 +5,7 @@ use powdr_ast::analyzed::{AlgebraicReference, Identity};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    data_structures::mutable_state::MutableState, machines::MachineParts,
-    range_constraints::RangeConstraint, FixedData, QueryCallback,
+    machines::MachineParts, FixedData,
 };
 
 use super::{
@@ -151,7 +150,7 @@ impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
 
 #[cfg(test)]
 mod test {
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, fs::read_to_string};
 
     use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, SelectedExpressions};
     use powdr_number::GoldilocksField;

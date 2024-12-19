@@ -6,7 +6,7 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
     PermutationIdentity, PhantomBusInteractionIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialType, SelectedExpressions,
+    PhantomPermutationIdentity, PolynomialIdentity, PolynomialType,
 };
 use powdr_number::FieldElement;
 
@@ -186,7 +186,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         offset: i32,
     ) -> Option<Effect<T, Variable>> {
         if self
-            .evaluate(&selector, offset)
+            .evaluate(selector, offset)
             .and_then(|s| s.try_to_known().map(|k| k.is_known_one()))
             != Some(true)
         {
