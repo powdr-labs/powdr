@@ -8,11 +8,13 @@ use std::{
 };
 
 use codegen::CodeGenerator;
-use compiler::{call_cargo, generate_glue_code, load_library};
+use compiler::{generate_glue_code, load_library};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::FieldElement;
+
+pub use compiler::call_cargo;
 
 pub struct CompiledPIL {
     #[allow(dead_code)]

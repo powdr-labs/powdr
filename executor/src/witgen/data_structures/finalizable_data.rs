@@ -11,6 +11,13 @@ use powdr_number::FieldElement;
 
 use crate::witgen::rows::Row;
 
+use super::padded_bitvec::PaddedBitVec;
+
+pub struct ColumnLayout {
+    pub first_column_id: u64,
+    pub column_count: usize,
+}
+
 /// Sequence of rows of field elements, stored in a compact form.
 /// Optimized for contiguous column IDs, but works with any combination.
 #[derive(Clone)]
@@ -22,7 +29,9 @@ pub struct CompactData<T> {
     /// The cell values, stored in row-major order.
     data: Vec<T>,
     /// Bit vector of known cells, stored in row-major order.
-    known_cells: BitVec,
+    /// We use PaddedBitVec so that the row access is uniform and we can
+    /// combine setting the same bits in each row to setting a full word.
+    known_cells: PaddedBitVec,
 }
 
 impl<T: FieldElement> CompactData<T> {
@@ -30,11 +39,19 @@ impl<T: FieldElement> CompactData<T> {
     pub fn new(column_ids: &[PolyID]) -> Self {
         let col_id_range = column_ids.iter().map(|id| id.id).minmax();
         let (first_column_id, last_column_id) = col_id_range.into_option().unwrap();
+        let column_count = (last_column_id - first_column_id + 1) as usize;
         Self {
             first_column_id,
-            column_count: (last_column_id - first_column_id + 1) as usize,
+            column_count,
             data: Vec::new(),
-            known_cells: BitVec::new(),
+            known_cells: PaddedBitVec::new(column_count),
+        }
+    }
+
+    pub fn layout(&self) -> ColumnLayout {
+        ColumnLayout {
+            first_column_id: self.first_column_id,
+            column_count: self.column_count,
         }
     }
 
@@ -50,7 +67,7 @@ impl<T: FieldElement> CompactData<T> {
     /// Truncates the data to `len` rows.
     pub fn truncate(&mut self, len: usize) {
         self.data.truncate(len * self.column_count);
-        self.known_cells.truncate(len * self.column_count);
+        self.known_cells.truncate_to_rows(len);
     }
 
     pub fn clear(&mut self) {
@@ -61,7 +78,7 @@ impl<T: FieldElement> CompactData<T> {
     /// Appends a non-finalized row to the data, turning it into a finalized row.
     pub fn push(&mut self, row: Row<T>) {
         self.data.reserve(self.column_count);
-        self.known_cells.reserve(self.column_count);
+        self.known_cells.reserve_rows(1);
         for col_id in self.first_column_id..(self.first_column_id + self.column_count as u64) {
             if let Some(v) = row.value(&PolyID {
                 id: col_id,
@@ -79,7 +96,7 @@ impl<T: FieldElement> CompactData<T> {
     pub fn append_new_rows(&mut self, count: usize) {
         self.data
             .resize(self.data.len() + count * self.column_count, T::zero());
-        self.known_cells.grow(count * self.column_count, false);
+        self.known_cells.append_empty_rows(count);
     }
 
     fn index(&self, row: usize, col: u64) -> usize {
@@ -89,25 +106,22 @@ impl<T: FieldElement> CompactData<T> {
 
     pub fn get(&self, row: usize, col: u64) -> (T, bool) {
         let idx = self.index(row, col);
-        (self.data[idx], self.known_cells[idx])
-    }
-
-    pub fn set(&mut self, row: usize, col: u64, value: T) {
-        let idx = self.index(row, col);
-        assert!(!self.known_cells[idx] || self.data[idx] == value);
-        self.data[idx] = value;
-        self.known_cells.set(idx, true);
+        let relative_col = col - self.first_column_id;
+        (self.data[idx], self.known_cells.get(row, relative_col))
     }
 
     pub fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (u64, &T)> {
-        (0..self.column_count).filter_map(move |i| {
-            let col = self.first_column_id + i as u64;
-            let idx = self.index(row, col);
-            self.known_cells[idx].then(|| {
-                let col_id = self.first_column_id + i as u64;
-                (col_id, &self.data[idx])
+        (0..self.column_count)
+            .filter(move |i| self.known_cells.get(row, *i as u64))
+            .map(move |i| {
+                let col = self.first_column_id + i as u64;
+                let idx = self.index(row, col);
+                (col, &self.data[idx])
             })
-        })
+    }
+
+    pub fn as_mut_slices(&mut self) -> (&mut [T], &mut [u32]) {
+        (&mut self.data, self.known_cells.as_mut_slice())
     }
 }
 
@@ -126,18 +140,12 @@ impl<'a, T: FieldElement> CompactDataRef<'a, T> {
         Self { data, row_offset }
     }
 
-    pub fn get(&self, row: i32, col: u32) -> T {
-        let (v, known) = self.data.get(self.inner_row(row), col as u64);
-        assert!(known);
-        v
+    pub fn as_mut_slices(&mut self) -> (&mut [T], &mut [u32]) {
+        self.data.as_mut_slices()
     }
 
-    pub fn set(&mut self, row: i32, col: u32, value: T) {
-        self.data.set(self.inner_row(row), col as u64, value);
-    }
-
-    fn inner_row(&self, row: i32) -> usize {
-        (row + self.row_offset as i32) as usize
+    pub fn row_offset(&self) -> usize {
+        self.row_offset
     }
 }
 
@@ -166,6 +174,10 @@ pub struct FinalizableData<T: FieldElement> {
 impl<T: FieldElement> FinalizableData<T> {
     pub fn new(column_ids: &HashSet<PolyID>) -> Self {
         Self::with_initial_rows_in_progress(column_ids, [].into_iter())
+    }
+
+    pub fn layout(&self) -> ColumnLayout {
+        self.finalized_data.layout()
     }
 
     pub fn with_initial_rows_in_progress(

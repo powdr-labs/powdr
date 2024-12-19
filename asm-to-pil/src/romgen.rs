@@ -85,7 +85,7 @@ pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, 
         // add the beginning of the dispatcher
         rom.push(
             Batch::from(vec![
-                parse_function_statement("_start:"),
+                parse_function_statement("_powdr_start:"),
                 parse_function_statement("_jump_to_operation;"),
             ])
             .reason(IncompatibleSet::from(Incompatible::Label)),
@@ -280,7 +280,8 @@ mod tests {
                 .to_string()
                 .replace('\t', "    "),
             r#"
-_start:
+_powdr_start:
+// END BATCH Unimplemented
 _jump_to_operation;
 // END BATCH Label
 _sink:
@@ -316,7 +317,8 @@ _loop;
                 .to_string()
                 .replace('\t', "    "),
             r#"
-_start:
+_powdr_start:
+// END BATCH Unimplemented
 _jump_to_operation;
 // END BATCH Label
 _identity:
@@ -373,7 +375,8 @@ _loop;
                 .to_string()
                 .replace('\t', "    "),
             r#"
-_start:
+_powdr_start:
+// END BATCH Unimplemented
 _jump_to_operation;
 // END BATCH Label
 _f_add:
