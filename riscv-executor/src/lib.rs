@@ -2481,14 +2481,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let mut state = [0u64; 25];
                 // Note: lo/hi positions are swapped (lo at +4 offset, hi at +0) to match
                 // the Keccak machine specification's memory layout
-                for i in 0..25 {
+                for (i, state_i) in state.iter_mut().enumerate() {
                     let lo = self
                         .proc
                         .get_mem(input_ptr.u() + 8 * i as u32 + 4, self.step, lid);
                     let hi = self
                         .proc
                         .get_mem(input_ptr.u() + 8 * i as u32, self.step, lid);
-                    state[i as usize] = ((hi as u64) << 32) | lo as u64;
+                    *state_i = ((hi as u64) << 32) | lo as u64;
                 }
 
                 keccakf(&mut state);
