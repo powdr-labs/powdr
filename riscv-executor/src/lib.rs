@@ -1457,7 +1457,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         set_col!(W, get_fixed!(W_const));
 
         let instr = Instruction::from_name(name).expect("unknown instruction");
-        self.proc.pc_trace_add(self.proc.get_pc().u());
 
         let r = match instr {
             Instruction::set_reg => {
@@ -3012,6 +3011,7 @@ fn execute_inner<F: FieldElement>(
             FunctionStatement::Instruction(i) => {
                 e.proc.push_row();
                 e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
+                e.proc.pc_trace_add(e.proc.get_pc().u());
 
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
