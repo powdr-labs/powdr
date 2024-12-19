@@ -93,6 +93,30 @@ impl<T: FieldElement> RangeConstraint<T> {
         in_range && in_mask
     }
 
+    /// Splits this range constraint into a disjoint union with roughly the same number of allowed values.
+    /// The two ranges will be disjoint, and the union of the two will be the same as the original range.
+    /// This is useful for branching on a variable.
+    /// Panics if the range is a single value.
+    pub fn bisect(&self) -> (Self, Self) {
+        assert!(self.try_to_single_value().is_none());
+        // TODO we could also try to bisect according to the masks, but it is difficult
+        // to express the complimentary mask.
+        // Better to bisect according to min/max.
+        let half_width = T::from(self.range_width() >> 1);
+        assert!(half_width > T::zero());
+        if self.min < self.max {
+            (
+                Self::from_range(self.min, self.min + half_width - 1.into()),
+                Self::from_range(self.min + half_width, self.max),
+            )
+        } else {
+            (
+                Self::from_range(self.max, self.max + half_width - 1.into()),
+                Self::from_range(self.max + half_width, self.min),
+            )
+        }
+    }
+
     /// The range constraint of the sum of two expressions.
     pub fn combine_sum(&self, other: &Self) -> Self {
         // TODO we could use "add_with_carry" to see if this created an overflow.
@@ -607,5 +631,35 @@ mod test {
                 mask: 0xf000u32.into(),
             },
         );
+    }
+
+    fn range_constraint(min: u64, max: u64) -> RangeConstraint<GoldilocksField> {
+        RangeConstraint::from_range(min.into(), max.into())
+    }
+
+    #[test]
+    fn bisect() {
+        let (b, c) = range_constraint(10, 20).bisect();
+        assert_eq!(b, range_constraint(10, 14));
+        assert_eq!(c, range_constraint(15, 20));
+
+        let (b, c) = range_constraint(0, 1).bisect();
+        assert_eq!(b, range_constraint(0, 0));
+        assert_eq!(c, range_constraint(1, 1));
+
+        let (b, c) = range_constraint(0, 2).bisect();
+        assert_eq!(b, range_constraint(0, 0));
+        assert_eq!(c, range_constraint(1, 2));
+
+        let (b, c) = range_constraint(20, 10).bisect();
+        assert_eq!(b, range_constraint(10, 9223372034707292165_u64));
+        assert_eq!(c, range_constraint(9223372034707292166_u64, 20));
+    }
+
+    #[test]
+    #[should_panic]
+    fn bisect_single() {
+        let a = RangeConstraint::<GoldilocksField>::from_range(10.into(), 10.into());
+        a.bisect();
     }
 }
