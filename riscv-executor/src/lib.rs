@@ -40,6 +40,7 @@ mod submachines;
 use submachines::*;
 mod memory;
 use memory::*;
+mod keccak;
 mod pil;
 
 use crate::profiler::Profiler;
@@ -2472,6 +2473,20 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let input_ptr = self.reg_read(0, reg1, lid);
                 let lid = self.instr_link_id(instr, "main_regs", 1);
                 let output_ptr = self.reg_read(1, reg2, lid);
+
+                let inputs = (0..25)
+                    .map(|i| {
+                        let val = self.proc.get_mem(input_ptr.u() + i * 4, self.step, 2);
+                        val as u64
+                    })
+                    .collect::<Vec<_>>();
+
+                //let output = keccak::keccak256(inputs);
+
+                output.iter().enumerate().for_each(|(i, &v)| {
+                    self.proc
+                        .set_mem(output_ptr.u() + i as u32 * 4, v as u32, self.step + 1, 4);
+                });
 
                 set_col!(tmp1_col, input_ptr);
                 set_col!(tmp2_col, output_ptr);
