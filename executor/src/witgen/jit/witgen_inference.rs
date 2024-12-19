@@ -182,7 +182,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         can_process_call: CanProcess,
         lookup_id: u64,
         selector: &Expression<T>,
-        arguments: &[Expression<T>],
+        call_arguments: &[Expression<T>],
         offset: i32,
     ) -> Option<Effect<T, Variable>> {
         if self
@@ -192,13 +192,18 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         {
             return None;
         }
-        let arguments = arguments
+        let arguments = call_arguments
             .iter()
             .map(|a| self.evaluate(a, offset))
             .collect::<Option<Vec<_>>>()?;
         let (known, rcs) = self.expression_list_to_known_and_range_constraints(&arguments)?;
 
-        if can_process_call.can_process_call_fully(lookup_id, &known, &rcs) {
+        if !can_process_call.can_process_call_fully(lookup_id, &known, &rcs) {
+            log::debug!(
+                "Sub-machine cannot process call fully (will retry later): {lookup_id}, arguments: {}",
+                call_arguments.iter().zip(known).map(|(arg, known)| {
+                    format!("{arg} [{}]", if known { "known" } else { "unknown" })
+                }).format(", "));
             return None;
         }
 
@@ -446,8 +451,8 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableSta
 
 #[cfg(test)]
 mod test {
-
     use pretty_assertions::assert_eq;
+    use test_log::test;
 
     use powdr_ast::analyzed::Analyzed;
     use powdr_number::GoldilocksField;
@@ -457,6 +462,7 @@ mod test {
         witgen::{
             global_constraints,
             jit::{test_util::format_code, variable::Cell},
+            machines::{Connection, FixedLookup, KnownMachine},
             FixedData,
         },
     };
@@ -473,18 +479,6 @@ mod test {
         }
     }
 
-    struct CannotProcessSubcalls;
-    impl<T: FieldElement> CanProcessCall<T> for CannotProcessSubcalls {
-        fn can_process_call_fully(
-            &self,
-            _identity_id: u64,
-            _known_inputs: &BitVec,
-            _range_constraints: &[Option<RangeConstraint<T>>],
-        ) -> bool {
-            false
-        }
-    }
-
     fn solve_on_rows(
         input: &str,
         rows: &[i32],
@@ -497,6 +491,20 @@ mod test {
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let (fixed_data, retained_identities) =
             global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
+
+        let fixed_lookup_connections = retained_identities
+            .iter()
+            .filter_map(|i| Connection::try_from(*i).ok())
+            .filter(|c| FixedLookup::is_responsible(&c))
+            .map(|c| (c.id, c))
+            .collect();
+
+        let global_constr = fixed_data.global_range_constraints.clone();
+        let fixed_machine = FixedLookup::new(global_constr, &fixed_data, fixed_lookup_connections);
+        let known_fixed = KnownMachine::FixedLookup(fixed_machine);
+        let mutable_state = MutableState::new([known_fixed].into_iter(), &|_| {
+            Err("Query not implemented".to_string())
+        });
 
         let known_cells = known_cells.iter().map(|(name, row_offset)| {
             let id = fixed_data.try_column_by_name(name).unwrap().id;
@@ -512,14 +520,12 @@ mod test {
         let mut complete = HashSet::new();
         let mut counter = 0;
         let expected_complete = expected_complete.unwrap_or(retained_identities.len() * rows.len());
-        while complete.len() != expected_complete {
+        while complete.len() < expected_complete {
             counter += 1;
             for row in rows {
                 for id in retained_identities.iter() {
                     if !complete.contains(&(id.id(), *row))
-                        && witgen
-                            .process_identity(CannotProcessSubcalls, id, *row)
-                            .complete
+                        && witgen.process_identity(&mutable_state, id, *row).complete
                     {
                         complete.insert((id.id(), *row));
                     }

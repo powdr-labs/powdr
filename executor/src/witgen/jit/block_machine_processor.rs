@@ -150,6 +150,8 @@ impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
 mod test {
     use std::{collections::BTreeMap, fs::read_to_string};
 
+    use test_log::test;
+
     use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, SelectedExpressions};
     use powdr_number::GoldilocksField;
 
