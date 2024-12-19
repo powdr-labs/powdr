@@ -25,6 +25,7 @@ p3-goldilocks = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432
 p3-symmetric = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 rustc-demangle = "0.1"
 inferno = "0.11.19"
+tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 
 rayon = "1.7.0"
 

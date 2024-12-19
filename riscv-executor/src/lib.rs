@@ -28,6 +28,8 @@ use powdr_ast::{
         BinaryOperation, Expression, FunctionCall, Number, UnaryOperation,
     },
 };
+use tiny_keccak::keccakf;
+
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_number::{write_polys_csv_file, FieldElement, LargeInt};
 pub use profiler::ProfilerOptions;
@@ -40,7 +42,6 @@ mod submachines;
 use submachines::*;
 mod memory;
 use memory::*;
-mod keccak;
 mod pil;
 
 use crate::profiler::Profiler;
@@ -2474,22 +2475,35 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lid = self.instr_link_id(instr, "main_regs", 1);
                 let output_ptr = self.reg_read(1, reg2, lid);
 
-                let inputs = (0..25)
-                    .map(|i| {
-                        let val = self.proc.get_mem(input_ptr.u() + i * 4, self.step, 2);
-                        val as u64
-                    })
-                    .collect::<Vec<_>>();
-
-                //let output = keccak::keccak256(inputs);
-
-                output.iter().enumerate().for_each(|(i, &v)| {
-                    self.proc
-                        .set_mem(output_ptr.u() + i as u32 * 4, v as u32, self.step + 1, 4);
-                });
-
                 set_col!(tmp1_col, input_ptr);
                 set_col!(tmp2_col, output_ptr);
+
+                let mut state = [0u64; 25];
+                // Note: lo/hi positions are swapped (lo at +4 offset, hi at +0) to match
+                // the Keccak machine specification's memory layout
+                for i in 0..25 {
+                    let lo = self
+                        .proc
+                        .get_mem(input_ptr.u() + 8 * i as u32 + 4, self.step, lid);
+                    let hi = self
+                        .proc
+                        .get_mem(input_ptr.u() + 8 * i as u32, self.step, lid);
+                    state[i as usize] = ((hi as u64) << 32) | lo as u64;
+                }
+
+                keccakf(&mut state);
+
+                for i in 0..25 {
+                    let val = state[i];
+                    let lo = val as u32;
+                    let hi = (val >> 32) as u32;
+
+                    self.proc
+                        .set_mem(output_ptr.u() + i as u32 * 8 + 4, lo, self.step + 1, lid);
+                    self.proc
+                        .set_mem(output_ptr.u() + i as u32 * 8, hi, self.step + 1, lid);
+                }
+
                 let lid = self.instr_link_id(instr, "main_publics", 0);
                 submachine_op!(keccakf, lid, &[input_ptr.into_fe(), output_ptr.into_fe()],);
                 main_op!(keccakf32_memory);

@@ -1,7 +1,5 @@
 #![no_main]
 #![no_std]
-extern crate alloc;
-use alloc::vec::Vec;
 
 extern crate powdr_riscv_runtime;
 use powdr_riscv_runtime::hash::Keccak;
