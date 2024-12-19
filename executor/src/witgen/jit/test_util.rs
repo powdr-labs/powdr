@@ -1,10 +1,10 @@
 use itertools::Itertools;
 use powdr_number::GoldilocksField;
 
-use crate::witgen::jit::affine_symbolic_expression::MachineCallArgument;
+use crate::witgen::jit::effect::MachineCallArgument;
 
 use super::{
-    affine_symbolic_expression::{Assertion, Effect},
+    effect::{Assertion, Effect},
     variable::Variable,
 };
 
