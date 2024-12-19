@@ -131,7 +131,7 @@ machine Arith with
                 };
                 provide_values(q0, i, q0_val);
 
-                // Adding secp_modulus to make sure that that all numbers are positive when % is applied to it.
+                // Adding secp_modulus to make sure that all numbers are positive when % is applied to it.
                 let x3_val = (s_val * s_val - x1 - x2 + 2 * secp_modulus) % secp_modulus;
                 provide_values(x3, i, x3_val);
                 let y3_val = (s_val * ((x1 - x3_val) + secp_modulus) - y1 + secp_modulus) % secp_modulus;

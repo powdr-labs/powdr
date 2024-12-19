@@ -58,7 +58,9 @@ extern "C" fn sys_getenv(
     _varname: *const u8,
     _varname_len: usize,
 ) -> usize {
-    todo!()
+    // For now we return the empty env without panicking.
+    // TODO Implement properly.
+    0
 }
 
 #[no_mangle]

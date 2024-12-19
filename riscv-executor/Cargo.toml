@@ -26,6 +26,8 @@ p3-symmetric = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432d
 rustc-demangle = "0.1"
 inferno = "0.11.19"
 
+rayon = "1.7.0"
+
 [lints.clippy]
 uninlined_format_args = "deny"
 

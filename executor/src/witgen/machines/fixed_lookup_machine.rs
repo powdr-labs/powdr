@@ -56,6 +56,7 @@ fn create_index<T: FieldElement>(
     connections: &BTreeMap<u64, Connection<'_, T>>,
 ) -> HashMap<Vec<T>, IndexValue<T>> {
     let right = connections[&application.identity_id].right;
+    assert!(right.selector.is_one());
 
     let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
         .expressions
@@ -295,6 +296,28 @@ fn unique_size<T: FieldElement>(
 impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
     fn name(&self) -> &str {
         "FixedLookup"
+    }
+
+    fn can_process_call_fully(
+        &mut self,
+        identity_id: u64,
+        known_arguments: &BitVec,
+        _range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool {
+        if !Self::is_responsible(&self.connections[&identity_id]) {
+            return false;
+        }
+        let index = self
+            .indices
+            .entry(Application {
+                identity_id,
+                inputs: known_arguments.clone(),
+            })
+            .or_insert_with_key(|application| {
+                create_index(self.fixed_data, application, &self.connections)
+            });
+        // Check that if there is a match, it is unique.
+        index.values().all(|value| value.0.is_some())
     }
 
     fn process_plookup<Q: crate::witgen::QueryCallback<T>>(
