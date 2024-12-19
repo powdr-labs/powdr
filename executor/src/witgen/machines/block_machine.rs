@@ -37,7 +37,7 @@ impl<'a, T: FieldElement> ProcessResult<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> Display for BlockMachine<'a, T> {
+impl<T: FieldElement> Display for BlockMachine<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,

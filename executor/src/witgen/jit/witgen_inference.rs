@@ -411,7 +411,7 @@ mod test {
     use super::*;
 
     pub struct FixedEvaluatorForFixedData<'a, T: FieldElement>(pub &'a FixedData<'a, T>);
-    impl<'a, T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'a, T> {
+    impl<T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'_, T> {
         fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
             assert!(var.is_fixed());
             let values = self.0.fixed_cols[&var.poly_id].values_max_size();
