@@ -1338,8 +1338,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             .map(|(_, v)| v.get_uniquely_sized().expect("not uniquely sized!"))
     }
 
-    fn get_known_fixed(&self, col: KnownFixedCol) -> &Vec<F> {
-        &self.cached_fixed_cols[col as usize]
+    fn get_known_fixed(&self, col: KnownFixedCol, row: usize) -> F {
+        self.cached_fixed_cols
+            .get(col as usize)
+            .map(|v| v[row])
+            .unwrap_or_default()
     }
 
     fn sink_id(&self) -> u32 {
@@ -1426,7 +1429,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             ($name:ident) => {
                 if let ExecMode::Trace = self.mode {
                     Elem::Field(
-                        self.get_known_fixed(KnownFixedCol::$name)[self.proc.get_pc().u() as usize],
+                        self.get_known_fixed(KnownFixedCol::$name, self.proc.get_pc().u() as usize),
                     )
                 } else {
                     Elem::Field(F::zero())
@@ -2965,7 +2968,7 @@ fn execute_inner<F: FieldElement>(
                 if let AssignmentRegister::Register(x) = asgn_reg {
                     assert_eq!(x, "X"); // we currently only assign through X
                     let x_const =
-                        Elem::Field(e.get_known_fixed(KnownFixedCol::X_const)[pc as usize]);
+                        Elem::Field(e.get_known_fixed(KnownFixedCol::X_const, pc as usize));
 
                     match a.rhs.as_ref() {
                         Expression::FreeInput(_, _expr) => {
@@ -2982,7 +2985,7 @@ fn execute_inner<F: FieldElement>(
                             e.proc.set_col(KnownWitnessCol::X, x);
 
                             let x_read_free = Elem::Field(
-                                e.get_known_fixed(KnownFixedCol::X_read_free)[pc as usize],
+                                e.get_known_fixed(KnownFixedCol::X_read_free, pc as usize),
                             );
 
                             // We need to solve for X_free_value:
