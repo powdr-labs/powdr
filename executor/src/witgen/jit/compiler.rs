@@ -7,7 +7,7 @@ use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::{finalizable_data::CompactDataRef, mutable_state::MutableState},
-    jit::affine_symbolic_expression::MachineCallArgument,
+    jit::effect::MachineCallArgument,
     machines::{
         profiling::{record_end, record_start},
         LookupCell,
@@ -16,7 +16,7 @@ use crate::witgen::{
 };
 
 use super::{
-    affine_symbolic_expression::{Assertion, Effect},
+    effect::{Assertion, Effect},
     symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator},
     variable::Variable,
 };

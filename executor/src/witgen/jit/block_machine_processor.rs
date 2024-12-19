@@ -7,7 +7,7 @@ use powdr_number::FieldElement;
 use crate::witgen::{machines::MachineParts, FixedData};
 
 use super::{
-    affine_symbolic_expression::Effect,
+    effect::Effect,
     variable::Variable,
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -159,9 +159,10 @@ mod test {
         constant_evaluator,
         witgen::{
             global_constraints,
-            jit::test_util::format_code,
-            machines::{Connection, ConnectionKind},
+            jit::{effect::Effect, test_util::format_code},
+            machines::{Connection, ConnectionKind, MachineParts},
             range_constraints::RangeConstraint,
+            FixedData,
         },
     };
 

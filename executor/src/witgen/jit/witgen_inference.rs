@@ -12,12 +12,12 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     data_structures::mutable_state::MutableState, global_constraints::RangeConstraintSet,
-    jit::affine_symbolic_expression::MachineCallArgument, QueryCallback,
+    range_constraints::RangeConstraint, FixedData, QueryCallback,
 };
 
 use super::{
-    super::{range_constraints::RangeConstraint, FixedData},
-    affine_symbolic_expression::{AffineSymbolicExpression, Effect, ProcessResult},
+    affine_symbolic_expression::{AffineSymbolicExpression, ProcessResult},
+    effect::{Effect, MachineCallArgument},
     variable::Variable,
 };
 
@@ -495,7 +495,7 @@ mod test {
         let fixed_lookup_connections = retained_identities
             .iter()
             .filter_map(|i| Connection::try_from(*i).ok())
-            .filter(|c| FixedLookup::is_responsible(&c))
+            .filter(|c| FixedLookup::is_responsible(c))
             .map(|c| (c.id, c))
             .collect();
 
