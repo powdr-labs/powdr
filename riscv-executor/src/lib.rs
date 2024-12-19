@@ -2743,9 +2743,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     fn generate_program_columns(&mut self) -> Vec<(String, Vec<F>)> {
         let mut cols = vec![];
         for (fcol, pcol) in &self.program_cols {
-            let mut values: Vec<F> = vec![];
+            let mut values: Vec<F> = Vec::with_capacity(self.proc.pc_trace().len());
             let fixed_values = self.get_fixed(fcol).unwrap();
-            values.reserve(self.proc.pc_trace().len());
             for pc in self.proc.pc_trace() {
                 values.push(fixed_values[*pc as usize])
             }
