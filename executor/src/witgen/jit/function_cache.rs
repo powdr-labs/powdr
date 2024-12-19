@@ -5,7 +5,6 @@ use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
-    jit::effect::Effect,
     machines::{LookupCell, MachineParts},
     EvalError, FixedData, MutableState, QueryCallback,
 };
@@ -93,7 +92,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         self.processor
             .generate_code(mutable_state, cache_key.identity_id, &cache_key.known_args)
             .ok()
-            .and_then(|code| {
+            .map(|code| {
                 log::trace!("Generated code ({} steps)", code.len());
                 let known_inputs = cache_key
                     .known_args
@@ -101,14 +100,6 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
                     .enumerate()
                     .filter_map(|(i, b)| if b { Some(Variable::Param(i)) } else { None })
                     .collect::<Vec<_>>();
-
-                if code
-                    .iter()
-                    .any(|effect| matches!(effect, Effect::MachineCall(_, _)))
-                {
-                    // TODO: Machine calls trigger a unimplemented!() in compile_effects()
-                    return None;
-                }
 
                 log::trace!("Compiling effects...");
 
@@ -118,11 +109,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
                     &known_inputs,
                     &code,
                 )
-                // TODO: This filters out any machines for which compile_effects() failed.
-                // This includes cases like cargo no being available, in which case we do want to
-                // fall back to run-time witgen. But we should detect whether there was a compilation
-                // error and panic in that case.
-                .ok()
+                .unwrap()
             })
     }
 

@@ -2,9 +2,7 @@ use powdr_number::FieldElement;
 
 use crate::witgen::range_constraints::RangeConstraint;
 
-use super::{
-    affine_symbolic_expression::AffineSymbolicExpression, symbolic_expression::SymbolicExpression,
-};
+use super::symbolic_expression::SymbolicExpression;
 
 /// The effect of solving a symbolic equation.
 pub enum Effect<T: FieldElement, V> {
@@ -55,5 +53,5 @@ impl<T: FieldElement, V> Assertion<T, V> {
 
 pub enum MachineCallArgument<T: FieldElement, V> {
     Known(SymbolicExpression<T, V>),
-    Unknown(AffineSymbolicExpression<T, V>),
+    Unknown(V),
 }

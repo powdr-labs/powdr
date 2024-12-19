@@ -82,7 +82,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
     fn solve_block<CanProcess: CanProcessCall<T> + Clone>(
         &self,
         can_process: CanProcess,
-        witgen: &mut WitgenInference<T, &Self>,
+        witgen: &mut WitgenInference<'a, T, &Self>,
     ) -> Result<(), String> {
         let mut complete = HashSet::new();
         for iteration in 0.. {
