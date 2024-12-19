@@ -9,13 +9,12 @@ use powdr_ast::analyzed::{
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::{
-    global_constraints::RangeConstraintSet, jit::affine_symbolic_expression::MachineCallArgument,
-};
+use crate::witgen::global_constraints::RangeConstraintSet;
 
 use super::{
     super::{range_constraints::RangeConstraint, FixedData},
-    affine_symbolic_expression::{AffineSymbolicExpression, Effect, ProcessResult},
+    affine_symbolic_expression::{AffineSymbolicExpression, ProcessResult},
+    effect::{Effect, MachineCallArgument},
     variable::Variable,
 };
 

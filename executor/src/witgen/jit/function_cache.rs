@@ -5,7 +5,7 @@ use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
-    jit::affine_symbolic_expression::Effect,
+    jit::effect::Effect,
     machines::{LookupCell, MachineParts},
     EvalError, FixedData, MutableState, QueryCallback,
 };
