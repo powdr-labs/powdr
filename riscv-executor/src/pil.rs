@@ -1,7 +1,7 @@
 use std::ops::ControlFlow;
 
 use powdr_ast::{
-    analyzed::{AlgebraicExpression, Analyzed, Identity, PermutationIdentity},
+    analyzed::{AlgebraicExpression, Analyzed, Identity},
     parsed::visitor::ExpressionVisitable,
 };
 use powdr_number::FieldElement;
@@ -14,41 +14,29 @@ pub fn links_from_pil<F: FieldElement>(pil: &Analyzed<F>) -> Vec<Identity<F>> {
         .collect()
 }
 
-fn extract_selector<F: FieldElement>(permutation: &PermutationIdentity<F>) -> String {
-    match permutation
-        .right
-        .selector
-        .pre_visit_expressions_return(&mut |e| {
-            if let AlgebraicExpression::Reference(r) = e {
-                // this makes the assumption that selector names always start
-                // with "sel" and there is no other array with a name starting
-                // with "sel" defined in the machine/namespace
-                if r.name.contains("::sel") && r.name.contains("[") {
-                    return ControlFlow::Break(r.name.clone());
-                }
-            }
-            ControlFlow::Continue(())
-        }) {
-        ControlFlow::Break(s) => s,
-        ControlFlow::Continue(_) => panic!("couldn't find selector"),
-    }
-}
-
-pub fn selector_for_link<F: FieldElement>(links: &[Identity<F>], id: u64) -> Option<String> {
-    for l in links.iter() {
-        if let Identity::Permutation(perm) = l {
-            if perm.id == id {
-                return Some(extract_selector(perm));
+pub fn extract_selector<F: FieldElement>(ident: &Identity<F>) -> Option<String> {
+    match ident {
+        Identity::Permutation(permutation) => {
+            match permutation
+                .right
+                .selector
+                .pre_visit_expressions_return(&mut |e| {
+                    if let AlgebraicExpression::Reference(r) = e {
+                        // this makes the assumption that selector names always start
+                        // with "sel" and there is no other array with a name starting
+                        // with "sel" defined in the machine/namespace
+                        if r.name.contains("::sel") && r.name.contains("[") {
+                            return ControlFlow::Break(r.name.clone());
+                        }
+                    }
+                    ControlFlow::Continue(())
+                }) {
+                ControlFlow::Break(s) => Some(s),
+                ControlFlow::Continue(_) => None,
             }
         }
-        if let Identity::Lookup(lookup) = l {
-            if lookup.id == id {
-                // lookups don't have selectors
-                return None;
-            }
-        }
+        _ => None,
     }
-    panic!("identity {id} doesn't exist")
 }
 
 /// Find links referencing columns containing the string `from` on the LHS and `to` on the RHS.
