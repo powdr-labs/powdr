@@ -2493,9 +2493,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 keccakf(&mut state);
 
-                for i in 0..25 {
-                    let val = state[i];
-                    let lo = val as u32;
+                for (i, val) in state.iter().enumerate() {
+                    let lo = *val as u32;
                     let hi = (val >> 32) as u32;
 
                     self.proc
