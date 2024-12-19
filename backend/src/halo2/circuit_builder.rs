@@ -151,7 +151,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCircuit<'a, T> {
+impl<T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCircuit<'_, T> {
     type Config = PowdrCircuitConfig;
 
     type FloorPlanner = SimpleFloorPlanner;

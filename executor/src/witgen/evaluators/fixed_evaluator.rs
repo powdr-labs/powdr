@@ -19,7 +19,7 @@ impl<'a, T: FieldElement> FixedEvaluator<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> SymbolicVariables<T> for FixedEvaluator<'a, T> {
+impl<T: FieldElement> SymbolicVariables<T> for FixedEvaluator<'_, T> {
     fn value<'b>(&self, poly: AlgebraicVariable<'b>) -> AffineResult<AlgebraicVariable<'b>, T> {
         // TODO arrays
         match poly {

@@ -19,7 +19,7 @@ pub fn write_polys_file<F: FieldElement>(
 }
 
 fn ceil_div(num: usize, div: usize) -> usize {
-    (num + div - 1) / div
+    num.div_ceil(div)
 }
 
 fn write_polys_stream<T: FieldElement>(
