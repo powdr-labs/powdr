@@ -28,6 +28,7 @@ pub struct ProcessSummary {
 
 /// This component can generate code that solves identities.
 /// It needs a driver that tells it which identities to process on which rows.
+#[derive(Clone)]
 pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_evaluator: FixedEval,
@@ -38,7 +39,7 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     code: Vec<Effect<T, Variable>>,
 }
 
-impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, FixedEval> {
+impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T> + Clone> WitgenInference<'a, T, FixedEval> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         fixed_evaluator: FixedEval,
@@ -52,6 +53,26 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             assignments: Default::default(),
             code: Default::default(),
         }
+    }
+
+    /// Branches the inference state, returning a new state where the varialbe is equal to the
+    /// given value and a copy of the state where it is not equal.
+    /// It also return the code until this point, which is removed from both this and the new state.
+    pub fn branch(&mut self, variable: &Variable, value: T) -> (Vec<Effect<T, Variable>>, Self) {
+        assert!(!self.known_variables.contains(variable));
+        assert!(self
+            .range_constraint(variable.clone())
+            .map_or(true, |rc| rc.allows_value(value)));
+        // TODO we should probably branch on a range constraint instead.
+        // It would allow us to bisect a larger range, and we probably need all the features anyway
+        // already for the single-value case.
+        let code = std::mem::take(&mut self.code);
+        let mut else_branch = self.clone();
+
+        self.add_range_constraint(variable.clone(), RangeConstraint::from_value(value));
+
+        // TODO add the complement to the other branch and propagate there.
+        (code, else_branch)
     }
 
     pub fn code(self) -> Vec<Effect<T, Variable>> {
@@ -428,12 +449,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
 
 /// An equality constraint between an algebraic expression evaluated
 /// on a certain row offset and a variable or fixed constant value.
+#[derive(Clone)]
 struct Assignment<'a, T: FieldElement> {
     lhs: &'a Expression<T>,
     row_offset: i32,
     rhs: VariableOrValue<T, Variable>,
 }
 
+#[derive(Clone)]
 enum VariableOrValue<T, V> {
     Variable(V),
     Value(T),
@@ -464,6 +487,7 @@ mod test {
 
     use super::*;
 
+    #[derive(Clone)]
     pub struct FixedEvaluatorForFixedData<'a, T: FieldElement>(pub &'a FixedData<'a, T>);
     impl<'a, T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'a, T> {
         fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
