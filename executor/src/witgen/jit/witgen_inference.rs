@@ -15,7 +15,7 @@ use super::{
     super::{range_constraints::RangeConstraint, FixedData},
     affine_symbolic_expression::{AffineSymbolicExpression, ProcessResult},
     effect::{Effect, MachineCallArgument},
-    variable::Variable,
+    variable::{MachineCallReturnVariable, Variable},
 };
 
 /// Summary of the effect of processing an action.
@@ -63,7 +63,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 
     /// Process an identity on a certain row.
-    pub fn process_identity(&mut self, id: &Identity<T>, row_offset: i32) -> ProcessSummary {
+    pub fn process_identity(&mut self, id: &'a Identity<T>, row_offset: i32) -> ProcessSummary {
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                 self.process_equality_on_row(expression, row_offset, T::from(0).into())
@@ -153,11 +153,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 
     fn process_lookup(
-        &self,
-        lookup_id: u64,
-        left: &SelectedExpressions<T>,
-        right: &SelectedExpressions<T>,
-        offset: i32,
+        &mut self,
+        identity_id: u64,
+        left: &'a SelectedExpressions<T>,
+        right: &'a SelectedExpressions<T>,
+        row_offset: i32,
     ) -> ProcessResult<T, Variable> {
         // TODO: In the future, call the 'mutable state' to check if the
         // lookup can always be answered.
@@ -170,14 +170,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }) {
             // and the selector is known to be 1...
             if self
-                .evaluate(&left.selector, offset)
+                .evaluate(&left.selector, row_offset)
                 .and_then(|s| s.try_to_known().map(|k| k.is_known_one()))
                 == Some(true)
             {
                 if let Some(lhs) = left
                     .expressions
                     .iter()
-                    .map(|e| self.evaluate(e, offset))
+                    .map(|e| self.evaluate(e, row_offset))
                     .collect::<Option<Vec<_>>>()
                 {
                     // and all except one expression is known on the LHS.
@@ -186,19 +186,35 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                         .filter(|e| e.try_to_known().is_none())
                         .collect_vec();
                     if unknown.len() == 1 && unknown[0].single_unknown_variable().is_some() {
-                        let effects = vec![Effect::MachineCall(
-                            lookup_id,
-                            lhs.into_iter()
-                                .map(|e| {
-                                    if let Some(val) = e.try_to_known() {
-                                        MachineCallArgument::Known(val.clone())
-                                    } else {
-                                        MachineCallArgument::Unknown(e)
-                                    }
-                                })
-                                .collect(),
-                        )];
-                        return ProcessResult::complete(effects);
+                        let args = left
+                            .expressions
+                            .iter()
+                            .enumerate()
+                            .map(|(index, e)| {
+                                if let Some(known_value) = self
+                                    .evaluate(e, row_offset)
+                                    .and_then(|e| e.try_to_known().cloned())
+                                {
+                                    MachineCallArgument::Known(known_value.clone())
+                                } else {
+                                    let ret_var = MachineCallReturnVariable {
+                                        identity_id,
+                                        row_offset,
+                                        index,
+                                    };
+                                    self.assign_variable(
+                                        e,
+                                        row_offset,
+                                        Variable::MachineCallReturnValue(ret_var.clone()),
+                                    );
+                                    ret_var.into_argument()
+                                }
+                            })
+                            .collect();
+                        return ProcessResult::complete(vec![Effect::MachineCall(
+                            identity_id,
+                            args,
+                        )]);
                     }
                 }
             }
@@ -250,9 +266,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 }
                 Effect::MachineCall(_, arguments) => {
                     for arg in arguments {
-                        if let MachineCallArgument::Unknown(expr) = arg {
-                            let variable = expr.single_unknown_variable().unwrap();
-                            self.known_variables.insert(variable.clone());
+                        if let MachineCallArgument::Unknown(v) = arg {
+                            self.known_variables.insert(v.clone());
                         }
                     }
                     progress = true;
@@ -560,18 +575,22 @@ assert (Xor::A[6] & 18446744073692774400) == 0;
 Xor::C_byte[5] = ((Xor::C[6] & 16711680) // 65536);
 Xor::C[5] = (Xor::C[6] & 65535);
 assert (Xor::C[6] & 18446744073692774400) == 0;
-machine_call(0, [Known(Xor::A_byte[6]), Unknown(Xor::B_byte[6]), Known(Xor::C_byte[6])]);
+machine_call(0, [Known(Xor::A_byte[6]), Unknown(ret(0, 6, 1)), Known(Xor::C_byte[6])]);
+Xor::B_byte[6] = ret(0, 6, 1);
 Xor::A_byte[4] = ((Xor::A[5] & 65280) // 256);
 Xor::A[4] = (Xor::A[5] & 255);
 assert (Xor::A[5] & 18446744073709486080) == 0;
 Xor::C_byte[4] = ((Xor::C[5] & 65280) // 256);
 Xor::C[4] = (Xor::C[5] & 255);
 assert (Xor::C[5] & 18446744073709486080) == 0;
-machine_call(0, [Known(Xor::A_byte[5]), Unknown(Xor::B_byte[5]), Known(Xor::C_byte[5])]);
+machine_call(0, [Known(Xor::A_byte[5]), Unknown(ret(0, 5, 1)), Known(Xor::C_byte[5])]);
+Xor::B_byte[5] = ret(0, 5, 1);
 Xor::A_byte[3] = Xor::A[4];
 Xor::C_byte[3] = Xor::C[4];
-machine_call(0, [Known(Xor::A_byte[4]), Unknown(Xor::B_byte[4]), Known(Xor::C_byte[4])]);
-machine_call(0, [Known(Xor::A_byte[3]), Unknown(Xor::B_byte[3]), Known(Xor::C_byte[3])]);
+machine_call(0, [Known(Xor::A_byte[4]), Unknown(ret(0, 4, 1)), Known(Xor::C_byte[4])]);
+Xor::B_byte[4] = ret(0, 4, 1);
+machine_call(0, [Known(Xor::A_byte[3]), Unknown(ret(0, 3, 1)), Known(Xor::C_byte[3])]);
+Xor::B_byte[3] = ret(0, 3, 1);
 Xor::B[4] = Xor::B_byte[3];
 Xor::B[5] = (Xor::B[4] + (Xor::B_byte[4] * 256));
 Xor::B[6] = (Xor::B[5] + (Xor::B_byte[5] * 65536));
