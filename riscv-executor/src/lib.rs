@@ -589,7 +589,8 @@ impl<F: FieldElement> ExecutionTrace<F> {
 
     /// transpose the register write operations into value columns
     fn generate_registers_trace(&self) -> Vec<(String, Vec<F>)> {
-        let mut reg_values: Vec<Vec<F>> = vec![vec![]; self.reg_map.len()];
+        let mut reg_values: Vec<Vec<F>> =
+            vec![Vec::with_capacity(self.pc_trace.len().next_power_of_two()); self.reg_map.len()];
 
         // reverse lookup
         let idx_reg: HashMap<u16, &str> =
@@ -844,6 +845,25 @@ mod builder {
             cols_len
         }
 
+        // convert the flat array of rows into a hashmap of columns.
+        pub(crate) fn generate_main_columns(&mut self) -> HashMap<String, Vec<F>> {
+            let main_columns_len = self.main_columns_len();
+            let cols: HashMap<String, Vec<F>> = KnownWitnessCol::all()
+                .into_par_iter()
+                .map(|col| {
+                    let mut values = Vec::with_capacity(main_columns_len.next_power_of_two());
+                    for i in 0..main_columns_len {
+                        values.push(
+                            self.trace.known_cols[i * KnownWitnessCol::count() + col as usize],
+                        );
+                    }
+                    (col.name().to_string(), values)
+                })
+                .filter(|(col, _values)| self.trace.main_cols.contains(col))
+                .collect();
+            cols
+        }
+
         /// get the value of PC as of the start of the execution of the current row.
         pub(crate) fn get_pc(&self) -> Elem<F> {
             self.curr_pc
@@ -1036,22 +1056,8 @@ mod builder {
                 start.elapsed().as_secs_f64(),
             );
 
-            // convert the flat array of rows into a hashmap of columns.
             // This hashmap will be added to until we get the full witness.
-            let main_columns_len = self.main_columns_len();
-            let mut cols: HashMap<String, Vec<F>> = KnownWitnessCol::all()
-                .into_par_iter()
-                .map(|col| {
-                    let mut values = Vec::with_capacity(main_degree as usize);
-                    for i in 0..main_columns_len {
-                        values.push(
-                            self.trace.known_cols[i * KnownWitnessCol::count() + col as usize],
-                        );
-                    }
-                    (col.name().to_string(), values)
-                })
-                .filter(|(col, _values)| self.trace.main_cols.contains(col))
-                .collect();
+            let mut cols = self.generate_main_columns();
 
             // add reg columns to trace
             cols.extend(main_regs);
