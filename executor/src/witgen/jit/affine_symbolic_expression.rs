@@ -61,7 +61,7 @@ impl<T: FieldElement, V> Assertion<T, V> {
 
 pub enum MachineCallArgument<T: FieldElement, V> {
     Known(SymbolicExpression<T, V>),
-    Unknown(AffineSymbolicExpression<T, V>),
+    Unknown(V),
 }
 
 #[derive(Default)]
