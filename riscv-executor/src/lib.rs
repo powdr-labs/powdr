@@ -40,6 +40,7 @@ mod submachines;
 use submachines::*;
 mod memory;
 use memory::*;
+mod keccak;
 mod pil;
 
 use crate::profiler::Profiler;
@@ -127,7 +128,8 @@ instructions! {
     ec_add,
     ec_double,
     commit_public,
-    fail
+    fail,
+    keccakf
 }
 
 /// Enum with submachines used in the RISCV vm
@@ -163,9 +165,9 @@ machine_instances! {
     binary,
     shift,
     split_gl,
-    poseidon_gl
+    poseidon_gl,
     // poseidon2_gl,
-    // keccakf,
+    keccakf
     // arith,
 }
 
@@ -2462,6 +2464,35 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lid = self.instr_link_id(instr, "main_publics", 0);
                 submachine_op!(publics, lid, &[idx.into_fe(), limb.into_fe()],);
                 main_op!(commit_public);
+                vec![]
+            }
+            Instruction::keccakf => {
+                let reg1 = args[0].u();
+                let reg2 = args[1].u();
+                let lid = self.instr_link_id(instr, "main_regs", 0);
+                let input_ptr = self.reg_read(0, reg1, lid);
+                let lid = self.instr_link_id(instr, "main_regs", 1);
+                let output_ptr = self.reg_read(1, reg2, lid);
+
+                let inputs = (0..25)
+                    .map(|i| {
+                        let val = self.proc.get_mem(input_ptr.u() + i * 4, self.step, 2);
+                        val as u64
+                    })
+                    .collect::<Vec<_>>();
+
+                //let output = keccak::keccak256(inputs);
+
+                output.iter().enumerate().for_each(|(i, &v)| {
+                    self.proc
+                        .set_mem(output_ptr.u() + i as u32 * 4, v as u32, self.step + 1, 4);
+                });
+
+                set_col!(tmp1_col, input_ptr);
+                set_col!(tmp2_col, output_ptr);
+                let lid = self.instr_link_id(instr, "main_publics", 0);
+                submachine_op!(keccakf, lid, &[input_ptr.into_fe(), output_ptr.into_fe()],);
+                main_op!(keccakf32_memory);
                 vec![]
             }
         };
