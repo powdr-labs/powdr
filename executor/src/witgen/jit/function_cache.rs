@@ -51,8 +51,9 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
 
     /// Compiles the JIT function for the given identity and known arguments.
     /// Returns true if the function was successfully compiled.
-    pub fn compile_cached(
+    pub fn compile_cached<Q: QueryCallback<T>>(
         &mut self,
+        mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
         known_args: &BitVec,
     ) -> &Option<WitgenFunction<T>> {
@@ -60,27 +61,37 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             identity_id,
             known_args: known_args.clone(),
         };
-        self.ensure_cache(&cache_key);
+        self.ensure_cache(mutable_state, &cache_key);
         self.witgen_functions.get(&cache_key).unwrap()
     }
 
-    fn ensure_cache(&mut self, cache_key: &CacheKey) {
+    fn ensure_cache<Q: QueryCallback<T>>(
+        &mut self,
+        mutable_state: &MutableState<'a, T, Q>,
+        cache_key: &CacheKey,
+    ) {
         if self.witgen_functions.contains_key(cache_key) {
             return;
         }
 
         let f = match T::known_field() {
             // Currently, we only support the Goldilocks fields
-            Some(KnownField::GoldilocksField) => self.compile_witgen_function(cache_key),
+            Some(KnownField::GoldilocksField) => {
+                self.compile_witgen_function(mutable_state, cache_key)
+            }
             _ => None,
         };
         assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none())
     }
 
-    fn compile_witgen_function(&self, cache_key: &CacheKey) -> Option<WitgenFunction<T>> {
+    fn compile_witgen_function<Q: QueryCallback<T>>(
+        &self,
+        mutable_state: &MutableState<'a, T, Q>,
+        cache_key: &CacheKey,
+    ) -> Option<WitgenFunction<T>> {
         log::trace!("Compiling JIT function for {:?}", cache_key);
         self.processor
-            .generate_code(cache_key.identity_id, &cache_key.known_args)
+            .generate_code(mutable_state, cache_key.identity_id, &cache_key.known_args)
             .ok()
             .and_then(|code| {
                 log::trace!("Generated code ({} steps)", code.len());

@@ -11,7 +11,8 @@ use powdr_ast::analyzed::{
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    global_constraints::RangeConstraintSet, jit::affine_symbolic_expression::MachineCallArgument,
+    data_structures::mutable_state::MutableState, global_constraints::RangeConstraintSet,
+    jit::affine_symbolic_expression::MachineCallArgument, QueryCallback,
 };
 
 use super::{
@@ -30,15 +31,9 @@ pub struct ProcessSummary {
 
 /// This component can generate code that solves identities.
 /// It needs a driver that tells it which identities to process on which rows.
-pub struct WitgenInference<
-    'a,
-    T: FieldElement,
-    FixedEval: FixedEvaluator<T>,
-    CanProcess: CanProcessCall<T>,
-> {
+pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_evaluator: FixedEval,
-    can_process_call: CanProcess,
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
     known_variables: HashSet<Variable>,
     /// Internal equalities we were not able to solve yet.
@@ -46,19 +41,15 @@ pub struct WitgenInference<
     code: Vec<Effect<T, Variable>>,
 }
 
-impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>, CanProcess: CanProcessCall<T>>
-    WitgenInference<'a, T, FixedEval, CanProcess>
-{
+impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, FixedEval> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         fixed_evaluator: FixedEval,
-        can_process_call: CanProcess,
         known_variables: impl IntoIterator<Item = Variable>,
     ) -> Self {
         Self {
             fixed_data,
             fixed_evaluator,
-            can_process_call,
             derived_range_constraints: Default::default(),
             known_variables: known_variables.into_iter().collect(),
             assignments: Default::default(),
@@ -75,29 +66,32 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>, CanProcess: CanProcessCa
     }
 
     /// Process an identity on a certain row.
-    pub fn process_identity(&mut self, id: &Identity<T>, row_offset: i32) -> ProcessSummary {
+    pub fn process_identity<CanProcess: CanProcessCall<T>>(
+        &mut self,
+        can_process: CanProcess,
+        id: &Identity<T>,
+        row_offset: i32,
+    ) -> ProcessSummary {
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                 self.process_equality_on_row(expression, row_offset, T::from(0).into())
             }
-            Identity::Lookup(LookupIdentity {
-                id, left, right, ..
-            })
-            | Identity::Permutation(PermutationIdentity {
-                id, left, right, ..
-            })
-            | Identity::PhantomPermutation(PhantomPermutationIdentity {
-                id, left, right, ..
-            })
-            | Identity::PhantomLookup(PhantomLookupIdentity {
-                id, left, right, ..
-            }) => self.try_process_call(*id, &left.selector, &left.expressions, row_offset),
+            Identity::Lookup(LookupIdentity { id, left, .. })
+            | Identity::Permutation(PermutationIdentity { id, left, .. })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { id, left, .. })
+            | Identity::PhantomLookup(PhantomLookupIdentity { id, left, .. }) => self.process_call(
+                can_process,
+                *id,
+                &left.selector,
+                &left.expressions,
+                row_offset,
+            ),
             Identity::PhantomBusInteraction(PhantomBusInteractionIdentity {
                 id,
                 multiplicity,
                 tuple,
                 ..
-            }) => self.try_process_call(*id, multiplicity, &tuple.0, row_offset),
+            }) => self.process_call(can_process, *id, multiplicity, &tuple.0, row_offset),
             Identity::Connect(_) => ProcessResult::empty(),
         };
         self.ingest_effects(result)
@@ -165,9 +159,27 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>, CanProcess: CanProcessCa
         }
     }
 
-    /// If this submachine call can be processed, return the effect.
-    fn try_process_call(
+    fn process_call<CanProcess: CanProcessCall<T>>(
         &self,
+        can_process: CanProcess,
+        lookup_id: u64,
+        selector: &Expression<T>,
+        arguments: &[Expression<T>],
+        offset: i32,
+    ) -> ProcessResult<T, Variable> {
+        if let Some(effect) =
+            self.try_process_call(can_process, lookup_id, selector, arguments, offset)
+        {
+            ProcessResult::complete(vec![effect])
+        } else {
+            ProcessResult::empty()
+        }
+    }
+
+    /// If this submachine call can be processed, return the effect.
+    fn try_process_call<CanProcess: CanProcessCall<T>>(
+        &self,
+        can_process_call: CanProcess,
         lookup_id: u64,
         selector: &Expression<T>,
         arguments: &[Expression<T>],
@@ -186,10 +198,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>, CanProcess: CanProcessCa
             .collect::<Option<Vec<_>>>()?;
         let (known, rcs) = self.expression_list_to_known_and_range_constraints(&arguments)?;
 
-        if !self
-            .can_process_call
-            .can_process_call(lookup_id, &known, &rcs)
-        {
+        if can_process_call.can_process_call_fully(lookup_id, &known, &rcs) {
             return None;
         }
 
@@ -198,12 +207,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>, CanProcess: CanProcessCa
             arguments
                 .iter()
                 .zip(known)
-                .zip(rcs)
-                .map(|((expr, known), range_constraint)| {
+                .map(|(expr, known)| {
                     Some(if known {
                         MachineCallArgument::Known(expr.try_to_known().unwrap().clone())
                     } else {
-                        let v = expr.single_unknown_variable()?;
                         MachineCallArgument::Unknown(expr.clone())
                     })
                 })
@@ -418,7 +425,23 @@ pub trait CanProcessCall<T: FieldElement> {
     /// can always be processed with the given known inputs and range constraints
     /// on the parameters.
     /// @see Machine::can_process_call
-    fn can_process_call(&mut self, _identity_id: u64, _known_inputs: &BitVec) -> bool;
+    fn can_process_call_fully(
+        &self,
+        _identity_id: u64,
+        _known_inputs: &BitVec,
+        _range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool;
+}
+
+impl<'a, T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'a, T, Q> {
+    fn can_process_call_fully(
+        &self,
+        identity_id: u64,
+        known_inputs: &BitVec,
+        range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool {
+        MutableState::can_process_call_fully(self, identity_id, known_inputs, range_constraints)
+    }
 }
 
 #[cfg(test)]
@@ -447,6 +470,18 @@ mod test {
             let values = self.0.fixed_cols[&var.poly_id].values_max_size();
             let row = (row_offset + var.next as i32 + values.len() as i32) as usize % values.len();
             Some(values[row])
+        }
+    }
+
+    struct CannotProcessSubcalls;
+    impl<T: FieldElement> CanProcessCall<T> for CannotProcessSubcalls {
+        fn can_process_call_fully(
+            &self,
+            _identity_id: u64,
+            _known_inputs: &BitVec,
+            _range_constraints: &[Option<RangeConstraint<T>>],
+        ) -> bool {
+            false
         }
     }
 
@@ -482,7 +517,9 @@ mod test {
             for row in rows {
                 for id in retained_identities.iter() {
                     if !complete.contains(&(id.id(), *row))
-                        && witgen.process_identity(id, *row).complete
+                        && witgen
+                            .process_identity(CannotProcessSubcalls, id, *row)
+                            .complete
                     {
                         complete.insert((id.id(), *row));
                     }
