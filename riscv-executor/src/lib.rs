@@ -2142,6 +2142,21 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
                 vec![]
             }
+            "keccakf" => {
+                let input_ptr = self.proc.get_reg_mem(args[0].u());
+                let output_ptr = self.proc.get_reg_mem(args[1].u());
+                //println!("keccakf: input_ptr={input_ptr}, output_ptr={output_ptr}");
+
+                if let ExecMode::Trace = self.mode {
+                    self.proc.submachine("keccakf").add_operation(
+                        "keccakf32_memory",
+                        &[input_ptr, output_ptr],
+                        None,
+                        &[],
+                    );
+                }
+                vec![]
+            }
             instr => {
                 panic!("unknown instruction: {instr}");
             }

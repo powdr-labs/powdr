@@ -57,14 +57,12 @@ pub struct Keccak {
 impl Keccak {
     pub fn v256() -> Self {
         //RATE = 136
-        //OUTPUT_SIZE = 32
 
         Self {
             state: [0u64; 25],
             buffer: [0u8; 136],
             buffer_pos: 0,
             rate: 136,
-            output_size: 32,
         }
     }
 
