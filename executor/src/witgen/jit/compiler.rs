@@ -1,14 +1,13 @@
-#![allow(unused)]
 use std::{ffi::c_void, iter, mem, sync::Arc};
 
 use auto_enums::auto_enum;
 use itertools::Itertools;
 use libloading::Library;
-use powdr_number::{FieldElement, GoldilocksField, KnownField};
+use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
-    data_structures::{finalizable_data::CompactData, mutable_state::MutableState},
-    jit::affine_symbolic_expression::{AffineSymbolicExpression, MachineCallArgument},
+    data_structures::{finalizable_data::CompactDataRef, mutable_state::MutableState},
+    jit::affine_symbolic_expression::MachineCallArgument,
     machines::{
         profiling::{record_end, record_start},
         LookupCell,
@@ -19,7 +18,7 @@ use crate::witgen::{
 use super::{
     affine_symbolic_expression::{Assertion, Effect},
     symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator},
-    variable::{Cell, Variable},
+    variable::Variable,
 };
 
 pub struct WitgenFunction<T> {
@@ -27,7 +26,7 @@ pub struct WitgenFunction<T> {
     // (instead of a struct), so that
     // they are stored in registers instead of the stack. Should be checked.
     function: extern "C" fn(WitgenFunctionParams<T>),
-    library: Arc<Library>,
+    _library: Arc<Library>,
 }
 
 impl<T: FieldElement> WitgenFunction<T> {
@@ -39,9 +38,9 @@ impl<T: FieldElement> WitgenFunction<T> {
         &self,
         mutable_state: &MutableState<'_, T, Q>,
         params: &mut [LookupCell<T>],
-        data: &mut CompactData<T>,
-        row_offset: u64,
+        mut data: CompactDataRef<'_, T>,
     ) {
+        let row_offset = data.row_offset().try_into().unwrap();
         let (data, known) = data.as_mut_slices();
         (self.function)(WitgenFunctionParams {
             data: data.into(),
@@ -77,7 +76,10 @@ pub fn compile_effects<T: FieldElement>(
     let code = format!("{utils}\n//-------------------------------\n{witgen_code}");
 
     record_start("JIT-compilation");
+    let start = std::time::Instant::now();
+    log::trace!("Calling cargo...");
     let r = powdr_jit_compiler::call_cargo(&code);
+    log::trace!("Done compiling, took {:.2}s", start.elapsed().as_secs_f32());
     record_end("JIT-compilation");
     let lib_path = r.map_err(|e| format!("Failed to compile generated code: {e}"))?;
 
@@ -85,7 +87,7 @@ pub fn compile_effects<T: FieldElement>(
     let witgen_fun = unsafe { library.get(b"witgen\0") }.unwrap();
     Ok(WitgenFunction {
         function: *witgen_fun,
-        library,
+        _library: library,
     })
 }
 
@@ -263,8 +265,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>) -> String {
             let mut result_vars = vec![];
             let args = arguments
                 .iter()
-                .enumerate()
-                .map(|(i, a)| match a {
+                .map(|a| match a {
                     MachineCallArgument::Unknown(v) => {
                         let var_name = variable_to_string(v);
                         result_vars.push(var_name.clone());
@@ -415,11 +416,11 @@ fn util_code<T: FieldElement>(first_column_id: u64, column_count: usize) -> Resu
 
 #[cfg(test)]
 mod tests {
-    use powdr_number::KoalaBearField;
     use pretty_assertions::assert_eq;
 
     use powdr_number::GoldilocksField;
 
+    use crate::witgen::jit::variable::Cell;
     use crate::witgen::jit::variable::MachineCallReturnVariable;
 
     use super::*;

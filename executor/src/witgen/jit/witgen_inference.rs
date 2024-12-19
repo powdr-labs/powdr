@@ -1,16 +1,11 @@
-#![allow(unused)]
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Display,
-    hash::Hash,
-};
+use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
-    PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolyID,
-    PolynomialIdentity, PolynomialType, SelectedExpressions,
+    PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolynomialIdentity,
+    PolynomialType, SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
@@ -21,7 +16,7 @@ use crate::witgen::{
 use super::{
     super::{range_constraints::RangeConstraint, FixedData},
     affine_symbolic_expression::{AffineSymbolicExpression, Effect, ProcessResult},
-    variable::{Cell, MachineCallReturnVariable, Variable},
+    variable::{MachineCallReturnVariable, Variable},
 };
 
 /// Summary of the effect of processing an action.
@@ -318,14 +313,17 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         offset: i32,
     ) -> Option<AffineSymbolicExpression<T, Variable>> {
         Some(match expr {
-            Expression::Reference(r) => {
-                if r.is_fixed() {
-                    self.fixed_evaluator.evaluate(r, offset)?.into()
-                } else {
+            Expression::Reference(r) => match r.poly_id.ptype {
+                PolynomialType::Constant => self.fixed_evaluator.evaluate(r, offset)?.into(),
+                PolynomialType::Committed => {
                     let variable = Variable::from_reference(r, offset);
                     self.variable_to_expression(variable)
                 }
-            }
+                PolynomialType::Intermediate => {
+                    let definition = &self.fixed_data.intermediate_definitions[&r.to_thin()];
+                    self.evaluate(definition, offset)?
+                }
+            },
             Expression::PublicReference(_) | Expression::Challenge(_) => {
                 // TODO we need to introduce a variable type for those.
                 return None;
@@ -420,7 +418,7 @@ mod test {
         constant_evaluator,
         witgen::{
             global_constraints,
-            jit::{affine_symbolic_expression::Assertion, test_util::format_code},
+            jit::{test_util::format_code, variable::Cell},
             FixedData,
         },
     };
