@@ -18,7 +18,6 @@ use crate::witgen::{
 use super::{
     affine_symbolic_expression::{AffineSymbolicExpression, ProcessResult},
     effect::{Effect, MachineCallArgument},
-    symbolic_expression::SymbolicExpression,
     variable::{MachineCallReturnVariable, Variable},
 };
 
@@ -149,7 +148,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         can_process_call: CanProcess,
         lookup_id: u64,
         selector: &Expression<T>,
-        arguments: &[Expression<T>],
+        arguments: &'a [Expression<T>],
         row_offset: i32,
     ) -> ProcessResult<T, Variable> {
         // We need to know the selector.
@@ -169,7 +168,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .collect::<Vec<_>>();
         let range_constraints = evaluated
             .iter()
-            .flat_map(|e| e.map(|e| e.range_constraint()))
+            .flat_map(|e| e.as_ref().map(|e| e.range_constraint()))
             .collect_vec();
         let known = evaluated.iter().map(|e| e.is_some()).collect();
 
@@ -184,14 +183,15 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         let args = evaluated
             .into_iter()
             .zip(arguments)
-            .map(|(eval_expr, arg)| {
+            .enumerate()
+            .map(|(index, (eval_expr, arg))| {
                 if let Some(e) = eval_expr {
                     MachineCallArgument::Known(e)
                 } else {
                     let ret_var = MachineCallReturnVariable {
                         identity_id: lookup_id,
                         row_offset,
-                        index: 0,
+                        index,
                     };
                     self.assign_variable(
                         arg,
