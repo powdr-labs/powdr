@@ -55,7 +55,7 @@ impl<T> OwnedTraceValues<T> {
     }
 }
 
-impl<'a, F: FieldElement> TraceValues<F> for RowTraceValues<'a, F> {
+impl<F: FieldElement> TraceValues<F> for RowTraceValues<'_, F> {
     fn get(&self, column: &AlgebraicReference) -> F {
         match column.poly_id.ptype {
             PolynomialType::Committed | PolynomialType::Constant => {
