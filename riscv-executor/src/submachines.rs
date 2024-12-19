@@ -224,7 +224,7 @@ impl<F: FieldElement> SubmachineTrace<F> {
         self.values[idx] = value;
     }
 
-    /// set the value of a column in all rows of the current block
+    /// set the value of a selector in all rows of the current block
     fn set_current_block_selector(&mut self, size: u32, sel: &str, value: F) {
         for i in 0..size {
             let idx = self.len() - i - 1;
