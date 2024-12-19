@@ -1031,6 +1031,10 @@ mod builder {
 
             // turn register write operations into witness columns
             let main_regs = self.trace.generate_registers_trace();
+            log::debug!(
+                "Generating register traces took {}s",
+                start.elapsed().as_secs_f64(),
+            );
 
             // convert the flat array of rows into a hashmap of columns.
             // This hashmap will be added to until we get the full witness.
