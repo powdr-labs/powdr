@@ -399,7 +399,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
         if self
             .function_cache
-            .compile_cached(identity_id, &known_inputs)
+            .compile_cached(mutable_state, identity_id, &known_inputs)
             .is_some()
         {
             let updates = self.process_lookup_via_jit(mutable_state, identity_id, outer_query)?;

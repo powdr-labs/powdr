@@ -9,7 +9,7 @@ use crate::witgen::{machines::MachineParts, FixedData};
 use super::{
     effect::Effect,
     variable::Variable,
-    witgen_inference::{FixedEvaluator, WitgenInference},
+    witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
 
 /// A processor for generating JIT code for a block machine.
@@ -37,8 +37,9 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
     /// Generates the JIT code for a given combination of connection and known arguments.
     /// Fails if it cannot solve for the outputs, or if any sub-machine calls cannot be completed.
-    pub fn generate_code(
+    pub fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
         &self,
+        can_process: CanProcess,
         identity_id: u64,
         known_args: &BitVec,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
@@ -63,7 +64,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
         // Solve for the block witness.
         // Fails if any machine call cannot be completed.
-        self.solve_block(&mut witgen)?;
+        self.solve_block(can_process, &mut witgen)?;
 
         for (index, expr) in connection_rhs.expressions.iter().enumerate() {
             if !witgen.is_known(&Variable::Param(index)) {
@@ -78,7 +79,11 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
     /// Repeatedly processes all identities on all rows, until no progress is made.
     /// Fails iff there are incomplete machine calls in the latch row.
-    fn solve_block(&self, witgen: &mut WitgenInference<'a, T, &Self>) -> Result<(), String> {
+    fn solve_block<CanProcess: CanProcessCall<T> + Clone>(
+        &self,
+        can_process: CanProcess,
+        witgen: &mut WitgenInference<'a, T, &Self>,
+    ) -> Result<(), String> {
         let mut complete = HashSet::new();
         for iteration in 0.. {
             let mut progress = false;
@@ -87,7 +92,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             for row in 0..self.block_size {
                 for id in &self.machine_parts.identities {
                     if !complete.contains(&(id.id(), row)) {
-                        let result = witgen.process_identity(id, row as i32);
+                        let result = witgen.process_identity(can_process.clone(), id, row as i32);
                         if result.complete {
                             complete.insert((id.id(), row));
                         }
@@ -147,10 +152,9 @@ impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
 mod test {
     use std::{collections::BTreeMap, fs::read_to_string};
 
-    use bit_vec::BitVec;
-    use powdr_ast::analyzed::{
-        AlgebraicExpression, AlgebraicReference, Analyzed, SelectedExpressions,
-    };
+    use test_log::test;
+
+    use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, SelectedExpressions};
     use powdr_number::GoldilocksField;
 
     use crate::{
@@ -159,11 +163,25 @@ mod test {
             global_constraints,
             jit::{effect::Effect, test_util::format_code},
             machines::{Connection, ConnectionKind, MachineParts},
+            range_constraints::RangeConstraint,
             FixedData,
         },
     };
 
-    use super::{BlockMachineProcessor, Variable};
+    use super::*;
+
+    #[derive(Clone)]
+    struct CannotProcessSubcalls;
+    impl<T: FieldElement> CanProcessCall<T> for CannotProcessSubcalls {
+        fn can_process_call_fully(
+            &self,
+            _identity_id: u64,
+            _known_inputs: &BitVec,
+            _range_constraints: &[Option<RangeConstraint<T>>],
+        ) -> bool {
+            false
+        }
+    }
 
     fn generate_for_block_machine(
         input_pil: &str,
@@ -240,7 +258,7 @@ mod test {
                 .chain(output_names.iter().map(|_| false)),
         );
 
-        processor.generate_code(0, &known_values)
+        processor.generate_code(CannotProcessSubcalls, 0, &known_values)
     }
 
     #[test]
