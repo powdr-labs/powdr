@@ -2503,7 +2503,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                         .set_mem(output_ptr.u() + i as u32 * 8, hi, self.step + 1, lid);
                 }
 
-                let lid = self.instr_link_id(instr, "main_publics", 0);
+                let lid = self.instr_link_id(instr, "main_keccakf", 0);
                 submachine_op!(keccakf, lid, &[input_ptr.into_fe(), output_ptr.into_fe()],);
                 main_op!(keccakf32_memory);
                 vec![]

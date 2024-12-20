@@ -172,7 +172,7 @@ impl Runtime {
             "std::machines::hash::keccakf32_memory::Keccakf32Memory",
             None,
             "keccakf",
-            vec!["memory", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
+            vec!["memory", "MIN_DEGREE", "MAIN_MAX_DEGREE"],
             [r#"instr keccakf X, Y
                 link ~> tmp1_col = regs.mload(X, STEP)
                 link ~> tmp2_col = regs.mload(Y, STEP + 1)
