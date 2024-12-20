@@ -57,9 +57,14 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
         known_inputs: &BitVec,
         range_constraints: &[Option<RangeConstraint<T>>],
     ) -> bool {
+        // TODO We are currently ignoring bus interaction (also, but not only because there is no
+        // unique machine responsible for handling a bus send), so just answer "false" if the identity
+        // has no responsible machine.
         self.responsible_machine(identity_id)
-            .unwrap()
-            .can_process_call_fully(identity_id, known_inputs, range_constraints)
+            .ok()
+            .map_or(false, |mut machine| {
+                machine.can_process_call_fully(identity_id, known_inputs, range_constraints)
+            })
     }
 
     /// Call the machine responsible for the right-hand-side of an identity given its ID
