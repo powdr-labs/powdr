@@ -12,7 +12,7 @@ use crate::witgen::range_constraints::RangeConstraint;
 /// A value that is known at run-time, defined through a complex expression
 /// involving known cells or variables and compile-time constants.
 /// Each of the sub-expressions can have its own range constraint.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolicExpression<T: FieldElement, S> {
     /// A concrete constant value known at compile time.
     Concrete(T),
@@ -34,7 +34,7 @@ pub enum SymbolicExpression<T: FieldElement, S> {
     ),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -45,12 +45,12 @@ pub enum BinaryOperator {
     IntegerDiv,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BitOperator {
     And,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnaryOperator {
     Neg,
 }
