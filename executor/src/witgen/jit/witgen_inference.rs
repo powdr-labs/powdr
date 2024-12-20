@@ -168,7 +168,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .collect::<Vec<_>>();
         let range_constraints = evaluated
             .iter()
-            .flat_map(|e| e.as_ref().map(|e| e.range_constraint()))
+            .map(|e| e.as_ref().and_then(|e| e.range_constraint()))
             .collect_vec();
         let known = evaluated.iter().map(|e| e.is_some()).collect();
 
