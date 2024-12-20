@@ -1,4 +1,4 @@
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
 #[repr(transparent)]
 struct GoldilocksField(u64);
 
@@ -308,6 +308,13 @@ impl std::ops::BitAnd<GoldilocksField> for GoldilocksField {
     #[inline]
     fn bitand(self, b: GoldilocksField) -> GoldilocksField {
         Self(self.0 & b.0)
+    }
+}
+impl std::ops::BitAnd<u64> for GoldilocksField {
+    type Output = Self;
+    #[inline]
+    fn bitand(self, b: u64) -> GoldilocksField {
+        Self(self.0 & b)
     }
 }
 impl std::ops::BitOr<GoldilocksField> for GoldilocksField {
