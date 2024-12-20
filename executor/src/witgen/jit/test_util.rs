@@ -1,18 +1,9 @@
 use itertools::Itertools;
-use powdr_ast::analyzed::{Analyzed, Identity};
+use powdr_ast::analyzed::Analyzed;
 use powdr_executor_utils::VariablySizedColumn;
 use powdr_number::{FieldElement, GoldilocksField};
 
-use crate::{
-    constant_evaluator,
-    witgen::{
-        data_structures::mutable_state::MutableState,
-        global_constraints,
-        jit::effect::MachineCallArgument,
-        machines::{machine_extractor::MachineExtractor, KnownMachine},
-        FixedData, QueryCallback,
-    },
-};
+use crate::{constant_evaluator, witgen::jit::effect::MachineCallArgument};
 
 use super::{
     effect::{Assertion, Effect},
@@ -59,30 +50,3 @@ pub fn read_pil<T: FieldElement>(
     let fixed_col_vals = constant_evaluator::generate(&analyzed);
     (analyzed, fixed_col_vals)
 }
-
-// TODO: Doesn't compile
-// pub fn prepare<'a, T: FieldElement, Q: QueryCallback<T>>(
-//     analyzed: &'a Analyzed<T>,
-//     fixed_col_vals: &'a [(String, VariablySizedColumn<T>)],
-//     external_witness_values: &'a [(String, Vec<T>)],
-//     query_callback: &'a Q,
-// ) -> (
-//     FixedData<'a, T>,
-//     MutableState<'a, T, _>,
-//     Vec<&'a Identity<T>>,
-// ) {
-//     let fixed_data = FixedData::new(
-//         analyzed,
-//         fixed_col_vals,
-//         external_witness_values,
-//         Default::default(),
-//         0,
-//     );
-//     let (fixed_data, retained_identities) =
-//         global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
-
-//     let machines =
-//         MachineExtractor::new(&fixed_data).split_out_machines(retained_identities.clone());
-//     let mutable_state = MutableState::new(machines.into_iter(), query_callback);
-//     (fixed_data, mutable_state, retained_identities)
-// }
