@@ -84,14 +84,36 @@ impl Keccak {
     }
 
     pub fn update(&mut self, data: &[u8]) {
-        for &byte in data {
-            self.input_buffer |= (byte as u32) << (8 * self.next_byte);
-            self.next_byte += 1;
+        unsafe {
+            let (prefix, words, suffix) = data.align_to::<u32>();
 
-            if self.next_byte == 4 {
-                self.xor_word_to_state(self.input_buffer);
-                self.input_buffer = 0;
-                self.next_byte = 0;
+            for &byte in prefix {
+                self.input_buffer |= (byte as u32) << (8 * self.next_byte);
+                self.next_byte += 1;
+                if self.next_byte == 4 {
+                    self.xor_word_to_state(self.input_buffer);
+                    self.input_buffer = 0;
+                    self.next_byte = 0;
+                }
+            }
+
+            for &word in words {
+                if self.next_byte == 0 {
+                    self.xor_word_to_state(word);
+                } else {
+                    self.xor_word_to_state(self.input_buffer | (word << (8 * self.next_byte)));
+                    self.input_buffer = word >> (32 - 8 * self.next_byte);
+                }
+            }
+
+            for &byte in suffix {
+                self.input_buffer |= (byte as u32) << (8 * self.next_byte);
+                self.next_byte += 1;
+                if self.next_byte == 4 {
+                    self.xor_word_to_state(self.input_buffer);
+                    self.input_buffer = 0;
+                    self.next_byte = 0;
+                }
             }
         }
     }
