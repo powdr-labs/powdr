@@ -217,8 +217,7 @@ mod test {
             col witness sel, a, b, c;
             c = a + b;
         ";
-        let code =
-            generate_for_block_machine(input, "Secondary machine 0: Add (BlockMachine)", 2, 1);
+        let code = generate_for_block_machine(input, "Add", 2, 1);
         assert_eq!(
             format_code(&code.unwrap()),
             "Add::sel[0] = 1;
@@ -239,14 +238,9 @@ params[2] = Add::c[0];"
             col witness sel, a, b, c;
             a + b = 0;
         ";
-        let err_str = generate_for_block_machine(
-            input,
-            "Secondary machine 0: Unconstrained (BlockMachine)",
-            2,
-            1,
-        )
-        .err()
-        .unwrap();
+        let err_str = generate_for_block_machine(input, "Unconstrained", 2, 1)
+            .err()
+            .unwrap();
         assert_eq!(
             err_str,
             "Unable to derive algorithm to compute output value \"Unconstrained::c\""
@@ -258,24 +252,12 @@ params[2] = Add::c[0];"
     #[should_panic = "Incomplete machine calls"]
     fn binary() {
         let input = read_to_string("../test_data/pil/binary.pil").unwrap();
-        generate_for_block_machine(
-            &input,
-            "Secondary machine 0: main_binary (BlockMachine)",
-            2,
-            1,
-        )
-        .unwrap();
+        generate_for_block_machine(&input, "main_binary", 2, 1).unwrap();
     }
 
     #[test]
     fn poseidon() {
         let input = read_to_string("../test_data/pil/poseidon_gl.pil").unwrap();
-        generate_for_block_machine(
-            &input,
-            "Secondary machine 0: main_poseidon (BlockMachine)",
-            12,
-            4,
-        )
-        .unwrap();
+        generate_for_block_machine(&input, "main_poseidon", 12, 4).unwrap();
     }
 }
