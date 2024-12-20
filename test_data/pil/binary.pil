@@ -1,5 +1,10 @@
 // A compiled version of std/machines/large_field/binary.asm
 
+namespace main(128);
+    col witness a, b, c;
+    // Dummy connection constraint
+    [0, a, b, c] is main_binary::latch * main_binary::sel[0] $ [main_binary::operation_id, main_binary::A, main_binary::B, main_binary::C];
+
 namespace main_binary(128);
     col witness operation_id;
     (main_binary::operation_id' - main_binary::operation_id) * (1 - main_binary::latch) = 0;

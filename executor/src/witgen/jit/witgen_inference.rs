@@ -476,17 +476,14 @@ mod test {
     use pretty_assertions::assert_eq;
     use test_log::test;
 
-    use powdr_ast::analyzed::Analyzed;
-    use powdr_number::GoldilocksField;
-
-    use crate::{
-        constant_evaluator,
-        witgen::{
-            global_constraints,
-            jit::{test_util::format_code, variable::Cell},
-            machines::{Connection, FixedLookup, KnownMachine},
-            FixedData,
+    use crate::witgen::{
+        global_constraints,
+        jit::{
+            test_util::{format_code, read_pil},
+            variable::Cell,
         },
+        machines::{Connection, FixedLookup, KnownMachine},
+        FixedData,
     };
 
     use super::*;
@@ -507,9 +504,7 @@ mod test {
         known_cells: Vec<(&str, i32)>,
         expected_complete: Option<usize>,
     ) -> String {
-        let analyzed: Analyzed<GoldilocksField> =
-            powdr_pil_analyzer::analyze_string(input).unwrap();
-        let fixed_col_vals = constant_evaluator::generate(&analyzed);
+        let (analyzed, fixed_col_vals) = read_pil(input);
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let (fixed_data, retained_identities) =
             global_constraints::set_global_constraints(fixed_data, &analyzed.identities);

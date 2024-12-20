@@ -151,6 +151,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             block_count_runtime: 0,
         })
     }
+
+    #[cfg(test)]
+    pub fn machine_info(&self) -> (MachineParts<'a, T>, usize, usize) {
+        (self.parts.clone(), self.block_size, self.latch_row)
+    }
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
