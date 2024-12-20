@@ -55,24 +55,25 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T> + Clone> WitgenInference<
         }
     }
 
-    /// Branches the inference state, returning a new state where the varialbe is equal to the
-    /// given value and a copy of the state where it is not equal.
-    /// It also return the code until this point, which is removed from both this and the new state.
-    pub fn branch(&mut self, variable: &Variable, value: T) -> (Vec<Effect<T, Variable>>, Self) {
-        assert!(!self.known_variables.contains(variable));
-        assert!(self
-            .range_constraint(variable.clone())
-            .map_or(true, |rc| rc.allows_value(value)));
-        // TODO we should probably branch on a range constraint instead.
-        // It would allow us to bisect a larger range, and we probably need all the features anyway
-        // already for the single-value case.
-        let code = std::mem::take(&mut self.code);
-        let mut else_branch = self.clone();
+    pub fn branch(&mut self, variable: &Variable) -> (Vec<Effect<T, Variable>>, Self) {
+        // The variable needs to be known, we need to have a range constraint but
+        // it cannot be a single value.
+        assert!(self.known_variables.contains(variable));
+        let rc = self.range_constraint(variable.clone()).unwrap();
+        assert!(rc.try_to_single_value().is_none());
 
-        self.add_range_constraint(variable.clone(), RangeConstraint::from_value(value));
+        let (left, right) = rc.bisect();
+
+        let code = std::mem::take(&mut self.code);
+        let mut right_branch = self.clone();
+
+        self.add_range_constraint(variable.clone(), left);
+        right_branch.add_range_constraint(variable.clone(), right);
+
+        // TODO we need to store the two range constraints.
 
         // TODO add the complement to the other branch and propagate there.
-        (code, else_branch)
+        (code, right_branch)
     }
 
     pub fn code(self) -> Vec<Effect<T, Variable>> {
