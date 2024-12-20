@@ -252,7 +252,7 @@ params[2] = Add::c[0];"
     #[should_panic = "Incomplete machine calls"]
     fn binary() {
         let input = read_to_string("../test_data/pil/binary.pil").unwrap();
-        generate_for_block_machine(&input, "main_binary", 2, 1).unwrap();
+        generate_for_block_machine(&input, "main_binary", 3, 1).unwrap();
     }
 
     #[test]
