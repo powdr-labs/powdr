@@ -28,6 +28,7 @@ pub struct ProcessSummary {
 
 /// This component can generate code that solves identities.
 /// It needs a driver that tells it which identities to process on which rows.
+#[derive(Clone)]
 pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_evaluator: FixedEval,
@@ -38,7 +39,7 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     code: Vec<Effect<T, Variable>>,
 }
 
-impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, FixedEval> {
+impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T> + Clone> WitgenInference<'a, T, FixedEval> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         fixed_evaluator: FixedEval,
@@ -52,6 +53,27 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             assignments: Default::default(),
             code: Default::default(),
         }
+    }
+
+    pub fn branch(&mut self, variable: &Variable) -> (Vec<Effect<T, Variable>>, Self) {
+        // The variable needs to be known, we need to have a range constraint but
+        // it cannot be a single value.
+        assert!(self.known_variables.contains(variable));
+        let rc = self.range_constraint(variable.clone()).unwrap();
+        assert!(rc.try_to_single_value().is_none());
+
+        let (left, right) = rc.bisect();
+
+        let code = std::mem::take(&mut self.code);
+        let mut right_branch = self.clone();
+
+        self.add_range_constraint(variable.clone(), left);
+        right_branch.add_range_constraint(variable.clone(), right);
+
+        // TODO we need to store the two range constraints.
+
+        // TODO add the complement to the other branch and propagate there.
+        (code, right_branch)
     }
 
     pub fn code(self) -> Vec<Effect<T, Variable>> {
@@ -428,18 +450,20 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
 
 /// An equality constraint between an algebraic expression evaluated
 /// on a certain row offset and a variable or fixed constant value.
+#[derive(Clone)]
 struct Assignment<'a, T: FieldElement> {
     lhs: &'a Expression<T>,
     row_offset: i32,
     rhs: VariableOrValue<T, Variable>,
 }
 
+#[derive(Clone)]
 enum VariableOrValue<T, V> {
     Variable(V),
     Value(T),
 }
 
-pub trait FixedEvaluator<T: FieldElement> {
+pub trait FixedEvaluator<T: FieldElement>: Clone {
     fn evaluate(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
         None
     }
@@ -464,6 +488,7 @@ mod test {
 
     use super::*;
 
+    #[derive(Clone)]
     pub struct FixedEvaluatorForFixedData<'a, T: FieldElement>(pub &'a FixedData<'a, T>);
     impl<'a, T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'a, T> {
         fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
@@ -636,5 +661,35 @@ Xor::B[5] = (Xor::B[4] + (Xor::B_byte[4] * 256));
 Xor::B[6] = (Xor::B[5] + (Xor::B_byte[5] * 65536));
 Xor::B[7] = (Xor::B[6] + (Xor::B_byte[6] * 16777216));"
         );
+    }
+
+    #[test]
+    fn branching() {
+        let input = "
+namespace VM(256);
+
+    let A: col;
+    let B: col;
+    let instr_add: col;
+    let instr_mul: col;
+    let pc: col;
+
+    col fixed LINE = [0, 1, 2]*;
+    col fixed INSTR_ADD = [0, 1, 0] + [0]*;
+    col fixed INSTR_MUL = [1, 0, 1] + [0]*;
+
+    pc' = pc + 1;
+    [ pc, instr_add, instr_mul ] in [ LINE, INSTR_ADD, INSTR_MUL ];
+
+    A' = instr_add * (A + B) + instr_mul * (A * B);
+    B' = B;
+    ";
+        let code = solve_on_rows(
+            input,
+            &[2, 3],
+            vec![("VM::pc", 2), ("VM::A", 2), ("VM::B", 2)],
+            Some(1),
+        );
+        assert_eq!(code, "");
     }
 }
