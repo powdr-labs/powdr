@@ -161,4 +161,28 @@ mod test {
             "Unable to derive algorithm to compute values for witness columns in the next row for the following columns: Y"
         );
     }
+
+    #[test]
+    fn branching() {
+        let input = "
+    namespace VM(256);
+        let A: col;
+        let B: col;
+        let instr_add: col;
+        let instr_mul: col;
+        let pc: col;
+
+        col fixed LINE = [0, 1, 2]*;
+        col fixed INSTR_ADD = [0, 1, 0] + [0]*;
+        col fixed INSTR_MUL = [1, 0, 1] + [0]*;
+
+        pc' = pc + 1;
+        [ pc, instr_add, instr_mul ] in [ LINE, INSTR_ADD, INSTR_MUL ];
+
+        A' = instr_add * (A + B) + instr_mul * (A * B);
+        B' = B;
+        ";
+        let code = generate_single_step(input).unwrap();
+        assert_eq!(format_code(&code), "X[1] = Y[0];\nY[1] = (X[0] + Y[0]);");
+    }
 }
