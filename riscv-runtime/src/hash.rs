@@ -40,7 +40,7 @@ pub fn poseidon2_gl(data: &[Goldilocks; 8]) -> [Goldilocks; 8] {
 
 /// Calls the keccakf machine.
 /// Return value is placed in the output array.
-pub fn keccakf(input: &[u64; 25], output: &mut [u64; 25]) {
+pub fn keccakf(input: &[u32; 50], output: &mut [u32; 50]) {
     unsafe {
         // Syscall inputs: memory pointer to input array and memory pointer to output array.
         ecall!(Syscall::KeccakF, in("a0") input, in("a1") output);
@@ -48,71 +48,70 @@ pub fn keccakf(input: &[u64; 25], output: &mut [u64; 25]) {
 }
 
 pub struct Keccak {
-    state: [u64; 25],
-    buffer: [u8; 136],
-    buffer_pos: usize,
-    rate: usize,
+    state: [u32; 50],
+    next_word: usize,
+    input_buffer: u32,
+    next_byte: usize,
 }
 
 impl Keccak {
-    pub fn v256() -> Self {
-        //RATE = 136
+    const RATE: usize = 34; // Rate in u32 words
 
+    pub fn v256() -> Self {
         Self {
-            state: [0u64; 25],
-            buffer: [0u8; 136],
-            buffer_pos: 0,
-            rate: 136,
+            state: [0u32; 50],
+            next_word: 0,
+            input_buffer: 0,
+            next_byte: 0,
+        }
+    }
+
+    fn xor_word_to_state(&mut self, word: u32) {
+        let word_pair = self.next_word & !1;
+        if (self.next_word & 1) == 0 {
+            self.state[word_pair + 1] ^= word;
+        } else {
+            self.state[word_pair] ^= word;
+        }
+        self.next_word += 1;
+
+        if self.next_word == Self::RATE {
+            let mut state_out = [0u32; 50];
+            keccakf(&self.state, &mut state_out);
+            self.state = state_out;
+            self.next_word = 0;
         }
     }
 
     pub fn update(&mut self, data: &[u8]) {
-        let mut input = data;
-        while !input.is_empty() {
-            let space = self.rate - self.buffer_pos;
-            let to_absorb = space.min(input.len());
+        for &byte in data {
+            self.input_buffer |= (byte as u32) << (8 * self.next_byte);
+            self.next_byte += 1;
 
-            self.buffer[self.buffer_pos..self.buffer_pos + to_absorb]
-                .copy_from_slice(&input[..to_absorb]);
-            self.buffer_pos += to_absorb;
-            input = &input[to_absorb..];
-
-            if self.buffer_pos == self.rate {
-                self.absorb_block();
-                self.buffer_pos = 0;
+            if self.next_byte == 4 {
+                self.xor_word_to_state(self.input_buffer);
+                self.input_buffer = 0;
+                self.next_byte = 0;
             }
         }
     }
 
-    fn absorb_block(&mut self) {
-        let rate_words = self.rate / 8;
-        for i in 0..rate_words {
-            let chunk = &self.buffer[i * 8..(i + 1) * 8];
-            let val = u64::from_le_bytes(chunk.try_into().unwrap());
-            // Note: lo/hi positions are swapped to match the Keccak machine memory layout
-            let swapped = ((val << 32) & 0xFFFFFFFF00000000) | ((val >> 32) & 0x00000000FFFFFFFF);
-            self.state[i] ^= swapped;
-        }
-
-        let state_in = self.state;
-        let mut state_out = [0u64; 25];
-        keccakf(&state_in, &mut state_out);
-        self.state = state_out;
-    }
-
     pub fn finalize(&mut self, output: &mut [u8]) {
-        self.buffer[self.buffer_pos] = 0x01;
-        for i in self.buffer_pos + 1..self.rate {
-            self.buffer[i] = 0x00;
+        if self.next_byte > 0 {
+            self.input_buffer |= 0x01 << (8 * self.next_byte);
+            self.xor_word_to_state(self.input_buffer);
+        } else {
+            self.xor_word_to_state(0x01);
         }
-        self.buffer[self.rate - 1] ^= 0x80;
 
-        self.absorb_block();
+        while self.next_word < Self::RATE - 1 {
+            self.xor_word_to_state(0);
+        }
+        self.xor_word_to_state(0x80000000);
 
         for i in 0..4 {
-            let swapped = ((self.state[i] << 32) & 0xFFFFFFFF00000000)
-                | ((self.state[i] >> 32) & 0x00000000FFFFFFFF);
-            output[i * 8..(i + 1) * 8].copy_from_slice(&swapped.to_le_bytes());
+            output[i * 8..(i * 8 + 4)].copy_from_slice(&self.state[i * 2 + 1].to_le_bytes());
+            output[(i * 8 + 4)..(i * 8 + 8)].copy_from_slice(&self.state[i * 2].to_le_bytes());
         }
     }
 }
