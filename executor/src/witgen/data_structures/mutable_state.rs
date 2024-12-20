@@ -54,10 +54,9 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
         {
             Ok(m) => m,
             // Calling unwrap() would require KnownMachine to implement Debug.
-            Err(e) => panic!(
-                "Expected exactly one machine with substring '{}', but found {}.",
-                substring, e
-            ),
+            Err(e) => {
+                panic!("Expected exactly one machine with substring '{substring}', but found {e}.",)
+            }
         }
     }
 
