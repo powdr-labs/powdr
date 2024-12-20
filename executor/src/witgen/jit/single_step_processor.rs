@@ -2,7 +2,7 @@
 use std::collections::HashSet;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::AlgebraicReference;
+use powdr_ast::analyzed::{AlgebraicReference, PolyID};
 use powdr_number::FieldElement;
 
 use crate::witgen::{machines::MachineParts, FixedData};
@@ -17,6 +17,7 @@ use super::{
 pub struct SingleStepProcessor<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     machine_parts: MachineParts<'a, T>,
+    complete_identities: HashSet<(u64, i32)>,
 }
 
 impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
@@ -24,10 +25,11 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         SingleStepProcessor {
             fixed_data,
             machine_parts,
+            complete_identities: HashSet::new(),
         }
     }
 
-    pub fn generate_code(&self) -> Result<Vec<Effect<T, Variable>>, String> {
+    pub fn generate_code(&mut self) -> Result<Vec<Effect<T, Variable>>, String> {
         // All witness columns in row 0 are known.
         let known_variables = self.machine_parts.witnesses.iter().map(|id| {
             Variable::Cell(Cell {
@@ -36,40 +38,25 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 row_offset: 0,
             })
         });
-        let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables);
+        let mut witgen = WitgenInference::new(self.fixed_data, NoEval, known_variables);
 
-        let mut complete = HashSet::new();
-        for iteration in 0.. {
-            let mut progress = false;
+        loop {
+            self.process_until_no_progress(&mut witgen);
 
-            for id in &self.machine_parts.identities {
-                let row_offset = if id.contains_next_ref() { 0 } else { 1 };
-                if !complete.contains(&(id.id(), row_offset)) {
-                    let result = witgen.process_identity(id, row_offset);
-                    if result.complete {
-                        complete.insert((id.id(), row_offset));
-                    }
-                    progress |= result.progress;
-                }
-            }
-            if !progress {
-                log::debug!("Finishing after {iteration} iterations");
+            if self
+                .unknown_witness_cols_on_next_row(&witgen)
+                .next()
+                .is_none()
+            {
                 break;
+            } else {
+                todo!("Branch");
             }
         }
 
         // Check that we could derive all witness values in the next row.
         let unknown_witnesses = self
-            .machine_parts
-            .witnesses
-            .iter()
-            .filter(|wit| {
-                !witgen.is_known(&Variable::Cell(Cell {
-                    column_name: self.fixed_data.column_name(wit).to_string(),
-                    id: wit.id,
-                    row_offset: 1,
-                }))
-            })
+            .unknown_witness_cols_on_next_row(&witgen)
             .sorted()
             .collect_vec();
 
@@ -83,9 +70,39 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             ))
         }
     }
+
+    fn process_until_no_progress(&mut self, witgen: &mut WitgenInference<'a, T, NoEval>) {
+        loop {
+            let mut progress = false;
+
+            for id in &self.machine_parts.identities {
+                let row_offset = if id.contains_next_ref() { 0 } else { 1 };
+                let result = witgen.process_identity(id, row_offset);
+                progress |= result.progress;
+            }
+            if !progress {
+                return;
+            }
+        }
+    }
+
+    fn unknown_witness_cols_on_next_row<'b>(
+        &'b self,
+        witgen: &'b WitgenInference<'_, T, NoEval>,
+    ) -> impl Iterator<Item = &'b PolyID> + 'b {
+        self.machine_parts.witnesses.iter().filter(move |wit| {
+            !witgen.is_known(&Variable::Cell(Cell {
+                column_name: self.fixed_data.column_name(wit).to_string(),
+                id: wit.id,
+                row_offset: 1,
+            }))
+        })
+    }
 }
 
-impl<T: FieldElement> FixedEvaluator<T> for &SingleStepProcessor<'_, T> {
+struct NoEval;
+
+impl<T: FieldElement> FixedEvaluator<T> for NoEval {
     fn evaluate(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
         // We can only return something here if the fixed column is constant
         // in the region wer are considering.
@@ -138,11 +155,7 @@ mod test {
             Vec::new(),
         );
 
-        SingleStepProcessor {
-            fixed_data: &fixed_data,
-            machine_parts,
-        }
-        .generate_code()
+        SingleStepProcessor::new(&fixed_data, machine_parts).generate_code()
     }
 
     #[test]
