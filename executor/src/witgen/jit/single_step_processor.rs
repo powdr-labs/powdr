@@ -56,6 +56,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 .known_variables()
                 .filter_map(|var| witgen.range_constraint(var).map(|rc| (var, rc)))
                 .filter(|(_, rc)| rc.try_to_single_value().is_none())
+                .sorted()
                 .min_by_key(|(_, rc)| rc.range_width())
             else {
                 return Err(format!(
@@ -74,14 +75,18 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 self.generate_code_for_branch(can_process.clone(), witgen, complete.clone())?;
             let right_branch_code =
                 self.generate_code_for_branch(can_process, other_branch, complete)?;
-            common_code
-                .into_iter()
-                .chain(std::iter::once(Effect::Branch(
-                    condition,
-                    left_branch_code,
-                    right_branch_code,
-                )))
-                .collect()
+            if left_branch_code == right_branch_code {
+                common_code.into_iter().chain(left_branch_code).collect()
+            } else {
+                common_code
+                    .into_iter()
+                    .chain(std::iter::once(Effect::Branch(
+                        condition,
+                        left_branch_code,
+                        right_branch_code,
+                    )))
+                    .collect()
+            }
         };
         Ok(code)
     }
@@ -174,6 +179,7 @@ impl<T: FieldElement> FixedEvaluator<T> for NoEval {
 #[cfg(test)]
 mod test {
 
+    use pretty_assertions::assert_eq;
     use test_log::test;
 
     use powdr_ast::analyzed::Analyzed;
@@ -261,17 +267,38 @@ mod test {
         let instr_mul: col;
         let pc: col;
 
-        col fixed LINE = [0, 1] + [2]*
+        col fixed LINE = [0, 1] + [2]*;
         col fixed INSTR_ADD = [0, 1] +  [0]*;
         col fixed INSTR_MUL = [1, 0] + [1]*;
 
         pc' = pc + 1;
         [ pc, instr_add, instr_mul ] in [ LINE, INSTR_ADD, INSTR_MUL ];
 
-        A' = instr_add * (A + B) + instr_mul * (A * B);
+        instr_add * (A' - A + B) + instr_mul * (A' - A * B)  + (1 - instr_add - instr_mul) * (A' - A) = 0;
         B' = B;
         ";
         let code = generate_single_step(input).unwrap();
-        assert_eq!(format_code(&code), "X[1] = Y[0];\nY[1] = (X[0] + Y[0]);");
+        assert_eq!(
+            format_code(&code),
+            "\
+VM::pc[1] = (VM::pc[0] + 1);
+machine_call(1, [Known(VM::pc[1]), Unknown(ret(1, 1, 1)), Unknown(ret(1, 1, 2))]);
+VM::instr_add[1] = ret(1, 1, 1);
+VM::instr_mul[1] = ret(1, 1, 2);
+VM::B[1] = VM::B[0];
+if (VM::instr_add[0] == 0) {
+    if (VM::instr_mul[0] == 0) {
+        VM::A[1] = VM::A[0];
+    } else {
+        VM::A[1] = (VM::A[0] * VM::B[0]);
+    }
+} else {
+    if (VM::instr_mul[0] == 0) {
+        VM::A[1] = -(-VM::A[0] + VM::B[0]);
+    } else {
+        VM::A[1] = -(((-VM::A[0] + VM::B[0]) + -(VM::A[0] * VM::B[0])) + VM::A[0]);
+    }
+}"
+        );
     }
 }
