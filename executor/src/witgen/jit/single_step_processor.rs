@@ -17,7 +17,6 @@ use super::{
 pub struct SingleStepProcessor<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     machine_parts: MachineParts<'a, T>,
-    complete_identities: HashSet<(u64, i32)>,
 }
 
 impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
@@ -25,23 +24,15 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         SingleStepProcessor {
             fixed_data,
             machine_parts,
-            complete_identities: HashSet::new(),
         }
     }
 
     pub fn generate_code(&mut self) -> Result<Vec<Effect<T, Variable>>, String> {
-        // All witness columns in row 0 are known.
-        let known_variables = self.machine_parts.witnesses.iter().map(|id| {
-            Variable::Cell(Cell {
-                column_name: self.fixed_data.column_name(id).to_string(),
-                id: id.id,
-                row_offset: 0,
-            })
-        });
-        let mut witgen = WitgenInference::new(self.fixed_data, NoEval, known_variables);
+        let mut witgen = self.initialize_witgen();
 
         loop {
-            self.process_until_no_progress(&mut witgen);
+            let mut complete = HashSet::new();
+            self.process_until_no_progress(&mut witgen, &mut complete);
 
             if self
                 .unknown_witness_cols_on_next_row(&witgen)
@@ -54,6 +45,46 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             }
         }
 
+        self.code_if_successful(witgen)
+    }
+
+    fn initialize_witgen(&self) -> WitgenInference<'a, T, NoEval> {
+        let known_variables = self.machine_parts.witnesses.iter().map(|id| {
+            Variable::Cell(Cell {
+                column_name: self.fixed_data.column_name(id).to_string(),
+                id: id.id,
+                row_offset: 0,
+            })
+        });
+        WitgenInference::new(self.fixed_data, NoEval, known_variables)
+    }
+
+    fn process_until_no_progress(
+        &mut self,
+        witgen: &mut WitgenInference<'a, T, NoEval>,
+        complete: &mut HashSet<u64>,
+    ) {
+        let mut progress = true;
+        while progress {
+            progress = false;
+            for id in &self.machine_parts.identities {
+                if complete.contains(&id.id()) {
+                    continue;
+                }
+                let row_offset = if id.contains_next_ref() { 0 } else { 1 };
+                let result = witgen.process_identity(id, row_offset);
+                progress |= result.progress;
+                if result.complete {
+                    complete.insert(id.id());
+                }
+            }
+        }
+    }
+
+    fn code_if_successful(
+        &self,
+        witgen: WitgenInference<'_, T, NoEval>,
+    ) -> Result<Vec<Effect<T, Variable>>, String> {
         // Check that we could derive all witness values in the next row.
         let unknown_witnesses = self
             .unknown_witness_cols_on_next_row(&witgen)
@@ -65,24 +96,9 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             Ok(witgen.code())
         } else {
             Err(format!(
-                "Unable to derive algorithm to compute values for witness columns in the next row for the following columns: {}",
-                unknown_witnesses.iter().map(|wit| self.fixed_data.column_name(wit)).format(", ")
-            ))
-        }
-    }
-
-    fn process_until_no_progress(&mut self, witgen: &mut WitgenInference<'a, T, NoEval>) {
-        loop {
-            let mut progress = false;
-
-            for id in &self.machine_parts.identities {
-                let row_offset = if id.contains_next_ref() { 0 } else { 1 };
-                let result = witgen.process_identity(id, row_offset);
-                progress |= result.progress;
-            }
-            if !progress {
-                return;
-            }
+                    "Unable to derive algorithm to compute values for witness columns in the next row for the following columns: {}",
+                    unknown_witnesses.iter().map(|wit| self.fixed_data.column_name(wit)).format(", ")
+                ))
         }
     }
 
