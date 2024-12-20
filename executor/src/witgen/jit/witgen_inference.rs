@@ -463,7 +463,7 @@ enum VariableOrValue<T, V> {
     Value(T),
 }
 
-pub trait FixedEvaluator<T: FieldElement> {
+pub trait FixedEvaluator<T: FieldElement>: Clone {
     fn evaluate(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
         None
     }
@@ -674,22 +674,22 @@ namespace VM(256);
     let instr_mul: col;
     let pc: col;
 
-    let LINE: col = [0, 1, 2]*;
-    let INSTR_ADD: col = [0, 1, 0] + [0]*;
-    let INSTR_MUL: col = [1, 0, 1] + [0]*;
+    col fixed LINE = [0, 1, 2]*;
+    col fixed INSTR_ADD = [0, 1, 0] + [0]*;
+    col fixed INSTR_MUL = [1, 0, 1] + [0]*;
 
     pc' = pc + 1;
     [ pc, instr_add, instr_mul ] in [ LINE, INSTR_ADD, INSTR_MUL ];
 
+    A' = instr_add * (A + B) + instr_mul * (A * B);
+    B' = B;
     ";
         let code = solve_on_rows(
             input,
-            &[3, 4, 5, 6, 7],
-            vec![
-                ("Xor::A", 7),
-                ("Xor::C", 7), // We solve it in reverse, just for fun.
-            ],
-            Some(16),
+            &[2, 3],
+            vec![("VM::pc", 2), ("VM::A", 2), ("VM::B", 2)],
+            Some(1),
         );
+        assert_eq!(code, "");
     }
 }
