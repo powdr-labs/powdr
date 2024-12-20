@@ -6,8 +6,11 @@ use powdr_number::{FieldElement, GoldilocksField};
 use crate::{
     constant_evaluator,
     witgen::{
-        data_structures::mutable_state::MutableState, global_constraints,
-        jit::effect::MachineCallArgument, machines::machine_extractor::MachineExtractor, FixedData,
+        data_structures::mutable_state::MutableState,
+        global_constraints,
+        jit::effect::MachineCallArgument,
+        machines::{machine_extractor::MachineExtractor, KnownMachine},
+        FixedData, QueryCallback,
     },
 };
 
@@ -57,21 +60,29 @@ pub fn read_pil<T: FieldElement>(
     (analyzed, fixed_col_vals)
 }
 
-pub fn prepare<'a, T: FieldElement>(
-    analyzed: &'a Analyzed<T>,
-    fixed_col_vals: &'a [(String, VariablySizedColumn<T>)],
-) -> (
-    FixedData<'a, T>,
-    MutableState<'a, T, _>,
-    Vec<&'a Identity<T>>,
-) {
-    let fixed_data = FixedData::new(analyzed, fixed_col_vals, &[], Default::default(), 0);
-    let (fixed_data, retained_identities) =
-        global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
+// TODO: Doesn't compile
+// pub fn prepare<'a, T: FieldElement, Q: QueryCallback<T>>(
+//     analyzed: &'a Analyzed<T>,
+//     fixed_col_vals: &'a [(String, VariablySizedColumn<T>)],
+//     external_witness_values: &'a [(String, Vec<T>)],
+//     query_callback: &'a Q,
+// ) -> (
+//     FixedData<'a, T>,
+//     MutableState<'a, T, _>,
+//     Vec<&'a Identity<T>>,
+// ) {
+//     let fixed_data = FixedData::new(
+//         analyzed,
+//         fixed_col_vals,
+//         external_witness_values,
+//         Default::default(),
+//         0,
+//     );
+//     let (fixed_data, retained_identities) =
+//         global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
 
-    let machines = MachineExtractor::new(&fixed_data).split_out_machines(retained_identities);
-    let mutable_state = MutableState::new(machines.into_iter(), &|_| {
-        Err("Query not implemented".to_string())
-    });
-    (fixed_data, mutable_state, retained_identities)
-}
+//     let machines =
+//         MachineExtractor::new(&fixed_data).split_out_machines(retained_identities.clone());
+//     let mutable_state = MutableState::new(machines.into_iter(), query_callback);
+//     (fixed_data, mutable_state, retained_identities)
+// }

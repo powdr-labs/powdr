@@ -42,6 +42,17 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
         }
     }
 
+    #[cfg(test)]
+    pub fn get_machine(&self, name: &str) -> &RefCell<KnownMachine<'a, T>> {
+        for m in &self.machines {
+            println!("Machine name: {}", m.borrow().name());
+        }
+        self.machines
+            .iter()
+            .find(|m| m.borrow().name() == name)
+            .unwrap()
+    }
+
     /// Runs the first machine (unless there are no machines) end returns the generated columns.
     /// The first machine might call other machines, which is handled automatically.
     pub fn run(self) -> HashMap<String, Vec<T>> {

@@ -477,10 +477,12 @@ mod test {
     use test_log::test;
 
     use crate::witgen::{
+        global_constraints,
         jit::{
-            test_util::{format_code, prepare, read_pil},
+            test_util::{format_code, read_pil},
             variable::Cell,
         },
+        machines::{Connection, FixedLookup, KnownMachine},
         FixedData,
     };
 
@@ -503,7 +505,23 @@ mod test {
         expected_complete: Option<usize>,
     ) -> String {
         let (analyzed, fixed_col_vals) = read_pil(input);
-        let (fixed_data, mutable_state, retained_identities) = prepare(&analyzed, &fixed_col_vals);
+        let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
+        let (fixed_data, retained_identities) =
+            global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
+
+        let fixed_lookup_connections = retained_identities
+            .iter()
+            .filter_map(|i| Connection::try_from(*i).ok())
+            .filter(|c| FixedLookup::is_responsible(c))
+            .map(|c| (c.id, c))
+            .collect();
+
+        let global_constr = fixed_data.global_range_constraints.clone();
+        let fixed_machine = FixedLookup::new(global_constr, &fixed_data, fixed_lookup_connections);
+        let known_fixed = KnownMachine::FixedLookup(fixed_machine);
+        let mutable_state = MutableState::new([known_fixed].into_iter(), &|_| {
+            Err("Query not implemented".to_string())
+        });
 
         let known_cells = known_cells.iter().map(|(name, row_offset)| {
             let id = fixed_data.try_column_by_name(name).unwrap().id;
