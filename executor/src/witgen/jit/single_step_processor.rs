@@ -40,9 +40,22 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 .is_none()
             {
                 break;
-            } else {
-                todo!("Branch");
             }
+
+            let Some((most_constrained_var, rc)) = witgen
+                .known_variables()
+                .filter_map(|var| witgen.range_constraint(var).map(|rc| (var, rc)))
+                .min_by_key(|(_, rc)| rc.range_width())
+            else {
+                return Err("Unable to determine algorithm to compute next row and no variable to branch on.".to_string());
+            };
+            log::trace!(
+                "Branching on variable {most_constrained_var}, which has a range of {}",
+                rc.range_width()
+            );
+
+            rc.br
+            todo!();
         }
 
         self.code_if_successful(witgen)
@@ -130,6 +143,8 @@ impl<T: FieldElement> FixedEvaluator<T> for NoEval {
 
 #[cfg(test)]
 mod test {
+
+    use test_log::test;
 
     use powdr_ast::analyzed::Analyzed;
     use powdr_number::GoldilocksField;

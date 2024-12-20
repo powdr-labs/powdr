@@ -62,6 +62,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.known_variables.contains(variable)
     }
 
+    pub fn known_variables(&self) -> impl Iterator<Item = &Variable> {
+        self.known_variables.iter()
+    }
+
     /// Process an identity on a certain row.
     pub fn process_identity(&mut self, id: &'a Identity<T>, row_offset: i32) -> ProcessSummary {
         let result = match id {
@@ -274,7 +278,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Adds a range constraint to the set of derived range constraints. Returns true if progress was made.
     fn add_range_constraint(&mut self, variable: Variable, rc: RangeConstraint<T>) -> bool {
         let rc = self
-            .range_constraint(variable.clone())
+            .range_constraint(&variable)
             .map_or(rc.clone(), |existing_rc| existing_rc.conjunction(&rc));
         if !self.known_variables.contains(&variable) {
             if let Some(v) = rc.try_to_single_value() {
@@ -294,7 +298,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 
     /// Returns the current best-known range constraint on the given variable
     /// combining global range constraints and newly derived local range constraints.
-    fn range_constraint(&self, variable: Variable) -> Option<RangeConstraint<T>> {
+    pub fn range_constraint(&self, variable: &Variable) -> Option<RangeConstraint<T>> {
         variable
             .try_to_witness_poly_id()
             .and_then(|poly_id| {
@@ -384,7 +388,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
     pub fn evaluate_variable(&self, variable: Variable) -> AffineSymbolicExpression<T, Variable> {
         // If a variable is known and has a compile-time constant value,
         // that value is stored in the range constraints.
-        let rc = self.witgen_inference.range_constraint(variable.clone());
+        let rc = self.witgen_inference.range_constraint(&variable);
         if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
             val.into()
         } else if !self.only_concrete_known && self.witgen_inference.is_known(&variable) {
