@@ -577,7 +577,7 @@ mod builder {
         mode: ExecMode,
     }
 
-    impl<'a, 'b: 'a, F: FieldElement> TraceBuilder<'a, F> {
+    impl<'a, 'b: 'a, F: FieldElement> TraceBuilder<'b, F> {
         /// Creates a new builder.
         ///
         /// May fail if max_rows_len is too small or if the main machine is

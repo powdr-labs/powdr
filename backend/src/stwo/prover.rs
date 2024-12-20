@@ -291,6 +291,7 @@ where
         let component = PowdrComponent::new(
             &mut TraceLocationAllocator::default(),
             PowdrEval::new(self.analyzed.clone()),
+            // This parameter is used for the logup functionality. If logup is not required, this default value should be passed.
             (SecureField::zero(), None),
         );
 
