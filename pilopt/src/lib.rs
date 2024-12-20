@@ -23,12 +23,8 @@ use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
+    let mut pil_hash = hash_pil_state(&pil_file);
     loop {
-        let pil_hash = {
-            let mut hasher = DefaultHasher::new();
-            pil_file.hash(&mut hasher);
-            hasher.finish()
-        };
         remove_unreferenced_definitions(&mut pil_file);
         remove_constant_fixed_columns(&mut pil_file);
         deduplicate_fixed_columns(&mut pil_file);
@@ -40,14 +36,11 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         remove_trivial_identities(&mut pil_file);
         remove_duplicate_identities(&mut pil_file);
 
-        let new_hash = {
-            let mut hasher = DefaultHasher::new();
-            pil_file.hash(&mut hasher);
-            hasher.finish()
-        };
+        let new_hash = hash_pil_state(&pil_file);
         if pil_hash == new_hash {
             break;
         }
+        pil_hash = new_hash;
     }
     let col_count_post = (pil_file.commitment_count(), pil_file.constant_count());
     log::info!(
@@ -58,6 +51,12 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         col_count_post.1
     );
     pil_file
+}
+
+fn hash_pil_state<T: Hash>(pil_file: &Analyzed<T>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    pil_file.hash(&mut hasher);
+    hasher.finish()
 }
 
 /// Removes all definitions that are not referenced by an identity, public declaration

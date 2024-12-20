@@ -518,7 +518,7 @@ impl<T: FieldElement> Analyzed<T> {
     }
 }
 
-impl<T: FieldElement> Hash for Analyzed<T> {
+impl<T: Hash> Hash for Analyzed<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
         for identity in &self.identities {
             identity.hash(state);
