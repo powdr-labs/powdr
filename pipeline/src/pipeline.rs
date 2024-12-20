@@ -1010,8 +1010,14 @@ impl<T: FieldElement> Pipeline<T> {
         let mut external_witness_values =
             std::mem::take(&mut self.arguments.external_witness_values);
         // witgen needs external witness columns sorted by source order
-        external_witness_values
-            .sort_by_key(|(name, _)| witness_cols.iter().position(|n| n == name).unwrap());
+        external_witness_values.sort_by_key(|(name, _)| {
+            witness_cols
+                .iter()
+                .position(|n| n == name)
+                .unwrap_or_else(|| {
+                    panic!("external witness {name} does not exist in the optimized PIL")
+                })
+        });
 
         if witness_cols
             .iter()
