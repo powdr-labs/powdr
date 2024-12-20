@@ -561,8 +561,6 @@ pub struct ExecutionTrace<F: FieldElement> {
     /// We keep a row based flat vec for memory locality.
     known_cols: Vec<F>,
 
-    /// `main` witness columns obtained from the optimized pil.
-    main_cols: Vec<String>,
     /// all witness columns obtained from the optimized pil.
     all_cols: Vec<String>,
 }
@@ -574,12 +572,6 @@ impl<F: FieldElement> ExecutionTrace<F> {
         reg_writes: Vec<RegWrite<F>>,
         pc: usize,
     ) -> Self {
-        let main_cols: Vec<String> = witness_cols
-            .iter()
-            .filter(|n| n.starts_with("main::"))
-            .cloned()
-            .collect();
-
         ExecutionTrace {
             reg_map,
             reg_writes,
@@ -588,7 +580,6 @@ impl<F: FieldElement> ExecutionTrace<F> {
             pc_trace: Vec::new(),
             submachine_ops: MachineInstance::all().iter().map(|_| Vec::new()).collect(),
             known_cols: vec![],
-            main_cols,
             all_cols: witness_cols,
         }
     }
@@ -865,7 +856,6 @@ mod builder {
                     }
                     (col.name().to_string(), values)
                 })
-                .filter(|(col, _values)| self.trace.main_cols.contains(col))
                 .collect();
             cols
         }
