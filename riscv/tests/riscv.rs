@@ -185,7 +185,6 @@ fn memfuncs() {
 #[ignore = "Too slow"]
 fn keccak() {
     let case = "keccak";
-    //verify_riscv_crate(case, Default::default(), false);
     let options = CompilerOptions::new_gl().with_keccak();
     verify_riscv_crate_gl_with_options(case, Default::default(), options, false);
 }
