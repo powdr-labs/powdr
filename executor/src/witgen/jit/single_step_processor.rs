@@ -274,7 +274,7 @@ mod test {
         pc' = pc + 1;
         [ pc, instr_add, instr_mul ] in [ LINE, INSTR_ADD, INSTR_MUL ];
 
-        instr_add * (A' - A + B) + instr_mul * (A' - A * B)  + (1 - instr_add - instr_mul) * (A' - A) = 0;
+        instr_add * (A' - (A + B)) + instr_mul * (A' - A * B)  + (1 - instr_add - instr_mul) * (A' - A) = 0;
         B' = B;
         ";
         let code = generate_single_step(input).unwrap();
@@ -286,17 +286,17 @@ machine_call(1, [Known(VM::pc[1]), Unknown(ret(1, 1, 1)), Unknown(ret(1, 1, 2))]
 VM::instr_add[1] = ret(1, 1, 1);
 VM::instr_mul[1] = ret(1, 1, 2);
 VM::B[1] = VM::B[0];
-if (VM::instr_add[0] == 0) {
-    if (VM::instr_mul[0] == 0) {
-        VM::A[1] = VM::A[0];
+if (VM::instr_add[0] == 1) {
+    if (VM::instr_mul[0] == 1) {
+        VM::A[1] = -((-(VM::A[0] + VM::B[0]) + -(VM::A[0] * VM::B[0])) + VM::A[0]);
     } else {
-        VM::A[1] = (VM::A[0] * VM::B[0]);
+        VM::A[1] = (VM::A[0] + VM::B[0]);
     }
 } else {
-    if (VM::instr_mul[0] == 0) {
-        VM::A[1] = -(-VM::A[0] + VM::B[0]);
+    if (VM::instr_mul[0] == 1) {
+        VM::A[1] = (VM::A[0] * VM::B[0]);
     } else {
-        VM::A[1] = -(((-VM::A[0] + VM::B[0]) + -(VM::A[0] * VM::B[0])) + VM::A[0]);
+        VM::A[1] = VM::A[0];
     }
 }"
         );

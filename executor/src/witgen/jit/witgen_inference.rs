@@ -85,22 +85,22 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             rc.range_width()
         );
 
-        let (left_condition, right_condition) = rc.bisect();
+        let (low_condition, high_condition) = rc.bisect();
 
         let code = std::mem::take(&mut self.code);
-        let mut right_branch = self.clone();
+        let mut low_branch = self.clone();
 
-        self.add_range_constraint(variable.clone(), left_condition.clone());
-        right_branch.add_range_constraint(variable.clone(), right_condition.clone());
+        self.add_range_constraint(variable.clone(), high_condition.clone());
+        low_branch.add_range_constraint(variable.clone(), low_condition.clone());
 
         (
             code,
             BranchCondition {
                 variable: variable.clone(),
-                first_branch: left_condition,
-                second_branch: right_condition,
+                first_branch: high_condition,
+                second_branch: low_condition,
             },
-            right_branch,
+            low_branch,
         )
     }
 
