@@ -132,6 +132,10 @@ impl Session {
         }
     }
 
+    pub fn write_data(&mut self, data: Vec<u8>) {
+        self.pipeline.add_prover_data(data);
+    }
+
     pub fn run(&mut self) {
         run(&mut self.pipeline);
     }
@@ -278,7 +282,9 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
     let start = Instant::now();
 
     let asm = pipeline.compute_analyzed_asm().unwrap().clone();
-    let initial_memory = riscv::continuations::load_initial_memory(&asm);
+    let prover_data = pipeline.prover_data();
+    let initial_memory = riscv::continuations::load_initial_memory(&asm, prover_data);
+
     let trace_len = riscv_executor::execute_fast(
         &asm,
         initial_memory,
