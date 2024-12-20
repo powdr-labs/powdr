@@ -261,9 +261,9 @@ mod test {
         let instr_mul: col;
         let pc: col;
 
-        col fixed LINE = [0, 1, 2] + [0]*;
-        col fixed INSTR_ADD = [0, 1, 0] + [0]*;
-        col fixed INSTR_MUL = [1, 0, 1] + [0]*;
+        col fixed LINE = [0, 1] + [2]*
+        col fixed INSTR_ADD = [0, 1] +  [0]*;
+        col fixed INSTR_MUL = [1, 0] + [1]*;
 
         pc' = pc + 1;
         [ pc, instr_add, instr_mul ] in [ LINE, INSTR_ADD, INSTR_MUL ];
