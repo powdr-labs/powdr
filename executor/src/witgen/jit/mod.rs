@@ -9,3 +9,4 @@ pub(crate) mod witgen_inference;
 
 #[cfg(test)]
 pub(crate) mod test_util;
+mod single_step_processor;

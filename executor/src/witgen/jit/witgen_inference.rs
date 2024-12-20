@@ -662,34 +662,4 @@ Xor::B[6] = (Xor::B[5] + (Xor::B_byte[5] * 65536));
 Xor::B[7] = (Xor::B[6] + (Xor::B_byte[6] * 16777216));"
         );
     }
-
-    #[test]
-    fn branching() {
-        let input = "
-namespace VM(256);
-
-    let A: col;
-    let B: col;
-    let instr_add: col;
-    let instr_mul: col;
-    let pc: col;
-
-    col fixed LINE = [0, 1, 2]*;
-    col fixed INSTR_ADD = [0, 1, 0] + [0]*;
-    col fixed INSTR_MUL = [1, 0, 1] + [0]*;
-
-    pc' = pc + 1;
-    [ pc, instr_add, instr_mul ] in [ LINE, INSTR_ADD, INSTR_MUL ];
-
-    A' = instr_add * (A + B) + instr_mul * (A * B);
-    B' = B;
-    ";
-        let code = solve_on_rows(
-            input,
-            &[2, 3],
-            vec![("VM::pc", 2), ("VM::A", 2), ("VM::B", 2)],
-            Some(1),
-        );
-        assert_eq!(code, "");
-    }
 }
