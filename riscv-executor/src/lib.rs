@@ -525,16 +525,6 @@ pub struct MemOperation {
     pub address: u32,
 }
 
-pub struct RegWrite<F: FieldElement> {
-    /// The row of the execution trace this write will result into. Multiple
-    /// writes at the same row are valid: the last write to a given reg_idx will
-    /// define the final value of the register in that row.
-    row: usize,
-    /// Index of the register in the register bank.
-    reg_idx: u16,
-    val: F,
-}
-
 pub struct ExecutionTrace<F: FieldElement> {
     reg_map: HashMap<String, u16>,
 
@@ -546,11 +536,10 @@ pub struct ExecutionTrace<F: FieldElement> {
 
     /// the pc value at each row
     pc_trace: Vec<u32>,
-    /// Values of the non-pc asm registers in the execution trace.
-    ///
-    /// Each N elements is a row with all registers, where N is the number of
-    /// registers.
-    reg_writes: Vec<RegWrite<F>>,
+    /// values of non-pc asm registers at each row
+    reg_trace: Vec<Vec<F>>,
+    /// reg writes to be set on the trace on the next row
+    reg_writes: Vec<Option<F>>,
 
     /// Calls into submachines
     submachine_ops: Vec<Vec<SubmachineOp<F>>>,
@@ -566,15 +555,11 @@ pub struct ExecutionTrace<F: FieldElement> {
 }
 
 impl<F: FieldElement> ExecutionTrace<F> {
-    pub fn new(
-        witness_cols: Vec<String>,
-        reg_map: HashMap<String, u16>,
-        reg_writes: Vec<RegWrite<F>>,
-        pc: usize,
-    ) -> Self {
+    pub fn new(witness_cols: Vec<String>, reg_map: HashMap<String, u16>, pc: usize) -> Self {
         ExecutionTrace {
+            reg_trace: reg_map.keys().map(|_| Vec::new()).collect(),
+            reg_writes: vec![None; reg_map.len()],
             reg_map,
-            reg_writes,
             mem_ops: Vec::new(),
             len: pc,
             pc_trace: Vec::new(),
@@ -585,7 +570,7 @@ impl<F: FieldElement> ExecutionTrace<F> {
     }
 
     /// transpose the register write operations into value columns
-    fn generate_registers_trace(&self) -> Vec<(String, Vec<F>)> {
+    fn generate_registers_trace(&mut self) -> Vec<(String, Vec<F>)> {
         let mut reg_values: Vec<Vec<F>> =
             vec![Vec::with_capacity(self.pc_trace.len().next_power_of_two()); self.reg_map.len()];
 
@@ -598,34 +583,8 @@ impl<F: FieldElement> ExecutionTrace<F> {
             if reg == "pc" {
                 reg_values[i].extend(self.pc_trace.iter().map(|&v| F::from(v)));
             } else {
-                reg_values[i] = vec![0.into(); self.pc_trace.len()];
+                reg_values[i] = std::mem::take(&mut self.reg_trace[i]);
             }
-        }
-
-        let mut row = 1; // first row has all zeroes
-        for w in &self.reg_writes {
-            // copy values until the row of the write
-            while row < w.row {
-                for i in 0..self.reg_map.len() {
-                    if idx_reg[&(i as u16)] == "pc" {
-                        continue;
-                    }
-                    reg_values[i][row] = reg_values[i][row - 1];
-                }
-                row += 1;
-            }
-            // apply the write
-            reg_values[w.reg_idx as usize][w.row] = w.val;
-        }
-        // no more writes: copy values until end of trace
-        while row < self.pc_trace.len() {
-            for i in 0..self.reg_map.len() {
-                if idx_reg[&(i as u16)] == "pc" {
-                    continue;
-                }
-                reg_values[i][row] = reg_values[i][row - 1];
-            }
-            row += 1;
         }
 
         reg_values
@@ -664,7 +623,7 @@ mod builder {
     use crate::{
         pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, KnownWitnessCol,
         MachineInstance, MemOperation, MemOperationKind, MemoryMachine, MemoryState,
-        PoseidonGlMachine, PublicsMachine, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine,
+        PoseidonGlMachine, PublicsMachine, RegisterMemory, ShiftMachine, SplitGlMachine,
         Submachine, SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
     };
 
@@ -760,7 +719,6 @@ mod builder {
             let pc_idx = reg_map["pc"];
             let mut regs = vec![0.into(); reg_len];
             regs[pc_idx as usize] = PC_INITIAL_VAL.into();
-            let reg_writes = vec![];
 
             let submachines: HashMap<_, RefCell<Box<dyn Submachine<F>>>> =
                 if let ExecMode::Trace = mode {
@@ -807,7 +765,7 @@ mod builder {
             let mut ret = Self {
                 pc_idx,
                 curr_pc: PC_INITIAL_VAL.into(),
-                trace: ExecutionTrace::new(witness_cols, reg_map, reg_writes, PC_INITIAL_VAL + 1),
+                trace: ExecutionTrace::new(witness_cols, reg_map, PC_INITIAL_VAL + 1),
                 submachines,
                 next_statement_line: 1,
                 batch_to_line_map,
@@ -925,11 +883,7 @@ mod builder {
             // Record register write in trace. Only for non-pc, non-assignment registers.
             if let ExecMode::Trace = self.mode {
                 if idx != self.pc_idx {
-                    self.trace.reg_writes.push(RegWrite {
-                        row: self.trace.len,
-                        reg_idx: idx,
-                        val: value.into_fe(),
-                    });
+                    self.trace.reg_writes[idx as usize] = Some(value.into_fe());
                 }
             }
 
@@ -955,6 +909,18 @@ mod builder {
                 let new_len = self.trace.known_cols.len() + KnownWitnessCol::count();
                 self.trace.known_cols.resize(new_len, F::zero());
                 self.trace.pc_trace.push(pc);
+                self.trace
+                    .reg_trace
+                    .iter_mut()
+                    .enumerate()
+                    .for_each(|(idx, v)| {
+                        // set the value from the write or copy the previous value
+                        if let Some(w) = self.trace.reg_writes[idx].take() {
+                            v.push(w);
+                        } else {
+                            v.push(v.last().cloned().unwrap_or(F::zero()));
+                        }
+                    });
             }
         }
 
