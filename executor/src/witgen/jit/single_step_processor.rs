@@ -261,7 +261,7 @@ mod test {
         let instr_mul: col;
         let pc: col;
 
-        col fixed LINE = [0, 1, 2]*;
+        col fixed LINE = [0, 1, 2] + [0]*;
         col fixed INSTR_ADD = [0, 1, 0] + [0]*;
         col fixed INSTR_MUL = [1, 0, 1] + [0]*;
 
