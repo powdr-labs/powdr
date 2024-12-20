@@ -249,7 +249,7 @@ known_witness_col! {
     instr_fail
 }
 
-/// Enum with submachines used in the RISCV vm
+/// Enum with submachines known to the RISCV executor
 macro_rules! machine_instances {
     ($($name:ident),*) => {
         #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToPrimitive, FromPrimitive)]
@@ -297,6 +297,7 @@ machine_instances! {
     shift,
     split_gl,
     poseidon_gl
+    // TODO: these are not implemented yet
     // poseidon2_gl,
     // keccakf,
     // arith,
@@ -562,6 +563,8 @@ pub struct ExecutionTrace<F: FieldElement> {
 
     /// `main` witness columns obtained from the optimized pil.
     main_cols: Vec<String>,
+    /// all witness columns obtained from the optimized pil.
+    all_cols: Vec<String>,
 }
 
 impl<F: FieldElement> ExecutionTrace<F> {
@@ -572,8 +575,9 @@ impl<F: FieldElement> ExecutionTrace<F> {
         pc: usize,
     ) -> Self {
         let main_cols: Vec<String> = witness_cols
-            .into_iter()
+            .iter()
             .filter(|n| n.starts_with("main::"))
+            .cloned()
             .collect();
 
         ExecutionTrace {
@@ -585,6 +589,7 @@ impl<F: FieldElement> ExecutionTrace<F> {
             submachine_ops: MachineInstance::all().iter().map(|_| Vec::new()).collect(),
             known_cols: vec![],
             main_cols,
+            all_cols: witness_cols,
         }
     }
 
@@ -1072,13 +1077,6 @@ mod builder {
             // add program columns to main trace
             cols.extend(program_columns);
 
-            // sanity check
-            assert_eq!(
-                cols.len(),
-                self.trace.main_cols.len(),
-                "some witness column is missing from the executor",
-            );
-
             // fill up main trace to degree
             cols.values_mut().for_each(|v| {
                 let last = *v.last().unwrap();
@@ -1152,6 +1150,20 @@ mod builder {
                 "Generating submachine traces took {}s",
                 start.elapsed().as_secs_f64(),
             );
+
+            // filter columns present in the witness. Some columns may be optimized away.
+            let cols: HashMap<String, Vec<F>> = cols
+                .into_iter()
+                .filter(|(col, _)| self.trace.all_cols.contains(col))
+                .collect();
+
+            let missing_cols = self
+                .trace
+                .all_cols
+                .iter()
+                .filter(|col| !cols.contains_key(*col));
+
+            log::debug!("RISCV executor missing columns: {:?}", missing_cols);
 
             Execution {
                 trace_len: self.trace.len,
