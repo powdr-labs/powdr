@@ -16,6 +16,8 @@ pub fn main() {
 
     // The expected output was generated using tiny-keccak's Keccak256 implementation
     // with the following code:
+    //   use tiny_keccak::{Hasher, Keccak};
+    //
     //   let mut output = [0u8; 32];
     //   let mut hasher = Keccak::v256();
     //   for input in inputs.into_iter().cycle().take(100) {

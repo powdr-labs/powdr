@@ -89,6 +89,7 @@ impl Keccak {
         for i in 0..rate_words {
             let chunk = &self.buffer[i * 8..(i + 1) * 8];
             let val = u64::from_le_bytes(chunk.try_into().unwrap());
+            // Note: lo/hi positions are swapped to match the Keccak machine memory layout
             let swapped = ((val << 32) & 0xFFFFFFFF00000000) | ((val >> 32) & 0x00000000FFFFFFFF);
             self.state[i] ^= swapped;
         }
