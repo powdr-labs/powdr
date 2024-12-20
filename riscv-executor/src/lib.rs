@@ -602,8 +602,30 @@ impl<F: FieldElement> ExecutionTrace<F> {
             }
         }
 
+        let mut row = 1; // first row has all zeroes
         for w in &self.reg_writes {
+            // copy values until the row of the write
+            while row < w.row {
+                for i in 0..self.reg_map.len() {
+                    if idx_reg[&(i as u16)] == "pc" {
+                        continue;
+                    }
+                    reg_values[i][row] = reg_values[i][row - 1];
+                }
+                row += 1;
+            }
+            // apply the write
             reg_values[w.reg_idx as usize][w.row] = w.val;
+        }
+        // no more writes: copy values until end of trace
+        while row < self.pc_trace.len() {
+            for i in 0..self.reg_map.len() {
+                if idx_reg[&(i as u16)] == "pc" {
+                    continue;
+                }
+                reg_values[i][row] = reg_values[i][row - 1];
+            }
+            row += 1;
         }
 
         reg_values
