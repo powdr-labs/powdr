@@ -1461,6 +1461,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 None
             }
             Instruction::get_reg => {
+                // setting the flag because the rom fixed column for the `get_reg` flag gets optimized away...
+                set_col!(instr_get_reg, 1.into());
                 let addr = args[0].u();
                 let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val = self.reg_read(0, addr, lid);
