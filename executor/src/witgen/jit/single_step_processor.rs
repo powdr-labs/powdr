@@ -151,4 +151,14 @@ mod test {
         let code = generate_single_step(input).unwrap();
         assert_eq!(format_code(&code), "X[1] = Y[0];\nY[1] = (X[0] + Y[0]);");
     }
+
+    #[test]
+    fn no_progress() {
+        let input = "let X; let Y; X' = X;";
+        let err = generate_single_step(input).err().unwrap();
+        assert_eq!(
+            err.to_string(),
+            "Unable to derive algorithm to compute values for witness columns in the next row for the following columns: Y"
+        );
+    }
 }
