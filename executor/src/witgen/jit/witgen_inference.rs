@@ -662,4 +662,34 @@ Xor::B[6] = (Xor::B[5] + (Xor::B_byte[5] * 65536));
 Xor::B[7] = (Xor::B[6] + (Xor::B_byte[6] * 16777216));"
         );
     }
+
+    #[test]
+    fn branching() {
+        let input = "
+namespace VM(256);
+
+    let A: col;
+    let B: col;
+    let instr_add: col;
+    let instr_mul: col;
+    let pc: col;
+
+    let LINE: col = [0, 1, 2]*;
+    let INSTR_ADD: col = [0, 1, 0] + [0]*;
+    let INSTR_MUL: col = [1, 0, 1] + [0]*;
+
+    pc' = pc + 1;
+    [ pc, instr_add, instr_mul ] in [ LINE, INSTR_ADD, INSTR_MUL ];
+
+    ";
+        let code = solve_on_rows(
+            input,
+            &[3, 4, 5, 6, 7],
+            vec![
+                ("Xor::A", 7),
+                ("Xor::C", 7), // We solve it in reverse, just for fun.
+            ],
+            Some(16),
+        );
+    }
 }
