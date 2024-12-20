@@ -105,7 +105,6 @@ impl<T: FieldElement> RangeConstraint<T> {
         // Better to bisect according to min/max.
         let half_width = T::from(self.range_width() >> 1);
         assert!(half_width > T::zero());
-        //if self.min < self.max {
         (
             Self {
                 max: self.min + half_width - 1.into(),
@@ -116,18 +115,6 @@ impl<T: FieldElement> RangeConstraint<T> {
                 ..self.clone()
             },
         )
-        // } else {
-        //     (
-        //         Self {
-        //             max: self.min + half_width - 1.into(),
-        //             ..self.clone()
-        //         },
-        //         Self {
-        //             min: self.min + half_width,
-        //             ..self.clone()
-        //         },
-        //     )
-        // }
     }
 
     /// The range constraint of the sum of two expressions.
