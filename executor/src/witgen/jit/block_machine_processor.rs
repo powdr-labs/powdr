@@ -96,7 +96,9 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 }
             }
             if !progress {
-                log::debug!("Finishing after {iteration} iterations");
+                log::trace!(
+                    "Finishing block machine witgen code generation after {iteration} iterations"
+                );
                 break;
             }
         }
