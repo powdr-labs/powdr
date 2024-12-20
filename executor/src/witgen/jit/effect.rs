@@ -5,6 +5,7 @@ use crate::witgen::range_constraints::RangeConstraint;
 use super::symbolic_expression::SymbolicExpression;
 
 /// The effect of solving a symbolic equation.
+#[derive(Clone)]
 pub enum Effect<T: FieldElement, V> {
     /// Variable can be assigned a value.
     Assignment(V, SymbolicExpression<T, V>),
@@ -12,11 +13,14 @@ pub enum Effect<T: FieldElement, V> {
     RangeConstraint(V, RangeConstraint<T>),
     /// A run-time assertion. If this fails, we have conflicting constraints.
     Assertion(Assertion<T, V>),
-    /// a call to a different machine.
+    /// A call to a different machine.
     MachineCall(u64, Vec<MachineCallArgument<T, V>>),
+    /// A branch on a variable.
+    Branch(BranchCondition<T, V>, Vec<Effect<T, V>>, Vec<Effect<T, V>>),
 }
 
 /// A run-time assertion. If this fails, we have conflicting constraints.
+#[derive(Clone)]
 pub struct Assertion<T: FieldElement, V> {
     pub lhs: SymbolicExpression<T, V>,
     pub rhs: SymbolicExpression<T, V>,
@@ -51,7 +55,15 @@ impl<T: FieldElement, V> Assertion<T, V> {
     }
 }
 
+#[derive(Clone)]
 pub enum MachineCallArgument<T: FieldElement, V> {
     Known(SymbolicExpression<T, V>),
     Unknown(V),
+}
+
+#[derive(Clone)]
+pub struct BranchCondition<T: FieldElement, V> {
+    pub variable: V,
+    pub first_branch: RangeConstraint<T>,
+    pub second_branch: RangeConstraint<T>,
 }

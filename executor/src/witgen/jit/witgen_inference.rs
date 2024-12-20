@@ -14,7 +14,7 @@ use crate::witgen::global_constraints::RangeConstraintSet;
 use super::{
     super::{range_constraints::RangeConstraint, FixedData},
     affine_symbolic_expression::{AffineSymbolicExpression, ProcessResult},
-    effect::{Effect, MachineCallArgument},
+    effect::{BranchCondition, Effect, MachineCallArgument},
     variable::{MachineCallReturnVariable, Variable},
 };
 
@@ -28,6 +28,7 @@ pub struct ProcessSummary {
 
 /// This component can generate code that solves identities.
 /// It needs a driver that tells it which identities to process on which rows.
+#[derive(Clone)]
 pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_evaluator: FixedEval,
@@ -64,6 +65,40 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 
     pub fn known_variables(&self) -> impl Iterator<Item = &Variable> {
         self.known_variables.iter()
+    }
+
+    pub fn branch_on(
+        &mut self,
+        variable: &Variable,
+    ) -> (Vec<Effect<T, Variable>>, BranchCondition<T, Variable>, Self) {
+        // The variable needs to be known, we need to have a range constraint but
+        // it cannot be a single value.
+        assert!(self.known_variables.contains(variable));
+        let rc = self.range_constraint(variable).unwrap();
+        assert!(rc.try_to_single_value().is_none());
+
+        log::trace!(
+            "Branching on variable {variable}, which has a range of {}",
+            rc.range_width()
+        );
+
+        let (left_condition, right_condition) = rc.bisect();
+
+        let code = std::mem::take(&mut self.code);
+        let mut right_branch = self.clone();
+
+        self.add_range_constraint(variable.clone(), left_condition.clone());
+        right_branch.add_range_constraint(variable.clone(), right_condition.clone());
+
+        (
+            code,
+            BranchCondition {
+                variable: variable.clone(),
+                first_branch: left_condition,
+                second_branch: right_condition,
+            },
+            right_branch,
+        )
     }
 
     /// Process an identity on a certain row.
@@ -264,6 +299,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     self.code.push(e);
                 }
                 Effect::Assertion(_) => self.code.push(e),
+                Effect::Branch(..) => unreachable!(),
             }
         }
         if progress {
@@ -432,18 +468,20 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
 
 /// An equality constraint between an algebraic expression evaluated
 /// on a certain row offset and a variable or fixed constant value.
+#[derive(Clone)]
 struct Assignment<'a, T: FieldElement> {
     lhs: &'a Expression<T>,
     row_offset: i32,
     rhs: VariableOrValue<T, Variable>,
 }
 
+#[derive(Clone)]
 enum VariableOrValue<T, V> {
     Variable(V),
     Value(T),
 }
 
-pub trait FixedEvaluator<T: FieldElement> {
+pub trait FixedEvaluator<T: FieldElement>: Clone {
     fn evaluate(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
         None
     }
@@ -468,6 +506,7 @@ mod test {
 
     use super::*;
 
+    #[derive(Clone)]
     pub struct FixedEvaluatorForFixedData<'a, T: FieldElement>(pub &'a FixedData<'a, T>);
     impl<'a, T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'a, T> {
         fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {

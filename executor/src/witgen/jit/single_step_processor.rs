@@ -28,37 +28,56 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
     }
 
     pub fn generate_code(&mut self) -> Result<Vec<Effect<T, Variable>>, String> {
-        let mut witgen = self.initialize_witgen();
+        self.generate_code_for_branch(self.initialize_witgen(), Default::default())
+    }
 
-        loop {
-            let mut complete = HashSet::new();
-            self.process_until_no_progress(&mut witgen, &mut complete);
+    pub fn generate_code_for_branch(
+        &mut self,
+        mut witgen: WitgenInference<'a, T, NoEval>,
+        mut complete: HashSet<u64>,
+    ) -> Result<Vec<Effect<T, Variable>>, String> {
+        self.process_until_no_progress(&mut witgen, &mut complete);
 
-            if self
-                .unknown_witness_cols_on_next_row(&witgen)
-                .next()
-                .is_none()
-            {
-                break;
-            }
+        // Check that we could derive all witness values in the next row.
+        let unknown_witnesses = self
+            .unknown_witness_cols_on_next_row(&witgen)
+            .sorted()
+            .collect_vec();
 
-            let Some((most_constrained_var, rc)) = witgen
+        let code = if unknown_witnesses.is_empty() {
+            // TODO also check that we completed all machine calls?
+            witgen.code()
+        } else {
+            let Some((most_constrained_var, _)) = witgen
                 .known_variables()
                 .filter_map(|var| witgen.range_constraint(var).map(|rc| (var, rc)))
+                .filter(|(_, rc)| rc.try_to_single_value().is_none())
                 .min_by_key(|(_, rc)| rc.range_width())
             else {
-                return Err("Unable to determine algorithm to compute next row and no variable to branch on.".to_string());
+                return Err(format!(
+                    "Unable to derive algorithm to compute values for witness columns in the next row and\n\
+                    unable to branch on a variable. The following columns are still missing:\n{}",
+                    unknown_witnesses.iter().map(|wit| self.fixed_data.column_name(wit)).format(", ")
+                ));
             };
-            log::trace!(
-                "Branching on variable {most_constrained_var}, which has a range of {}",
-                rc.range_width()
-            );
 
-            rc.br
-            todo!();
-        }
+            let (common_code, condition, other_branch) =
+                witgen.branch_on(&most_constrained_var.clone());
 
-        self.code_if_successful(witgen)
+            // TODO Tuning: If this fails (or also if it does not generate progress right away),
+            // we could also choose a different variable to branch on.
+            let left_branch_code = self.generate_code_for_branch(witgen, complete.clone())?;
+            let right_branch_code = self.generate_code_for_branch(other_branch, complete)?;
+            common_code
+                .into_iter()
+                .chain(std::iter::once(Effect::Branch(
+                    condition,
+                    left_branch_code,
+                    right_branch_code,
+                )))
+                .collect()
+        };
+        Ok(code)
     }
 
     fn initialize_witgen(&self) -> WitgenInference<'a, T, NoEval> {
@@ -80,6 +99,9 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         let mut progress = true;
         while progress {
             progress = false;
+
+            // TODO propagate known.
+
             for id in &self.machine_parts.identities {
                 if complete.contains(&id.id()) {
                     continue;
@@ -129,6 +151,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
     }
 }
 
+#[derive(Clone)]
 struct NoEval;
 
 impl<T: FieldElement> FixedEvaluator<T> for NoEval {
