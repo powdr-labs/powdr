@@ -807,12 +807,6 @@ mod builder {
             &self.trace.pc_trace
         }
 
-        pub(crate) fn pc_trace_add(&mut self, pc: u32) {
-            if let ExecMode::Trace = self.mode {
-                self.trace.pc_trace.push(pc);
-            }
-        }
-
         pub(crate) fn submachine_op(
             &mut self,
             m: MachineInstance,
@@ -938,6 +932,7 @@ mod builder {
             if let ExecMode::Trace = self.mode {
                 let new_len = self.trace.known_cols.len() + KnownWitnessCol::count();
                 self.trace.known_cols.resize(new_len, F::zero());
+                self.trace.pc_trace.push(self.get_pc().u());
             }
         }
 
@@ -1318,7 +1313,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     fn init(&mut self) {
         self.step = 4;
         for i in 0..2 {
-            self.proc.pc_trace_add(i);
+            self.proc.set_pc(i.into());
             self.proc.push_row();
             self.proc
                 .set_col_idx(KnownWitnessCol::_operation_id, i as usize, 2.into());
@@ -2957,7 +2952,6 @@ fn execute_inner<F: FieldElement>(
             FunctionStatement::Assignment(a) => {
                 e.proc.push_row();
                 let pc = e.proc.get_pc().u();
-                e.proc.pc_trace_add(pc);
                 e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
@@ -3013,7 +3007,6 @@ fn execute_inner<F: FieldElement>(
             FunctionStatement::Instruction(i) => {
                 e.proc.push_row();
                 e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
-                e.proc.pc_trace_add(e.proc.get_pc().u());
 
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
@@ -3048,8 +3041,6 @@ fn execute_inner<F: FieldElement>(
             }
             FunctionStatement::Return(_) => {
                 e.proc.push_row();
-                let pc = e.proc.get_pc().u();
-                e.proc.pc_trace_add(pc);
                 e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
                 break;
             }
@@ -3097,7 +3088,6 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_pc(0.into());
         assert!(e.proc.advance().is_none());
         e.proc.push_row();
-        e.proc.pc_trace_add(0);
         e.proc
             .set_col(KnownWitnessCol::_operation_id, sink_id.into());
 
@@ -3108,7 +3098,6 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_reg("query_arg_2", 0);
         assert!(e.proc.advance().is_none());
         e.proc.push_row();
-        e.proc.pc_trace_add(1);
         e.proc
             .set_col(KnownWitnessCol::_operation_id, sink_id.into());
 
@@ -3117,7 +3106,6 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_pc(sink_id.into());
         assert!(e.proc.advance().is_none());
         e.proc.push_row();
-        e.proc.pc_trace_add(sink_id);
         e.proc.set_col(KnownWitnessCol::pc_update, sink_id.into());
         e.proc
             .set_col(KnownWitnessCol::_operation_id, sink_id.into());
