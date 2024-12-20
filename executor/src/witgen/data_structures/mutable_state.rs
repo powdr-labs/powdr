@@ -43,14 +43,22 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
     }
 
     #[cfg(test)]
-    pub fn get_machine(&self, name: &str) -> &RefCell<KnownMachine<'a, T>> {
-        for m in &self.machines {
-            println!("Machine name: {}", m.borrow().name());
-        }
-        self.machines
+    pub fn get_machine(&self, substring: &str) -> &RefCell<KnownMachine<'a, T>> {
+        use itertools::Itertools;
+
+        match self
+            .machines
             .iter()
-            .find(|m| m.borrow().name() == name)
-            .unwrap()
+            .filter(|m| m.borrow().name().contains(substring))
+            .exactly_one()
+        {
+            Ok(m) => m,
+            // Calling unwrap() would require KnownMachine to implement Debug.
+            Err(e) => panic!(
+                "Expected exactly one machine with substring '{}', but found {}.",
+                substring, e
+            ),
+        }
     }
 
     /// Runs the first machine (unless there are no machines) end returns the generated columns.
