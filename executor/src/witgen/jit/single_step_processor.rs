@@ -10,7 +10,7 @@ use crate::witgen::{machines::MachineParts, FixedData};
 use super::{
     effect::Effect,
     variable::{Cell, Variable},
-    witgen_inference::{FixedEvaluator, WitgenInference},
+    witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
 
 /// A processor for generating JIT code that computes the next row from the previous row.
@@ -27,16 +27,20 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         }
     }
 
-    pub fn generate_code(&mut self) -> Result<Vec<Effect<T, Variable>>, String> {
-        self.generate_code_for_branch(self.initialize_witgen(), Default::default())
+    pub fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
+        &self,
+        can_process: CanProcess,
+    ) -> Result<Vec<Effect<T, Variable>>, String> {
+        self.generate_code_for_branch(can_process, self.initialize_witgen(), Default::default())
     }
 
-    pub fn generate_code_for_branch(
-        &mut self,
+    pub fn generate_code_for_branch<CanProcess: CanProcessCall<T> + Clone>(
+        &self,
+        can_process: CanProcess,
         mut witgen: WitgenInference<'a, T, NoEval>,
         mut complete: HashSet<u64>,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
-        self.process_until_no_progress(&mut witgen, &mut complete);
+        self.process_until_no_progress(can_process.clone(), &mut witgen, &mut complete);
 
         // Check that we could derive all witness values in the next row.
         let unknown_witnesses = self
@@ -66,8 +70,10 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
 
             // TODO Tuning: If this fails (or also if it does not generate progress right away),
             // we could also choose a different variable to branch on.
-            let left_branch_code = self.generate_code_for_branch(witgen, complete.clone())?;
-            let right_branch_code = self.generate_code_for_branch(other_branch, complete)?;
+            let left_branch_code =
+                self.generate_code_for_branch(can_process.clone(), witgen, complete.clone())?;
+            let right_branch_code =
+                self.generate_code_for_branch(can_process, other_branch, complete)?;
             common_code
                 .into_iter()
                 .chain(std::iter::once(Effect::Branch(
@@ -91,8 +97,9 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         WitgenInference::new(self.fixed_data, NoEval, known_variables)
     }
 
-    fn process_until_no_progress(
-        &mut self,
+    fn process_until_no_progress<CanProcess: CanProcessCall<T> + Clone>(
+        &self,
+        can_process: CanProcess,
         witgen: &mut WitgenInference<'a, T, NoEval>,
         complete: &mut HashSet<u64>,
     ) {
@@ -107,7 +114,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                     continue;
                 }
                 let row_offset = if id.contains_next_ref() { 0 } else { 1 };
-                let result = witgen.process_identity(id, row_offset);
+                let result = witgen.process_identity(can_process.clone(), id, row_offset);
                 progress |= result.progress;
                 if result.complete {
                     complete.insert(id.id());
@@ -175,9 +182,10 @@ mod test {
     use crate::{
         constant_evaluator,
         witgen::{
+            data_structures::mutable_state::MutableState,
             global_constraints,
             jit::{effect::Effect, test_util::format_code},
-            machines::MachineParts,
+            machines::{Connection, FixedLookup, KnownMachine, MachineParts},
             FixedData,
         },
     };
@@ -194,6 +202,20 @@ mod test {
         let (fixed_data, retained_identities) =
             global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
 
+        let fixed_lookup_connections = retained_identities
+            .iter()
+            .filter_map(|i| Connection::try_from(*i).ok())
+            .filter(|c| FixedLookup::is_responsible(c))
+            .map(|c| (c.id, c))
+            .collect();
+
+        let global_constr = fixed_data.global_range_constraints.clone();
+        let fixed_machine = FixedLookup::new(global_constr, &fixed_data, fixed_lookup_connections);
+        let known_fixed = KnownMachine::FixedLookup(fixed_machine);
+        let mutable_state = MutableState::new([known_fixed].into_iter(), &|_| {
+            Err("Query not implemented".to_string())
+        });
+
         let witness_columns = analyzed
             .committed_polys_in_source_order()
             .flat_map(|(symbol, _)| symbol.array_elements().map(|(_, id)| id))
@@ -209,7 +231,7 @@ mod test {
             Vec::new(),
         );
 
-        SingleStepProcessor::new(&fixed_data, machine_parts).generate_code()
+        SingleStepProcessor::new(&fixed_data, machine_parts).generate_code(&mutable_state)
     }
 
     #[test]
