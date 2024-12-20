@@ -542,7 +542,7 @@ mod test {
         let mut complete = HashSet::new();
         let mut counter = 0;
         let expected_complete = expected_complete.unwrap_or(retained_identities.len() * rows.len());
-        while complete.len() < expected_complete {
+        while complete.len() != expected_complete {
             counter += 1;
             for row in rows {
                 for id in retained_identities.iter() {
