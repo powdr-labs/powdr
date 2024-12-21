@@ -180,7 +180,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                     block_list,
                     values[self.block_size + 1]
                 );
-                log::error!("Column {column_name} is not stackable:\n{column_str}");
+                log::debug!("Column {column_name} is not stackable:\n{column_str}");
             }
 
             stackable
