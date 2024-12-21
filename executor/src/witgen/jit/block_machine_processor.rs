@@ -1,7 +1,10 @@
 use std::collections::{BTreeSet, HashSet};
 
 use bit_vec::BitVec;
-use powdr_ast::analyzed::{AlgebraicReference, Identity, SelectedExpressions};
+use itertools::Itertools;
+use powdr_ast::analyzed::{
+    AlgebraicReference, Identity, PolyID, PolynomialType, SelectedExpressions,
+};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -152,18 +155,35 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                     }))
                 })
                 .collect::<Vec<_>>();
-            // TODO: Improve error message?
-            // let column_name = self.fixed_data.column_name(&PolyID {
-            //     id: *column_id,
-            //     ptype: PolynomialType::Committed,
-            // });
             let is_compatible = |v1: Value<T>, v2: Value<T>| match (v1, v2) {
                 (Value::Unknown, _) | (_, Value::Unknown) => true,
                 (Value::Concrete(a), Value::Concrete(b)) => a == b,
                 _ => false,
             };
-            is_compatible(values[0], values[self.block_size])
-                && is_compatible(values[1], values[self.block_size + 1])
+            let stackable = is_compatible(values[0], values[self.block_size])
+                && is_compatible(values[1], values[self.block_size + 1]);
+
+            if !stackable {
+                let column_name = self.fixed_data.column_name(&PolyID {
+                    id: *column_id,
+                    ptype: PolynomialType::Committed,
+                });
+                let block_list = values
+                    .iter()
+                    .skip(1)
+                    .take(self.block_size)
+                    .map(|v| format!("{v}"))
+                    .join(", ");
+                let column_str = format!(
+                    "... {} | {} | {} ...",
+                    values[0],
+                    block_list,
+                    values[self.block_size + 1]
+                );
+                log::error!("Column {column_name} is not stackable:\n{column_str}");
+            }
+
+            stackable
         });
 
         match can_stack {

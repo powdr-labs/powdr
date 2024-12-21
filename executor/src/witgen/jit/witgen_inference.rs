@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{Display, Formatter},
+};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
@@ -46,6 +49,16 @@ pub enum Value<T> {
     Concrete(T),
     Known,
     Unknown,
+}
+
+impl<T: Display> Display for Value<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Concrete(v) => write!(f, "{}", v),
+            Value::Known => write!(f, "<known>"),
+            Value::Unknown => write!(f, "???"),
+        }
+    }
 }
 
 impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, FixedEval> {
