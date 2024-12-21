@@ -169,22 +169,22 @@ impl Runtime {
 
     fn with_keccak(mut self) -> Self {
         self.add_submachine(
-            "std::machines::hash::keccakf::KeccakF",
+            "std::machines::hash::keccakf32_memory::Keccakf32Memory",
             None,
             "keccakf",
-            vec!["memory"],
+            vec!["memory", "MIN_DEGREE", "MAIN_MAX_DEGREE"],
             [r#"instr keccakf X, Y
-                    link ~> tmp1_col = regs.mload(X, STEP),
-                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
-                    link ~> keccakf.keccakf(tmp1_col, tmp2_col, STEP)
-                {
-                    // make sure tmp1_col and tmp2_col are aligned memory addresses
-                    tmp3_col * 4 = tmp1_col,
-                    tmp4_col * 4 = tmp2_col,
-                    // make sure the factors fit in 32 bits
-                    tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-                    tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
-                }
+                link ~> tmp1_col = regs.mload(X, STEP)
+                link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                link ~> keccakf.keccakf32_memory(tmp1_col, tmp2_col, STEP)
+            {
+                // make sure tmp1_col and tmp2_col are aligned memory addresses
+                tmp3_col * 4 = tmp1_col,
+                tmp4_col * 4 = tmp2_col,
+                // make sure the factors fit in 32 bits
+                tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+                tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+            }
             "#
             .to_string()],
             0,
