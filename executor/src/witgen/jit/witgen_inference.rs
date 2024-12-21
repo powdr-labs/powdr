@@ -54,7 +54,7 @@ pub enum Value<T> {
 impl<T: Display> Display for Value<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::Concrete(v) => write!(f, "{}", v),
+            Value::Concrete(v) => write!(f, "{v}"),
             Value::Known => write!(f, "<known>"),
             Value::Unknown => write!(f, "???"),
         }
