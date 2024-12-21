@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use bit_vec::BitVec;
+use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicReference, Identity, SelectedExpressions};
 use powdr_number::FieldElement;
 
@@ -43,8 +44,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         identity_id: u64,
         known_args: &BitVec,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
-        let connection_rhs = self.machine_parts.connections[&identity_id].right;
-        assert_eq!(connection_rhs.expressions.len(), known_args.len());
+        let connection = self.machine_parts.connections[&identity_id];
+        assert_eq!(connection.right.expressions.len(), known_args.len());
 
         // Set up WitgenInference with known arguments.
         let known_variables = known_args
@@ -55,19 +56,26 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables);
 
         // In the latch row, set the RHS selector to 1.
-        witgen.assign_constant(&connection_rhs.selector, self.latch_row as i32, T::one());
+        witgen.assign_constant(&connection.right.selector, self.latch_row as i32, T::one());
 
         // For each argument, connect the expression on the RHS with the formal parameter.
-        for (index, expr) in connection_rhs.expressions.iter().enumerate() {
+        for (index, expr) in connection.right.expressions.iter().enumerate() {
             witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
         }
 
         // Solve for the block witness.
         // Fails if any machine call cannot be completed.
-        match self.solve_block(can_process, &mut witgen, connection_rhs) {
+        match self.solve_block(can_process, &mut witgen, connection.right) {
             Ok(()) => Ok(witgen.code()),
             Err(e) => {
-                log::debug!("Code generation failed: {e}");
+                log::debug!("\nCode generation failed for connection:\n  {connection}");
+                let known_args_str = known_args
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, b)| b.then_some(connection.right.expressions[i].to_string()))
+                    .join("\n  ");
+                log::debug!("Known arguments:\n  {known_args_str}");
+                log::debug!("Error:\n  {e}");
                 log::debug!(
                     "The following code was generated so far:\n{}",
                     format_code(witgen.code().as_slice())
