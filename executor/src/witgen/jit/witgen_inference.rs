@@ -460,7 +460,7 @@ pub trait CanProcessCall<T: FieldElement> {
     ) -> bool;
 }
 
-impl<'a, T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'a, T, Q> {
+impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'_, T, Q> {
     fn can_process_call_fully(
         &self,
         identity_id: u64,

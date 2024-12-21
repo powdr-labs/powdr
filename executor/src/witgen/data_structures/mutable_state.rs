@@ -62,7 +62,7 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
         // has no responsible machine.
         self.responsible_machine(identity_id)
             .ok()
-            .map_or(false, |mut machine| {
+            .is_some_and(|mut machine| {
                 machine.can_process_call_fully(identity_id, known_inputs, range_constraints)
             })
     }
