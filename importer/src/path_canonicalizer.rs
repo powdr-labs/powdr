@@ -45,7 +45,7 @@ struct Canonicalizer<'a> {
     paths: &'a PathMap,
 }
 
-impl<'a> Folder for Canonicalizer<'a> {
+impl Folder for Canonicalizer<'_> {
     // once the paths are resolved, canonicalization cannot fail
     type Error = Infallible;
 

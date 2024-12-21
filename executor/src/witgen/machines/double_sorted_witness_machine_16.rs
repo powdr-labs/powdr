@@ -76,7 +76,6 @@ fn split_column_name(name: &str) -> (&str, &str) {
 }
 
 /// TODO make this generic
-
 pub struct DoubleSortedWitnesses16<'a, T: FieldElement> {
     degree_range: DegreeRange,
     degree: DegreeType,

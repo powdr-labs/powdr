@@ -67,7 +67,7 @@ struct Expressionizer<'a> {
     poly_id_to_name: &'a BTreeMap<(PolynomialType, u64), String>,
 }
 
-impl<'a> Expressionizer<'a> {
+impl Expressionizer<'_> {
     /// Turns a closure back into a (source) expression by prefixing
     /// potentially captured variables as let statements.
     fn try_closure_to_expression<T: FieldElement>(

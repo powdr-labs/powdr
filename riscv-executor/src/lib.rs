@@ -456,7 +456,7 @@ pub struct TraceReplay<'a, F: FieldElement> {
     next_r: usize,
 }
 
-impl<'a, F: FieldElement> TraceReplay<'a, F> {
+impl<F: FieldElement> TraceReplay<'_, F> {
     /// Returns the next row's registers value.
     ///
     /// Just like an iterator's next(), but returns the value borrowed from self.
@@ -577,7 +577,7 @@ mod builder {
         mode: ExecMode,
     }
 
-    impl<'a, 'b, F: FieldElement> TraceBuilder<'b, F> {
+    impl<'a, 'b: 'a, F: FieldElement> TraceBuilder<'b, F> {
         /// Creates a new builder.
         ///
         /// May fail if max_rows_len is too small or if the main machine is
@@ -1143,7 +1143,7 @@ struct Executor<'a, 'b, F: FieldElement> {
     pil_instruction_links: HashMap<(&'static str, &'static str), Vec<Identity<F>>>,
 }
 
-impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
+impl<F: FieldElement> Executor<'_, '_, F> {
     fn init(&mut self) {
         self.step = 4;
         for i in 0..2 {

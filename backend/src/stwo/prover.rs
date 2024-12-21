@@ -1,3 +1,4 @@
+use num_traits::Zero;
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend_utils::machine_fixed_columns;
 use powdr_executor::constant_evaluator::VariablySizedColumn;
@@ -25,6 +26,7 @@ use stwo_prover::core::air::{Component, ComponentProver};
 use stwo_prover::core::backend::{Backend, BackendForChannel};
 use stwo_prover::core::channel::{Channel, MerkleChannel};
 use stwo_prover::core::fields::m31::{BaseField, M31};
+use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::fri::FriConfig;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
@@ -289,12 +291,14 @@ where
         let component = PowdrComponent::new(
             &mut TraceLocationAllocator::default(),
             PowdrEval::new(self.analyzed.clone()),
+            // This parameter is used for the logup functionality. If logup is not required, this default value should be passed.
+            (SecureField::zero(), None),
         );
 
         let proof_result = stwo_prover::core::prover::prove::<B, MC>(
             &[&component],
             prover_channel,
-            &mut commitment_scheme,
+            commitment_scheme,
         );
 
         let proof = match proof_result {
@@ -323,6 +327,7 @@ where
         let component = PowdrComponent::new(
             &mut TraceLocationAllocator::default(),
             PowdrEval::new(self.analyzed.clone()),
+            (SecureField::zero(), None),
         );
 
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.

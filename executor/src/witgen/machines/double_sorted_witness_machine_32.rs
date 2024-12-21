@@ -47,7 +47,6 @@ fn split_column_name(name: &str) -> (&str, &str) {
 }
 
 /// TODO make this generic
-
 pub struct DoubleSortedWitnesses32<'a, T: FieldElement> {
     degree_range: DegreeRange,
     degree: DegreeType,
@@ -210,7 +209,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
             true
         } else {
             // It is not known, so we can only process if we do not write.
-            range_constraints[0].as_ref().map_or(false, |rc| {
+            range_constraints[0].as_ref().is_some_and(|rc| {
                 !rc.allows_value(T::from(OPERATION_ID_BOOTLOADER_WRITE))
                     && !rc.allows_value(T::from(OPERATION_ID_WRITE))
             })
@@ -403,7 +402,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
+impl<T: FieldElement> DoubleSortedWitnesses32<'_, T> {
     fn process_plookup_internal(
         &mut self,
         identity_id: u64,
