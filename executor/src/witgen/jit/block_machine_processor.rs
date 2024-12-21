@@ -1,10 +1,10 @@
 use std::collections::HashSet;
 
 use bit_vec::BitVec;
-use powdr_ast::analyzed::{AlgebraicReference, Identity};
+use powdr_ast::analyzed::{AlgebraicReference, Identity, SelectedExpressions};
 use powdr_number::FieldElement;
 
-use crate::witgen::{machines::MachineParts, FixedData};
+use crate::witgen::{jit::effect::format_code, machines::MachineParts, FixedData};
 
 use super::{
     effect::Effect,
@@ -64,17 +64,17 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
         // Solve for the block witness.
         // Fails if any machine call cannot be completed.
-        self.solve_block(can_process, &mut witgen)?;
-
-        for (index, expr) in connection_rhs.expressions.iter().enumerate() {
-            if !witgen.is_known(&Variable::Param(index)) {
-                return Err(format!(
-                    "Unable to derive algorithm to compute output value \"{expr}\""
-                ));
+        match self.solve_block(can_process, &mut witgen, connection_rhs) {
+            Ok(()) => Ok(witgen.code()),
+            Err(e) => {
+                log::debug!("Code generation failed: {e}");
+                log::debug!(
+                    "The following code was generated so far:\n{}",
+                    format_code(witgen.code().as_slice())
+                );
+                Err(format!("Code generation failed: {e}\nRun with RUST_LOG=debug to see the code generated so far."))
             }
         }
-
-        Ok(witgen.code())
     }
 
     /// Repeatedly processes all identities on all rows, until no progress is made.
@@ -83,6 +83,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         &self,
         can_process: CanProcess,
         witgen: &mut WitgenInference<'a, T, &Self>,
+        connection_rhs: &SelectedExpressions<T>,
     ) -> Result<(), String> {
         let mut complete = HashSet::new();
         for iteration in 0.. {
@@ -105,6 +106,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                     "Finishing block machine witgen code generation after {iteration} iterations"
                 );
                 break;
+            }
+        }
+
+        for (index, expr) in connection_rhs.expressions.iter().enumerate() {
+            if !witgen.is_known(&Variable::Param(index)) {
+                return Err(format!(
+                    "Unable to derive algorithm to compute output value \"{expr}\""
+                ));
             }
         }
 
@@ -161,7 +170,7 @@ mod test {
         constant_evaluator,
         witgen::{
             global_constraints,
-            jit::{effect::Effect, test_util::format_code},
+            jit::effect::Effect,
             machines::{Connection, ConnectionKind, MachineParts},
             range_constraints::RangeConstraint,
             FixedData,
@@ -297,15 +306,13 @@ params[2] = Add::c[0];"
         )
         .err()
         .unwrap();
-        assert_eq!(
-            err_str,
-            "Unable to derive algorithm to compute output value \"Unconstrained::c\""
-        );
+        assert!(err_str
+            .contains("Unable to derive algorithm to compute output value \"Unconstrained::c\""));
     }
 
     #[test]
     // TODO: Currently fails, because the machine has a non-rectangular block shape.
-    #[should_panic = "Incomplete machine calls"]
+    #[should_panic = "Unable to derive algorithm to compute output value \\\"main_binary::C\\\""]
     fn binary() {
         let input = read_to_string("../test_data/pil/binary.pil").unwrap();
         generate_for_block_machine(
