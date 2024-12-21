@@ -483,7 +483,7 @@ mod test {
         constant_evaluator,
         witgen::{
             global_constraints,
-            jit::{test_util::format_code, variable::Cell},
+            jit::{effect::format_code, variable::Cell},
             machines::{Connection, FixedLookup, KnownMachine},
             FixedData,
         },

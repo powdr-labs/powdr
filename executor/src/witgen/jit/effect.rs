@@ -1,8 +1,9 @@
+use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::witgen::range_constraints::RangeConstraint;
 
-use super::symbolic_expression::SymbolicExpression;
+use super::{symbolic_expression::SymbolicExpression, variable::Variable};
 
 /// The effect of solving a symbolic equation.
 pub enum Effect<T: FieldElement, V> {
@@ -54,4 +55,38 @@ impl<T: FieldElement, V> Assertion<T, V> {
 pub enum MachineCallArgument<T: FieldElement, V> {
     Known(SymbolicExpression<T, V>),
     Unknown(V),
+}
+
+/// Helper function to render a list of effects. Used for informational purposes only.
+pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
+    effects
+        .iter()
+        .map(|effect| match effect {
+            Effect::Assignment(v, expr) => format!("{v} = {expr};"),
+            Effect::Assertion(Assertion {
+                lhs,
+                rhs,
+                expected_equal,
+            }) => {
+                format!(
+                    "assert {lhs} {} {rhs};",
+                    if *expected_equal { "==" } else { "!=" }
+                )
+            }
+            Effect::MachineCall(id, args) => {
+                format!(
+                    "machine_call({id}, [{}]);",
+                    args.iter()
+                        .map(|arg| match arg {
+                            MachineCallArgument::Known(k) => format!("Known({k})"),
+                            MachineCallArgument::Unknown(u) => format!("Unknown({u})"),
+                        })
+                        .join(", ")
+                )
+            }
+            Effect::RangeConstraint(..) => {
+                panic!("Range constraints should not be part of the code.")
+            }
+        })
+        .join("\n")
 }
