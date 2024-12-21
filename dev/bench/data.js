@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1734789131081,
+  "lastUpdate": 1734792881360,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -40053,6 +40053,164 @@ window.BENCHMARK_DATA = {
             "name": "executor-benchmark/keccak",
             "value": 8868775877,
             "range": "± 87632852",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "name": "powdr-labs",
+            "username": "powdr-labs"
+          },
+          "committer": {
+            "name": "powdr-labs",
+            "username": "powdr-labs"
+          },
+          "id": "59f17a2a0997989fe9cb1e8e406cb4266d4bf081",
+          "message": "Remove `BitAnd<GoldilocksField> for GoldilocksField`",
+          "timestamp": "2024-12-21T00:52:36Z",
+          "url": "https://github.com/powdr-labs/powdr/pull/2278/commits/59f17a2a0997989fe9cb1e8e406cb4266d4bf081"
+        },
+        "date": 1734792880491,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "evaluator-benchmark/std::math::ff::inverse",
+            "value": 6903,
+            "range": "± 22",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/std::math::ff::reduce",
+            "value": 595,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/std::math::ff::mul",
+            "value": 1094,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_879882356",
+            "value": 28877,
+            "range": "± 31",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_1882356",
+            "value": 24269,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_1187956",
+            "value": 24207,
+            "range": "± 21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_56",
+            "value": 17175,
+            "range": "± 16",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_33",
+            "value": 797053,
+            "range": "± 744",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_100",
+            "value": 2738236,
+            "range": "± 4090",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_300",
+            "value": 9574150,
+            "range": "± 10389",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_900",
+            "value": 34904960,
+            "range": "± 40865",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_2700",
+            "value": 139488121,
+            "range": "± 182431",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_879882356",
+            "value": 3593,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_1882356",
+            "value": 2841,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_1187956",
+            "value": 2853,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_56",
+            "value": 1675,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_33",
+            "value": 101796,
+            "range": "± 75",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_100",
+            "value": 382252,
+            "range": "± 337",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_300",
+            "value": 1468219,
+            "range": "± 2068",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_900",
+            "value": 6236938,
+            "range": "± 7170",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_2700",
+            "value": 30857129,
+            "range": "± 81041",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-witgen-benchmark/jit_witgen_benchmark",
+            "value": 51239452544,
+            "range": "± 641536510",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "executor-benchmark/keccak",
+            "value": 8517963885,
+            "range": "± 35302828",
             "unit": "ns/iter"
           }
         ]
