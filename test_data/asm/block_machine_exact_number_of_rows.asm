@@ -17,15 +17,17 @@ machine Main with min_degree: 32, max_degree: 64 {
     reg A;
 
     ByteBinary byte_binary;
-    // We'll call the binary machine twice and the block size
-    // is 4, so we need exactly 8 rows.
-    Binary binary(byte_binary, 8, 8);
+    // We'll call the binary machine 4 times and the block size
+    // is 4, so we need exactly 16 rows.
+    Binary binary(byte_binary, 16, 16);
 
     instr and X0, X1 -> X2 link ~> X2 = binary.and(X0, X1);
 
     function main {
 
         A <== and(0xaaaaaaaa, 0xaaaaaaaa);
+        A <== and(0x55555555, 0x55555555);
+        A <== and(0x00000000, 0xffffffff);
         A <== and(0xffffffff, 0xffffffff);
 
         return;
