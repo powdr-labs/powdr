@@ -25,6 +25,9 @@ serde = { version = "1.0", default-features = false, features = [
   "derive",
   "alloc",
 ] }
+serde_cbor = { version = "0.11.2", default-features = false, features = [
+  "alloc",
+] }
 
 [features]
 default = ["halo2", "plonky3"]

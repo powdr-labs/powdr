@@ -125,15 +125,16 @@ impl Session {
         }
     }
 
-    pub fn write<S: serde::Serialize>(self, channel: u32, data: &S) -> Self {
+    pub fn write<S: serde::Serialize>(&mut self, data: &S) {
+        let bytes = serde_cbor::to_vec(&data).unwrap();
+        self.pipeline.add_prover_data(bytes);
+    }
+
+    pub fn write_fd<S: serde::Serialize>(self, channel: u32, data: &S) -> Self {
         Session {
             pipeline: self.pipeline.add_data(channel, data),
             ..self
         }
-    }
-
-    pub fn write_data(&mut self, data: Vec<u8>) {
-        self.pipeline.add_prover_data(data);
     }
 
     pub fn run(&mut self) {
