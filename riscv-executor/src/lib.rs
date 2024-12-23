@@ -555,13 +555,13 @@ pub struct ExecutionTrace<F: FieldElement> {
 }
 
 impl<F: FieldElement> ExecutionTrace<F> {
-    pub fn new(witness_cols: Vec<String>, reg_map: HashMap<String, u16>, pc: usize) -> Self {
+    pub fn new(witness_cols: Vec<String>, reg_map: HashMap<String, u16>) -> Self {
         ExecutionTrace {
             reg_trace: reg_map.keys().map(|_| Vec::new()).collect(),
             reg_writes: vec![None; reg_map.len()],
             reg_map,
             mem_ops: Vec::new(),
-            len: pc,
+            len: PC_INITIAL_VAL + 1,
             pc_trace: Vec::new(),
             submachine_ops: MachineInstance::all().iter().map(|_| Vec::new()).collect(),
             known_cols: vec![],
@@ -765,7 +765,7 @@ mod builder {
             let mut ret = Self {
                 pc_idx,
                 curr_pc: PC_INITIAL_VAL.into(),
-                trace: ExecutionTrace::new(witness_cols, reg_map, PC_INITIAL_VAL + 1),
+                trace: ExecutionTrace::new(witness_cols, reg_map),
                 submachines,
                 next_statement_line: 1,
                 batch_to_line_map,
@@ -935,6 +935,9 @@ mod builder {
                 }
 
                 self.trace.len += 1;
+                self.set_col(KnownWitnessCol::pc_update, next_pc);
+                self.push_row(next_pc.u());
+
                 self.curr_pc = next_pc;
             }
 
@@ -2919,6 +2922,7 @@ fn execute_inner<F: FieldElement>(
         profiling.map(|opt| Profiler::new(opt, &debug_files[..], function_starts, location_starts));
 
     let mut curr_pc = 0u32;
+    e.proc.push_row(curr_pc);
     let mut last = Instant::now();
     let mut count = 0;
     loop {
@@ -2942,10 +2946,9 @@ fn execute_inner<F: FieldElement>(
         match stm {
             FunctionStatement::Assignment(a) => {
                 let pc = e.proc.get_pc().u();
-                e.proc.push_row(pc);
                 e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
                 if let Some(p) = &mut profiler {
-                    p.add_instruction_cost(e.proc.get_pc().u() as usize);
+                    p.add_instruction_cost(pc as usize);
                 }
 
                 let results = e.eval_expression(a.rhs.as_ref());
@@ -2996,8 +2999,6 @@ fn execute_inner<F: FieldElement>(
                 }
             }
             FunctionStatement::Instruction(i) => {
-                let pc = e.proc.get_pc().u();
-                e.proc.push_row(pc);
                 e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
 
                 if let Some(p) = &mut profiler {
@@ -3032,8 +3033,6 @@ fn execute_inner<F: FieldElement>(
                 }
             }
             FunctionStatement::Return(_) => {
-                let pc = e.proc.get_pc().u();
-                e.proc.push_row(pc);
                 e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
                 break;
             }
@@ -3056,11 +3055,7 @@ fn execute_inner<F: FieldElement>(
         };
 
         curr_pc = match e.proc.advance() {
-            Some(pc) => {
-                // We set pc_update=PC here, after the PC has been updated but before "pushing" the next row
-                e.proc.set_col(KnownWitnessCol::pc_update, e.proc.get_pc());
-                pc
-            }
+            Some(pc) => pc,
             None => break,
         };
     }
@@ -3080,7 +3075,6 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_col(KnownWitnessCol::pc_update, 0.into());
         e.proc.set_pc(0.into());
         assert!(e.proc.advance().is_none());
-        e.proc.push_row(0);
         e.proc
             .set_col(KnownWitnessCol::_operation_id, sink_id.into());
 
@@ -3090,7 +3084,6 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_reg("query_arg_1", 0);
         e.proc.set_reg("query_arg_2", 0);
         assert!(e.proc.advance().is_none());
-        e.proc.push_row(1);
         e.proc
             .set_col(KnownWitnessCol::_operation_id, sink_id.into());
 
@@ -3098,7 +3091,6 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_col(KnownWitnessCol::pc_update, sink_id.into());
         e.proc.set_pc(sink_id.into());
         assert!(e.proc.advance().is_none());
-        e.proc.push_row(sink_id);
         e.proc.set_col(KnownWitnessCol::pc_update, sink_id.into());
         e.proc
             .set_col(KnownWitnessCol::_operation_id, sink_id.into());
