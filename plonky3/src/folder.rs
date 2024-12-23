@@ -69,7 +69,7 @@ impl<'a, SC: StarkGenericConfig> AirBuilder for ProverConstraintFolder<'a, SC> {
     }
 }
 
-impl<'a, SC: StarkGenericConfig> MultistageAirBuilder for ProverConstraintFolder<'a, SC> {
+impl<SC: StarkGenericConfig> MultistageAirBuilder for ProverConstraintFolder<'_, SC> {
     type Challenge = Val<SC>;
     type PublicVar = Val<SC>;
 
@@ -85,7 +85,7 @@ impl<'a, SC: StarkGenericConfig> MultistageAirBuilder for ProverConstraintFolder
     }
 }
 
-impl<'a, SC: StarkGenericConfig> PairBuilder for ProverConstraintFolder<'a, SC> {
+impl<SC: StarkGenericConfig> PairBuilder for ProverConstraintFolder<'_, SC> {
     fn preprocessed(&self) -> Self::M {
         self.preprocessed
     }
@@ -124,7 +124,7 @@ impl<'a, SC: StarkGenericConfig> AirBuilder for VerifierConstraintFolder<'a, SC>
     }
 }
 
-impl<'a, SC: StarkGenericConfig> MultistageAirBuilder for VerifierConstraintFolder<'a, SC> {
+impl<SC: StarkGenericConfig> MultistageAirBuilder for VerifierConstraintFolder<'_, SC> {
     type Challenge = Val<SC>;
     type PublicVar = Val<SC>;
 
@@ -140,7 +140,7 @@ impl<'a, SC: StarkGenericConfig> MultistageAirBuilder for VerifierConstraintFold
     }
 }
 
-impl<'a, SC: StarkGenericConfig> PairBuilder for VerifierConstraintFolder<'a, SC> {
+impl<SC: StarkGenericConfig> PairBuilder for VerifierConstraintFolder<'_, SC> {
     fn preprocessed(&self) -> Self::M {
         self.preprocessed
     }
