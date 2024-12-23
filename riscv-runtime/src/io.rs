@@ -15,6 +15,19 @@ pub struct ProverDataReader {
     remaining_data: &'static [u32],
 }
 
+use spin::Mutex;
+
+static PROVER_DATA_READER: Mutex<Option<ProverDataReader>> = Mutex::new(None);
+
+// Initialize the reader once and get a mutable reference
+fn get_prover_data_reader() -> spin::MutexGuard<'static, Option<ProverDataReader>> {
+    let mut reader = PROVER_DATA_READER.lock();
+    if reader.is_none() {
+        *reader = Some(ProverDataReader::new());
+    }
+    reader
+}
+
 impl ProverDataReader {
     /// Creates an iterator over the static prover data.
     ///
@@ -127,6 +140,16 @@ pub fn write_slice(fd: u32, data: &[u8]) {
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+
+pub fn read_stdin<T: DeserializeOwned>() -> T {
+    let mut reader = get_prover_data_reader();
+    if let Some(ref mut reader) = *reader {
+        let slice = reader.next().unwrap();
+        serde_cbor::from_slice(slice).unwrap()
+    } else {
+        panic!("aaa");
+    }
+}
 
 /// Reads and deserializes a serialized value of type T from the file descriptor fd.
 pub fn read<T: DeserializeOwned>(fd: u32) -> T {
