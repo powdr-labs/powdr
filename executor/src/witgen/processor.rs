@@ -78,7 +78,7 @@ impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
         self.left.iter().all(|l| l.is_constant())
     }
 
-    /// Helper functon to convert an `OuterQuery` into a list of `LookupCell`s
+    /// Helper function to convert an `OuterQuery` into a list of `LookupCell`s
     /// to be used by `Machine::process_lookup_direct`.
     pub fn prepare_for_direct_lookup<'c>(
         &self,
