@@ -297,6 +297,12 @@ fn stwo_incremental_one() {
 }
 
 #[test]
+fn stwo_different_degrees() {
+    let f = "pil/different_degrees.pil";
+    test_stwo(f, Default::default());
+}
+
+#[test]
 fn stwo_constant_next_test() {
     let f = "pil/fixed_with_incremental.pil";
     test_stwo(f, Default::default());

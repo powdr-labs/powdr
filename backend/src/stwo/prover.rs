@@ -1,6 +1,6 @@
 use num_traits::Zero;
 use powdr_ast::analyzed::Analyzed;
-use powdr_backend_utils::machine_fixed_columns;
+use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_number::FieldElement;
 use serde::de::DeserializeOwned;
@@ -137,6 +137,10 @@ where
                     None
                 } else {
                     let fixed_columns = machine_fixed_columns(&self.fixed, pil);
+                    println!(
+                        "\n in this {:?} namespace constant_trace is: \n {:?} \n",
+                        namespace, fixed_columns
+                    );
 
                     Some((
                         namespace.to_string(),
@@ -203,15 +207,39 @@ where
             preprocessed: Some(preprocessed),
         };
         self.proving_key = proving_key;
+
+        println!("proving key is {:?} \n", self.proving_key);
     }
 
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
-        assert!(
-            witness
-                .iter()
-                .all(|(_name, vec)| vec.len() == witness[0].1.len()),
-            "All Vec<T> in witness must have the same length. Mismatch found!"
-        );
+        let split: BTreeMap<String, Analyzed<F>> = powdr_backend_utils::split_pil(&self.analyzed)
+            .into_iter()
+            .collect();
+        let mut components = Vec::new();
+
+        let witness_by_machine = split
+            .iter()
+            .filter_map(|(machine, pil)| {
+                let witness_columns = machine_witness_columns(witness, pil, machine);
+                if witness_columns[0].1.is_empty() {
+                    // Empty machines can be removed entirely.
+                    print!("Empty machine {:?} \n", machine);
+                    None
+                } else {
+                    println!("crate component for machine {:?} \n", machine);
+                    components.push(PowdrComponent::new(
+                        &mut TraceLocationAllocator::default(),
+                        PowdrEval::new((*pil).clone()),
+                        (SecureField::zero(), None),
+                    ));
+                    Some((
+                        machine.clone(),
+                        machine_witness_columns(witness, pil, machine),
+                    ))
+                }
+            })
+            .collect::<BTreeMap<_, _>>();
+
 
         let config = get_config();
         let domain_map: BTreeMap<usize, CircleDomain> = self
@@ -250,7 +278,9 @@ where
                     .collect::<Vec<_>>()
             })
             .collect();
-        // only the first one is used, machines with varying sizes are not supported yet, and it is checked in backendfactory create function.
+
+        println!("start creating commitment_scheme \n");
+
         let prover_channel = &mut <MC as MerkleChannel>::C::default();
         let mut commitment_scheme =
             CommitmentSchemeProver::<'_, B, MC>::new(config, twiddles_map.iter().next().unwrap().1);
@@ -274,6 +304,8 @@ where
         }
         tree_builder.commit(prover_channel);
 
+        println!("constant column created \n");
+
         let trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = witness
             .iter()
             .map(|(_name, values)| {
@@ -288,15 +320,20 @@ where
         tree_builder.extend_evals(trace);
         tree_builder.commit(prover_channel);
 
-        let component = PowdrComponent::new(
-            &mut TraceLocationAllocator::default(),
-            PowdrEval::new(self.analyzed.clone()),
-            // This parameter is used for the logup functionality. If logup is not required, this default value should be passed.
-            (SecureField::zero(), None),
-        );
+        println!("witness column created \n");
+
+    
+        // let component = PowdrComponent::new(
+        //     &mut TraceLocationAllocator::default(),
+        //     PowdrEval::new((*self.analyzed).clone()),
+        //     // This parameter is used for the logup functionality. If logup is not required, this default value should be passed.
+        //     (SecureField::zero(), None),
+        // );
+
+        println!("component created \n");
 
         let proof_result = stwo_prover::core::prover::prove::<B, MC>(
-            &[&component],
+            &[&components[0]],
             prover_channel,
             commitment_scheme,
         );
@@ -306,10 +343,13 @@ where
             Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
         };
 
+        println!("proof created \n");
+
         Ok(bincode::serialize(&proof).unwrap())
     }
 
     pub fn verify(&self, proof: &[u8], _instances: &[F]) -> Result<(), String> {
+        println!("start verifying \n");
         assert!(
             _instances.is_empty(),
             "Expected _instances slice to be empty, but it has {} elements.",
@@ -326,7 +366,7 @@ where
         //Constraints that are to be proved
         let component = PowdrComponent::new(
             &mut TraceLocationAllocator::default(),
-            PowdrEval::new(self.analyzed.clone()),
+            PowdrEval::new((*self.analyzed).clone()),
             (SecureField::zero(), None),
         );
 

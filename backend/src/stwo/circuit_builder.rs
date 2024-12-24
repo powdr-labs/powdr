@@ -59,20 +59,22 @@ where
 }
 
 pub struct PowdrEval<T> {
-    analyzed: Arc<Analyzed<T>>,
+    analyzed: Analyzed<T>,
     witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
     constant_columns: BTreeMap<PolyID, usize>,
 }
 
 impl<T: FieldElement> PowdrEval<T> {
-    pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
+    pub fn new(analyzed: Analyzed<T>) -> Self {
+        
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
+
 
         let constant_with_next_list = get_constant_with_next_list(&analyzed);
 
