@@ -299,7 +299,11 @@ machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
 
     // ======================= assertions =========================
 
-    instr fail { 1 = 0 }
+    instr fail
+        link ~> tmp1_col = regs.mload(0, STEP)
+    {
+        tmp1_col = 1
+    }
 
     // Wraps V = val(X) * Y and stores it in register Z,
     // where X is a register and Y is a constant factor.

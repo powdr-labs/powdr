@@ -736,7 +736,6 @@ fn only_if_no_write_to_zero_vec(reg: Register, statements: Vec<String>) -> Vec<S
 }
 
 /// Push register into the stack
-
 pub fn push_register(name: &str) -> Vec<String> {
     assert!(name.starts_with('x'), "Only x registers are supported");
     let reg = Register::from(name);
@@ -1532,7 +1531,7 @@ fn process_instruction<A: InstructionArgs>(
             // save ra/x1
             push_register("x1")
                 .into_iter()
-                // jump to to handler
+                // jump to handler
                 .chain(["jump __ecall_handler, 1;".to_string()])
                 // restore ra/x1
                 .chain(pop_register("x1"))

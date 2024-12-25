@@ -13,6 +13,11 @@ use crate::witgen::rows::Row;
 
 use super::padded_bitvec::PaddedBitVec;
 
+pub struct ColumnLayout {
+    pub first_column_id: u64,
+    pub column_count: usize,
+}
+
 /// Sequence of rows of field elements, stored in a compact form.
 /// Optimized for contiguous column IDs, but works with any combination.
 #[derive(Clone)]
@@ -40,6 +45,13 @@ impl<T: FieldElement> CompactData<T> {
             column_count,
             data: Vec::new(),
             known_cells: PaddedBitVec::new(column_count),
+        }
+    }
+
+    pub fn layout(&self) -> ColumnLayout {
+        ColumnLayout {
+            first_column_id: self.first_column_id,
+            column_count: self.column_count,
         }
     }
 
@@ -98,14 +110,6 @@ impl<T: FieldElement> CompactData<T> {
         (self.data[idx], self.known_cells.get(row, relative_col))
     }
 
-    pub fn set(&mut self, row: usize, col: u64, value: T) {
-        let idx = self.index(row, col);
-        let relative_col = col - self.first_column_id;
-        assert!(!self.known_cells.get(row, relative_col) || self.data[idx] == value);
-        self.data[idx] = value;
-        self.known_cells.set(row, relative_col, true);
-    }
-
     pub fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (u64, &T)> {
         (0..self.column_count)
             .filter(move |i| self.known_cells.get(row, *i as u64))
@@ -114,6 +118,10 @@ impl<T: FieldElement> CompactData<T> {
                 let idx = self.index(row, col);
                 (col, &self.data[idx])
             })
+    }
+
+    pub fn as_mut_slices(&mut self) -> (&mut [T], &mut [u32]) {
+        (&mut self.data, self.known_cells.as_mut_slice())
     }
 }
 
@@ -132,18 +140,12 @@ impl<'a, T: FieldElement> CompactDataRef<'a, T> {
         Self { data, row_offset }
     }
 
-    pub fn get(&self, row: i32, col: u32) -> T {
-        let (v, known) = self.data.get(self.inner_row(row), col as u64);
-        assert!(known);
-        v
+    pub fn as_mut_slices(&mut self) -> (&mut [T], &mut [u32]) {
+        self.data.as_mut_slices()
     }
 
-    pub fn set(&mut self, row: i32, col: u32, value: T) {
-        self.data.set(self.inner_row(row), col as u64, value);
-    }
-
-    fn inner_row(&self, row: i32) -> usize {
-        (row + self.row_offset as i32) as usize
+    pub fn row_offset(&self) -> usize {
+        self.row_offset
     }
 }
 
@@ -172,6 +174,10 @@ pub struct FinalizableData<T: FieldElement> {
 impl<T: FieldElement> FinalizableData<T> {
     pub fn new(column_ids: &HashSet<PolyID>) -> Self {
         Self::with_initial_rows_in_progress(column_ids, [].into_iter())
+    }
+
+    pub fn layout(&self) -> ColumnLayout {
+        self.finalized_data.layout()
     }
 
     pub fn with_initial_rows_in_progress(
@@ -397,16 +403,16 @@ impl<T: FieldElement> FinalizableData<T> {
     /// - A list of values
     /// - A bit vector indicating which cells are known. Values of unknown cells should be ignored.
     pub fn take_transposed(&mut self) -> impl Iterator<Item = (PolyID, (Vec<T>, BitVec))> {
-        log::debug!(
+        log::trace!(
             "Transposing {} rows with {} columns...",
             self.len(),
             self.column_ids.len()
         );
-        log::debug!("Finalizing remaining rows...");
+        log::trace!("Finalizing remaining rows...");
         let counter = self.finalize_range(
             (self.pre_finalized_data.len() + self.finalized_data.len())..self.len(),
         );
-        log::debug!("Needed to finalize {} / {} rows.", counter, self.len());
+        log::trace!("Needed to finalize {} / {} rows.", counter, self.len());
         assert!(self.post_finalized_data.is_empty());
 
         // Store transposed columns in vectors for performance reasons
@@ -434,7 +440,7 @@ impl<T: FieldElement> FinalizableData<T> {
             }
         }
 
-        log::debug!("Done transposing.");
+        log::trace!("Done transposing.");
 
         // Pair columns with their IDs
         let column_ids = std::mem::take(&mut self.column_ids);

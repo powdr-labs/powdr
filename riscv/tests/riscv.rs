@@ -278,10 +278,8 @@ fn runtime_modmul_256() {
 mstore(0, 666)
 return(0, 32)
 */
-#[cfg(feature = "complex-tests")]
 static BYTECODE: &str = "61029a60005260206000f3";
 
-#[cfg(feature = "complex-tests")]
 #[ignore = "Too slow"]
 #[test]
 fn evm() {

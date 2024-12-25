@@ -356,8 +356,7 @@ where
 }
 
 /// An extension of [Air] allowing access to the number of fixed columns
-
-impl<'a, T: FieldElementMap> BaseAir<Plonky3Field<T>> for PowdrTable<'a, T>
+impl<T: FieldElementMap> BaseAir<Plonky3Field<T>> for PowdrTable<'_, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
@@ -371,8 +370,8 @@ where
     }
 }
 
-impl<'a, T: FieldElementMap, AB: PairBuilder + MultistageAirBuilder<F = Plonky3Field<T>>> Air<AB>
-    for PowdrTable<'a, T>
+impl<T: FieldElementMap, AB: PairBuilder + MultistageAirBuilder<F = Plonky3Field<T>>> Air<AB>
+    for PowdrTable<'_, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
@@ -469,8 +468,8 @@ where
     }
 }
 
-impl<'a, T: FieldElementMap, AB: PairBuilder + MultistageAirBuilder<F = Plonky3Field<T>>>
-    MultiStageAir<AB> for PowdrTable<'a, T>
+impl<T: FieldElementMap, AB: PairBuilder + MultistageAirBuilder<F = Plonky3Field<T>>>
+    MultiStageAir<AB> for PowdrTable<'_, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
@@ -502,7 +501,7 @@ where
     }
 }
 
-impl<'a, T: FieldElementMap> PowdrCircuit<'a, T>
+impl<T: FieldElementMap> PowdrCircuit<'_, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,

@@ -384,7 +384,7 @@ struct WrappedArgs<'a> {
     symbol_table: &'a SymbolTable,
 }
 
-impl<'a> InstructionArgs for WrappedArgs<'a> {
+impl InstructionArgs for WrappedArgs<'_> {
     type Error = String;
 
     fn l(&self) -> Result<impl AsRef<str>, Self::Error> {
@@ -575,12 +575,12 @@ struct AddressMap<'a>(BTreeMap<u32, &'a ProgramHeader>);
 impl AddressMap<'_> {
     fn is_in_data_section(&self, addr: u32) -> bool {
         self.get_section_of_addr(addr)
-            .map_or(false, |section| !section.is_executable())
+            .is_some_and(|section| !section.is_executable())
     }
 
     fn is_in_text_section(&self, addr: u32) -> bool {
         self.get_section_of_addr(addr)
-            .map_or(false, ProgramHeader::is_executable)
+            .is_some_and(ProgramHeader::is_executable)
     }
 
     fn get_section_of_addr(&self, addr: u32) -> Option<&ProgramHeader> {
@@ -1047,7 +1047,7 @@ fn search_text_addrs(
 
 /// Lift the instructions back to higher-level instructions.
 ///
-/// Turn addresses into labels and and merge instructions into
+/// Turn addresses into labels and merge instructions into
 /// pseudoinstructions.
 fn lift_instructions(
     base_addr: u32,
