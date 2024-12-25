@@ -126,7 +126,7 @@ impl Session {
     }
 
     pub fn write<S: serde::Serialize>(&mut self, data: &S) {
-        let bytes = serde_cbor::to_vec(&data).unwrap();
+        let bytes = bincode::serialize(&data).unwrap();
         self.pipeline.add_prover_data(bytes);
     }
 

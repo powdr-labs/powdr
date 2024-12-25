@@ -42,7 +42,7 @@ impl HostContext {
     pub fn read<T: DeserializeOwned>(&self, fd: u32) -> Result<T, String> {
         let fs = self.file_data.lock().unwrap();
         if let Some(data) = fs.get(&fd) {
-            serde_cbor::from_slice(data).map_err(|e| format!("Error deserializing data: {e}"))
+            bincode::deserialize(data).map_err(|e| format!("Error deserializing data: {e}"))
         } else {
             Err(format!("File descriptor {fd} not found"))
         }

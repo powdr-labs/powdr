@@ -333,7 +333,7 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     pub fn add_data<S: serde::Serialize>(self, channel: u32, data: &S) -> Self {
-        let bytes = serde_cbor::to_vec(&data).unwrap();
+        let bytes = bincode::serialize(&data).unwrap();
         self.add_query_callback(Arc::new(serde_data_to_query_callback(channel, bytes)))
     }
 
