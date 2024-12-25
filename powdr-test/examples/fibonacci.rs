@@ -8,7 +8,7 @@ fn main() {
         .guest_path("./examples/fibonacci/guest")
         .out_path("powdr-target")
         .build()
-        .write(0, &n);
+        .write_fd(0, &n);
 
     // Fast dry run to test execution.
     session.run();
