@@ -19,6 +19,7 @@ use super::poseidon2_common::poseidon2;
 // state size of 8 field elements instead of 12, matching Plonky3's implementation.
 machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     latch: latch,
+    operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
@@ -32,14 +33,29 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     // Similarly, the output data is written to memory at the provided pointer.
     //
     // Reads happen at the provided time step; writes happen at the next time step.
-    operation poseidon2_permutation
+    operation poseidon2_permutation<0>
         input_addr,
         output_addr,
-        time_step ->;
+        read_time_step ->;
+
+    // Does not assume the memory is contains 32-bit words that must be assembled.
+    // Instead, each memory position is taken as a complete field element input.
+    // The output is just the first 4 field elements of the state.
+    // Allows to specify both the read time_step and the write time_step.
+    operation poseidon2_packed_compression<1>
+        input_addr,
+        output_addr,
+        read_time_step,
+        write_time_step;
 
     let latch = 1;
+    let operation_id;
 
-    let time_step;
+    let read_time_step;
+    let write_time_step;
+
+    // In permutation mode, write time step is set to (read_time_step + 1):
+    (1 - operation_id) * (read_time_step + 1 - write_time_step) = 0
 
     // Poseidon2 parameters, compatible with our powdr-plonky3 implementation.
     //
@@ -114,29 +130,29 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     let input_low: col[STATE_SIZE];
     let input_high: col[STATE_SIZE];
     // TODO: when link is available inside functions, we can turn this into array operations.
-    link if is_used ~> input_low[0] = mem.mload(input_addr + 0, time_step);
-    link if is_used ~> input_high[0] = mem.mload(input_addr + 4, time_step);
+    link if is_used ~> input_low[0] = mem.mload(input_addr + 0, read_time_step);
+    link if is_used ~> input_high[0] = mem.mload(input_addr + 4, read_time_step);
 
-    link if is_used ~> input_low[1] = mem.mload(input_addr + 8, time_step);
-    link if is_used ~> input_high[1] = mem.mload(input_addr + 12, time_step);
+    link if is_used ~> input_low[1] = mem.mload(input_addr + 8, read_time_step);
+    link if is_used ~> input_high[1] = mem.mload(input_addr + 12, read_time_step);
 
-    link if is_used ~> input_low[2] = mem.mload(input_addr + 16, time_step);
-    link if is_used ~> input_high[2] = mem.mload(input_addr + 20, time_step);
+    link if is_used ~> input_low[2] = mem.mload(input_addr + 16, read_time_step);
+    link if is_used ~> input_high[2] = mem.mload(input_addr + 20, read_time_step);
 
-    link if is_used ~> input_low[3] = mem.mload(input_addr + 24, time_step);
-    link if is_used ~> input_high[3] = mem.mload(input_addr + 28, time_step);
+    link if is_used ~> input_low[3] = mem.mload(input_addr + 24, read_time_step);
+    link if is_used ~> input_high[3] = mem.mload(input_addr + 28, read_time_step);
 
-    link if is_used ~> input_low[4] = mem.mload(input_addr + 32, time_step);
-    link if is_used ~> input_high[4] = mem.mload(input_addr + 36, time_step);
+    link if is_used ~> input_low[4] = mem.mload(input_addr + 32, read_time_step);
+    link if is_used ~> input_high[4] = mem.mload(input_addr + 36, read_time_step);
 
-    link if is_used ~> input_low[5] = mem.mload(input_addr + 40, time_step);
-    link if is_used ~> input_high[5] = mem.mload(input_addr + 44, time_step);
+    link if is_used ~> input_low[5] = mem.mload(input_addr + 40, read_time_step);
+    link if is_used ~> input_high[5] = mem.mload(input_addr + 44, read_time_step);
 
-    link if is_used ~> input_low[6] = mem.mload(input_addr + 48, time_step);
-    link if is_used ~> input_high[6] = mem.mload(input_addr + 52, time_step);
+    link if is_used ~> input_low[6] = mem.mload(input_addr + 48, read_time_step);
+    link if is_used ~> input_high[6] = mem.mload(input_addr + 52, read_time_step);
 
-    link if is_used ~> input_low[7] = mem.mload(input_addr + 56, time_step);
-    link if is_used ~> input_high[7] = mem.mload(input_addr + 60, time_step);
+    link if is_used ~> input_low[7] = mem.mload(input_addr + 56, read_time_step);
+    link if is_used ~> input_high[7] = mem.mload(input_addr + 60, read_time_step);
 
     // Assemble the two limbs of the input
     let input = array::zip(input_low, input_high, |low, high| low + 2**32 * high);
@@ -171,27 +187,27 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     // Write the output to memory at the next time step
     let output_addr;
     // TODO: turn this into array operations
-    link if is_used ~> mem.mstore(output_addr + 0, time_step + 1, output_low[0]);
-    link if is_used ~> mem.mstore(output_addr + 4, time_step + 1, output_high[0]);
+    link if is_used ~> mem.mstore(output_addr + 0, write_time_step, output_low[0]);
+    link if is_used ~> mem.mstore(output_addr + 4, write_time_step, output_high[0]);
 
-    link if is_used ~> mem.mstore(output_addr + 8, time_step + 1, output_low[1]);
-    link if is_used ~> mem.mstore(output_addr + 12, time_step + 1, output_high[1]);
+    link if is_used ~> mem.mstore(output_addr + 8, write_time_step, output_low[1]);
+    link if is_used ~> mem.mstore(output_addr + 12, write_time_step, output_high[1]);
 
-    link if is_used ~> mem.mstore(output_addr + 16, time_step + 1, output_low[2]);
-    link if is_used ~> mem.mstore(output_addr + 20, time_step + 1, output_high[2]);
+    link if is_used ~> mem.mstore(output_addr + 16, write_time_step, output_low[2]);
+    link if is_used ~> mem.mstore(output_addr + 20, write_time_step, output_high[2]);
 
-    link if is_used ~> mem.mstore(output_addr + 24, time_step + 1, output_low[3]);
-    link if is_used ~> mem.mstore(output_addr + 28, time_step + 1, output_high[3]);
+    link if is_used ~> mem.mstore(output_addr + 24, write_time_step, output_low[3]);
+    link if is_used ~> mem.mstore(output_addr + 28, write_time_step, output_high[3]);
 
-    link if is_used ~> mem.mstore(output_addr + 32, time_step + 1, output_low[4]);
-    link if is_used ~> mem.mstore(output_addr + 36, time_step + 1, output_high[4]);
+    link if is_used ~> mem.mstore(output_addr + 32, write_time_step, output_low[4]);
+    link if is_used ~> mem.mstore(output_addr + 36, write_time_step, output_high[4]);
 
-    link if is_used ~> mem.mstore(output_addr + 40, time_step + 1, output_low[5]);
-    link if is_used ~> mem.mstore(output_addr + 44, time_step + 1, output_high[5]);
+    link if is_used ~> mem.mstore(output_addr + 40, write_time_step, output_low[5]);
+    link if is_used ~> mem.mstore(output_addr + 44, write_time_step, output_high[5]);
 
-    link if is_used ~> mem.mstore(output_addr + 48, time_step + 1, output_low[6]);
-    link if is_used ~> mem.mstore(output_addr + 52, time_step + 1, output_high[6]);
+    link if is_used ~> mem.mstore(output_addr + 48, write_time_step, output_low[6]);
+    link if is_used ~> mem.mstore(output_addr + 52, write_time_step, output_high[6]);
 
-    link if is_used ~> mem.mstore(output_addr + 56, time_step + 1, output_low[7]);
-    link if is_used ~> mem.mstore(output_addr + 60, time_step + 1, output_high[7]);
+    link if is_used ~> mem.mstore(output_addr + 56, write_time_step, output_low[7]);
+    link if is_used ~> mem.mstore(output_addr + 60, write_time_step, output_high[7]);
 }
