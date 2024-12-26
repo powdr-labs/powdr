@@ -689,7 +689,7 @@ mod builder {
         mode: ExecMode,
     }
 
-    impl<'a, 'b, F: FieldElement> TraceBuilder<'b, F> {
+    impl<'a, 'b: 'a, F: FieldElement> TraceBuilder<'b, F> {
         /// Creates a new builder.
         ///
         /// May fail if max_rows_len is too small or if the main machine is
@@ -1300,7 +1300,7 @@ struct Executor<'a, 'b, F: FieldElement> {
     cached_fixed_cols: Vec<Vec<F>>,
 }
 
-impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
+impl<F: FieldElement> Executor<'_, '_, F> {
     fn init(&mut self) {
         self.step = 4;
 

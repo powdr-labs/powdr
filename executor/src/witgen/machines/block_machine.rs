@@ -37,7 +37,7 @@ impl<'a, T: FieldElement> ProcessResult<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> Display for BlockMachine<'a, T> {
+impl<T: FieldElement> Display for BlockMachine<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -77,6 +77,10 @@ pub struct BlockMachine<'a, T: FieldElement> {
     function_cache: FunctionCache<'a, T>,
     name: String,
     multiplicity_counter: MultiplicityCounter,
+    /// Counts the number of blocks created using the JIT.
+    block_count_jit: usize,
+    /// Counts the number of blocks created using the runtime solver.
+    block_count_runtime: usize,
 }
 
 impl<'a, T: FieldElement> BlockMachine<'a, T> {
@@ -143,6 +147,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 latch_row,
                 layout,
             ),
+            block_count_jit: 0,
+            block_count_runtime: 0,
         })
     }
 }
@@ -208,6 +214,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                     .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
                     .collect();
             }
+        } else {
+            let total_block_count = self.block_count_jit + self.block_count_runtime;
+            log::debug!(
+                "{}: {} / {total_block_count} blocks computed via JIT.",
+                self.name,
+                self.block_count_jit
+            );
         }
         self.degree = compute_size_and_log(
             &self.name,
@@ -386,10 +399,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
         if self
             .function_cache
-            .compile_cached(identity_id, &known_inputs)
+            .compile_cached(mutable_state, identity_id, &known_inputs)
             .is_some()
         {
-            return self.process_lookup_via_jit(mutable_state, identity_id, outer_query);
+            let updates = self.process_lookup_via_jit(mutable_state, identity_id, outer_query)?;
+            assert!(updates.is_complete());
+            self.block_count_jit += 1;
+            return Ok(updates);
         }
 
         // TODO this assumes we are always using the same lookup for this machine.
@@ -417,6 +433,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         match process_result {
             ProcessResult::Success(updated_data, updates) => {
+                assert!(updates.is_complete());
+                self.block_count_runtime += 1;
+
                 log::trace!(
                     "End processing block machine '{}' (successfully)",
                     self.name()
