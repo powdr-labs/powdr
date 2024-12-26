@@ -2922,7 +2922,7 @@ fn execute_inner<F: FieldElement>(
         profiling.map(|opt| Profiler::new(opt, &debug_files[..], function_starts, location_starts));
 
     let mut curr_pc = 0u32;
-    e.proc.push_row(curr_pc);
+    e.proc.push_row(PC_INITIAL_VAL as u32);
     let mut last = Instant::now();
     let mut count = 0;
     loop {
