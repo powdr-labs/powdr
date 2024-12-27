@@ -43,7 +43,7 @@ fn run_continuations_test(case: &str, powdr_asm: String, prover_data: Vec<Vec<u8
         .with_output(tmp_dir.to_path_buf(), false);
 
     for v in prover_data {
-        pipeline.add_prover_data(v);
+        pipeline = pipeline.add_to_initial_memory(v);
     }
 
     let pipeline_callback = |pipeline: &mut Pipeline<GoldilocksField>| -> Result<(), ()> {
