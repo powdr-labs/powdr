@@ -112,12 +112,13 @@ where
     GV: GlobalValues<T>,
     T: FieldElement,
 {
+    /// Create a new expression evaluator (for the case where Expr = T).
     pub fn new(
         trace_values: TV,
         global_values: GV,
         intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
     ) -> Self {
-        Self::new_with_expr_converter(
+        Self::new_with_custom_expr(
             trace_values,
             global_values,
             intermediate_definitions,
@@ -134,7 +135,8 @@ where
     Expr: Clone + Add<Output = Expr> + Sub<Output = Expr> + Mul<Output = Expr>,
     T: FieldElement,
 {
-    pub fn new_with_expr_converter(
+    /// Create a new expression evaluator with custom expression converters.
+    pub fn new_with_custom_expr(
         trace_values: TV,
         global_values: GV,
         intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,

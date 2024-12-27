@@ -183,7 +183,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             constant_shifted_eval: &constant_shifted_eval,
             constant_eval: &constant_eval,
         };
-        let mut evaluator = ExpressionEvaluator::new_with_expr_converter(
+        let mut evaluator = ExpressionEvaluator::new_with_custom_expr(
             &data,
             &data,
             &intermediate_definitions,

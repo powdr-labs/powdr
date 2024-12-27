@@ -351,12 +351,12 @@ where
             challenges: &challenges_by_stage,
             fixed: &fixed,
         };
-        let mut evaluator = ExpressionEvaluator::new_with_expr_converter(
+        let mut evaluator = ExpressionEvaluator::new_with_custom_expr(
             &data,
             &data,
             &self.constraint_system.intermediates,
             |value| AB::Expr::from(value.into_p3_field()),
-            || AB::Expr::from(<AB::F as AbstractField>::one()),
+            AB::Expr::one,
         );
 
         // constrain public inputs using witness columns in stage 0
