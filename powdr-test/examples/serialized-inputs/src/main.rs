@@ -20,10 +20,9 @@ fn main() {
         .guest_path("./guest")
         .out_path("powdr-target")
         .chunk_size_log2(18)
-        .build();
-
-    session.write(&some_data);
-    session.write(&s);
+        .build()
+        .write(&some_data)
+        .write(&s);
 
     // Fast dry run to test execution.
     session.run();
