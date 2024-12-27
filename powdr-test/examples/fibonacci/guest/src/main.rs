@@ -1,13 +1,20 @@
 use powdr_riscv_runtime;
-use powdr_riscv_runtime::io::read;
+use powdr_riscv_runtime::commit;
+use powdr_riscv_runtime::io::{read, write};
+
+fn fib(n: u32) -> u32 {
+    if n <= 1 {
+        return n;
+    }
+    fib(n - 1) + fib(n - 2)
+}
 
 fn main() {
-    // Any serde-deserializable type can be read from a channel.
-    // Read some data from channel 1.
-    let data: Vec<u32> = read(1);
-    // Read the claimed sum from channel 2.
-    let sum: u32 = read(2);
-
-    // Check that the claimed sum is correct.
-    assert_eq!(data.iter().sum::<u32>(), sum);
+    // Read input from stdin.
+    let n: u32 = read();
+    let r = fib(n);
+    // Write result to stdout.
+    write(1, r);
+    // Commit the result as a public.
+    commit::commit(r);
 }
