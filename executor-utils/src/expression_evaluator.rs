@@ -7,6 +7,7 @@ use powdr_ast::analyzed::{
     Analyzed, Challenge, PolyID, PolynomialType,
 };
 use powdr_number::FieldElement;
+use powdr_number::LargeInt;
 
 /// Accessor for trace values.
 pub trait TraceValues<T> {
@@ -102,27 +103,27 @@ pub struct ExpressionEvaluator<'a, T, Expr, TV, GV> {
     /// ExpressionEvaluator.
     intermediates_cache: BTreeMap<AlgebraicReferenceThin, Expr>,
     to_expr: fn(&T) -> Expr,
+    one_expr: fn() -> Expr,
 }
 
 impl<'a, T, TV, GV> ExpressionEvaluator<'a, T, T, TV, GV>
 where
     TV: TraceValues<T>,
     GV: GlobalValues<T>,
-    T: Clone + Add<Output = T> + Sub<Output = T> + Mul<Output = T>,
-    T: Clone,
+    T: FieldElement,
 {
     pub fn new(
         trace_values: TV,
         global_values: GV,
         intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
     ) -> Self {
-        Self {
+        Self::new_with_expr_converter(
             trace_values,
             global_values,
             intermediate_definitions,
-            intermediates_cache: Default::default(),
-            to_expr: |x| x.clone(),
-        }
+            |x| *x,
+            || T::one(),
+        )
     }
 }
 
@@ -131,13 +132,14 @@ where
     TV: TraceValues<Expr>,
     GV: GlobalValues<Expr>,
     Expr: Clone + Add<Output = Expr> + Sub<Output = Expr> + Mul<Output = Expr>,
-    T: Clone,
+    T: FieldElement,
 {
-    pub fn new2(
+    pub fn new_with_expr_converter(
         trace_values: TV,
         global_values: GV,
         intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
         to_expr: fn(&T) -> Expr,
+        one_expr: fn() -> Expr,
     ) -> Self {
         Self {
             trace_values,
@@ -145,6 +147,7 @@ where
             intermediate_definitions,
             intermediates_cache: Default::default(),
             to_expr,
+            one_expr,
         }
     }
 
@@ -173,10 +176,14 @@ where
                 AlgebraicBinaryOperator::Add => self.evaluate(left) + self.evaluate(right),
                 AlgebraicBinaryOperator::Sub => self.evaluate(left) - self.evaluate(right),
                 AlgebraicBinaryOperator::Mul => self.evaluate(left) * self.evaluate(right),
-                AlgebraicBinaryOperator::Pow => {
-                    todo!()
-                    // self.evaluate(left).pow(self.evaluate(right).to_integer())
-                }
+                AlgebraicBinaryOperator::Pow => match &**right {
+                    Expression::Number(n) => {
+                        let left = self.evaluate(left);
+                        (0u32..n.to_integer().try_into_u32().unwrap())
+                            .fold((self.one_expr)(), |acc, _| acc * left.clone())
+                    }
+                    _ => unimplemented!("pow with non-constant exponent"),
+                },
             },
             Expression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
                 AlgebraicUnaryOperator::Minus => self.evaluate(expr),
