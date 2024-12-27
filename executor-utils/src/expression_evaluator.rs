@@ -11,7 +11,7 @@ use powdr_number::LargeInt;
 
 /// Accessor for trace values.
 pub trait TraceValues<T> {
-    fn get(&self, poly_id: &AlgebraicReference) -> T;
+    fn get(&self, poly_ref: &AlgebraicReference) -> T;
 }
 
 /// Accessor for global values.
