@@ -423,9 +423,9 @@ fn serialize_deserialize_optimized_pil() {
         .compute_optimized_pil()
         .unwrap();
 
-    let optimized_serialized = bincode::serialize(&optimized).unwrap();
+    let optimized_serialized = serde_cbor::to_vec(&optimized).unwrap();
     let optimized_deserialized: powdr_ast::analyzed::Analyzed<powdr_number::Bn254Field> =
-        bincode::deserialize(&optimized_serialized[..]).unwrap();
+        serde_cbor::from_slice(&optimized_serialized[..]).unwrap();
 
     let input_pil_file = format!("{optimized}");
     let output_pil_file = format!("{optimized_deserialized}");

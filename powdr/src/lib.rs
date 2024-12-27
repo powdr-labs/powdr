@@ -125,14 +125,17 @@ impl Session {
         }
     }
 
-    pub fn write<S: serde::Serialize>(&mut self, data: &S) {
-        let bytes = bincode::serialize(&data).unwrap();
-        self.pipeline.add_prover_data(bytes);
+    pub fn write<S: serde::Serialize>(self, data: &S) -> Self {
+        let bytes = serde_cbor::to_vec(&data).unwrap();
+        Self {
+            pipeline: self.pipeline.add_to_initial_memory(bytes),
+            ..self
+        }
     }
 
-    pub fn write_fd<S: serde::Serialize>(self, channel: u32, data: &S) -> Self {
-        Session {
-            pipeline: self.pipeline.add_data(channel, data),
+    pub fn write_bytes(self, bytes: Vec<u8>) -> Self {
+        Self {
+            pipeline: self.pipeline.add_to_initial_memory(bytes),
             ..self
         }
     }
@@ -283,8 +286,7 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
     let start = Instant::now();
 
     let asm = pipeline.compute_analyzed_asm().unwrap().clone();
-    let prover_data = pipeline.prover_data();
-    let initial_memory = riscv::continuations::load_initial_memory(&asm, prover_data);
+    let initial_memory = riscv::continuations::load_initial_memory(&asm, pipeline.initial_memory());
 
     let trace_len = riscv_executor::execute_fast(
         &asm,

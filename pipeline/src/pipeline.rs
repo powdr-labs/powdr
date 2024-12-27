@@ -148,6 +148,7 @@ pub struct Pipeline<T: FieldElement> {
     arguments: Arguments<T>,
     /// The context for the host.
     host_context: HostContext,
+    /// Initial memory given by the prover.
     initial_memory: Vec<Vec<u8>>,
 }
 
@@ -324,16 +325,20 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
-    pub fn add_prover_data(&mut self, data: Vec<u8>) {
+    /// Adds data to the initial memory given by the prover.
+    /// This is a more efficient method of passing bytes from the host
+    /// to the guest.
+    pub fn add_to_initial_memory(mut self, data: Vec<u8>) -> Self {
         self.initial_memory.push(data);
+        self
     }
 
-    pub fn prover_data(&self) -> &[Vec<u8>] {
+    pub fn initial_memory(&self) -> &[Vec<u8>] {
         &self.initial_memory
     }
 
     pub fn add_data<S: serde::Serialize>(self, channel: u32, data: &S) -> Self {
-        let bytes = bincode::serialize(&data).unwrap();
+        let bytes = serde_cbor::to_vec(&data).unwrap();
         self.add_query_callback(Arc::new(serde_data_to_query_callback(channel, bytes)))
     }
 

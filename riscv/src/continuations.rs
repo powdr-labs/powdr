@@ -312,7 +312,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // In the first full run, we use it as the memory contents of the executor;
     // on the independent chunk runs, the executor uses zeroed initial memory,
     // and the pages are loaded via the bootloader.
-    let initial_memory = load_initial_memory(&asm, pipeline.prover_data());
+    let initial_memory = load_initial_memory(&asm, pipeline.initial_memory());
 
     let mut merkle_tree = MerkleTree::<F>::new();
     merkle_tree.update(initial_memory.iter().map(|(k, v)| (*k, *v)));

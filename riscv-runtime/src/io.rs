@@ -141,18 +141,27 @@ pub fn write_slice(fd: u32, data: &[u8]) {
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-pub fn read_stdin<T: DeserializeOwned>() -> T {
+pub fn read<T: DeserializeOwned>() -> T {
     let mut reader = get_prover_data_reader();
     if let Some(ref mut reader) = *reader {
         let slice = reader.next().unwrap();
-        bincode::deserialize(slice).unwrap()
+        serde_cbor::from_slice(slice).unwrap()
+    } else {
+        panic!("powdr ProverDataReader not available");
+    }
+}
+
+pub fn read_bytes() -> &'static [u8] {
+    let mut reader = get_prover_data_reader();
+    if let Some(ref mut reader) = *reader {
+        reader.next().unwrap()
     } else {
         panic!("powdr ProverDataReader not available");
     }
 }
 
 /// Reads and deserializes a serialized value of type T from the file descriptor fd.
-pub fn read<T: DeserializeOwned>(fd: u32) -> T {
+pub fn read_fd<T: DeserializeOwned>(fd: u32) -> T {
     let l = read_data_len(fd);
     let mut data = vec![0; l];
     read_slice(fd, &mut data);
@@ -160,11 +169,11 @@ pub fn read<T: DeserializeOwned>(fd: u32) -> T {
     // TODO this extra conversion can be removed if we change everything to be u8
     let data: Vec<u8> = data.into_iter().map(|x| x as u8).collect();
 
-    bincode::deserialize(data.as_slice()).unwrap()
+    serde_cbor::from_slice(data.as_slice()).unwrap()
 }
 
 /// Serializes and writes a value of type T to the file descriptor fd.
 pub fn write<T: Serialize>(fd: u32, data: T) {
-    let data = bincode::serialize(&data).unwrap();
+    let data = serde_cbor::to_vec(&data).unwrap();
     write_slice(fd, &data);
 }
