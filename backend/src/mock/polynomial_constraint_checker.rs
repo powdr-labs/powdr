@@ -4,9 +4,7 @@ use powdr_ast::{
     analyzed::{AlgebraicExpression, Identity, PolynomialIdentity},
     parsed::visitor::AllChildren,
 };
-use powdr_executor::witgen::evaluators::expression_evaluator::{
-    ExpressionEvaluator, OwnedGlobalValues,
-};
+use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, OwnedGlobalValues};
 use powdr_number::FieldElement;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 

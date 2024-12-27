@@ -14,9 +14,9 @@ use powdr_ast::analyzed::{
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::visitor::VisitOrder;
 use powdr_backend_utils::referenced_namespaces_algebraic_expression;
-use powdr_executor::witgen::evaluators::expression_evaluator::ExpressionEvaluator;
-use powdr_executor::witgen::evaluators::expression_evaluator::OwnedGlobalValues;
-use powdr_executor::witgen::evaluators::expression_evaluator::TraceValues;
+use powdr_executor_utils::expression_evaluator::ExpressionEvaluator;
+use powdr_executor_utils::expression_evaluator::OwnedGlobalValues;
+use powdr_executor_utils::expression_evaluator::TraceValues;
 use powdr_number::FieldElement;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;

@@ -4,13 +4,12 @@ use fp2::Fp2;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use powdr_ast::analyzed::{Analyzed, Identity, PhantomBusInteractionIdentity};
-use powdr_executor_utils::VariablySizedColumn;
+use powdr_executor_utils::{
+    expression_evaluator::{ExpressionEvaluator, OwnedGlobalValues, OwnedTraceValues},
+    VariablySizedColumn,
+};
 use powdr_number::{DegreeType, FieldElement};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-
-use crate::witgen::evaluators::expression_evaluator::{ExpressionEvaluator, OwnedGlobalValues};
-
-use super::evaluators::expression_evaluator::OwnedTraceValues;
 
 mod fp2;
 
