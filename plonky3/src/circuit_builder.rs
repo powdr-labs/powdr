@@ -350,8 +350,12 @@ where
             challenges: &challenges_by_stage,
             fixed: &fixed,
         };
-        let mut evaluator =
-            ExpressionEvaluator::new(&data, &data, &self.constraint_system.intermediates);
+        let mut evaluator = ExpressionEvaluator::new2(
+            &data,
+            &data,
+            &self.constraint_system.intermediates,
+            |value| AB::Expr::from(value.into_p3_field()),
+        );
 
         // constrain public inputs using witness columns in stage 0
         let fixed_local = fixed.row_slice(0);

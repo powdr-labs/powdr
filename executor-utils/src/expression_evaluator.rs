@@ -101,13 +101,14 @@ pub struct ExpressionEvaluator<'a, T, Expr, TV, GV> {
     /// Maps intermediate reference to their evaluation. Updated throughout the lifetime of the
     /// ExpressionEvaluator.
     intermediates_cache: BTreeMap<AlgebraicReferenceThin, Expr>,
+    to_expr: fn(&T) -> Expr,
 }
 
-impl<'a, T, Expr, TV, GV> ExpressionEvaluator<'a, T, Expr, TV, GV>
+impl<'a, T, TV, GV> ExpressionEvaluator<'a, T, T, TV, GV>
 where
-    TV: TraceValues<Expr>,
-    GV: GlobalValues<Expr>,
-    Expr: Clone + Add<Output = Expr> + Sub<Output = Expr> + Mul<Output = Expr>,
+    TV: TraceValues<T>,
+    GV: GlobalValues<T>,
+    T: Clone + Add<Output = T> + Sub<Output = T> + Mul<Output = T>,
     T: Clone,
 {
     pub fn new(
@@ -120,6 +121,30 @@ where
             global_values,
             intermediate_definitions,
             intermediates_cache: Default::default(),
+            to_expr: |x| x.clone(),
+        }
+    }
+}
+
+impl<'a, T, Expr, TV, GV> ExpressionEvaluator<'a, T, Expr, TV, GV>
+where
+    TV: TraceValues<Expr>,
+    GV: GlobalValues<Expr>,
+    Expr: Clone + Add<Output = Expr> + Sub<Output = Expr> + Mul<Output = Expr>,
+    T: Clone,
+{
+    pub fn new2(
+        trace_values: TV,
+        global_values: GV,
+        intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
+        to_expr: fn(&T) -> Expr,
+    ) -> Self {
+        Self {
+            trace_values,
+            global_values,
+            intermediate_definitions,
+            intermediates_cache: Default::default(),
+            to_expr,
         }
     }
 
@@ -143,8 +168,7 @@ where
                 }
             },
             Expression::PublicReference(_public) => unimplemented!(),
-            Expression::Number(_n) => todo!(),
-            // Expression::Number(n) => n.clone().into(),
+            Expression::Number(n) => (self.to_expr)(n),
             Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => match op {
                 AlgebraicBinaryOperator::Add => self.evaluate(left) + self.evaluate(right),
                 AlgebraicBinaryOperator::Sub => self.evaluate(left) - self.evaluate(right),
