@@ -315,6 +315,8 @@ fn sum_serde_in_mem() {
         vec![
             serde_cbor::to_vec(&answer).unwrap(),
             serde_cbor::to_vec(&data).unwrap(),
+            serde_cbor::to_vec(&answer).unwrap(),
+            serde_cbor::to_vec(&data).unwrap(),
         ],
     );
 }

@@ -8,8 +8,8 @@ use powdr_riscv_runtime::io;
 
 #[no_mangle]
 pub fn main() {
-    let proposed_sum: u32 = serde_cbor::from_slice(io::read()).unwrap();
-    let data: Vec<u32> = serde_cbor::from_slice(io::read()).unwrap();
+    let proposed_sum: u32 = serde_cbor::from_slice(io::read_bytes()).unwrap();
+    let data: Vec<u32> = serde_cbor::from_slice(io::read_bytes()).unwrap();
     let sum: u32 = data.iter().sum();
     assert_eq!(sum, proposed_sum);
 
