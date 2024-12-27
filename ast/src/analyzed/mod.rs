@@ -1515,18 +1515,14 @@ impl<T> AlgebraicExpression<T> {
                 PolynomialType::Committed | PolynomialType::Constant => 1,
                 PolynomialType::Intermediate => {
                     let reference = reference.to_thin();
-                    let value = cache.get(&reference).cloned();
-                    match value {
-                        Some(v) => v,
-                        None => {
-                            let def = intermediate_definitions
-                                .get(&reference)
-                                .expect("Intermediate definition not found.");
-                            let result = def.degree_with_cache(intermediate_definitions, cache);
-                            cache.insert(reference, result);
-                            result
-                        }
-                    }
+                    cache.get(&reference).cloned().unwrap_or_else(|| {
+                        let def = intermediate_definitions
+                            .get(&reference)
+                            .expect("Intermediate definition not found.");
+                        let result = def.degree_with_cache(intermediate_definitions, cache);
+                        cache.insert(reference, result);
+                        result
+                    })
                 }
             },
             // Multiplying two expressions adds their degrees
