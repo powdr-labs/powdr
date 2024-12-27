@@ -3,13 +3,19 @@ use std::collections::BTreeMap;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, AlgebraicReferenceThin, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
-    Analyzed, PolyID, PolynomialType,
+    Analyzed, Challenge, PolyID, PolynomialType,
 };
 use powdr_number::FieldElement;
 
 /// Accessor for trace values.
 pub trait TraceValues<T> {
     fn get(&self, poly_id: &AlgebraicReference) -> T;
+}
+
+/// Accessor for global values.
+pub trait GlobalValues<T> {
+    fn get_public(&self, public: &str) -> T;
+    fn get_challenge(&self, challenge: &Challenge) -> T;
 }
 
 /// A simple container for trace values.
@@ -70,30 +76,47 @@ impl<F: FieldElement> TraceValues<F> for RowTraceValues<'_, F> {
     }
 }
 
+#[derive(Default)]
+pub struct OwnedGlobalValues<T> {
+    pub public_values: BTreeMap<String, T>,
+    pub challenge_values: BTreeMap<u64, T>,
+}
+
+impl<T: Clone> GlobalValues<T> for &OwnedGlobalValues<T> {
+    fn get_public(&self, public: &str) -> T {
+        self.public_values[public].clone()
+    }
+
+    fn get_challenge(&self, challenge: &Challenge) -> T {
+        self.challenge_values[&challenge.id].clone()
+    }
+}
+
 /// Evaluates an algebraic expression to a value.
-pub struct ExpressionEvaluator<'a, T, SV> {
-    trace_values: SV,
+pub struct ExpressionEvaluator<'a, T, TV, GV> {
+    trace_values: TV,
+    global_values: GV,
     intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
-    challenges: &'a BTreeMap<u64, T>,
     /// Maps intermediate reference to their evaluation. Updated throughout the lifetime of the
     /// ExpressionEvaluator.
     intermediates_cache: BTreeMap<AlgebraicReferenceThin, T>,
 }
 
-impl<'a, T, TV> ExpressionEvaluator<'a, T, TV>
+impl<'a, T, TV, GV> ExpressionEvaluator<'a, T, TV, GV>
 where
     TV: TraceValues<T>,
+    GV: GlobalValues<T>,
     T: FieldElement,
 {
     pub fn new(
-        variables: TV,
+        trace_values: TV,
+        global_values: GV,
         intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
-        challenges: &'a BTreeMap<u64, T>,
     ) -> Self {
         Self {
-            trace_values: variables,
+            trace_values,
+            global_values,
             intermediate_definitions,
-            challenges,
             intermediates_cache: Default::default(),
         }
     }
@@ -130,7 +153,7 @@ where
             Expression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
                 AlgebraicUnaryOperator::Minus => self.evaluate(expr),
             },
-            Expression::Challenge(challenge) => self.challenges[&challenge.id],
+            Expression::Challenge(challenge) => self.global_values.get_challenge(challenge),
         }
     }
 }
