@@ -149,11 +149,11 @@ jobs:
       - name: Run examples that cargo accepts as examples
         run: cargo run --profile pr-tests --example hello_world && cargo run --profile pr-tests --example sqrt_with_publics
       - name: Run crate example serialized_inputs with the given branch
-        run: cd powdr-test/examples/serialized-inputs && cargo run --profile pr-tests
+        run: cd powdr-test/examples/serialized-inputs && cargo run -r
       - name: Run crate example fibonacci with the given branch
-        run: cd powdr-test/examples/fibonacci && cargo run --profile pr-tests
+        run: cd powdr-test/examples/fibonacci && cargo run -r
       - name: Run crate example fibonacci with the latest tag
-        run: cd examples/fibonacci && cargo run --profile pr-tests
+        run: cd examples/fibonacci && cargo run -r
 
   test_estark_polygon:
     needs: build
