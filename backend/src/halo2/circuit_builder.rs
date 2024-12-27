@@ -1,5 +1,5 @@
 use core::{cell::RefCell, unimplemented};
-use std::{cmp::max, collections::BTreeMap, iter, sync::Arc};
+use std::{cmp::max, collections::BTreeMap, collections::BTreeSet, iter, sync::Arc};
 
 use halo2_curves::ff::{Field, PrimeField};
 use halo2_proofs::{
@@ -10,12 +10,14 @@ use halo2_proofs::{
     },
     poly::Rotation,
 };
+use powdr_ast::parsed::visitor::AllChildren;
 use powdr_executor::witgen::WitgenCallback;
 
+use powdr_ast::analyzed::Analyzed;
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReferenceThin, Identity, PolynomialIdentity, SelectedExpressions,
+    AlgebraicExpression, AlgebraicReferenceThin, Identity, PolynomialIdentity, PolynomialType,
+    SelectedExpressions,
 };
-use powdr_ast::{analyzed::Analyzed, parsed::visitor::ExpressionVisitable};
 use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, GlobalValues, TraceValues};
 use powdr_number::FieldElement;
 
@@ -207,21 +209,19 @@ impl<T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCircui
         let enable = meta.fixed_column();
         let instance = meta.instance_column();
 
+        let intermediate_definitions = analyzed.intermediate_definitions();
+
         // Collect challenges referenced in any identity.
         let mut challenges = BTreeMap::new();
-        for identity in analyzed.identities_with_inlined_intermediate_polynomials() {
-            identity.pre_visit_expressions(&mut |expr| {
-                if let AlgebraicExpression::Challenge(challenge) = expr {
-                    challenges
-                        .entry(challenge.id)
-                        .or_insert_with(|| match &challenge.stage {
-                            0 => meta.challenge_usable_after(FirstPhase),
-                            1 => meta.challenge_usable_after(SecondPhase),
-                            2 => meta.challenge_usable_after(ThirdPhase),
-                            _ => panic!("Stage too large for Halo2 backend: {}", challenge.stage),
-                        });
-                }
-            })
+        let mut visited_intermediates = BTreeSet::new();
+        for identity in &analyzed.identities {
+            collect_challenges(
+                identity,
+                meta,
+                &mut challenges,
+                &mut visited_intermediates,
+                &intermediate_definitions,
+            );
         }
 
         let config = PowdrCircuitConfig {
@@ -239,9 +239,9 @@ impl<T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCircui
         }
 
         // Add polynomial identities
-        let intermediate_definitions = analyzed.intermediate_definitions();
         let polynomial_identities: Vec<PolynomialIdentity<_>> = analyzed
-            .identities_with_inlined_intermediate_polynomials()
+            .identities
+            .clone()
             .into_iter()
             .filter_map(|id| id.try_into().ok())
             .collect::<Vec<_>>();
@@ -309,7 +309,7 @@ impl<T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCircui
                 .collect::<Vec<_>>()
         };
 
-        for id in analyzed.identities_with_inlined_intermediate_polynomials() {
+        for id in &analyzed.identities {
             match id {
                 // Already handled above
                 Identity::Polynomial(..) => {}
@@ -495,6 +495,44 @@ impl<T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCircui
         }
 
         Ok(())
+    }
+}
+
+fn collect_challenges<T, F: Field>(
+    expr: &impl AllChildren<AlgebraicExpression<T>>,
+    meta: &mut ConstraintSystem<F>,
+    challenges: &mut BTreeMap<u64, Challenge>,
+    visited_intermediates: &mut BTreeSet<AlgebraicReferenceThin>,
+    intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+) {
+    for expr in expr.all_children() {
+        match expr {
+            AlgebraicExpression::Challenge(challenge) => {
+                challenges
+                    .entry(challenge.id)
+                    .or_insert_with(|| match &challenge.stage {
+                        0 => meta.challenge_usable_after(FirstPhase),
+                        1 => meta.challenge_usable_after(SecondPhase),
+                        2 => meta.challenge_usable_after(ThirdPhase),
+                        _ => panic!("Stage too large for Halo2 backend: {}", challenge.stage),
+                    });
+            }
+            AlgebraicExpression::Reference(reference) => {
+                if reference.poly_id.ptype == PolynomialType::Intermediate
+                    && visited_intermediates.insert(reference.to_thin())
+                {
+                    let def = intermediate_definitions.get(&reference.to_thin()).unwrap();
+                    collect_challenges(
+                        def,
+                        meta,
+                        challenges,
+                        visited_intermediates,
+                        intermediate_definitions,
+                    );
+                }
+            }
+            _ => {}
+        }
     }
 }
 
