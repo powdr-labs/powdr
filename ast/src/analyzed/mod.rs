@@ -1815,7 +1815,7 @@ mod tests {
     }
 
     #[test]
-    fn test_degree() {
+    fn test_degree_no_intermediates() {
         let column = AlgebraicExpression::<i32>::Reference(AlgebraicReference {
             name: "column".to_string(),
             poly_id: PolyID {
@@ -1855,6 +1855,57 @@ mod tests {
         assert_eq!(degree, 3);
 
         assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn test_degree_with_intermediates() {
+        let column = AlgebraicExpression::<i32>::Reference(AlgebraicReference {
+            name: "column".to_string(),
+            poly_id: PolyID {
+                id: 0,
+                ptype: PolynomialType::Committed,
+            },
+            next: false,
+        });
+        let one = AlgebraicExpression::Number(1);
+
+        let column_squared = column.clone() * column.clone();
+        let column_squared_ref = AlgebraicReference {
+            name: "column_squared".to_string(),
+            poly_id: PolyID {
+                id: 1,
+                ptype: PolynomialType::Intermediate,
+            },
+            next: false,
+        };
+        let column_squared_intermediate =
+            AlgebraicExpression::<i32>::Reference(column_squared_ref.clone());
+
+        let intermediate_definitions = [(column_squared_ref.to_thin(), column_squared.clone())]
+            .into_iter()
+            .collect();
+        let mut cache = Default::default();
+
+        let expr = column_squared_intermediate.clone() + one.clone();
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 2);
+
+        let expr = column_squared_intermediate.clone() + column.clone();
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 2);
+
+        let expr = column_squared_intermediate.clone() * column_squared_intermediate.clone();
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 4);
+
+        let expr = column_squared_intermediate.clone()
+            * (column_squared_intermediate.clone() + one.clone());
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 4);
+
+        let expr = column_squared_intermediate.clone() * column.clone();
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 3);
     }
 
     #[test]
