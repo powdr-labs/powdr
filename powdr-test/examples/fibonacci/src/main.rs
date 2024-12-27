@@ -5,10 +5,10 @@ fn main() {
 
     let n = 11;
     let mut session = Session::builder()
-        .guest_path("./examples/fibonacci/guest")
+        .guest_path("./guest")
         .out_path("powdr-target")
         .build()
-        .write_fd(0, &n);
+        .write(&n);
 
     // Fast dry run to test execution.
     session.run();
