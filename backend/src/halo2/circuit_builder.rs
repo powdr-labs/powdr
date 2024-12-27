@@ -1,6 +1,7 @@
+use core::{cell::RefCell, unimplemented};
 use std::{cmp::max, collections::BTreeMap, iter, sync::Arc};
 
-use halo2_curves::ff::PrimeField;
+use halo2_curves::ff::{Field, PrimeField};
 use halo2_proofs::{
     circuit::{Layouter, SimpleFloorPlanner, Value},
     plonk::{
@@ -12,10 +13,10 @@ use halo2_proofs::{
 use powdr_executor::witgen::WitgenCallback;
 
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Identity,
-    PolynomialIdentity, SelectedExpressions,
+    AlgebraicExpression, AlgebraicReferenceThin, Identity, PolynomialIdentity, SelectedExpressions,
 };
 use powdr_ast::{analyzed::Analyzed, parsed::visitor::ExpressionVisitable};
+use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, GlobalValues, TraceValues};
 use powdr_number::FieldElement;
 
 const FIRST_STEP_NAME: &str = "__first_step";
@@ -238,6 +239,7 @@ impl<T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCircui
         }
 
         // Add polynomial identities
+        let intermediate_definitions = analyzed.intermediate_definitions();
         let polynomial_identities: Vec<PolynomialIdentity<_>> = analyzed
             .identities_with_inlined_intermediate_polynomials()
             .into_iter()
@@ -245,12 +247,17 @@ impl<T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCircui
             .collect::<Vec<_>>();
         if !polynomial_identities.is_empty() {
             meta.create_gate("main", |meta| -> Vec<(String, Expression<F>)> {
+                let data = Data {
+                    config: &config,
+                    meta: RefCell::new(meta),
+                };
+                let mut evaluator = data.evaluator(&intermediate_definitions);
                 polynomial_identities
                     .iter()
                     .map(|id| {
                         let name = id.to_string();
-                        let expr = to_halo2_expression(&id.expression, &config, meta);
-                        let expr = expr * meta.query_fixed(config.enable, Rotation::cur());
+                        let expr = evaluator.evaluate(&id.expression);
+                        let expr = expr * data.query_fixed(config.enable, Rotation::cur());
                         (name, expr)
                     })
                     .collect()
@@ -280,13 +287,18 @@ impl<T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCircui
         let beta = Expression::Challenge(meta.challenge_usable_after(FirstPhase));
 
         let to_lookup_tuple = |expr: &SelectedExpressions<T>, meta: &mut VirtualCells<'_, F>| {
-            let selector = to_halo2_expression(&expr.selector, &config, meta);
-            let selector = selector * meta.query_fixed(config.enable, Rotation::cur());
+            let data = Data {
+                config: &config,
+                meta: RefCell::new(meta),
+            };
+            let mut evaluator = data.evaluator(&intermediate_definitions);
+            let selector = evaluator.evaluate(&expr.selector);
+            let selector = selector * data.query_fixed(config.enable, Rotation::cur());
 
             expr.expressions
                 .iter()
                 .map(|expr| {
-                    let expr = to_halo2_expression(expr, &config, meta);
+                    let expr = evaluator.evaluate(expr);
                     // Turns a selected lookup / permutation argument into an unselected lookup / permutation argument,
                     // see Section 3.3, equation (24) of: https://eprint.iacr.org/2023/474.pdf
                     // Note that they use a different transformation for lookups, because this transformation would fail
@@ -494,56 +506,52 @@ pub(crate) fn convert_field<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(x: 
     F::from_repr_vartime(repr).expect("value in field")
 }
 
-fn to_halo2_expression<T: FieldElement, F: PrimeField<Repr = [u8; 32]>>(
-    expr: &AlgebraicExpression<T>,
-    config: &PowdrCircuitConfig,
-    meta: &mut VirtualCells<'_, F>,
-) -> Expression<F> {
-    match expr {
-        AlgebraicExpression::Number(n) => Expression::Constant(convert_field(*n)),
-        AlgebraicExpression::Reference(polyref) => {
-            let rotation = match polyref.next {
-                false => Rotation::cur(),
-                true => Rotation::next(),
-            };
-            if let Some(column) = config.advice.get(&polyref.name) {
-                meta.query_advice(*column, rotation)
-            } else if let Some(column) = config.fixed.get(&polyref.name) {
-                meta.query_fixed(*column, rotation)
-            } else {
-                panic!("Unknown reference: {}", polyref.name)
-            }
+struct Data<'a, 'b, 'c, F: Field> {
+    config: &'a PowdrCircuitConfig,
+    meta: RefCell<&'b mut VirtualCells<'c, F>>,
+}
+
+impl<'a, F: PrimeField<Repr = [u8; 32]>> Data<'a, '_, '_, F> {
+    fn evaluator<T: FieldElement>(
+        &self,
+        intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+    ) -> ExpressionEvaluator<'a, T, Expression<F>, &Self, &Self> {
+        ExpressionEvaluator::new_with_custom_expr(
+            self,
+            self,
+            intermediate_definitions,
+            |n| Expression::Constant(convert_field(*n)),
+            || Expression::Constant(F::from(1)),
+        )
+    }
+
+    fn query_fixed(&self, column: Column<Fixed>, rotation: Rotation) -> Expression<F> {
+        self.meta.borrow_mut().query_fixed(column, rotation)
+    }
+}
+
+impl<F: Field> TraceValues<Expression<F>> for &Data<'_, '_, '_, F> {
+    fn get(&self, poly_ref: &powdr_ast::analyzed::AlgebraicReference) -> Expression<F> {
+        let rotation = match poly_ref.next {
+            false => Rotation::cur(),
+            true => Rotation::next(),
+        };
+        if let Some(column) = self.config.advice.get(&poly_ref.name) {
+            self.meta.borrow_mut().query_advice(*column, rotation)
+        } else if let Some(column) = self.config.fixed.get(&poly_ref.name) {
+            self.meta.borrow_mut().query_fixed(*column, rotation)
+        } else {
+            panic!("Unknown reference: {}", poly_ref.name)
         }
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-            left: lhe,
-            op,
-            right: powdr_rhe,
-        }) => {
-            let lhe = to_halo2_expression(lhe, config, meta);
-            let rhe = to_halo2_expression(powdr_rhe, config, meta);
-            match op {
-                AlgebraicBinaryOperator::Add => lhe + rhe,
-                AlgebraicBinaryOperator::Sub => lhe - rhe,
-                AlgebraicBinaryOperator::Mul => lhe * rhe,
-                AlgebraicBinaryOperator::Pow => {
-                    let AlgebraicExpression::Number(e) = powdr_rhe.as_ref() else {
-                        panic!("Expected number in exponent.")
-                    };
-                    let e: u32 = e
-                        .to_arbitrary_integer()
-                        .try_into()
-                        .unwrap_or_else(|_| panic!("Exponent has to fit 32 bits."));
-                    if e == 0 {
-                        Expression::Constant(F::from(1))
-                    } else {
-                        (0..e).fold(lhe.clone(), |acc, _| acc * lhe.clone())
-                    }
-                }
-            }
-        }
-        AlgebraicExpression::Challenge(challenge) => {
-            config.challenges.get(&challenge.id).unwrap().expr()
-        }
-        _ => unimplemented!("{:?}", expr),
+    }
+}
+
+impl<F: Field> GlobalValues<Expression<F>> for &Data<'_, '_, '_, F> {
+    fn get_public(&self, _public: &str) -> Expression<F> {
+        unimplemented!()
+    }
+
+    fn get_challenge(&self, challenge: &powdr_ast::analyzed::Challenge) -> Expression<F> {
+        self.config.challenges.get(&challenge.id).unwrap().expr()
     }
 }
