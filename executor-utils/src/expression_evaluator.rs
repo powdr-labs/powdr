@@ -1,3 +1,4 @@
+use core::ops::{Add, Mul, Sub};
 use std::collections::BTreeMap;
 
 use powdr_ast::analyzed::{
@@ -93,20 +94,21 @@ impl<T: Clone> GlobalValues<T> for &OwnedGlobalValues<T> {
 }
 
 /// Evaluates an algebraic expression to a value.
-pub struct ExpressionEvaluator<'a, T, TV, GV> {
+pub struct ExpressionEvaluator<'a, T, Expr, TV, GV> {
     trace_values: TV,
     global_values: GV,
     intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
     /// Maps intermediate reference to their evaluation. Updated throughout the lifetime of the
     /// ExpressionEvaluator.
-    intermediates_cache: BTreeMap<AlgebraicReferenceThin, T>,
+    intermediates_cache: BTreeMap<AlgebraicReferenceThin, Expr>,
 }
 
-impl<'a, T, TV, GV> ExpressionEvaluator<'a, T, TV, GV>
+impl<'a, T, Expr, TV, GV> ExpressionEvaluator<'a, T, Expr, TV, GV>
 where
-    TV: TraceValues<T>,
-    GV: GlobalValues<T>,
-    T: FieldElement,
+    TV: TraceValues<Expr>,
+    GV: GlobalValues<Expr>,
+    Expr: Clone + Add<Output = Expr> + Sub<Output = Expr> + Mul<Output = Expr>,
+    T: Clone,
 {
     pub fn new(
         trace_values: TV,
@@ -121,7 +123,7 @@ where
         }
     }
 
-    pub fn evaluate(&mut self, expr: &'a Expression<T>) -> T {
+    pub fn evaluate(&mut self, expr: &'a Expression<T>) -> Expr {
         match expr {
             Expression::Reference(reference) => match reference.poly_id.ptype {
                 PolynomialType::Committed => self.trace_values.get(reference),
@@ -134,20 +136,22 @@ where
                         None => {
                             let definition = self.intermediate_definitions.get(&reference).unwrap();
                             let result = self.evaluate(definition);
-                            self.intermediates_cache.insert(reference, result);
+                            self.intermediates_cache.insert(reference, result.clone());
                             result
                         }
                     }
                 }
             },
             Expression::PublicReference(_public) => unimplemented!(),
-            Expression::Number(n) => *n,
+            Expression::Number(_n) => todo!(),
+            // Expression::Number(n) => n.clone().into(),
             Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => match op {
                 AlgebraicBinaryOperator::Add => self.evaluate(left) + self.evaluate(right),
                 AlgebraicBinaryOperator::Sub => self.evaluate(left) - self.evaluate(right),
                 AlgebraicBinaryOperator::Mul => self.evaluate(left) * self.evaluate(right),
                 AlgebraicBinaryOperator::Pow => {
-                    self.evaluate(left).pow(self.evaluate(right).to_integer())
+                    todo!()
+                    // self.evaluate(left).pow(self.evaluate(right).to_integer())
                 }
             },
             Expression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {

@@ -303,7 +303,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                 let empty_globals = OwnedGlobalValues::default();
                 let mut evaluator =
                     ExpressionEvaluator::new(empty_variables, &empty_globals, &empty_definitions);
-                let selector_value = evaluator.evaluate(&selected_expressions.selector);
+                let selector_value: F = evaluator.evaluate(&selected_expressions.selector);
 
                 match selector_value.to_degree() {
                     // Selected expressions is of the form `0 $ [ <constants> ]`
