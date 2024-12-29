@@ -110,6 +110,14 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
         let publics = get_publics(&analyzed);
 
+        if analyzed
+            .identities
+            .iter()
+            .any(|id| matches!(id, Identity::PhantomBusInteraction(..)))
+        {
+            unimplemented!("Bus interactions are not supported in the Halo2 backend");
+        }
+
         Self {
             analyzed,
             fixed,

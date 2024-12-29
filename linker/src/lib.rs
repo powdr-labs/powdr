@@ -29,9 +29,9 @@ pub struct LinkerParams {
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy, Default)]
 /// Whether to link the machines natively or via a global bus.
 pub enum LinkerMode {
-    #[default]
     #[strum(serialize = "native")]
     Native,
+    #[default]
     #[strum(serialize = "bus")]
     Bus,
 }
