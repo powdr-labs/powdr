@@ -490,21 +490,6 @@ impl<T> Children<AlgebraicExpression<T>> for Analyzed<T> {
 }
 
 impl<T: FieldElement> Analyzed<T> {
-    /// @returns all identities with intermediate polynomials inlined.
-    pub fn identities_with_inlined_intermediate_polynomials(&self) -> Vec<Identity<T>> {
-        let intermediates = &self
-            .intermediate_polys_in_source_order()
-            .flat_map(|(symbol, def)| {
-                symbol
-                    .array_elements()
-                    .zip(def)
-                    .map(|((_, poly_id), def)| (poly_id, def))
-            })
-            .collect();
-
-        substitute_intermediate(self.identities.clone(), intermediates)
-    }
-
     pub fn get_struct_schema() -> schemars::schema::RootSchema {
         schemars::schema_for!(Self)
     }
@@ -516,77 +501,6 @@ impl<T: FieldElement> Analyzed<T> {
     pub fn deserialize(bytes: &[u8]) -> Result<Self, String> {
         serde_cbor::from_slice(bytes).map_err(|e| format!("Failed to deserialize analyzed: {e}"))
     }
-}
-
-/// Takes identities as values and inlines intermediate polynomials everywhere, returning a vector of the updated identities
-/// TODO: this could return an iterator
-fn substitute_intermediate<T: Copy + Display>(
-    identities: impl IntoIterator<Item = Identity<T>>,
-    intermediate_polynomials: &HashMap<PolyID, &AlgebraicExpression<T>>,
-) -> Vec<Identity<T>> {
-    identities
-        .into_iter()
-        .scan(HashMap::default(), |cache, mut identity| {
-            identity.post_visit_expressions_mut(&mut |e| {
-                if let AlgebraicExpression::Reference(poly) = e {
-                    match poly.poly_id.ptype {
-                        PolynomialType::Committed => {}
-                        PolynomialType::Constant => {}
-                        PolynomialType::Intermediate => {
-                            // recursively inline intermediate polynomials, updating the cache
-                            *e = inlined_expression_from_intermediate_poly_id(
-                                poly.clone(),
-                                intermediate_polynomials,
-                                cache,
-                            );
-                        }
-                    }
-                }
-            });
-            Some(identity)
-        })
-        .collect()
-}
-
-/// Recursively inlines intermediate polynomials inside an expression and returns the new expression
-/// This uses a cache to avoid resolving an intermediate polynomial twice
-///
-/// poly_to_replace can be a "next" reference, but then its value cannot contain any next references.
-fn inlined_expression_from_intermediate_poly_id<T: Copy + Display>(
-    poly_to_replace: AlgebraicReference,
-    intermediate_polynomials: &HashMap<PolyID, &AlgebraicExpression<T>>,
-    cache: &mut HashMap<AlgebraicReference, AlgebraicExpression<T>>,
-) -> AlgebraicExpression<T> {
-    assert_eq!(poly_to_replace.poly_id.ptype, PolynomialType::Intermediate);
-    if let Some(e) = cache.get(&poly_to_replace) {
-        return e.clone();
-    }
-    let mut expr = intermediate_polynomials[&poly_to_replace.poly_id].clone();
-    expr.post_visit_expressions_mut(&mut |e| {
-        let AlgebraicExpression::Reference(r) = e else { return; };
-        // "forward" the next operator from the polynomial to be replaced.
-        if poly_to_replace.next && r.next {
-            let value = intermediate_polynomials[&poly_to_replace.poly_id];
-            panic!(
-                "Error inlining intermediate polynomial {poly_to_replace} = ({value})':\nNext operator already applied to {} and then again to {} - cannot apply it twice!",
-                r.name,
-                poly_to_replace.name
-            );
-        }
-        r.next = r.next || poly_to_replace.next;
-        match r.poly_id.ptype {
-            PolynomialType::Committed | PolynomialType::Constant => {}
-            PolynomialType::Intermediate => {
-                *e = inlined_expression_from_intermediate_poly_id(
-                    r.clone(),
-                    intermediate_polynomials,
-                    cache,
-                );
-            }
-        }
-    });
-    cache.insert(poly_to_replace, expr.clone());
-    expr
 }
 
 /// Extracts the declared (or implicit) type from a definition.
