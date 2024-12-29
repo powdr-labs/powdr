@@ -13,7 +13,6 @@ use alloc::{
     vec::Vec,
 };
 use itertools::Itertools;
-use p3_field::AbstractField;
 use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use tracing::info_span;
 
@@ -356,7 +355,6 @@ where
             &data,
             &self.constraint_system.intermediates,
             |value| AB::Expr::from(value.into_p3_field()),
-            AB::Expr::one,
         );
 
         // constrain public inputs using witness columns in stage 0

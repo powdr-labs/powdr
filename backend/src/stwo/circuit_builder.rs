@@ -1,5 +1,4 @@
 use core::unreachable;
-use num_traits::One;
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, GlobalValues, TraceValues};
 use std::collections::HashSet;
@@ -188,7 +187,6 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             &data,
             &intermediate_definitions,
             |v| E::F::from(M31::from(v.try_into_i32().unwrap())),
-            E::F::one,
         );
 
         for id in &self.analyzed.identities {

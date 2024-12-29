@@ -554,13 +554,9 @@ impl<'a, F: PrimeField<Repr = [u8; 32]>> Data<'a, '_, '_, F> {
         &self,
         intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     ) -> ExpressionEvaluator<'a, T, Expression<F>, &Self, &Self> {
-        ExpressionEvaluator::new_with_custom_expr(
-            self,
-            self,
-            intermediate_definitions,
-            |n| Expression::Constant(convert_field(*n)),
-            || Expression::Constant(F::from(1)),
-        )
+        ExpressionEvaluator::new_with_custom_expr(self, self, intermediate_definitions, |n| {
+            Expression::Constant(convert_field(*n))
+        })
     }
 
     fn query_fixed(&self, column: Column<Fixed>, rotation: Rotation) -> Expression<F> {

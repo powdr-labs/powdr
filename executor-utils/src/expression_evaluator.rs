@@ -103,7 +103,6 @@ pub struct ExpressionEvaluator<'a, T, Expr, TV, GV> {
     /// ExpressionEvaluator.
     intermediates_cache: BTreeMap<AlgebraicReferenceThin, Expr>,
     to_expr: fn(&T) -> Expr,
-    one_expr: fn() -> Expr,
 }
 
 impl<'a, T, TV, GV> ExpressionEvaluator<'a, T, T, TV, GV>
@@ -118,13 +117,9 @@ where
         global_values: GV,
         intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
     ) -> Self {
-        Self::new_with_custom_expr(
-            trace_values,
-            global_values,
-            intermediate_definitions,
-            |x| *x,
-            || T::one(),
-        )
+        Self::new_with_custom_expr(trace_values, global_values, intermediate_definitions, |x| {
+            *x
+        })
     }
 }
 
@@ -141,7 +136,6 @@ where
         global_values: GV,
         intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
         to_expr: fn(&T) -> Expr,
-        one_expr: fn() -> Expr,
     ) -> Self {
         Self {
             trace_values,
@@ -149,7 +143,6 @@ where
             intermediate_definitions,
             intermediates_cache: Default::default(),
             to_expr,
-            one_expr,
         }
     }
 
@@ -182,7 +175,7 @@ where
                     Expression::Number(n) => {
                         let left = self.evaluate(left);
                         (0u32..n.to_integer().try_into_u32().unwrap())
-                            .fold((self.one_expr)(), |acc, _| acc * left.clone())
+                            .fold((self.to_expr)(&T::one()), |acc, _| acc * left.clone())
                     }
                     _ => unimplemented!("pow with non-constant exponent"),
                 },
