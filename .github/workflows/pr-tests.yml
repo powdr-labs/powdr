@@ -16,7 +16,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   POWDR_GENERATE_PROOFS: "true"
-  POWDR_JIT_OPT_LEVEL: "1"
+  POWDR_JIT_OPT_LEVEL: "0"
   MAX_DEGREE_LOG: "20"
 
 jobs:
