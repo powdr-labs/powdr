@@ -194,7 +194,7 @@ impl SymbolPath {
 
     pub fn is_std(&self) -> bool {
         self.parts
-            .get(0)
+            .first()
             .map(|p| match p {
                 Part::Named(n) => n == "std",
                 Part::Super => false,
