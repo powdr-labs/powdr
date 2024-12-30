@@ -148,6 +148,8 @@ pub struct Pipeline<T: FieldElement> {
     arguments: Arguments<T>,
     /// The context for the host.
     host_context: HostContext,
+    /// Initial memory given by the prover.
+    initial_memory: Vec<Vec<u8>>,
 }
 
 impl<T: FieldElement> Clone for Artifacts<T> {
@@ -193,6 +195,7 @@ where
             pilo: false,
             arguments: Arguments::default(),
             host_context: ctx,
+            initial_memory: vec![],
         }
         // We add the basic callback functionalities to support PrintChar and Hint.
         .add_query_callback(Arc::new(handle_simple_queries_callback()))
@@ -320,6 +323,18 @@ impl<T: FieldElement> Pipeline<T> {
         };
         self.arguments.query_callback = Some(query_callback);
         self
+    }
+
+    /// Adds data to the initial memory given by the prover.
+    /// This is a more efficient method of passing bytes from the host
+    /// to the guest.
+    pub fn add_to_initial_memory(mut self, data: Vec<u8>) -> Self {
+        self.initial_memory.push(data);
+        self
+    }
+
+    pub fn initial_memory(&self) -> &[Vec<u8>] {
+        &self.initial_memory
     }
 
     pub fn add_data<S: serde::Serialize>(self, channel: u32, data: &S) -> Self {

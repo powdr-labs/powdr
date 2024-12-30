@@ -1,11 +1,11 @@
 #![no_main]
 #![no_std]
 
-use powdr_riscv_runtime::io::read;
+use powdr_riscv_runtime::io::read_fd;
 
 #[no_mangle]
 pub fn main() {
-    let v: [u32; 6] = read(1);
+    let v: [u32; 6] = read_fd(1);
     let a0 = v[0] as u64;
     let a1 = (v[1] as u64) << 32;
     let b0 = v[2] as u64;
