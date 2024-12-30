@@ -191,6 +191,16 @@ impl SymbolPath {
     pub fn into_parts(self) -> impl DoubleEndedIterator + ExactSizeIterator<Item = Part> {
         self.parts.into_iter()
     }
+
+    pub fn is_std(&self) -> bool {
+        self.parts
+            .first()
+            .map(|p| match p {
+                Part::Named(n) => n == "std",
+                Part::Super => false,
+            })
+            .unwrap_or(false)
+    }
 }
 
 impl FromStr for SymbolPath {
