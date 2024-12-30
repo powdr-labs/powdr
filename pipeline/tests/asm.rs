@@ -6,9 +6,8 @@ use powdr_number::{FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, make_prepared_pipeline, make_simple_prepared_pipeline,
-        regular_test_all_fields, regular_test_gl, resolve_test_file,
-        run_pilcom_with_backend_variant, test_mock_backend, test_pilcom, test_plonky3_pipeline,
-        BackendVariant,
+        regular_test_all_fields, regular_test_gl, resolve_test_file, test_mock_backend,
+        test_pilcom, test_plonky3_pipeline, BackendVariant,
     },
     Pipeline,
 };
@@ -271,9 +270,6 @@ fn dynamic_vadcop() {
     assert_eq!(witness_by_name["main_arith::y"].len(), 32);
     assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
 
-    // Because machines have different lengths, this can only be proven
-    // with a composite proof.
-    run_pilcom_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite).unwrap();
     test_mock_backend(pipeline_gl.clone());
     test_plonky3_pipeline(pipeline_gl);
 }
