@@ -46,18 +46,14 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
     pub fn get_machine(&self, substring: &str) -> &RefCell<KnownMachine<'a, T>> {
         use itertools::Itertools;
 
-        match self
-            .machines
+        self.machines
             .iter()
             .filter(|m| m.borrow().name().contains(substring))
             .exactly_one()
-        {
-            Ok(m) => m,
-            // Calling unwrap() would require KnownMachine to implement Debug.
-            Err(e) => {
-                panic!("Expected exactly one machine with substring '{substring}', but found {e}.",)
-            }
-        }
+            .map_err(|e| {
+                format!("Expected exactly one machine with substring '{substring}', but found {e}.")
+            })
+            .unwrap()
     }
 
     /// Runs the first machine (unless there are no machines) end returns the generated columns.
