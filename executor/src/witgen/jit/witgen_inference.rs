@@ -473,15 +473,13 @@ impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'
 
 #[cfg(test)]
 mod test {
+    use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
     use crate::witgen::{
         global_constraints,
-        jit::{
-            test_util::{format_code, read_pil},
-            variable::Cell,
-        },
+        jit::{effect::format_code, test_util::read_pil, variable::Cell},
         machines::{Connection, FixedLookup, KnownMachine},
         FixedData,
     };
@@ -504,7 +502,7 @@ mod test {
         known_cells: Vec<(&str, i32)>,
         expected_complete: Option<usize>,
     ) -> String {
-        let (analyzed, fixed_col_vals) = read_pil(input);
+        let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(input);
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let (fixed_data, retained_identities) =
             global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
