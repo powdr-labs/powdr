@@ -14,8 +14,9 @@ use powdr_ast::analyzed::{
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::visitor::VisitOrder;
 use powdr_backend_utils::referenced_namespaces_algebraic_expression;
-use powdr_executor::witgen::evaluators::expression_evaluator::ExpressionEvaluator;
-use powdr_executor::witgen::evaluators::expression_evaluator::TraceValues;
+use powdr_executor_utils::expression_evaluator::ExpressionEvaluator;
+use powdr_executor_utils::expression_evaluator::OwnedGlobalValues;
+use powdr_executor_utils::expression_evaluator::TraceValues;
 use powdr_number::FieldElement;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
@@ -149,9 +150,29 @@ impl<F: FieldElement> Connection<F> {
 }
 
 pub struct ConnectionConstraintChecker<'a, F: FieldElement> {
-    pub connections: &'a [Connection<F>],
-    pub machines: BTreeMap<String, Machine<'a, F>>,
-    pub challenges: &'a BTreeMap<u64, F>,
+    connections: &'a [Connection<F>],
+    machines: BTreeMap<String, Machine<'a, F>>,
+    global_values: OwnedGlobalValues<F>,
+}
+
+impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
+    /// Creates a new connection constraint checker.
+    pub fn new(
+        connections: &'a [Connection<F>],
+        machines: BTreeMap<String, Machine<'a, F>>,
+        challenges: &'a BTreeMap<u64, F>,
+    ) -> Self {
+        let global_values = OwnedGlobalValues {
+            // TODO: Support publics.
+            public_values: BTreeMap::new(),
+            challenge_values: challenges.clone(),
+        };
+        Self {
+            connections,
+            machines,
+            global_values,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -256,8 +277,8 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                     .filter_map(|row| {
                         let mut evaluator = ExpressionEvaluator::new(
                             machine.trace_values.row(row),
+                            &self.global_values,
                             &machine.intermediate_definitions,
-                            self.challenges,
                         );
                         let result = evaluator.evaluate(&selected_expressions.selector);
 
@@ -279,13 +300,10 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
             None => {
                 let empty_variables = EmptyVariables {};
                 let empty_definitions = BTreeMap::new();
-                let empty_challenges = BTreeMap::new();
-                let mut evaluator = ExpressionEvaluator::new(
-                    empty_variables,
-                    &empty_definitions,
-                    &empty_challenges,
-                );
-                let selector_value = evaluator.evaluate(&selected_expressions.selector);
+                let empty_globals = OwnedGlobalValues::default();
+                let mut evaluator =
+                    ExpressionEvaluator::new(empty_variables, &empty_globals, &empty_definitions);
+                let selector_value: F = evaluator.evaluate(&selected_expressions.selector);
 
                 match selector_value.to_degree() {
                     // Selected expressions is of the form `0 $ [ <constants> ]`

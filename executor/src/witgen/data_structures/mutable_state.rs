@@ -42,6 +42,24 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
         }
     }
 
+    #[cfg(test)]
+    pub fn get_machine(&self, substring: &str) -> &RefCell<KnownMachine<'a, T>> {
+        use itertools::Itertools;
+
+        match self
+            .machines
+            .iter()
+            .filter(|m| m.borrow().name().contains(substring))
+            .exactly_one()
+        {
+            Ok(m) => m,
+            // Calling unwrap() would require KnownMachine to implement Debug.
+            Err(e) => {
+                panic!("Expected exactly one machine with substring '{substring}', but found {e}.",)
+            }
+        }
+    }
+
     /// Runs the first machine (unless there are no machines) end returns the generated columns.
     /// The first machine might call other machines, which is handled automatically.
     pub fn run(self) -> HashMap<String, Vec<T>> {
@@ -62,7 +80,7 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
         // has no responsible machine.
         self.responsible_machine(identity_id)
             .ok()
-            .map_or(false, |mut machine| {
+            .is_some_and(|mut machine| {
                 machine.can_process_call_fully(identity_id, known_inputs, range_constraints)
             })
     }

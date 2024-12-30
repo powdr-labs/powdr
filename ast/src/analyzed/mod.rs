@@ -490,21 +490,6 @@ impl<T> Children<AlgebraicExpression<T>> for Analyzed<T> {
 }
 
 impl<T: FieldElement> Analyzed<T> {
-    /// @returns all identities with intermediate polynomials inlined.
-    pub fn identities_with_inlined_intermediate_polynomials(&self) -> Vec<Identity<T>> {
-        let intermediates = &self
-            .intermediate_polys_in_source_order()
-            .flat_map(|(symbol, def)| {
-                symbol
-                    .array_elements()
-                    .zip(def)
-                    .map(|((_, poly_id), def)| (poly_id, def))
-            })
-            .collect();
-
-        substitute_intermediate(self.identities.clone(), intermediates)
-    }
-
     pub fn get_struct_schema() -> schemars::schema::RootSchema {
         schemars::schema_for!(Self)
     }
@@ -516,77 +501,6 @@ impl<T: FieldElement> Analyzed<T> {
     pub fn deserialize(bytes: &[u8]) -> Result<Self, String> {
         serde_cbor::from_slice(bytes).map_err(|e| format!("Failed to deserialize analyzed: {e}"))
     }
-}
-
-/// Takes identities as values and inlines intermediate polynomials everywhere, returning a vector of the updated identities
-/// TODO: this could return an iterator
-fn substitute_intermediate<T: Copy + Display>(
-    identities: impl IntoIterator<Item = Identity<T>>,
-    intermediate_polynomials: &HashMap<PolyID, &AlgebraicExpression<T>>,
-) -> Vec<Identity<T>> {
-    identities
-        .into_iter()
-        .scan(HashMap::default(), |cache, mut identity| {
-            identity.post_visit_expressions_mut(&mut |e| {
-                if let AlgebraicExpression::Reference(poly) = e {
-                    match poly.poly_id.ptype {
-                        PolynomialType::Committed => {}
-                        PolynomialType::Constant => {}
-                        PolynomialType::Intermediate => {
-                            // recursively inline intermediate polynomials, updating the cache
-                            *e = inlined_expression_from_intermediate_poly_id(
-                                poly.clone(),
-                                intermediate_polynomials,
-                                cache,
-                            );
-                        }
-                    }
-                }
-            });
-            Some(identity)
-        })
-        .collect()
-}
-
-/// Recursively inlines intermediate polynomials inside an expression and returns the new expression
-/// This uses a cache to avoid resolving an intermediate polynomial twice
-///
-/// poly_to_replace can be a "next" reference, but then its value cannot contain any next references.
-fn inlined_expression_from_intermediate_poly_id<T: Copy + Display>(
-    poly_to_replace: AlgebraicReference,
-    intermediate_polynomials: &HashMap<PolyID, &AlgebraicExpression<T>>,
-    cache: &mut HashMap<AlgebraicReference, AlgebraicExpression<T>>,
-) -> AlgebraicExpression<T> {
-    assert_eq!(poly_to_replace.poly_id.ptype, PolynomialType::Intermediate);
-    if let Some(e) = cache.get(&poly_to_replace) {
-        return e.clone();
-    }
-    let mut expr = intermediate_polynomials[&poly_to_replace.poly_id].clone();
-    expr.post_visit_expressions_mut(&mut |e| {
-        let AlgebraicExpression::Reference(r) = e else { return; };
-        // "forward" the next operator from the polynomial to be replaced.
-        if poly_to_replace.next && r.next {
-            let value = intermediate_polynomials[&poly_to_replace.poly_id];
-            panic!(
-                "Error inlining intermediate polynomial {poly_to_replace} = ({value})':\nNext operator already applied to {} and then again to {} - cannot apply it twice!",
-                r.name,
-                poly_to_replace.name
-            );
-        }
-        r.next = r.next || poly_to_replace.next;
-        match r.poly_id.ptype {
-            PolynomialType::Committed | PolynomialType::Constant => {}
-            PolynomialType::Intermediate => {
-                *e = inlined_expression_from_intermediate_poly_id(
-                    r.clone(),
-                    intermediate_polynomials,
-                    cache,
-                );
-            }
-        }
-    });
-    cache.insert(poly_to_replace, expr.clone());
-    expr
 }
 
 /// Extracts the declared (or implicit) type from a definition.
@@ -1130,8 +1044,15 @@ impl<T> Identity<T> {
         self.children().any(|e| e.contains_next_ref())
     }
 
-    pub fn degree(&self) -> usize {
-        self.children().map(|e| e.degree()).max().unwrap_or(0)
+    pub fn degree(
+        &self,
+        intermediate_polynomials: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+    ) -> usize {
+        let mut cache = BTreeMap::new();
+        self.children()
+            .map(|e| e.degree_with_cache(intermediate_polynomials, &mut cache))
+            .max()
+            .unwrap_or(0)
     }
 
     pub fn id(&self) -> u64 {
@@ -1498,28 +1419,41 @@ impl<T> AlgebraicExpression<T> {
     }
 
     /// Returns the degree of the expressions
-    pub fn degree(&self) -> usize {
+    pub fn degree_with_cache(
+        &self,
+        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+        cache: &mut BTreeMap<AlgebraicReferenceThin, usize>,
+    ) -> usize {
         match self {
-            AlgebraicExpression::Reference(reference) => {
-                // We don't have access to the definitions of intermediate polynomials here, so we can't know their degree.
-                assert!(
-                    matches!(
-                        reference.poly_id.ptype,
-                        PolynomialType::Committed | PolynomialType::Constant
-                    ),
-                    "Intermediate polynomials should have been inlined."
-                );
-                // Fixed and witness columns have degree 1
-                1
-            }
+            AlgebraicExpression::Reference(reference) => match reference.poly_id.ptype {
+                PolynomialType::Committed | PolynomialType::Constant => 1,
+                PolynomialType::Intermediate => {
+                    let reference = reference.to_thin();
+                    cache.get(&reference).cloned().unwrap_or_else(|| {
+                        let def = intermediate_definitions
+                            .get(&reference)
+                            .expect("Intermediate definition not found.");
+                        let result = def.degree_with_cache(intermediate_definitions, cache);
+                        cache.insert(reference, result);
+                        result
+                    })
+                }
+            },
             // Multiplying two expressions adds their degrees
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
                 op: AlgebraicBinaryOperator::Mul,
                 left,
                 right,
-            }) => left.degree() + right.degree(),
+            }) => {
+                left.degree_with_cache(intermediate_definitions, cache)
+                    + right.degree_with_cache(intermediate_definitions, cache)
+            }
             // In all other cases, we take the maximum of the degrees of the children
-            _ => self.children().map(|e| e.degree()).max().unwrap_or(0),
+            _ => self
+                .children()
+                .map(|e| e.degree_with_cache(intermediate_definitions, cache))
+                .max()
+                .unwrap_or(0),
         }
     }
 }
@@ -1791,7 +1725,7 @@ mod tests {
     }
 
     #[test]
-    fn test_degree() {
+    fn test_degree_no_intermediates() {
         let column = AlgebraicExpression::<i32>::Reference(AlgebraicReference {
             name: "column".to_string(),
             poly_id: PolyID {
@@ -1802,23 +1736,86 @@ mod tests {
         });
         let one = AlgebraicExpression::Number(1);
 
+        // No intermediates
+        let intermediate_definitions = Default::default();
+        let mut cache = Default::default();
+
         let expr = one.clone() + one.clone() * one.clone();
-        assert_eq!(expr.degree(), 0);
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 0);
 
         let expr = column.clone() + one.clone() * one.clone();
-        assert_eq!(expr.degree(), 1);
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 1);
 
         let expr = column.clone() + one.clone() * column.clone();
-        assert_eq!(expr.degree(), 1);
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 1);
 
         let expr = column.clone() + column.clone() * column.clone();
-        assert_eq!(expr.degree(), 2);
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 2);
 
         let expr = column.clone() + column.clone() * (column.clone() + one.clone());
-        assert_eq!(expr.degree(), 2);
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 2);
 
         let expr = column.clone() * column.clone() * column.clone();
-        assert_eq!(expr.degree(), 3);
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 3);
+
+        assert!(cache.is_empty());
+    }
+
+    #[test]
+    fn test_degree_with_intermediates() {
+        let column = AlgebraicExpression::<i32>::Reference(AlgebraicReference {
+            name: "column".to_string(),
+            poly_id: PolyID {
+                id: 0,
+                ptype: PolynomialType::Committed,
+            },
+            next: false,
+        });
+        let one = AlgebraicExpression::Number(1);
+
+        let column_squared = column.clone() * column.clone();
+        let column_squared_ref = AlgebraicReference {
+            name: "column_squared".to_string(),
+            poly_id: PolyID {
+                id: 1,
+                ptype: PolynomialType::Intermediate,
+            },
+            next: false,
+        };
+        let column_squared_intermediate =
+            AlgebraicExpression::<i32>::Reference(column_squared_ref.clone());
+
+        let intermediate_definitions = [(column_squared_ref.to_thin(), column_squared.clone())]
+            .into_iter()
+            .collect();
+        let mut cache = Default::default();
+
+        let expr = column_squared_intermediate.clone() + one.clone();
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 2);
+
+        let expr = column_squared_intermediate.clone() + column.clone();
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 2);
+
+        let expr = column_squared_intermediate.clone() * column_squared_intermediate.clone();
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 4);
+
+        let expr = column_squared_intermediate.clone()
+            * (column_squared_intermediate.clone() + one.clone());
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 4);
+
+        let expr = column_squared_intermediate.clone() * column.clone();
+        let degree = expr.degree_with_cache(&intermediate_definitions, &mut cache);
+        assert_eq!(degree, 3);
     }
 
     #[test]

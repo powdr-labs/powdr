@@ -167,99 +167,44 @@ impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
 
 #[cfg(test)]
 mod test {
-    use std::{collections::BTreeMap, fs::read_to_string};
+    use std::fs::read_to_string;
 
     use test_log::test;
 
-    use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, SelectedExpressions};
     use powdr_number::GoldilocksField;
 
-    use crate::{
-        constant_evaluator,
-        witgen::{
-            global_constraints,
-            jit::effect::Effect,
-            machines::{Connection, ConnectionKind, MachineParts},
-            range_constraints::RangeConstraint,
-            FixedData,
-        },
+    use crate::witgen::{
+        data_structures::mutable_state::MutableState,
+        global_constraints,
+        jit::{effect::Effect, test_util::read_pil},
+        machines::{machine_extractor::MachineExtractor, KnownMachine},
+        FixedData,
     };
 
     use super::*;
 
-    #[derive(Clone)]
-    struct CannotProcessSubcalls;
-    impl<T: FieldElement> CanProcessCall<T> for CannotProcessSubcalls {
-        fn can_process_call_fully(
-            &self,
-            _identity_id: u64,
-            _known_inputs: &BitVec,
-            _range_constraints: &[Option<RangeConstraint<T>>],
-        ) -> bool {
-            false
-        }
-    }
-
     fn generate_for_block_machine(
         input_pil: &str,
-        block_size: usize,
-        latch_row: usize,
-        selector_name: &str,
-        input_names: &[&str],
-        output_names: &[&str],
+        machine_name: &str,
+        num_inputs: usize,
+        num_outputs: usize,
     ) -> Result<Vec<Effect<GoldilocksField, Variable>>, String> {
-        let analyzed: Analyzed<GoldilocksField> =
-            powdr_pil_analyzer::analyze_string(input_pil).unwrap();
-        let fixed_col_vals = constant_evaluator::generate(&analyzed);
+        let (analyzed, fixed_col_vals) = read_pil(input_pil);
+
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let (fixed_data, retained_identities) =
             global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
+        let machines = MachineExtractor::new(&fixed_data).split_out_machines(retained_identities);
+        let mutable_state = MutableState::new(machines.into_iter(), &|_| {
+            Err("Query not implemented".to_string())
+        });
 
-        // Build a connection that encodes:
-        // [] is <selector_name> $ [<input_names...>, <output_names...>]
-        let witnesses_by_name = analyzed
-            .committed_polys_in_source_order()
-            .flat_map(|(symbol, _)| symbol.array_elements())
-            .collect::<BTreeMap<_, _>>();
-        let to_expr = |name: &str| {
-            let (column_name, next) = if let Some(name) = name.strip_suffix("'") {
-                (name, true)
-            } else {
-                (name, false)
-            };
-            AlgebraicExpression::Reference(AlgebraicReference {
-                name: name.to_string(),
-                poly_id: witnesses_by_name[column_name],
-                next,
-            })
+        let machine = mutable_state.get_machine(machine_name);
+        let ((machine_parts, block_size, latch_row), connection_ids) = match *machine.borrow() {
+            KnownMachine::BlockMachine(ref m) => (m.machine_info(), m.identity_ids()),
+            _ => panic!("Expected a block machine"),
         };
-        let rhs = input_names
-            .iter()
-            .chain(output_names)
-            .map(|name| to_expr(name))
-            .collect::<Vec<_>>();
-        let right = SelectedExpressions {
-            selector: to_expr(selector_name),
-            expressions: rhs,
-        };
-        // The LHS is not used by the processor.
-        let left = SelectedExpressions::default();
-        let connection = Connection {
-            id: 0,
-            left: &left,
-            right: &right,
-            kind: ConnectionKind::Permutation,
-            multiplicity_column: None,
-        };
-
-        let machine_parts = MachineParts::new(
-            &fixed_data,
-            [(0, connection)].into_iter().collect(),
-            retained_identities,
-            witnesses_by_name.values().copied().collect(),
-            // No prover functions
-            Vec::new(),
-        );
+        assert_eq!(connection_ids.len(), 1);
 
         let processor = BlockMachineProcessor {
             fixed_data: &fixed_data,
@@ -269,24 +214,25 @@ mod test {
         };
 
         let known_values = BitVec::from_iter(
-            input_names
-                .iter()
+            (0..num_inputs)
                 .map(|_| true)
-                .chain(output_names.iter().map(|_| false)),
+                .chain((0..num_outputs).map(|_| false)),
         );
 
-        processor.generate_code(CannotProcessSubcalls, 0, &known_values)
+        processor.generate_code(&mutable_state, connection_ids[0], &known_values)
     }
 
     #[test]
     fn add() {
         let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is Add.sel $ [Add.a, Add.b, Add.c]; 
         namespace Add(256);
             col witness sel, a, b, c;
             c = a + b;
         ";
-        let code =
-            generate_for_block_machine(input, 1, 0, "Add::sel", &["Add::a", "Add::b"], &["Add::c"]);
+        let code = generate_for_block_machine(input, "Add", 2, 1);
         assert_eq!(
             format_code(&code.unwrap()),
             "Add::sel[0] = 1;
@@ -300,20 +246,16 @@ params[2] = Add::c[0];"
     #[test]
     fn unconstrained_output() {
         let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is Unconstrained.sel $ [Unconstrained.a, Unconstrained.b, Unconstrained.c]; 
         namespace Unconstrained(256);
             col witness sel, a, b, c;
             a + b = 0;
         ";
-        let err_str = generate_for_block_machine(
-            input,
-            1,
-            0,
-            "Unconstrained::sel",
-            &["Unconstrained::a", "Unconstrained::b"],
-            &["Unconstrained::c"],
-        )
-        .err()
-        .unwrap();
+        let err_str = generate_for_block_machine(input, "Unconstrained", 2, 1)
+            .err()
+            .unwrap();
         assert!(err_str
             .contains("Unable to derive algorithm to compute output value \"Unconstrained::c\""));
     }
@@ -323,35 +265,12 @@ params[2] = Add::c[0];"
     #[should_panic = "Unable to derive algorithm to compute output value \\\"main_binary::C\\\""]
     fn binary() {
         let input = read_to_string("../test_data/pil/binary.pil").unwrap();
-        generate_for_block_machine(
-            &input,
-            4,
-            3,
-            "main_binary::sel[0]",
-            &["main_binary::A", "main_binary::B"],
-            &["main_binary::C"],
-        )
-        .unwrap();
+        generate_for_block_machine(&input, "main_binary", 3, 1).unwrap();
     }
 
     #[test]
     fn poseidon() {
         let input = read_to_string("../test_data/pil/poseidon_gl.pil").unwrap();
-        let array_element = |name: &str, i: usize| {
-            &*Box::leak(format!("main_poseidon::{name}[{i}]").into_boxed_str())
-        };
-        generate_for_block_machine(
-            &input,
-            31,
-            0,
-            "main_poseidon::sel[0]",
-            &(0..12)
-                .map(|i| array_element("state", i))
-                .collect::<Vec<_>>(),
-            &(0..4)
-                .map(|i| array_element("output", i))
-                .collect::<Vec<_>>(),
-        )
-        .unwrap();
+        generate_for_block_machine(&input, "main_poseidon", 12, 4).unwrap();
     }
 }

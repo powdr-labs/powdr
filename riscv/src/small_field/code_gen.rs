@@ -736,7 +736,6 @@ fn only_if_no_write_to_zero_vec(reg: Register, statements: Vec<String>) -> Vec<S
 }
 
 /// Push register into the stack
-
 pub fn push_register(name: &str) -> Vec<String> {
     assert!(name.starts_with('x'), "Only x registers are supported");
     let reg = Register::from(name);
