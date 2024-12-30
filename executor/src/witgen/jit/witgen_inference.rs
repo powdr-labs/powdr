@@ -5,8 +5,8 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
-    PermutationIdentity, PhantomBusInteractionIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, PolynomialIdentity, PolynomialType,
+    PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolynomialIdentity,
+    PolynomialType,
 };
 use powdr_number::FieldElement;
 
@@ -86,12 +86,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 &left.expressions,
                 row_offset,
             ),
-            Identity::PhantomBusInteraction(PhantomBusInteractionIdentity {
-                id,
-                multiplicity,
-                tuple,
-                ..
-            }) => self.process_call(can_process, *id, multiplicity, &tuple.0, row_offset),
+            // TODO(bus_interaction)
+            Identity::PhantomBusInteraction(_) => ProcessResult::empty(),
             Identity::Connect(_) => ProcessResult::empty(),
         };
         self.ingest_effects(result)
