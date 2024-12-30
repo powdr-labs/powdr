@@ -129,6 +129,8 @@ fn empty() {
 }
 
 #[test]
+// TODO: https://github.com/powdr-labs/powdr/issues/2292
+#[should_panic = "Identity references no namespace: Constr::PhantomBusInteraction(1, [0]);"]
 fn single_operation() {
     let f = "asm/single_operation.asm";
     regular_test_all_fields(f, &[]);
