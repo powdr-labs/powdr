@@ -35,6 +35,7 @@ powdr-number.workspace = true
 powdr-parser.workspace = true
 powdr-pil-analyzer.workspace = true
 powdr-executor.workspace = true
+powdr-executor-utils.workspace = true
 powdr-parser-util.workspace = true
 powdr-backend-utils.workspace = true
 
