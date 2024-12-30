@@ -177,7 +177,7 @@ mod test {
         data_structures::mutable_state::MutableState,
         global_constraints,
         jit::{effect::Effect, test_util::read_pil},
-        machines::{machine_extractor::MachineExtractor, KnownMachine},
+        machines::{machine_extractor::MachineExtractor, KnownMachine, Machine},
         FixedData,
     };
 
