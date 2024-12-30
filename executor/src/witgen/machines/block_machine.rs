@@ -151,6 +151,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             block_count_runtime: 0,
         })
     }
+
+    #[cfg(test)]
+    pub fn machine_info(&self) -> (MachineParts<'a, T>, usize, usize) {
+        (self.parts.clone(), self.block_size, self.latch_row)
+    }
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
@@ -445,7 +450,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
                 let updates = updates.report_side_effect();
 
-                let global_latch_row_index = self.data.len() - 1 - self.block_size + self.latch_row;
+                let global_latch_row_index = self.data.len() - self.block_size + self.latch_row;
                 self.multiplicity_counter
                     .increment_at_row(identity_id, global_latch_row_index);
 

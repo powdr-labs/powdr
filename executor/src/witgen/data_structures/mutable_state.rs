@@ -42,6 +42,20 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
         }
     }
 
+    #[cfg(test)]
+    pub fn get_machine(&self, substring: &str) -> &RefCell<KnownMachine<'a, T>> {
+        use itertools::Itertools;
+
+        self.machines
+            .iter()
+            .filter(|m| m.borrow().name().contains(substring))
+            .exactly_one()
+            .map_err(|e| {
+                format!("Expected exactly one machine with substring '{substring}', but found {e}.")
+            })
+            .unwrap()
+    }
+
     /// Runs the first machine (unless there are no machines) end returns the generated columns.
     /// The first machine might call other machines, which is handled automatically.
     pub fn run(self) -> HashMap<String, Vec<T>> {
