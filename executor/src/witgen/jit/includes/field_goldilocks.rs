@@ -303,13 +303,6 @@ fn integer_div(a: GoldilocksField, b: GoldilocksField) -> GoldilocksField {
     GoldilocksField(a.0 / b.0)
 }
 
-impl std::ops::BitAnd<GoldilocksField> for GoldilocksField {
-    type Output = Self;
-    #[inline]
-    fn bitand(self, b: GoldilocksField) -> GoldilocksField {
-        Self(self.0 & b.0)
-    }
-}
 impl std::ops::BitAnd<u64> for GoldilocksField {
     type Output = Self;
     #[inline]
