@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use powdr_executor::constant_evaluator;
-use powdr_linker::LinkerParams;
+use powdr_linker::{LinkerMode, LinkerParams};
 use powdr_number::{FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
@@ -22,7 +22,8 @@ fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
 fn sqrt_asm() {
     let f = "asm/sqrt.asm";
     let i = [3];
-    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    let pipeline: Pipeline<GoldilocksField> =
+        make_prepared_pipeline(f, slice_to_vec(&i), vec![], LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -110,7 +111,8 @@ fn block_machine_cache_miss() {
 fn palindrome() {
     let f = "asm/palindrome.asm";
     let i = [7, 1, 7, 3, 9, 3, 7, 1];
-    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    let pipeline: Pipeline<GoldilocksField> =
+        make_prepared_pipeline(f, slice_to_vec(&i), vec![], LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -341,7 +343,8 @@ fn multi_return_wrong_assignment_register_length() {
 fn bit_access() {
     let f = "asm/bit_access.asm";
     let i = [20];
-    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    let pipeline: Pipeline<GoldilocksField> =
+        make_prepared_pipeline(f, slice_to_vec(&i), vec![], LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -356,7 +359,8 @@ fn sqrt() {
 fn functional_instructions() {
     let f = "asm/functional_instructions.asm";
     let i = [20];
-    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    let pipeline: Pipeline<GoldilocksField> =
+        make_prepared_pipeline(f, slice_to_vec(&i), vec![], LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -538,7 +542,12 @@ mod book {
     fn run_book_test(file: &str) {
         use powdr_pipeline::test_util::test_mock_backend;
         // passing 0 to all tests currently works as they either take no prover input or 0 works
-        let pipeline = make_prepared_pipeline::<GoldilocksField>(file, vec![0.into()], vec![]);
+        let pipeline = make_prepared_pipeline::<GoldilocksField>(
+            file,
+            vec![0.into()],
+            vec![],
+            LinkerMode::Bus,
+        );
         test_mock_backend(pipeline);
     }
 
@@ -550,7 +559,8 @@ mod book {
 fn hello_world_asm_fail() {
     let f = "asm/book/hello_world.asm";
     let i = [2];
-    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    let pipeline: Pipeline<GoldilocksField> =
+        make_prepared_pipeline(f, slice_to_vec(&i), vec![], LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 

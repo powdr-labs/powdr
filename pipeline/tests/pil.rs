@@ -1,3 +1,4 @@
+use powdr_linker::LinkerMode;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::{
     test_util::{
@@ -110,7 +111,8 @@ fn fibonacci() {
 fn fibonacci_with_public() {
     // Public references are not supported by the backends yet, but we can test witness generation.
     let f = "pil/fibonacci_with_public.pil";
-    let mut pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, vec![], vec![]);
+    let mut pipeline: Pipeline<GoldilocksField> =
+        make_prepared_pipeline(f, vec![], vec![], LinkerMode::Bus);
     pipeline.compute_witness().unwrap();
 }
 
@@ -164,8 +166,7 @@ fn external_witgen_fails_if_none_provided() {
 fn external_witgen_a_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main::a".to_string(), vec![GoldilocksField::from(3); 16])];
-    let pipeline = make_prepared_pipeline(f, Default::default(), external_witness);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_prepared_pipeline(f, Default::default(), external_witness, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -173,8 +174,7 @@ fn external_witgen_a_provided() {
 fn external_witgen_b_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![("main::b".to_string(), vec![GoldilocksField::from(4); 16])];
-    let pipeline = make_prepared_pipeline(f, Default::default(), external_witness);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_prepared_pipeline(f, Default::default(), external_witness, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -185,8 +185,7 @@ fn external_witgen_both_provided() {
         ("main::a".to_string(), vec![GoldilocksField::from(3); 16]),
         ("main::b".to_string(), vec![GoldilocksField::from(4); 16]),
     ];
-    let pipeline = make_prepared_pipeline(f, Default::default(), external_witness);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_prepared_pipeline(f, Default::default(), external_witness, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -199,8 +198,7 @@ fn external_witgen_fails_on_conflicting_external_witness() {
         // Does not satisfy b = a + 1
         ("main::b".to_string(), vec![GoldilocksField::from(3); 16]),
     ];
-    let pipeline = make_prepared_pipeline(f, Default::default(), external_witness);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_prepared_pipeline(f, Default::default(), external_witness, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -209,8 +207,8 @@ fn sum_via_witness_query() {
     let f = "pil/sum_via_witness_query.pil";
     // Only 3 inputs -> Checks that if we return "None", the system still tries to figure it out on its own.
     let inputs = vec![7.into(), 8.into(), 2.into()];
-    let pipeline = make_prepared_pipeline(f, inputs, Default::default());
-    test_pilcom(pipeline.clone());
+    let pipeline =
+        make_prepared_pipeline::<GoldilocksField>(f, inputs, Default::default(), LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -221,8 +219,7 @@ fn witness_lookup() {
         .into_iter()
         .map(GoldilocksField::from)
         .collect::<Vec<_>>();
-    let pipeline = make_prepared_pipeline(f, inputs, Default::default());
-    test_pilcom(pipeline.clone());
+    let pipeline = make_prepared_pipeline(f, inputs, Default::default(), LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
