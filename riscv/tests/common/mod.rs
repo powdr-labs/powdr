@@ -1,6 +1,4 @@
-use core::unreachable;
 use mktemp::Temp;
-use powdr_linker::{LinkerMode, LinkerParams};
 use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField, KoalaBearField};
 use powdr_pipeline::{
     test_util::{
@@ -24,21 +22,8 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
 ) {
     let temp_dir = mktemp::Temp::new_dir().unwrap();
 
-    // When the field is GoldilocksField, we use the bus linker mode.
-    // The smaller fields don't have a bus implementation yet.
-    let linker_mode = match T::known_field() {
-        Some(KnownField::GoldilocksField) => LinkerMode::Bus,
-        Some(_) => LinkerMode::Native,
-        None => unreachable!(),
-    };
-    let linker_params = LinkerParams {
-        mode: linker_mode,
-        ..Default::default()
-    };
-
     let mut pipeline = Pipeline::default()
         .with_prover_inputs(inputs.to_vec())
-        .with_linker_params(linker_params)
         .with_output(temp_dir.to_path_buf(), true)
         .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)));
 
@@ -66,18 +51,8 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
 
     // verify with PILCOM
     if T::known_field().unwrap() == KnownField::GoldilocksField {
-        // In that case, we would have used the bus linker mode above, but this is not
-        // supported by PILCOM. So, we recreate the pipeline using the native linker mode (which is the default).
-        // Note that this means that the witness is computed again.
-        let mut pipeline = Pipeline::default()
-            .with_prover_inputs(inputs.to_vec())
-            .with_output(temp_dir.to_path_buf(), true)
-            .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)));
-
-        if let Some(data) = data {
-            pipeline = pipeline.add_data_vec(data);
-        }
-        let pipeline_gl = unsafe { std::mem::transmute(pipeline.clone()) };
+        let pipeline_gl: Pipeline<GoldilocksField> =
+            unsafe { std::mem::transmute(pipeline.clone()) };
         run_pilcom_with_backend_variant(pipeline_gl, BackendVariant::Composite).unwrap();
     }
 
