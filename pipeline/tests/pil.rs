@@ -7,7 +7,7 @@ use powdr_pipeline::{
         assert_proofs_fail_for_invalid_witnesses_pilcom,
         assert_proofs_fail_for_invalid_witnesses_stwo, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test_all_fields, regular_test_gl,
-        test_halo2_with_backend_variant, test_mock_backend, test_pilcom, test_stwo, BackendVariant,
+        test_halo2_with_backend_variant, test_mock_backend, test_stwo, BackendVariant,
     },
     Pipeline,
 };
@@ -157,8 +157,7 @@ fn fib_arrays() {
 #[should_panic = "Witness generation failed."]
 fn external_witgen_fails_if_none_provided() {
     let f = "pil/external_witgen.pil";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -227,24 +226,21 @@ fn witness_lookup() {
 #[should_panic(expected = "Witness generation failed.")]
 fn underdetermined_zero_no_solution() {
     let f = "pil/underdetermined_zero_no_solution.pil";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
 #[test]
 fn pair_lookup() {
     let f = "pil/pair_lookup.pil";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
 #[test]
 fn block_lookup_or() {
     let f = "pil/block_lookup_or.pil";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -252,8 +248,7 @@ fn block_lookup_or() {
 #[ignore = "Too slow"]
 fn block_lookup_or_permutation() {
     let f = "pil/block_lookup_or_permutation.pil";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -324,48 +319,42 @@ fn fibonacci_invalid_witness_stwo() {
 #[test]
 fn simple_div() {
     let f = "pil/simple_div.pil";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
 #[test]
 fn single_line_blocks() {
     let f = "pil/single_line_blocks.pil";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
 #[test]
 fn two_block_machine_functions() {
     let f = "pil/two_block_machine_functions.pil";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
 #[test]
 fn fixed_columns() {
     let f = "pil/fixed_columns.pil";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
 #[test]
 fn witness_via_let() {
     let f = "pil/witness_via_let.pil";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
 #[test]
 fn conditional_fixed_constraints() {
     let f = "pil/conditional_fixed_constraints.pil";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -379,7 +368,9 @@ fn referencing_arrays() {
 fn naive_byte_decomposition_bn254() {
     // This should pass, because BN254 is a field that can fit all 64-Bit integers.
     let f = "pil/naive_byte_decomposition.pil";
-    let pipeline = make_simple_prepared_pipeline(f);
+
+    // Native linker mode, because bus constraints are exponential in Halo2
+    let pipeline = make_simple_prepared_pipeline(f, LinkerMode::Native);
     test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
@@ -388,8 +379,7 @@ fn naive_byte_decomposition_bn254() {
 fn naive_byte_decomposition_gl() {
     // This should fail, because GoldilocksField is a field that cannot fit all 64-Bit integers.
     let f = "pil/naive_byte_decomposition.pil";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -441,7 +431,8 @@ mod book {
     use test_log::test;
 
     fn run_book_test(file: &str) {
-        test_pilcom(make_simple_prepared_pipeline(file));
+        let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(file, LinkerMode::Bus);
+        test_mock_backend(pipeline);
     }
 
     include!(concat!(env!("OUT_DIR"), "/pil_book_tests.rs"));

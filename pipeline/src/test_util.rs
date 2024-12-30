@@ -23,9 +23,17 @@ pub fn resolve_test_file(file_name: &str) -> PathBuf {
 /// Makes a new pipeline for the given file. All steps until witness generation are
 /// already computed, so that the test can branch off from there, without having to re-compute
 /// these steps.
-pub fn make_simple_prepared_pipeline<T: FieldElement>(file_name: &str) -> Pipeline<T> {
+pub fn make_simple_prepared_pipeline<T: FieldElement>(
+    file_name: &str,
+    linker_mode: LinkerMode,
+) -> Pipeline<T> {
+    let linker_params = LinkerParams {
+        mode: linker_mode,
+        degree_mode: DegreeMode::Vadcop,
+    };
     let mut pipeline = Pipeline::default()
         .with_tmp_output()
+        .with_linker_params(linker_params)
         .from_file(resolve_test_file(file_name));
     pipeline.compute_witness().unwrap();
     pipeline
