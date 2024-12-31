@@ -146,7 +146,7 @@ pub enum LookupCell<'a, T> {
     Output(&'a mut T),
 }
 
-impl<'a, T> LookupCell<'a, T> {
+impl<T> LookupCell<'_, T> {
     pub fn is_input(&self) -> bool {
         match self {
             LookupCell::Input(_) => true,
@@ -342,13 +342,13 @@ pub struct Connection<'a, T> {
     pub multiplicity_column: Option<PolyID>,
 }
 
-impl<'a, T: Display> Display for Connection<'a, T> {
+impl<T: Display> Display for Connection<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {} {}", self.left, self.kind, self.right)
     }
 }
 
-impl<'a, T> Connection<'a, T> {
+impl<T> Connection<'_, T> {
     fn is_permutation(&self) -> bool {
         self.kind == ConnectionKind::Permutation
     }

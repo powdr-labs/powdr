@@ -77,7 +77,7 @@ where
     }
 }
 
-impl<'a, R1, R2, K, T> RangeConstraintSet<K, T> for CombinedRangeConstraintSet<'a, R1, R2, K, T>
+impl<R1, R2, K, T> RangeConstraintSet<K, T> for CombinedRangeConstraintSet<'_, R1, R2, K, T>
 where
     T: FieldElement,
     K: Copy,

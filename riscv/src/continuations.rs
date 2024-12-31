@@ -19,6 +19,7 @@ use bootloader::{
     default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_MEMORY_NAMES, REGISTER_NAMES,
 };
 use memory_merkle_tree::MerkleTree;
+use rand::Rng;
 
 use crate::continuations::bootloader::{
     default_register_values, shutdown_routine_upper_bound, BOOTLOADER_INPUTS_PER_PAGE, DEFAULT_PC,
@@ -155,45 +156,127 @@ fn sanity_check(main_machine: &Machine, field: KnownField) {
     }
 }
 
-pub fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
-    let machine = get_main_machine(program);
-    let Some(expr) = machine.pil.iter().find_map(|v| match v {
-        PilStatement::LetStatement(_, n, _, expr) if n == "initial_memory" => expr.as_ref(),
+fn extract_var_from_machine<'a>(
+    machine: &'a Machine,
+    variable_name: &str,
+) -> Option<&'a Expression> {
+    machine.pil.iter().find_map(|v| match v {
+        PilStatement::LetStatement(_, n, _, expr) if n == variable_name => expr.as_ref(),
         _ => None,
-    }) else {
+    })
+}
+
+fn expr_to_u32(expr: &Expression) -> Option<u32> {
+    if let Expression::Number(_, Number { value, type_: None }) = expr {
+        value.try_into().ok()
+    } else {
+        None
+    }
+}
+
+pub fn load_initial_memory(program: &AnalysisASMFile, prover_data: &[Vec<u8>]) -> MemoryState {
+    const PAGE_SIZE_BYTES: u32 = bootloader::PAGE_SIZE_BYTES as u32;
+
+    let machine = get_main_machine(program);
+
+    // Extract the prover_data bounds from the machine.
+    let prover_data_start = extract_var_from_machine(machine, "prover_data_start")
+        .expect("prover_data_start variable not found in the machine");
+    let prover_data_start =
+        expr_to_u32(prover_data_start).expect("prover_data_start variable is not a u32 number");
+    let prover_data_end = extract_var_from_machine(machine, "prover_data_end")
+        .expect("prover_data_end variable not found in the machine");
+    let prover_data_end =
+        expr_to_u32(prover_data_end).expect("prover_data_end variable is not a u32 number");
+
+    // Sanity check the bounds of prover_data region.
+    // It must be of a power of 2 size, greater than PAGE_SIZE_BYTES, aligned to its size.
+    let prover_data_size = prover_data_end.checked_sub(prover_data_start).unwrap();
+    assert!(prover_data_size.is_power_of_two());
+    assert!(prover_data_size > PAGE_SIZE_BYTES);
+    assert_eq!(prover_data_start % prover_data_size, 0);
+
+    // Extract the initial_memory variable from the machine.
+    let mut initial_memory = if let Some(expr) = extract_var_from_machine(machine, "initial_memory")
+    {
+        let Expression::ArrayLiteral(_, array) = expr else {
+            panic!("initial_memory is not an array literal");
+        };
+
+        array
+            .items
+            .iter()
+            .map(|entry| {
+                let Expression::Tuple(_, tuple) = entry else {
+                    panic!("initial_memory entry is not a tuple");
+                };
+                assert_eq!(tuple.len(), 2);
+
+                let key = expr_to_u32(&tuple[0]).expect("initial_memory entry key is not a u32");
+                let value =
+                    expr_to_u32(&tuple[1]).expect("initial_memory entry value is not a u32");
+
+                (key, value)
+            })
+            .collect()
+    } else {
         log::warn!("No initial_memory variable found in the machine. Assuming zeroed memory.");
-        return MemoryState::default();
+        MemoryState::default()
     };
 
-    let Expression::ArrayLiteral(_, array) = expr else {
-        panic!("initial_memory is not an array literal");
-    };
+    // Fill the first page with random data to be the salt.
+    // TODO: the random value should be the "hash" of the merkle tree leaf itself,
+    // and the preimage of such hash should be unknown. But to implement that it would
+    // require some inteligence on the MemoryState type.
+    let mut rng = rand::rngs::OsRng;
+    for i in 0..(PAGE_SIZE_BYTES / 4) {
+        initial_memory.insert(prover_data_start + i * 4, rng.gen::<u32>());
+    }
 
-    array
-        .items
-        .iter()
-        .map(|entry| {
-            let Expression::Tuple(_, tuple) = entry else {
-                panic!("initial_memory entry is not a tuple");
-            };
-            assert_eq!(tuple.len(), 2);
-            let Expression::Number(
-                _,
-                Number {
-                    value: key,
-                    type_: None,
-                },
-            ) = &tuple[0]
-            else {
-                panic!("initial_memory entry key is not a number");
-            };
-            let Expression::Number(_, Number { value, type_: None }) = &tuple[1] else {
-                panic!("initial_memory entry value is not a number");
-            };
+    // Actually fill the prover data
 
-            (key.try_into().unwrap(), value.try_into().unwrap())
-        })
-        .collect()
+    // Setup an iterator for the addresses to be filled. If the iterator runs out before
+    // we are done, it means that the prover data is too large to fit in the reserved space.
+    let mut word_addr_iter =
+        ((prover_data_start + PAGE_SIZE_BYTES) / 4..prover_data_end / 4).map(|i| i * 4);
+
+    // The first word is the total number of words that will follow in the user data.
+    // We save tha address to write it later, when we know it.
+    let total_word_count_addr = word_addr_iter.next().unwrap();
+
+    // Then we have a sequence of chunks.
+    for chunk in prover_data {
+        // The first word of the chunk is the length of the chunk, in bytes:
+        initial_memory.insert(word_addr_iter.next().unwrap(), (chunk.len() as u32).to_le());
+
+        // followed by the chunk data:
+        // TODO: this would be more elegant with the slice::as_chunks() method,
+        // but as of this writing, it is still unstable.
+        let mut remaining = &chunk[..];
+        while let Some((word, rest)) = remaining.split_first_chunk::<4>() {
+            initial_memory.insert(word_addr_iter.next().unwrap(), u32::from_le_bytes(*word));
+            remaining = rest;
+        }
+        if !remaining.is_empty() {
+            // last word is not full, pad with zeros
+            let mut last_word = [0u8; 4];
+            last_word[..remaining.len()].copy_from_slice(remaining);
+            initial_memory.insert(
+                word_addr_iter.next().unwrap(),
+                u32::from_le_bytes(last_word),
+            );
+        }
+    }
+
+    // Calculate how many words have been written to the prover data
+    // (don't count the first word, as it is weird to count itself).
+    let word_past_end = word_addr_iter.next().unwrap_or(prover_data_end);
+    let total_word_count = (word_past_end - prover_data_start) / 4 - 1;
+
+    // Write the total number of words in the prover data.
+    initial_memory.insert(total_word_count_addr, total_word_count.to_le());
+
+    initial_memory
 }
 
 pub struct DryRunResult<F: FieldElement> {
@@ -229,7 +312,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // In the first full run, we use it as the memory contents of the executor;
     // on the independent chunk runs, the executor uses zeroed initial memory,
     // and the pages are loaded via the bootloader.
-    let initial_memory = load_initial_memory(&asm);
+    let initial_memory = load_initial_memory(&asm, pipeline.initial_memory());
 
     let mut merkle_tree = MerkleTree::<F>::new();
     merkle_tree.update(initial_memory.iter().map(|(k, v)| (*k, *v)));
