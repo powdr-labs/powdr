@@ -2949,7 +2949,8 @@ fn execute_inner<F: FieldElement>(
         match stm {
             FunctionStatement::Assignment(a) => {
                 let pc = e.proc.get_pc().u();
-                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
+                e.proc
+                    .set_col(KnownWitnessCol::_operation_id, MAIN_OPERATION_ID.into());
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(pc as usize);
                 }
@@ -3002,7 +3003,8 @@ fn execute_inner<F: FieldElement>(
                 }
             }
             FunctionStatement::Instruction(i) => {
-                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
+                e.proc
+                    .set_col(KnownWitnessCol::_operation_id, MAIN_OPERATION_ID.into());
 
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
@@ -3036,7 +3038,8 @@ fn execute_inner<F: FieldElement>(
                 }
             }
             FunctionStatement::Return(_) => {
-                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
+                e.proc
+                    .set_col(KnownWitnessCol::_operation_id, MAIN_OPERATION_ID.into());
                 break;
             }
             FunctionStatement::DebugDirective(dd) => {
