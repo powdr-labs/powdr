@@ -594,7 +594,7 @@ namespace N(16);
     // Check that the LocalVar ref IDs are assigned correctly. This cannot be tested by printing
     // since the IDs are ignored. Another way to test would be to execute, but it is difficult
     // to execute code where values are turned into expressions like that.
-    // We extract the IDs of the analized and the re-parsed expected PIL.
+    // We extract the IDs of the analyzed and the re-parsed expected PIL.
     // They should both match.
     let refs = [analyzed, expected_analyzed]
         .into_iter()
