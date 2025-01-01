@@ -227,7 +227,7 @@ pub fn load_initial_memory(program: &AnalysisASMFile, prover_data: &[Vec<u8>]) -
     // Fill the first page with random data to be the salt.
     // TODO: the random value should be the "hash" of the merkle tree leaf itself,
     // and the preimage of such hash should be unknown. But to implement that it would
-    // require some inteligence on the MemoryState type.
+    // require some intelligence on the MemoryState type.
     let mut rng = rand::rngs::OsRng;
     for i in 0..(PAGE_SIZE_BYTES / 4) {
         initial_memory.insert(prover_data_start + i * 4, rng.gen::<u32>());
