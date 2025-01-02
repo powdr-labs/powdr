@@ -1,6 +1,5 @@
 use std::{ffi::c_void, iter, mem, sync::Arc};
 
-use auto_enums::auto_enum;
 use itertools::Itertools;
 use libloading::Library;
 use powdr_number::{FieldElement, KnownField};
@@ -224,25 +223,23 @@ extern "C" fn witgen(
 }
 
 /// Returns an iterator over all variables written to in the effect.
-#[auto_enum(Iterator)]
 fn written_vars_in_effect<T: FieldElement>(
     effect: &Effect<T, Variable>,
-) -> impl Iterator<Item = &Variable> + '_ {
+) -> Box<dyn Iterator<Item = &Variable> + '_> {
     match effect {
-        Effect::Assignment(var, _) => iter::once(var),
+        Effect::Assignment(var, _) => Box::new(iter::once(var)),
         Effect::RangeConstraint(..) => unreachable!(),
-        Effect::Assertion(..) => iter::empty(),
-        Effect::MachineCall(_, arguments) => arguments.iter().flat_map(|e| match e {
+        Effect::Assertion(..) => Box::new(iter::empty()),
+        Effect::MachineCall(_, arguments) => Box::new(arguments.iter().flat_map(|e| match e {
             MachineCallArgument::Unknown(v) => Some(v),
             MachineCallArgument::Known(_) => None,
-        }),
-        Effect::Branch(..) => {
-            // TODO
-            iter::empty()
-        } // first
-          //     .iter()
-          //     .chain(second.iter())
-          //     .flat_map(written_vars_in_effect),
+        })),
+        Effect::Branch(_, first, second) => Box::new(
+            first
+                .iter()
+                .chain(second)
+                .flat_map(|e| written_vars_in_effect(e)),
+        ),
     }
 }
 
