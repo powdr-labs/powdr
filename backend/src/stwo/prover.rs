@@ -217,15 +217,18 @@ where
     }
 
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
+        
         let split: BTreeMap<String, Analyzed<F>> = powdr_backend_utils::split_pil(&self.analyzed)
             .into_iter()
             .collect();
 
-        //create components for each machine
+        //Each machine needs its own component to generate its proof, the components from different machines are stored in a vector components
         let tree_span_provider = &mut TraceLocationAllocator::default();
         let mut components = Vec::new();
-
-
+        
+        //The preprocessed columns needs to be indexed in the whole execution instead of each machine, so we need to keep track of the offset
+        let mut constant_cols_offset_acc=0;
+        
         let witness_by_machine = split
             .iter()
             .filter_map(|(machine, pil)| {
@@ -236,11 +239,11 @@ where
                     None
                 } else {
                     println!("crate component for machine {:?} \n", machine);
-
+                    constant_cols_offset_acc+=pil.constant_count();
                     //println!("\n the pil  for this machine is {:?} \n", pil.definitions);
                     components.push(PowdrComponent::new(
                         tree_span_provider,
-                        PowdrEval::new((*pil).clone()),
+                        PowdrEval::new((*pil).clone(),constant_cols_offset_acc),
                         (SecureField::zero(), None),
                     ));
 
@@ -416,7 +419,7 @@ where
         //Constraints that are to be proved
         let mut component = PowdrComponent::new(
             &mut TraceLocationAllocator::default(),
-            PowdrEval::new((*self.analyzed).clone()),
+            PowdrEval::new((*self.analyzed).clone(),0),
             (SecureField::zero(), None),
         );
 
@@ -426,13 +429,13 @@ where
         self.split.iter().for_each(|(machine, pil)| {
             component = PowdrComponent::new(
                 &mut TraceLocationAllocator::default(),
-                PowdrEval::new((*pil).clone()),
+                PowdrEval::new((*pil).clone(),0),
                 (SecureField::zero(), None),
             );
 
             components.push(PowdrComponent::new(
                 tree_span_provider,
-                PowdrEval::new((*pil).clone()),
+                PowdrEval::new((*pil).clone(),0),
                 (SecureField::zero(), None),
             ));
         });
