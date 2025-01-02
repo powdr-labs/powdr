@@ -236,7 +236,7 @@ fn written_vars_in_effect<T: FieldElement>(
             MachineCallArgument::Unknown(v) => Some(v),
             MachineCallArgument::Known(_) => None,
         }),
-        Effect::Branch(_, first, second) => {
+        Effect::Branch(..) => {
             // TODO
             iter::empty()
         } // first
@@ -293,7 +293,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>) -> String {
     assert!(call_machine(mutable_state, {id}, MutSlice::from((&mut [{args}]).as_mut_slice())));"
             )
         }
-        Effect::Branch(condition, first, second) => todo!(),
+        Effect::Branch(..) => todo!(),
     }
 }
 

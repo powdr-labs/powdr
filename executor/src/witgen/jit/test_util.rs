@@ -1,15 +1,8 @@
-use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
-use powdr_ast::indent;
 use powdr_executor_utils::VariablySizedColumn;
-use powdr_number::{FieldElement, GoldilocksField};
+use powdr_number::FieldElement;
 
-use crate::{constant_evaluator, witgen::jit::effect::MachineCallArgument};
-
-use super::{
-    effect::{Assertion, BranchCondition, Effect},
-    variable::Variable,
-};
+use crate::constant_evaluator;
 
 pub fn read_pil<T: FieldElement>(
     input_pil: &str,

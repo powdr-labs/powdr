@@ -48,8 +48,8 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             .sorted()
             .collect_vec();
 
-        let code = if unknown_witnesses.is_empty() {
-            // TODO also check that we completed all machine calls?
+        let missing_identities = self.machine_parts.identities.len() - complete.len();
+        let code = if unknown_witnesses.is_empty() && missing_identities == 0 {
             witgen.code()
         } else {
             let Some((most_constrained_var, _)) = witgen
@@ -61,8 +61,15 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             else {
                 return Err(format!(
                     "Unable to derive algorithm to compute values for witness columns in the next row and\n\
-                    unable to branch on a variable. The following columns are still missing:\n{}",
-                    unknown_witnesses.iter().map(|wit| self.fixed_data.column_name(wit)).format(", ")
+                    unable to branch on a variable. The following columns are still missing:\n{}\nThe following identities have not been fully processed:\n{}",
+                    unknown_witnesses.iter().map(|wit| self.fixed_data.column_name(wit)).format(", "),
+                    self
+                    .machine_parts
+                    .identities
+                    .iter()
+                    .filter(|id| !complete.contains(&id.id()))
+                    .map(|id| format!("    {id}"))
+                    .join("\n")
                 ));
             };
 
@@ -129,27 +136,6 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         }
     }
 
-    fn code_if_successful(
-        &self,
-        witgen: WitgenInference<'_, T, NoEval>,
-    ) -> Result<Vec<Effect<T, Variable>>, String> {
-        // Check that we could derive all witness values in the next row.
-        let unknown_witnesses = self
-            .unknown_witness_cols_on_next_row(&witgen)
-            .sorted()
-            .collect_vec();
-
-        let missing_identities = self.machine_parts.identities.len() - complete.len();
-        if unknown_witnesses.is_empty() && missing_identities == 0 {
-            Ok(witgen.code())
-        } else {
-            Err(format!(
-                "Unable to derive algorithm to compute values for witness columns in the next row for the following columns:\n{}\nand {missing_identities} identities are missing.",
-                unknown_witnesses.iter().map(|wit| self.fixed_data.column_name(wit)).format(", ")
-            ))
-        }
-    }
-
     fn unknown_witness_cols_on_next_row<'b>(
         &'b self,
         witgen: &'b WitgenInference<'_, T, NoEval>,
@@ -165,7 +151,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
 }
 
 #[derive(Clone)]
-struct NoEval;
+pub struct NoEval;
 
 impl<T: FieldElement> FixedEvaluator<T> for NoEval {
     fn evaluate(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
@@ -183,30 +169,20 @@ mod test {
     use pretty_assertions::assert_eq;
     use test_log::test;
 
-    use powdr_ast::analyzed::Analyzed;
-    use powdr_number::GoldilocksField;
-
-    use crate::{
-        constant_evaluator,
-        witgen::{
-            data_structures::mutable_state::MutableState,
-            global_constraints,
-            jit::effect::{format_code, Effect},
-            machines::{Connection, FixedLookup, KnownMachine, MachineParts},
-            FixedData,
-    use itertools::Itertools;
-
     use powdr_number::GoldilocksField;
 
     use crate::witgen::{
         data_structures::mutable_state::MutableState,
         global_constraints,
-        jit::{
-            effect::{format_code, Effect},
-            test_util::read_pil,
-        },
-        machines::{machine_extractor::MachineExtractor, KnownMachine, Machine},
+        jit::effect::{format_code, Effect},
+        machines::KnownMachine,
         FixedData,
+    };
+    use itertools::Itertools;
+
+    use crate::witgen::{
+        jit::test_util::read_pil,
+        machines::{machine_extractor::MachineExtractor, Machine},
     };
 
     use super::{SingleStepProcessor, Variable};
@@ -256,8 +232,8 @@ mod test {
             unable to branch on a variable. The following columns are still missing:\n\
             M::Y\n\
             and 0 identities are missing."
-    );
-}
+        );
+    }
 
     #[test]
     fn branching() {
@@ -300,6 +276,7 @@ if (VM::instr_add[0] == 1) {
     } else {
         VM::A[1] = VM::A[0];
     }
-}");
+}"
+        );
     }
 }

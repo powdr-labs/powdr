@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use itertools::Itertools;
 use powdr_ast::indent;
 use powdr_number::FieldElement;
@@ -114,11 +116,9 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
 fn format_condition<T: FieldElement>(condition: &BranchCondition<T, Variable>) -> String {
     let var = &condition.variable;
     let (min, max) = condition.first_branch.range();
-    if min == max {
-        format!("{var} == {min}")
-    } else if min < max {
-        format!("{min} <= {var} && {var} <= {max}")
-    } else {
-        format!("{var} <= {min} || {var} >= {max}")
+    match min.cmp(&max) {
+        Ordering::Equal => format!("{var} == {min}"),
+        Ordering::Less => format!("{min} <= {var} && {var} <= {max}"),
+        Ordering::Greater => format!("{var} <= {min} || {var} >= {max}"),
     }
 }
