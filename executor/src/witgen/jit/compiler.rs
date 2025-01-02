@@ -27,6 +27,9 @@ use super::{
 };
 
 pub enum WitgenFunction<T: FieldElement> {
+    // TODO We might want to pass arguments as direct function parameters
+    // (instead of a struct), so that
+    // they are stored in registers instead of the stack. Should be checked.
     Compiled {
         function: extern "C" fn(WitgenFunctionParams<T>),
         _library: Arc<Library>,
