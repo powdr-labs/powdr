@@ -131,6 +131,9 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             }
         }
 
+        // TODO: Fail hard (or return a different error), as this should never
+        // happen for valid block machines. Currently fails in:
+        // powdr-pipeline::powdr_std arith256_memory_large_test
         self.check_block_shape(witgen)?;
         self.check_incomplete_machine_calls(&complete)?;
 
@@ -149,8 +152,10 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .collect::<BTreeSet<_>>();
 
         let can_stack = known_columns.iter().all(|column_id| {
-            let values = self
-                .row_range()
+            // Increase the range by 1, because in row <block_size>,
+            // we might have processed an identity with next references.
+            let row_range = self.row_range();
+            let values = (row_range.start..(row_range.end + 1))
                 .map(|row| {
                     witgen.value(&Variable::Cell(Cell {
                         id: *column_id,
@@ -163,29 +168,24 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .collect::<Vec<_>>();
 
             // Two values that refer to the same row (modulo block size) are compatible if:
-            // - One of them is unknown
+            // - One of them is unknown, or
             // - Both are concrete and equal
             let is_compatible = |v1: Value<T>, v2: Value<T>| match (v1, v2) {
                 (Value::Unknown, _) | (_, Value::Unknown) => true,
                 (Value::Concrete(a), Value::Concrete(b)) => a == b,
                 _ => false,
             };
-            // Compare rows -1 and <block_size>, and 0 and <block_size+1>, which are the two row pairs
-            // that are equal modulo the block size.
-            let stackable = is_compatible(values[0], values[self.block_size])
-                && is_compatible(values[1], values[self.block_size + 1]);
+            // A column is stackable if all rows equal to each other modulo
+            // the block size are compatible.
+            let stackable = (0..(values.len() - self.block_size))
+                .all(|i| is_compatible(values[i], values[i + self.block_size]));
 
             if !stackable {
                 let column_name = self.fixed_data.column_name(&PolyID {
                     id: *column_id,
                     ptype: PolynomialType::Committed,
                 });
-                let block_list = values
-                    .iter()
-                    .skip(1)
-                    .take(self.block_size)
-                    .map(|v| format!("{v}"))
-                    .join(", ");
+                let block_list = values.iter().skip(1).take(self.block_size).join(", ");
                 let column_str = format!(
                     "... {} | {} | {} ...",
                     values[0],
@@ -242,8 +242,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 "Incomplete machine calls:\n  {}",
                 incomplete_machine_calls
                     .iter()
-                    .map(|(id, row)| format!("{id} (row {row})"))
-                    .collect::<Vec<_>>()
+                    .map(|(identity, row)| format!("{identity} (row {row})"))
                     .join("\n  ")
             ))
         } else {
