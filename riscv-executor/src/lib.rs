@@ -653,7 +653,7 @@ mod builder {
     }
 
     pub struct TraceBuilder<'b, F: FieldElement> {
-        trace: ExecutionTrace<F>,
+        pub trace: ExecutionTrace<F>,
 
         submachines: HashMap<MachineInstance, RefCell<Box<dyn Submachine<F>>>>,
 
@@ -1453,15 +1453,15 @@ impl<F: FieldElement> Executor<'_, '_, F> {
         }
 
         if self.proc.col_is_defined("main::Y_const") {
-            set_col!(Y, get_fixed!(X_const));
+            set_col!(Y, get_fixed!(Y_const));
         }
 
         if self.proc.col_is_defined("main::Z_const") {
-            set_col!(Z, get_fixed!(X_const));
+            set_col!(Z, get_fixed!(Z_const));
         }
 
         if self.proc.col_is_defined("main::W_const") {
-            set_col!(W, get_fixed!(X_const));
+            set_col!(W, get_fixed!(W_const));
         }
 
         let instr = Instruction::from_name(name).expect("unknown instruction");
