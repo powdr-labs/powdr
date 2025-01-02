@@ -1,0 +1,44 @@
+name: Spellcheck
+
+on:
+  push:
+    branches:
+      - '*' 
+  pull_request:
+    branches:
+      - '*'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  code:
+    name: Code
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Check spelling
+        uses: streetsidesoftware/cspell-action@v2
+        with:
+          strict: false
+          incremental_files_only: true
+          files: |
+            **/*.{md,rs}
+
+  docs:
+    name: Documentation
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Check spelling
+        uses: streetsidesoftware/cspell-action@v2
+        with:
+          strict: true
+          incremental_files_only: true
+          files: |
+            **/*.md
