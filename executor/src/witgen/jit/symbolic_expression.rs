@@ -18,6 +18,7 @@ pub enum RPNExpressionElem<T: FieldElement, S> {
     BitOperation(BitOperator, T::Integer),
 }
 
+/// An expression in Reverse Polish Notation.
 pub struct RPNExpression<T: FieldElement, S> {
     pub elems: Vec<RPNExpressionElem<T, S>>,
 }
