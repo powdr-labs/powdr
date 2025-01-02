@@ -87,16 +87,7 @@ impl Keccak {
         unsafe {
             let (prefix, words, suffix) = data.align_to::<u32>();
 
-            for &byte in prefix {
-                self.input_buffer |= (byte as u32) << (8 * self.next_byte);
-                self.next_byte += 1;
-                if self.next_byte == 4 {
-                    self.xor_word_to_state(self.input_buffer);
-                    self.input_buffer = 0;
-                    self.next_byte = 0;
-                }
-            }
-
+            self.update_unaligned(prefix);
             for &word in words {
                 if self.next_byte == 0 {
                     self.xor_word_to_state(word);
@@ -105,15 +96,18 @@ impl Keccak {
                     self.input_buffer = word >> (32 - 8 * self.next_byte);
                 }
             }
+            self.update_unaligned(suffix);
+        }
+    }
 
-            for &byte in suffix {
-                self.input_buffer |= (byte as u32) << (8 * self.next_byte);
-                self.next_byte += 1;
-                if self.next_byte == 4 {
-                    self.xor_word_to_state(self.input_buffer);
-                    self.input_buffer = 0;
-                    self.next_byte = 0;
-                }
+    fn update_unaligned(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.input_buffer |= (byte as u32) << (8 * self.next_byte);
+            self.next_byte += 1;
+            if self.next_byte == 4 {
+                self.xor_word_to_state(self.input_buffer);
+                self.input_buffer = 0;
+                self.next_byte = 0;
             }
         }
     }
