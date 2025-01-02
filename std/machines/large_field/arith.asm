@@ -131,7 +131,7 @@ machine Arith with
                 };
                 provide_values(q0, i, q0_val);
 
-                // Adding secp_modulus to make sure that that all numbers are positive when % is applied to it.
+                // Adding secp_modulus to make sure that all numbers are positive when % is applied to it.
                 let x3_val = (s_val * s_val - x1 - x2 + 2 * secp_modulus) % secp_modulus;
                 provide_values(x3, i, x3_val);
                 let y3_val = (s_val * ((x1 - x3_val) + secp_modulus) - y1 + secp_modulus) % secp_modulus;
@@ -182,12 +182,21 @@ machine Arith with
     *
     *****/
 
-    link => byte2.check(sum(16, |i| x1[i] * CLK32[i]) + sum(16, |i| y1[i] * CLK32[16 + i]));
-    link => byte2.check(sum(16, |i| x2[i] * CLK32[i]) + sum(16, |i| y2[i] * CLK32[16 + i]));
-    link => byte2.check(sum(16, |i| x3[i] * CLK32[i]) + sum(16, |i| y3[i] * CLK32[16 + i]));
+    // sum0 (and the others) used to be inlined inside `byte2.check(...)`,
+    // but that causes an issue in the bus linker mode due to the expressions
+    // being copied syntactically before resolving the closures.
+    // Moving these expressions out of the link fixes it.
+    let sum0 = sum(16, |i| x1[i] * CLK32[i]) + sum(16, |i| y1[i] * CLK32[16 + i]);
+    link => byte2.check(sum0);
+    let sum1 = sum(16, |i| x2[i] * CLK32[i]) + sum(16, |i| y2[i] * CLK32[16 + i]);
+    link => byte2.check(sum1);
+    let sum2 = sum(16, |i| x3[i] * CLK32[i]) + sum(16, |i| y3[i] * CLK32[16 + i]);
+    link => byte2.check(sum2);
     // Note that for q0-q2, we only range-constrain the first 15 limbs here
-    link => byte2.check(sum(16, |i| s[i] * CLK32[i]) + sum(15, |i| q0[i] * CLK32[16 + i]));
-    link => byte2.check(sum(15, |i| q1[i] * CLK32[i]) + sum(15, |i| q2[i] * CLK32[16 + i]));
+    let sum3 = sum(16, |i| s[i] * CLK32[i]) + sum(15, |i| q0[i] * CLK32[16 + i]);
+    link => byte2.check(sum3);
+    let sum4 = sum(15, |i| q1[i] * CLK32[i]) + sum(15, |i| q2[i] * CLK32[16 + i]);
+    link => byte2.check(sum4);
 
     // The most significant limbs of q0-q2 are constrained to be 32 bits
     // In Polygon's version they are 19 bits, but that requires increasing the minimum degree

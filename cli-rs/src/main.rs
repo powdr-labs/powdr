@@ -456,33 +456,17 @@ fn execute<F: FieldElement>(
             .flat_map(|(s, _)| s.array_elements().map(|(name, _)| name))
             .collect();
 
-        let full_trace: Vec<_> = execution
-            .trace
-            .into_iter()
-            .filter(|(name, _)| witness_cols.contains(name))
-            .collect();
-
-        let mut keys: Vec<_> = full_trace.iter().map(|(a, _)| a.clone()).collect();
-        keys.sort();
-
-        let missing_cols = witness_cols
-            .iter()
-            .filter(|x| !keys.contains(x))
-            .collect::<Vec<_>>();
-
-        log::debug!("All witness column names: {:?}\n", witness_cols);
-        log::debug!("Executor provided columns: {:?}\n", keys);
-        log::debug!("Executor missing columns: {:?}", missing_cols);
+        let trace: Vec<_> = execution.trace.into_iter().collect();
 
         if executor_csv {
             let file_name = format!(
                 "{}_executor.csv",
                 file_name.file_stem().unwrap().to_str().unwrap()
             );
-            write_executor_csv(file_name, &full_trace, Some(&witness_cols));
+            write_executor_csv(file_name, &trace, Some(&witness_cols));
         }
 
-        pipeline = pipeline.add_external_witness_values(full_trace);
+        pipeline = pipeline.add_external_witness_values(trace);
 
         generate_witness(&mut pipeline)?;
     }

@@ -398,6 +398,10 @@ impl FieldElement for GoldilocksField {
         // Undo the shift
         Some(v.wrapping_sub(SHIFT as u32) as i32)
     }
+
+    fn has_direct_repr() -> bool {
+        true
+    }
 }
 
 impl LowerHex for GoldilocksField {

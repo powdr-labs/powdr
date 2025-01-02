@@ -31,6 +31,9 @@ use self::debug_info::DebugInfo;
 
 mod debug_info;
 
+/// The program header type (p_type) for Powdr prover data segments.
+pub const PT_POWDR_PROVER_DATA: u32 = 0x600000da;
+
 /// Generates a Powdr Assembly program from a RISC-V 32 executable ELF file.
 pub fn translate(file_name: &Path, options: CompilerOptions) -> String {
     let elf_program = load_elf(file_name);
@@ -42,6 +45,7 @@ struct ElfProgram {
     data_map: BTreeMap<u32, Data>,
     text_labels: BTreeSet<u32>,
     instructions: Vec<HighLevelInsn>,
+    prover_data_bounds: (u32, u32),
     entry_point: u32,
 }
 
@@ -79,13 +83,27 @@ fn load_elf(file_name: &Path) -> ElfProgram {
 
     // Map of addresses into memory sections, so we can know what address belong
     // in what section.
-    let address_map = AddressMap(
-        elf.program_headers
-            .iter()
-            .filter(|p| p.p_type == PT_LOAD)
-            .map(|p| (p.p_vaddr as u32, p))
-            .collect(),
-    );
+    let mut address_map = AddressMap(BTreeMap::new());
+    let mut prover_data_bounds = None;
+    for ph in elf.program_headers.iter() {
+        match ph.p_type {
+            PT_LOAD => {
+                address_map.0.insert(ph.p_vaddr as u32, ph);
+            }
+            PT_POWDR_PROVER_DATA => {
+                assert_eq!(
+                    prover_data_bounds, None,
+                    "Only one prover data segment is supported!"
+                );
+                prover_data_bounds =
+                    Some((ph.p_vaddr as u32, ph.p_vaddr as u32 + ph.p_memsz as u32));
+            }
+            _ => {}
+        }
+    }
+
+    // If no prover data segment was provided, make it empty.
+    let prover_data_bounds = prover_data_bounds.unwrap_or((0, 0));
 
     // Set of R_RISCV_HI20 relocations, needed in non-PIE code to identify
     // loading of absolute addresses to text.
@@ -190,6 +208,7 @@ fn load_elf(file_name: &Path) -> ElfProgram {
         text_labels: referenced_text_addrs,
         instructions: lifted_text_sections,
         entry_point: elf.entry as u32,
+        prover_data_bounds,
     }
 }
 
@@ -365,6 +384,10 @@ impl RiscVProgram for ElfProgram {
             })
     }
 
+    fn prover_data_bounds(&self) -> (u32, u32) {
+        self.prover_data_bounds
+    }
+
     fn start_function(&self) -> impl AsRef<str> {
         self.dbg.symbols.get_one(self.entry_point)
     }
@@ -377,7 +400,7 @@ struct WrappedArgs<'a> {
     symbol_table: &'a SymbolTable,
 }
 
-impl<'a> InstructionArgs for WrappedArgs<'a> {
+impl InstructionArgs for WrappedArgs<'_> {
     type Error = String;
 
     fn l(&self) -> Result<impl AsRef<str>, Self::Error> {
@@ -568,12 +591,12 @@ struct AddressMap<'a>(BTreeMap<u32, &'a ProgramHeader>);
 impl AddressMap<'_> {
     fn is_in_data_section(&self, addr: u32) -> bool {
         self.get_section_of_addr(addr)
-            .map_or(false, |section| !section.is_executable())
+            .is_some_and(|section| !section.is_executable())
     }
 
     fn is_in_text_section(&self, addr: u32) -> bool {
         self.get_section_of_addr(addr)
-            .map_or(false, ProgramHeader::is_executable)
+            .is_some_and(ProgramHeader::is_executable)
     }
 
     fn get_section_of_addr(&self, addr: u32) -> Option<&ProgramHeader> {
@@ -1040,7 +1063,7 @@ fn search_text_addrs(
 
 /// Lift the instructions back to higher-level instructions.
 ///
-/// Turn addresses into labels and and merge instructions into
+/// Turn addresses into labels and merge instructions into
 /// pseudoinstructions.
 fn lift_instructions(
     base_addr: u32,

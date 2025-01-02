@@ -56,6 +56,7 @@ fn create_index<T: FieldElement>(
     connections: &BTreeMap<u64, Connection<'_, T>>,
 ) -> HashMap<Vec<T>, IndexValue<T>> {
     let right = connections[&application.identity_id].right;
+    assert!(right.selector.is_one());
 
     let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
         .expressions
@@ -234,7 +235,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
 
     fn process_range_check(
         &self,
-        rows: &RowPair<'_, 'a, T>,
+        rows: &RowPair<'_, '_, T>,
         lhs: &AffineExpression<AlgebraicVariable<'a>, T>,
         rhs: AlgebraicVariable<'a>,
     ) -> EvalResult<'a, T> {
@@ -297,6 +298,28 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         "FixedLookup"
     }
 
+    fn can_process_call_fully(
+        &mut self,
+        identity_id: u64,
+        known_arguments: &BitVec,
+        _range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool {
+        if !Self::is_responsible(&self.connections[&identity_id]) {
+            return false;
+        }
+        let index = self
+            .indices
+            .entry(Application {
+                identity_id,
+                inputs: known_arguments.clone(),
+            })
+            .or_insert_with_key(|application| {
+                create_index(self.fixed_data, application, &self.connections)
+            });
+        // Check that if there is a match, it is unique.
+        index.values().all(|value| value.0.is_some())
+    }
+
     fn process_plookup<Q: crate::witgen::QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
@@ -317,9 +340,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         self.process_plookup_internal(mutable_state, identity_id, caller_rows, outer_query, right)
     }
 
-    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+    fn process_lookup_direct<'c, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b MutableState<'a, T, Q>,
+        _mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {

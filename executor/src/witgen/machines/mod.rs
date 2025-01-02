@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 
+use bit_vec::BitVec;
 use dynamic_machine::DynamicMachine;
 use powdr_ast::analyzed::{
     self, AlgebraicExpression, DegreeRange, PermutationIdentity, PhantomPermutationIdentity, PolyID,
@@ -21,6 +22,7 @@ use self::second_stage_machine::SecondStageMachine;
 use self::sorted_witness_machine::SortedWitnesses;
 use self::write_once_memory::WriteOnceMemory;
 
+use super::range_constraints::RangeConstraint;
 use super::rows::RowPair;
 use super::{EvalError, EvalResult, FixedData, QueryCallback};
 
@@ -53,6 +55,23 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         );
     }
 
+    /// Returns true if this machine can alway fully process a call via the given
+    /// identity, the set of known arguments and a list of range constraints
+    /// on the parameters. Note that the range constraints can be imposed both
+    /// on inputs and on outputs.
+    /// If this returns true, then corresponding calls to `process_lookup_direct`
+    /// are safe.
+    /// The function requires `&mut self` because it usually builds an index structure
+    /// or something similar.
+    fn can_process_call_fully(
+        &mut self,
+        _identity_id: u64,
+        _known_arguments: &BitVec,
+        _range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool {
+        false
+    }
+
     /// Like `process_plookup`, but also records the time spent in this machine.
     fn process_plookup_timed<'b, Q: QueryCallback<T>>(
         &mut self,
@@ -62,6 +81,19 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     ) -> EvalResult<'a, T> {
         record_start(self.name());
         let result = self.process_plookup(mutable_state, identity_id, caller_rows);
+        record_end(self.name());
+        result
+    }
+
+    /// Like 'process_lookup_direct', but also records the time spent in this machine.
+    fn process_lookup_direct_timed<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        mutable_state: &'b MutableState<'a, T, Q>,
+        identity_id: u64,
+        values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        record_start(self.name());
+        let result = self.process_lookup_direct(mutable_state, identity_id, values);
         record_end(self.name());
         result
     }
@@ -106,11 +138,21 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn identity_ids(&self) -> Vec<u64>;
 }
 
+#[repr(C)]
 pub enum LookupCell<'a, T> {
     /// Value is known (i.e. an input)
     Input(&'a T),
     /// Value is not known (i.e. an output)
     Output(&'a mut T),
+}
+
+impl<T> LookupCell<'_, T> {
+    pub fn is_input(&self) -> bool {
+        match self {
+            LookupCell::Input(_) => true,
+            LookupCell::Output(_) => false,
+        }
+    }
 }
 
 /// All known implementations of [Machine].
@@ -138,6 +180,40 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::BlockMachine(m) => m.run(mutable_state),
             KnownMachine::DynamicMachine(m) => m.run(mutable_state),
             KnownMachine::FixedLookup(m) => m.run(mutable_state),
+        }
+    }
+
+    fn can_process_call_fully(
+        &mut self,
+        identity_id: u64,
+        known_arguments: &BitVec,
+        range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool {
+        match self {
+            KnownMachine::SecondStageMachine(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
+            KnownMachine::SortedWitnesses(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
+            KnownMachine::DoubleSortedWitnesses16(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
+            KnownMachine::DoubleSortedWitnesses32(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
+            KnownMachine::WriteOnceMemory(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
+            KnownMachine::BlockMachine(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
+            KnownMachine::DynamicMachine(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
+            KnownMachine::FixedLookup(m) => {
+                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            }
         }
     }
 
@@ -266,13 +342,13 @@ pub struct Connection<'a, T> {
     pub multiplicity_column: Option<PolyID>,
 }
 
-impl<'a, T: Display> Display for Connection<'a, T> {
+impl<T: Display> Display for Connection<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {} {}", self.left, self.kind, self.right)
     }
 }
 
-impl<'a, T> Connection<'a, T> {
+impl<T> Connection<'_, T> {
     fn is_permutation(&self) -> bool {
         self.kind == ConnectionKind::Permutation
     }

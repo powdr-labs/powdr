@@ -400,6 +400,10 @@ macro_rules! powdr_field {
                 // Undo the shift
                 Some(v.wrapping_sub(SHIFT as u32) as i32)
             }
+
+            fn has_direct_repr() -> bool {
+                false
+            }
         }
 
         impl From<$ark_type> for $name {

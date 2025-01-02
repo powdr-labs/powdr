@@ -12,6 +12,7 @@ use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::jit::function_cache::FunctionCache;
 use crate::witgen::processor::{OuterQuery, Processor, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
@@ -36,7 +37,7 @@ impl<'a, T: FieldElement> ProcessResult<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> Display for BlockMachine<'a, T> {
+impl<T: FieldElement> Display for BlockMachine<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -72,8 +73,14 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
     processing_sequence_cache: ProcessingSequenceCache,
+    /// If this block machine can be JITed, we store the witgen functions here.
+    function_cache: FunctionCache<'a, T>,
     name: String,
     multiplicity_counter: MultiplicityCounter,
+    /// Counts the number of blocks created using the JIT.
+    block_count_jit: usize,
+    /// Counts the number of blocks created using the runtime solver.
+    block_count_runtime: usize,
 }
 
 impl<'a, T: FieldElement> BlockMachine<'a, T> {
@@ -114,6 +121,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             &parts.witnesses,
             (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
         );
+        let layout = data.layout();
         Some(BlockMachine {
             name,
             degree_range,
@@ -132,7 +140,21 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 latch_row,
                 parts.identities.len(),
             ),
+            function_cache: FunctionCache::new(
+                fixed_data,
+                parts.clone(),
+                block_size,
+                latch_row,
+                layout,
+            ),
+            block_count_jit: 0,
+            block_count_runtime: 0,
         })
+    }
+
+    #[cfg(test)]
+    pub fn machine_info(&self) -> (MachineParts<'a, T>, usize, usize) {
+        (self.parts.clone(), self.block_size, self.latch_row)
     }
 }
 
@@ -197,6 +219,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                     .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
                     .collect();
             }
+        } else {
+            let total_block_count = self.block_count_jit + self.block_count_runtime;
+            log::debug!(
+                "{}: {} / {total_block_count} blocks computed via JIT.",
+                self.name,
+                self.block_count_jit
+            );
         }
         self.degree = compute_size_and_log(
             &self.name,
@@ -321,7 +350,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 }
 
 impl<'a, T: FieldElement> BlockMachine<'a, T> {
-    /// The characteristic of a block machine is that that all fixed columns are
+    /// The characteristic of a block machine is that all fixed columns are
     /// periodic. However, there are exceptions to handle wrapping.
     /// This becomes a problem when a witness polynomial depends on a fixed column
     /// that is not periodic, because values of committed polynomials are copy-pasted
@@ -356,12 +385,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         RowIndex::from_i64(self.rows() as i64 - 1, self.degree)
     }
 
-    fn get_row(&self, row: RowIndex) -> &Row<T> {
-        // The first block is a dummy block corresponding to rows (-block_size, 0),
-        // so we have to add the block size to the row index.
-        &self.data[(row + self.block_size).into()]
-    }
-
     fn process_plookup_internal<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
@@ -372,8 +395,22 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
-        for l in &outer_query.left {
-            log::trace!("  {}", l);
+        if log::log_enabled!(log::Level::Trace) {
+            for l in &outer_query.left {
+                log::trace!("  {}", l);
+            }
+        }
+
+        let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
+        if self
+            .function_cache
+            .compile_cached(mutable_state, identity_id, &known_inputs)
+            .is_some()
+        {
+            let updates = self.process_lookup_via_jit(mutable_state, identity_id, outer_query)?;
+            assert!(updates.is_complete());
+            self.block_count_jit += 1;
+            return Ok(updates);
         }
 
         // TODO this assumes we are always using the same lookup for this machine.
@@ -401,6 +438,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         match process_result {
             ProcessResult::Success(updated_data, updates) => {
+                assert!(updates.is_complete());
+                self.block_count_runtime += 1;
+
                 log::trace!(
                     "End processing block machine '{}' (successfully)",
                     self.name()
@@ -410,7 +450,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
                 let updates = updates.report_side_effect();
 
-                let global_latch_row_index = self.data.len() - 1 - self.block_size + self.latch_row;
+                let global_latch_row_index = self.data.len() - self.block_size + self.latch_row;
                 self.multiplicity_counter
                     .increment_at_row(identity_id, global_latch_row_index);
 
@@ -429,6 +469,35 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 Ok(updates)
             }
         }
+    }
+
+    fn process_lookup_via_jit<'b, Q: QueryCallback<T>>(
+        &mut self,
+        mutable_state: &MutableState<'a, T, Q>,
+        identity_id: u64,
+        outer_query: OuterQuery<'a, 'b, T>,
+    ) -> EvalResult<'a, T> {
+        let mut input_output_data = vec![T::zero(); outer_query.left.len()];
+        let values = outer_query.prepare_for_direct_lookup(&mut input_output_data);
+
+        assert!(
+            (self.rows() + self.block_size as DegreeType) < self.degree,
+            "Block machine is full (this should have been checked before)"
+        );
+        self.data
+            .finalize_range(self.first_in_progress_row..self.data.len());
+        self.first_in_progress_row = self.data.len() + self.block_size;
+        //TODO can we properly access the last row of the dummy block?
+        let data = self.data.append_new_finalized_rows(self.block_size);
+
+        let success =
+            self.function_cache
+                .process_lookup_direct(mutable_state, identity_id, values, data)?;
+        assert!(success);
+
+        Ok(outer_query
+            .direct_lookup_to_eval_result(input_output_data)?
+            .report_side_effect())
     }
 
     fn process<'b, Q: QueryCallback<T>>(
@@ -481,7 +550,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         new_block
             .get_mut(0)
             .unwrap()
-            .merge_with(self.get_row(self.last_row_index()))
+            .merge_with_values(self.data.known_values_in_row(self.data.len() - 1))
             .map_err(|_| {
                 EvalError::Generic(
                     "Block machine overwrites existing value with different value!".to_string(),
@@ -489,7 +558,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             })?;
 
         // 3. Remove the last row of the previous block from data
-        self.data.pop().unwrap();
+        self.data.truncate(self.data.len() - 1);
 
         // 4. Finalize everything so far (except the dummy block)
         if self.data.len() > self.block_size {

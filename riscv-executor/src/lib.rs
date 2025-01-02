@@ -14,7 +14,10 @@ use std::{
     fmt::{self, Display, Formatter},
     path::Path,
     sync::Arc,
+    time::Instant,
 };
+
+use num_derive::{FromPrimitive, ToPrimitive};
 
 use builder::TraceBuilder;
 
@@ -39,8 +42,300 @@ mod submachines;
 use submachines::*;
 mod memory;
 use memory::*;
+mod pil;
 
 use crate::profiler::Profiler;
+
+#[derive(Debug)]
+struct SubmachineOp<F: FieldElement> {
+    // pil identity id of the link
+    identity_id: u64,
+    // these are the RHS values of the lookup (i.e., inside brackets in the PIL lookup).
+    // This is a fixed size to avoid allocations in the common case.
+    lookup_args: [F; 4],
+    // TODO: this is just for the hand-written poseidon_gl submachine,
+    // we give it the input values because it doesn't have access to memory
+    extra: Vec<F>,
+}
+
+/// Enum with asm machine RISCV instruction. Helps avoid using raw strings in the code.
+macro_rules! instructions {
+    ($($name:ident),*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[allow(non_camel_case_types)]
+        enum Instruction {
+            $($name,)*
+            Count
+        }
+
+        impl Instruction {
+            fn count() -> usize {
+                Self::Count as usize
+            }
+
+            fn from_name(s: &str) -> Option<Self> {
+                match s {
+                    $(stringify!($name) => Some(Self::$name),)*
+                    _ => None
+                }
+            }
+
+            fn flag(&self) -> &'static str {
+                match *self {
+                    $(Self::$name => concat!("main::instr_", stringify!($name)),)*
+                    Self::Count => panic!(),
+                }
+            }
+        }
+    };
+}
+
+instructions! {
+    set_reg,
+    get_reg,
+    affine,
+    mstore,
+    mstore_bootloader,
+    mload,
+    load_bootloader_input,
+    assert_bootloader_input,
+    load_label,
+    jump,
+    jump_dyn,
+    jump_to_bootloader_input,
+    branch_if_diff_nonzero,
+    branch_if_diff_equal,
+    skip_if_equal,
+    branch_if_diff_greater_than,
+    is_diff_greater_than,
+    is_equal_zero,
+    is_not_equal,
+    add_wrap,
+    wrap16,
+    sub_wrap_with_offset,
+    sign_extend_byte,
+    sign_extend_16_bits,
+    to_signed,
+    divremu,
+    mul,
+    and,
+    or,
+    xor,
+    shl,
+    shr,
+    invert_gl,
+    split_gl,
+    poseidon_gl,
+    poseidon2_gl,
+    affine_256,
+    mod_256,
+    ec_add,
+    ec_double,
+    commit_public,
+    fail
+}
+
+/// Enum with columns directly accessed by the executor (as to avoid matching on strings)
+macro_rules! known_witness_col {
+    ($($name:ident),*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToPrimitive, FromPrimitive)]
+        #[allow(non_camel_case_types)]
+        #[repr(usize)]
+        enum KnownWitnessCol {
+            $($name,)*
+            Count // this is a sentinel so we know how many variants we have
+        }
+
+        impl KnownWitnessCol {
+            fn count() -> usize {
+                Self::Count as usize
+            }
+
+            fn all() -> Vec<Self> {
+                vec![
+                    $(Self::$name,)*
+                ]
+            }
+
+            fn name(&self) -> &'static str {
+                match *self {
+                    $(Self::$name => concat!("main::", stringify!($name)),)*
+                    Self::Count => panic!(),
+                }
+            }
+        }
+    };
+}
+
+known_witness_col! {
+    _operation_id,
+    pc_update,
+    X,
+    Y,
+    Z,
+    W,
+    Y_free_value,
+    X_free_value,
+    tmp1_col,
+    tmp2_col,
+    tmp3_col,
+    tmp4_col,
+    X_b1,
+    X_b2,
+    X_b3,
+    X_b4,
+    XX,
+    XXIsZero,
+    XX_inv,
+    Y_b5,
+    Y_b6,
+    Y_b7,
+    Y_b8,
+    Y_7bit,
+    Y_15bit,
+    REM_b1,
+    REM_b2,
+    REM_b3,
+    REM_b4,
+    wrap_bit,
+    instr_load_label_param_l,
+    instr_jump_param_l,
+    instr_branch_if_diff_nonzero_param_l,
+    instr_branch_if_diff_equal_param_l,
+    instr_branch_if_diff_greater_than_param_l,
+    jump_to_shutdown_routine,
+    // instructions
+    instr_set_reg,
+    instr_get_reg,
+    instr_affine,
+    instr_mstore,
+    instr_mstore_bootloader,
+    instr_mload,
+    instr_load_bootloader_input,
+    instr_assert_bootloader_input,
+    instr_load_label,
+    instr_jump,
+    instr_jump_dyn,
+    instr_jump_to_bootloader_input,
+    instr_branch_if_diff_nonzero,
+    instr_branch_if_diff_equal,
+    instr_skip_if_equal,
+    instr_branch_if_diff_greater_than,
+    instr_is_diff_greater_than,
+    instr_is_equal_zero,
+    instr_is_not_equal,
+    instr_add_wrap,
+    instr_wrap16,
+    instr_sub_wrap_with_offset,
+    instr_sign_extend_byte,
+    instr_sign_extend_16_bits,
+    instr_to_signed,
+    instr_divremu,
+    instr_mul,
+    instr_and,
+    instr_or,
+    instr_xor,
+    instr_shl,
+    instr_shr,
+    instr_invert_gl,
+    instr_split_gl,
+    instr_poseidon_gl,
+    instr_poseidon2_gl,
+    instr_affine_256,
+    instr_mod_256,
+    instr_ec_add,
+    instr_ec_double,
+    instr_commit_public,
+    instr_fail
+}
+
+/// Enum with submachines known to the RISCV executor
+macro_rules! machine_instances {
+    ($($name:ident),*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToPrimitive, FromPrimitive)]
+        #[allow(non_camel_case_types)]
+        #[repr(usize)]
+        enum MachineInstance {
+            $($name,)*
+            Count
+        }
+
+        #[allow(unused)]
+        impl MachineInstance {
+            fn count() -> usize {
+                Self::Count as usize
+            }
+
+            fn all() -> Vec<Self> {
+                vec![
+                    $(Self::$name,)*
+                ]
+            }
+
+            fn name(&self) -> &'static str {
+                match *self {
+                    $(Self::$name => stringify!($name),)*
+                    Self::Count => panic!(),
+                }
+            }
+
+            fn namespace(&self) -> &'static str {
+                match *self {
+                    $(Self::$name => concat!("main_", stringify!($name)),)*
+                    Self::Count => panic!(),
+                }
+            }
+        }
+    };
+}
+
+machine_instances! {
+    memory,
+    regs,
+    publics,
+    binary,
+    shift,
+    split_gl,
+    poseidon_gl
+    // TODO: these are not implemented yet
+    // poseidon2_gl,
+    // keccakf,
+    // arith,
+}
+
+macro_rules! known_fixed_col {
+    ($($name:ident),*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToPrimitive, FromPrimitive)]
+        #[allow(non_camel_case_types)]
+        #[repr(usize)]
+        enum KnownFixedCol {
+            $($name,)*
+        }
+
+        impl KnownFixedCol {
+            fn all() -> Vec<Self> {
+                vec![
+                    $(Self::$name,)*
+                ]
+            }
+
+            fn name(&self) -> &'static str {
+                match *self {
+                    $(Self::$name => concat!("main__rom::p_", stringify!($name)),)*
+                }
+            }
+        }
+    };
+}
+
+known_fixed_col! {
+    X_const,
+    Y_const,
+    Z_const,
+    W_const,
+    Y_read_free,
+    X_read_free
+}
 
 /// Initial value of the PC.
 ///
@@ -74,10 +369,6 @@ impl<F: FieldElement> Elem<F> {
     }
 
     pub fn from_i32_as_fe(value: i32) -> Self {
-        Self::Field(F::from(value))
-    }
-
-    pub fn from_u64_as_fe_unchecked(value: u64) -> Self {
         Self::Field(F::from(value))
     }
 
@@ -122,13 +413,6 @@ impl<F: FieldElement> Elem<F> {
 
     fn s(&self) -> i32 {
         self.bin().try_into().unwrap()
-    }
-
-    fn fe(&self) -> F {
-        match self {
-            Self::Binary(_) => panic!(),
-            Self::Field(f) => *f,
-        }
     }
 
     fn is_zero(&self) -> bool {
@@ -241,24 +525,8 @@ pub struct MemOperation {
     pub address: u32,
 }
 
-pub struct RegWrite<F: FieldElement> {
-    /// The row of the execution trace this write will result into. Multiple
-    /// writes at the same row are valid: the last write to a given reg_idx will
-    /// define the final value of the register in that row.
-    row: usize,
-    /// Index of the register in the register bank.
-    reg_idx: u16,
-    val: F,
-}
-
 pub struct ExecutionTrace<F: FieldElement> {
     reg_map: HashMap<String, u16>,
-
-    /// Values of the registers in the execution trace.
-    ///
-    /// Each N elements is a row with all registers, where N is the number of
-    /// registers.
-    reg_writes: Vec<RegWrite<F>>,
 
     /// Writes and reads to memory.
     mem_ops: Vec<MemOperation>,
@@ -266,97 +534,64 @@ pub struct ExecutionTrace<F: FieldElement> {
     /// The length of the trace, after applying the reg_writes.
     len: usize,
 
-    /// witness columns
-    cols: HashMap<String, Vec<Elem<F>>>,
+    /// the pc value at each row
+    pc_trace: Vec<u32>,
+    /// values of non-pc asm registers at each row
+    reg_trace: Vec<Vec<F>>,
+    /// reg writes to be set on the trace on the next row
+    reg_writes: Vec<Option<F>>,
+
+    /// Calls into submachines
+    submachine_ops: Vec<Vec<SubmachineOp<F>>>,
+
+    /// Columns directly accessed by the executor, indexed by the enum value for
+    /// fast access. Some columns may be optimized away, so we rely on the PIL
+    /// columns to know what should be present in the end.
+    /// We keep a row based flat vec for memory locality.
+    known_cols: Vec<F>,
+
+    /// all witness columns obtained from the optimized pil.
+    all_cols: Vec<String>,
 }
 
 impl<F: FieldElement> ExecutionTrace<F> {
-    pub fn new(
-        witness_cols: Vec<String>,
-        reg_map: HashMap<String, u16>,
-        reg_writes: Vec<RegWrite<F>>,
-        pc: usize,
-    ) -> Self {
-        let cols: HashMap<String, _> = witness_cols
-            .into_iter()
-            .filter(|n| n.starts_with("main::"))
-            .map(|n| (n, vec![Elem::Field(F::zero()), Elem::Field(F::zero())]))
-            .collect();
-
+    pub fn new(witness_cols: Vec<String>, reg_map: HashMap<String, u16>) -> Self {
         ExecutionTrace {
+            reg_trace: reg_map.keys().map(|_| Vec::new()).collect(),
+            reg_writes: vec![None; reg_map.len()],
             reg_map,
-            reg_writes,
             mem_ops: Vec::new(),
-            len: pc,
-            cols,
-        }
-    }
-
-    /// Replay the execution and get the register values per trace row.
-    fn replay(&self) -> TraceReplay<F> {
-        TraceReplay {
-            trace: self,
-            regs: vec![0.into(); self.reg_map.len()],
-            pc_idx: self.reg_map["pc"] as usize,
-            next_write: 0,
-            next_r: 0,
+            len: PC_INITIAL_VAL + 1,
+            pc_trace: Vec::new(),
+            submachine_ops: MachineInstance::all().iter().map(|_| Vec::new()).collect(),
+            known_cols: vec![],
+            all_cols: witness_cols,
         }
     }
 
     /// transpose the register write operations into value columns
-    fn generate_registers_trace(&self) -> Vec<(String, Vec<Elem<F>>)> {
-        let mut reg_values: HashMap<&str, Vec<Elem<F>>> =
-            HashMap::with_capacity(self.reg_map.len());
+    fn generate_registers_trace(&mut self) -> Vec<(String, Vec<F>)> {
+        let mut reg_values: Vec<Vec<F>> =
+            vec![Vec::with_capacity(self.pc_trace.len().next_power_of_two()); self.reg_map.len()];
 
-        let mut rows = self.replay();
-        while let Some(row) = rows.next_row() {
-            for (reg_name, &index) in self.reg_map.iter() {
-                reg_values
-                    .entry(reg_name)
-                    .or_default()
-                    .push(Elem::Field(row[index as usize]));
+        // reverse lookup
+        let idx_reg: HashMap<u16, &str> =
+            self.reg_map.iter().map(|(k, &v)| (v, k.as_str())).collect();
+
+        for i in 0..self.reg_map.len() {
+            let reg = idx_reg[&(i as u16)];
+            if reg == "pc" {
+                reg_values[i].extend(self.pc_trace.iter().map(|&v| F::from(v)));
+            } else {
+                reg_values[i] = std::mem::take(&mut self.reg_trace[i]);
             }
         }
 
         reg_values
             .into_iter()
-            .map(|(n, c)| (format!("main::{n}"), c))
+            .enumerate()
+            .map(|(i, values)| (format!("main::{}", idx_reg[&(i as u16)]), values))
             .collect()
-    }
-}
-
-pub struct TraceReplay<'a, F: FieldElement> {
-    trace: &'a ExecutionTrace<F>,
-    regs: Vec<F>,
-    pc_idx: usize,
-    next_write: usize,
-    next_r: usize,
-}
-
-impl<'a, F: FieldElement> TraceReplay<'a, F> {
-    /// Returns the next row's registers value.
-    ///
-    /// Just like an iterator's next(), but returns the value borrowed from self.
-    pub fn next_row(&mut self) -> Option<&[F]> {
-        if self.next_r == self.trace.len {
-            return None;
-        }
-
-        // we optimistically increment the PC, if it is a jump or special case,
-        // one of the writes will overwrite it
-        self.regs[self.pc_idx] += 1.into();
-
-        while let Some(next_write) = self.trace.reg_writes.get(self.next_write) {
-            if next_write.row > self.next_r {
-                break;
-            }
-            self.next_write += 1;
-
-            self.regs[next_write.reg_idx as usize] = next_write.val;
-        }
-
-        self.next_r += 1;
-        Some(&self.regs[..])
     }
 }
 
@@ -376,22 +611,20 @@ impl<F: FieldElement> RegisterMemory<F> {
 }
 
 mod builder {
-    use std::{
-        cell::{RefCell, RefMut},
-        cmp,
-        collections::HashMap,
-    };
+    use std::{cell::RefCell, cmp, collections::HashMap, time::Instant};
 
     use powdr_ast::{
         analyzed::{Analyzed, DegreeRange},
         asm_analysis::{Machine, RegisterTy},
     };
     use powdr_number::FieldElement;
+    use rayon::iter::{IntoParallelIterator, ParallelBridge, ParallelExtend, ParallelIterator};
 
     use crate::{
-        BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MemOperation, MemOperationKind,
-        MemoryMachine, MemoryState, PoseidonGlMachine, PublicsMachine, RegWrite, RegisterMemory,
-        ShiftMachine, SplitGlMachine, Submachine, SubmachineBoxed, PC_INITIAL_VAL,
+        pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, KnownWitnessCol,
+        MachineInstance, MemOperation, MemOperationKind, MemoryMachine, MemoryState,
+        PoseidonGlMachine, PublicsMachine, RegisterMemory, ShiftMachine, SplitGlMachine,
+        Submachine, SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
     };
 
     fn namespace_degree_range<F: FieldElement>(
@@ -422,9 +655,7 @@ mod builder {
     pub struct TraceBuilder<'b, F: FieldElement> {
         trace: ExecutionTrace<F>,
 
-        submachines: HashMap<String, RefCell<Box<dyn Submachine<F>>>>,
-        pub regs_machine: MemoryMachine<F>,
-        pub memory_machine: MemoryMachine<F>,
+        submachines: HashMap<MachineInstance, RefCell<Box<dyn Submachine<F>>>>,
 
         /// Maximum rows we can run before we stop the execution.
         max_rows: usize,
@@ -458,7 +689,7 @@ mod builder {
         mode: ExecMode,
     }
 
-    impl<'a, 'b, F: FieldElement> TraceBuilder<'b, F> {
+    impl<'a, 'b: 'a, F: FieldElement> TraceBuilder<'b, F> {
         /// Creates a new builder.
         ///
         /// May fail if max_rows_len is too small or if the main machine is
@@ -485,44 +716,47 @@ mod builder {
             // u16, so panic if it doesn't fit (it obviously will fit for RISC-V).
             <usize as TryInto<u16>>::try_into(reg_len).unwrap();
 
-            // To avoid a special case when replaying the trace, we create a
-            // special write operation that sets the PC with 0 in the first row.
             let pc_idx = reg_map["pc"];
-            let reg_writes = vec![RegWrite {
-                row: 0,
-                reg_idx: pc_idx,
-                val: 0.into(),
-            }];
-
             let mut regs = vec![0.into(); reg_len];
             regs[pc_idx as usize] = PC_INITIAL_VAL.into();
 
-            let submachines: HashMap<String, RefCell<Box<dyn Submachine<F>>>> =
+            let submachines: HashMap<_, RefCell<Box<dyn Submachine<F>>>> =
                 if let ExecMode::Trace = mode {
                     [
                         (
-                            "binary",
-                            BinaryMachine::new_boxed("main_binary", &witness_cols).into(),
+                            MachineInstance::memory,
+                            RefCell::new(Box::new(MemoryMachine::new("main_memory", &witness_cols)))
+                                as RefCell<Box<dyn Submachine<F>>>, // this first `as` is needed to coerce the type of the array
                         ),
                         (
-                            "shift",
-                            ShiftMachine::new_boxed("main_shift", &witness_cols).into(),
+                            MachineInstance::regs,
+                            RefCell::new(Box::new(MemoryMachine::new("main_regs", &witness_cols))),
                         ),
                         (
-                            "split_gl",
-                            SplitGlMachine::new_boxed("main_split_gl", &witness_cols).into(),
+                            MachineInstance::binary,
+                            RefCell::new(BinaryMachine::new_boxed("main_binary", &witness_cols)),
                         ),
                         (
-                            "publics",
-                            PublicsMachine::new_boxed("main_publics", &witness_cols).into(),
+                            MachineInstance::shift,
+                            RefCell::new(ShiftMachine::new_boxed("main_shift", &witness_cols)),
                         ),
                         (
-                            "poseidon_gl",
-                            PoseidonGlMachine::new_boxed("main_poseidon_gl", &witness_cols).into(),
+                            MachineInstance::split_gl,
+                            RefCell::new(SplitGlMachine::new_boxed("main_split_gl", &witness_cols)),
+                        ),
+                        (
+                            MachineInstance::publics,
+                            RefCell::new(PublicsMachine::new_boxed("main_publics", &witness_cols)),
+                        ),
+                        (
+                            MachineInstance::poseidon_gl,
+                            RefCell::new(PoseidonGlMachine::new_boxed(
+                                "main_poseidon_gl",
+                                &witness_cols,
+                            )),
                         ),
                     ]
                     .into_iter()
-                    .map(|(name, m)| (name.to_string(), m))
                     .collect()
                 } else {
                     Default::default()
@@ -531,9 +765,7 @@ mod builder {
             let mut ret = Self {
                 pc_idx,
                 curr_pc: PC_INITIAL_VAL.into(),
-                regs_machine: MemoryMachine::new("main_regs", &witness_cols),
-                memory_machine: MemoryMachine::new("main_memory", &witness_cols),
-                trace: ExecutionTrace::new(witness_cols, reg_map, reg_writes, PC_INITIAL_VAL + 1),
+                trace: ExecutionTrace::new(witness_cols, reg_map),
                 submachines,
                 next_statement_line: 1,
                 batch_to_line_map,
@@ -545,25 +777,61 @@ mod builder {
             };
 
             if ret.has_enough_rows() || ret.set_next_pc().is_none() {
-                Err(Box::new(ret.finish(opt_pil)))
+                Err(Box::new(ret.finish(opt_pil, vec![])))
             } else {
                 Ok(ret)
             }
         }
 
+        pub(crate) fn pc_trace(&self) -> &[u32] {
+            &self.trace.pc_trace
+        }
+
+        pub(crate) fn submachine_op(
+            &mut self,
+            m: MachineInstance,
+            identity_id: u64,
+            lookup_args: &[F],
+            extra: &[F],
+        ) {
+            if let ExecMode::Trace = self.mode {
+                self.trace
+                    .submachine_ops
+                    .get_mut(m as usize)
+                    .unwrap()
+                    .push(SubmachineOp {
+                        identity_id,
+                        lookup_args: lookup_args.try_into().unwrap(),
+                        extra: extra.to_vec(),
+                    });
+            }
+        }
+
         pub(crate) fn main_columns_len(&self) -> usize {
-            let cols_len = self
-                .trace
-                .cols
-                .values()
-                .next()
-                .map(|v| v.len())
-                .unwrap_or(0);
+            let cols_len = self.trace.known_cols.len() / KnownWitnessCol::count();
 
             // sanity check
             assert!(self.trace.len <= cols_len);
 
             cols_len
+        }
+
+        // convert the flat array of rows into a hashmap of columns.
+        pub(crate) fn generate_main_columns(&mut self) -> HashMap<String, Vec<F>> {
+            let main_columns_len = self.main_columns_len();
+            let cols: HashMap<String, Vec<F>> = KnownWitnessCol::all()
+                .into_par_iter()
+                .map(|col| {
+                    let mut values = Vec::with_capacity(main_columns_len.next_power_of_two());
+                    for i in 0..main_columns_len {
+                        values.push(
+                            self.trace.known_cols[i * KnownWitnessCol::count() + col as usize],
+                        );
+                    }
+                    (col.name().to_string(), values)
+                })
+                .collect();
+            cols
         }
 
         /// get the value of PC as of the start of the execution of the current row.
@@ -612,80 +880,55 @@ mod builder {
 
         /// raw set next value of register by register index instead of name
         fn set_reg_idx(&mut self, idx: u16, value: Elem<F>) {
-            // Record register write in trace. Only for non-assignment registers.
+            // Record register write in trace. Only for non-pc, non-assignment registers.
             if let ExecMode::Trace = self.mode {
-                self.trace.reg_writes.push(RegWrite {
-                    row: self.trace.len,
-                    reg_idx: idx,
-                    val: value.into_fe(),
-                });
+                if idx != self.pc_idx {
+                    self.trace.reg_writes[idx as usize] = Some(value.into_fe());
+                }
             }
 
             self.regs[idx as usize] = value;
         }
 
-        pub fn set_col_idx(&mut self, name: &str, idx: usize, value: Elem<F>) {
+        pub fn set_col_idx(&mut self, col: KnownWitnessCol, idx: usize, value: Elem<F>) {
             if let ExecMode::Trace = self.mode {
-                let col = self
-                    .trace
-                    .cols
-                    .get_mut(name)
-                    .unwrap_or_else(|| panic!("col not found: {name}"));
-                *col.get_mut(idx).unwrap() = value;
+                let idx = (KnownWitnessCol::count() * idx) + col as usize;
+                *self.trace.known_cols.get_mut(idx).unwrap() = value.into_fe();
             }
         }
 
-        pub fn set_col(&mut self, name: &str, value: Elem<F>) {
+        pub fn set_col(&mut self, col: KnownWitnessCol, value: Elem<F>) {
             if let ExecMode::Trace = self.mode {
-                let col = self
-                    .trace
-                    .cols
-                    .get_mut(name)
-                    .unwrap_or_else(|| panic!("col not found: {name}"));
-                *col.last_mut().unwrap() = value;
+                let idx = (self.trace.known_cols.len() - KnownWitnessCol::count()) + col as usize;
+                *self.trace.known_cols.get_mut(idx).unwrap() = value.into_fe();
             }
         }
 
-        pub fn get_col(&self, name: &str) -> Elem<F> {
+        pub fn col_is_defined(&self, name: &str) -> bool {
             if let ExecMode::Trace = self.mode {
-                let col = self
-                    .trace
-                    .cols
-                    .get(name)
-                    .unwrap_or_else(|| panic!("col not found: {name}"));
-                *col.last().unwrap()
+                self.trace.all_cols.contains(&name.to_string())
             } else {
-                Elem::Field(F::zero())
+                false
             }
         }
 
-        pub fn try_get_col(&self, name: &str) -> Option<Elem<F>> {
+        pub fn push_row(&mut self, pc: u32) {
             if let ExecMode::Trace = self.mode {
+                let new_len = self.trace.known_cols.len() + KnownWitnessCol::count();
+                self.trace.known_cols.resize(new_len, F::zero());
+                self.trace.pc_trace.push(pc);
                 self.trace
-                    .cols
-                    .get(name)
-                    .and_then(|col| col.last())
-                    .copied()
-            } else {
-                None
-            }
-        }
-
-        pub fn push_row(&mut self) {
-            if let ExecMode::Trace = self.mode {
-                self.trace
-                    .cols
-                    .values_mut()
-                    .for_each(|v| v.push(Elem::Field(0.into())));
-            }
-        }
-
-        pub fn extend_rows(&mut self, len: u32) {
-            if let ExecMode::Trace = self.mode {
-                self.trace.cols.values_mut().for_each(|v| {
-                    let last = *v.last().unwrap();
-                    v.resize(len as usize, last);
-                });
+                    .reg_trace
+                    .iter_mut()
+                    .enumerate()
+                    .for_each(|(idx, v)| {
+                        // set the value from the write or copy the previous value
+                        if let Some(w) = self.trace.reg_writes[idx].take() {
+                            v.push(w);
+                        } else {
+                            v.push(v.last().cloned().unwrap_or(F::zero()));
+                        }
+                    });
             }
         }
 
@@ -700,6 +943,9 @@ mod builder {
                 }
 
                 self.trace.len += 1;
+                self.set_col(KnownWitnessCol::pc_update, next_pc);
+                self.push_row(next_pc.u());
+
                 self.curr_pc = next_pc;
             }
 
@@ -711,28 +957,38 @@ mod builder {
             self.set_next_pc().and(Some(st_line))
         }
 
-        pub(crate) fn set_mem(&mut self, addr: u32, val: u32, step: u32, selector: u32) {
+        pub(crate) fn set_mem(&mut self, addr: u32, val: u32, step: u32, identity_id: u64) {
             if let ExecMode::Trace = self.mode {
+                self.submachine_op(
+                    MachineInstance::memory,
+                    identity_id,
+                    &[1.into(), addr.into(), step.into(), val.into()],
+                    &[],
+                );
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Write,
                     address: addr,
                 });
-                self.memory_machine.write(step, addr, val.into(), selector);
             }
 
             self.mem.insert(addr, val);
         }
 
-        pub(crate) fn get_mem(&mut self, addr: u32, step: u32, selector: u32) -> u32 {
+        pub(crate) fn get_mem(&mut self, addr: u32, step: u32, identity_id: u64) -> u32 {
             let val = *self.mem.get(&addr).unwrap_or(&0);
             if let ExecMode::Trace = self.mode {
+                self.submachine_op(
+                    MachineInstance::memory,
+                    identity_id,
+                    &[0.into(), addr.into(), step.into(), val.into()],
+                    &[],
+                );
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Read,
                     address: addr,
                 });
-                self.memory_machine.read(step, addr, val.into(), selector);
             }
             val
         }
@@ -756,11 +1012,11 @@ mod builder {
             self.reg_mem.second_last = self.reg_mem.last.clone();
         }
 
-        pub(crate) fn submachine(&self, name: &str) -> RefMut<'_, Box<dyn Submachine<F>>> {
-            self.submachines[name].borrow_mut()
-        }
-
-        pub fn finish(mut self, opt_pil: Option<&Analyzed<F>>) -> Execution<F> {
+        pub fn finish(
+            mut self,
+            opt_pil: Option<&Analyzed<F>>,
+            program_columns: Vec<(String, Vec<F>)>,
+        ) -> Execution<F> {
             if let ExecMode::Fast = self.mode {
                 return Execution {
                     trace_len: self.trace.len,
@@ -781,72 +1037,123 @@ mod builder {
                 )
             };
 
+            let start = Instant::now();
+
             // turn register write operations into witness columns
             let main_regs = self.trace.generate_registers_trace();
-            self.trace.cols.extend(main_regs);
+            log::debug!(
+                "Generating register traces took {}s",
+                start.elapsed().as_secs_f64(),
+            );
+
+            // This hashmap will be added to until we get the full witness.
+            let mut cols = self.generate_main_columns();
+
+            // add reg columns to trace
+            cols.extend(main_regs);
+
+            // sanity check that program columns and main trace have the same length
+            assert_eq!(
+                cols.values().next().unwrap().len(),
+                program_columns[0].1.len(),
+            );
+
+            // add program columns to main trace
+            cols.extend(program_columns);
 
             // fill up main trace to degree
-            self.extend_rows(main_degree);
+            cols.values_mut().for_each(|v| {
+                let last = *v.last().unwrap();
+                v.resize(main_degree as usize, last);
+            });
 
-            // add submachine traces to main trace
+            log::debug!(
+                "Finalizing main machine trace took {}s",
+                start.elapsed().as_secs_f64(),
+            );
+
+            // generate witness for submachines
             // ----------------------------
-            for mut machine in self.submachines.into_values().map(|m| m.into_inner()) {
-                // if the machine is not empty, we need to fill it up to the degree
-                if machine.len() > 0 {
-                    machine.final_row_override();
-                    let range = namespace_degree_range(pil, machine.namespace());
-                    // extend with dummy blocks up to the required machine degree
-                    let machine_degree =
-                        std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
-                    while machine.len() < machine_degree {
-                        machine.push_dummy_block(machine_degree as usize);
+            let links = pil::links_from_pil(pil);
+
+            // cache for identity_id->selector
+            let mut id_sel = Vec::new(); // TODO: assumes identity_ids are small enough!
+            for l in links.iter() {
+                if id_sel.len() <= l.id() as usize {
+                    id_sel.resize(l.id() as usize + 1, None);
+                }
+                id_sel[l.id() as usize] = pil::extract_selector(l);
+            }
+
+            let start = Instant::now();
+            let subm_cols = self
+                .submachines
+                .into_iter()
+                // take each submachine and get its operations
+                .map(|(m, machine)| {
+                    let ops =
+                        std::mem::take(self.trace.submachine_ops.get_mut(m as usize).unwrap());
+                    (m, machine.into_inner(), ops)
+                })
+                // handle submachines in parallel
+                .par_bridge()
+                .flat_map(|(m, mut machine, ops)| {
+                    // apply the operations to the submachine
+                    ops.into_iter().for_each(|op| {
+                        let selector = &id_sel[op.identity_id as usize];
+                        machine.add_operation(selector.as_deref(), &op.lookup_args, &op.extra);
+                    });
+
+                    // finalize and extend the submachine traces and add to full trace
+                    if machine.len() > 0 {
+                        let range = namespace_degree_range(pil, machine.namespace());
+                        // extend with dummy blocks up to the required machine degree
+                        let machine_degree =
+                            std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
+                        machine.finish(machine_degree)
+                    } else if m == MachineInstance::publics {
+                        // for the publics machine, even with no operations being
+                        // issued, the declared "publics" force the cells to be
+                        // filled. We add operations here to emulate that.
+                        for i in 0..8 {
+                            machine.add_operation(
+                                None,
+                                &[i.into(), 0.into(), 0.into(), 0.into()],
+                                &[],
+                            );
+                        }
+                        machine.finish(8)
+                    } else {
+                        // keep machine columns empty
+                        machine.finish(0)
                     }
-                }
-                for (col_name, col) in machine.take_cols() {
-                    assert!(self.trace.cols.insert(col_name, col).is_none());
-                }
-            }
+                });
+            cols.par_extend(subm_cols);
 
-            // add regs memory trace
-            // ----------------------------
-            let regs_degree = {
-                let range = namespace_degree_range(pil, &self.regs_machine.namespace);
-                std::cmp::max(
-                    self.regs_machine.len().next_power_of_two(),
-                    range.min as u32,
-                )
-            };
-            for (col_name, col) in self.regs_machine.take_cols(regs_degree) {
-                assert!(self.trace.cols.insert(col_name, col).is_none());
-            }
+            log::debug!(
+                "Generating submachine traces took {}s",
+                start.elapsed().as_secs_f64(),
+            );
 
-            // add main memory trace
-            // ----------------------------
-            let mem_degree = {
-                let range = namespace_degree_range(pil, &self.memory_machine.namespace);
-                std::cmp::max(
-                    self.memory_machine.len().next_power_of_two(),
-                    range.min as u32,
-                )
-            };
-            for (col_name, col) in self.memory_machine.take_cols(mem_degree) {
-                assert!(self.trace.cols.insert(col_name, col).is_none());
-            }
+            // filter columns present in the witness. Some columns may be optimized away.
+            let cols: HashMap<String, Vec<F>> = cols
+                .into_iter()
+                .filter(|(col, _)| self.trace.all_cols.contains(col))
+                .collect();
+
+            let missing_cols = self
+                .trace
+                .all_cols
+                .iter()
+                .filter(|col| !cols.contains_key(*col));
+
+            log::debug!("RISCV executor missing columns: {:?}", missing_cols);
 
             Execution {
                 trace_len: self.trace.len,
                 memory: self.mem,
                 memory_accesses: std::mem::take(&mut self.trace.mem_ops),
-                trace: self
-                    .trace
-                    .cols
-                    .into_iter()
-                    // convert Elem<F> into F
-                    .map(|(name, elems)| {
-                        let fes = elems.into_iter().map(|e| e.into_fe()).collect();
-                        (name, fes)
-                    })
-                    .collect(),
+                trace: cols,
                 register_memory: self.reg_mem.for_bootloader(),
             }
         }
@@ -991,26 +1298,33 @@ struct Executor<'a, 'b, F: FieldElement> {
     program_cols: HashMap<String, String>,
     step: u32,
     mode: ExecMode,
+
+    pil_links: Vec<Identity<F>>,
+    // instead of a hash map (instruction,target), we keep a flat vec, and index
+    // using the instruction (rows) and target machine (columns).
+    pil_instruction_links: Vec<Option<Vec<Identity<F>>>>,
+    pil_other_links: HashMap<(&'static str, &'static str), Vec<Identity<F>>>,
+    // these are "hot" fixed columns that are accessed directly by the executor
+    cached_fixed_cols: Vec<Vec<F>>,
 }
 
-impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
+impl<F: FieldElement> Executor<'_, '_, F> {
     fn init(&mut self) {
         self.step = 4;
-        for i in 0..2 {
-            for (fixed, col) in &self.program_cols {
-                let val = Elem::Field(
-                    *self
-                        .get_fixed(fixed)
-                        .unwrap_or(&Vec::new())
-                        .get(i as usize)
-                        .unwrap_or(&F::zero()),
-                );
-                self.proc.set_col_idx(col, i as usize, val);
+
+        if let ExecMode::Trace = self.mode {
+            for c in KnownFixedCol::all() {
+                self.cached_fixed_cols
+                    .push(self.get_fixed(c.name()).unwrap().clone());
             }
+        }
+
+        for i in 0..2 {
+            self.proc.push_row(i);
             self.proc
-                .set_col_idx("main::_operation_id", i as usize, 2.into());
+                .set_col_idx(KnownWitnessCol::_operation_id, i as usize, 2.into());
             self.proc
-                .set_col_idx("main::pc_update", i as usize, (i + 1).into());
+                .set_col_idx(KnownWitnessCol::pc_update, i as usize, (i + 1).into());
         }
     }
 
@@ -1020,6 +1334,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             .find(|(n, _)| n == name)
             // ROM is uniquely sized, which for now is all we looking at
             .map(|(_, v)| v.get_uniquely_sized().expect("not uniquely sized!"))
+    }
+
+    fn get_known_fixed(&self, col: KnownFixedCol, row: usize) -> F {
+        self.cached_fixed_cols
+            .get(col as usize)
+            .map(|v| v[row])
+            .unwrap_or_default()
     }
 
     fn sink_id(&self) -> u32 {
@@ -1033,125 +1354,171 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     }
 
     /// read register value, updating the register memory machine
-    fn reg_read(&mut self, step_offset: u32, reg: u32, selector_idx: u32) -> Elem<F> {
+    fn reg_read(&mut self, step_offset: u32, reg: u32, identity_id: u64) -> Elem<F> {
         let val = self.proc.get_reg_mem(reg);
-        if let ExecMode::Trace = self.mode {
-            self.proc
-                .regs_machine
-                .read(self.step + step_offset, reg, val, selector_idx);
-        }
+        self.proc.submachine_op(
+            MachineInstance::regs,
+            identity_id,
+            &[
+                0.into(),
+                reg.into(),
+                (self.step + step_offset).into(),
+                val.into_fe(),
+            ],
+            &[],
+        );
         val
     }
 
     /// write value to register, updating the register memory machine
-    fn reg_write(&mut self, step_offset: u32, reg: u32, val: Elem<F>, selector_idx: u32) {
-        if let ExecMode::Trace = self.mode {
-            self.proc
-                .regs_machine
-                .write(self.step + step_offset, reg, val, selector_idx);
-        }
+    fn reg_write(&mut self, step_offset: u32, reg: u32, val: Elem<F>, identity_id: u64) {
+        self.proc.submachine_op(
+            MachineInstance::regs,
+            identity_id,
+            &[
+                1.into(),
+                reg.into(),
+                (self.step + step_offset).into(),
+                val.into_fe(),
+            ],
+            &[],
+        );
         self.proc.set_reg_mem(reg, val);
     }
 
-    fn set_program_columns(&mut self, pc: u32) {
-        if let ExecMode::Trace = self.mode {
-            // set witness from the program definition
-            for (fixed, col) in &self.program_cols {
-                let val = Elem::Field(
-                    *self
-                        .get_fixed(fixed)
-                        .unwrap_or(&Vec::new())
-                        .get(pc as usize)
-                        .unwrap_or(&F::zero()),
-                );
-                self.proc.set_col(col, val);
-            }
-            self.proc.set_col("main::_operation_id", 2.into());
+    /// Gets the identity id for a link associated with a given instruction.
+    /// idx is based on the order link appear in the assembly (assumed to be the same in the optimized pil).
+    fn instr_link_id(&mut self, instr: Instruction, target: MachineInstance, idx: usize) -> u64 {
+        if let ExecMode::Fast = self.mode {
+            return 0; // we don't care about identity ids in fast mode
         }
+
+        let entries = self
+            .pil_instruction_links
+            .get_mut(instr as usize * MachineInstance::count() + target as usize)
+            .unwrap()
+            .get_or_insert_with(|| {
+                pil::find_instruction_links(&self.pil_links, instr.flag(), target.namespace())
+            });
+        entries.get(idx).unwrap().id()
     }
 
-    fn exec_instruction(&mut self, name: &str, args: &[Expression]) -> Vec<Elem<F>> {
+    /// Find the identity id of a link.
+    fn link_id(&mut self, from: &'static str, target: &'static str, idx: usize) -> u64 {
+        if let ExecMode::Fast = self.mode {
+            return 0; // we don't care about identity ids in fast mode
+        }
+        let entries = self
+            .pil_other_links
+            .entry((from, target))
+            .or_insert_with(|| pil::find_links(&self.pil_links, from, target));
+        entries.get(idx).unwrap().id()
+    }
+
+    fn exec_instruction(&mut self, name: &str, args: &[Expression]) -> Option<Elem<F>> {
         // shorthand macros for setting/getting main machine witness values in the current row
         macro_rules! set_col {
             ($name:ident, $val:expr) => {
-                self.proc
-                    .set_col(concat!("main::", stringify!($name)), $val);
+                self.proc.set_col(KnownWitnessCol::$name, $val);
             };
         }
-        macro_rules! get_col {
+
+        macro_rules! get_fixed {
             ($name:ident) => {
-                self.proc.get_col(concat!("main::", stringify!($name)))
+                if let ExecMode::Trace = self.mode {
+                    Elem::Field(
+                        self.get_known_fixed(KnownFixedCol::$name, self.proc.get_pc().u() as usize),
+                    )
+                } else {
+                    Elem::Field(F::zero())
+                }
+            };
+        }
+
+        macro_rules! submachine_op {
+            ($machine:ident, $selector:expr, $args:expr, $($extra:expr),*) => {
+                self.proc.submachine_op(MachineInstance::$machine, $selector, $args, &[$($extra, )*])
             };
         }
 
         let args = args
             .iter()
-            .map(|expr| self.eval_expression(expr)[0])
+            .map(|expr| self.eval_expression(expr).unwrap())
             .collect::<Vec<_>>();
 
         self.proc.backup_reg_mem();
 
-        if let Some(x_const) = self.proc.try_get_col("main::X_const") {
-            set_col!(X, x_const);
+        if self.proc.col_is_defined("main::X_const") {
+            set_col!(X, get_fixed!(X_const));
         }
 
-        if let Some(y_const) = self.proc.try_get_col("main::Y_const") {
-            set_col!(Y, y_const);
+        if self.proc.col_is_defined("main::Y_const") {
+            set_col!(Y, get_fixed!(X_const));
         }
 
-        if let Some(z_const) = self.proc.try_get_col("main::Z_const") {
-            set_col!(Z, z_const);
+        if self.proc.col_is_defined("main::Z_const") {
+            set_col!(Z, get_fixed!(X_const));
         }
 
-        if let Some(w_const) = self.proc.try_get_col("main::W_const") {
-            set_col!(W, w_const);
+        if self.proc.col_is_defined("main::W_const") {
+            set_col!(W, get_fixed!(X_const));
         }
-        self.proc
-            .set_col(&format!("main::instr_{name}"), Elem::from_u32_as_fe(1));
 
-        let r = match name {
-            "set_reg" => {
+        let instr = Instruction::from_name(name).expect("unknown instruction");
+
+        let r = match instr {
+            Instruction::set_reg => {
                 let addr = args[0].u();
                 let val = args[1];
-                self.reg_write(0, addr, val, 3);
+
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                self.reg_write(0, addr, val, lid);
 
                 set_col!(Y, val);
 
-                if !get_col!(Y_read_free).is_zero() {
+                if !get_fixed!(Y_read_free).is_zero() {
                     set_col!(Y_free_value, val);
                 }
 
-                Vec::new()
+                None
             }
-            "get_reg" => {
+            Instruction::get_reg => {
+                // setting the flag because the rom fixed column for the `get_reg` flag gets optimized away...
+                set_col!(instr_get_reg, 1.into());
                 let addr = args[0].u();
-                let val = self.reg_read(0, addr, 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val = self.reg_read(0, addr, lid);
 
-                vec![val]
+                Some(val)
             }
-            "affine" => {
+            Instruction::affine => {
                 let read_reg = args[0].u();
-                let val1 = self.reg_read(0, read_reg, 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val1 = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
                 let factor = args[2];
                 let offset = args[3];
 
                 let res = val1.mul(&factor).add(&offset);
 
-                self.reg_write(1, write_reg, res, 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                self.reg_write(1, write_reg, res, lid);
                 set_col!(tmp1_col, val1);
 
-                Vec::new()
+                None
             }
 
-            "mstore" | "mstore_bootloader" => {
+            Instruction::mstore | Instruction::mstore_bootloader => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let addr1 = self.reg_read(0, read_reg1, 0);
-                let addr2 = self.reg_read(1, read_reg2, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let addr1 = self.reg_read(0, read_reg1, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let addr2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2].bin();
                 let read_reg3 = args[3].u();
-                let value = self.reg_read(2, read_reg3, 2);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
+                let value = self.reg_read(2, read_reg3, lid);
 
                 let addr = addr1.bin() - addr2.bin() + offset;
                 // assumptions from the asm machine
@@ -1168,7 +1535,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
 
                 let addr = addr as u32;
-                self.proc.set_mem(addr, value.u(), self.step + 3, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::memory, 0);
+                self.proc.set_mem(addr, value.u(), self.step + 3, lid);
 
                 set_col!(tmp1_col, addr1);
                 set_col!(tmp2_col, addr2);
@@ -1180,24 +1548,28 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(X_b3, Elem::from_u32_as_fe(b3.into()));
                 set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
 
-                Vec::new()
+                None
             }
-            "mload" => {
+            Instruction::mload => {
                 let read_reg = args[0].u();
-                let addr1 = self.reg_read(0, read_reg, 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let addr1 = self.reg_read(0, read_reg, lid);
                 let offset = args[1].bin();
                 let write_addr1 = args[2].u();
                 let write_addr2 = args[3].u();
 
                 let addr = addr1.bin() + offset;
 
+                let lid = self.instr_link_id(instr, MachineInstance::memory, 0);
                 let val = self
                     .proc
-                    .get_mem(addr as u32 & 0xfffffffc, self.step + 1, 0);
+                    .get_mem(addr as u32 & 0xfffffffc, self.step + 1, lid);
                 let rem = addr % 4;
 
-                self.reg_write(2, write_addr1, val.into(), 3);
-                self.reg_write(3, write_addr2, rem.into(), 4);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                self.reg_write(2, write_addr1, val.into(), lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
+                self.reg_write(3, write_addr2, rem.into(), lid);
 
                 set_col!(tmp1_col, addr1);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(val));
@@ -1214,11 +1586,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     Elem::from_u32_as_fe(((v as u64 >> 32) & 1) as u32)
                 );
 
-                Vec::new()
+                None
             }
             // TODO: update to witness generation for continuations
-            "load_bootloader_input" => {
-                let addr = self.reg_read(0, args[0].u(), 0);
+            Instruction::load_bootloader_input => {
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let addr = self.reg_read(0, args[0].u(), lid);
                 let write_addr = args[1].u();
                 let factor = args[2].bin();
                 let offset = args[3].bin();
@@ -1226,14 +1599,17 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let addr = addr.bin() * factor + offset;
                 let val = self.bootloader_inputs[addr as usize];
 
-                self.reg_write(2, write_addr, val, 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                self.reg_write(2, write_addr, val, lid);
 
-                Vec::new()
+                None
             }
             // TODO: update to witness generation for continuations
-            "assert_bootloader_input" => {
-                let addr = self.reg_read(0, args[0].u(), 0);
-                let val = self.reg_read(1, args[1].u(), 1);
+            Instruction::assert_bootloader_input => {
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let addr = self.reg_read(0, args[0].u(), lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let val = self.reg_read(1, args[1].u(), lid);
                 let factor = args[2].bin();
                 let offset = args[3].bin();
 
@@ -1242,59 +1618,65 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 assert_eq!(val, actual_val);
 
-                Vec::new()
+                None
             }
-            "load_label" => {
+            Instruction::load_label => {
                 let write_reg = args[0].u();
                 let label = args[1];
-                self.reg_write(0, write_reg, label, 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                self.reg_write(0, write_reg, label, lid);
 
                 set_col!(tmp1_col, label);
 
-                self.proc.set_col("main::instr_load_label_param_l", label);
+                set_col!(instr_load_label_param_l, label);
 
-                Vec::new()
+                None
             }
-            "jump" => {
+            Instruction::jump => {
                 let label = args[0];
                 let next_pc = self.proc.get_pc().u() + 1;
                 let write_reg = args[1].u();
 
-                self.reg_write(0, write_reg, next_pc.into(), 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                self.reg_write(0, write_reg, next_pc.into(), lid);
 
                 self.proc.set_pc(label);
 
-                self.proc.set_col("main::instr_jump_param_l", label);
+                set_col!(instr_jump_param_l, label);
 
-                Vec::new()
+                None
             }
-            "jump_dyn" => {
+            Instruction::jump_dyn => {
                 let read_reg = args[0].u();
-                let addr = self.reg_read(0, read_reg, 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let addr = self.reg_read(0, read_reg, lid);
                 let next_pc = self.proc.get_pc().u() + 1;
                 let write_reg = args[1].u();
 
-                self.reg_write(0, write_reg, next_pc.into(), 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                self.reg_write(0, write_reg, next_pc.into(), lid);
 
                 self.proc.set_pc(addr);
 
                 set_col!(tmp1_col, addr);
 
-                Vec::new()
+                None
             }
             // TODO: update to witness generation for continuations
-            "jump_to_bootloader_input" => {
+            Instruction::jump_to_bootloader_input => {
                 let bootloader_input_idx = args[0].bin() as usize;
                 let addr = self.bootloader_inputs[bootloader_input_idx];
                 self.proc.set_pc(addr);
 
-                Vec::new()
+                None
             }
-            "branch_if_diff_nonzero" => {
+            Instruction::branch_if_diff_nonzero => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.reg_read(0, read_reg1, 0);
-                let val2 = self.reg_read(1, read_reg2, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val1 = self.reg_read(0, read_reg1, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let val2 = self.reg_read(1, read_reg2, lid);
 
                 let val: Elem<F> = val1.sub(&val2);
                 let label = args[2];
@@ -1305,21 +1687,22 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
                 set_col!(XX, val);
-                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
-                if !get_col!(XX).is_zero() {
-                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
+                set_col!(XXIsZero, Elem::from_bool_as_fe(val.is_zero()));
+                if !val.is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
-                self.proc
-                    .set_col("main::instr_branch_if_diff_nonzero_param_l", label);
+                set_col!(instr_branch_if_diff_nonzero_param_l, label);
 
-                Vec::new()
+                None
             }
-            "branch_if_diff_equal" => {
+            Instruction::branch_if_diff_equal => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.reg_read(0, read_reg1, 0);
-                let val2 = self.reg_read(1, read_reg2, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val1 = self.reg_read(0, read_reg1, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2];
                 let val: Elem<F> = val1.sub(&val2).sub(&offset);
                 let label = args[3];
@@ -1331,21 +1714,22 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
                 set_col!(XX, val);
-                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
-                if !get_col!(XX).is_zero() {
-                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
+                set_col!(XXIsZero, Elem::from_bool_as_fe(val.is_zero()));
+                if !val.is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
-                self.proc
-                    .set_col("main::instr_branch_if_diff_equal_param_l", label);
+                set_col!(instr_branch_if_diff_equal_param_l, label);
 
-                Vec::new()
+                None
             }
-            "skip_if_equal" => {
+            Instruction::skip_if_equal => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.reg_read(0, read_reg1, 0);
-                let val2 = self.reg_read(1, read_reg2, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val1 = self.reg_read(0, read_reg1, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2];
                 let cond = args[3];
                 let val: Elem<F> = val1.sub(&val2).add(&offset);
@@ -1358,20 +1742,22 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
                 set_col!(XX, val);
-                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
-                if !get_col!(XX).is_zero() {
-                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
+                set_col!(XXIsZero, Elem::from_bool_as_fe(val.is_zero()));
+                if !val.is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
-                Vec::new()
+                None
             }
-            "branch_if_diff_greater_than" => {
+            Instruction::branch_if_diff_greater_than => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 // We can't call u() because input registers may have come from
                 // a call to `to_signed`, which stores a signed integer.
-                let val1 = self.reg_read(0, read_reg1, 0);
-                let val2 = self.reg_read(1, read_reg2, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val1 = self.reg_read(0, read_reg1, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2];
                 let val: Elem<F> = val1.sub(&val2).sub(&offset);
                 let label = args[3];
@@ -1383,8 +1769,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
 
-                self.proc
-                    .set_col("main::instr_branch_if_diff_greater_than_param_l", label);
+                set_col!(instr_branch_if_diff_greater_than_param_l, label);
 
                 let p = Elem::from_u32_as_fe(u32::MAX);
                 let val_p = val.add(&p);
@@ -1404,20 +1789,23 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                Vec::new()
+                None
             }
-            "is_diff_greater_than" => {
+            Instruction::is_diff_greater_than => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.reg_read(0, read_reg1, 0);
-                let val2 = self.reg_read(1, read_reg2, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val1 = self.reg_read(0, read_reg1, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let val2 = self.reg_read(1, read_reg2, lid);
 
                 let offset = args[2];
                 let write_reg = args[3].u();
                 let val = val1.sub(&val2).sub(&offset);
 
                 let r = if val.bin() > 0 { 1 } else { 0 };
-                self.reg_write(2, write_reg, r.into(), 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
+                self.reg_write(2, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
@@ -1432,52 +1820,59 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
                 set_col!(wrap_bit, Elem::from_u32_as_fe(r));
 
-                Vec::new()
+                None
             }
-            "is_equal_zero" => {
+            Instruction::is_equal_zero => {
                 let read_reg = args[0].u();
-                let val = self.reg_read(0, read_reg, 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
 
                 let r = if val.is_zero() { 1 } else { 0 };
-                self.reg_write(2, write_reg, r.into(), 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                self.reg_write(2, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val);
                 set_col!(XX, val);
-                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
-                if !get_col!(XX).is_zero() {
-                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
+                set_col!(XXIsZero, Elem::from_bool_as_fe(val.is_zero()));
+                if !val.is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
-                Vec::new()
+                None
             }
-            "is_not_equal" => {
+            Instruction::is_not_equal => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.reg_read(0, read_reg1, 0);
-                let val2 = self.reg_read(1, read_reg2, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val1 = self.reg_read(0, read_reg1, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let val2 = self.reg_read(1, read_reg2, lid);
                 let write_reg = args[2].u();
                 let val: Elem<F> = (val1.bin() - val2.bin()).into();
 
                 let r = if !val.is_zero() { 1 } else { 0 };
-                self.reg_write(2, write_reg, r.into(), 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
+                self.reg_write(2, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
                 set_col!(XX, val);
-                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
-                if !get_col!(XX).is_zero() {
-                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
+                set_col!(XXIsZero, Elem::from_bool_as_fe(val.is_zero()));
+                if !val.is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / val.into_fe()));
                 }
 
-                Vec::new()
+                None
             }
-            "add_wrap" => {
+            Instruction::add_wrap => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.reg_read(0, read_reg1, 0);
-                let val2 = self.reg_read(1, read_reg2, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val1 = self.reg_read(0, read_reg1, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let val2 = self.reg_read(1, read_reg2, lid);
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
                 let offset = args[2];
@@ -1490,7 +1885,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // don't use .u() here: we are deliberately discarding the
                 // higher bits
                 let r = val.bin() as u32;
-                self.reg_write(2, write_reg, r.into(), 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
+                self.reg_write(2, write_reg, r.into(), lid);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
                 let v = val.as_i64_from_lower_bytes();
@@ -1508,11 +1904,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                Vec::new()
+                None
             }
-            "wrap16" => {
+            Instruction::wrap16 => {
                 let read_reg = args[0].u();
-                let val = self.reg_read(0, read_reg, 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val = self.reg_read(0, read_reg, lid);
                 let factor = args[1].bin();
                 let write_reg = args[2].u();
                 let val_offset: Elem<F> = (val.bin() * factor).into();
@@ -1520,12 +1917,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // don't use .u() here: we are deliberately discarding the
                 // higher bits
                 let r = val_offset.bin() as u32;
-                self.reg_write(3, write_reg, r.into(), 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                self.reg_write(3, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val);
-                set_col!(tmp3_col, Elem::from_u32_as_fe(r));
+                let tmp3_val = Elem::from_u32_as_fe(r);
+                set_col!(tmp3_col, tmp3_val);
 
-                let v = get_col!(tmp3_col).as_i64_from_lower_bytes();
+                let v = tmp3_val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
                 set_col!(X_b2, Elem::from_u32_as_fe(b2.into()));
@@ -1536,20 +1935,23 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(Y_b5, Elem::from_u32_as_fe(b5.into()));
                 set_col!(Y_b6, Elem::from_u32_as_fe(b6.into()));
 
-                Vec::new()
+                None
             }
-            "sub_wrap_with_offset" => {
+            Instruction::sub_wrap_with_offset => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.reg_read(0, read_reg1, 0);
-                let val2 = self.reg_read(1, read_reg2, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val1 = self.reg_read(0, read_reg1, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2];
                 let write_reg = args[3].u();
                 let val = val1.sub(&val2).add(&offset);
 
                 let r_i64: i64 = val.bin() + 0x100000000;
                 let r = r_i64 as u32;
-                self.reg_write(2, write_reg, r.into(), 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
+                self.reg_write(2, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
@@ -1569,22 +1971,24 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                Vec::new()
+                None
             }
-            "sign_extend_byte" => {
+            Instruction::sign_extend_byte => {
                 let read_reg = args[0].u();
-                let val = self.reg_read(0, read_reg, 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
 
                 // Sign extend the byte
                 let byte_val = (val.u() as u8) as i8;
                 let extended_val = byte_val as i32 as u32;
-                self.reg_write(3, write_reg, extended_val.into(), 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                self.reg_write(3, write_reg, extended_val.into(), lid);
 
                 set_col!(tmp1_col, val);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(extended_val));
 
-                let v = get_col!(tmp1_col).as_i64_from_lower_bytes();
+                let v = val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 // first 7bits
                 set_col!(Y_7bit, Elem::from_u32_as_fe((b1 & 0x7f).into()));
@@ -1601,11 +2005,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                Vec::new()
+                None
             }
-            "sign_extend_16_bits" => {
+            Instruction::sign_extend_16_bits => {
                 let read_reg = args[0].u();
-                let val = self.reg_read(0, read_reg, 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
 
                 // Perform sign extension on the 16-bit value
@@ -1615,12 +2020,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 } else {
                     val.u() & 0x0000FFFF
                 };
-                self.reg_write(3, write_reg, extended_val.into(), 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                self.reg_write(3, write_reg, extended_val.into(), lid);
 
                 set_col!(tmp1_col, val);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(extended_val));
 
-                let v = get_col!(tmp1_col).as_i64_from_lower_bytes();
+                let v = val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _) = decompose_lower32(v);
 
                 set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
@@ -1637,15 +2043,17 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     }
                 );
 
-                Vec::new()
+                None
             }
-            "to_signed" => {
+            Instruction::to_signed => {
                 let read_reg = args[0].u();
-                let val = self.reg_read(0, read_reg, 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val = self.reg_read(0, read_reg, lid);
                 let write_reg = args[1].u();
                 let r = val.u() as i32;
 
-                self.reg_write(1, write_reg, r.into(), 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                self.reg_write(1, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val);
                 set_col!(tmp3_col, Elem::from_i32_as_fe(r));
@@ -1665,17 +2073,19 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(Y_7bit, Elem::from_u32_as_fe(b4 as u32 & 0x7f));
 
-                Vec::new()
+                None
             }
-            "fail" => {
+            Instruction::fail => {
                 // TODO: handle it better
                 panic!("reached a fail instruction")
             }
-            "divremu" => {
+            Instruction::divremu => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.reg_read(0, read_reg1, 0);
-                let val2 = self.reg_read(1, read_reg2, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val1 = self.reg_read(0, read_reg1, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let val2 = self.reg_read(1, read_reg2, lid);
                 let write_reg1 = args[2].u();
                 let write_reg2 = args[3].u();
 
@@ -1691,20 +2101,23 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     rem = y;
                 }
 
-                self.reg_write(2, write_reg1, div.into(), 3);
-                self.reg_write(3, write_reg2, rem.into(), 4);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
+                self.reg_write(2, write_reg1, div.into(), lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 3);
+                self.reg_write(3, write_reg2, rem.into(), lid);
 
+                let tmp3_val = Elem::from_u32_as_fe(div);
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
-                set_col!(tmp3_col, Elem::from_u32_as_fe(div));
+                set_col!(tmp3_col, tmp3_val);
                 set_col!(tmp4_col, Elem::from_u32_as_fe(rem));
                 set_col!(XX, val2);
-                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
-                if !get_col!(XX).is_zero() {
-                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
+                set_col!(XXIsZero, Elem::from_bool_as_fe(val2.is_zero()));
+                if !val2.is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / val2.into_fe()));
                 }
 
-                let v = get_col!(tmp3_col).as_i64_from_lower_bytes();
+                let v = tmp3_val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
                 set_col!(X_b2, Elem::from_u32_as_fe(b2.into()));
@@ -1726,13 +2139,15 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     set_col!(Y_b8, Elem::from_u32_as_fe(b8.into()));
                 }
 
-                Vec::new()
+                None
             }
-            "mul" => {
+            Instruction::mul => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.reg_read(0, read_reg1, 0);
-                let val2 = self.reg_read(1, read_reg2, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val1 = self.reg_read(0, read_reg1, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let val2 = self.reg_read(1, read_reg2, lid);
                 let write_reg1 = args[2].u();
                 let write_reg2 = args[3].u();
 
@@ -1740,30 +2155,27 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lo = r as u32;
                 let hi = (r >> 32) as u32;
 
-                self.reg_write(2, write_reg1, lo.into(), 3);
-                self.reg_write(3, write_reg2, hi.into(), 4);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
+                self.reg_write(2, write_reg1, lo.into(), lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 3);
+                self.reg_write(3, write_reg2, hi.into(), lid);
 
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(lo));
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("split_gl").add_operation(
-                        "split_gl",
-                        &[hi.into(), lo.into()],
-                        Some(0),
-                        &[],
-                    );
-                }
-
-                Vec::new()
+                let lid = self.instr_link_id(instr, MachineInstance::split_gl, 0);
+                submachine_op!(split_gl, lid, &[r.into(), lo.into(), hi.into(), 0.into()],);
+                None
             }
-            "and" | "or" | "xor" => {
+            Instruction::and | Instruction::or | Instruction::xor => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.reg_read(0, read_reg1, 0);
-                let val2 = self.reg_read(1, read_reg2, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val1 = self.reg_read(0, read_reg1, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2].bin();
                 let write_reg = args[3].u();
                 let val2_offset: Elem<F> = (val2.bin() + offset).into();
@@ -1771,70 +2183,84 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
 
-                let (r, sel) = match name {
-                    "and" => (val1.u() & val2_offset.u(), 0),
-                    "or" => (val1.u() | val2_offset.u(), 1),
-                    "xor" => (val1.u() ^ val2_offset.u(), 2),
+                let (r, op_id) = match instr {
+                    Instruction::and => (val1.u() & val2_offset.u(), 0),
+                    Instruction::or => (val1.u() | val2_offset.u(), 1),
+                    Instruction::xor => (val1.u() ^ val2_offset.u(), 2),
                     _ => unreachable!(),
                 };
 
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("binary").add_operation(
-                        name,
-                        &[val1, val2_offset, r.into()],
-                        Some(sel),
-                        &[],
-                    );
-                }
+                let lid = self.instr_link_id(instr, MachineInstance::binary, 0);
+                submachine_op!(
+                    binary,
+                    lid,
+                    &[
+                        op_id.into(),
+                        val1.into_fe(),
+                        val2_offset.into_fe(),
+                        r.into()
+                    ],
+                );
 
-                self.reg_write(3, write_reg, r.into(), 3);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
+                self.reg_write(3, write_reg, r.into(), lid);
 
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
-                Vec::new()
+                None
             }
-            "shl" | "shr" => {
+            Instruction::shl | Instruction::shr => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.reg_read(0, read_reg1, 0);
-                let val2 = self.reg_read(1, read_reg2, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val1 = self.reg_read(0, read_reg1, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let val2 = self.reg_read(1, read_reg2, lid);
                 let offset = args[2].bin();
                 let write_reg = args[3].u();
                 let val2_offset: Elem<F> = (val2.bin() + offset).into();
 
-                let (r, sel) = match name {
-                    "shl" => (val1.u() << val2_offset.u(), 0),
-                    "shr" => (val1.u() >> val2_offset.u(), 1),
+                let (r, op_id) = match instr {
+                    Instruction::shl => (val1.u() << val2_offset.u(), 0),
+                    Instruction::shr => (val1.u() >> val2_offset.u(), 1),
                     _ => unreachable!(),
                 };
 
-                self.reg_write(3, write_reg, r.into(), 3);
+                let lid = self.instr_link_id(instr, MachineInstance::shift, 0);
+                submachine_op!(
+                    shift,
+                    lid,
+                    &[
+                        op_id.into(),
+                        val1.into_fe(),
+                        val2_offset.into_fe(),
+                        r.into()
+                    ],
+                );
+
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
+                self.reg_write(3, write_reg, r.into(), lid);
 
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("shift").add_operation(
-                        name,
-                        &[val1, val2_offset, r.into()],
-                        Some(sel),
-                        &[],
-                    );
-                }
-
-                Vec::new()
+                None
             }
-            "invert_gl" => {
+            Instruction::invert_gl => {
                 let low_addr = args[0].u();
                 let high_addr = args[1].u();
-                let low = self.reg_read(0, low_addr, 0);
-                let high = self.reg_read(1, high_addr, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let low = self.reg_read(0, low_addr, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let high = self.reg_read(1, high_addr, lid);
                 let inv = F::one() / F::from((high.u() as u64) << 32 | low.u() as u64);
                 let inv_u64 = inv.to_integer().try_into_u64().unwrap();
                 let (low_inv, high_inv) = (inv_u64 as u32, (inv_u64 >> 32) as u32);
-                self.reg_write(2, low_addr, low_inv.into(), 3);
-                self.reg_write(3, high_addr, high_inv.into(), 4);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
+                self.reg_write(2, low_addr, low_inv.into(), lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 3);
+                self.reg_write(3, high_addr, high_inv.into(), lid);
 
                 set_col!(tmp1_col, low);
                 set_col!(tmp2_col, high);
@@ -1842,54 +2268,53 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp4_col, Elem::from_u32_as_fe(high_inv));
                 set_col!(XX_inv, Elem::Field(inv));
 
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("split_gl").add_operation(
-                        "split_gl",
-                        &[high_inv.into(), low_inv.into()],
-                        Some(0),
-                        &[],
-                    );
-                }
-
-                Vec::new()
+                let lid = self.instr_link_id(instr, MachineInstance::split_gl, 0);
+                submachine_op!(
+                    split_gl,
+                    lid,
+                    &[inv, low_inv.into(), high_inv.into(), 0.into()],
+                );
+                None
             }
-            "split_gl" => {
+            Instruction::split_gl => {
                 let read_reg = args[0].u();
-                let val1 = self.reg_read(0, read_reg, 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let val1 = self.reg_read(0, read_reg, lid);
                 let write_reg1 = args[1].u();
                 let write_reg2 = args[2].u();
 
-                let value = val1.into_fe().to_integer();
+                let value_fe = val1.into_fe();
                 // This instruction is only for Goldilocks, so the value must
                 // fit into a u64.
-                let value = value.try_into_u64().unwrap();
+                let value = value_fe.to_integer().try_into_u64().unwrap();
                 let lo = (value & 0xffffffff) as u32;
                 let hi = (value >> 32) as u32;
 
-                self.reg_write(2, write_reg1, lo.into(), 3);
-                self.reg_write(3, write_reg2, hi.into(), 4);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                self.reg_write(2, write_reg1, lo.into(), lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
+                self.reg_write(3, write_reg2, hi.into(), lid);
 
                 set_col!(tmp1_col, val1);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(lo));
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("split_gl").add_operation(
-                        "split_gl",
-                        &[hi.into(), lo.into()],
-                        Some(0),
-                        &[],
-                    );
-                }
-
-                Vec::new()
+                let lid = self.instr_link_id(instr, MachineInstance::split_gl, 0);
+                submachine_op!(
+                    split_gl,
+                    lid,
+                    &[value.into(), lo.into(), hi.into(), 0.into()],
+                );
+                None
             }
-            "poseidon_gl" => {
+            Instruction::poseidon_gl => {
                 let reg1 = args[0].u();
                 let reg2 = args[1].u();
-                let input_ptr = self.reg_read(0, reg1, 0);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let input_ptr = self.reg_read(0, reg1, lid);
                 assert!(is_multiple_of_4(input_ptr.u()));
-                let output_ptr = self.reg_read(1, reg2, 1);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let output_ptr = self.reg_read(1, reg2, lid);
                 assert!(is_multiple_of_4(output_ptr.u()));
 
                 set_col!(tmp1_col, input_ptr);
@@ -1911,9 +2336,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let inputs = (0..12)
                     .map(|i| {
-                        // step/selector of memory reads from the poseidon machine
-                        let lo = self.proc.get_mem(input_ptr.u() + 8 * i, self.step, 2);
-                        let hi = self.proc.get_mem(input_ptr.u() + 8 * i + 4, self.step, 3);
+                        // memory reads from the poseidon machine
+                        let lid = self.link_id("main_poseidon_gl", "main_memory", 0);
+                        let lo = self.proc.get_mem(input_ptr.u() + 8 * i, self.step, lid);
+                        let lid = self.link_id("main_poseidon_gl", "main_memory", 1);
+                        let hi = self.proc.get_mem(input_ptr.u() + 8 * i + 4, self.step, lid);
                         F::from(((hi as u64) << 32) | lo as u64)
                     })
                     .collect::<Vec<_>>();
@@ -1922,62 +2349,55 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 outputs.iter().enumerate().rev().for_each(|(i, v)| {
                     // the .rev() is not necessary, but makes the split_gl
                     // operations in the same "order" as automatic witgen
-                    let v = v.to_integer().try_into_u64().unwrap();
-                    let hi = (v >> 32) as u32;
-                    let lo = (v & 0xffffffff) as u32;
-                    // step/selector of memory writes from the poseidon machine
+                    let val = v.to_integer().try_into_u64().unwrap();
+                    let hi = (val >> 32) as u32;
+                    let lo = (val & 0xffffffff) as u32;
+                    // memory writes from the poseidon machine
+                    let lid = self.link_id("main_poseidon_gl", "main_memory", 2);
                     self.proc
-                        .set_mem(output_ptr.u() + 8 * i as u32, lo, self.step + 1, 4);
+                        .set_mem(output_ptr.u() + 8 * i as u32, lo, self.step + 1, lid);
+                    let lid = self.link_id("main_poseidon_gl", "main_memory", 3);
                     self.proc
-                        .set_mem(output_ptr.u() + 8 * i as u32 + 4, hi, self.step + 1, 5);
-                    if let ExecMode::Trace = self.mode {
-                        // split gl of the poseidon machine
-                        self.proc.submachine("split_gl").add_operation(
-                            "split_gl",
-                            &[hi.into(), lo.into()],
-                            Some(1),
-                            &[],
-                        );
-                    }
+                        .set_mem(output_ptr.u() + 8 * i as u32 + 4, hi, self.step + 1, lid);
+                    let lid = self.link_id("main_poseidon_gl", "main_split_gl", 0);
+                    submachine_op!(split_gl, lid, &[*v, lo.into(), hi.into(), 0.into()],);
                 });
 
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("poseidon_gl").add_operation(
-                        "poseidon_gl",
-                        &[
-                            input_ptr,
-                            output_ptr,
-                            self.step.into(),
-                            Elem::Field(inputs[0]),
-                            Elem::Field(inputs[1]),
-                            Elem::Field(inputs[2]),
-                            Elem::Field(inputs[3]),
-                            Elem::Field(inputs[4]),
-                            Elem::Field(inputs[5]),
-                            Elem::Field(inputs[6]),
-                            Elem::Field(inputs[7]),
-                            Elem::Field(inputs[8]),
-                            Elem::Field(inputs[9]),
-                            Elem::Field(inputs[10]),
-                            Elem::Field(inputs[11]),
-                            Elem::Field(outputs[0]),
-                            Elem::Field(outputs[1]),
-                            Elem::Field(outputs[2]),
-                            Elem::Field(outputs[3]),
-                        ],
-                        Some(0),
-                        &[],
-                    );
-                }
-
-                vec![]
+                let lid = self.instr_link_id(instr, MachineInstance::poseidon_gl, 0);
+                submachine_op!(
+                    poseidon_gl,
+                    lid,
+                    &[
+                        input_ptr.into_fe(),
+                        output_ptr.into_fe(),
+                        self.step.into(),
+                        0.into()
+                    ],
+                    inputs[0],
+                    inputs[1],
+                    inputs[2],
+                    inputs[3],
+                    inputs[4],
+                    inputs[5],
+                    inputs[6],
+                    inputs[7],
+                    inputs[8],
+                    inputs[9],
+                    inputs[10],
+                    inputs[11],
+                    outputs[0],
+                    outputs[1],
+                    outputs[2],
+                    outputs[3]
+                );
+                None
             }
-            "poseidon2_gl" => {
+            Instruction::poseidon2_gl => {
                 let input_ptr = self.proc.get_reg_mem(args[0].u()).u();
                 assert!(is_multiple_of_4(input_ptr));
 
                 let inputs: [u64; 8] = (0..16)
-                    .map(|i| self.proc.get_mem(input_ptr + i * 4, 0, 0)) // TODO: step/selector for poseidon2
+                    .map(|i| self.proc.get_mem(input_ptr + i * 4, 0, 0))
                     .chunks(2)
                     .into_iter()
                     .map(|mut chunk| {
@@ -1996,12 +2416,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let output_ptr = self.proc.get_reg_mem(args[1].u()).u();
                 assert!(is_multiple_of_4(output_ptr));
                 result.enumerate().for_each(|(i, v)| {
-                    self.proc.set_mem(output_ptr + i as u32 * 4, v, 0, 0); // TODO: step/selector for poseidon2
+                    self.proc.set_mem(output_ptr + i as u32 * 4, v, 0, 0);
                 });
 
-                vec![]
+                None
             }
-            "affine_256" => {
+            Instruction::affine_256 => {
                 // a * b + c = d
                 let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
                 assert!(is_multiple_of_4(input_ptr_a));
@@ -2040,9 +2460,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     );
                 });
 
-                vec![]
+                // TODO: main_arith event
+                None
             }
-            "mod_256" => {
+            Instruction::mod_256 => {
                 // a mod b = c
                 let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
                 assert!(is_multiple_of_4(input_ptr_a));
@@ -2071,9 +2492,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     );
                 });
 
-                vec![]
+                // TODO: main_arith event
+                None
             }
-            "ec_add" => {
+            Instruction::ec_add => {
                 // a + b = c
                 let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
                 assert!(is_multiple_of_4(input_ptr_a));
@@ -2113,9 +2535,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     );
                 });
 
-                vec![]
+                // TODO: main_arith event
+                None
             }
-            "ec_double" => {
+            Instruction::ec_double => {
                 // a * 2 = b
                 let input_ptr_a = self.proc.get_reg_mem(args[0].u()).u();
                 assert!(is_multiple_of_4(input_ptr_a));
@@ -2147,33 +2570,32 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     );
                 });
 
-                vec![]
+                // TODO: main_arith event
+                None
             }
-            "commit_public" => {
-                let idx = self.reg_read(0, args[0].u(), 0);
-                let limb = self.reg_read(0, args[1].u(), 1);
+            Instruction::commit_public => {
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let idx = self.reg_read(0, args[0].u(), lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let limb = self.reg_read(0, args[1].u(), lid);
                 set_col!(tmp1_col, idx);
                 set_col!(tmp2_col, limb);
                 log::debug!("Committing public: idx={idx}, limb={limb}");
-                if let ExecMode::Trace = self.mode {
-                    self.proc.submachine("publics").add_operation(
-                        "access",
-                        &[idx, limb],
-                        None,
-                        &[],
-                    );
-                }
-                vec![]
+                let lid = self.instr_link_id(instr, MachineInstance::publics, 0);
+                submachine_op!(
+                    publics,
+                    lid,
+                    &[idx.into_fe(), limb.into_fe(), 0.into(), 0.into()],
+                );
+                None
             }
-            instr => {
-                panic!("unknown instruction: {instr}");
-            }
+            Instruction::Count => unreachable!(),
         };
 
         r
     }
 
-    fn eval_expression(&mut self, expression: &Expression) -> Vec<Elem<F>> {
+    fn eval_expression(&mut self, expression: &Expression) -> Option<Elem<F>> {
         match expression {
             Expression::Reference(_, r) => {
                 // an identifier looks like this:
@@ -2186,7 +2608,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .get(name.as_str())
                     .cloned()
                     .unwrap_or_else(|| self.proc.get_reg(name.as_str()));
-                vec![val]
+                Some(val)
             }
             Expression::PublicReference(_, _) => todo!(),
             Expression::Number(_, Number { value: n, .. }) => {
@@ -2194,7 +2616,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .try_into()
                     .unwrap_or_else(|_| panic!("Value does not fit in 32 bits."));
 
-                vec![unsigned.into()]
+                Some(unsigned.into())
             }
             Expression::String(_, _) => todo!(),
             Expression::Tuple(_, _) => todo!(),
@@ -2208,8 +2630,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     right: r,
                 },
             ) => {
-                let l = &self.eval_expression(l)[0];
-                let r = &self.eval_expression(r)[0];
+                let l = &self.eval_expression(l).unwrap();
+                let r = &self.eval_expression(r).unwrap();
 
                 let result = match (l, r) {
                     (Elem::Binary(l), Elem::Binary(r)) => match op {
@@ -2257,17 +2679,17 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     _ => panic!("tried to operate a binary value with a field value"),
                 };
 
-                vec![result]
+                Some(result)
             }
             Expression::UnaryOperation(_, UnaryOperation { op, expr: arg }) => {
-                let arg = self.eval_expression(arg)[0].bin();
+                let arg = self.eval_expression(arg).unwrap().bin();
                 let result = match op {
                     powdr_ast::parsed::UnaryOperator::Minus => -arg,
                     powdr_ast::parsed::UnaryOperator::LogicalNot => todo!(),
                     powdr_ast::parsed::UnaryOperator::Next => unreachable!(),
                 };
 
-                vec![Elem::Binary(result)]
+                Some(Elem::Binary(result))
             }
             Expression::FunctionCall(
                 _,
@@ -2314,14 +2736,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .to_string();
                 let values = arguments
                     .iter()
-                    .map(|arg| self.eval_expression(arg)[0].to_string())
+                    .map(|arg| self.eval_expression(arg).unwrap().to_string())
                     .collect::<Vec<_>>();
                 let query = format!("{variant}({})", values.join(","));
                 match (self.inputs)(&query).unwrap() {
                     Some(val) => {
                         let e = Elem::try_from_fe_as_bin(&val)
                             .expect("field value does not fit into u32 or i32");
-                        vec![e]
+                        Some(e)
                     }
                     None => {
                         panic!("unknown query command: {query}");
@@ -2334,6 +2756,20 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Expression::IndexAccess(_, _) => todo!(),
             Expression::StructExpression(_, _) => todo!(),
         }
+    }
+
+    /// generate witness program columns from the pc values of the execution
+    fn generate_program_columns(&mut self) -> Vec<(String, Vec<F>)> {
+        let mut cols = vec![];
+        for (fcol, pcol) in &self.program_cols {
+            let mut values: Vec<F> = Vec::with_capacity(self.proc.pc_trace().len());
+            let fixed_values = self.get_fixed(fcol).unwrap();
+            for pc in self.proc.pc_trace() {
+                values.push(fixed_values[*pc as usize])
+            }
+            cols.push((pcol.to_string(), values))
+        }
+        cols
     }
 }
 
@@ -2396,7 +2832,8 @@ pub fn execute<F: FieldElement>(
     max_steps_to_execute: Option<usize>,
     profiling: Option<ProfilerOptions>,
 ) -> Execution<F> {
-    log::info!("Executing...");
+    log::info!("Executing (trace generation)...");
+
     execute_inner(
         asm,
         Some(opt_pil),
@@ -2422,6 +2859,7 @@ fn execute_inner<F: FieldElement>(
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
 ) -> Execution<F> {
+    let start = Instant::now();
     let main_machine = get_main_machine(asm);
 
     let PreprocessedMain {
@@ -2491,6 +2929,8 @@ fn execute_inner<F: FieldElement>(
         .map(|v| Elem::try_from_fe_as_bin(v).unwrap_or(Elem::Field(*v)))
         .collect();
 
+    let pil_links = opt_pil.map(pil::links_from_pil).unwrap_or_default();
+
     // We clear the QueryCallback's virtual FS before the execution.
     (prover_ctx)("Clear").unwrap();
     let mut e = Executor {
@@ -2502,6 +2942,10 @@ fn execute_inner<F: FieldElement>(
         program_cols,
         step: 0,
         mode,
+        pil_links,
+        pil_instruction_links: vec![None; Instruction::count() * MachineInstance::count()],
+        pil_other_links: Default::default(),
+        cached_fixed_cols: Default::default(),
     };
 
     e.init();
@@ -2510,6 +2954,9 @@ fn execute_inner<F: FieldElement>(
         profiling.map(|opt| Profiler::new(opt, &debug_files[..], function_starts, location_starts));
 
     let mut curr_pc = 0u32;
+    e.proc.push_row(PC_INITIAL_VAL as u32);
+    let mut last = Instant::now();
+    let mut count = 0;
     loop {
         let stm = statements[curr_pc as usize];
 
@@ -2517,37 +2964,51 @@ fn execute_inner<F: FieldElement>(
 
         e.step += 4;
 
+        count += 1;
+        if count % 10000 == 0 {
+            let now = Instant::now();
+            let elapsed = now - last;
+            if elapsed.as_secs_f64() > 1.0 {
+                last = now;
+                log::debug!("instructions/s: {}", count as f64 / elapsed.as_secs_f64(),);
+                count = 0;
+            }
+        }
+
         match stm {
             FunctionStatement::Assignment(a) => {
-                e.proc.push_row();
                 let pc = e.proc.get_pc().u();
-                e.set_program_columns(pc);
+                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
                 if let Some(p) = &mut profiler {
-                    p.add_instruction_cost(e.proc.get_pc().u() as usize);
+                    p.add_instruction_cost(pc as usize);
                 }
 
                 let results = e.eval_expression(a.rhs.as_ref());
-                assert_eq!(a.lhs_with_reg.len(), results.len());
+                assert_eq!(a.lhs_with_reg.len(), 1);
 
                 let asgn_reg = a.lhs_with_reg[0].1.clone();
                 if let AssignmentRegister::Register(x) = asgn_reg {
                     assert_eq!(x, "X"); // we currently only assign through X
-                    let x_const = e.proc.get_col("main::X_const");
+                    let x_const =
+                        Elem::Field(e.get_known_fixed(KnownFixedCol::X_const, pc as usize));
 
                     match a.rhs.as_ref() {
                         Expression::FreeInput(_, _expr) => {
                             // we currently only use X for free inputs
                             assert!(x_const.is_zero());
-                            e.proc.set_col("main::X", results[0]);
-                            e.proc.set_col("main::X_free_value", results[0]);
+                            e.proc.set_col(KnownWitnessCol::X, results.unwrap());
+                            e.proc
+                                .set_col(KnownWitnessCol::X_free_value, results.unwrap());
                         }
                         _ => {
                             // We're assinging a value or the result of an instruction.
                             // Currently, only X used as the assignment register in this case.
-                            let x = results[0];
-                            e.proc.set_col("main::X", x);
+                            let x = results.unwrap();
+                            e.proc.set_col(KnownWitnessCol::X, x);
 
-                            let x_read_free = e.proc.get_col("main::X_read_free");
+                            let x_read_free = Elem::Field(
+                                e.get_known_fixed(KnownFixedCol::X_read_free, pc as usize),
+                            );
 
                             // We need to solve for X_free_value:
                             // X = X_const + X_read_free * X_free_value
@@ -2558,7 +3019,7 @@ fn execute_inner<F: FieldElement>(
                             } else {
                                 x.sub(&x_const).div(&x_read_free)
                             };
-                            e.proc.set_col("main::X_free_value", x_free_value);
+                            e.proc.set_col(KnownWitnessCol::X_free_value, x_free_value);
                         }
                     }
                 } else {
@@ -2570,9 +3031,7 @@ fn execute_inner<F: FieldElement>(
                 }
             }
             FunctionStatement::Instruction(i) => {
-                e.proc.push_row();
-                let pc = e.proc.get_pc().u();
-                e.set_program_columns(pc);
+                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
 
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
@@ -2586,9 +3045,7 @@ fn execute_inner<F: FieldElement>(
                     // we can't use `get_pc/get_reg`, as its value is only updated when moving to the next row
                     let pc_after = e.proc.get_next_pc().u();
 
-                    let target_reg = e.eval_expression(&i.inputs[1]);
-                    assert_eq!(target_reg.len(), 1);
-                    let target_reg = target_reg[0].u();
+                    let target_reg = e.eval_expression(&i.inputs[1]).unwrap().u();
 
                     if let Some(p) = &mut profiler {
                         let pc_return = e.proc.get_reg_mem(target_reg).u();
@@ -2608,9 +3065,7 @@ fn execute_inner<F: FieldElement>(
                 }
             }
             FunctionStatement::Return(_) => {
-                e.proc.push_row();
-                let pc = e.proc.get_pc().u();
-                e.set_program_columns(pc);
+                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
                 break;
             }
             FunctionStatement::DebugDirective(dd) => {
@@ -2632,11 +3087,7 @@ fn execute_inner<F: FieldElement>(
         };
 
         curr_pc = match e.proc.advance() {
-            Some(pc) => {
-                // We set pc_update=PC here, after the PC has been updated but before "pushing" the next row
-                e.proc.set_col("main::pc_update", e.proc.get_pc());
-                pc
-            }
+            Some(pc) => pc,
             None => break,
         };
     }
@@ -2645,38 +3096,46 @@ fn execute_inner<F: FieldElement>(
         p.finish();
     }
 
+    let mut program_columns = vec![];
+
+    log::debug!("Program execution took {}s", start.elapsed().as_secs_f64());
+
     if let ExecMode::Trace = mode {
         let sink_id = e.sink_id();
 
         // reset
-        e.proc.set_col("main::pc_update", 0.into());
+        e.proc.set_col(KnownWitnessCol::pc_update, 0.into());
         e.proc.set_pc(0.into());
         assert!(e.proc.advance().is_none());
-        e.proc.push_row();
-        e.set_program_columns(0);
-        e.proc.set_col("main::_operation_id", sink_id.into());
+        e.proc
+            .set_col(KnownWitnessCol::_operation_id, sink_id.into());
 
         // jump_to_operation
-        e.proc.set_col("main::pc_update", 1.into());
+        e.proc.set_col(KnownWitnessCol::pc_update, 1.into());
         e.proc.set_pc(1.into());
         e.proc.set_reg("query_arg_1", 0);
         e.proc.set_reg("query_arg_2", 0);
         assert!(e.proc.advance().is_none());
-        e.proc.push_row();
-        e.set_program_columns(1);
-        e.proc.set_col("main::_operation_id", sink_id.into());
+        e.proc
+            .set_col(KnownWitnessCol::_operation_id, sink_id.into());
 
         // loop
-        e.proc.set_col("main::pc_update", sink_id.into());
+        e.proc.set_col(KnownWitnessCol::pc_update, sink_id.into());
         e.proc.set_pc(sink_id.into());
         assert!(e.proc.advance().is_none());
-        e.proc.push_row();
-        e.set_program_columns(sink_id);
-        e.proc.set_col("main::pc_update", sink_id.into());
-        e.proc.set_col("main::_operation_id", sink_id.into());
+        e.proc.set_col(KnownWitnessCol::pc_update, sink_id.into());
+        e.proc
+            .set_col(KnownWitnessCol::_operation_id, sink_id.into());
+
+        let start = Instant::now();
+        program_columns = e.generate_program_columns();
+        log::debug!(
+            "Generating program columns took {}s",
+            start.elapsed().as_secs_f64()
+        );
     }
 
-    e.proc.finish(opt_pil)
+    e.proc.finish(opt_pil, program_columns)
 }
 
 /// Utility function for writing the executor witness CSV file.

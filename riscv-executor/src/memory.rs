@@ -1,17 +1,17 @@
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
-use crate::Elem;
+use crate::Submachine;
 
 #[derive(Debug, Eq, PartialEq)]
 /// Order of fields matter: will be ordered by addr then step.
 struct Op<F: FieldElement> {
     addr: u32,
     step: u32,
-    value: Elem<F>,
-    write: bool,
+    value: F,
+    write: F,
     // each machine that's called via permutation has a selector array, with one entry per incoming permutation.
     // This is the idx assigned to the `link` triggering the memory operation.
-    selector_idx: u32,
+    selector_idx: u8,
 }
 
 pub struct MemoryMachine<F: FieldElement> {
@@ -37,33 +37,44 @@ impl<F: FieldElement> MemoryMachine<F> {
         }
     }
 
-    pub fn write(&mut self, step: u32, addr: u32, val: Elem<F>, selector_idx: u32) {
-        self.ops.push(Op {
-            addr,
-            step,
-            value: val,
-            write: true,
-            selector_idx,
-        });
-    }
-
-    pub fn read(&mut self, step: u32, addr: u32, val: Elem<F>, selector_idx: u32) {
-        self.ops.push(Op {
-            addr,
-            step,
-            value: val,
-            write: false,
-            selector_idx,
-        });
-    }
-
     pub fn len(&self) -> u32 {
         self.ops.len() as u32
     }
+}
 
-    pub fn take_cols(mut self, len: u32) -> Vec<(String, Vec<Elem<F>>)> {
+impl<F: FieldElement> Submachine<F> for MemoryMachine<F> {
+    fn len(&self) -> u32 {
+        self.ops.len() as u32
+    }
+
+    fn namespace(&self) -> &str {
+        &self.namespace
+    }
+
+    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F; 4], _extra: &[F]) {
+        let [op_id, addr, step, value] = lookup_args[..] else {
+            panic!()
+        };
+        // get the idx from the selector
+        let selector_idx = selector
+            .map(|s| {
+                let start = s.find('[').unwrap() + 1;
+                let end = s.find(']').unwrap();
+                s[start..end].parse::<u8>().unwrap()
+            })
+            .unwrap();
+        self.ops.push(Op {
+            addr: addr.to_integer().try_into_u32().unwrap(),
+            step: step.to_integer().try_into_u32().unwrap(),
+            value,
+            write: op_id,
+            selector_idx,
+        });
+    }
+
+    fn finish(&mut self, degree: u32) -> Vec<(String, Vec<F>)> {
         assert!(
-            len >= self.len(),
+            degree >= self.len(),
             "trying to take less rows than memory ops"
         );
 
@@ -87,7 +98,7 @@ impl<F: FieldElement> MemoryMachine<F> {
 
         let mut cols: Vec<_> = std::mem::take(&mut self.witness_cols)
             .into_iter()
-            .map(|n| (n, vec![]))
+            .map(|n| (n, Vec::with_capacity(self.ops.len())))
             .collect();
         let selector_count = cols.len() - Cols::Selectors as usize;
 
@@ -111,14 +122,12 @@ impl<F: FieldElement> MemoryMachine<F> {
                 cols[DiffLower as usize].1.push(0.into());
                 cols[Change as usize].1.push(0.into());
             }
-            cols[IsWrite as usize]
-                .1
-                .push(if op.write { 1.into() } else { 0.into() });
+            cols[IsWrite as usize].1.push(op.write);
             cols[Step as usize].1.push(op.step.into());
             cols[Addr as usize].1.push(op.addr.into());
             cols[Value as usize].1.push(op.value);
 
-            for i in 0..selector_count as u32 {
+            for i in 0..selector_count as u8 {
                 cols[Selectors as usize + i as usize]
                     .1
                     .push(if i == op.selector_idx {
@@ -132,34 +141,32 @@ impl<F: FieldElement> MemoryMachine<F> {
         // extend rows if needed
         let last_step = self.ops.last().map(|op| op.step).unwrap_or(0);
         let last_addr = self.ops.last().map(|op| op.addr).unwrap_or(0);
-        let last_value = self
-            .ops
-            .last()
-            .map(|op| op.value)
-            .unwrap_or(Elem::Field(0.into()));
-        if self.len() < len {
+        let last_value = self.ops.last().map(|op| op.value).unwrap_or(0.into());
+        if self.len() < degree {
             // addr and value are repeated
-            cols[Addr as usize].1.resize(len as usize, last_addr.into());
-            cols[Value as usize].1.resize(len as usize, last_value);
+            cols[Addr as usize]
+                .1
+                .resize(degree as usize, last_addr.into());
+            cols[Value as usize].1.resize(degree as usize, last_value);
             // step increases
             cols[Step as usize].1.extend(
                 (last_step + 1..)
-                    .take((len - self.len()) as usize)
-                    .map(|x| Elem::from_u32_as_fe(x)),
+                    .take((degree - self.len()) as usize)
+                    .map(|x| F::from(x)),
             );
             // rest are zero
-            cols[Change as usize].1.resize(len as usize, 0.into());
-            cols[IsWrite as usize].1.resize(len as usize, 0.into());
-            cols[DiffLower as usize].1.resize(len as usize, 0.into());
-            cols[DiffUpper as usize].1.resize(len as usize, 0.into());
+            cols[Change as usize].1.resize(degree as usize, 0.into());
+            cols[IsWrite as usize].1.resize(degree as usize, 0.into());
+            cols[DiffLower as usize].1.resize(degree as usize, 0.into());
+            cols[DiffUpper as usize].1.resize(degree as usize, 0.into());
             for i in 0..selector_count as u32 {
                 cols[Selectors as usize + i as usize]
                     .1
-                    .resize(len as usize, 0.into());
+                    .resize(degree as usize, 0.into());
             }
+            // m_change is 1 in last row
+            *cols[Change as usize].1.last_mut().unwrap() = 1.into();
         }
-        // m_change is 1 in last row
-        *cols[Change as usize].1.last_mut().unwrap() = 1.into();
         cols
     }
 }

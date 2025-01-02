@@ -82,6 +82,41 @@ impl<T: FieldElement> RangeConstraint<T> {
         range_width(self.min, self.max)
     }
 
+    /// Returns true if `v` is an allowed value for this range constraint.
+    pub fn allows_value(&self, v: T) -> bool {
+        let in_range = if self.min <= self.max {
+            self.min <= v && v <= self.max
+        } else {
+            v <= self.min || self.max <= v
+        };
+        let in_mask = v.to_integer() & self.mask == v.to_integer();
+        in_range && in_mask
+    }
+
+    /// Splits this range constraint into a disjoint union with roughly the same number of allowed values.
+    /// The two ranges will be disjoint, and the union of the two will be the same as the original range
+    /// (or at least include the original range).
+    /// This is useful for branching on a variable.
+    /// Panics if the range is a single value.
+    pub fn bisect(&self) -> (Self, Self) {
+        assert!(self.try_to_single_value().is_none());
+        // TODO we could also try to bisect according to the masks, but this code currently does not
+        // support complements of masks.
+        // Better to bisect according to min/max.
+        let half_width = T::from(self.range_width() >> 1);
+        assert!(half_width > T::zero());
+        (
+            Self {
+                max: self.min + half_width - 1.into(),
+                ..self.clone()
+            },
+            Self {
+                min: self.min + half_width,
+                ..self.clone()
+            },
+        )
+    }
+
     /// The range constraint of the sum of two expressions.
     pub fn combine_sum(&self, other: &Self) -> Self {
         // TODO we could use "add_with_carry" to see if this created an overflow.
@@ -155,6 +190,14 @@ impl<T: FieldElement> RangeConstraint<T> {
             min,
             max,
             mask: mask.unwrap_or_else(|| Self::from_range(min, max).mask),
+        }
+    }
+
+    pub fn try_to_single_value(&self) -> Option<T> {
+        if self.min == self.max {
+            Some(self.min)
+        } else {
+            None
         }
     }
 }
@@ -588,5 +631,38 @@ mod test {
                 mask: 0xf000u32.into(),
             },
         );
+    }
+
+    fn range_constraint(min: u64, max: u64) -> RangeConstraint<GoldilocksField> {
+        RangeConstraint::from_range(min.into(), max.into())
+    }
+
+    #[test]
+    fn bisect_regular() {
+        let (b, c) = range_constraint(10, 20).bisect();
+        assert_eq!(b.range(), (10.into(), 14.into()));
+        assert_eq!(c.range(), (15.into(), 20.into()));
+
+        let (b, c) = range_constraint(0, 1).bisect();
+        assert_eq!(b.try_to_single_value(), Some(0.into()));
+        assert_eq!(c.try_to_single_value(), Some(1.into()));
+
+        let (b, c) = range_constraint(0, 2).bisect();
+        assert_eq!(b.try_to_single_value(), Some(0.into()));
+        assert_eq!(c.range(), (1.into(), 2.into()));
+    }
+
+    #[test]
+    fn bisect_inverted() {
+        let (b, c) = range_constraint(20, 10).bisect();
+        assert_eq!(b.range(), (20.into(), 9223372034707292175_u64.into()));
+        assert_eq!(c.range(), (9223372034707292176_u64.into(), 10.into()));
+    }
+
+    #[test]
+    #[should_panic]
+    fn bisect_single() {
+        let a = RangeConstraint::<GoldilocksField>::from_range(10.into(), 10.into());
+        a.bisect();
     }
 }
