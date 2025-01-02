@@ -59,17 +59,16 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 .sorted()
                 .min_by_key(|(_, rc)| rc.range_width())
             else {
+                let incomplete_identities = self
+                    .machine_parts
+                    .identities
+                    .iter()
+                    .filter(|id| !complete.contains(&id.id()));
                 return Err(format!(
                     "Unable to derive algorithm to compute values for witness columns in the next row and\n\
                     unable to branch on a variable. The following columns are still missing:\n{}\nThe following identities have not been fully processed:\n{}",
                     unknown_witnesses.iter().map(|wit| self.fixed_data.column_name(wit)).format(", "),
-                    self
-                    .machine_parts
-                    .identities
-                    .iter()
-                    .filter(|id| !complete.contains(&id.id()))
-                    .map(|id| format!("    {id}"))
-                    .join("\n")
+                    incomplete_identities.map(|id| format!("    {id}")).join("\n")
                 ));
             };
 
@@ -255,7 +254,7 @@ mod test {
         instr_add * (A' - (A + B)) + instr_mul * (A' - A * B)  + (1 - instr_add - instr_mul) * (A' - A) = 0;
         B' = B;
         ";
-        let code = generate_single_step(input, "VM").unwrap();
+        let code = generate_single_step(input, "Main").unwrap();
         assert_eq!(
             format_code(&code),
             "\
