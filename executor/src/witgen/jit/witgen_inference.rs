@@ -203,14 +203,17 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .collect_vec();
         let known = evaluated.iter().map(|e| e.is_some()).collect();
 
-        if !can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints) {
+        let Some(new_range_constraints) =
+            can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints)
+        else {
             log::trace!(
                 "Sub-machine cannot process call fully (will retry later): {lookup_id}, arguments: {}",
                 arguments.iter().zip(known).map(|(arg, known)| {
                     format!("{arg} [{}]", if known { "known" } else { "unknown" })
                 }).format(", "));
             return ProcessResult::empty();
-        }
+        };
+        // TODO process range constraints.
         let args = evaluated
             .into_iter()
             .zip(arguments)
@@ -480,16 +483,17 @@ pub trait FixedEvaluator<T: FieldElement> {
 }
 
 pub trait CanProcessCall<T: FieldElement> {
-    /// Returns true if a call to the machine that handles the given identity
+    /// Returns Some(..) if a call to the machine that handles the given identity
     /// can always be processed with the given known inputs and range constraints
     /// on the parameters.
+    /// The value in the Option is a vector of new range constraints.
     /// @see Machine::can_process_call
     fn can_process_call_fully(
         &self,
         _identity_id: u64,
         _known_inputs: &BitVec,
         _range_constraints: &[Option<RangeConstraint<T>>],
-    ) -> bool;
+    ) -> Option<Vec<Option<RangeConstraint<T>>>>;
 }
 
 impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'_, T, Q> {
@@ -498,7 +502,7 @@ impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'
         identity_id: u64,
         known_inputs: &BitVec,
         range_constraints: &[Option<RangeConstraint<T>>],
-    ) -> bool {
+    ) -> Option<Vec<Option<RangeConstraint<T>>>> {
         MutableState::can_process_call_fully(self, identity_id, known_inputs, range_constraints)
     }
 }

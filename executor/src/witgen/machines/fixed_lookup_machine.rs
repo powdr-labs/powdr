@@ -302,10 +302,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         &mut self,
         identity_id: u64,
         known_arguments: &BitVec,
-        _range_constraints: &[Option<RangeConstraint<T>>],
-    ) -> bool {
+        range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> Option<Vec<Option<RangeConstraint<T>>>> {
         if !Self::is_responsible(&self.connections[&identity_id]) {
-            return false;
+            return None;
         }
         let index = self
             .indices
@@ -317,7 +317,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
                 create_index(self.fixed_data, application, &self.connections)
             });
         // Check that if there is a match, it is unique.
-        index.values().all(|value| value.0.is_some())
+        if index.values().all(|value| value.0.is_some()) {
+            // TODO determine new range constraints.
+            Some(range_constraints.to_vec())
+        } else {
+            None
+        }
     }
 
     fn process_plookup<Q: crate::witgen::QueryCallback<T>>(
