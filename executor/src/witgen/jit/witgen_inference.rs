@@ -1,22 +1,24 @@
 use std::collections::{HashMap, HashSet};
 
+use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
     PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolynomialIdentity,
-    PolynomialType, SelectedExpressions,
+    PolynomialType,
 };
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    global_constraints::RangeConstraintSet, jit::affine_symbolic_expression::MachineCallArgument,
+    data_structures::mutable_state::MutableState, global_constraints::RangeConstraintSet,
+    range_constraints::RangeConstraint, FixedData, QueryCallback,
 };
 
 use super::{
-    super::{range_constraints::RangeConstraint, FixedData},
-    affine_symbolic_expression::{AffineSymbolicExpression, Effect, ProcessResult},
-    variable::Variable,
+    affine_symbolic_expression::{AffineSymbolicExpression, ProcessResult},
+    effect::{Effect, MachineCallArgument},
+    variable::{MachineCallReturnVariable, Variable},
 };
 
 /// Summary of the effect of processing an action.
@@ -64,47 +66,31 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 
     /// Process an identity on a certain row.
-    pub fn process_identity(&mut self, id: &Identity<T>, row_offset: i32) -> ProcessSummary {
+    pub fn process_identity<CanProcess: CanProcessCall<T>>(
+        &mut self,
+        can_process: CanProcess,
+        id: &'a Identity<T>,
+        row_offset: i32,
+    ) -> ProcessSummary {
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                 self.process_equality_on_row(expression, row_offset, T::from(0).into())
             }
-            Identity::Lookup(LookupIdentity {
-                id, left, right, ..
-            })
-            | Identity::Permutation(PermutationIdentity {
-                id, left, right, ..
-            })
-            | Identity::PhantomPermutation(PhantomPermutationIdentity {
-                id, left, right, ..
-            })
-            | Identity::PhantomLookup(PhantomLookupIdentity {
-                id, left, right, ..
-            }) => self.process_lookup(*id, left, right, row_offset),
-            Identity::PhantomBusInteraction(_) => {
-                // TODO(bus_interaction) Once we have a concept of "can_be_answered", bus interactions
-                // should be as easy as lookups.
-                ProcessResult::empty()
-            }
+            Identity::Lookup(LookupIdentity { id, left, .. })
+            | Identity::Permutation(PermutationIdentity { id, left, .. })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { id, left, .. })
+            | Identity::PhantomLookup(PhantomLookupIdentity { id, left, .. }) => self.process_call(
+                can_process,
+                *id,
+                &left.selector,
+                &left.expressions,
+                row_offset,
+            ),
+            // TODO(bus_interaction)
+            Identity::PhantomBusInteraction(_) => ProcessResult::empty(),
             Identity::Connect(_) => ProcessResult::empty(),
         };
         self.ingest_effects(result)
-    }
-
-    /// Turns the given variable either to a known symbolic value or an unknown symbolic value
-    /// depending on if it is known or not.
-    /// If it is known to be range-constrained to a single value, that value is used.
-    fn variable_to_expression(&self, variable: Variable) -> AffineSymbolicExpression<T, Variable> {
-        // If a variable is known and has a compile-time constant value,
-        // that value is stored in the range constraints.
-        let rc = self.range_constraint(variable.clone());
-        if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
-            val.into()
-        } else if self.known_variables.contains(&variable) {
-            AffineSymbolicExpression::from_known_symbol(variable, rc)
-        } else {
-            AffineSymbolicExpression::from_unknown_variable(variable, rc)
-        }
     }
 
     /// Process the constraint that the expression evaluated at the given offset equals the given value.
@@ -153,58 +139,69 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    fn process_lookup(
-        &self,
+    fn process_call<CanProcess: CanProcessCall<T>>(
+        &mut self,
+        can_process_call: CanProcess,
         lookup_id: u64,
-        left: &SelectedExpressions<T>,
-        right: &SelectedExpressions<T>,
-        offset: i32,
+        selector: &Expression<T>,
+        arguments: &'a [Expression<T>],
+        row_offset: i32,
     ) -> ProcessResult<T, Variable> {
-        // TODO: In the future, call the 'mutable state' to check if the
-        // lookup can always be answered.
-
-        // If the RHS is fully fixed columns...
-        if right.expressions.iter().all(|e| match e {
-            Expression::Reference(r) => r.is_fixed(),
-            Expression::Number(_) => true,
-            _ => false,
-        }) {
-            // and the selector is known to be 1...
-            if self
-                .evaluate(&left.selector, offset)
-                .and_then(|s| s.try_to_known().map(|k| k.is_known_one()))
-                == Some(true)
-            {
-                if let Some(lhs) = left
-                    .expressions
-                    .iter()
-                    .map(|e| self.evaluate(e, offset))
-                    .collect::<Option<Vec<_>>>()
-                {
-                    // and all except one expression is known on the LHS.
-                    let unknown = lhs
-                        .iter()
-                        .filter(|e| e.try_to_known().is_none())
-                        .collect_vec();
-                    if unknown.len() == 1 && unknown[0].single_unknown_variable().is_some() {
-                        let effects = vec![Effect::MachineCall(
-                            lookup_id,
-                            lhs.into_iter()
-                                .map(|e| {
-                                    if let Some(val) = e.try_to_known() {
-                                        MachineCallArgument::Known(val.clone())
-                                    } else {
-                                        MachineCallArgument::Unknown(e)
-                                    }
-                                })
-                                .collect(),
-                        )];
-                        return ProcessResult::complete(effects);
-                    }
-                }
-            }
+        // We need to know the selector.
+        if self
+            .evaluate(selector, row_offset)
+            .and_then(|s| s.try_to_known().map(|k| k.is_known_one()))
+            != Some(true)
+        {
+            return ProcessResult::empty();
         }
-        ProcessResult::empty()
+        let evaluated = arguments
+            .iter()
+            .map(|a| {
+                self.evaluate(a, row_offset)
+                    .and_then(|a| a.try_to_known().cloned())
+            })
+            .collect::<Vec<_>>();
+        let range_constraints = evaluated
+            .iter()
+            .map(|e| e.as_ref().and_then(|e| e.range_constraint()))
+            .collect_vec();
+        let known = evaluated.iter().map(|e| e.is_some()).collect();
+
+        if !can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints) {
+            log::trace!(
+                "Sub-machine cannot process call fully (will retry later): {lookup_id}, arguments: {}",
+                arguments.iter().zip(known).map(|(arg, known)| {
+                    format!("{arg} [{}]", if known { "known" } else { "unknown" })
+                }).format(", "));
+            return ProcessResult::empty();
+        }
+        let args = evaluated
+            .into_iter()
+            .zip(arguments)
+            .enumerate()
+            .map(|(index, (eval_expr, arg))| {
+                if let Some(e) = eval_expr {
+                    MachineCallArgument::Known(e)
+                } else {
+                    let ret_var = MachineCallReturnVariable {
+                        identity_id: lookup_id,
+                        row_offset,
+                        index,
+                    };
+                    self.assign_variable(
+                        arg,
+                        row_offset,
+                        Variable::MachineCallReturnValue(ret_var.clone()),
+                    );
+                    ret_var.into_argument()
+                }
+            })
+            .collect_vec();
+        ProcessResult {
+            effects: vec![Effect::MachineCall(lookup_id, args)],
+            complete: true,
+        }
     }
 
     fn process_assignments(&mut self) {
@@ -214,7 +211,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 .into_iter()
                 .flat_map(|assignment| {
                     let rhs = match &assignment.rhs {
-                        VariableOrValue::Variable(v) => self.variable_to_expression(v.clone()),
+                        VariableOrValue::Variable(v) => {
+                            Evaluator::new(self).evaluate_variable(v.clone())
+                        }
                         VariableOrValue::Value(v) => (*v).into(),
                     };
                     let r =
@@ -251,9 +250,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 }
                 Effect::MachineCall(_, arguments) => {
                     for arg in arguments {
-                        if let MachineCallArgument::Unknown(expr) = arg {
-                            let variable = expr.single_unknown_variable().unwrap();
-                            self.known_variables.insert(variable.clone());
+                        if let MachineCallArgument::Unknown(v) = arg {
+                            self.known_variables.insert(v.clone());
                         }
                     }
                     progress = true;
@@ -292,20 +290,79 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         old_rc != Some(rc)
     }
 
+    /// Returns the current best-known range constraint on the given variable
+    /// combining global range constraints and newly derived local range constraints.
+    fn range_constraint(&self, variable: Variable) -> Option<RangeConstraint<T>> {
+        variable
+            .try_to_witness_poly_id()
+            .and_then(|poly_id| {
+                self.fixed_data
+                    .global_range_constraints
+                    .range_constraint(&AlgebraicReference {
+                        name: Default::default(),
+                        poly_id,
+                        next: false,
+                    })
+            })
+            .iter()
+            .chain(self.derived_range_constraints.get(&variable))
+            .cloned()
+            .reduce(|gc, rc| gc.conjunction(&rc))
+    }
+
     fn evaluate(
+        &self,
+        expr: &Expression<T>,
+        offset: i32,
+    ) -> Option<AffineSymbolicExpression<T, Variable>> {
+        Evaluator::new(self).evaluate(expr, offset)
+    }
+}
+
+struct Evaluator<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
+    witgen_inference: &'a WitgenInference<'a, T, FixedEval>,
+    only_concrete_known: bool,
+}
+
+impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEval> {
+    pub fn new(witgen_inference: &'a WitgenInference<'a, T, FixedEval>) -> Self {
+        Self {
+            witgen_inference,
+            only_concrete_known: false,
+        }
+    }
+
+    /// Sets this evaluator into the mode where only concrete variables are
+    /// considered "known". This means even if we know how to compute a variable,
+    /// as long as we cannot determine it to have a fixed value at compile-time,
+    /// it is considered "unknown" and we can solve for it.
+    #[allow(unused)]
+    pub fn only_concrete_known(self) -> Self {
+        Self {
+            witgen_inference: self.witgen_inference,
+            only_concrete_known: true,
+        }
+    }
+
+    pub fn evaluate(
         &self,
         expr: &Expression<T>,
         offset: i32,
     ) -> Option<AffineSymbolicExpression<T, Variable>> {
         Some(match expr {
             Expression::Reference(r) => match r.poly_id.ptype {
-                PolynomialType::Constant => self.fixed_evaluator.evaluate(r, offset)?.into(),
+                PolynomialType::Constant => self
+                    .witgen_inference
+                    .fixed_evaluator
+                    .evaluate(r, offset)?
+                    .into(),
                 PolynomialType::Committed => {
                     let variable = Variable::from_reference(r, offset);
-                    self.variable_to_expression(variable)
+                    self.evaluate_variable(variable)
                 }
                 PolynomialType::Intermediate => {
-                    let definition = &self.fixed_data.intermediate_definitions[&r.to_thin()];
+                    let definition =
+                        &self.witgen_inference.fixed_data.intermediate_definitions[&r.to_thin()];
                     self.evaluate(definition, offset)?
                 }
             },
@@ -317,6 +374,22 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             Expression::BinaryOperation(op) => self.evaluate_binary_operation(op, offset)?,
             Expression::UnaryOperation(op) => self.evaluate_unary_operation(op, offset)?,
         })
+    }
+
+    /// Turns the given variable either to a known symbolic value or an unknown symbolic value
+    /// depending on if it is known or not.
+    /// If it is known to be range-constrained to a single value, that value is used.
+    pub fn evaluate_variable(&self, variable: Variable) -> AffineSymbolicExpression<T, Variable> {
+        // If a variable is known and has a compile-time constant value,
+        // that value is stored in the range constraints.
+        let rc = self.witgen_inference.range_constraint(variable.clone());
+        if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
+            val.into()
+        } else if !self.only_concrete_known && self.witgen_inference.is_known(&variable) {
+            AffineSymbolicExpression::from_known_symbol(variable, rc)
+        } else {
+            AffineSymbolicExpression::from_unknown_variable(variable, rc)
+        }
     }
 
     fn evaluate_binary_operation(
@@ -339,7 +412,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             }
         }
     }
-
     fn evaluate_unary_operation(
         &self,
         op: &AlgebraicUnaryOperation<T>,
@@ -349,26 +421,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         match op.op {
             AlgebraicUnaryOperator::Minus => Some(-&expr),
         }
-    }
-
-    /// Returns the current best-known range constraint on the given variable
-    /// combining global range constraints and newly derived local range constraints.
-    fn range_constraint(&self, variable: Variable) -> Option<RangeConstraint<T>> {
-        variable
-            .try_to_witness_poly_id()
-            .and_then(|poly_id| {
-                self.fixed_data
-                    .global_range_constraints
-                    .range_constraint(&AlgebraicReference {
-                        name: Default::default(),
-                        poly_id,
-                        next: false,
-                    })
-            })
-            .iter()
-            .chain(self.derived_range_constraints.get(&variable))
-            .cloned()
-            .reduce(|gc, rc| gc.conjunction(&rc))
     }
 }
 
@@ -391,27 +443,47 @@ pub trait FixedEvaluator<T: FieldElement> {
     }
 }
 
+pub trait CanProcessCall<T: FieldElement> {
+    /// Returns true if a call to the machine that handles the given identity
+    /// can always be processed with the given known inputs and range constraints
+    /// on the parameters.
+    /// @see Machine::can_process_call
+    fn can_process_call_fully(
+        &self,
+        _identity_id: u64,
+        _known_inputs: &BitVec,
+        _range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool;
+}
+
+impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'_, T, Q> {
+    fn can_process_call_fully(
+        &self,
+        identity_id: u64,
+        known_inputs: &BitVec,
+        range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool {
+        MutableState::can_process_call_fully(self, identity_id, known_inputs, range_constraints)
+    }
+}
+
 #[cfg(test)]
 mod test {
-
-    use pretty_assertions::assert_eq;
-
-    use powdr_ast::analyzed::Analyzed;
     use powdr_number::GoldilocksField;
+    use pretty_assertions::assert_eq;
+    use test_log::test;
 
-    use crate::{
-        constant_evaluator,
-        witgen::{
-            global_constraints,
-            jit::{test_util::format_code, variable::Cell},
-            FixedData,
-        },
+    use crate::witgen::{
+        global_constraints,
+        jit::{effect::format_code, test_util::read_pil, variable::Cell},
+        machines::{Connection, FixedLookup, KnownMachine},
+        FixedData,
     };
 
     use super::*;
 
     pub struct FixedEvaluatorForFixedData<'a, T: FieldElement>(pub &'a FixedData<'a, T>);
-    impl<'a, T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'a, T> {
+    impl<T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'_, T> {
         fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
             assert!(var.is_fixed());
             let values = self.0.fixed_cols[&var.poly_id].values_max_size();
@@ -426,12 +498,24 @@ mod test {
         known_cells: Vec<(&str, i32)>,
         expected_complete: Option<usize>,
     ) -> String {
-        let analyzed: Analyzed<GoldilocksField> =
-            powdr_pil_analyzer::analyze_string(input).unwrap();
-        let fixed_col_vals = constant_evaluator::generate(&analyzed);
+        let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(input);
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let (fixed_data, retained_identities) =
             global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
+
+        let fixed_lookup_connections = retained_identities
+            .iter()
+            .filter_map(|i| Connection::try_from(*i).ok())
+            .filter(|c| FixedLookup::is_responsible(c))
+            .map(|c| (c.id, c))
+            .collect();
+
+        let global_constr = fixed_data.global_range_constraints.clone();
+        let fixed_machine = FixedLookup::new(global_constr, &fixed_data, fixed_lookup_connections);
+        let known_fixed = KnownMachine::FixedLookup(fixed_machine);
+        let mutable_state = MutableState::new([known_fixed].into_iter(), &|_| {
+            Err("Query not implemented".to_string())
+        });
 
         let known_cells = known_cells.iter().map(|(name, row_offset)| {
             let id = fixed_data.try_column_by_name(name).unwrap().id;
@@ -452,7 +536,7 @@ mod test {
             for row in rows {
                 for id in retained_identities.iter() {
                     if !complete.contains(&(id.id(), *row))
-                        && witgen.process_identity(id, *row).complete
+                        && witgen.process_identity(&mutable_state, id, *row).complete
                     {
                         complete.insert((id.id(), *row));
                     }
@@ -561,18 +645,22 @@ assert (Xor::A[6] & 18446744073692774400) == 0;
 Xor::C_byte[5] = ((Xor::C[6] & 16711680) // 65536);
 Xor::C[5] = (Xor::C[6] & 65535);
 assert (Xor::C[6] & 18446744073692774400) == 0;
-machine_call(0, [Known(Xor::A_byte[6]), Unknown(Xor::B_byte[6]), Known(Xor::C_byte[6])]);
+machine_call(0, [Known(Xor::A_byte[6]), Unknown(ret(0, 6, 1)), Known(Xor::C_byte[6])]);
+Xor::B_byte[6] = ret(0, 6, 1);
 Xor::A_byte[4] = ((Xor::A[5] & 65280) // 256);
 Xor::A[4] = (Xor::A[5] & 255);
 assert (Xor::A[5] & 18446744073709486080) == 0;
 Xor::C_byte[4] = ((Xor::C[5] & 65280) // 256);
 Xor::C[4] = (Xor::C[5] & 255);
 assert (Xor::C[5] & 18446744073709486080) == 0;
-machine_call(0, [Known(Xor::A_byte[5]), Unknown(Xor::B_byte[5]), Known(Xor::C_byte[5])]);
+machine_call(0, [Known(Xor::A_byte[5]), Unknown(ret(0, 5, 1)), Known(Xor::C_byte[5])]);
+Xor::B_byte[5] = ret(0, 5, 1);
 Xor::A_byte[3] = Xor::A[4];
 Xor::C_byte[3] = Xor::C[4];
-machine_call(0, [Known(Xor::A_byte[4]), Unknown(Xor::B_byte[4]), Known(Xor::C_byte[4])]);
-machine_call(0, [Known(Xor::A_byte[3]), Unknown(Xor::B_byte[3]), Known(Xor::C_byte[3])]);
+machine_call(0, [Known(Xor::A_byte[4]), Unknown(ret(0, 4, 1)), Known(Xor::C_byte[4])]);
+Xor::B_byte[4] = ret(0, 4, 1);
+machine_call(0, [Known(Xor::A_byte[3]), Unknown(ret(0, 3, 1)), Known(Xor::C_byte[3])]);
+Xor::B_byte[3] = ret(0, 3, 1);
 Xor::B[4] = Xor::B_byte[3];
 Xor::B[5] = (Xor::B[4] + (Xor::B_byte[4] * 256));
 Xor::B[6] = (Xor::B[5] + (Xor::B_byte[5] * 65536));
