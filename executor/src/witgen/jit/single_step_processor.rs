@@ -73,8 +73,8 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             .sorted()
             .collect_vec();
 
-        // TODO also check that we completed all machine calls?
         if unknown_witnesses.is_empty() {
+            assert_eq!(complete, self.machine_parts.identities.len());
             Ok(witgen.code())
         } else {
             Err(format!(
@@ -88,7 +88,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
 impl<T: FieldElement> FixedEvaluator<T> for &SingleStepProcessor<'_, T> {
     fn evaluate(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
         // We can only return something here if the fixed column is constant
-        // in the region wer are considering.
+        // in the region we are considering.
         // This might be the case if we know we are not evaluating the first or the last
         // row, but this is not yet implemented.
         None
