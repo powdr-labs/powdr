@@ -1,4 +1,4 @@
-use std::protocols::bus::bus_receive_with_latch;
+use std::protocols::bus::bus_receive;
 use std::protocols::bus::bus_send;
 use std::math::fp2::Fp2;
 use std::math::fp2::from_base;
@@ -20,7 +20,7 @@ machine Arith with
 
     let used = std::array::sum(sel);
 
-    bus_receive_with_latch(ARITH_INTERACTION_ID, [0, x, y, z], latch * used, latch);
+    bus_receive(ARITH_INTERACTION_ID, [0, x, y, z], latch * used, latch);
 
     // TODO: Expose final value of acc as public.
 

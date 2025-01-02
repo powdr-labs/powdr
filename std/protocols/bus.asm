@@ -20,10 +20,6 @@ use std::field::known_field;
 use std::field::KnownField;
 use std::check::panic;
 
-let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity| {
-    bus_interaction_with_latch(id, tuple, multiplicity, 1)
-};
-
 /// Sends the tuple (id, tuple...) to the bus by adding
 /// `multiplicity / (beta - fingerprint(id, tuple...))` to `acc`
 /// It is the callers responsibility to properly constrain the multiplicity (e.g. constrain
@@ -34,7 +30,7 @@ let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity|
 /// - tuple: An array of columns to be sent to the bus
 /// - multiplicity: The multiplicity which shows how many times a column will be sent
 /// - latch: a binary expression which indicates where the multiplicity can be non-zero.
-let bus_interaction_with_latch: expr, expr[], expr, expr -> () = constr |id, tuple, multiplicity, latch| {
+let bus_interaction: expr, expr[], expr, expr -> () = constr |id, tuple, multiplicity, latch| {
 
     std::check::assert(required_extension_size() <= 2, || "Invalid extension size");
 
@@ -124,10 +120,10 @@ let compute_next_z: expr, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<expr> ->
 
 /// Convenience function for bus interaction to send columns
 let bus_send: expr, expr[], expr -> () = constr |id, tuple, multiplicity| {
-    bus_interaction(id, tuple, multiplicity);
+    bus_interaction(id, tuple, multiplicity, 1);
 };
 
 /// Convenience function for bus interaction to receive columns
-let bus_receive_with_latch: expr, expr[], expr, expr -> () = constr |id, tuple, multiplicity, latch| {
-    bus_interaction_with_latch(id, tuple, -1 * multiplicity, latch);
+let bus_receive: expr, expr[], expr, expr -> () = constr |id, tuple, multiplicity, latch| {
+    bus_interaction(id, tuple, -1 * multiplicity, latch);
 };
