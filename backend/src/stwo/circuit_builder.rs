@@ -67,14 +67,12 @@ pub struct PowdrEval<T> {
 
 impl<T: FieldElement> PowdrEval<T> {
     pub fn new(analyzed: Analyzed<T>) -> Self {
-        
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
-
 
         let constant_with_next_list = get_constant_with_next_list(&analyzed);
 
