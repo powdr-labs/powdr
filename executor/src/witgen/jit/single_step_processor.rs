@@ -230,7 +230,7 @@ mod test {
             "Unable to derive algorithm to compute values for witness columns in the next row and\n\
             unable to branch on a variable. The following columns are still missing:\n\
             M::Y\n\
-            and 0 identities are missing."
+            The following identities have not been fully processed:\n"
         );
     }
 
