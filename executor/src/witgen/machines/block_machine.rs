@@ -402,10 +402,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
 
         let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
-        if self
-            .function_cache
-            .compile_cached(mutable_state, identity_id, &known_inputs)
-            .is_some()
+        let disable_jit = matches!(std::env::var("POWDR_JIT_DISABLE"), Ok(val) if val == "1");
+        if !disable_jit
+            && self
+                .function_cache
+                .compile_cached(mutable_state, identity_id, &known_inputs)
+                .is_some()
         {
             let updates = self.process_lookup_via_jit(mutable_state, identity_id, outer_query)?;
             assert!(updates.is_complete());
