@@ -3,10 +3,12 @@ use std::{
     collections::{BTreeMap, HashMap},
 };
 
+use bit_vec::BitVec;
 use powdr_number::FieldElement;
 
 use crate::witgen::{
     machines::{KnownMachine, LookupCell, Machine},
+    range_constraints::RangeConstraint,
     rows::RowPair,
     EvalError, EvalResult, QueryCallback,
 };
@@ -40,6 +42,20 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
         }
     }
 
+    #[cfg(test)]
+    pub fn get_machine(&self, substring: &str) -> &RefCell<KnownMachine<'a, T>> {
+        use itertools::Itertools;
+
+        self.machines
+            .iter()
+            .filter(|m| m.borrow().name().contains(substring))
+            .exactly_one()
+            .map_err(|e| {
+                format!("Expected exactly one machine with substring '{substring}', but found {e}.")
+            })
+            .unwrap()
+    }
+
     /// Runs the first machine (unless there are no machines) end returns the generated columns.
     /// The first machine might call other machines, which is handled automatically.
     pub fn run(self) -> HashMap<String, Vec<T>> {
@@ -47,6 +63,22 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
             first_machine.try_borrow_mut().unwrap().run_timed(&self);
         }
         self.take_witness_col_values()
+    }
+
+    pub fn can_process_call_fully(
+        &self,
+        identity_id: u64,
+        known_inputs: &BitVec,
+        range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool {
+        // TODO We are currently ignoring bus interaction (also, but not only because there is no
+        // unique machine responsible for handling a bus send), so just answer "false" if the identity
+        // has no responsible machine.
+        self.responsible_machine(identity_id)
+            .ok()
+            .is_some_and(|mut machine| {
+                machine.can_process_call_fully(identity_id, known_inputs, range_constraints)
+            })
     }
 
     /// Call the machine responsible for the right-hand-side of an identity given its ID

@@ -36,7 +36,7 @@ members = [
 exclude = ["riscv-runtime"]
 
 [workspace.package]
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 license = "MIT"
 homepage = "https://powdr.org"
@@ -44,31 +44,31 @@ repository = "https://github.com/powdr-labs/powdr"
 
 [workspace.dependencies]
 # workspace crates
-powdr = { path = "./powdr", version = "0.1.3" }
-powdr-airgen = { path = "./airgen", version = "0.1.3" }
-powdr-ast = { path = "./ast", version = "0.1.3" }
-powdr-asm-to-pil = { path = "./asm-to-pil", version = "0.1.3" }
-powdr-isa-utils = { path = "./isa-utils", version = "0.1.3" }
-powdr-analysis = { path = "./analysis", version = "0.1.3" }
-powdr-asmopt = { path = "./asmopt", version = "0.1.3" }
-powdr-backend = { path = "./backend", version = "0.1.3" }
-powdr-backend-utils = { path = "./backend-utils", version = "0.1.3" }
-powdr-executor = { path = "./executor", version = "0.1.3" }
-powdr-executor-utils = { path = "./executor-utils", version = "0.1.3" }
-powdr-importer = { path = "./importer", version = "0.1.3" }
-powdr-jit-compiler = { path = "./jit-compiler", version = "0.1.3" }
-powdr-linker = { path = "./linker", version = "0.1.3" }
-powdr-number = { path = "./number", version = "0.1.3" }
-powdr-parser = { path = "./parser", version = "0.1.3" }
-powdr-parser-util = { path = "./parser-util", version = "0.1.3" }
-powdr-pil-analyzer = { path = "./pil-analyzer", version = "0.1.3" }
-powdr-pilopt = { path = "./pilopt", version = "0.1.3" }
-powdr-pipeline = { path = "./pipeline", version = "0.1.3" }
-powdr-plonky3 = { path = "./plonky3", version = "0.1.3" }
-powdr-riscv = { path = "./riscv", version = "0.1.3" }
-powdr-riscv-executor = { path = "./riscv-executor", version = "0.1.3" }
-powdr-riscv-syscalls = { path = "./riscv-syscalls", version = "0.1.3" }
-powdr-schemas = { path = "./schemas", version = "0.1.3" }
+powdr = { path = "./powdr", version = "0.1.4" }
+powdr-airgen = { path = "./airgen", version = "0.1.4" }
+powdr-ast = { path = "./ast", version = "0.1.4" }
+powdr-asm-to-pil = { path = "./asm-to-pil", version = "0.1.4" }
+powdr-isa-utils = { path = "./isa-utils", version = "0.1.4" }
+powdr-analysis = { path = "./analysis", version = "0.1.4" }
+powdr-asmopt = { path = "./asmopt", version = "0.1.4" }
+powdr-backend = { path = "./backend", version = "0.1.4" }
+powdr-backend-utils = { path = "./backend-utils", version = "0.1.4" }
+powdr-executor = { path = "./executor", version = "0.1.4" }
+powdr-executor-utils = { path = "./executor-utils", version = "0.1.4" }
+powdr-importer = { path = "./importer", version = "0.1.4" }
+powdr-jit-compiler = { path = "./jit-compiler", version = "0.1.4" }
+powdr-linker = { path = "./linker", version = "0.1.4" }
+powdr-number = { path = "./number", version = "0.1.4" }
+powdr-parser = { path = "./parser", version = "0.1.4" }
+powdr-parser-util = { path = "./parser-util", version = "0.1.4" }
+powdr-pil-analyzer = { path = "./pil-analyzer", version = "0.1.4" }
+powdr-pilopt = { path = "./pilopt", version = "0.1.4" }
+powdr-pipeline = { path = "./pipeline", version = "0.1.4" }
+powdr-plonky3 = { path = "./plonky3", version = "0.1.4" }
+powdr-riscv = { path = "./riscv", version = "0.1.4" }
+powdr-riscv-executor = { path = "./riscv-executor", version = "0.1.4" }
+powdr-riscv-syscalls = { path = "./riscv-syscalls", version = "0.1.4" }
+powdr-schemas = { path = "./schemas", version = "0.1.4" }
 
 [profile.pr-tests]
 inherits = "dev"

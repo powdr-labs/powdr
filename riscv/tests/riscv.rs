@@ -18,7 +18,7 @@ use powdr_riscv::{
 
 /// Compiles and runs a rust program with continuations, runs the full
 /// witness generation & verifies it using Pilcom.
-pub fn test_continuations(case: &str) {
+pub fn test_continuations(case: &str, prover_data: Vec<Vec<u8>>) {
     let temp_dir = Temp::new_dir().unwrap();
 
     let executable = powdr_riscv::compile_rust_crate_to_riscv(
@@ -30,10 +30,10 @@ pub fn test_continuations(case: &str) {
     // Test continuations from ELF file.
     let powdr_asm =
         powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl().with_continuations());
-    run_continuations_test(case, powdr_asm);
+    run_continuations_test(case, powdr_asm, prover_data);
 }
 
-fn run_continuations_test(case: &str, powdr_asm: String) {
+fn run_continuations_test(case: &str, powdr_asm: String, prover_data: Vec<Vec<u8>>) {
     // Manually create tmp dir, so that it is the same in all chunks.
     let tmp_dir = mktemp::Temp::new_dir().unwrap();
 
@@ -41,6 +41,11 @@ fn run_continuations_test(case: &str, powdr_asm: String) {
         .from_asm_string(powdr_asm.clone(), Some(PathBuf::from(&case)))
         .with_prover_inputs(Default::default())
         .with_output(tmp_dir.to_path_buf(), false);
+
+    for v in prover_data {
+        pipeline = pipeline.add_to_initial_memory(v);
+    }
+
     let pipeline_callback = |pipeline: &mut Pipeline<GoldilocksField>| -> Result<(), ()> {
         run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Composite).unwrap();
 
@@ -295,6 +300,25 @@ fn sum_serde() {
 
     verify_riscv_crate_bb_with_data(case, vec![answer.into()], vec![(42, data.clone())]);
     verify_riscv_crate_gl_with_data(case, vec![answer.into()], vec![(42, data)], true);
+}
+
+#[ignore = "Too slow"]
+#[test]
+fn sum_serde_in_mem() {
+    let case = "sum_serde_in_mem";
+
+    let data: Vec<u32> = vec![1, 2, 8, 5];
+    let answer = data.iter().sum::<u32>();
+
+    test_continuations(
+        case,
+        vec![
+            serde_cbor::to_vec(&answer).unwrap(),
+            serde_cbor::to_vec(&data).unwrap(),
+            serde_cbor::to_vec(&answer).unwrap(),
+            serde_cbor::to_vec(&data).unwrap(),
+        ],
+    );
 }
 
 #[test]
@@ -603,13 +627,13 @@ fn output_syscall_with_options<T: FieldElement>(options: CompilerOptions) {
 #[test]
 #[ignore = "Too slow"]
 fn many_chunks() {
-    test_continuations("many_chunks")
+    test_continuations("many_chunks", Vec::new())
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn many_chunks_memory() {
-    test_continuations("many_chunks_memory")
+    test_continuations("many_chunks_memory", Vec::new())
 }
 
 fn verify_riscv_crate(case: &str, inputs: &[u64], executor_witgen: bool) {

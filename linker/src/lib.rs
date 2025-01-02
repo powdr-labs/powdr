@@ -360,9 +360,11 @@ fn namespaced_expression(namespace: String, mut expr: Expression) -> Expression 
     expr.visit_expressions_mut(
         &mut |expr| {
             if let Expression::Reference(_, refs) = expr {
-                refs.path = SymbolPath::from_parts(
-                    once(Part::Named(namespace.clone())).chain(refs.path.clone().into_parts()),
-                );
+                if !refs.path.is_std() {
+                    refs.path = SymbolPath::from_parts(
+                        once(Part::Named(namespace.clone())).chain(refs.path.clone().into_parts()),
+                    );
+                }
             }
             ControlFlow::Continue::<(), _>(())
         },

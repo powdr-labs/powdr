@@ -4,6 +4,9 @@ use std::{
 };
 
 use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
+use powdr_number::FieldElement;
+
+use super::effect::MachineCallArgument;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
 /// A variable that can be used in the inference engine.
@@ -13,6 +16,9 @@ pub enum Variable {
     /// A parameter (input or output) of the machine.
     #[allow(dead_code)]
     Param(usize),
+    /// The return value of a machine call on a certain
+    /// identity on a certain row offset.
+    MachineCallReturnValue(MachineCallReturnVariable),
 }
 
 impl Display for Variable {
@@ -20,6 +26,13 @@ impl Display for Variable {
         match self {
             Variable::Cell(cell) => write!(f, "{cell}"),
             Variable::Param(i) => write!(f, "params[{i}]"),
+            Variable::MachineCallReturnValue(ret) => {
+                write!(
+                    f,
+                    "ret({}, {}, {})",
+                    ret.identity_id, ret.row_offset, ret.index
+                )
+            }
         }
     }
 }
@@ -42,8 +55,21 @@ impl Variable {
                 id: cell.id,
                 ptype: PolynomialType::Committed,
             }),
-            Variable::Param(_) => None,
+            Variable::Param(_) | Variable::MachineCallReturnValue(_) => None,
         }
+    }
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
+pub struct MachineCallReturnVariable {
+    pub identity_id: u64,
+    pub row_offset: i32,
+    pub index: usize,
+}
+
+impl MachineCallReturnVariable {
+    pub fn into_argument<T: FieldElement>(self) -> MachineCallArgument<T, Variable> {
+        MachineCallArgument::Unknown(Variable::MachineCallReturnValue(self))
     }
 }
 

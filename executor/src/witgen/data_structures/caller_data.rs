@@ -32,7 +32,7 @@ impl<'a, 'b, T: FieldElement> From<&'b OuterQuery<'a, '_, T>> for CallerData<'a,
     }
 }
 
-impl<'a, 'b, T: FieldElement> CallerData<'a, 'b, T> {
+impl<T: FieldElement> CallerData<'_, '_, T> {
     /// Returns the data as a list of `LookupCell`s, as expected by `Machine::process_lookup_direct`.
     pub fn as_lookup_cells(&mut self) -> Vec<LookupCell<'_, T>> {
         self.data
