@@ -42,6 +42,7 @@ struct ElfProgram {
     data_map: BTreeMap<u32, Data>,
     text_labels: BTreeSet<u32>,
     instructions: Vec<HighLevelInsn>,
+    prover_data_bounds: (u32, u32),
     entry_point: u32,
 }
 
@@ -190,6 +191,8 @@ fn load_elf(file_name: &Path) -> ElfProgram {
         text_labels: referenced_text_addrs,
         instructions: lifted_text_sections,
         entry_point: elf.entry as u32,
+        // TODO: properly load these from the ELF instead of hardcoding them.
+        prover_data_bounds: (0x10000000, 0x20000000),
     }
 }
 
@@ -365,6 +368,10 @@ impl RiscVProgram for ElfProgram {
             })
     }
 
+    fn prover_data_bounds(&self) -> (u32, u32) {
+        self.prover_data_bounds
+    }
+
     fn start_function(&self) -> impl AsRef<str> {
         self.dbg.symbols.get_one(self.entry_point)
     }
@@ -377,7 +384,7 @@ struct WrappedArgs<'a> {
     symbol_table: &'a SymbolTable,
 }
 
-impl<'a> InstructionArgs for WrappedArgs<'a> {
+impl InstructionArgs for WrappedArgs<'_> {
     type Error = String;
 
     fn l(&self) -> Result<impl AsRef<str>, Self::Error> {
@@ -568,12 +575,12 @@ struct AddressMap<'a>(BTreeMap<u32, &'a ProgramHeader>);
 impl AddressMap<'_> {
     fn is_in_data_section(&self, addr: u32) -> bool {
         self.get_section_of_addr(addr)
-            .map_or(false, |section| !section.is_executable())
+            .is_some_and(|section| !section.is_executable())
     }
 
     fn is_in_text_section(&self, addr: u32) -> bool {
         self.get_section_of_addr(addr)
-            .map_or(false, ProgramHeader::is_executable)
+            .is_some_and(ProgramHeader::is_executable)
     }
 
     fn get_section_of_addr(&self, addr: u32) -> Option<&ProgramHeader> {

@@ -1,5 +1,29 @@
 // A compiled version of std/machines/hash/poseidon_gl.asm
 
+namespace main(256);
+    col witness i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, o1, o2, o3, o4;
+    // Dummy connection constraint
+    [i1, i2, i3, i4, i5, i6, i7, i8, i9, i10, i11, i12, o1, o2, o3, o4]
+      is
+      main_poseidon::FIRSTBLOCK * main_poseidon::sel[0] $ [
+        main_poseidon::state[0],
+        main_poseidon::state[1],
+        main_poseidon::state[2],
+        main_poseidon::state[3],
+        main_poseidon::state[4],
+        main_poseidon::state[5],
+        main_poseidon::state[6],
+        main_poseidon::state[7],
+        main_poseidon::state[8],
+        main_poseidon::state[9],
+        main_poseidon::state[10],
+        main_poseidon::state[11],
+        main_poseidon::output[0],
+        main_poseidon::output[1],
+        main_poseidon::output[2],
+        main_poseidon::output[3]
+      ];
+
 namespace main_poseidon(256);
     let FULL_ROUNDS: int = 8_int;
     let PARTIAL_ROUNDS: int = 22_int;

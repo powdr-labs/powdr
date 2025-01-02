@@ -25,6 +25,7 @@ serde = { version = "1.0", default-features = false, features = [
   "derive",
   "alloc",
 ] }
+serde_cbor = "0.11.2"
 
 [features]
 default = ["halo2", "plonky3"]
@@ -39,7 +40,10 @@ estark-polygon = [
 stwo = ["powdr-backend/stwo", "powdr-pipeline/stwo"]
 
 plonky3-simd = ["powdr-backend/plonky3-simd", "powdr-pipeline/plonky3-simd"]
-estark-starky-simd = ["powdr-backend/estark-starky-simd", "powdr-pipeline/estark-starky-simd"]
+estark-starky-simd = [
+  "powdr-backend/estark-starky-simd",
+  "powdr-pipeline/estark-starky-simd",
+]
 
 [lints.clippy]
 uninlined_format_args = "deny"
