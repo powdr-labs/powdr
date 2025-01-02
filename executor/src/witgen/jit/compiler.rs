@@ -323,7 +323,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                     .map(|(v, needs_mut)| {
                         format!(
                             "let {}{};\n",
-                            needs_mut.then(|| "mut ").unwrap_or_default(),
+                            needs_mut.then_some("mut ").unwrap_or_default(),
                             variable_to_string(v)
                         )
                     })
