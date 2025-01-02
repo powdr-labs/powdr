@@ -195,23 +195,27 @@ mod test {
         let (fixed_data, retained_identities) =
             global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
         let machines = MachineExtractor::new(&fixed_data).split_out_machines(retained_identities);
-        let mutable_state = MutableState::new(machines.into_iter(), &|_| {
-            Err("Query not implemented".to_string())
-        });
-
-        let machine = mutable_state.get_machine(machine_name);
-        let ((machine_parts, block_size, latch_row), connection_ids) = match *machine.borrow() {
-            KnownMachine::BlockMachine(ref m) => (m.machine_info(), m.identity_ids()),
-            _ => panic!("Expected a block machine"),
+        let [KnownMachine::BlockMachine(machine)] = machines
+            .iter()
+            .filter(|m| m.name().contains(machine_name))
+            .collect_vec()
+            .as_slice()
+        else {
+            panic!("Expected exactly one matching block machine")
         };
-        assert_eq!(connection_ids.len(), 1);
-
+        let (machine_parts, block_size, latch_row) = machine.machine_info();
+        assert_eq!(machine_parts.connections.len(), 1);
+        let connection_id = *machine_parts.connections.keys().next().unwrap();
         let processor = BlockMachineProcessor {
             fixed_data: &fixed_data,
-            machine_parts,
+            machine_parts: machine_parts.clone(),
             block_size,
             latch_row,
         };
+
+        let mutable_state = MutableState::new(machines.into_iter(), &|_| {
+            Err("Query not implemented".to_string())
+        });
 
         let known_values = BitVec::from_iter(
             (0..num_inputs)
@@ -219,7 +223,7 @@ mod test {
                 .chain((0..num_outputs).map(|_| false)),
         );
 
-        processor.generate_code(&mutable_state, connection_ids[0], &known_values)
+        processor.generate_code(&mutable_state, connection_id, &known_values)
     }
 
     #[test]
