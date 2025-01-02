@@ -55,6 +55,5 @@ test(=sum) |
 test(=trivial) |
 test(=two_sums_serde) |
 test(=zero_with_values) |
-test(=arith_large_test) |
 (package(powdr-riscv) and test(=evm)) |
 (package(powdr-riscv) and test(=features))
