@@ -50,7 +50,7 @@ impl<'a> From<&'a str> for SymbolReference<'a> {
     }
 }
 
-impl<'a> From<&SymbolPath> for SymbolReference<'a> {
+impl From<&SymbolPath> for SymbolReference<'_> {
     fn from(name: &SymbolPath) -> Self {
         SymbolReference {
             name: name.to_string().into(),

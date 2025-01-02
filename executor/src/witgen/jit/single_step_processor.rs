@@ -190,7 +190,7 @@ mod test {
         witgen::{
             data_structures::mutable_state::MutableState,
             global_constraints,
-            jit::{effect::Effect, test_util::format_code},
+            jit::effect::{format_code, Effect},
             machines::{Connection, FixedLookup, KnownMachine, MachineParts},
             FixedData,
         },
@@ -253,7 +253,7 @@ mod test {
         let err = generate_single_step(input).err().unwrap();
         assert_eq!(
             err.to_string(),
-            "Unable to derive algorithm to compute values for witness columns in the next row for the following columns: Y"
+            "Unable to derive algorithm to compute values for witness columns in the next row and\nunable to branch on a variable. The following columns are still missing:\nY"
         );
     }
 

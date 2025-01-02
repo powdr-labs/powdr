@@ -1,14 +1,13 @@
 use std::collections::BTreeMap;
 
 use powdr_executor::constant_evaluator;
-use powdr_linker::LinkerParams;
+use powdr_linker::{LinkerMode, LinkerParams};
 use powdr_number::{FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, make_prepared_pipeline, make_simple_prepared_pipeline,
-        regular_test_all_fields, regular_test_gl, resolve_test_file,
-        run_pilcom_with_backend_variant, test_mock_backend, test_pilcom, test_plonky3_pipeline,
-        BackendVariant,
+        regular_test_all_fields, regular_test_gl, resolve_test_file, test_mock_backend,
+        test_pilcom, test_plonky3_pipeline, BackendVariant,
     },
     Pipeline,
 };
@@ -22,7 +21,8 @@ fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
 fn sqrt_asm() {
     let f = "asm/sqrt.asm";
     let i = [3];
-    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    let pipeline: Pipeline<GoldilocksField> =
+        make_prepared_pipeline(f, slice_to_vec(&i), vec![], LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -31,14 +31,14 @@ fn block_machine_exact_number_of_rows_asm() {
     let f = "asm/block_machine_exact_number_of_rows.asm";
     // This test needs machines to be of unequal length. Also, this is mostly testing witgen, so
     // we just run one backend that supports variable-length machines.
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
 #[test]
 fn challenges_asm() {
     let f = "asm/challenges.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
@@ -61,14 +61,14 @@ fn secondary_machine_plonk() {
 #[test]
 fn secondary_block_machine_add2() {
     let f = "asm/secondary_block_machine_add2.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
 #[test]
 fn second_phase_hint() {
     let f = "asm/second_phase_hint.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
@@ -102,7 +102,7 @@ fn mem_write_once_external_write() {
 #[test]
 fn block_machine_cache_miss() {
     let f = "asm/block_machine_cache_miss.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -110,7 +110,8 @@ fn block_machine_cache_miss() {
 fn palindrome() {
     let f = "asm/palindrome.asm";
     let i = [7, 1, 7, 3, 9, 3, 7, 1];
-    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    let pipeline: Pipeline<GoldilocksField> =
+        make_prepared_pipeline(f, slice_to_vec(&i), vec![], LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -127,6 +128,8 @@ fn empty() {
 }
 
 #[test]
+// TODO: https://github.com/powdr-labs/powdr/issues/2292
+#[should_panic = "Identity references no namespace: Constr::PhantomBusInteraction(1, [0]);"]
 fn single_operation() {
     let f = "asm/single_operation.asm";
     regular_test_all_fields(f, &[]);
@@ -141,7 +144,7 @@ fn empty_vm() {
 #[test]
 fn vm_to_block_unique_interface() {
     let f = "asm/vm_to_block_unique_interface.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -160,7 +163,7 @@ fn block_to_block() {
 #[test]
 fn block_to_block_empty_submachine() {
     let f = "asm/block_to_block_empty_submachine.asm";
-    let mut pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
 
     let witness = pipeline.compute_witness().unwrap();
     let arith_size = witness
@@ -178,7 +181,7 @@ fn block_to_block_empty_submachine() {
 #[test]
 fn block_to_block_with_bus_monolithic() {
     let f = "asm/block_to_block_with_bus.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
@@ -186,7 +189,7 @@ fn block_to_block_with_bus_monolithic() {
 #[test]
 fn block_to_block_with_bus_different_sizes() {
     let f = "asm/block_to_block_with_bus_different_sizes.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
@@ -202,10 +205,14 @@ fn block_to_block_with_bus_composite() {
     //   challenges. As a result, the challenges during verification differ and the constraints are
     //   not satisfied.
 
+    use powdr_number::Bn254Field;
     use powdr_pipeline::test_util::test_halo2_with_backend_variant;
     let f = "asm/block_to_block_with_bus.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_mock_backend(pipeline.clone());
+    let pipeline = make_simple_prepared_pipeline::<Bn254Field>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline);
+
+    // Native linker mode, because bus constraints are exponential in Halo2
+    let pipeline = make_simple_prepared_pipeline(f, LinkerMode::Native);
     test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
@@ -251,7 +258,7 @@ fn vm_to_block_array() {
 fn dynamic_vadcop() {
     let f = "asm/dynamic_vadcop.asm";
 
-    let mut pipeline_gl = make_simple_prepared_pipeline(f);
+    let mut pipeline_gl = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     let witness = pipeline_gl.compute_witness().unwrap();
     let witness_by_name = witness
         .iter()
@@ -263,9 +270,6 @@ fn dynamic_vadcop() {
     assert_eq!(witness_by_name["main_arith::y"].len(), 32);
     assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
 
-    // Because machines have different lengths, this can only be proven
-    // with a composite proof.
-    run_pilcom_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite).unwrap();
     test_mock_backend(pipeline_gl.clone());
     test_plonky3_pipeline(pipeline_gl);
 }
@@ -285,28 +289,28 @@ fn vm_to_block_multiple_links() {
 #[test]
 fn mem_read_write() {
     let f = "asm/mem_read_write.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
 #[test]
 fn mem_read_write_no_memory_accesses() {
     let f = "asm/mem_read_write_no_memory_accesses.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
 #[test]
 fn mem_read_write_with_bootloader() {
     let f = "asm/mem_read_write_with_bootloader.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
 #[test]
 fn mem_read_write_large_diffs() {
     let f = "asm/mem_read_write_large_diffs.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -341,14 +345,15 @@ fn multi_return_wrong_assignment_register_length() {
 fn bit_access() {
     let f = "asm/bit_access.asm";
     let i = [20];
-    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    let pipeline: Pipeline<GoldilocksField> =
+        make_prepared_pipeline(f, slice_to_vec(&i), vec![], LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
 #[test]
 fn sqrt() {
     let f = "asm/sqrt.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -356,7 +361,8 @@ fn sqrt() {
 fn functional_instructions() {
     let f = "asm/functional_instructions.asm";
     let i = [20];
-    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    let pipeline: Pipeline<GoldilocksField> =
+        make_prepared_pipeline(f, slice_to_vec(&i), vec![], LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -432,7 +438,7 @@ fn enum_in_asm() {
 #[test]
 fn pass_range_constraints() {
     let f = "asm/pass_range_constraints.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -538,7 +544,12 @@ mod book {
     fn run_book_test(file: &str) {
         use powdr_pipeline::test_util::test_mock_backend;
         // passing 0 to all tests currently works as they either take no prover input or 0 works
-        let pipeline = make_prepared_pipeline::<GoldilocksField>(file, vec![0.into()], vec![]);
+        let pipeline = make_prepared_pipeline::<GoldilocksField>(
+            file,
+            vec![0.into()],
+            vec![],
+            LinkerMode::Bus,
+        );
         test_mock_backend(pipeline);
     }
 
@@ -550,7 +561,8 @@ mod book {
 fn hello_world_asm_fail() {
     let f = "asm/book/hello_world.asm";
     let i = [2];
-    let pipeline: Pipeline<GoldilocksField> = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
+    let pipeline: Pipeline<GoldilocksField> =
+        make_prepared_pipeline(f, slice_to_vec(&i), vec![], LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -558,7 +570,7 @@ fn hello_world_asm_fail() {
 #[should_panic = "FailedAssertion(\"This should fail.\")"]
 fn failing_assertion() {
     let f = "asm/failing_assertion.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
@@ -755,7 +767,7 @@ fn keccak() {
 #[test]
 fn connect_no_witgen() {
     let f = "asm/connect_no_witgen.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Native);
     // TODO Mock prover doesn't support this test yet.
     test_pilcom(pipeline);
 }
@@ -763,7 +775,7 @@ fn connect_no_witgen() {
 #[test]
 fn generics_preservation() {
     let f = "asm/generics_preservation.asm";
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     // No need to generate a proof here.
 }
 
@@ -771,21 +783,21 @@ fn generics_preservation() {
 fn trait_parsing() {
     // Should be expanded/renamed when traits functionality is fully implemented
     let f = "asm/trait_parsing.asm";
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     // No need to generate a proof here.
 }
 
 #[test]
 fn dynamic_fixed_cols() {
     let f = "asm/dynamic_fixed_cols.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 
 #[test]
 fn type_vars_in_local_decl() {
     let f = "asm/type_vars_in_local_decl.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
 

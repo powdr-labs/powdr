@@ -5,8 +5,8 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
-    PermutationIdentity, PhantomBusInteractionIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, PolynomialIdentity, PolynomialType,
+    PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolynomialIdentity,
+    PolynomialType,
 };
 use powdr_number::FieldElement;
 
@@ -125,12 +125,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 &left.expressions,
                 row_offset,
             ),
-            Identity::PhantomBusInteraction(PhantomBusInteractionIdentity {
-                id,
-                multiplicity,
-                tuple,
-                ..
-            }) => self.process_call(can_process, *id, multiplicity, &tuple.0, row_offset),
+            // TODO(bus_interaction)
+            Identity::PhantomBusInteraction(_) => ProcessResult::empty(),
             Identity::Connect(_) => ProcessResult::empty(),
         };
         self.ingest_effects(result)
@@ -349,7 +345,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     })
             })
             .iter()
-            .chain(self.derived_range_constraints.get(&variable))
+            .chain(self.derived_range_constraints.get(variable))
             .cloned()
             .reduce(|gc, rc| gc.conjunction(&rc))
     }
@@ -502,7 +498,7 @@ pub trait CanProcessCall<T: FieldElement> {
     ) -> bool;
 }
 
-impl<'a, T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'a, T, Q> {
+impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'_, T, Q> {
     fn can_process_call_fully(
         &self,
         identity_id: u64,
@@ -515,27 +511,22 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableSta
 
 #[cfg(test)]
 mod test {
+    use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
-    use powdr_ast::analyzed::Analyzed;
-    use powdr_number::GoldilocksField;
-
-    use crate::{
-        constant_evaluator,
-        witgen::{
-            global_constraints,
-            jit::{test_util::format_code, variable::Cell},
-            machines::{Connection, FixedLookup, KnownMachine},
-            FixedData,
-        },
+    use crate::witgen::{
+        global_constraints,
+        jit::{effect::format_code, test_util::read_pil, variable::Cell},
+        machines::{Connection, FixedLookup, KnownMachine},
+        FixedData,
     };
 
     use super::*;
 
     #[derive(Clone)]
     pub struct FixedEvaluatorForFixedData<'a, T: FieldElement>(pub &'a FixedData<'a, T>);
-    impl<'a, T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'a, T> {
+    impl<T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'_, T> {
         fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
             assert!(var.is_fixed());
             let values = self.0.fixed_cols[&var.poly_id].values_max_size();
@@ -550,9 +541,7 @@ mod test {
         known_cells: Vec<(&str, i32)>,
         expected_complete: Option<usize>,
     ) -> String {
-        let analyzed: Analyzed<GoldilocksField> =
-            powdr_pil_analyzer::analyze_string(input).unwrap();
-        let fixed_col_vals = constant_evaluator::generate(&analyzed);
+        let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(input);
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let (fixed_data, retained_identities) =
             global_constraints::set_global_constraints(fixed_data, &analyzed.identities);

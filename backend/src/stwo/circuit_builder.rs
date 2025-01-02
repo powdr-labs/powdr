@@ -1,28 +1,22 @@
-use num_traits::Zero;
+use core::unreachable;
 use powdr_ast::parsed::visitor::AllChildren;
+use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, GlobalValues, TraceValues};
 use std::collections::HashSet;
-use std::fmt::Debug;
-use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 use std::sync::Arc;
 
 extern crate alloc;
 use alloc::collections::btree_map::BTreeMap;
-use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    Analyzed, Identity,
-};
-use powdr_number::{FieldElement, LargeInt};
+use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, Identity};
+use powdr_number::FieldElement;
 
-use powdr_ast::analyzed::{
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
-};
+use powdr_ast::analyzed::{PolyID, PolynomialType};
 use stwo_prover::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use stwo_prover::constraint_framework::{
     EvalAtRow, FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX,
 };
 use stwo_prover::core::backend::{Column, ColumnOps};
 use stwo_prover::core::fields::m31::{BaseField, M31};
-use stwo_prover::core::fields::{ExtensionOf, FieldExpOps, FieldOps};
+use stwo_prover::core::fields::{ExtensionOf, FieldOps};
 use stwo_prover::core::poly::circle::{CircleDomain, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
@@ -100,6 +94,37 @@ impl<T: FieldElement> PowdrEval<T> {
     }
 }
 
+struct Data<'a, F> {
+    witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
+    constant_shifted_eval: &'a BTreeMap<PolyID, F>,
+    constant_eval: &'a BTreeMap<PolyID, F>,
+}
+
+impl<F: Clone> TraceValues<F> for &Data<'_, F> {
+    fn get(&self, poly_ref: &AlgebraicReference) -> F {
+        match poly_ref.poly_id.ptype {
+            PolynomialType::Committed => match poly_ref.next {
+                false => self.witness_eval[&poly_ref.poly_id][0].clone(),
+                true => self.witness_eval[&poly_ref.poly_id][1].clone(),
+            },
+            PolynomialType::Constant => match poly_ref.next {
+                false => self.constant_eval[&poly_ref.poly_id].clone(),
+                true => self.constant_shifted_eval[&poly_ref.poly_id].clone(),
+            },
+            PolynomialType::Intermediate => unreachable!(),
+        }
+    }
+}
+
+impl<F> GlobalValues<F> for &Data<'_, F> {
+    fn get_public(&self, _public: &str) -> F {
+        unimplemented!("Public references are not supported in stwo yet")
+    }
+    fn get_challenge(&self, _challenge: &Challenge) -> F {
+        unimplemented!("challenges are not supported in stwo yet")
+    }
+}
+
 impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
     fn log_size(&self) -> u32 {
         self.analyzed.degree().ilog2()
@@ -151,18 +176,23 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             })
             .collect();
 
-        for id in self
-            .analyzed
-            .identities_with_inlined_intermediate_polynomials()
-        {
+        let intermediate_definitions = self.analyzed.intermediate_definitions();
+        let data = Data {
+            witness_eval: &witness_eval,
+            constant_shifted_eval: &constant_shifted_eval,
+            constant_eval: &constant_eval,
+        };
+        let mut evaluator = ExpressionEvaluator::new_with_custom_expr(
+            &data,
+            &data,
+            &intermediate_definitions,
+            |v| E::F::from(M31::from(v.try_into_i32().unwrap())),
+        );
+
+        for id in &self.analyzed.identities {
             match id {
                 Identity::Polynomial(identity) => {
-                    let expr = to_stwo_expression(
-                        &identity.expression,
-                        &witness_eval,
-                        &constant_shifted_eval,
-                        &constant_eval,
-                    );
+                    let expr = evaluator.evaluate(&identity.expression);
                     eval.add_constraint(expr);
                 }
                 Identity::Connect(..) => {
@@ -180,87 +210,6 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             }
         }
         eval
-    }
-}
-
-fn to_stwo_expression<T: FieldElement, F>(
-    expr: &AlgebraicExpression<T>,
-    witness_eval: &BTreeMap<PolyID, [F; 2]>,
-    constant_shifted_eval: &BTreeMap<PolyID, F>,
-    constant_eval: &BTreeMap<PolyID, F>,
-) -> F
-where
-    F: FieldExpOps
-        + Clone
-        + Debug
-        + Zero
-        + Neg<Output = F>
-        + AddAssign
-        + AddAssign<BaseField>
-        + Add<F, Output = F>
-        + Sub<F, Output = F>
-        + Mul<BaseField, Output = F>
-        + Neg<Output = F>
-        + From<BaseField>,
-{
-    use AlgebraicBinaryOperator::*;
-    match expr {
-        AlgebraicExpression::Reference(r) => {
-            let poly_id = r.poly_id;
-
-            match poly_id.ptype {
-                PolynomialType::Committed => match r.next {
-                    false => witness_eval[&poly_id][0].clone(),
-                    true => witness_eval[&poly_id][1].clone(),
-                },
-                PolynomialType::Constant => match r.next {
-                    false => constant_eval[&poly_id].clone(),
-                    true => constant_shifted_eval[&poly_id].clone(),
-                },
-                PolynomialType::Intermediate => {
-                    unimplemented!("Intermediate polynomials are not supported in stwo yet")
-                }
-            }
-        }
-        AlgebraicExpression::PublicReference(..) => {
-            unimplemented!("Public references are not supported in stwo yet")
-        }
-        AlgebraicExpression::Number(n) => F::from(M31::from(n.try_into_i32().unwrap())),
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-            left,
-            op: Pow,
-            right,
-        }) => match **right {
-            AlgebraicExpression::Number(n) => {
-                let left =
-                    to_stwo_expression(left, witness_eval, constant_shifted_eval, constant_eval);
-                (0u32..n.to_integer().try_into_u32().unwrap())
-                    .fold(F::one(), |acc, _| acc * left.clone())
-            }
-            _ => unimplemented!("pow with non-constant exponent"),
-        },
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let left = to_stwo_expression(left, witness_eval, constant_shifted_eval, constant_eval);
-            let right =
-                to_stwo_expression(right, witness_eval, constant_shifted_eval, constant_eval);
-
-            match op {
-                Add => left + right,
-                Sub => left - right,
-                Mul => left * right,
-                Pow => unreachable!("This case was handled above"),
-            }
-        }
-        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-            let expr = to_stwo_expression(expr, witness_eval, constant_shifted_eval, constant_eval);
-
-            match op {
-                AlgebraicUnaryOperator::Minus => -expr,
-            }
-        }
-        AlgebraicExpression::Challenge(_challenge) => {
-            unimplemented!("challenges are not supported in stwo yet")
-        }
     }
 }
 
