@@ -10,7 +10,7 @@ use crate::witgen::{machines::MachineParts, FixedData};
 use super::{
     effect::Effect,
     variable::{Cell, Variable},
-    witgen_inference::{FixedEvaluator, WitgenInference},
+    witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
 
 /// A processor for generating JIT code that computes the next row from the previous row.
@@ -76,14 +76,13 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             .sorted()
             .collect_vec();
 
-            let missing_identities = self.machine_parts.len() - complete.len();
-        if unknown_witnesses.is_empty() && missing_identities == 0{
+        let missing_identities = self.machine_parts.identities.len() - complete.len();
+        if unknown_witnesses.is_empty() && missing_identities == 0 {
             Ok(witgen.code())
         } else {
             Err(format!(
                 "Unable to derive algorithm to compute values for witness columns in the next row for the following columns:\n{}\nand {missing_identities} identities are missing.",
-                unknown_witnesses.iter().map(|wit| self.fixed_data.column_name(wit)).format(", "),
-                
+                unknown_witnesses.iter().map(|wit| self.fixed_data.column_name(wit)).format(", ")
             ))
         }
     }
@@ -102,20 +101,26 @@ impl<T: FieldElement> FixedEvaluator<T> for &SingleStepProcessor<'_, T> {
 #[cfg(test)]
 mod test {
 
-    use powdr_ast::analyzed::Analyzed;
+    use itertools::Itertools;
+
     use powdr_number::GoldilocksField;
 
-    use crate::{
-        constant_evaluator,
-        witgen::{
-            data_structures::mutable_state::MutableState, global_constraints, jit::{effect::Effect, test_util::read_pil}, machines::{machine_extractor::MachineExtractor, KnownMachine, MachineParts}, FixedData
+    use crate::witgen::{
+        data_structures::mutable_state::MutableState,
+        global_constraints,
+        jit::{
+            effect::{format_code, Effect},
+            test_util::read_pil,
         },
+        machines::{machine_extractor::MachineExtractor, KnownMachine, Machine},
+        FixedData,
     };
 
     use super::{SingleStepProcessor, Variable};
 
     fn generate_single_step(
         input_pil: &str,
+        machine_name: &str,
     ) -> Result<Vec<Effect<GoldilocksField, Variable>>, String> {
         let (analyzed, fixed_col_vals) = read_pil(input_pil);
 
@@ -123,27 +128,15 @@ mod test {
         let (fixed_data, retained_identities) =
             global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
         let machines = MachineExtractor::new(&fixed_data).split_out_machines(retained_identities);
-        let mutable_state = MutableState::new(machines.into_iter(), &|_| {
-            Err("Query not implemented".to_string())
-        });
-        
-        let KnownMachine::DynamicMachine(machine)= mutable_state.get_machine("Main") else { panic!(); }
-        assert_eq!(machines.len(), 1);
-
-        let witness_columns = analyzed
-            .committed_polys_in_source_order()
-            .flat_map(|(symbol, _)| symbol.array_elements().map(|(_, id)| id))
-            .collect();
-
-        let machine_parts = MachineParts::new(
-            &fixed_data,
-            // no connections
-            Default::default(),
-            retained_identities,
-            witness_columns,
-            // No prover functions
-            Vec::new(),
-        );
+        let [KnownMachine::DynamicMachine(machine)] = machines
+            .iter()
+            .filter(|m| m.name().contains(machine_name))
+            .collect_vec()
+            .as_slice()
+        else {
+            panic!("Expected exactly one matching dynamic machine")
+        };
+        let machine_parts = machine.machine_parts().clone();
         let mutable_state = MutableState::new(machines.into_iter(), &|_| {
             Err("Query not implemented".to_string())
         });
@@ -157,18 +150,23 @@ mod test {
 
     #[test]
     fn fib() {
-        let input = "namespace Main(256); let X; let Y; X' = Y; Y' = X + Y;";
-        let code = generate_single_step(input).unwrap();
-        assert_eq!(format_code(&code), "X[1] = Y[0];\nY[1] = (X[0] + Y[0]);");
+        let input = "namespace M(256); let X; let Y; X' = Y; Y' = X + Y;";
+        let code = generate_single_step(input, "M").unwrap();
+        assert_eq!(
+            format_code(&code),
+            "M::X[1] = M::Y[0];\nM::Y[1] = (M::X[0] + M::Y[0]);"
+        );
     }
 
     #[test]
     fn no_progress() {
-        let input = "namespace Main(256); let X; let Y; X' = X;";
-        let err = generate_single_step(input).err().unwrap();
+        let input = "namespace M(256); let X; let Y; X' = X;";
+        let err = generate_single_step(input, "M").err().unwrap();
         assert_eq!(
             err.to_string(),
-            "Unable to derive algorithm to compute values for witness columns in the next row for the following columns: Y"
+            "Unable to derive algorithm to compute values for witness columns in the next row for the following columns:\n\
+            M::Y\n\
+            and 0 identities are missing."
         );
     }
 }

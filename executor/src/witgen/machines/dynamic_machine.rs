@@ -278,4 +278,9 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
             );
         }
     }
+
+    #[cfg(test)]
+    pub fn machine_parts(&self) -> &MachineParts<'a, T> {
+        &self.parts
+    }
 }
