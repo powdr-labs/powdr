@@ -351,8 +351,6 @@ mod tests {
     {
         let mut pipeline = Pipeline::<F>::default().from_pil_string(pil.to_string());
         let pil = pipeline.compute_optimized_pil().unwrap();
-        println!("ACAAAAAAAAAAAAAAAAAAAAAAAAAAAA:\n");
-        println!("{}", pil);
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = &mut pipeline.compute_witness().unwrap();
         let fixed = pipeline.compute_fixed_cols().unwrap();
