@@ -4,6 +4,7 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_number::FieldElement;
+use rayon::vec;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 use std::collections::BTreeMap;
@@ -217,7 +218,6 @@ where
     }
 
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
-        
         let split: BTreeMap<String, Analyzed<F>> = powdr_backend_utils::split_pil(&self.analyzed)
             .into_iter()
             .collect();
@@ -225,10 +225,10 @@ where
         //Each machine needs its own component to generate its proof, the components from different machines are stored in a vector components
         let tree_span_provider = &mut TraceLocationAllocator::default();
         let mut components = Vec::new();
-        
+
         //The preprocessed columns needs to be indexed in the whole execution instead of each machine, so we need to keep track of the offset
-        let mut constant_cols_offset_acc=0;
-        
+        let mut constant_cols_offset_acc = 0;
+
         let witness_by_machine = split
             .iter()
             .filter_map(|(machine, pil)| {
@@ -239,15 +239,15 @@ where
                     None
                 } else {
                     println!("crate component for machine {:?} \n", machine);
-                    constant_cols_offset_acc+=pil.constant_count();
-                    //println!("\n the pil  for this machine is {:?} \n", pil.definitions);
+                    constant_cols_offset_acc += pil.constant_count();
+                    constant_cols_offset_acc += get_constant_with_next_list(pil).len();
+
                     components.push(PowdrComponent::new(
                         tree_span_provider,
-                        PowdrEval::new((*pil).clone(),constant_cols_offset_acc),
+                        PowdrEval::new((*pil).clone(), constant_cols_offset_acc),
                         (SecureField::zero(), None),
                     ));
 
-    
                     Some((
                         machine.clone(),
                         machine_witness_columns(witness, pil, machine),
@@ -272,7 +272,8 @@ where
             .collect();
 
         println!("degrees are {:?} \n", self.analyzed.degrees());
-        let degrees = self.analyzed.degrees(); // Store the result in a variable
+        let degrees = self.analyzed.degrees();
+
         let max_degree = degrees
             .iter()
             .max()
@@ -371,20 +372,6 @@ where
             commitment_scheme.trees[1].polynomials.len()
         );
 
-        //Sanity check. Remove for production.
-        // let trace_polys = commitment_scheme
-        //     .trees
-        //     .as_ref()
-        //     .map(|t| t.polynomials.iter().cloned().collect_vec());
-        // assert_constraints(
-        //     &trace_polys,
-        //     CanonicCoset::new(max_degree.ilog2()),
-        //     |eval| {
-        //         &components[0].evaluate(eval);
-        //     },
-        //     (SecureField::zero(), None),
-        // );
-
         let proof_result = stwo_prover::core::prover::prove::<B, MC>(
             components_slice,
             prover_channel,
@@ -417,25 +404,35 @@ where
         let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new(config);
 
         //Constraints that are to be proved
-        let mut component = PowdrComponent::new(
-            &mut TraceLocationAllocator::default(),
-            PowdrEval::new((*self.analyzed).clone(),0),
-            (SecureField::zero(), None),
-        );
+
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
         let mut components = Vec::new();
 
+        let mut constant_cols_offset_acc = 0;
+        // sizes stores the columns size info
+        let mut sizes: Vec<Vec<u32>> = vec![Vec::new(), Vec::new()];
+
         self.split.iter().for_each(|(machine, pil)| {
-            component = PowdrComponent::new(
-                &mut TraceLocationAllocator::default(),
-                PowdrEval::new((*pil).clone(),0),
-                (SecureField::zero(), None),
-            );
+            
+            constant_cols_offset_acc += pil.constant_count();
+
+            
+            constant_cols_offset_acc += get_constant_with_next_list(pil).len();
+
+            sizes[0].extend(vec![
+                pil.degree().ilog2() as u32;
+                pil.constant_count()
+                    + get_constant_with_next_list(pil).len()
+            ]);
+            sizes[1].extend(vec![
+                pil.degree().ilog2() as u32;
+                pil.commitment_count()
+            ]);
 
             components.push(PowdrComponent::new(
                 tree_span_provider,
-                PowdrEval::new((*pil).clone(),0),
+                PowdrEval::new((*pil).clone(), constant_cols_offset_acc),
                 (SecureField::zero(), None),
             ));
         });
@@ -447,10 +444,7 @@ where
 
         let components_slice = components_slice.as_mut_slice();
 
-        // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-        // the sizes include the degrees of the constant, witness, native lookups. Native lookups are not used yet.
-        //TODO: need a function to extract the sizes from every component
-        let sizes = component.trace_log_degree_bounds();
+    
 
         commitment_scheme.commit(
             proof.commitments[PREPROCESSED_TRACE_IDX],
@@ -462,6 +456,8 @@ where
             &sizes[ORIGINAL_TRACE_IDX],
             verifier_channel,
         );
+
+        println!("sizes are {:?} \n", sizes);
 
         stwo_prover::core::prover::verify(
             components_slice,

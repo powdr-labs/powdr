@@ -68,7 +68,7 @@ pub struct PowdrEval<T> {
 }
 
 impl<T: FieldElement> PowdrEval<T> {
-    pub fn new(analyzed: Analyzed<T>,preprocess_col_offset:usize) -> Self {
+    pub fn new(analyzed: Analyzed<T>, preprocess_col_offset: usize) -> Self {
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())
@@ -135,7 +135,9 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                 (
                     *poly_id,
                     // PreprocessedColumn::Plonk(i) is unused argument in get_preprocessed_column
-                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(i+self.preprocess_col_offset)),
+                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(
+                        i + self.preprocess_col_offset,
+                    )),
                 )
             })
             .collect();
