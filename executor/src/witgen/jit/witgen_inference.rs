@@ -1,18 +1,21 @@
 use std::collections::{HashMap, HashSet};
 
+use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
     PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolynomialIdentity,
-    PolynomialType, SelectedExpressions,
+    PolynomialType,
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::global_constraints::RangeConstraintSet;
+use crate::witgen::{
+    data_structures::mutable_state::MutableState, global_constraints::RangeConstraintSet,
+    range_constraints::RangeConstraint, FixedData, QueryCallback,
+};
 
 use super::{
-    super::{range_constraints::RangeConstraint, FixedData},
     affine_symbolic_expression::{AffineSymbolicExpression, ProcessResult},
     effect::{Effect, MachineCallArgument},
     variable::{MachineCallReturnVariable, Variable},
@@ -63,28 +66,28 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 
     /// Process an identity on a certain row.
-    pub fn process_identity(&mut self, id: &'a Identity<T>, row_offset: i32) -> ProcessSummary {
+    pub fn process_identity<CanProcess: CanProcessCall<T>>(
+        &mut self,
+        can_process: CanProcess,
+        id: &'a Identity<T>,
+        row_offset: i32,
+    ) -> ProcessSummary {
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                 self.process_equality_on_row(expression, row_offset, T::from(0).into())
             }
-            Identity::Lookup(LookupIdentity {
-                id, left, right, ..
-            })
-            | Identity::Permutation(PermutationIdentity {
-                id, left, right, ..
-            })
-            | Identity::PhantomPermutation(PhantomPermutationIdentity {
-                id, left, right, ..
-            })
-            | Identity::PhantomLookup(PhantomLookupIdentity {
-                id, left, right, ..
-            }) => self.process_lookup(*id, left, right, row_offset),
-            Identity::PhantomBusInteraction(_) => {
-                // TODO(bus_interaction) Once we have a concept of "can_be_answered", bus interactions
-                // should be as easy as lookups.
-                ProcessResult::empty()
-            }
+            Identity::Lookup(LookupIdentity { id, left, .. })
+            | Identity::Permutation(PermutationIdentity { id, left, .. })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { id, left, .. })
+            | Identity::PhantomLookup(PhantomLookupIdentity { id, left, .. }) => self.process_call(
+                can_process,
+                *id,
+                &left.selector,
+                &left.expressions,
+                row_offset,
+            ),
+            // TODO(bus_interaction)
+            Identity::PhantomBusInteraction(_) => ProcessResult::empty(),
             Identity::Connect(_) => ProcessResult::empty(),
         };
         self.ingest_effects(result)
@@ -136,74 +139,69 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    fn process_lookup(
+    fn process_call<CanProcess: CanProcessCall<T>>(
         &mut self,
-        identity_id: u64,
-        left: &'a SelectedExpressions<T>,
-        right: &'a SelectedExpressions<T>,
+        can_process_call: CanProcess,
+        lookup_id: u64,
+        selector: &Expression<T>,
+        arguments: &'a [Expression<T>],
         row_offset: i32,
     ) -> ProcessResult<T, Variable> {
-        // TODO: In the future, call the 'mutable state' to check if the
-        // lookup can always be answered.
-
-        // If the RHS is fully fixed columns...
-        if right.expressions.iter().all(|e| match e {
-            Expression::Reference(r) => r.is_fixed(),
-            Expression::Number(_) => true,
-            _ => false,
-        }) {
-            // and the selector is known to be 1...
-            if self
-                .evaluate(&left.selector, row_offset)
-                .and_then(|s| s.try_to_known().map(|k| k.is_known_one()))
-                == Some(true)
-            {
-                if let Some(lhs) = left
-                    .expressions
-                    .iter()
-                    .map(|e| self.evaluate(e, row_offset))
-                    .collect::<Option<Vec<_>>>()
-                {
-                    // and all except one expression is known on the LHS.
-                    let unknown = lhs
-                        .iter()
-                        .filter(|e| e.try_to_known().is_none())
-                        .collect_vec();
-                    if unknown.len() == 1 && unknown[0].single_unknown_variable().is_some() {
-                        let args = left
-                            .expressions
-                            .iter()
-                            .enumerate()
-                            .map(|(index, e)| {
-                                if let Some(known_value) = self
-                                    .evaluate(e, row_offset)
-                                    .and_then(|e| e.try_to_known().cloned())
-                                {
-                                    MachineCallArgument::Known(known_value.clone())
-                                } else {
-                                    let ret_var = MachineCallReturnVariable {
-                                        identity_id,
-                                        row_offset,
-                                        index,
-                                    };
-                                    self.assign_variable(
-                                        e,
-                                        row_offset,
-                                        Variable::MachineCallReturnValue(ret_var.clone()),
-                                    );
-                                    ret_var.into_argument()
-                                }
-                            })
-                            .collect();
-                        return ProcessResult::complete(vec![Effect::MachineCall(
-                            identity_id,
-                            args,
-                        )]);
-                    }
-                }
-            }
+        // We need to know the selector.
+        if self
+            .evaluate(selector, row_offset)
+            .and_then(|s| s.try_to_known().map(|k| k.is_known_one()))
+            != Some(true)
+        {
+            return ProcessResult::empty();
         }
-        ProcessResult::empty()
+        let evaluated = arguments
+            .iter()
+            .map(|a| {
+                self.evaluate(a, row_offset)
+                    .and_then(|a| a.try_to_known().cloned())
+            })
+            .collect::<Vec<_>>();
+        let range_constraints = evaluated
+            .iter()
+            .map(|e| e.as_ref().and_then(|e| e.range_constraint()))
+            .collect_vec();
+        let known = evaluated.iter().map(|e| e.is_some()).collect();
+
+        if !can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints) {
+            log::trace!(
+                "Sub-machine cannot process call fully (will retry later): {lookup_id}, arguments: {}",
+                arguments.iter().zip(known).map(|(arg, known)| {
+                    format!("{arg} [{}]", if known { "known" } else { "unknown" })
+                }).format(", "));
+            return ProcessResult::empty();
+        }
+        let args = evaluated
+            .into_iter()
+            .zip(arguments)
+            .enumerate()
+            .map(|(index, (eval_expr, arg))| {
+                if let Some(e) = eval_expr {
+                    MachineCallArgument::Known(e)
+                } else {
+                    let ret_var = MachineCallReturnVariable {
+                        identity_id: lookup_id,
+                        row_offset,
+                        index,
+                    };
+                    self.assign_variable(
+                        arg,
+                        row_offset,
+                        Variable::MachineCallReturnValue(ret_var.clone()),
+                    );
+                    ret_var.into_argument()
+                }
+            })
+            .collect_vec();
+        ProcessResult {
+            effects: vec![Effect::MachineCall(lookup_id, args)],
+            complete: true,
+        }
     }
 
     fn process_assignments(&mut self) {
@@ -445,27 +443,47 @@ pub trait FixedEvaluator<T: FieldElement> {
     }
 }
 
+pub trait CanProcessCall<T: FieldElement> {
+    /// Returns true if a call to the machine that handles the given identity
+    /// can always be processed with the given known inputs and range constraints
+    /// on the parameters.
+    /// @see Machine::can_process_call
+    fn can_process_call_fully(
+        &self,
+        _identity_id: u64,
+        _known_inputs: &BitVec,
+        _range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool;
+}
+
+impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'_, T, Q> {
+    fn can_process_call_fully(
+        &self,
+        identity_id: u64,
+        known_inputs: &BitVec,
+        range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool {
+        MutableState::can_process_call_fully(self, identity_id, known_inputs, range_constraints)
+    }
+}
+
 #[cfg(test)]
 mod test {
-
-    use pretty_assertions::assert_eq;
-
-    use powdr_ast::analyzed::Analyzed;
     use powdr_number::GoldilocksField;
+    use pretty_assertions::assert_eq;
+    use test_log::test;
 
-    use crate::{
-        constant_evaluator,
-        witgen::{
-            global_constraints,
-            jit::{test_util::format_code, variable::Cell},
-            FixedData,
-        },
+    use crate::witgen::{
+        global_constraints,
+        jit::{effect::format_code, test_util::read_pil, variable::Cell},
+        machines::{Connection, FixedLookup, KnownMachine},
+        FixedData,
     };
 
     use super::*;
 
     pub struct FixedEvaluatorForFixedData<'a, T: FieldElement>(pub &'a FixedData<'a, T>);
-    impl<'a, T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'a, T> {
+    impl<T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'_, T> {
         fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
             assert!(var.is_fixed());
             let values = self.0.fixed_cols[&var.poly_id].values_max_size();
@@ -480,12 +498,24 @@ mod test {
         known_cells: Vec<(&str, i32)>,
         expected_complete: Option<usize>,
     ) -> String {
-        let analyzed: Analyzed<GoldilocksField> =
-            powdr_pil_analyzer::analyze_string(input).unwrap();
-        let fixed_col_vals = constant_evaluator::generate(&analyzed);
+        let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(input);
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let (fixed_data, retained_identities) =
             global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
+
+        let fixed_lookup_connections = retained_identities
+            .iter()
+            .filter_map(|i| Connection::try_from(*i).ok())
+            .filter(|c| FixedLookup::is_responsible(c))
+            .map(|c| (c.id, c))
+            .collect();
+
+        let global_constr = fixed_data.global_range_constraints.clone();
+        let fixed_machine = FixedLookup::new(global_constr, &fixed_data, fixed_lookup_connections);
+        let known_fixed = KnownMachine::FixedLookup(fixed_machine);
+        let mutable_state = MutableState::new([known_fixed].into_iter(), &|_| {
+            Err("Query not implemented".to_string())
+        });
 
         let known_cells = known_cells.iter().map(|(name, row_offset)| {
             let id = fixed_data.try_column_by_name(name).unwrap().id;
@@ -506,7 +536,7 @@ mod test {
             for row in rows {
                 for id in retained_identities.iter() {
                     if !complete.contains(&(id.id(), *row))
-                        && witgen.process_identity(id, *row).complete
+                        && witgen.process_identity(&mutable_state, id, *row).complete
                     {
                         complete.insert((id.id(), *row));
                     }

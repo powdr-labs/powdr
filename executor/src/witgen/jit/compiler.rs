@@ -417,6 +417,7 @@ fn util_code<T: FieldElement>(first_column_id: u64, column_count: usize) -> Resu
 #[cfg(test)]
 mod tests {
     use pretty_assertions::assert_eq;
+    use test_log::test;
 
     use powdr_number::GoldilocksField;
 

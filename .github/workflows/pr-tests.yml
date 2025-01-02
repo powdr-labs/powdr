@@ -16,7 +16,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   POWDR_GENERATE_PROOFS: "true"
-  POWDR_JIT_OPT_LEVEL: "1"
+  POWDR_JIT_OPT_LEVEL: "0"
   MAX_DEGREE_LOG: "20"
 
 jobs:
@@ -44,9 +44,9 @@ jobs:
 
       ##### The block below is shared between cache build and PR build workflows #####
       - name: Install EStarkPolygon prover dependencies
-        run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm
-      - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
-        run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
+        run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm libgrpc++-dev uuid-dev
+      - name: Install Rust toolchain nightly-2024-12-17 (with clippy and rustfmt)
+        run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
       - name: Install Rust toolchain 1.81 (stable)
         run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu
       - name: Set cargo to perform shallow clones
@@ -99,8 +99,8 @@ jobs:
           path: |
             ~/pilcom/node_modules
           key: ${{ runner.os }}-pilcom-node-modules
-      - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
-        run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
+      - name: Install Rust toolchain nightly-2024-12-17 (with clippy and rustfmt)
+        run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
       - name: Install nightly-2024-08-01
         run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
       - name: Install std source
@@ -136,8 +136,8 @@ jobs:
             target/
             Cargo.lock
           key: ${{ runner.os }}-cargo-pr-tests
-      - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
-        run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
+      - name: Install Rust toolchain nightly-2024-12-17 (with clippy and rustfmt)
+        run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
       - name: Install nightly
         run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
       - name: Install std source
@@ -146,8 +146,14 @@ jobs:
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
-      - name: Run examples
-        run: cargo run --profile pr-tests --example hello_world && cargo run --profile pr-tests --example sqrt_with_publics && cargo run --profile pr-tests --example fibonacci
+      - name: Run examples that cargo accepts as examples
+        run: cargo run --profile pr-tests --example hello_world && cargo run --profile pr-tests --example sqrt_with_publics
+      - name: Run crate example serialized_inputs with the given branch
+        run: cd powdr-test/examples/serialized-inputs && cargo run -r
+      - name: Run crate example fibonacci with the given branch
+        run: cd powdr-test/examples/fibonacci && cargo run -r
+      - name: Run crate example fibonacci with the latest powdr release
+        run: cd examples/fibonacci && cargo run -r
 
   test_estark_polygon:
     needs: build
@@ -166,8 +172,8 @@ jobs:
           path: |
             ~/pilcom/node_modules
           key: ${{ runner.os }}-pilcom-node-modules
-      - name: Install Rust toolchain nightly-2024-09-21(with clippy and rustfmt)
-        run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
+      - name: Install Rust toolchain nightly-2024-12-17(with clippy and rustfmt)
+        run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
       - name: Install nightly-2024-08-01
         run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
       - name: Install std source
@@ -216,8 +222,8 @@ jobs:
           path: |
             ~/pilcom/node_modules
           key: ${{ runner.os }}-pilcom-node-modules
-      - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
-        run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
+      - name: Install Rust toolchain nightly-2024-12-17 (with clippy and rustfmt)
+        run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Install nightly-2024-08-01

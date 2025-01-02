@@ -171,10 +171,11 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
 fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
     let num_witness_columns = pil.commitment_count();
     let num_fixed_columns = pil.constant_count();
+    let intermediate_definitions = pil.intermediate_definitions();
     let max_identity_degree = pil
-        .identities_with_inlined_intermediate_polynomials()
+        .identities
         .iter()
-        .map(|i| i.degree())
+        .map(|i| i.degree(&intermediate_definitions))
         .max()
         .unwrap_or(0);
     let uses_next_operator = pil.identities.iter().any(|i| i.contains_next_ref());
