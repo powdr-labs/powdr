@@ -195,7 +195,7 @@ fail;
 
 page_number_ok:
 
-// Store & hash {WORDS_PER_PAGE} page words. This is an unrolled loop that for each each word:
+// Store & hash {WORDS_PER_PAGE} page words. This is an unrolled loop that for each word:
 // - Loads the word into the P{{(i % 4) + 4}} register
 // - Stores the word at the address x3 * {PAGE_SIZE_BYTES} + i * {BYTES_PER_WORD}
 // - If i % 4 == 3: Hashes mem[0, 96), storing the result in mem[0, 32)
@@ -576,7 +576,7 @@ shutdown_start_page_loop:
 load_bootloader_input 2, 3, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET};
 and 3, 0, {PAGE_NUMBER_MASK}, 3;
 
-// Store & hash {WORDS_PER_PAGE} page words. This is an unrolled loop that for each each word:
+// Store & hash {WORDS_PER_PAGE} page words. This is an unrolled loop that for each word:
 // - Loads the word at the address x3 * {PAGE_SIZE_BYTES} + i * {BYTES_PER_WORD}
 //   into the P{{(i % 4) + 4}} register
 // - If i % 4 == 3: Hashes mem[0, 92), storing the result in mem[0, 32)

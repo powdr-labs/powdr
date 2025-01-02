@@ -27,6 +27,11 @@ machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
         {{INITIAL_MEMORY}}
     ];
 
+    // Initial and final memory addresses of prover data.
+    // The data is to be filled in by the prover in this range.
+    let prover_data_start: fe = {{PROVER_DATA_START}};
+    let prover_data_end: fe = {{PROVER_DATA_END}};
+
     // ================= Extra columns we use to hold temporary values inside instructions.
     col witness tmp1_col;
     col witness tmp2_col;
@@ -294,7 +299,11 @@ machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
 
     // ======================= assertions =========================
 
-    instr fail { 1 = 0 }
+    instr fail
+        link ~> tmp1_col = regs.mload(0, STEP)
+    {
+        tmp1_col = 1
+    }
 
     // Wraps V = val(X) * Y and stores it in register Z,
     // where X is a register and Y is a constant factor.

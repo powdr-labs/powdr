@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::once;
 
+use bit_vec::BitVec;
 use itertools::Itertools;
 
 use super::{LookupCell, Machine, MachineParts};
@@ -8,6 +9,7 @@ use crate::witgen::data_structures::caller_data::CallerData;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::processor::OuterQuery;
+use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalResult, EvalValue, FixedData, IncompleteCause, QueryCallback};
@@ -45,7 +47,6 @@ fn split_column_name(name: &str) -> (&str, &str) {
 }
 
 /// TODO make this generic
-
 pub struct DoubleSortedWitnesses32<'a, T: FieldElement> {
     degree_range: DegreeRange,
     degree: DegreeType,
@@ -185,6 +186,36 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
+    fn can_process_call_fully(
+        &mut self,
+        identity_id: u64,
+        known_arguments: &BitVec,
+        range_constraints: &[Option<RangeConstraint<T>>],
+    ) -> bool {
+        assert!(self.parts.connections.contains_key(&identity_id));
+        assert_eq!(known_arguments.len(), 4);
+        assert_eq!(range_constraints.len(), 4);
+
+        // We blindly assume the parameters to be operation_id, addr, step, value
+
+        // We need to known operation_id, step and address for all calls.
+        if !known_arguments[0] || !known_arguments[1] || !known_arguments[2] {
+            return false;
+        }
+
+        // For the value, it depends: If we write, we need to know it, if we read we do not need to know it.
+        if known_arguments[3] {
+            // It is known, so we are good anyway.
+            true
+        } else {
+            // It is not known, so we can only process if we do not write.
+            range_constraints[0].as_ref().is_some_and(|rc| {
+                !rc.allows_value(T::from(OPERATION_ID_BOOTLOADER_WRITE))
+                    && !rc.allows_value(T::from(OPERATION_ID_WRITE))
+            })
+        }
+    }
+
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b MutableState<'a, T, Q>,
@@ -371,7 +402,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
+impl<T: FieldElement> DoubleSortedWitnesses32<'_, T> {
     fn process_plookup_internal(
         &mut self,
         identity_id: u64,

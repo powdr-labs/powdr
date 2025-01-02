@@ -46,7 +46,7 @@ where
     }
 }
 
-impl<'a, T: FieldElement, WA> SymbolicVariables<T> for SymbolicWitnessEvaluator<'a, T, WA>
+impl<T: FieldElement, WA> SymbolicVariables<T> for SymbolicWitnessEvaluator<'_, T, WA>
 where
     WA: WitnessColumnEvaluator<T>,
 {

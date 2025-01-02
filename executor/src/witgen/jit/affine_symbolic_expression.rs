@@ -8,61 +8,12 @@ use itertools::Itertools;
 use num_traits::Zero;
 use powdr_number::FieldElement;
 
-use crate::witgen::EvalError;
+use crate::witgen::{jit::effect::Assertion, EvalError};
 
-use super::{super::range_constraints::RangeConstraint, symbolic_expression::SymbolicExpression};
-
-/// The effect of solving a symbolic equation.
-pub enum Effect<T: FieldElement, V> {
-    /// Variable can be assigned a value.
-    Assignment(V, SymbolicExpression<T, V>),
-    /// We learnt a new range constraint on variable.
-    RangeConstraint(V, RangeConstraint<T>),
-    /// A run-time assertion. If this fails, we have conflicting constraints.
-    Assertion(Assertion<T, V>),
-    /// a call to a different machine.
-    MachineCall(u64, Vec<MachineCallArgument<T, V>>),
-}
-
-/// A run-time assertion. If this fails, we have conflicting constraints.
-pub struct Assertion<T: FieldElement, V> {
-    pub lhs: SymbolicExpression<T, V>,
-    pub rhs: SymbolicExpression<T, V>,
-    /// If this is true, we assert that both sides are equal.
-    /// Otherwise, we assert that they are different.
-    pub expected_equal: bool,
-}
-
-impl<T: FieldElement, V> Assertion<T, V> {
-    pub fn assert_is_zero(condition: SymbolicExpression<T, V>) -> Effect<T, V> {
-        Self::assert_eq(condition, SymbolicExpression::from(T::from(0)))
-    }
-    pub fn assert_is_nonzero(condition: SymbolicExpression<T, V>) -> Effect<T, V> {
-        Self::assert_neq(condition, SymbolicExpression::from(T::from(0)))
-    }
-    pub fn assert_eq(lhs: SymbolicExpression<T, V>, rhs: SymbolicExpression<T, V>) -> Effect<T, V> {
-        Effect::Assertion(Assertion {
-            lhs,
-            rhs,
-            expected_equal: true,
-        })
-    }
-    pub fn assert_neq(
-        lhs: SymbolicExpression<T, V>,
-        rhs: SymbolicExpression<T, V>,
-    ) -> Effect<T, V> {
-        Effect::Assertion(Assertion {
-            lhs,
-            rhs,
-            expected_equal: false,
-        })
-    }
-}
-
-pub enum MachineCallArgument<T: FieldElement, V> {
-    Known(SymbolicExpression<T, V>),
-    Unknown(AffineSymbolicExpression<T, V>),
-}
+use super::{
+    super::range_constraints::RangeConstraint, effect::Effect,
+    symbolic_expression::SymbolicExpression,
+};
 
 #[derive(Default)]
 pub struct ProcessResult<T: FieldElement, V> {
@@ -203,7 +154,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
                 // Solve "coeff * X + self.offset = 0" by division.
                 assert!(
                     !coeff.is_known_zero(),
-                    "Zero coefficient has not been removed."
+                    "Zero coefficient has not been removed: {self}"
                 );
                 if coeff.is_known_nonzero() {
                     // In this case, we can always compute a solution.
@@ -276,7 +227,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             } else {
                 covered_bits |= mask;
             }
-            let masked = -&self.offset & T::from(mask).into();
+            let masked = -&self.offset & mask;
             effects.push(Effect::Assignment(
                 var.clone(),
                 masked.integer_div(&coeff.into()),
@@ -289,11 +240,10 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
 
         // We need to assert that the masks cover "-offset",
         // otherwise the equation is not solvable.
-        // We assert -offset & !masks == 0 <=> -offset == -offset | masks.
-        // We use the latter since we cannot properly bit-negate inside the field.
+        // We assert -offset & !masks == 0
         effects.push(Assertion::assert_eq(
-            -&self.offset,
-            -&self.offset | T::from(covered_bits).into(),
+            -&self.offset & !covered_bits,
+            T::from(0).into(),
         ));
 
         ProcessResult::complete(effects)
@@ -420,11 +370,15 @@ impl<T: FieldElement, V: Clone + Ord> Mul<&SymbolicExpression<T, V>>
     type Output = AffineSymbolicExpression<T, V>;
 
     fn mul(mut self, rhs: &SymbolicExpression<T, V>) -> Self::Output {
-        for coeff in self.coefficients.values_mut() {
-            *coeff = &*coeff * rhs;
+        if rhs.is_known_zero() {
+            T::zero().into()
+        } else {
+            for coeff in self.coefficients.values_mut() {
+                *coeff = &*coeff * rhs;
+            }
+            self.offset = &self.offset * rhs;
+            self
         }
-        self.offset = &self.offset * rhs;
-        self
     }
 }
 
@@ -566,7 +520,7 @@ mod test {
             "a = ((-(10 + Z) & 65280) // 256);
 b = ((-(10 + Z) & 16711680) // 65536);
 c = ((-(10 + Z) & 4278190080) // 16777216);
-assert -(10 + Z) == (-(10 + Z) | 4294967040);
+assert (-(10 + Z) & 18446744069414584575) == 0;
 "
         );
     }

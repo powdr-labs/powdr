@@ -77,15 +77,6 @@ impl PaddedBitVec {
         (word & (1 << (col % 32))) != 0
     }
 
-    pub fn set(&mut self, row: usize, col: u64, value: bool) {
-        let word = &mut self.data[row * self.words_per_row + (col / 32) as usize];
-        if value {
-            *word |= 1 << (col % 32);
-        } else {
-            *word &= !(1 << (col % 32));
-        }
-    }
-
     pub fn as_mut_slice(&mut self) -> &mut [u32] {
         &mut self.data
     }

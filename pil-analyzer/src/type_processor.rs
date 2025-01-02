@@ -11,7 +11,7 @@ use crate::{
 /// The TypeProcessor turns parsed types into analyzed types, which means that
 /// it resolves local type name references, replaces named types that actually
 /// refer to type variables by actual type variables and evaluates array lengths.
-/// It is is unrelated to type inference, which is done later.
+/// It is unrelated to type inference, which is done later.
 pub struct TypeProcessor<'a, D: AnalysisDriver> {
     driver: D,
     type_vars: &'a HashSet<&'a String>,
