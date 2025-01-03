@@ -401,6 +401,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             }
         }
 
+        if self.rows() + self.block_size as DegreeType > self.degree {
+            return Err(EvalError::RowsExhausted(self.name.clone()));
+        }
+
         let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
         if self
             .function_cache
@@ -427,10 +431,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             return Ok(EvalValue::incomplete(
                 IncompleteCause::BlockMachineLookupIncomplete,
             ));
-        }
-
-        if self.rows() + self.block_size as DegreeType > self.degree {
-            return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
         let process_result =
@@ -481,7 +481,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let values = outer_query.prepare_for_direct_lookup(&mut input_output_data);
 
         assert!(
-            (self.rows() + self.block_size as DegreeType) < self.degree,
+            (self.rows() + self.block_size as DegreeType) <= self.degree,
             "Block machine is full (this should have been checked before)"
         );
         self.data

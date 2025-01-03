@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{Display, Formatter},
+};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
@@ -41,6 +44,23 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     code: Vec<Effect<T, Variable>>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum Value<T> {
+    Concrete(T),
+    Known,
+    Unknown,
+}
+
+impl<T: Display> Display for Value<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Concrete(v) => write!(f, "{v}"),
+            Value::Known => write!(f, "<known>"),
+            Value::Unknown => write!(f, "???"),
+        }
+    }
+}
+
 impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, FixedEval> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
@@ -61,8 +81,23 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.code
     }
 
+    pub fn known_variables(&self) -> &HashSet<Variable> {
+        &self.known_variables
+    }
+
     pub fn is_known(&self, variable: &Variable) -> bool {
         self.known_variables.contains(variable)
+    }
+
+    pub fn value(&self, variable: &Variable) -> Value<T> {
+        let rc = self.range_constraint(variable);
+        if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
+            Value::Concrete(val)
+        } else if self.is_known(variable) {
+            Value::Known
+        } else {
+            Value::Unknown
+        }
     }
 
     /// Process an identity on a certain row.
@@ -272,7 +307,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Adds a range constraint to the set of derived range constraints. Returns true if progress was made.
     fn add_range_constraint(&mut self, variable: Variable, rc: RangeConstraint<T>) -> bool {
         let rc = self
-            .range_constraint(variable.clone())
+            .range_constraint(&variable)
             .map_or(rc.clone(), |existing_rc| existing_rc.conjunction(&rc));
         if !self.known_variables.contains(&variable) {
             if let Some(v) = rc.try_to_single_value() {
@@ -292,7 +327,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 
     /// Returns the current best-known range constraint on the given variable
     /// combining global range constraints and newly derived local range constraints.
-    fn range_constraint(&self, variable: Variable) -> Option<RangeConstraint<T>> {
+    fn range_constraint(&self, variable: &Variable) -> Option<RangeConstraint<T>> {
         variable
             .try_to_witness_poly_id()
             .and_then(|poly_id| {
@@ -305,7 +340,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     })
             })
             .iter()
-            .chain(self.derived_range_constraints.get(&variable))
+            .chain(self.derived_range_constraints.get(variable))
             .cloned()
             .reduce(|gc, rc| gc.conjunction(&rc))
     }
@@ -382,13 +417,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
     pub fn evaluate_variable(&self, variable: Variable) -> AffineSymbolicExpression<T, Variable> {
         // If a variable is known and has a compile-time constant value,
         // that value is stored in the range constraints.
-        let rc = self.witgen_inference.range_constraint(variable.clone());
-        if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
-            val.into()
-        } else if !self.only_concrete_known && self.witgen_inference.is_known(&variable) {
-            AffineSymbolicExpression::from_known_symbol(variable, rc)
-        } else {
-            AffineSymbolicExpression::from_unknown_variable(variable, rc)
+        let rc = self.witgen_inference.range_constraint(&variable);
+        match self.witgen_inference.value(&variable) {
+            Value::Concrete(val) => val.into(),
+            Value::Unknown => AffineSymbolicExpression::from_unknown_variable(variable, rc),
+            Value::Known if self.only_concrete_known => {
+                AffineSymbolicExpression::from_unknown_variable(variable, rc)
+            }
+            Value::Known => AffineSymbolicExpression::from_known_symbol(variable, rc),
         }
     }
 
