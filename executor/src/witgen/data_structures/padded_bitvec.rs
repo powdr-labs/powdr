@@ -70,23 +70,33 @@ impl PaddedBitVec {
     }
 
     pub fn get(&self, row: usize, col: u64) -> bool {
-        if row >= self.rows || (row + 1 == self.rows && col >= self.bits_in_last_row as u64) {
-            panic!("Out of bounds");
-        }
-        let word = &self.data[row * self.words_per_row + (col / 32) as usize];
-        (word & (1 << (col % 32))) != 0
+        self.check_bounds(row, col);
+        let (word_index, bit_mask) = self.to_word_and_bit_mask(row, col);
+        let word = &self.data[word_index];
+        (word & bit_mask) != 0
     }
 
     pub fn set(&mut self, row: usize, col: u64, value: bool) {
+        self.check_bounds(row, col);
+        let (word_index, bit_mask) = self.to_word_and_bit_mask(row, col);
+        let word = &mut self.data[word_index];
+        if value {
+            *word |= bit_mask;
+        } else {
+            *word &= !bit_mask;
+        }
+    }
+
+    fn check_bounds(&self, row: usize, col: u64) {
         if row >= self.rows || (row + 1 == self.rows && col >= self.bits_in_last_row as u64) {
             panic!("Out of bounds");
         }
-        let word = &mut self.data[row * self.words_per_row + (col / 32) as usize];
-        if value {
-            *word |= 1 << (col % 32);
-        } else {
-            *word &= !(1 << (col % 32));
-        }
+    }
+
+    fn to_word_and_bit_mask(&self, row: usize, col: u64) -> (usize, u32) {
+        let word_index = row * self.words_per_row + (col / 32) as usize;
+        let bit_mask = 1 << (col % 32);
+        (word_index, bit_mask)
     }
 
     pub fn as_mut_slice(&mut self) -> &mut [u32] {

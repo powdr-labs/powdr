@@ -65,7 +65,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// The type of constraint used to connect this machine to its caller.
     connection_type: ConnectionKind,
     /// The data of the machine.
-    data: FinalizableData<T>,
+    data: FinalizableData<'a, T>,
     publics: BTreeMap<&'a str, T>,
     /// The index of the first row that has not been finalized yet.
     /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
@@ -120,6 +120,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let data = FinalizableData::with_initial_rows_in_progress(
             &parts.witnesses,
             (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
+            fixed_data,
         );
         let layout = data.layout();
         Some(BlockMachine {
@@ -245,14 +246,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 iter::once(self.block_size - 1)
                     .chain(0..self.block_size)
                     .chain(iter::once(0))
-                    .map(|i| {
-                        self.data.get_in_progress_row(i, || {
-                            Row::fresh(
-                                self.fixed_data,
-                                RowIndex::from_degree(i as u64, self.degree),
-                            )
-                        })
-                    }),
+                    .map(|i| self.data.get_in_progress_row(i)),
+                self.fixed_data,
             );
 
             // Instantiate a processor
@@ -519,6 +514,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let block = FinalizableData::with_initial_rows_in_progress(
             &self.parts.witnesses,
             (0..(self.block_size + 2)).map(|i| Row::fresh(self.fixed_data, row_offset + i)),
+            self.fixed_data,
         );
         let mut processor = BlockProcessor::new(
             row_offset,
@@ -541,7 +537,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// the last row of its previous block is merged with the one we have already.
     /// This is necessary to handle non-rectangular block machines, which already use
     /// unused cells in the previous block.
-    fn append_block(&mut self, mut new_block: FinalizableData<T>) -> Result<(), EvalError<T>> {
+    fn append_block(&mut self, mut new_block: FinalizableData<'a, T>) -> Result<(), EvalError<T>> {
         assert!(
             (self.rows() + self.block_size as DegreeType) <= self.degree,
             "Block machine is full (this should have been checked before)"

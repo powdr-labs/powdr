@@ -9,7 +9,7 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
-use crate::witgen::rows::Row;
+use crate::witgen::{rows::Row, FixedData};
 
 use super::padded_bitvec::PaddedBitVec;
 
@@ -79,11 +79,8 @@ impl<T: FieldElement> CompactData<T> {
     pub fn push(&mut self, row: Row<T>) {
         self.data.reserve(self.column_count);
         self.known_cells.reserve_rows(1);
-        for col_id in self.first_column_id..(self.first_column_id + self.column_count as u64) {
-            if let Some(v) = row.value(&PolyID {
-                id: col_id,
-                ptype: PolynomialType::Committed,
-            }) {
+        for col_id in self.column_ids() {
+            if let Some(v) = row.value(&col_id) {
                 self.data.push(v);
                 self.known_cells.push(true);
             } else {
@@ -93,15 +90,11 @@ impl<T: FieldElement> CompactData<T> {
         }
     }
 
+    /// Sets an entire row at the given index
     pub fn set(&mut self, row: usize, new_row: Row<T>) {
         let idx = row * self.column_count;
-        for (i, col_id) in
-            (self.first_column_id..(self.first_column_id + self.column_count as u64)).enumerate()
-        {
-            if let Some(v) = new_row.value(&PolyID {
-                id: col_id,
-                ptype: PolynomialType::Committed,
-            }) {
+        for (i, col_id) in self.column_ids().enumerate() {
+            if let Some(v) = new_row.value(&col_id) {
                 self.data[idx + i] = v;
                 self.known_cells.set(row, i as u64, true);
             } else {
@@ -119,6 +112,13 @@ impl<T: FieldElement> CompactData<T> {
     fn index(&self, row: usize, col: u64) -> usize {
         let col = col - self.first_column_id;
         row * self.column_count + col as usize
+    }
+
+    fn column_ids(&self) -> impl Iterator<Item = PolyID> {
+        (self.first_column_id..(self.first_column_id + self.column_count as u64)).map(|id| PolyID {
+            id,
+            ptype: PolynomialType::Committed,
+        })
     }
 
     pub fn get(&self, row: usize, col: u64) -> (T, bool) {
@@ -170,25 +170,26 @@ impl<'a, T: FieldElement> CompactDataRef<'a, T> {
 /// It allows to finalize rows, which means that those rows are then stored in a more
 /// compact form. Information about range constraints on those rows is lost, but the
 /// information which cells are known is preserved.
-/// There is always a single contiguous area of finalized rows and this area can only "grow"
-/// towards higher row indices, i.e. an area at the beginning can only be finalized
-/// if nothing has been finalized yet.
+/// There is always a single contiguous area of finalized rows from the first row to some
+/// row index.
+/// TODO
 /// Once a row has been finalized, any operation trying to access it again will fail at runtime.
 /// [FinalizableData::take_transposed] can be used to access the final cells.
 /// This data structure is more efficient if the used column IDs are contiguous.
 #[derive(Clone)]
-pub struct FinalizableData<T: FieldElement> {
+pub struct FinalizableData<'a, T: FieldElement> {
     /// Finalized data stored in a compact form.
     finalized_data: CompactData<T>,
     /// The non-finalized rows after the finalized data.
     post_finalized_data: Vec<Row<T>>,
     /// The list of column IDs (in sorted order), used to index finalized rows.
     column_ids: Vec<PolyID>,
+    fixed_data: &'a FixedData<'a, T>,
 }
 
-impl<T: FieldElement> FinalizableData<T> {
-    pub fn new(column_ids: &HashSet<PolyID>) -> Self {
-        Self::with_initial_rows_in_progress(column_ids, [].into_iter())
+impl<'a, T: FieldElement> FinalizableData<'a, T> {
+    pub fn new(column_ids: &HashSet<PolyID>, fixed_data: &'a FixedData<'a, T>) -> Self {
+        Self::with_initial_rows_in_progress(column_ids, [].into_iter(), fixed_data)
     }
 
     pub fn layout(&self) -> ColumnLayout {
@@ -198,12 +199,14 @@ impl<T: FieldElement> FinalizableData<T> {
     pub fn with_initial_rows_in_progress(
         column_ids: &HashSet<PolyID>,
         rows: impl Iterator<Item = Row<T>>,
+        fixed_data: &'a FixedData<'a, T>,
     ) -> Self {
         let column_ids = column_ids.iter().cloned().sorted().collect::<Vec<_>>();
         Self {
             finalized_data: CompactData::new(&column_ids),
             post_finalized_data: rows.collect_vec(),
             column_ids,
+            fixed_data,
         }
     }
 
@@ -378,11 +381,15 @@ impl<T: FieldElement> FinalizableData<T> {
         )
     }
 
-    pub fn get_in_progress_row(&self, i: usize, make_fresh_row: impl Fn() -> Row<T>) -> Row<T> {
+    /// Returns a row with the given index. If the row is already finalized,
+    /// it will be "unfinalized" and returned as a fresh row. Note that any
+    /// range constraints will be lost in that case. If the row is not finalized,
+    /// a copy of it will be returned.
+    pub fn get_in_progress_row(&self, i: usize) -> Row<T> {
         match self.location_of_row(i) {
             Location::Finalized(local) => {
                 let layout = self.layout();
-                let mut row = make_fresh_row();
+                let mut row = Row::fresh(self.fixed_data, i);
                 for column in row.columns() {
                     if column.id >= layout.first_column_id
                         && column.id < layout.first_column_id + layout.column_count as u64
@@ -399,6 +406,7 @@ impl<T: FieldElement> FinalizableData<T> {
         }
     }
 
+    /// Sets a row at the given index.
     pub fn set(&mut self, i: usize, row: Row<T>) {
         match self.location_of_row(i) {
             Location::Finalized(local) => {
@@ -409,7 +417,7 @@ impl<T: FieldElement> FinalizableData<T> {
     }
 }
 
-impl<T: FieldElement> Index<usize> for FinalizableData<T> {
+impl<T: FieldElement> Index<usize> for FinalizableData<'_, T> {
     type Output = Row<T>;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -421,7 +429,7 @@ impl<T: FieldElement> Index<usize> for FinalizableData<T> {
     }
 }
 
-impl<T: FieldElement> IndexMut<usize> for FinalizableData<T> {
+impl<T: FieldElement> IndexMut<usize> for FinalizableData<'_, T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         if index < self.finalized_data.len() {
             panic!("Row {index} already finalized.");
