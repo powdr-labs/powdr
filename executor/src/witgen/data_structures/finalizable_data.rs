@@ -172,9 +172,8 @@ impl<'a, T: FieldElement> CompactDataRef<'a, T> {
 /// information which cells are known is preserved.
 /// There is always a single contiguous area of finalized rows from the first row to some
 /// row index.
-/// TODO
-/// Once a row has been finalized, any operation trying to access it again will fail at runtime.
-/// [FinalizableData::take_transposed] can be used to access the final cells.
+/// Once a row has been finalized, some operations trying to access it again will fail at runtime.
+/// [FinalizableData::take_transposed] and [FinalizableData::get_in_progress_row] can be used to access the cells.
 /// This data structure is more efficient if the used column IDs are contiguous.
 #[derive(Clone)]
 pub struct FinalizableData<'a, T: FieldElement> {
