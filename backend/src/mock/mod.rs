@@ -24,8 +24,7 @@ mod machine;
 mod polynomial_constraint_checker;
 
 #[derive(Default)]
-pub(crate) struct MockBackendFactory {
-}
+pub(crate) struct MockBackendFactory;
 
 impl<F: FieldElement> BackendFactory<F> for MockBackendFactory {
     fn create(
