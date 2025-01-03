@@ -355,10 +355,9 @@ impl<T: FieldElement> RPNExpression<T, usize> {
                     BinaryOperator::Sub => left - right,
                     BinaryOperator::Mul => left * right,
                     BinaryOperator::Div => left / right,
-                    BinaryOperator::IntegerDiv => T::from(
-                        left.to_integer().try_into_u64().unwrap()
-                            / right.to_integer().try_into_u64().unwrap(),
-                    ),
+                    BinaryOperator::IntegerDiv => {
+                        T::from(left.to_arbitrary_integer() / right.to_arbitrary_integer())
+                    }
                 };
                 stack.push(result);
             }
