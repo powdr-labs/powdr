@@ -1,7 +1,7 @@
 use std::{
     fmt::{self, Display, Formatter},
     ops::{Add, BitAnd, Mul, Neg},
-    rc::Rc,
+    sync::Arc,
 };
 
 use num_traits::Zero;
@@ -20,21 +20,21 @@ pub enum SymbolicExpression<T: FieldElement, S> {
     /// an input, a local variable or whatever it is used for.
     Symbol(S, Option<RangeConstraint<T>>),
     BinaryOperation(
-        Rc<Self>,
+        Arc<Self>,
         BinaryOperator,
-        Rc<Self>,
+        Arc<Self>,
         Option<RangeConstraint<T>>,
     ),
-    UnaryOperation(UnaryOperator, Rc<Self>, Option<RangeConstraint<T>>),
+    UnaryOperation(UnaryOperator, Arc<Self>, Option<RangeConstraint<T>>),
     BitOperation(
-        Rc<Self>,
+        Arc<Self>,
         BitOperator,
         T::Integer,
         Option<RangeConstraint<T>>,
     ),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -45,12 +45,12 @@ pub enum BinaryOperator {
     IntegerDiv,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BitOperator {
     And,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnaryOperator {
     Neg,
 }
@@ -176,9 +176,9 @@ impl<T: FieldElement, V: Clone> Add for &SymbolicExpression<T, V> {
                 SymbolicExpression::Concrete(*a + *b)
             }
             _ => SymbolicExpression::BinaryOperation(
-                Rc::new(self.clone()),
+                Arc::new(self.clone()),
                 BinaryOperator::Add,
-                Rc::new(rhs.clone()),
+                Arc::new(rhs.clone()),
                 self.range_constraint()
                     .zip(rhs.range_constraint())
                     .map(|(a, b)| a.combine_sum(&b)),
@@ -205,7 +205,7 @@ impl<T: FieldElement, V: Clone> Neg for &SymbolicExpression<T, V> {
             }
             _ => SymbolicExpression::UnaryOperation(
                 UnaryOperator::Neg,
-                Rc::new(self.clone()),
+                Arc::new(self.clone()),
                 self.range_constraint().map(|rc| rc.multiple(-T::from(1))),
             ),
         }
@@ -237,9 +237,9 @@ impl<T: FieldElement, V: Clone> Mul for &SymbolicExpression<T, V> {
             -self
         } else {
             SymbolicExpression::BinaryOperation(
-                Rc::new(self.clone()),
+                Arc::new(self.clone()),
                 BinaryOperator::Mul,
-                Rc::new(rhs.clone()),
+                Arc::new(rhs.clone()),
                 None,
             )
         }
@@ -269,9 +269,9 @@ impl<T: FieldElement, V: Clone> SymbolicExpression<T, V> {
         } else {
             // TODO other simplifications like `-x / -y => x / y`, `-x / concrete => x / -concrete`, etc.
             SymbolicExpression::BinaryOperation(
-                Rc::new(self.clone()),
+                Arc::new(self.clone()),
                 BinaryOperator::Div,
-                Rc::new(rhs.clone()),
+                Arc::new(rhs.clone()),
                 None,
             )
         }
@@ -283,11 +283,38 @@ impl<T: FieldElement, V: Clone> SymbolicExpression<T, V> {
             self.clone()
         } else {
             SymbolicExpression::BinaryOperation(
-                Rc::new(self.clone()),
+                Arc::new(self.clone()),
                 BinaryOperator::IntegerDiv,
-                Rc::new(rhs.clone()),
+                Arc::new(rhs.clone()),
                 None,
             )
+        }
+    }
+
+    /// Transform the variables inside the expression using the given function
+    pub fn map_variables<V2, F: FnMut(&V) -> V2>(&self, f: &mut F) -> SymbolicExpression<T, V2> {
+        match self {
+            SymbolicExpression::Concrete(n) => SymbolicExpression::Concrete(*n),
+            SymbolicExpression::Symbol(s, rc) => SymbolicExpression::Symbol(f(s), rc.clone()),
+            SymbolicExpression::BinaryOperation(lhs, op, rhs, rc) => {
+                SymbolicExpression::BinaryOperation(
+                    Arc::new(lhs.map_variables(f)),
+                    op.clone(),
+                    Arc::new(rhs.map_variables(f)),
+                    rc.clone(),
+                )
+            }
+            SymbolicExpression::UnaryOperation(op, expr, rc) => SymbolicExpression::UnaryOperation(
+                op.clone(),
+                Arc::new(expr.map_variables(f)),
+                rc.clone(),
+            ),
+            SymbolicExpression::BitOperation(expr, op, n, rc) => SymbolicExpression::BitOperation(
+                Arc::new(expr.map_variables(f)),
+                op.clone(),
+                *n,
+                rc.clone(),
+            ),
         }
     }
 }
@@ -308,7 +335,7 @@ impl<T: FieldElement, V: Clone> BitAnd<T::Integer> for SymbolicExpression<T, V> 
                     rhs
                 },
             ));
-            SymbolicExpression::BitOperation(Rc::new(self), BitOperator::And, rhs, rc)
+            SymbolicExpression::BitOperation(Arc::new(self), BitOperator::And, rhs, rc)
         }
     }
 }
