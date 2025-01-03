@@ -223,9 +223,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 // Because we process rows -1..block_size+1, it is fine to have two incomplete machine calls,
                 // as long as <block_size> consecutive rows are complete.
                 if complete_rows.len() >= self.block_size {
-                    let is_consecutive = complete_rows.iter().max().unwrap()
-                        - complete_rows.iter().min().unwrap()
-                        == complete_rows.len() as i32 - 1;
+                    let (min, max) = complete_rows.iter().minmax().into_option().unwrap();
+                    let is_consecutive = max - min == complete_rows.len() as i32 - 1;
                     if is_consecutive {
                         return vec![];
                     }
@@ -276,6 +275,12 @@ impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
         let row = current_row + var.next as usize;
 
         assert!(values.len() >= self.block_size * 4);
+
+        // Fixed columns are assumed to be cyclic, except in the first and last row.
+        // The code above should ensure that we never access the first or last row.
+        assert!(row > 0);
+        assert!(row < values.len() - 1);
+
         Some(values[row])
     }
 }
