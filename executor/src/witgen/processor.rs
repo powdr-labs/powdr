@@ -639,6 +639,18 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             ),
         };
 
+        if let Ok(connection) = Connection::try_from(identity) {
+            // For connections, the call to `process_identity()` below might have side effects.
+            // So, if it would call into another machine, cancel the loop mode.
+            let selector_value = row_pair
+                .evaluate(&connection.left.selector)
+                .unwrap()
+                .constant_value()
+                .unwrap();
+            // TODO: This is always true for the PC lookup...
+            return selector_value.is_zero();
+        }
+
         if identity_processor
             .process_identity(identity, &row_pair)
             .is_err()
