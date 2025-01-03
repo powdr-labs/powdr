@@ -44,19 +44,23 @@ impl<T: FieldElement> WitgenFunction<T> {
         params: &mut [LookupCell<T>],
         mut data: CompactDataRef<'_, T>,
     ) {
-        let row_offset = data.row_offset().try_into().unwrap();
-        let (data, known) = data.as_mut_slices();
-        let params = WitgenFunctionParams {
-            data: data.into(),
-            known: known.as_mut_ptr(),
-            row_offset,
-            params: params.into(),
-            mutable_state: mutable_state as *const _ as *const c_void,
-            call_machine: call_machine::<T, Q>,
-        };
         match self {
-            WitgenFunction::Compiled { function, .. } => function(params),
-            WitgenFunction::Interpreted(interpreter) => interpreter.call::<Q>(params),
+            WitgenFunction::Compiled { function, .. } => {
+                let row_offset = data.row_offset().try_into().unwrap();
+                let (data, known) = data.as_mut_slices();
+                let params = WitgenFunctionParams {
+                    data: data.into(),
+                    known: known.as_mut_ptr(),
+                    row_offset,
+                    params: params.into(),
+                    mutable_state: mutable_state as *const _ as *const c_void,
+                    call_machine: call_machine::<T, Q>,
+                };
+                function(params)
+            }
+            WitgenFunction::Interpreted(interpreter) => {
+                interpreter.call::<Q>(mutable_state, params, data)
+            }
         }
     }
 

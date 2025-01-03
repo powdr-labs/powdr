@@ -1,13 +1,14 @@
-use super::compiler::{written_vars_in_effect, WitgenFunctionParams};
+use super::compiler::written_vars_in_effect;
 use super::effect::{Assertion, Effect};
 
 use super::symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator};
 use super::variable::{Cell, Variable};
+use crate::witgen::data_structures::finalizable_data::CompactDataRef;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::jit::effect::MachineCallArgument;
 use crate::witgen::machines::LookupCell;
 use crate::witgen::QueryCallback;
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::FieldElement;
 
 use std::collections::HashMap;
 
@@ -147,10 +148,14 @@ impl<T: FieldElement> EffectsInterpreter<T> {
     }
 
     // Execute the machine effects for the given the parameters
-    pub fn call<Q: QueryCallback<T>>(&self, params: WitgenFunctionParams<'_, T>) {
-        let known = known_to_slice(self.column_count, params.known, params.data.len);
-        let data = params.data.into_mut_slice();
-        let pparams = params.params.into_mut_slice();
+    pub fn call<Q: QueryCallback<T>>(
+        &self,
+        mutable_state: &MutableState<'_, T, Q>,
+        params: &mut [LookupCell<T>],
+        mut data: CompactDataRef<'_, T>,
+    ) {
+        let row_offset = data.row_offset().try_into().unwrap();
+        let (data, known) = data.as_mut_slices();
 
         let mut vars = vec![None; self.var_count];
 
@@ -167,7 +172,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                             data[index(
                                 self.first_column_id,
                                 self.column_count,
-                                params.row_offset,
+                                row_offset,
                                 c.row_offset,
                                 c.id,
                             )]
@@ -175,36 +180,33 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                         .is_none())
                 }
                 InterpreterAction::ReadParam(idx, i) => {
-                    assert!(vars[*idx].replace(get_param(pparams, *i)).is_none());
+                    assert!(vars[*idx].replace(get_param(params, *i)).is_none());
                 }
                 InterpreterAction::WriteCell(idx, c) => {
                     set(
                         self.first_column_id,
                         self.column_count,
                         data,
-                        params.row_offset,
+                        row_offset,
                         c.row_offset,
                         c.id,
                         vars[*idx].unwrap(),
                     );
                 }
                 InterpreterAction::WriteParam(idx, i) => {
-                    set_param(pparams, *i, vars[*idx].unwrap());
+                    set_param(params, *i, vars[*idx].unwrap());
                 }
                 InterpreterAction::WriteKnown(c) => {
                     set_known(
                         self.first_column_id,
                         self.column_count,
                         known,
-                        params.row_offset,
+                        row_offset,
                         c.row_offset,
                         c.id,
                     );
                 }
                 InterpreterAction::MachineCall(result_vars, id, arguments) => {
-                    let mutable_state =
-                        unsafe { &*(params.mutable_state as *const MutableState<T, Q>) };
-
                     let mut arg_values: Vec<_> = arguments
                         .iter()
                         .map(|a| match a {
@@ -381,14 +383,6 @@ impl<T: FieldElement> RPNExpression<T, usize> {
 }
 
 // the following functions come from the interface.rs file also included in the compiled jit code
-
-#[inline]
-fn known_to_slice<'a>(column_count: usize, known: *mut u32, len: u64) -> &'a mut [u32] {
-    let words_per_row = (column_count as u64 + 31) / 32;
-    let rows = len / column_count as u64;
-    let known_len = rows * words_per_row;
-    unsafe { std::slice::from_raw_parts_mut(known, known_len as usize) }
-}
 
 #[inline]
 fn index(
