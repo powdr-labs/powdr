@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1735927320621,
+  "lastUpdate": 1735929496496,
   "repoUrl": "https://github.com/powdr-labs/powdr",
   "entries": {
     "Benchmarks": [
@@ -59733,6 +59733,168 @@ window.BENCHMARK_DATA = {
             "name": "executor-benchmark/keccak",
             "value": 8971576461,
             "range": "± 47336478",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "schaeffer.thibaut@gmail.com",
+            "name": "Thibaut Schaeffer",
+            "username": "Schaeff"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": false,
+          "id": "5ceeda4390adf55d6d1c51625c3eedf98b3d5392",
+          "message": "Simplify mock prover factory (#2305)",
+          "timestamp": "2025-01-03T17:39:31Z",
+          "tree_id": "2faaf61c3379b7c85522481dcb68d52465973679",
+          "url": "https://github.com/powdr-labs/powdr/commit/5ceeda4390adf55d6d1c51625c3eedf98b3d5392"
+        },
+        "date": 1735929495855,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "evaluator-benchmark/std::math::ff::inverse",
+            "value": 7052,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/std::math::ff::reduce",
+            "value": 600,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/std::math::ff::mul",
+            "value": 1084,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_879882356",
+            "value": 29464,
+            "range": "± 137",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_1882356",
+            "value": 24696,
+            "range": "± 28",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_1187956",
+            "value": 24638,
+            "range": "± 19",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sqrt_56",
+            "value": 17497,
+            "range": "± 10",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_33",
+            "value": 822542,
+            "range": "± 2073",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_100",
+            "value": 2820212,
+            "range": "± 4006",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_300",
+            "value": 9861557,
+            "range": "± 26573",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_900",
+            "value": 36087200,
+            "range": "± 93855",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "evaluator-benchmark/sort_2700",
+            "value": 143140651,
+            "range": "± 868365",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_879882356",
+            "value": 18070,
+            "range": "± 59",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_1882356",
+            "value": 14006,
+            "range": "± 33",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_1187956",
+            "value": 13773,
+            "range": "± 39",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sqrt_56",
+            "value": 7263,
+            "range": "± 11",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_33",
+            "value": 387502,
+            "range": "± 502",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_100",
+            "value": 1508862,
+            "range": "± 1851",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_300",
+            "value": 6523500,
+            "range": "± 6737",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_900",
+            "value": 34259784,
+            "range": "± 59209",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-benchmark/sort_2700",
+            "value": 222800608,
+            "range": "± 508310",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "jit-witgen-benchmark/jit_witgen_benchmark",
+            "value": 31627200004,
+            "range": "± 166496585",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "executor-benchmark/keccak",
+            "value": 8958227966,
+            "range": "± 79257303",
             "unit": "ns/iter"
           }
         ]
