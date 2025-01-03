@@ -2,7 +2,6 @@ use std::{
     collections::BTreeMap,
     hash::{DefaultHasher, Hash, Hasher},
     io,
-    marker::PhantomData,
     path::PathBuf,
     sync::Arc,
 };
@@ -25,11 +24,10 @@ mod machine;
 mod polynomial_constraint_checker;
 
 #[derive(Default)]
-pub(crate) struct MockBackendFactory<F: FieldElement> {
-    _marker: PhantomData<F>,
+pub(crate) struct MockBackendFactory {
 }
 
-impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
+impl<F: FieldElement> BackendFactory<F> for MockBackendFactory {
     fn create(
         &self,
         pil: Arc<Analyzed<F>>,
