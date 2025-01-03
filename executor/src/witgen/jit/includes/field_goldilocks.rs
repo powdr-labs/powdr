@@ -3,6 +3,7 @@
 struct GoldilocksField(u64);
 
 type FieldElement = GoldilocksField;
+type IntType = u64;
 
 const EPSILON: u64 = (1 << 32) - 1;
 
@@ -289,6 +290,13 @@ impl From<u64> for GoldilocksField {
     #[inline]
     fn from(n: u64) -> Self {
         Self(wrap(n))
+    }
+}
+
+impl From<FieldElement> for IntType {
+    #[inline]
+    fn from(f: FieldElement) -> Self {
+        f.0
     }
 }
 
