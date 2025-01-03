@@ -330,8 +330,8 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
         rows_to_finalize
     }
 
-    pub fn finalize_all(&mut self) {
-        self.finalize_until(self.len());
+    pub fn finalize_all(&mut self) -> usize {
+        self.finalize_until(self.len())
     }
 
     /// Appends a given amount of new finalized rows set to zero and "unknown".
