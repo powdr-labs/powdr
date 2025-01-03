@@ -59,19 +59,17 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         actions: &mut Vec<InterpreterAction<T>>,
         known_inputs: &[Variable],
     ) {
-        for var in known_inputs.iter() {
-            match var {
-                Variable::Cell(c) => {
-                    let idx = var_mapper.map_var(var);
-                    actions.push(InterpreterAction::ReadCell(idx, c.clone()));
-                }
-                Variable::Param(i) => {
-                    let idx = var_mapper.map_var(var);
-                    actions.push(InterpreterAction::ReadParam(idx, *i));
-                }
-                Variable::MachineCallReturnValue(_) => unreachable!(),
+        actions.extend(known_inputs.iter().map(|var| match var {
+            Variable::Cell(c) => {
+                let idx = var_mapper.map_var(var);
+                InterpreterAction::ReadCell(idx, c.clone())
             }
-        }
+            Variable::Param(i) => {
+                let idx = var_mapper.map_var(var);
+                InterpreterAction::ReadParam(idx, *i)
+            }
+            Variable::MachineCallReturnValue(_) => unreachable!(),
+        }));
     }
 
     fn process_effects(
@@ -79,56 +77,47 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         actions: &mut Vec<InterpreterAction<T>>,
         effects: &[Effect<T, Variable>],
     ) {
-        for effect in effects.iter() {
-            match effect {
-                Effect::Assignment(var, e) => {
-                    let idx = var_mapper.map_var(var);
-                    actions.push(InterpreterAction::AssignExpression(
-                        idx,
-                        var_mapper.map_expr_to_rpn(e),
-                    ));
-                }
-                Effect::RangeConstraint(..) => {
-                    unreachable!("Final code should not contain pure range constraints.")
-                }
-                Effect::Assertion(Assertion {
-                    lhs,
-                    rhs,
-                    expected_equal,
-                }) => {
-                    actions.push(InterpreterAction::Assertion(
-                        var_mapper.map_expr_to_rpn(lhs),
-                        var_mapper.map_expr_to_rpn(rhs),
-                        *expected_equal,
-                    ));
-                }
-                Effect::MachineCall(id, arguments) => {
-                    let mut result_vars = vec![];
-
-                    arguments.iter().for_each(|a| match a {
-                        MachineCallArgument::Unknown(v) => {
-                            let idx = var_mapper.map_var(v);
-                            result_vars.push(idx);
-                        }
-                        MachineCallArgument::Known(_) => {}
-                    });
-
-                    actions.push(InterpreterAction::MachineCall(
-                        result_vars,
-                        *id,
-                        arguments
-                            .iter()
-                            .map(|a| match a {
-                                MachineCallArgument::Unknown(_) => MachineCallArgument::Unknown(0),
-                                MachineCallArgument::Known(v) => {
-                                    MachineCallArgument::Known(var_mapper.map_expr(v))
-                                }
-                            })
-                            .collect(),
-                    ));
-                }
+        actions.extend(effects.iter().map(|effect| match effect {
+            Effect::Assignment(var, e) => {
+                let idx = var_mapper.map_var(var);
+                InterpreterAction::AssignExpression(idx, var_mapper.map_expr_to_rpn(e))
             }
-        }
+            Effect::RangeConstraint(..) => {
+                unreachable!("Final code should not contain pure range constraints.")
+            }
+            Effect::Assertion(Assertion {
+                lhs,
+                rhs,
+                expected_equal,
+            }) => InterpreterAction::Assertion(
+                var_mapper.map_expr_to_rpn(lhs),
+                var_mapper.map_expr_to_rpn(rhs),
+                *expected_equal,
+            ),
+            Effect::MachineCall(id, arguments) => {
+                let result_vars = arguments
+                    .iter()
+                    .filter_map(|a| match a {
+                        MachineCallArgument::Unknown(v) => Some(var_mapper.map_var(v)),
+                        MachineCallArgument::Known(_) => None,
+                    })
+                    .collect();
+
+                InterpreterAction::MachineCall(
+                    result_vars,
+                    *id,
+                    arguments
+                        .iter()
+                        .map(|a| match a {
+                            MachineCallArgument::Unknown(_) => MachineCallArgument::Unknown(0),
+                            MachineCallArgument::Known(v) => {
+                                MachineCallArgument::Known(var_mapper.map_expr(v))
+                            }
+                        })
+                        .collect(),
+                )
+            }
+        }))
     }
 
     fn write_data(
@@ -136,23 +125,25 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         actions: &mut Vec<InterpreterAction<T>>,
         effects: &[Effect<T, Variable>],
     ) {
-        let vars_known: Vec<_> = effects.iter().flat_map(written_vars_in_effect).collect();
-        vars_known.iter().for_each(|var| {
-            match var {
-                Variable::Cell(cell) => {
-                    let idx = var_mapper.get_var(var).unwrap();
-                    actions.push(InterpreterAction::WriteCell(idx, cell.clone()));
-                    actions.push(InterpreterAction::WriteKnown(cell.clone()));
+        effects
+            .iter()
+            .flat_map(written_vars_in_effect)
+            .for_each(|var| {
+                match var {
+                    Variable::Cell(cell) => {
+                        let idx = var_mapper.get_var(var).unwrap();
+                        actions.push(InterpreterAction::WriteCell(idx, cell.clone()));
+                        actions.push(InterpreterAction::WriteKnown(cell.clone()));
+                    }
+                    Variable::Param(i) => {
+                        let idx = var_mapper.get_var(var).unwrap();
+                        actions.push(InterpreterAction::WriteParam(idx, *i));
+                    }
+                    Variable::MachineCallReturnValue(_) => {
+                        // This is just an internal variable.
+                    }
                 }
-                Variable::Param(i) => {
-                    let idx = var_mapper.get_var(var).unwrap();
-                    actions.push(InterpreterAction::WriteParam(idx, *i));
-                }
-                Variable::MachineCallReturnValue(_) => {
-                    // This is just an internal variable.
-                }
-            }
-        });
+            });
     }
 
     // Execute the machine effects for the given the parameters
@@ -351,6 +342,7 @@ impl<T: FieldElement, S: Clone> From<&SymbolicExpression<T, S>> for RPNExpressio
 }
 
 impl<T: FieldElement> RPNExpression<T, usize> {
+    /// Evaluate the expression using the provided variables
     fn evaluate(&self, stack: &mut Vec<T>, vars: &[Option<T>]) -> T {
         self.elems.iter().for_each(|elem| match elem {
             RPNExpressionElem::Concrete(v) => stack.push(*v),
