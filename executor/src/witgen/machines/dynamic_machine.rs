@@ -268,15 +268,19 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
     fn fix_first_row(&mut self) {
         assert_eq!(self.data.len() as DegreeType, self.degree + 1);
 
+        let mut first_row = self.data.get_in_progress_row(0, || {
+            Row::fresh(self.fixed_data, RowIndex::from_degree(0, self.degree))
+        });
         let last_row = self.data.pop().unwrap();
-        if self.data[0].merge_with(&last_row).is_err() {
-            log::error!("{}", self.data[0].render("First row", false, &self.parts));
+        if first_row.merge_with(&last_row).is_err() {
+            log::error!("{}", first_row.render("First row", false, &self.parts));
             log::error!("{}", last_row.render("Last row", false, &self.parts));
             panic!(
                 "Failed to merge the first and last row of the VM '{}'",
                 self.name()
             );
         }
+        self.data.set(0, first_row);
     }
 
     #[cfg(test)]
