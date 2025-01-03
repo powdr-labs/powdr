@@ -93,7 +93,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         let rc = self.range_constraint(variable);
         if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
             Value::Concrete(val)
-        } else if self.known_variables.contains(variable) {
+        } else if self.is_known(variable) {
             Value::Known
         } else {
             Value::Unknown
