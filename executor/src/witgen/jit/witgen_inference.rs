@@ -424,9 +424,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
         let rc = self.witgen_inference.range_constraint(&variable);
         match self.witgen_inference.value(&variable) {
             Value::Concrete(val) => val.into(),
-            Value::Unknown => {
-                AffineSymbolicExpression::from_unknown_variable(variable, rc)
-            }
+            Value::Unknown => AffineSymbolicExpression::from_unknown_variable(variable, rc),
             Value::Known if self.only_concrete_known => {
                 AffineSymbolicExpression::from_unknown_variable(variable, rc)
             }
