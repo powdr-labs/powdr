@@ -245,7 +245,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 iter::once(self.block_size - 1)
                     .chain(0..self.block_size)
                     .chain(iter::once(0))
-                    .map(|i| self.data[i].clone()),
+                    .map(|i| {
+                        self.data.get_in_progress_row(i, || {
+                            Row::fresh(
+                                self.fixed_data,
+                                RowIndex::from_degree(i as u64, self.degree),
+                            )
+                        })
+                    }),
             );
 
             // Instantiate a processor
@@ -279,7 +286,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             // Replace the dummy block, discarding first and last row
             dummy_block.pop().unwrap();
             for i in (0..self.block_size).rev() {
-                self.data[i] = dummy_block.pop().unwrap();
+                self.data.set(i, dummy_block.pop().unwrap());
             }
         }
 

@@ -93,6 +93,23 @@ impl<T: FieldElement> CompactData<T> {
         }
     }
 
+    pub fn set(&mut self, row: usize, new_row: Row<T>) {
+        let idx = row * self.column_count;
+        for (i, col_id) in
+            (self.first_column_id..(self.first_column_id + self.column_count as u64)).enumerate()
+        {
+            if let Some(v) = new_row.value(&PolyID {
+                id: col_id,
+                ptype: PolynomialType::Committed,
+            }) {
+                self.data[idx + i] = v;
+                self.known_cells.set(row, i as u64, true);
+            } else {
+                self.known_cells.set(row, i as u64, false);
+            }
+        }
+    }
+
     pub fn append_new_rows(&mut self, count: usize) {
         self.data
             .resize(self.data.len() + count * self.column_count, T::zero());
@@ -359,6 +376,36 @@ impl<T: FieldElement> FinalizableData<T> {
                 (column_ids[col_index], (column, known_cells))
             },
         )
+    }
+
+    pub fn get_in_progress_row(&self, i: usize, make_fresh_row: impl Fn() -> Row<T>) -> Row<T> {
+        match self.location_of_row(i) {
+            Location::Finalized(local) => {
+                let layout = self.layout();
+                let mut row = make_fresh_row();
+                for column in row.columns() {
+                    if column.id >= layout.first_column_id
+                        && column.id < layout.first_column_id + layout.column_count as u64
+                    {
+                        let (value, known) = self.finalized_data.get(local, column.id);
+                        if known {
+                            row.set_cell_known(&column, value);
+                        }
+                    }
+                }
+                row
+            }
+            Location::PostFinalized(local) => self.post_finalized_data[local].clone(),
+        }
+    }
+
+    pub fn set(&mut self, i: usize, row: Row<T>) {
+        match self.location_of_row(i) {
+            Location::Finalized(local) => {
+                self.finalized_data.set(local, row);
+            }
+            Location::PostFinalized(local) => self.post_finalized_data[local] = row,
+        }
     }
 }
 

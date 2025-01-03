@@ -183,6 +183,10 @@ pub struct Row<T: FieldElement> {
 }
 
 impl<T: FieldElement> Row<T> {
+    pub fn columns(&self) -> impl Iterator<Item = PolyID> {
+        self.values.keys()
+    }
+
     pub fn value_or_zero(&self, poly_id: &PolyID) -> T {
         self.values[poly_id].unwrap_or_zero()
     }
@@ -247,6 +251,10 @@ impl<T: FieldElement> Row<T> {
 
     pub fn value_is_known(&self, poly_id: &PolyID) -> bool {
         self.values[poly_id].is_known()
+    }
+
+    pub fn set_cell_known(&mut self, poly_id: &PolyID, value: T) {
+        self.values[poly_id] = CellValue::Known(value);
     }
 
     pub fn set_cell_unknown(&mut self, poly_id: &PolyID) {
