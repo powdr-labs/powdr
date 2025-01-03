@@ -24,16 +24,9 @@ mod connection_constraint_checker;
 mod machine;
 mod polynomial_constraint_checker;
 
+#[derive(Default)]
 pub(crate) struct MockBackendFactory<F: FieldElement> {
     _marker: PhantomData<F>,
-}
-
-impl<F: FieldElement> MockBackendFactory<F> {
-    pub(crate) const fn new() -> Self {
-        Self {
-            _marker: PhantomData,
-        }
-    }
 }
 
 impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
