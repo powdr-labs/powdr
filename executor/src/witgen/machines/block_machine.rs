@@ -557,7 +557,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // 3. Remove the last row of the previous block from data
         self.data.truncate(self.data.len() - 1);
 
-        // 4. Finalize everything so far (except the dummy block)
+        // 4. Finalize everything so far
         if self.data.len() > self.block_size {
             self.data.finalize_until(self.data.len());
         }
