@@ -10,7 +10,7 @@ use crate::witgen::machines::LookupCell;
 use crate::witgen::QueryCallback;
 use powdr_number::FieldElement;
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 // Witgen effects compiled into interpreter instructions.
 pub struct EffectsInterpreter<T: FieldElement> {
@@ -29,8 +29,16 @@ enum InterpreterAction<T: FieldElement> {
     WriteCell(usize, Cell),
     WriteParam(usize, usize),
     WriteKnown(Cell),
-    MachineCall(Vec<usize>, u64, Vec<MachineCallArgument<T, usize>>),
+    MachineCall(u64, Vec<MachineCallArgumentIdx>),
     Assertion(RPNExpression<T, usize>, RPNExpression<T, usize>, bool),
+}
+
+#[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub enum MachineCallArgumentIdx {
+    // var index of the evaluated known argument expression
+    Known(usize),
+    // var index of the unknown
+    Unknown(usize),
 }
 
 impl<T: FieldElement> EffectsInterpreter<T> {
@@ -47,12 +55,14 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         Self::process_effects(&mut var_mapper, &mut actions, effects);
         Self::write_data(&mut var_mapper, &mut actions, effects);
 
-        Self {
+        let ret = Self {
             first_column_id,
             column_count,
             var_count: var_mapper.var_count(),
             actions,
-        }
+        };
+        assert!(ret.is_valid());
+        ret
     }
 
     fn load_known_inputs(
@@ -78,47 +88,49 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         actions: &mut Vec<InterpreterAction<T>>,
         effects: &[Effect<T, Variable>],
     ) {
-        actions.extend(effects.iter().map(|effect| match effect {
-            Effect::Assignment(var, e) => {
-                let idx = var_mapper.map_var(var);
-                InterpreterAction::AssignExpression(idx, var_mapper.map_expr_to_rpn(e))
-            }
-            Effect::RangeConstraint(..) => {
-                unreachable!("Final code should not contain pure range constraints.")
-            }
-            Effect::Assertion(Assertion {
-                lhs,
-                rhs,
-                expected_equal,
-            }) => InterpreterAction::Assertion(
-                var_mapper.map_expr_to_rpn(lhs),
-                var_mapper.map_expr_to_rpn(rhs),
-                *expected_equal,
-            ),
-            Effect::MachineCall(id, arguments) => {
-                let result_vars = arguments
-                    .iter()
-                    .filter_map(|a| match a {
-                        MachineCallArgument::Unknown(v) => Some(var_mapper.map_var(v)),
-                        MachineCallArgument::Known(_) => None,
-                    })
-                    .collect();
-
-                InterpreterAction::MachineCall(
-                    result_vars,
-                    *id,
-                    arguments
-                        .iter()
-                        .map(|a| match a {
-                            MachineCallArgument::Unknown(_) => MachineCallArgument::Unknown(0),
-                            MachineCallArgument::Known(v) => {
-                                MachineCallArgument::Known(var_mapper.map_expr(v))
-                            }
-                        })
-                        .collect(),
-                )
-            }
-        }))
+        effects.iter().for_each(|effect| {
+            let action = match effect {
+                Effect::Assignment(var, e) => {
+                    let idx = var_mapper.map_var(var);
+                    InterpreterAction::AssignExpression(idx, var_mapper.map_expr_to_rpn(e))
+                }
+                Effect::RangeConstraint(..) => {
+                    unreachable!("Final code should not contain pure range constraints.")
+                }
+                Effect::Assertion(Assertion {
+                    lhs,
+                    rhs,
+                    expected_equal,
+                }) => InterpreterAction::Assertion(
+                    var_mapper.map_expr_to_rpn(lhs),
+                    var_mapper.map_expr_to_rpn(rhs),
+                    *expected_equal,
+                ),
+                Effect::MachineCall(id, arguments) => {
+                    InterpreterAction::MachineCall(
+                        *id,
+                        arguments
+                            .iter()
+                            .map(|a| match a {
+                                MachineCallArgument::Unknown(v) => {
+                                    MachineCallArgumentIdx::Unknown(var_mapper.map_var(v))
+                                }
+                                MachineCallArgument::Known(e) => {
+                                    // convert known arguments into variable assignments that are then referenced
+                                    let idx = var_mapper.reserve_idx();
+                                    actions.push(InterpreterAction::AssignExpression(
+                                        idx,
+                                        var_mapper.map_expr_to_rpn(e),
+                                    ));
+                                    MachineCallArgumentIdx::Known(idx)
+                                }
+                            })
+                            .collect(),
+                    )
+                }
+            };
+            actions.push(action);
+        })
     }
 
     fn write_data(
@@ -147,6 +159,24 @@ impl<T: FieldElement> EffectsInterpreter<T> {
             });
     }
 
+    // Check that actions are valid (e.g., variables writen to only once, and only read after being written to)
+    fn is_valid(&self) -> bool {
+        let mut prev_writes = BTreeSet::new();
+        for action in &self.actions {
+            let writes = action.writes();
+            // writing to a variable already written?
+            if !writes.is_disjoint(&prev_writes) {
+                return false;
+            }
+            // reading a variable that was not written to?
+            if !action.reads().is_subset(&prev_writes) {
+                return false;
+            }
+            prev_writes.extend(writes);
+        }
+        true
+    }
+
     // Execute the machine effects for the given the parameters
     pub fn call<Q: QueryCallback<T>>(
         &self,
@@ -157,30 +187,26 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         let row_offset = data.row_offset().try_into().unwrap();
         let (data, known) = data.as_mut_slices();
 
-        let mut vars = vec![None; self.var_count];
+        let mut vars = vec![T::zero(); self.var_count];
 
         let mut eval_stack = vec![];
         for action in &self.actions {
             match action {
                 InterpreterAction::AssignExpression(idx, e) => {
-                    let val = e.evaluate(&mut eval_stack, &vars);
-                    assert!(vars[*idx].replace(val).is_none());
+                    let val = e.evaluate(&mut eval_stack, &vars[..]);
+                    vars[*idx] = val;
                 }
                 InterpreterAction::ReadCell(idx, c) => {
-                    assert!(vars[*idx]
-                        .replace(
-                            data[index(
-                                self.first_column_id,
-                                self.column_count,
-                                row_offset,
-                                c.row_offset,
-                                c.id,
-                            )]
-                        )
-                        .is_none())
+                    vars[*idx] = data[index(
+                        self.first_column_id,
+                        self.column_count,
+                        row_offset,
+                        c.row_offset,
+                        c.id,
+                    )];
                 }
                 InterpreterAction::ReadParam(idx, i) => {
-                    assert!(vars[*idx].replace(get_param(params, *i)).is_none());
+                    vars[*idx] = get_param(params, *i);
                 }
                 InterpreterAction::WriteCell(idx, c) => {
                     set(
@@ -190,11 +216,11 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                         row_offset,
                         c.row_offset,
                         c.id,
-                        vars[*idx].unwrap(),
+                        vars[*idx],
                     );
                 }
                 InterpreterAction::WriteParam(idx, i) => {
-                    set_param(params, *i, vars[*idx].unwrap());
+                    set_param(params, *i, vars[*idx]);
                 }
                 InterpreterAction::WriteKnown(c) => {
                     set_known(
@@ -206,38 +232,22 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                         c.id,
                     );
                 }
-                InterpreterAction::MachineCall(result_vars, id, arguments) => {
-                    let mut arg_values: Vec<_> = arguments
-                        .iter()
-                        .map(|a| match a {
-                            MachineCallArgument::Unknown(v) => (Some(v), Default::default()),
-                            MachineCallArgument::Known(v) => (
-                                None,
-                                RPNExpression::from(v).evaluate(&mut eval_stack, &vars),
-                            ),
-                        })
-                        .collect();
-
-                    // call machine
+                InterpreterAction::MachineCall(id, arguments) => {
+                    // we know it's safe to escape the references here, but the compiler doesn't, so we use unsafe
                     let mut args = arguments
                         .iter()
-                        .zip(arg_values.iter_mut())
-                        .map(|(a, v)| match a {
-                            MachineCallArgument::Unknown(_) => LookupCell::Output(&mut v.1),
-                            MachineCallArgument::Known(_) => LookupCell::Input(&v.1),
+                        .map(|a| match a {
+                            MachineCallArgumentIdx::Unknown(idx) => {
+                                let var = &mut vars[*idx] as *mut T;
+                                LookupCell::Output(unsafe { var.as_mut().unwrap() })
+                            }
+                            MachineCallArgumentIdx::Known(idx) => {
+                                let var = &vars[*idx] as *const T;
+                                LookupCell::Input(unsafe { var.as_ref().unwrap() })
+                            }
                         })
                         .collect::<Vec<_>>();
-
                     mutable_state.call_direct(*id, &mut args[..]).unwrap();
-
-                    // write output to variables
-                    let mut var_idx = 0;
-                    args.into_iter().for_each(|arg| {
-                        if let LookupCell::Output(v) = arg {
-                            assert!(vars[result_vars[var_idx]].replace(*v).is_none());
-                            var_idx += 1;
-                        }
-                    });
                 }
                 InterpreterAction::Assertion(e1, e2, expected_equal) => {
                     let lhs_value = e1.evaluate(&mut eval_stack, &vars);
@@ -253,38 +263,105 @@ impl<T: FieldElement> EffectsInterpreter<T> {
     }
 }
 
+impl<T: FieldElement> InterpreterAction<T> {
+    // variable indexes written by the action
+    fn writes(&self) -> BTreeSet<usize> {
+        let mut set = BTreeSet::new();
+        match self {
+            InterpreterAction::ReadCell(idx, _) => {
+                set.insert(*idx);
+            }
+            InterpreterAction::ReadParam(idx, _) => {
+                set.insert(*idx);
+            }
+            InterpreterAction::AssignExpression(idx, _) => {
+                set.insert(*idx);
+            }
+            InterpreterAction::MachineCall(_, params) => params.iter().for_each(|p| {
+                if let MachineCallArgumentIdx::Unknown(v) = p {
+                    set.insert(*v);
+                }
+            }),
+            _ => {}
+        }
+        set
+    }
+
+    // variable indexes read by the action
+    fn reads(&self) -> BTreeSet<usize> {
+        let mut set = BTreeSet::new();
+        match self {
+            InterpreterAction::WriteCell(idx, _) => {
+                set.insert(*idx);
+            }
+            InterpreterAction::WriteParam(idx, _) => {
+                set.insert(*idx);
+            }
+            InterpreterAction::AssignExpression(_, expr) => expr.elems.iter().for_each(|e| {
+                if let RPNExpressionElem::Symbol(idx) = e {
+                    set.insert(*idx);
+                }
+            }),
+            InterpreterAction::MachineCall(_, params) => params.iter().for_each(|p| {
+                if let MachineCallArgumentIdx::Known(v) = p {
+                    set.insert(*v);
+                }
+            }),
+            InterpreterAction::Assertion(lhs, rhs, _) => {
+                lhs.elems.iter().for_each(|e| {
+                    if let RPNExpressionElem::Symbol(idx) = e {
+                        set.insert(*idx);
+                    }
+                });
+                rhs.elems.iter().for_each(|e| {
+                    if let RPNExpressionElem::Symbol(idx) = e {
+                        set.insert(*idx);
+                    }
+                });
+            }
+            _ => {}
+        }
+        set
+    }
+}
+
 /// Helper struct to map variables to unique indices, so they can be kept in
 /// sequential memory and quickly refered to during execution.
 pub struct VariableMapper {
     var_idx: HashMap<Variable, usize>,
+    count: usize,
 }
 
 impl VariableMapper {
     pub fn new() -> Self {
         Self {
             var_idx: HashMap::new(),
+            count: 0,
         }
     }
 
     pub fn var_count(&self) -> usize {
-        self.var_idx.len()
+        self.count
     }
 
     pub fn map_var(&mut self, var: &Variable) -> usize {
-        let var_count = self.var_idx.len();
-        let idx = *self.var_idx.entry(var.clone()).or_insert(var_count);
+        let idx = *self.var_idx.entry(var.clone()).or_insert_with(|| {
+            self.count += 1;
+            self.count - 1
+        });
         idx
     }
 
-    pub fn get_var(&mut self, var: &Variable) -> Option<usize> {
-        self.var_idx.get(var).copied()
+    // reserve a new variable index
+    pub fn reserve_idx(&mut self) -> usize {
+        let idx = self.count;
+        self.count += 1;
+        idx
     }
 
-    pub fn map_expr<T: FieldElement>(
-        &mut self,
-        expr: &SymbolicExpression<T, Variable>,
-    ) -> SymbolicExpression<T, usize> {
-        expr.map_variables(&mut |var| self.map_var(var))
+    // get the index of a variable if it was previously mapped
+    pub fn get_var(&mut self, var: &Variable) -> Option<usize> {
+        self.var_idx.get(var).copied()
     }
 
     pub fn map_expr_to_rpn<T: FieldElement>(
@@ -345,10 +422,10 @@ impl<T: FieldElement, S: Clone> From<&SymbolicExpression<T, S>> for RPNExpressio
 
 impl<T: FieldElement> RPNExpression<T, usize> {
     /// Evaluate the expression using the provided variables
-    fn evaluate(&self, stack: &mut Vec<T>, vars: &[Option<T>]) -> T {
+    fn evaluate(&self, stack: &mut Vec<T>, vars: &[T]) -> T {
         self.elems.iter().for_each(|elem| match elem {
             RPNExpressionElem::Concrete(v) => stack.push(*v),
-            RPNExpressionElem::Symbol(idx) => stack.push(vars[*idx].unwrap()),
+            RPNExpressionElem::Symbol(idx) => stack.push(vars[*idx]),
             RPNExpressionElem::BinaryOperation(op) => {
                 let right = stack.pop().unwrap();
                 let left = stack.pop().unwrap();
