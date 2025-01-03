@@ -9,24 +9,10 @@ use powdr_number::FieldElement;
 
 use crate::witgen::range_constraints::RangeConstraint;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RPNExpressionElem<T: FieldElement, S> {
-    Concrete(T),
-    Symbol(S),
-    BinaryOperation(BinaryOperator),
-    UnaryOperation(UnaryOperator),
-    BitOperation(BitOperator, T::Integer),
-}
-
-/// An expression in Reverse Polish Notation.
-pub struct RPNExpression<T: FieldElement, S> {
-    pub elems: Vec<RPNExpressionElem<T, S>>,
-}
-
 /// A value that is known at run-time, defined through a complex expression
 /// involving known cells or variables and compile-time constants.
 /// Each of the sub-expressions can have its own range constraint.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub enum SymbolicExpression<T: FieldElement, S> {
     /// A concrete constant value known at compile time.
     Concrete(T),
@@ -329,37 +315,6 @@ impl<T: FieldElement, V: Clone> SymbolicExpression<T, V> {
                 *n,
                 rc.clone(),
             ),
-        }
-    }
-
-    /// Convert to an RPNExpression
-    pub fn to_rpn(&self) -> RPNExpression<T, V> {
-        let mut elems = Vec::new();
-        self.to_rpn_inner(&mut elems);
-        RPNExpression { elems }
-    }
-
-    fn to_rpn_inner(&self, elems: &mut Vec<RPNExpressionElem<T, V>>) {
-        match self {
-            SymbolicExpression::Concrete(n) => {
-                elems.push(RPNExpressionElem::Concrete(*n));
-            }
-            SymbolicExpression::Symbol(s, _) => {
-                elems.push(RPNExpressionElem::Symbol(s.clone()));
-            }
-            SymbolicExpression::BinaryOperation(lhs, op, rhs, _) => {
-                lhs.to_rpn_inner(elems);
-                rhs.to_rpn_inner(elems);
-                elems.push(RPNExpressionElem::BinaryOperation(op.clone()));
-            }
-            SymbolicExpression::UnaryOperation(op, expr, _) => {
-                expr.to_rpn_inner(elems);
-                elems.push(RPNExpressionElem::UnaryOperation(op.clone()));
-            }
-            SymbolicExpression::BitOperation(expr, op, n, _) => {
-                expr.to_rpn_inner(elems);
-                elems.push(RPNExpressionElem::BitOperation(op.clone(), *n));
-            }
         }
     }
 }

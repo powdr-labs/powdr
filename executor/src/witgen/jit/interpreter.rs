@@ -1,9 +1,7 @@
 use super::compiler::{written_vars_in_effect, WitgenFunctionParams};
 use super::effect::{Assertion, Effect};
 
-use super::symbolic_expression::{
-    BinaryOperator, BitOperator, RPNExpression, RPNExpressionElem, UnaryOperator,
-};
+use super::symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator};
 use super::variable::{Cell, Variable};
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::jit::effect::MachineCallArgument;
@@ -17,7 +15,7 @@ use std::collections::HashMap;
 pub struct EffectsInterpreter<T: FieldElement> {
     first_column_id: u64,
     column_count: usize,
-    vars: usize,
+    var_count: usize,
     actions: Vec<InterpreterAction<T>>,
 }
 
@@ -42,28 +40,17 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         effects: &[Effect<T, Variable>],
     ) -> Self {
         let mut actions = vec![];
-        let mut var_idx = HashMap::new();
-        let mut vars = 0;
-
-        // map variables to indices, so they can be quickly accessed as sequential memory (kept in a vec) during execution
-        let mut map_var_idx = |var: &Variable| -> usize {
-            let idx = *var_idx.entry(var.clone()).or_insert_with(|| {
-                let idx = vars;
-                vars += 1;
-                idx
-            });
-            idx
-        };
+        let mut var_mapper = VariableMapper::new();
 
         // load known inputs
         for var in known_inputs.iter() {
             match var {
                 Variable::Cell(c) => {
-                    let idx = map_var_idx(var);
+                    let idx = var_mapper.map_var(var);
                     actions.push(InterpreterAction::ReadCell(idx, c.clone()));
                 }
                 Variable::Param(i) => {
-                    let idx = map_var_idx(var);
+                    let idx = var_mapper.map_var(var);
                     actions.push(InterpreterAction::ReadParam(idx, *i));
                 }
                 Variable::MachineCallReturnValue(_) => unreachable!(),
@@ -74,10 +61,10 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         for effect in effects.iter() {
             match effect {
                 Effect::Assignment(var, e) => {
-                    let idx = map_var_idx(var);
+                    let idx = var_mapper.map_var(var);
                     actions.push(InterpreterAction::AssignExpression(
                         idx,
-                        e.map_variables(&mut map_var_idx).to_rpn(),
+                        var_mapper.map_expr_to_rpn(e),
                     ));
                 }
                 Effect::RangeConstraint(..) => {
@@ -89,8 +76,8 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     expected_equal,
                 }) => {
                     actions.push(InterpreterAction::Assertion(
-                        lhs.map_variables(&mut map_var_idx).to_rpn(),
-                        rhs.map_variables(&mut map_var_idx).to_rpn(),
+                        var_mapper.map_expr_to_rpn(lhs),
+                        var_mapper.map_expr_to_rpn(rhs),
                         *expected_equal,
                     ));
                 }
@@ -99,7 +86,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
 
                     arguments.iter().for_each(|a| match a {
                         MachineCallArgument::Unknown(v) => {
-                            let idx = map_var_idx(v);
+                            let idx = var_mapper.map_var(v);
                             result_vars.push(idx);
                         }
                         MachineCallArgument::Known(_) => {}
@@ -113,7 +100,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                             .map(|a| match a {
                                 MachineCallArgument::Unknown(_) => MachineCallArgument::Unknown(0),
                                 MachineCallArgument::Known(v) => {
-                                    MachineCallArgument::Known(v.map_variables(&mut map_var_idx))
+                                    MachineCallArgument::Known(var_mapper.map_expr(v))
                                 }
                             })
                             .collect(),
@@ -127,13 +114,13 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         vars_known.iter().for_each(|var| {
             match var {
                 Variable::Cell(cell) => {
-                    let idx = var_idx.get(var).unwrap();
-                    actions.push(InterpreterAction::WriteCell(*idx, cell.clone()));
+                    let idx = var_mapper.get_var(var).unwrap();
+                    actions.push(InterpreterAction::WriteCell(idx, cell.clone()));
                     actions.push(InterpreterAction::WriteKnown(cell.clone()));
                 }
                 Variable::Param(i) => {
-                    let idx = var_idx.get(var).unwrap();
-                    actions.push(InterpreterAction::WriteParam(*idx, *i));
+                    let idx = var_mapper.get_var(var).unwrap();
+                    actions.push(InterpreterAction::WriteParam(idx, *i));
                 }
                 Variable::MachineCallReturnValue(_) => {
                     // This is just an internal variable.
@@ -144,7 +131,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         Self {
             first_column_id,
             column_count,
-            vars,
+            var_count: var_mapper.var_count(),
             actions,
         }
     }
@@ -155,13 +142,13 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         let data = params.data.into_mut_slice();
         let pparams = params.params.into_mut_slice();
 
-        let mut vars = vec![None; self.vars];
+        let mut vars = vec![None; self.var_count];
 
         let mut eval_stack = vec![];
         for action in &self.actions {
             match action {
                 InterpreterAction::AssignExpression(idx, e) => {
-                    let val = self.evaluate_expression(&mut eval_stack, &vars, e);
+                    let val = evaluate_expression(&mut eval_stack, &vars, e);
                     assert!(vars[*idx].replace(val).is_none());
                 }
                 InterpreterAction::ReadCell(idx, c) => {
@@ -214,7 +201,11 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                             MachineCallArgument::Unknown(v) => (Some(v), Default::default()),
                             MachineCallArgument::Known(v) => (
                                 None,
-                                self.evaluate_expression(&mut eval_stack, &vars, &v.to_rpn()),
+                                evaluate_expression(
+                                    &mut eval_stack,
+                                    &vars,
+                                    &RPNExpression::from(v),
+                                ),
                             ),
                         })
                         .collect();
@@ -241,8 +232,8 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     });
                 }
                 InterpreterAction::Assertion(e1, e2, expected_equal) => {
-                    let lhs_value = self.evaluate_expression(&mut eval_stack, &vars, e1);
-                    let rhs_value = self.evaluate_expression(&mut eval_stack, &vars, e2);
+                    let lhs_value = evaluate_expression(&mut eval_stack, &vars, e1);
+                    let rhs_value = evaluate_expression(&mut eval_stack, &vars, e2);
                     if *expected_equal {
                         assert_eq!(lhs_value, rhs_value, "Assertion failed");
                     } else {
@@ -252,51 +243,138 @@ impl<T: FieldElement> EffectsInterpreter<T> {
             }
         }
     }
+}
 
-    // evaluates an expression using the provided variable values
-    fn evaluate_expression(
-        &self,
-        stack: &mut Vec<T>,
-        vars: &[Option<T>],
-        expr: &RPNExpression<T, usize>,
-    ) -> T {
-        for elem in expr.elems.iter() {
-            match elem {
-                RPNExpressionElem::Concrete(v) => stack.push(*v),
-                RPNExpressionElem::Symbol(idx) => stack.push(vars[*idx].unwrap()),
-                RPNExpressionElem::BinaryOperation(op) => {
-                    let right = stack.pop().unwrap();
-                    let left = stack.pop().unwrap();
-                    let result = match op {
-                        BinaryOperator::Add => left + right,
-                        BinaryOperator::Sub => left - right,
-                        BinaryOperator::Mul => left * right,
-                        BinaryOperator::Div => left / right,
-                        BinaryOperator::IntegerDiv => T::from(
-                            left.to_integer().try_into_u64().unwrap()
-                                / right.to_integer().try_into_u64().unwrap(),
-                        ),
-                    };
-                    stack.push(result);
+/// Helper struct to map variables to unique indices, so they can be kept in
+/// sequential memory and quickly refered to during execution.
+pub struct VariableMapper {
+    var_idx: HashMap<Variable, usize>,
+}
+
+impl VariableMapper {
+    pub fn new() -> Self {
+        Self {
+            var_idx: HashMap::new(),
+        }
+    }
+
+    pub fn var_count(&self) -> usize {
+        self.var_idx.len()
+    }
+
+    pub fn map_var(&mut self, var: &Variable) -> usize {
+        let var_count = self.var_idx.len();
+        let idx = *self.var_idx.entry(var.clone()).or_insert(var_count);
+        idx
+    }
+
+    pub fn get_var(&mut self, var: &Variable) -> Option<usize> {
+        self.var_idx.get(var).copied()
+    }
+
+    pub fn map_expr<T: FieldElement>(
+        &mut self,
+        expr: &SymbolicExpression<T, Variable>,
+    ) -> SymbolicExpression<T, usize> {
+        expr.map_variables(&mut |var| self.map_var(var))
+    }
+
+    pub fn map_expr_to_rpn<T: FieldElement>(
+        &mut self,
+        expr: &SymbolicExpression<T, Variable>,
+    ) -> RPNExpression<T, usize> {
+        RPNExpression::from(&expr.map_variables(&mut |var| self.map_var(var)))
+    }
+}
+
+/// An expression in Reverse Polish Notation.
+pub struct RPNExpression<T: FieldElement, S> {
+    pub elems: Vec<RPNExpressionElem<T, S>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RPNExpressionElem<T: FieldElement, S> {
+    Concrete(T),
+    Symbol(S),
+    BinaryOperation(BinaryOperator),
+    UnaryOperation(UnaryOperator),
+    BitOperation(BitOperator, T::Integer),
+}
+
+impl<T: FieldElement, S: Clone> From<&SymbolicExpression<T, S>> for RPNExpression<T, S> {
+    fn from(expr: &SymbolicExpression<T, S>) -> Self {
+        fn from_inner<T: FieldElement, S: Clone>(
+            expr: &SymbolicExpression<T, S>,
+            elems: &mut Vec<RPNExpressionElem<T, S>>,
+        ) {
+            match expr {
+                SymbolicExpression::Concrete(n) => {
+                    elems.push(RPNExpressionElem::Concrete(*n));
                 }
-                RPNExpressionElem::UnaryOperation(op) => {
-                    let inner = stack.pop().unwrap();
-                    let result = match op {
-                        UnaryOperator::Neg => -inner,
-                    };
-                    stack.push(result);
+                SymbolicExpression::Symbol(s, _) => {
+                    elems.push(RPNExpressionElem::Symbol(s.clone()));
                 }
-                RPNExpressionElem::BitOperation(op, right) => {
-                    let left = stack.pop().unwrap();
-                    let result = match op {
-                        BitOperator::And => T::from(left.to_integer() & *right),
-                    };
-                    stack.push(result);
+                SymbolicExpression::BinaryOperation(lhs, op, rhs, _) => {
+                    from_inner(lhs, elems);
+                    from_inner(rhs, elems);
+                    elems.push(RPNExpressionElem::BinaryOperation(op.clone()));
+                }
+                SymbolicExpression::UnaryOperation(op, expr, _) => {
+                    from_inner(expr, elems);
+                    elems.push(RPNExpressionElem::UnaryOperation(op.clone()));
+                }
+                SymbolicExpression::BitOperation(expr, op, n, _) => {
+                    from_inner(expr, elems);
+                    elems.push(RPNExpressionElem::BitOperation(op.clone(), *n));
                 }
             }
         }
-        stack.pop().unwrap()
+        let mut elems = Vec::new();
+        from_inner(expr, &mut elems);
+        RPNExpression { elems }
     }
+}
+
+// evaluates an expression using the provided variable values
+fn evaluate_expression<T: FieldElement>(
+    stack: &mut Vec<T>,
+    vars: &[Option<T>],
+    expr: &RPNExpression<T, usize>,
+) -> T {
+    expr.elems.iter().for_each(|elem| match elem {
+        RPNExpressionElem::Concrete(v) => stack.push(*v),
+        RPNExpressionElem::Symbol(idx) => stack.push(vars[*idx].unwrap()),
+        RPNExpressionElem::BinaryOperation(op) => {
+            let right = stack.pop().unwrap();
+            let left = stack.pop().unwrap();
+            let result = match op {
+                BinaryOperator::Add => left + right,
+                BinaryOperator::Sub => left - right,
+                BinaryOperator::Mul => left * right,
+                BinaryOperator::Div => left / right,
+                BinaryOperator::IntegerDiv => T::from(
+                    left.to_integer().try_into_u64().unwrap()
+                        / right.to_integer().try_into_u64().unwrap(),
+                ),
+            };
+            stack.push(result);
+        }
+        RPNExpressionElem::UnaryOperation(op) => {
+            let inner = stack.pop().unwrap();
+            let result = match op {
+                UnaryOperator::Neg => -inner,
+            };
+            stack.push(result);
+        }
+        RPNExpressionElem::BitOperation(op, right) => {
+            let left = stack.pop().unwrap();
+            let result = match op {
+                BitOperator::And => T::from(left.to_integer() & *right),
+            };
+            stack.push(result);
+        }
+    });
+    stack.pop().unwrap()
 }
 
 // the following functions come from the interface.rs file also included in the compiled jit code
