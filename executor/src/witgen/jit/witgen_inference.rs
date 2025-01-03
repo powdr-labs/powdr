@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::{Display, Formatter},
+};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
@@ -42,6 +45,23 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     code: Vec<Effect<T, Variable>>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum Value<T> {
+    Concrete(T),
+    Known,
+    Unknown,
+}
+
+impl<T: Display> Display for Value<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Concrete(v) => write!(f, "{v}"),
+            Value::Known => write!(f, "<known>"),
+            Value::Unknown => write!(f, "???"),
+        }
+    }
+}
+
 impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, FixedEval> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
@@ -62,12 +82,23 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.code
     }
 
+    pub fn known_variables(&self) -> &HashSet<Variable> {
+        &self.known_variables
+    }
+
     pub fn is_known(&self, variable: &Variable) -> bool {
         self.known_variables.contains(variable)
     }
 
-    pub fn known_variables(&self) -> impl Iterator<Item = &Variable> {
-        self.known_variables.iter()
+    pub fn value(&self, variable: &Variable) -> Value<T> {
+        let rc = self.range_constraint(variable);
+        if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
+            Value::Concrete(val)
+        } else if self.is_known(variable) {
+            Value::Known
+        } else {
+            Value::Unknown
+        }
     }
 
     pub fn branch_on(
@@ -423,12 +454,13 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
         // If a variable is known and has a compile-time constant value,
         // that value is stored in the range constraints.
         let rc = self.witgen_inference.range_constraint(&variable);
-        if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
-            val.into()
-        } else if !self.only_concrete_known && self.witgen_inference.is_known(&variable) {
-            AffineSymbolicExpression::from_known_symbol(variable, rc)
-        } else {
-            AffineSymbolicExpression::from_unknown_variable(variable, rc)
+        match self.witgen_inference.value(&variable) {
+            Value::Concrete(val) => val.into(),
+            Value::Unknown => AffineSymbolicExpression::from_unknown_variable(variable, rc),
+            Value::Known if self.only_concrete_known => {
+                AffineSymbolicExpression::from_unknown_variable(variable, rc)
+            }
+            Value::Known => AffineSymbolicExpression::from_known_symbol(variable, rc),
         }
     }
 
