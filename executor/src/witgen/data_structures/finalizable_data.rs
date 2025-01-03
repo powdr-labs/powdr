@@ -342,7 +342,6 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
     pub fn append_new_finalized_rows(&mut self, count: usize) -> CompactDataRef<'_, T> {
         assert!(self.post_finalized_data.is_empty());
         let row_zero = self.finalized_data.len();
-        assert!(row_zero > 0);
         self.finalized_data.append_new_rows(count);
         CompactDataRef::new(&mut self.finalized_data, row_zero)
     }

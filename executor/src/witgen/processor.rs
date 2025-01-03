@@ -647,6 +647,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 .unwrap()
                 .constant_value()
                 .unwrap();
+            // TODO: This is always true for the PC lookup...
             return selector_value.is_zero();
         }
 
