@@ -1568,22 +1568,6 @@ impl<T> AlgebraicExpression<T> {
             _ => false,
         })
     }
-
-    /// @returns true if the expression contains a reference to a next value of a witness column.
-    pub fn contains_next_witness_ref(&self) -> bool {
-        self.expr_any(|e| match e {
-            AlgebraicExpression::Reference(poly) => poly.next && poly.is_witness(),
-            _ => false,
-        })
-    }
-
-    /// @returns true if the expression contains a reference to a witness column.
-    pub fn contains_witness_ref(&self) -> bool {
-        self.expr_any(|e| match e {
-            AlgebraicExpression::Reference(poly) => poly.is_witness(),
-            _ => false,
-        })
-    }
 }
 
 impl<T> ops::Add for AlgebraicExpression<T> {
