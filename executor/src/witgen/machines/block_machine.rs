@@ -67,9 +67,6 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// The data of the machine.
     data: FinalizableData<'a, T>,
     publics: BTreeMap<&'a str, T>,
-    /// The index of the first row that has not been finalized yet.
-    /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
-    first_in_progress_row: usize,
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
     processing_sequence_cache: ProcessingSequenceCache,
@@ -134,7 +131,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             connection_type: is_permutation,
             data,
             publics: Default::default(),
-            first_in_progress_row: block_size,
             multiplicity_counter: MultiplicityCounter::new(&parts.connections),
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
@@ -487,7 +483,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             "Block machine is full (this should have been checked before)"
         );
         self.data.finalize_until(self.data.len());
-        self.first_in_progress_row = self.data.len() + self.block_size;
         //TODO can we properly access the last row of the dummy block?
         let data = self.data.append_new_finalized_rows(self.block_size);
 
@@ -565,7 +560,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // 4. Finalize everything so far (except the dummy block)
         if self.data.len() > self.block_size {
             self.data.finalize_until(self.data.len());
-            self.first_in_progress_row = self.data.len();
         }
 
         // 5. Append the new block (including the merged last row of the previous block)
