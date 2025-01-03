@@ -187,7 +187,7 @@ struct ProverInputFilePaths {
     commits: PathBuf,
     constants: PathBuf,
     stark_struct: PathBuf,
-    contraints: PathBuf,
+    constraints: PathBuf,
 }
 
 impl<F: FieldElement> EStarkFilesCommon<F> {
@@ -201,7 +201,7 @@ impl<F: FieldElement> EStarkFilesCommon<F> {
             commits: output_dir.join("commits_estark.bin"),
             constants: output_dir.join("constants_estark.bin"),
             stark_struct: output_dir.join("starkstruct.json"),
-            contraints: output_dir.join("constraints.json"),
+            constraints: output_dir.join("constraints.json"),
         };
 
         log::info!("Writing {}.", paths.constants.to_string_lossy());
@@ -217,8 +217,8 @@ impl<F: FieldElement> EStarkFilesCommon<F> {
         )?;
 
         // Write the constraints in JSON.
-        log::info!("Writing {}.", paths.contraints.to_string_lossy());
-        write_json_file(&paths.contraints, &self.pil)?;
+        log::info!("Writing {}.", paths.constraints.to_string_lossy());
+        write_json_file(&paths.constraints, &self.pil)?;
 
         Ok(paths)
     }
