@@ -53,14 +53,16 @@ where
 }
 
 pub struct PowdrEval<T> {
-    analyzed: Arc<Analyzed<T>>,
+    analyzed: Analyzed<T>,
+    //TODO: update this offset when there is shifted constant columns, it needs to add the number of the shifted constant col
+    preprocess_col_offset: usize,
     witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
     constant_columns: BTreeMap<PolyID, usize>,
 }
 
 impl<T: FieldElement> PowdrEval<T> {
-    pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
+    pub fn new(analyzed: Analyzed<T>, preprocess_col_offset: usize) -> Self {
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())
@@ -87,6 +89,7 @@ impl<T: FieldElement> PowdrEval<T> {
 
         Self {
             analyzed,
+            preprocess_col_offset,
             witness_columns,
             constant_shifted,
             constant_columns,
@@ -157,7 +160,9 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                 (
                     *poly_id,
                     // PreprocessedColumn::Plonk(i) is unused argument in get_preprocessed_column
-                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(i)),
+                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(
+                        i + self.preprocess_col_offset,
+                    )),
                 )
             })
             .collect();
