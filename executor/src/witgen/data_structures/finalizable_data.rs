@@ -161,8 +161,6 @@ impl<'a, T: FieldElement> CompactDataRef<'a, T> {
 /// This data structure is more efficient if the used column IDs are contiguous.
 #[derive(Clone)]
 pub struct FinalizableData<T: FieldElement> {
-    /// The non-finalized rows before the finalized data.
-    pre_finalized_data: Vec<Row<T>>,
     /// Finalized data stored in a compact form.
     finalized_data: CompactData<T>,
     /// The non-finalized rows after the finalized data.
@@ -186,31 +184,26 @@ impl<T: FieldElement> FinalizableData<T> {
     ) -> Self {
         let column_ids = column_ids.iter().cloned().sorted().collect::<Vec<_>>();
         Self {
-            pre_finalized_data: rows.collect_vec(),
             finalized_data: CompactData::new(&column_ids),
-            post_finalized_data: Vec::new(),
+            post_finalized_data: rows.collect_vec(),
             column_ids,
         }
     }
 
     /// Returns the total number of rows, including non-finalized rows.
     pub fn len(&self) -> usize {
-        self.pre_finalized_data.len() + self.finalized_data.len() + self.post_finalized_data.len()
+        self.finalized_data.len() + self.post_finalized_data.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.pre_finalized_data.is_empty()
-            && self.finalized_data.is_empty()
-            && self.post_finalized_data.is_empty()
+        self.finalized_data.is_empty() && self.post_finalized_data.is_empty()
     }
 
     fn location_of_row(&self, row: usize) -> Location {
-        if row < self.pre_finalized_data.len() {
-            Location::PreFinalized(row)
-        } else if row < self.pre_finalized_data.len() + self.finalized_data.len() {
-            Location::Finalized(row - self.pre_finalized_data.len())
+        if row < self.finalized_data.len() {
+            Location::Finalized(row)
         } else {
-            Location::PostFinalized(row - self.pre_finalized_data.len() - self.finalized_data.len())
+            Location::PostFinalized(row - self.finalized_data.len())
         }
     }
 
@@ -219,36 +212,19 @@ impl<T: FieldElement> FinalizableData<T> {
     }
 
     pub fn push(&mut self, row: Row<T>) {
-        match self.location_of_last_row() {
-            None | Some(Location::PreFinalized(_)) => {
-                self.pre_finalized_data.push(row);
-            }
-            Some(Location::Finalized(_)) | Some(Location::PostFinalized(_)) => {
-                self.post_finalized_data.push(row);
-            }
-        }
+        self.post_finalized_data.push(row);
     }
 
     pub fn pop(&mut self) -> Option<Row<T>> {
         match self.location_of_last_row()? {
-            Location::PreFinalized(_) => self.pre_finalized_data.pop(),
             Location::Finalized(_) => panic!("Row already finalized"),
             Location::PostFinalized(_) => self.post_finalized_data.pop(),
         }
     }
 
     pub fn extend(&mut self, other: Self) {
-        match self.location_of_last_row() {
-            None | Some(Location::PreFinalized(_)) => {
-                self.pre_finalized_data.extend(other.pre_finalized_data);
-                self.finalized_data = other.finalized_data;
-                self.post_finalized_data = other.post_finalized_data;
-            }
-            Some(Location::Finalized(_)) | Some(Location::PostFinalized(_)) => {
-                assert!(other.finalized_data.is_empty() && other.post_finalized_data.is_empty());
-                self.post_finalized_data.extend(other.pre_finalized_data);
-            }
-        }
+        assert!(other.finalized_data.is_empty());
+        self.post_finalized_data.extend(other.post_finalized_data);
     }
 
     pub fn truncate(&mut self, len: usize) {
@@ -256,11 +232,6 @@ impl<T: FieldElement> FinalizableData<T> {
             self.clear();
         } else {
             match self.location_of_row(len - 1) {
-                Location::PreFinalized(local) => {
-                    self.pre_finalized_data.truncate(local + 1);
-                    self.finalized_data.clear();
-                    self.post_finalized_data.clear();
-                }
                 Location::Finalized(local) => {
                     self.finalized_data.truncate(local + 1);
                     self.post_finalized_data.clear();
@@ -273,14 +244,12 @@ impl<T: FieldElement> FinalizableData<T> {
     }
 
     pub fn clear(&mut self) {
-        self.pre_finalized_data.clear();
         self.finalized_data.clear();
         self.post_finalized_data.clear();
     }
 
     pub fn get_mut(&mut self, i: usize) -> Option<&mut Row<T>> {
         match self.location_of_row(i) {
-            Location::PreFinalized(local) => self.pre_finalized_data.get_mut(local),
             Location::Finalized(_) => panic!("Row {i} already finalized."),
             Location::PostFinalized(local) => self.post_finalized_data.get_mut(local),
         }
@@ -290,12 +259,6 @@ impl<T: FieldElement> FinalizableData<T> {
     #[auto_enum(Iterator)]
     pub fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (PolyID, T)> + '_ {
         match self.location_of_row(row) {
-            Location::PreFinalized(local) => {
-                let row = &self.pre_finalized_data[local];
-                self.column_ids
-                    .iter()
-                    .filter_map(move |id| row.value(id).map(|v| (*id, v)))
-            }
             Location::Finalized(local) => {
                 self.finalized_data
                     .known_values_in_row(local)
@@ -320,7 +283,6 @@ impl<T: FieldElement> FinalizableData<T> {
 
     pub fn last(&self) -> Option<&Row<T>> {
         match self.location_of_last_row()? {
-            Location::PreFinalized(local) => self.pre_finalized_data.get(local),
             Location::Finalized(_) => panic!("Row already finalized"),
             Location::PostFinalized(local) => self.post_finalized_data.get(local),
         }
@@ -328,12 +290,6 @@ impl<T: FieldElement> FinalizableData<T> {
 
     pub fn mutable_row_pair(&mut self, i: usize) -> (&mut Row<T>, &mut Row<T>) {
         let (before, after) = match self.location_of_row(i) {
-            Location::PreFinalized(local) => {
-                if local + 1 >= self.pre_finalized_data.len() {
-                    panic!("Row {} already finalized.", i + 1);
-                }
-                self.pre_finalized_data.split_at_mut(local + 1)
-            }
             Location::Finalized(_) => panic!("Row {i} already finalized."),
             Location::PostFinalized(local) => self.post_finalized_data.split_at_mut(local + 1),
         };
@@ -343,47 +299,16 @@ impl<T: FieldElement> FinalizableData<T> {
         (current, next)
     }
 
-    pub fn finalize_range(&mut self, range: std::ops::Range<usize>) -> usize {
-        if range.is_empty() {
+    pub fn finalize_until(&mut self, end: usize) -> usize {
+        if end < self.finalized_data.len() {
             return 0;
         }
-        if self.finalized_data.is_empty() {
-            if !self.post_finalized_data.is_empty() {
-                self.pre_finalized_data
-                    .extend(std::mem::take(&mut self.post_finalized_data));
-            }
-            let start = std::cmp::min(range.start, self.pre_finalized_data.len());
-            let end = std::cmp::min(range.end, self.pre_finalized_data.len());
-            self.pre_finalized_data
-                .drain(start..)
-                .enumerate()
-                .for_each(|(i, row)| {
-                    if start + i < end {
-                        self.finalized_data.push(row)
-                    } else {
-                        self.post_finalized_data.push(row)
-                    }
-                });
-            end - start
-        } else {
-            // If we are asked to finalize the pre-finalized data, we just don't do it.
-            let mut new_post_data = vec![];
-            let mut counter = 0;
-            let row_shift = self.pre_finalized_data.len() + self.finalized_data.len();
-            std::mem::take(&mut self.post_finalized_data)
-                .into_iter()
-                .enumerate()
-                .for_each(|(i, row)| {
-                    if range.contains(&(i + row_shift)) {
-                        self.finalized_data.push(row);
-                        counter += 1;
-                    } else {
-                        new_post_data.push(row);
-                    }
-                });
-            self.post_finalized_data = new_post_data;
-            counter
-        }
+        assert!(end <= self.finalized_data.len() + self.post_finalized_data.len());
+        let rows_to_finalize = end - self.finalized_data.len();
+        self.post_finalized_data
+            .drain(0..rows_to_finalize)
+            .for_each(|row| self.finalized_data.push(row));
+        rows_to_finalize
     }
 
     /// Appends a given amount of new finalized rows set to zero and "unknown".
@@ -409,28 +334,13 @@ impl<T: FieldElement> FinalizableData<T> {
             self.column_ids.len()
         );
         log::trace!("Finalizing remaining rows...");
-        let counter = self.finalize_range(
-            (self.pre_finalized_data.len() + self.finalized_data.len())..self.len(),
-        );
+        let counter = self.finalize_until(self.len());
         log::trace!("Needed to finalize {} / {} rows.", counter, self.len());
         assert!(self.post_finalized_data.is_empty());
 
         // Store transposed columns in vectors for performance reasons
         let mut columns = vec![Vec::with_capacity(self.len()); self.column_ids.len()];
         let mut known_cells_col = vec![BitVec::with_capacity(self.len()); self.column_ids.len()];
-
-        // There could still be pre-finalized data.
-        for row in &self.pre_finalized_data {
-            for (i, col_id) in self.column_ids.iter().enumerate() {
-                if let Some(v) = row.value(col_id) {
-                    columns[i].push(v);
-                    known_cells_col[i].push(true);
-                } else {
-                    columns[i].push(T::zero());
-                    known_cells_col[i].push(false);
-                }
-            }
-        }
 
         for row in 0..self.finalized_data.len() {
             for (i, col_id) in self.column_ids.iter().enumerate() {
@@ -456,33 +366,26 @@ impl<T: FieldElement> Index<usize> for FinalizableData<T> {
     type Output = Row<T>;
 
     fn index(&self, index: usize) -> &Self::Output {
-        if index < self.pre_finalized_data.len() {
-            &self.pre_finalized_data[index]
-        } else if index < self.pre_finalized_data.len() + self.finalized_data.len() {
+        if index < self.finalized_data.len() {
             panic!("Row {index} already finalized.");
         } else {
-            &self.post_finalized_data
-                [index - self.pre_finalized_data.len() - self.finalized_data.len()]
+            &self.post_finalized_data[index - self.finalized_data.len()]
         }
     }
 }
 
 impl<T: FieldElement> IndexMut<usize> for FinalizableData<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        if index < self.pre_finalized_data.len() {
-            &mut self.pre_finalized_data[index]
-        } else if index < self.pre_finalized_data.len() + self.finalized_data.len() {
+        if index < self.finalized_data.len() {
             panic!("Row {index} already finalized.");
         } else {
-            &mut self.post_finalized_data
-                [index - self.pre_finalized_data.len() - self.finalized_data.len()]
+            &mut self.post_finalized_data[index - self.finalized_data.len()]
         }
     }
 }
 
 /// The area a row falls into and the offset inside that area.
 enum Location {
-    PreFinalized(usize),
     Finalized(usize),
     PostFinalized(usize),
 }

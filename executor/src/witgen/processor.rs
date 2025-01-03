@@ -575,12 +575,12 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         self.data.len()
     }
 
-    pub fn finalize_range(&mut self, range: std::ops::Range<usize>) {
+    pub fn finalize_until(&mut self, end: usize) {
         assert!(
             self.copy_constraints.is_empty(),
             "Machines with copy constraints should not be finalized while being processed."
         );
-        self.data.finalize_range(range);
+        self.data.finalize_until(end);
     }
 
     pub fn row(&self, i: usize) -> &Row<T> {
