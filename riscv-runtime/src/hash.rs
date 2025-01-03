@@ -1,6 +1,6 @@
 use core::arch::asm;
 use core::convert::TryInto;
-use core::mem::{self, MaybeUninit};
+use core::mem::MaybeUninit;
 
 use crate::goldilocks::Goldilocks;
 use powdr_riscv_syscalls::Syscall;
@@ -40,47 +40,94 @@ pub fn poseidon2_gl(data: &[Goldilocks; 8]) -> [Goldilocks; 8] {
 
 /// Calls the keccakf machine.
 /// Return value is placed in the output array.
-pub fn keccakf(input: &[u64; 25], output: &mut [u64; 25]) {
+pub fn keccakf(input: &[u32; 50], output: &mut [u32; 50]) {
     unsafe {
         // Syscall inputs: memory pointer to input array and memory pointer to output array.
         ecall!(Syscall::KeccakF, in("a0") input, in("a1") output);
     }
 }
 
-// Output number of bytes for keccak-256 (32 bytes)
-const W: usize = 32;
+pub struct Keccak {
+    state: [u32; 50],
+    next_word: usize,
+    input_buffer: u32,
+    next_byte: usize,
+}
 
-/// Keccak function that calls the keccakf machine.
-/// Input is a byte array of arbitrary length and a delimiter byte.
-/// Output is a byte array of length W.
-pub fn keccak(data: &[u8], delim: u8) -> [u8; W] {
-    let mut b = [[0u8; 200]; 2];
-    let [mut b_input, mut b_output] = &mut b;
-    let rate = 200 - (2 * W);
-    let mut pt = 0;
+impl Keccak {
+    const RATE: usize = 34; // Rate in u32 words
 
-    // update
-    for &byte in data {
-        b_input[pt] ^= byte;
-        pt = (pt + 1) % rate;
-        if pt == 0 {
-            unsafe {
-                keccakf(mem::transmute(&b_input), mem::transmute(&mut b_output));
-            }
-            mem::swap(&mut b_input, &mut b_output);
+    pub fn v256() -> Self {
+        Self {
+            state: [0u32; 50],
+            next_word: 0,
+            input_buffer: 0,
+            next_byte: 0,
         }
     }
 
-    // finalize
-    b_input[pt] ^= delim;
-    b_input[rate - 1] ^= 0x80;
-    unsafe {
-        keccakf(mem::transmute(&b_input), mem::transmute(&mut b_output));
+    fn xor_word_to_state(&mut self, word: u32) {
+        let word_pair = self.next_word & !1;
+        if (self.next_word & 1) == 0 {
+            self.state[word_pair + 1] ^= word;
+        } else {
+            self.state[word_pair] ^= word;
+        }
+        self.next_word += 1;
+
+        if self.next_word == Self::RATE {
+            let mut state_out = [0u32; 50];
+            keccakf(&self.state, &mut state_out);
+            self.state = state_out;
+            self.next_word = 0;
+        }
     }
 
-    // Extract the first W bytes and return as a fixed-size array
-    // Need to copy the data, not just returning a slice
-    let mut output = [0u8; W];
-    output.copy_from_slice(&b_output[..W]);
-    output
+    pub fn update(&mut self, data: &[u8]) {
+        unsafe {
+            let (prefix, words, suffix) = data.align_to::<u32>();
+
+            self.update_unaligned(prefix);
+            for &word in words {
+                if self.next_byte == 0 {
+                    self.xor_word_to_state(word);
+                } else {
+                    self.xor_word_to_state(self.input_buffer | (word << (8 * self.next_byte)));
+                    self.input_buffer = word >> (32 - 8 * self.next_byte);
+                }
+            }
+            self.update_unaligned(suffix);
+        }
+    }
+
+    fn update_unaligned(&mut self, bytes: &[u8]) {
+        for &byte in bytes {
+            self.input_buffer |= (byte as u32) << (8 * self.next_byte);
+            self.next_byte += 1;
+            if self.next_byte == 4 {
+                self.xor_word_to_state(self.input_buffer);
+                self.input_buffer = 0;
+                self.next_byte = 0;
+            }
+        }
+    }
+
+    pub fn finalize(&mut self, output: &mut [u8]) {
+        if self.next_byte > 0 {
+            self.input_buffer |= 0x01 << (8 * self.next_byte);
+            self.xor_word_to_state(self.input_buffer);
+        } else {
+            self.xor_word_to_state(0x01);
+        }
+
+        while self.next_word < Self::RATE - 1 {
+            self.xor_word_to_state(0);
+        }
+        self.xor_word_to_state(0x80000000);
+
+        for i in 0..4 {
+            output[i * 8..(i * 8 + 4)].copy_from_slice(&self.state[i * 2 + 1].to_le_bytes());
+            output[(i * 8 + 4)..(i * 8 + 8)].copy_from_slice(&self.state[i * 2].to_le_bytes());
+        }
+    }
 }
