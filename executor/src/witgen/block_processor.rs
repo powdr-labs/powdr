@@ -177,7 +177,8 @@ mod tests {
             .collect();
         let data = FinalizableData::with_initial_rows_in_progress(
             &columns,
-            (0..degree).map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, degree))),
+            (0..degree).map(|i| Row::fresh(&fixed_data, i)),
+            &fixed_data,
         );
 
         let mutable_state = MutableState::new(iter::empty(), &query_callback);

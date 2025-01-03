@@ -183,6 +183,10 @@ pub struct Row<T: FieldElement> {
 }
 
 impl<T: FieldElement> Row<T> {
+    pub fn columns(&self) -> impl Iterator<Item = PolyID> {
+        self.values.keys()
+    }
+
     pub fn value_or_zero(&self, poly_id: &PolyID) -> T {
         self.values[poly_id].unwrap_or_zero()
     }
@@ -249,6 +253,10 @@ impl<T: FieldElement> Row<T> {
         self.values[poly_id].is_known()
     }
 
+    pub fn set_cell_known(&mut self, poly_id: &PolyID, value: T) {
+        self.values[poly_id] = CellValue::Known(value);
+    }
+
     pub fn set_cell_unknown(&mut self, poly_id: &PolyID) {
         self.values[poly_id] = CellValue::Unknown;
     }
@@ -260,19 +268,24 @@ impl<T: FieldElement> Row<T> {
 
 impl<T: FieldElement> Row<T> {
     /// Creates a "fresh" row, i.e., one that is empty but initialized with the global range constraints.
-    pub fn fresh(fixed_data: &FixedData<'_, T>, row: RowIndex) -> Row<T> {
+    pub fn fresh<E>(
+        fixed_data: &FixedData<'_, T>,
+        row: impl TryInto<DegreeType, Error = E>,
+    ) -> Row<T>
+    where
+        E: std::fmt::Debug,
+    {
         // TODO this instance could be computed exactly once (per column set) and then cloned.
         // TODO and we could copy in the external witnesses later on
         // TODO we should really only have a subset of the columns.
+        let row = row.try_into().unwrap();
         let values = WitnessColumnMap::from(
             fixed_data
                 .global_range_constraints()
                 .witness_constraints
                 .iter()
                 .map(|(poly_id, rc)| {
-                    if let Some(external_witness) =
-                        fixed_data.external_witness(row.into(), &poly_id)
-                    {
+                    if let Some(external_witness) = fixed_data.external_witness(row, &poly_id) {
                         CellValue::Known(external_witness)
                     } else if let Some(rc) = rc {
                         CellValue::RangeConstraint(rc.clone())

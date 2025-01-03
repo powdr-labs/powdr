@@ -20,7 +20,7 @@ use super::LookupCell;
 pub struct SecondStageMachine<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     parts: MachineParts<'a, T>,
-    data: FinalizableData<T>,
+    data: FinalizableData<'a, T>,
     publics: BTreeMap<&'a str, T>,
     name: String,
     degree: DegreeType,
@@ -78,7 +78,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SecondStageMachine<'a, T> {
 
 impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
     pub fn new(name: String, fixed_data: &'a FixedData<'a, T>, parts: MachineParts<'a, T>) -> Self {
-        let data = FinalizableData::new(&parts.witnesses);
+        let data = FinalizableData::new(&parts.witnesses, fixed_data);
 
         // Only keep polynomial identities. We assume other constraints to be handled in stage 0.
         let polynomial_identities = parts
@@ -132,6 +132,7 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
                 Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
             ]
             .into_iter(),
+            self.fixed_data,
         );
 
         // We're only interested in the first row anyway, so identities without a next reference
@@ -163,7 +164,7 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
         &mut self,
         first_row: Row<T>,
         mutable_state: &MutableState<'a, T, Q>,
-    ) -> FinalizableData<T> {
+    ) -> FinalizableData<'a, T> {
         log::trace!(
             "Running Second-Stage Machine with the following initial values in the first row:\n{}",
             first_row.render_values(false, &self.parts)
@@ -171,6 +172,7 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.parts.witnesses,
             [first_row].into_iter(),
+            self.fixed_data,
         );
 
         let mut processor = VmProcessor::new(
