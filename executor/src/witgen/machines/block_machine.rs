@@ -482,7 +482,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             (self.rows() + self.block_size as DegreeType) <= self.degree,
             "Block machine is full (this should have been checked before)"
         );
-        self.data.finalize_until(self.data.len());
+        self.data.finalize_all();
         //TODO can we properly access the last row of the dummy block?
         let data = self.data.append_new_finalized_rows(self.block_size);
 
@@ -558,9 +558,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         self.data.truncate(self.data.len() - 1);
 
         // 4. Finalize everything so far
-        if self.data.len() > self.block_size {
-            self.data.finalize_until(self.data.len());
-        }
+        self.data.finalize_all();
 
         // 5. Append the new block (including the merged last row of the previous block)
         self.data.extend(new_block);

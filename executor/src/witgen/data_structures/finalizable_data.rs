@@ -330,6 +330,10 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
         rows_to_finalize
     }
 
+    pub fn finalize_all(&mut self) {
+        self.finalize_until(self.len());
+    }
+
     /// Appends a given amount of new finalized rows set to zero and "unknown".
     /// Returns a `CompactDataRef` that is built so that its "row zero" is the
     /// first newly appended row.
@@ -353,7 +357,7 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
             self.column_ids.len()
         );
         log::trace!("Finalizing remaining rows...");
-        let counter = self.finalize_until(self.len());
+        let counter = self.finalize_all();
         log::trace!("Needed to finalize {} / {} rows.", counter, self.len());
         assert!(self.post_finalized_data.is_empty());
 
