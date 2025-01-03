@@ -2,6 +2,7 @@ use std::{cmp::Ordering, ffi::c_void, iter, mem, sync::Arc};
 
 use itertools::Itertools;
 use libloading::Library;
+use powdr_ast::indent;
 use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
@@ -254,11 +255,13 @@ fn format_effects_inner<T: FieldElement>(
     effects: &[Effect<T, Variable>],
     is_top_level: bool,
 ) -> String {
-    effects
-        .iter()
-        .map(|effect| format!("    {}\n", format_effect(effect, is_top_level)))
-        .format("")
-        .to_string()
+    indent(
+        effects
+            .iter()
+            .map(|effect| format_effect(effect, is_top_level))
+            .join("\n"),
+        1,
+    )
 }
 
 fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bool) -> String {
@@ -304,7 +307,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                 .to_string();
             let var_decls = result_vars
                 .iter()
-                .map(|var_name| format!("let mut {var_name};\n"))
+                .map(|var_name| format!("let mut {var_name} = FieldElement::default();\n"))
                 .format("");
             format!(
                 "{var_decls}assert!(call_machine(mutable_state, {id}, MutSlice::from((&mut [{args}]).as_mut_slice())));"
@@ -321,11 +324,12 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                     .sorted()
                     .dedup()
                     .map(|(v, needs_mut)| {
-                        format!(
-                            "let {}{};\n",
-                            needs_mut.then_some("mut ").unwrap_or_default(),
-                            variable_to_string(v)
-                        )
+                        let v = variable_to_string(v);
+                        if needs_mut {
+                            format!("let mut {v} = FieldElement::default();\n")
+                        } else {
+                            format!("let {v};\n")
+                        }
                     })
                     .format("")
                     .to_string()
