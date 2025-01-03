@@ -60,6 +60,17 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         // In the latch row, set the RHS selector to 1.
         witgen.assign_constant(&connection.right.selector, self.latch_row as i32, T::one());
 
+        // Set all other selectors to 0 in the latch row.
+        for other_connection in self.machine_parts.connections.values() {
+            if other_connection.right.selector != connection.right.selector {
+                witgen.assign_constant(
+                    &other_connection.right.selector,
+                    self.latch_row as i32,
+                    T::zero(),
+                );
+            }
+        }
+
         // For each argument, connect the expression on the RHS with the formal parameter.
         for (index, expr) in connection.right.expressions.iter().enumerate() {
             witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
