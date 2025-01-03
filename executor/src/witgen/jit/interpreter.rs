@@ -42,7 +42,23 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         let mut actions = vec![];
         let mut var_mapper = VariableMapper::new();
 
-        // load known inputs
+        Self::load_known_inputs(&mut var_mapper, &mut actions, known_inputs);
+        Self::process_effects(&mut var_mapper, &mut actions, effects);
+        Self::write_data(&mut var_mapper, &mut actions, effects);
+
+        Self {
+            first_column_id,
+            column_count,
+            var_count: var_mapper.var_count(),
+            actions,
+        }
+    }
+
+    fn load_known_inputs(
+        var_mapper: &mut VariableMapper,
+        actions: &mut Vec<InterpreterAction<T>>,
+        known_inputs: &[Variable],
+    ) {
         for var in known_inputs.iter() {
             match var {
                 Variable::Cell(c) => {
@@ -56,8 +72,13 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                 Variable::MachineCallReturnValue(_) => unreachable!(),
             }
         }
+    }
 
-        // process effect
+    fn process_effects(
+        var_mapper: &mut VariableMapper,
+        actions: &mut Vec<InterpreterAction<T>>,
+        effects: &[Effect<T, Variable>],
+    ) {
         for effect in effects.iter() {
             match effect {
                 Effect::Assignment(var, e) => {
@@ -108,8 +129,13 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                 }
             }
         }
+    }
 
-        // write variables back
+    fn write_data(
+        var_mapper: &mut VariableMapper,
+        actions: &mut Vec<InterpreterAction<T>>,
+        effects: &[Effect<T, Variable>],
+    ) {
         let vars_known: Vec<_> = effects.iter().flat_map(written_vars_in_effect).collect();
         vars_known.iter().for_each(|var| {
             match var {
@@ -127,13 +153,6 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                 }
             }
         });
-
-        Self {
-            first_column_id,
-            column_count,
-            var_count: var_mapper.var_count(),
-            actions,
-        }
     }
 
     // Execute the machine effects for the given the parameters
