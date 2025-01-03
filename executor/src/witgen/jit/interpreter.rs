@@ -148,7 +148,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         for action in &self.actions {
             match action {
                 InterpreterAction::AssignExpression(idx, e) => {
-                    let val = evaluate_expression(&mut eval_stack, &vars, e);
+                    let val = e.evaluate(&mut eval_stack, &vars);
                     assert!(vars[*idx].replace(val).is_none());
                 }
                 InterpreterAction::ReadCell(idx, c) => {
@@ -201,11 +201,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                             MachineCallArgument::Unknown(v) => (Some(v), Default::default()),
                             MachineCallArgument::Known(v) => (
                                 None,
-                                evaluate_expression(
-                                    &mut eval_stack,
-                                    &vars,
-                                    &RPNExpression::from(v),
-                                ),
+                                RPNExpression::from(v).evaluate(&mut eval_stack, &vars),
                             ),
                         })
                         .collect();
@@ -232,8 +228,8 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     });
                 }
                 InterpreterAction::Assertion(e1, e2, expected_equal) => {
-                    let lhs_value = evaluate_expression(&mut eval_stack, &vars, e1);
-                    let rhs_value = evaluate_expression(&mut eval_stack, &vars, e2);
+                    let lhs_value = e1.evaluate(&mut eval_stack, &vars);
+                    let rhs_value = e2.evaluate(&mut eval_stack, &vars);
                     if *expected_equal {
                         assert_eq!(lhs_value, rhs_value, "Assertion failed");
                     } else {
@@ -335,46 +331,43 @@ impl<T: FieldElement, S: Clone> From<&SymbolicExpression<T, S>> for RPNExpressio
     }
 }
 
-// evaluates an expression using the provided variable values
-fn evaluate_expression<T: FieldElement>(
-    stack: &mut Vec<T>,
-    vars: &[Option<T>],
-    expr: &RPNExpression<T, usize>,
-) -> T {
-    expr.elems.iter().for_each(|elem| match elem {
-        RPNExpressionElem::Concrete(v) => stack.push(*v),
-        RPNExpressionElem::Symbol(idx) => stack.push(vars[*idx].unwrap()),
-        RPNExpressionElem::BinaryOperation(op) => {
-            let right = stack.pop().unwrap();
-            let left = stack.pop().unwrap();
-            let result = match op {
-                BinaryOperator::Add => left + right,
-                BinaryOperator::Sub => left - right,
-                BinaryOperator::Mul => left * right,
-                BinaryOperator::Div => left / right,
-                BinaryOperator::IntegerDiv => T::from(
-                    left.to_integer().try_into_u64().unwrap()
-                        / right.to_integer().try_into_u64().unwrap(),
-                ),
-            };
-            stack.push(result);
-        }
-        RPNExpressionElem::UnaryOperation(op) => {
-            let inner = stack.pop().unwrap();
-            let result = match op {
-                UnaryOperator::Neg => -inner,
-            };
-            stack.push(result);
-        }
-        RPNExpressionElem::BitOperation(op, right) => {
-            let left = stack.pop().unwrap();
-            let result = match op {
-                BitOperator::And => T::from(left.to_integer() & *right),
-            };
-            stack.push(result);
-        }
-    });
-    stack.pop().unwrap()
+impl<T: FieldElement> RPNExpression<T, usize> {
+    fn evaluate(&self, stack: &mut Vec<T>, vars: &[Option<T>]) -> T {
+        self.elems.iter().for_each(|elem| match elem {
+            RPNExpressionElem::Concrete(v) => stack.push(*v),
+            RPNExpressionElem::Symbol(idx) => stack.push(vars[*idx].unwrap()),
+            RPNExpressionElem::BinaryOperation(op) => {
+                let right = stack.pop().unwrap();
+                let left = stack.pop().unwrap();
+                let result = match op {
+                    BinaryOperator::Add => left + right,
+                    BinaryOperator::Sub => left - right,
+                    BinaryOperator::Mul => left * right,
+                    BinaryOperator::Div => left / right,
+                    BinaryOperator::IntegerDiv => T::from(
+                        left.to_integer().try_into_u64().unwrap()
+                            / right.to_integer().try_into_u64().unwrap(),
+                    ),
+                };
+                stack.push(result);
+            }
+            RPNExpressionElem::UnaryOperation(op) => {
+                let inner = stack.pop().unwrap();
+                let result = match op {
+                    UnaryOperator::Neg => -inner,
+                };
+                stack.push(result);
+            }
+            RPNExpressionElem::BitOperation(op, right) => {
+                let left = stack.pop().unwrap();
+                let result = match op {
+                    BitOperator::And => T::from(left.to_integer() & *right),
+                };
+                stack.push(result);
+            }
+        });
+        stack.pop().unwrap()
+    }
 }
 
 // the following functions come from the interface.rs file also included in the compiled jit code
