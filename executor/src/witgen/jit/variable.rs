@@ -67,12 +67,6 @@ pub struct MachineCallReturnVariable {
     pub index: usize,
 }
 
-impl MachineCallReturnVariable {
-    pub fn into_argument<T: FieldElement>(self) -> MachineCallArgument<T, Variable> {
-        MachineCallArgument::Unknown(Variable::MachineCallReturnValue(self))
-    }
-}
-
 /// The identifier of a witness cell in the trace table.
 /// The `row_offset` is relative to a certain "zero row" defined
 /// by the component that uses this data structure.

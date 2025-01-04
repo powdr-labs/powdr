@@ -213,26 +213,28 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 }).format(", "));
             return ProcessResult::empty();
         };
-        // TODO process range constraints.
+        let mut new_rc_effects = vec![];
         let args = evaluated
             .into_iter()
-            .zip(arguments)
+            .zip_eq(arguments)
+            .zip_eq(new_range_constraints)
             .enumerate()
-            .map(|(index, (eval_expr, arg))| {
+            .map(|(index, ((eval_expr, arg), new_rc))| {
                 if let Some(e) = eval_expr {
+                    // TODO we should also assign `new_rc` to the variable in this case.
+                    // maybe we should also just create a variable for the inputs as well.
                     MachineCallArgument::Known(e)
                 } else {
-                    let ret_var = MachineCallReturnVariable {
+                    let ret_var = Variable::MachineCallReturnValue(MachineCallReturnVariable {
                         identity_id: lookup_id,
                         row_offset,
                         index,
-                    };
-                    self.assign_variable(
-                        arg,
-                        row_offset,
-                        Variable::MachineCallReturnValue(ret_var.clone()),
-                    );
-                    ret_var.into_argument()
+                    });
+                    self.assign_variable(arg, row_offset, ret_var.clone());
+                    if let Some(rc) = new_rc {
+                        new_rc_effects.push(Effect::RangeConstraint(ret_var.clone(), rc));
+                    }
+                    MachineCallArgument::Unknown(ret_var)
                 }
             })
             .collect_vec();
@@ -706,5 +708,18 @@ Xor::B[5] = (Xor::B[4] + (Xor::B_byte[4] * 256));
 Xor::B[6] = (Xor::B[5] + (Xor::B_byte[5] * 65536));
 Xor::B[7] = (Xor::B[6] + (Xor::B_byte[6] * 16777216));"
         );
+    }
+
+    #[test]
+    fn range_constraints_from_fixed() {
+        let input = "
+        namespace Main(256);
+            col fixed x = [0, 1, 0]*;
+            col fixed y = [7, 9, 13]*;
+            col witness a, b;
+            [a, b] in [x, y];
+        ";
+        let code_0 = solve_on_rows(input, &[2], vec![("Main::a", 1)], Some(16));
+        //let code_1 = solve_on_rows(input, &[2], vec![("Main::a", 1)], Some(16));
     }
 }
