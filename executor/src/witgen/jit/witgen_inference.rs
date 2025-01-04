@@ -203,33 +203,38 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .collect_vec();
         let known = evaluated.iter().map(|e| e.is_some()).collect();
 
-        if !can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints) {
+        let Some(new_range_constraints) =
+            can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints)
+        else {
             log::trace!(
                 "Sub-machine cannot process call fully (will retry later): {lookup_id}, arguments: {}",
                 arguments.iter().zip(known).map(|(arg, known)| {
                     format!("{arg} [{}]", if known { "known" } else { "unknown" })
                 }).format(", "));
             return ProcessResult::empty();
-        }
+        };
+        let mut new_rc_effects = vec![];
         let args = evaluated
             .into_iter()
-            .zip(arguments)
+            .zip_eq(arguments)
+            .zip_eq(new_range_constraints)
             .enumerate()
-            .map(|(index, (eval_expr, arg))| {
+            .map(|(index, ((eval_expr, arg), new_rc))| {
                 if let Some(e) = eval_expr {
+                    // TODO we should also assign `new_rc` to the variable in this case.
+                    // maybe we should also just create a variable for the inputs as well.
                     MachineCallArgument::Known(e)
                 } else {
-                    let ret_var = MachineCallReturnVariable {
+                    let ret_var = Variable::MachineCallReturnValue(MachineCallReturnVariable {
                         identity_id: lookup_id,
                         row_offset,
                         index,
-                    };
-                    self.assign_variable(
-                        arg,
-                        row_offset,
-                        Variable::MachineCallReturnValue(ret_var.clone()),
-                    );
-                    ret_var.into_argument()
+                    });
+                    self.assign_variable(arg, row_offset, ret_var.clone());
+                    if let Some(rc) = new_rc {
+                        new_rc_effects.push(Effect::RangeConstraint(ret_var.clone(), rc));
+                    }
+                    MachineCallArgument::Unknown(ret_var)
                 }
             })
             .collect_vec();
@@ -480,16 +485,17 @@ pub trait FixedEvaluator<T: FieldElement> {
 }
 
 pub trait CanProcessCall<T: FieldElement> {
-    /// Returns true if a call to the machine that handles the given identity
+    /// Returns Some(..) if a call to the machine that handles the given identity
     /// can always be processed with the given known inputs and range constraints
     /// on the parameters.
+    /// The value in the Option is a vector of new range constraints.
     /// @see Machine::can_process_call
     fn can_process_call_fully(
         &self,
         _identity_id: u64,
         _known_inputs: &BitVec,
         _range_constraints: &[Option<RangeConstraint<T>>],
-    ) -> bool;
+    ) -> Option<Vec<Option<RangeConstraint<T>>>>;
 }
 
 impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'_, T, Q> {
@@ -498,7 +504,7 @@ impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'
         identity_id: u64,
         known_inputs: &BitVec,
         range_constraints: &[Option<RangeConstraint<T>>],
-    ) -> bool {
+    ) -> Option<Vec<Option<RangeConstraint<T>>>> {
         MutableState::can_process_call_fully(self, identity_id, known_inputs, range_constraints)
     }
 }
@@ -702,5 +708,18 @@ Xor::B[5] = (Xor::B[4] + (Xor::B_byte[4] * 256));
 Xor::B[6] = (Xor::B[5] + (Xor::B_byte[5] * 65536));
 Xor::B[7] = (Xor::B[6] + (Xor::B_byte[6] * 16777216));"
         );
+    }
+
+    #[test]
+    fn range_constraints_from_fixed() {
+        let input = "
+        namespace Main(256);
+            col fixed x = [0, 1, 0]*;
+            col fixed y = [7, 9, 13]*;
+            col witness a, b;
+            [a, b] in [x, y];
+        ";
+        let code_0 = solve_on_rows(input, &[2], vec![("Main::a", 1)], Some(16));
+        //let code_1 = solve_on_rows(input, &[2], vec![("Main::a", 1)], Some(16));
     }
 }
