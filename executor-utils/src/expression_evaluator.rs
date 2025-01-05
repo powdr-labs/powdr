@@ -27,7 +27,7 @@ pub struct OwnedTraceValues<T> {
 
 /// A view into the trace values for a single row.
 pub struct RowTraceValues<'a, T> {
-    pub trace: &'a OwnedTraceValues<T>,
+    trace: &'a OwnedTraceValues<T>,
     row: usize,
 }
 

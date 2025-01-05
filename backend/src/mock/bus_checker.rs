@@ -18,6 +18,7 @@ pub struct BusChecker<'a, F> {
 type Error = Vec<String>;
 
 pub struct BusConnection<F> {
+    pub machine: String,
     pub interaction: PhantomBusInteractionIdentity<F>,
 }
 
@@ -42,7 +43,10 @@ impl<F: FieldElement> BusConnection<F> {
                 // Localize the interaction assuming a single namespace is accessed. TODO: This may break due to the latch.
                 let machine = unique_referenced_namespaces(&interaction).unwrap();
                 let interaction = localize(interaction, global_pil, &machine_to_pil[&machine]);
-                BusConnection { interaction }
+                BusConnection {
+                    machine,
+                    interaction,
+                }
             })
             .collect()
     }
@@ -71,28 +75,20 @@ impl<'a, F: FieldElement> BusChecker<'a, F> {
         let interactions: BTreeMap<Vec<F>, (usize, usize)> = self
             .machines
             .iter()
-            .flat_map(|(_, machine)| {
-                (0..machine.size).map(|row_id| {
-                    (
-                        &machine.intermediate_definitions,
-                        machine.trace_values.row(row_id),
-                    )
-                })
-            })
-            .fold(
-                Default::default(),
-                |counts, (intermediate_definitions, row)| {
+            .flat_map(|(name, machine)| {
+                (0..machine.size).flat_map(|row_id| {
                     // create an evaluator for this row
                     let mut evaluator = ExpressionEvaluator::new(
-                        row,
+                        machine.trace_values.row(row_id),
                         &self.global_values,
-                        intermediate_definitions,
+                        &machine.intermediate_definitions,
                     );
 
-                    // For each connection
+                    // for all connections of this machine
                     self.connections
                         .iter()
-                        .fold(counts, |mut counts, bus_connection| {
+                        .filter(|bus_connection| bus_connection.machine == *name)
+                        .map(move |bus_connection| {
                             let bus_interaction = &bus_connection.interaction;
 
                             let multiplicity = evaluator
@@ -115,17 +111,23 @@ impl<'a, F: FieldElement> BusChecker<'a, F> {
                                 (0, -multiplicity as usize)
                             };
 
-                            // update the counts
-                            counts
-                                .entry(tuple)
-                                .and_modify(|(s, r)| {
-                                    *s += send;
-                                    *r += receive;
-                                })
-                                .or_insert((send, receive));
-
-                            counts
+                            (tuple, (send, receive))
                         })
+                })
+            })
+            .fold(
+                Default::default(),
+                |mut counts, (tuple, (send, receive))| {
+                    // update the counts
+                    counts
+                        .entry(tuple)
+                        .and_modify(|(s, r)| {
+                            *s += send;
+                            *r += receive;
+                        })
+                        .or_insert((send, receive));
+
+                    counts
                 },
             );
 
