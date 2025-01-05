@@ -59,6 +59,7 @@ where
 }
 
 pub struct PowdrEval<T> {
+    log_degree: u32,
     analyzed: Analyzed<T>,
     //TODO: update this offset when there is shifted constant columns, it needs to add the number of the shifted constant col
     preprocess_col_offset: usize,
@@ -68,7 +69,8 @@ pub struct PowdrEval<T> {
 }
 
 impl<T: FieldElement> PowdrEval<T> {
-    pub fn new(analyzed: Analyzed<T>, preprocess_col_offset: usize) -> Self {
+    pub fn new(analyzed: Analyzed<T>, preprocess_col_offset: usize, log_degree: u32) -> Self {
+        //println!("Creating witness_columns in PowdrEval");
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())
@@ -86,14 +88,25 @@ impl<T: FieldElement> PowdrEval<T> {
             .map(|(index, (_, id))| (id, index))
             .collect();
 
+        // println!(
+        //     "constant_shifted are created in PowdrEval, constant_shifted cols number is: {}",
+        //     constant_shifted.len()
+        // );
+
         let constant_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Constant)
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
+        // println!(
+        //     "constant_columns are created in PowdrEval, constant columns number is: {}",
+        //     constant_columns.len()
+        // );
+        // println!("constant_columns are created in PowdrEval, PowdrEval:new successfully finished");
 
         Self {
+            log_degree,
             analyzed,
             preprocess_col_offset,
             witness_columns,
@@ -105,10 +118,10 @@ impl<T: FieldElement> PowdrEval<T> {
 
 impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
     fn log_size(&self) -> u32 {
-        self.analyzed.degree().ilog2()
+        self.log_degree
     }
     fn max_constraint_log_degree_bound(&self) -> u32 {
-        self.analyzed.degree().ilog2() + 1
+        self.log_degree + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         assert!(
@@ -150,7 +163,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                 (
                     *poly_id,
                     eval.get_preprocessed_column(PreprocessedColumn::Plonk(
-                        i + constant_eval.len(),
+                        i + constant_eval.len() + self.preprocess_col_offset,
                     )),
                 )
             })
