@@ -1,19 +1,14 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt;
-use std::ops::ControlFlow;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_ast::analyzed::AlgebraicReference;
 use powdr_ast::analyzed::Analyzed;
 use powdr_ast::analyzed::{
     Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
     PhantomPermutationIdentity, SelectedExpressions,
 };
-use powdr_ast::parsed::visitor::ExpressionVisitable;
-use powdr_ast::parsed::visitor::VisitOrder;
-use powdr_backend_utils::referenced_namespaces_algebraic_expression;
 use powdr_executor_utils::expression_evaluator::ExpressionEvaluator;
 use powdr_executor_utils::expression_evaluator::OwnedGlobalValues;
 use powdr_executor_utils::expression_evaluator::TraceValues;
@@ -21,7 +16,7 @@ use powdr_number::FieldElement;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 
-use super::machine::Machine;
+use super::{localize, machine::Machine, unique_referenced_namespaces};
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum ConnectionKind {
@@ -79,61 +74,22 @@ impl<F: FieldElement> Connection<F> {
             kind,
         };
         if let Some(caller) = connection.caller() {
-            connection.left =
-                connection.localize(&connection.left, global_pil, &machine_to_pil[&caller]);
+            connection.left = localize(
+                connection.left.clone(),
+                global_pil,
+                &machine_to_pil[&caller],
+            );
         }
         if let Some(callee) = connection.callee() {
-            connection.right =
-                connection.localize(&connection.right, global_pil, &machine_to_pil[&callee]);
+            connection.right = localize(
+                connection.right.clone(),
+                global_pil,
+                &machine_to_pil[&callee],
+            );
         }
 
         Ok(connection)
     }
-
-    /// Translates PolyIDs pointing to columns in the global PIL to PolyIDs pointing to columns in the local PIL.
-    fn localize(
-        &self,
-        selected_expressions: &SelectedExpressions<F>,
-        global_pil: &Analyzed<F>,
-        local_pil: &Analyzed<F>,
-    ) -> SelectedExpressions<F> {
-        // Build a map (local ID) -> (global ID).
-        let name_to_id_local = local_pil.name_to_poly_id();
-        let id_map = global_pil
-            .name_to_poly_id()
-            .into_iter()
-            .filter_map(|(name, source_id)| {
-                name_to_id_local
-                    .get(&name)
-                    .map(|target_id| (source_id, *target_id))
-            })
-            .collect::<BTreeMap<_, _>>();
-
-        // Translate all polynomial references.
-        let mut localized = selected_expressions.clone();
-        localized.visit_expressions_mut(
-            &mut |expr| {
-                if let AlgebraicExpression::Reference(reference) = expr {
-                    reference.poly_id = id_map[&reference.poly_id];
-                }
-                ControlFlow::Continue::<()>(())
-            },
-            VisitOrder::Pre,
-        );
-
-        localized
-    }
-}
-
-fn unique_referenced_namespaces<F: FieldElement>(
-    selected_expressions: &SelectedExpressions<F>,
-) -> Option<String> {
-    let all_namespaces = referenced_namespaces_algebraic_expression(selected_expressions);
-    assert!(
-        all_namespaces.len() <= 1,
-        "Expected at most one namespace, got: {all_namespaces:?}",
-    );
-    all_namespaces.into_iter().next()
 }
 
 /// A connection between two machines.

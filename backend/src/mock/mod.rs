@@ -25,6 +25,9 @@ mod bus_checker;
 mod connection_constraint_checker;
 mod machine;
 mod polynomial_constraint_checker;
+mod utils;
+
+use utils::*;
 
 pub(crate) struct MockBackendFactory<F: FieldElement> {
     _marker: PhantomData<F>,

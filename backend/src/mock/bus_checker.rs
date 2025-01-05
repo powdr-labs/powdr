@@ -1,14 +1,13 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
-use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{AlgebraicExpression, Analyzed, Identity, PhantomBusInteractionIdentity},
+    analyzed::{Analyzed, Identity, PhantomBusInteractionIdentity},
     parsed::visitor::Children,
 };
 use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, OwnedGlobalValues};
 use powdr_number::FieldElement;
 
-use super::machine::Machine;
+use super::{localize, machine::Machine, unique_referenced_namespaces};
 
 pub struct BusChecker<'a, F> {
     connections: &'a [BusConnection<F>],
@@ -16,48 +15,34 @@ pub struct BusChecker<'a, F> {
     global_values: OwnedGlobalValues<F>,
 }
 
-type Error = String;
+type Error = Vec<String>;
 
-/// A group of bus interactions which share the same id.
 pub struct BusConnection<F> {
-    pub id: F,
-    pub interactions: BTreeSet<PhantomBusInteractionIdentity<F>>,
+    pub interaction: PhantomBusInteractionIdentity<F>,
 }
 
 impl<F: FieldElement> BusConnection<F> {
     /// Extracts all bus connections from the global PIL.
-    /// Assumption: Bus interactions have a unique ID as their first element.
     pub fn get_all(
         global_pil: &Analyzed<F>,
-        _: &BTreeMap<String, Analyzed<F>>,
+        machine_to_pil: &BTreeMap<String, Analyzed<F>>,
     ) -> Vec<Self> {
         global_pil
             .identities
             .iter()
             .filter_map(|identity| {
+                // TODO: turn other relevant identities into bus connections
                 if let Identity::PhantomBusInteraction(identity) = identity {
-                    Some(identity)
+                    Some(identity.clone())
                 } else {
                     None
                 }
             })
-            .into_group_map_by(|bus_interaction| {
-                if let AlgebraicExpression::Number(interaction_id) =
-                    bus_interaction.tuple.children().next().unwrap()
-                {
-                    interaction_id
-                } else {
-                    panic!("Expected a number in the first child of a bus interaction")
-                }
-            })
-            .into_iter()
-            .map(|(id, interactions)| {
-                // These interactions are guaranteed to have the same ID
-                // We will check that they sum to zero
-                BusConnection {
-                    id: *id,
-                    interactions: interactions.into_iter().cloned().collect(),
-                }
+            .map(|interaction| {
+                // Localize the interaction assuming a single namespace is accessed. TODO: This may break due to the latch.
+                let machine = unique_referenced_namespaces(&interaction).unwrap();
+                let interaction = localize(interaction, global_pil, &machine_to_pil[&machine]);
+                BusConnection { interaction }
             })
             .collect()
     }
@@ -82,75 +67,88 @@ impl<'a, F: FieldElement> BusChecker<'a, F> {
     }
 
     pub fn check(&self) -> Result<(), Error> {
-        for bus_connection in self.connections {
-            self.check_connection(bus_connection)?;
-        }
-        Ok(())
-    }
-
-    fn check_connection(&self, bus_connection: &BusConnection<F>) -> Result<(), Error> {
-        // For this id, build the set of all sends and receives. Sends have positive multiplicity, receives negative.
-        let rows = self.machines.iter().flat_map(|(_, machine)| {
-            (0..machine.size).map(|row_id| {
-                (
-                    &machine.intermediate_definitions,
-                    machine.trace_values.row(row_id),
-                )
+        // For each row
+        let interactions: BTreeMap<Vec<F>, (usize, usize)> = self
+            .machines
+            .iter()
+            .flat_map(|(_, machine)| {
+                (0..machine.size).map(|row_id| {
+                    (
+                        &machine.intermediate_definitions,
+                        machine.trace_values.row(row_id),
+                    )
+                })
             })
-        });
-        let interactions: BTreeMap<Vec<F>, (usize, usize)> = rows.fold(
-            Default::default(),
-            |mut counts, (intermediate_definitions, row)| {
-                let mut evaluator =
-                    ExpressionEvaluator::new(row, &self.global_values, intermediate_definitions);
+            .fold(
+                Default::default(),
+                |counts, (intermediate_definitions, row)| {
+                    // create an evaluator for this row
+                    let mut evaluator = ExpressionEvaluator::new(
+                        row,
+                        &self.global_values,
+                        intermediate_definitions,
+                    );
 
-                // execute the bus interaction on this row
-                let new_counts: Vec<(Vec<F>, (usize, usize))> = bus_connection
-                    .interactions
-                    .iter()
-                    .map(|bus_interaction| {
-                        let multiplicity = evaluator
-                            .evaluate(&bus_interaction.multiplicity)
-                            .try_into_i32()
-                            .unwrap();
-                        // we interpret the multiplicity as a send if it is positive, and a receive if it is negative
-                        let is_send = multiplicity.is_positive();
-                        let tuple = bus_interaction
-                            .tuple
-                            .children()
-                            .map(|e| evaluator.evaluate(e))
-                            .collect();
-                        (
-                            tuple,
-                            if is_send {
+                    // For each connection
+                    self.connections
+                        .iter()
+                        .fold(counts, |mut counts, bus_connection| {
+                            let bus_interaction = &bus_connection.interaction;
+
+                            let multiplicity = evaluator
+                                .evaluate(&bus_interaction.multiplicity)
+                                .try_into_i32()
+                                .unwrap();
+
+                            // we interpret the multiplicity as a send if it is positive, and a receive if it is negative
+                            let is_send = multiplicity.is_positive();
+
+                            let tuple = bus_interaction
+                                .tuple
+                                .children()
+                                .map(|e| evaluator.evaluate(e))
+                                .collect();
+
+                            let (send, receive) = if is_send {
                                 (multiplicity as usize, 0)
                             } else {
                                 (0, -multiplicity as usize)
-                            },
-                        )
-                    })
-                    .collect();
+                            };
 
-                for (tuple, (send, receive)) in new_counts {
-                    counts
-                        .entry(tuple)
-                        .and_modify(|(s, r)| {
-                            *s += send;
-                            *r += receive;
+                            // update the counts
+                            counts
+                                .entry(tuple)
+                                .and_modify(|(s, r)| {
+                                    *s += send;
+                                    *r += receive;
+                                })
+                                .or_insert((send, receive));
+
+                            counts
                         })
-                        .or_insert((send, receive));
-                }
-                counts
-            },
-        );
+                },
+            );
+
+        let mut errors = vec![];
 
         for (tuple, (send, receive)) in interactions {
             if send != receive {
-                return Err(format!(
-                    "Bus connection with id {:?} failed: send {} != receive {} for tuple {:?}",
-                    bus_connection.id, send, receive, tuple
-                ));
+                // we interpret the first element of the tuple as the id of the bus interaction
+                let id = &tuple[0];
+                let values = &tuple[1..];
+
+                let error = format!(
+                    "Bus connection with id {id} failed: send {send} != receive {receive} for tuple {values:?}",
+                );
+
+                log::error!("{}", error);
+
+                errors.push(error);
             }
+        }
+
+        if !errors.is_empty() {
+            return Err(errors);
         }
 
         Ok(())
