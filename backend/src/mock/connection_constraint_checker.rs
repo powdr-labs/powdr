@@ -149,9 +149,9 @@ impl<F: FieldElement> Connection<F> {
     }
 }
 
-pub struct ConnectionConstraintChecker<'a, F: FieldElement> {
+pub struct ConnectionConstraintChecker<'a, F> {
     connections: &'a [Connection<F>],
-    machines: BTreeMap<String, Machine<'a, F>>,
+    machines: &'a BTreeMap<String, Machine<'a, F>>,
     global_values: OwnedGlobalValues<F>,
 }
 
@@ -159,7 +159,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
     /// Creates a new connection constraint checker.
     pub fn new(
         connections: &'a [Connection<F>],
-        machines: BTreeMap<String, Machine<'a, F>>,
+        machines: &'a BTreeMap<String, Machine<'a, F>>,
         challenges: &'a BTreeMap<u64, F>,
     ) -> Self {
         let global_values = OwnedGlobalValues {

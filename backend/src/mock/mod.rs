@@ -7,6 +7,7 @@ use std::{
     sync::Arc,
 };
 
+use bus_checker::{BusChecker, BusConnection};
 use connection_constraint_checker::{Connection, ConnectionConstraintChecker};
 use machine::Machine;
 use polynomial_constraint_checker::PolynomialConstraintChecker;
@@ -20,6 +21,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
+mod bus_checker;
 mod connection_constraint_checker;
 mod machine;
 mod polynomial_constraint_checker;
@@ -56,11 +58,13 @@ impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
         }
         let machine_to_pil = powdr_backend_utils::split_pil(&pil);
         let connections = Connection::get_all(&pil, &machine_to_pil);
+        let bus_connections = BusConnection::get_all(&pil, &machine_to_pil);
 
         Ok(Box::new(MockBackend {
             machine_to_pil,
             fixed,
             connections,
+            bus_connections,
         }))
     }
 
@@ -73,6 +77,7 @@ pub(crate) struct MockBackend<F> {
     machine_to_pil: BTreeMap<String, Analyzed<F>>,
     fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
     connections: Vec<Connection<F>>,
+    bus_connections: Vec<BusConnection<F>>,
 }
 
 impl<F: FieldElement> Backend<F> for MockBackend<F> {
@@ -133,9 +138,12 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
                 !PolynomialConstraintChecker::new(machine, &challenges)
                     .check()
                     .has_errors()
-            }) && ConnectionConstraintChecker::new(&self.connections, machines, &challenges)
+            }) && ConnectionConstraintChecker::new(&self.connections, &machines, &challenges)
                 .check()
-                .is_ok();
+                .is_ok()
+                && BusChecker::new(&self.bus_connections, &machines, &challenges)
+                    .check()
+                    .is_ok();
 
         match is_ok {
             true => Ok(Vec::new()),
