@@ -2,8 +2,6 @@ use core::unreachable;
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, GlobalValues, TraceValues};
 use std::collections::HashSet;
-use std::fmt::Debug;
-use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 extern crate alloc;
 use alloc::collections::btree_map::BTreeMap;
