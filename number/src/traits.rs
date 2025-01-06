@@ -148,7 +148,7 @@ pub trait FieldElement:
     + JsonSchema
 {
     /// The underlying fixed-width integer type
-    type Integer: LargeInt;
+    type Integer: LargeInt + Hash;
     /// Number of bits required to represent elements of this field.
     const BITS: u32;
 

@@ -34,7 +34,7 @@ pub enum SymbolicExpression<T: FieldElement, S> {
     ),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -45,12 +45,12 @@ pub enum BinaryOperator {
     IntegerDiv,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum BitOperator {
     And,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum UnaryOperator {
     Neg,
 }
