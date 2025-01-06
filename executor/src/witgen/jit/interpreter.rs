@@ -111,7 +111,7 @@ impl<T: FieldElement> EffectsInterpreterBuilder<T> {
     fn tac_convert(&mut self, expr: RPNExpression<T, usize>) -> RPNExpression<T, usize> {
         for e in expr.elems {
             match e {
-                RPNExpressionElem::Concrete(_) => self.stack.push(e),
+                RPNExpressionElem::Constant(_) => self.stack.push(e),
                 RPNExpressionElem::Symbol(_) => self.stack.push(e),
                 RPNExpressionElem::BinaryAdd
                 | RPNExpressionElem::BinaryMul
@@ -121,12 +121,12 @@ impl<T: FieldElement> EffectsInterpreterBuilder<T> {
                     let mut right = self.stack.pop().unwrap();
                     assert!(matches!(
                         right,
-                        RPNExpressionElem::Symbol(_) | RPNExpressionElem::Concrete(_)
+                        RPNExpressionElem::Symbol(_) | RPNExpressionElem::Constant(_)
                     ));
                     let mut left = self.stack.pop().unwrap();
                     assert!(matches!(
                         left,
-                        RPNExpressionElem::Symbol(_) | RPNExpressionElem::Concrete(_)
+                        RPNExpressionElem::Symbol(_) | RPNExpressionElem::Constant(_)
                     ));
                     // order commutative operations so e.g., a+b == b+a
                     if matches!(
@@ -151,7 +151,7 @@ impl<T: FieldElement> EffectsInterpreterBuilder<T> {
                     let inner = self.stack.pop().unwrap();
                     assert!(matches!(
                         inner,
-                        RPNExpressionElem::Symbol(_) | RPNExpressionElem::Concrete(_)
+                        RPNExpressionElem::Symbol(_) | RPNExpressionElem::Constant(_)
                     ));
                     let expr = RPNExpression {
                         elems: vec![inner, e],
@@ -169,7 +169,7 @@ impl<T: FieldElement> EffectsInterpreterBuilder<T> {
         let var = self.stack.pop().unwrap();
         assert!(matches!(
             var,
-            RPNExpressionElem::Symbol(_) | RPNExpressionElem::Concrete(_)
+            RPNExpressionElem::Symbol(_) | RPNExpressionElem::Constant(_)
         ));
         RPNExpression { elems: vec![var] }
     }
@@ -375,7 +375,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         for action in &self.actions {
             match action {
                 InterpreterAction::AssignExpression(idx, e) => {
-                    let val = e.evaluate(&vars[..]);
+                    let val = e.evaluate_tac(&vars[..]);
                     vars[*idx] = val;
                 }
                 InterpreterAction::ReadCell(idx, c) => {
@@ -430,8 +430,8 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     mutable_state.call_direct(*id, &mut args[..]).unwrap();
                 }
                 InterpreterAction::Assertion(e1, e2, expected_equal) => {
-                    let lhs_value = e1.evaluate(&vars);
-                    let rhs_value = e2.evaluate(&vars);
+                    let lhs_value = e1.evaluate_tac(&vars);
+                    let rhs_value = e2.evaluate_tac(&vars);
                     if *expected_equal {
                         assert_eq!(lhs_value, rhs_value, "Assertion failed");
                     } else {
@@ -560,7 +560,7 @@ pub struct RPNExpression<T: FieldElement, S> {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum RPNExpressionElem<T: FieldElement, S> {
-    Concrete(T),
+    Constant(T),
     Symbol(S),
     BinaryAdd,
     BinarySub,
@@ -579,7 +579,7 @@ impl<T: FieldElement, S: Clone> From<&SymbolicExpression<T, S>> for RPNExpressio
         ) {
             match expr {
                 SymbolicExpression::Concrete(n) => {
-                    elems.push(RPNExpressionElem::Concrete(*n));
+                    elems.push(RPNExpressionElem::Constant(*n));
                 }
                 SymbolicExpression::Symbol(s, _) => {
                     elems.push(RPNExpressionElem::Symbol(s.clone()));
@@ -626,17 +626,17 @@ impl<T: FieldElement, S: Clone> From<&SymbolicExpression<T, S>> for RPNExpressio
 }
 
 impl<T: FieldElement> RPNExpression<T, usize> {
-    /// Evaluate the expression using the provided variables
-    fn evaluate(&self, vars: &[T]) -> T {
+    /// Evaluate the expression (in three-acess code form) using the provided variables
+    fn evaluate_tac(&self, vars: &[T]) -> T {
         match self.elems.len() {
             1 => match &self.elems[0] {
-                RPNExpressionElem::Concrete(v) => *v,
+                RPNExpressionElem::Constant(v) => *v,
                 RPNExpressionElem::Symbol(idx) => vars[*idx],
                 _ => panic!("Invalid expression"),
             },
             2 => {
                 let inner = match &self.elems[0] {
-                    RPNExpressionElem::Concrete(v) => *v,
+                    RPNExpressionElem::Constant(v) => *v,
                     RPNExpressionElem::Symbol(idx) => vars[*idx],
                     _ => panic!("Invalid expression"),
                 };
@@ -648,12 +648,12 @@ impl<T: FieldElement> RPNExpression<T, usize> {
             }
             3 => {
                 let left = match &self.elems[0] {
-                    RPNExpressionElem::Concrete(v) => *v,
+                    RPNExpressionElem::Constant(v) => *v,
                     RPNExpressionElem::Symbol(idx) => vars[*idx],
                     _ => panic!("Invalid expression"),
                 };
                 let right = match &self.elems[1] {
-                    RPNExpressionElem::Concrete(v) => *v,
+                    RPNExpressionElem::Constant(v) => *v,
                     RPNExpressionElem::Symbol(idx) => vars[*idx],
                     _ => panic!("Invalid expression"),
                 };
