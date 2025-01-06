@@ -14,7 +14,7 @@ use crate::stwo::circuit_builder::{
     gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
 };
 use crate::stwo::proof::{
-    SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
+    Proof, SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
 };
 
 use stwo_prover::constraint_framework::{
@@ -115,8 +115,6 @@ where
     }
 
     pub fn setup(&mut self) {
-        println!("start setting up \n");
-
         //TODO: there is repeated computation due to split pils can have the same degree, optimize this
         let domain_map: BTreeMap<usize, CircleDomain> = self
             .split
@@ -138,7 +136,6 @@ where
                 })
             })
             .collect();
-        //println!("domain_map is setup \n");
 
         let preprocessed: BTreeMap<String, TableProvingKeyCollection<B>> = self
             .split
@@ -150,24 +147,6 @@ where
                 } else {
                     let fixed_columns = machine_fixed_columns(&self.fixed, pil);
 
-                    // println!("namespace is: {:?}", namespace);
-                    // println!(
-                    //     "the number of cols in each different size is: {:?}",
-                    //     fixed_columns
-                    //         .iter()
-                    //         .map(|(_name, column)| { column.len() })
-                    //         .collect::<Vec<_>>()
-                    // );
-                    // println!(
-                    //     "the total number of different size is: {:?}",
-                    //     fixed_columns.len()
-                    // );
-
-                    // println!(
-                    //     "in this pil, the constant cols count is {:?} \n",
-                    //     pil.constant_count()
-                    // );
-
                     Some((
                         namespace.to_string(),
                         pil.committed_polys_in_source_order()
@@ -175,7 +154,6 @@ where
                             .unwrap()
                             .iter()
                             .map(|size| {
-                                //println!("size is {:?} \n", size);
                                 let fixed_columns = &fixed_columns[&size];
                                 let mut constant_trace: ColumnVec<
                                     CircleEvaluation<B, BaseField, BitReversedOrder>,
@@ -210,18 +188,6 @@ where
 
                                 constant_trace.extend(constant_shifted_trace);
 
-                                // println!(
-                                //     "the length of constant_trace is {:?} \n",
-                                //     constant_trace.len()
-                                // );
-                                // println!(
-                                //     "the length of each evaluations in constant_trace is {:?} \n",
-                                //     constant_trace
-                                //         .iter()
-                                //         .map(|eval| eval.len())
-                                //         .collect::<Vec<_>>()
-                                // );
-
                                 (
                                     size as usize,
                                     TableProvingKey {
@@ -241,10 +207,7 @@ where
     }
 
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
-        let split: BTreeMap<String, Analyzed<F>> = powdr_backend_utils::split_pil(&self.analyzed)
-            .into_iter()
-            .collect();
-
+      
         let config = get_config();
         let domain_map: BTreeMap<usize, CircleDomain> = self
             .split
@@ -266,7 +229,6 @@ where
                 })
             })
             .collect();
-        println!("domain_map is setup \n");
 
         //Each machine needs its own component to generate its proof, the components from different machines are stored in a vector components
         let tree_span_provider = &mut TraceLocationAllocator::default();
@@ -279,16 +241,15 @@ where
 
         let mut constant_cols = Vec::new();
 
-        let witness_by_machine: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = split
+        let witness_by_machine: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = self.split
             .iter()
             .filter_map(|(machine, pil)| {
                 let witness_columns = machine_witness_columns(witness, pil, machine);
                 if witness_columns[0].1.is_empty() {
-                    // Empty machines can be removed entirely.
-                    print!("Empty machine {:?} \n", machine);
+                    //TODO: Empty machines can be removed entirely, but in verification it is not removed, need to be handled
                     None
                 } else {
-                    println!("crate component for machine {:?} \n", machine);
+
 
                     let witness_by_machine = machine_witness_columns(witness, pil, machine);
                     assert!(
@@ -297,75 +258,40 @@ where
                             .all(|(_name, vec)| vec.len() == witness_by_machine[0].1.len()),
                         "All witness columns in a single machine must have the same length"
                     );
-                    // println!(
-                    //     "the number of cols in witness by machine is {:?} \n",
-                    //     witness_by_machine.len()
-                    // );
-                    // println!(
-                    //     "the length of witness col is {:?} \n",
-                    //     witness_by_machine[0].1.len()
-                    // );
-
+              
 
                     if let Some(preprocessed) = self.proving_key.preprocessed.as_ref() {
-                        if let Some(table_provingkey) = preprocessed.iter().find_map(|(namespace, table_provingkey)| {
-                            if namespace == machine {
-                                Some(table_provingkey)
-                            } else {
-                                None
-                            }
-                        }) {
-                            if let Some(constant_trace) = table_provingkey.iter().find_map(|(size, table_provingkey)| {
-                                if *size == witness_by_machine[0].1.len() {
-                                    Some(table_provingkey.constant_trace_circle_domain.clone())
-                                } else {
-                                    None
-                                }
-                            }) {
+                        if let Some(table_provingkey) =
+                            preprocessed
+                                .iter()
+                                .find_map(|(namespace, table_provingkey)| {
+                                    if namespace == machine {
+                                        Some(table_provingkey)
+                                    } else {
+                                        None
+                                    }
+                                })
+                        {
+                            if let Some(constant_trace) =
+                                table_provingkey
+                                    .iter()
+                                    .find_map(|(size, table_provingkey)| {
+                                        if *size == witness_by_machine[0].1.len() {
+                                            Some(
+                                                table_provingkey
+                                                    .constant_trace_circle_domain
+                                                    .clone(),
+                                            )
+                                        } else {
+                                            None
+                                        }
+                                    })
+                            {
                                 // Extend constant_cols only if the constant_trace exists
                                 constant_cols.extend(constant_trace);
                             }
                         }
                     }
-
-                    // let constant_by_machine: ColumnVec<
-                    //     CircleEvaluation<B, BaseField, BitReversedOrder>,
-                    // > = self
-                    //     .proving_key
-                    //     .preprocessed
-                    //     .as_ref()
-                    //     .unwrap()
-                    //     .iter()
-                    //     .find_map(|(namespace, table_provingkey)| {
-                    //         if namespace == machine {
-                    //             Some(table_provingkey)
-                    //         } else {
-                    //             None
-                    //         }
-                    //     })
-                    //     .unwrap()
-                    //     .iter()
-                    //     .find_map(|(size, table_provingkey)| {
-                    //         if *size == witness_by_machine[0].1.len() {
-                    //             Some(table_provingkey.constant_trace_circle_domain.clone())
-                    //         } else {
-                    //             None
-                    //         }
-                    //     })
-                    //     .unwrap();
-                    // constant_cols.extend(constant_by_machine.clone());
-
-                    // println!(
-                    //     "the number of cols of constant_by_machine is {:?} \n",
-                    //     constant_by_machine.len()
-                    // );
-                    // println!(
-                    //     "the length of each evaluations in constant_by_machine is {:?} \n",
-                    //     constant_by_machine
-                    //         .iter()
-                    //         .map(|eval| eval.len())
-                    //         .collect::<Vec<_>>()
-                    // );
 
                     let component = PowdrComponent::new(
                         tree_span_provider,
@@ -379,19 +305,10 @@ where
                     components.push(component);
 
                     constant_cols_offset_acc += pil.constant_count();
-                    //println!("constant count is {:?} \n", pil.constant_count());
+                   
 
                     constant_cols_offset_acc += get_constant_with_next_list(pil).len();
-                    // println!(
-                    //     "constant_cols_offset_acc is {:?} \n",
-                    //     constant_cols_offset_acc
-                    // );
-                    // println!(
-                    //     "get_constant_with_next_list is {:?} \n",
-                    //     get_constant_with_next_list(pil)
-                    // );
-
-                    // println!("component created for machine {:?} \n", machine);
+                 
 
                     Some(
                         witness_by_machine
@@ -412,58 +329,33 @@ where
             .collect();
 
         let max_log_degree = domain_map.keys().last().unwrap();
-        //print!("max_degree is {:?} \n", max_log_degree);
+     
         let twiddles_maxdegree = B::precompute_twiddles(
             CanonicCoset::new((*max_log_degree as u32) + 1 + FRI_LOG_BLOWUP as u32)
                 .circle_domain()
                 .half_coset,
         );
 
-        //println!("start creating commitment_scheme \n");
 
         let prover_channel = &mut <MC as MerkleChannel>::C::default();
         let mut commitment_scheme =
             CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles_maxdegree);
 
-        //println!("commitment_scheme created \n");
+    
 
         let mut tree_builder = commitment_scheme.tree_builder();
 
-        //commit to the constant and shifted constant polynomials
 
         tree_builder.extend_evals(constant_cols.clone());
 
         tree_builder.commit(prover_channel);
 
-        // println!("constant column created \n");
-
-        // println!(
-        //     "the length of consttant_cols is {:?} \n",
-        //     constant_cols.len()
-        // );
-        // println!(
-        //     "the length of each evaluations in  consttant_cols is {:?} \n",
-        //     constant_cols
-        //         .iter()
-        //         .map(|eval| eval.len())
-        //         .collect::<Vec<_>>()
-        // );
-
-        // println!(
-        //     "\n length of each col in trace by machine is {:?} ",
-        //     witness_by_machine
-        //         .iter()
-        //         .map(|eval| eval.len())
-        //         .collect::<Vec<_>>()
-        // );
-
+    
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(witness_by_machine.clone());
         tree_builder.commit(prover_channel);
 
-        println!("witness column created \n");
-
-        println!("component created \n");
+    
 
         let mut components_slice: Vec<&dyn ComponentProver<B>> = components
             .iter_mut()
@@ -472,16 +364,6 @@ where
 
         let components_slice = components_slice.as_mut_slice();
 
-        println!("debugging in prove function \n");
-
-        println!(
-            "number of constant cols is {:?} \n",
-            commitment_scheme.trees[0].polynomials.len()
-        );
-        println!(
-            "number of witness cols is {:?} \n",
-            commitment_scheme.trees[1].polynomials.len()
-        );
 
         let proof_result = stwo_prover::core::prover::prove::<B, MC>(
             components_slice,
@@ -489,18 +371,12 @@ where
             commitment_scheme,
         );
 
-        let proof = match proof_result {
+        let starkproof = match proof_result {
             Ok(value) => value,
-            Err(e) => return Err(e.to_string()), // Propagate the error insteap of panicking
+            Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
         };
 
-        println!("proof created \n");
-
-        //to test the verification code here first
-        let verifier_channel = &mut <MC as MerkleChannel>::C::default();
-        let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new(config);
-
-        let mut sizes: Vec<Vec<u32>> = vec![Vec::new(), Vec::new()];
+        let mut sizes = [Vec::new(), Vec::new()];
         sizes[0].extend(
             constant_cols
                 .iter()
@@ -514,40 +390,58 @@ where
                 .collect::<Vec<_>>(),
         );
 
-        let mut components_slice: Vec<&dyn Component> = components
-            .iter_mut()
-            .map(|component| component as &dyn Component)
-            .collect();
+        let proof: Proof<MC> = Proof { starkproof, sizes:sizes.clone() };
 
-        let components_slice = components_slice.as_mut_slice();
 
-        commitment_scheme.commit(
-            proof.commitments[PREPROCESSED_TRACE_IDX],
-            &sizes[PREPROCESSED_TRACE_IDX],
-            verifier_channel,
-        );
-        commitment_scheme.commit(
-            proof.commitments[ORIGINAL_TRACE_IDX],
-            &sizes[ORIGINAL_TRACE_IDX],
-            verifier_channel,
-        );
+        //to test the verification code here first
+        // let verifier_channel = &mut <MC as MerkleChannel>::C::default();
+        // let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new(config);
 
-        let result = stwo_prover::core::prover::verify(
-            components_slice,
-            verifier_channel,
-            commitment_scheme,
-            proof,
-        )
-        .map_err(|e| e.to_string());
-        println!("verification result is {:?} \n", result);
+        // let mut sizes: Vec<Vec<u32>> = vec![Vec::new(), Vec::new()];
+        // sizes[0].extend(
+        //     constant_cols
+        //         .iter()
+        //         .map(|eval| eval.len().ilog2() as u32)
+        //         .collect::<Vec<_>>(),
+        // );
+        // sizes[1].extend(
+        //     witness_by_machine
+        //         .iter()
+        //         .map(|eval| eval.len().ilog2() as u32)
+        //         .collect::<Vec<_>>(),
+        // );
 
-        proof = unimplemented!("proof is not verified yet");
+        // let mut components_slice: Vec<&dyn Component> = components
+        //     .iter_mut()
+        //     .map(|component| component as &dyn Component)
+        //     .collect();
 
+        // let components_slice = components_slice.as_mut_slice();
+
+        // commitment_scheme.commit(
+        //     proof.commitments[PREPROCESSED_TRACE_IDX],
+        //     &sizes[PREPROCESSED_TRACE_IDX],
+        //     verifier_channel,
+        // );
+        // commitment_scheme.commit(
+        //     proof.commitments[ORIGINAL_TRACE_IDX],
+        //     &sizes[ORIGINAL_TRACE_IDX],
+        //     verifier_channel,
+        // );
+
+        // let result = stwo_prover::core::prover::verify(
+        //     components_slice,
+        //     verifier_channel,
+        //     commitment_scheme,
+        //     proof,
+        // )
+        // .map_err(|e| e.to_string());
+        // println!("verification result is {:?} \n", result);
         Ok(bincode::serialize(&proof).unwrap())
     }
 
     pub fn verify(&self, proof: &[u8], _instances: &[F]) -> Result<(), String> {
-        println!("start verifying \n");
+       
         assert!(
             _instances.is_empty(),
             "Expected _instances slice to be empty, but it has {} elements.",
@@ -555,7 +449,9 @@ where
         );
 
         let config = get_config();
-        let proof: StarkProof<MC::H> =
+    
+
+        let proof: Proof<MC> =
             bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
 
         let verifier_channel = &mut <MC as MerkleChannel>::C::default();
@@ -567,31 +463,28 @@ where
         let mut components = Vec::new();
 
         let mut constant_cols_offset_acc = 0;
-        // sizes stores the columns size info
-        let mut sizes: Vec<Vec<u32>> = vec![Vec::new(), Vec::new()];
+       
 
         self.split.iter().for_each(|(machine, pil)| {
-            constant_cols_offset_acc += pil.constant_count();
-
-            constant_cols_offset_acc += get_constant_with_next_list(pil).len();
-
-            sizes[0].extend(vec![
-                pil.degree().ilog2() as u32;
-                pil.constant_count()
-                    + get_constant_with_next_list(pil).len()
-            ]);
-            sizes[1].extend(vec![pil.degree().ilog2() as u32; pil.commitment_count()]);
 
             components.push(PowdrComponent::new(
                 tree_span_provider,
                 PowdrEval::new(
                     (*pil).clone(),
                     constant_cols_offset_acc,
-                    pil.degree().ilog2(),
+                    proof.sizes[PREPROCESSED_TRACE_IDX][constant_cols_offset_acc],
                 ),
                 (SecureField::zero(), None),
             ));
+
+
+
+            constant_cols_offset_acc += pil.constant_count();
+
+            constant_cols_offset_acc += get_constant_with_next_list(pil).len();
+
         });
+
 
         let mut components_slice: Vec<&dyn Component> = components
             .iter_mut()
@@ -601,23 +494,21 @@ where
         let components_slice = components_slice.as_mut_slice();
 
         commitment_scheme.commit(
-            proof.commitments[PREPROCESSED_TRACE_IDX],
-            &sizes[PREPROCESSED_TRACE_IDX],
+            proof.starkproof.commitments[PREPROCESSED_TRACE_IDX],
+            &proof.sizes[PREPROCESSED_TRACE_IDX],
             verifier_channel,
         );
         commitment_scheme.commit(
-            proof.commitments[ORIGINAL_TRACE_IDX],
-            &sizes[ORIGINAL_TRACE_IDX],
+            proof.starkproof.commitments[ORIGINAL_TRACE_IDX],
+            &proof.sizes[ORIGINAL_TRACE_IDX],
             verifier_channel,
         );
-
-        println!("sizes are {:?} \n", sizes);
 
         stwo_prover::core::prover::verify(
             components_slice,
             verifier_channel,
             commitment_scheme,
-            proof,
+            proof.starkproof,
         )
         .map_err(|e| e.to_string())
     }
