@@ -133,5 +133,8 @@ where
     MC::H: DeserializeOwned + Serialize,
 {
     pub starkproof: StarkProof<MC::H>,
+    //sizes[0] stores the log_degree of all the constant columns
+    //sizes[1] stores the log_degree of all the witness columns
+    //sizes[2] stores the log_degree of all the machines
     pub sizes: [Vec<u32>; 3],
 }
