@@ -225,7 +225,7 @@ extern "C" fn witgen(
 }
 
 /// Returns an iterator over all variables written to in the effect.
-/// The flag indicates if the variable is used in a lookup and thus needs
+/// The flag indicates if the variable is the return value of a machine call and thus needs
 /// to be declared mutable.
 fn written_vars_in_effect<T: FieldElement>(
     effect: &Effect<T, Variable>,
