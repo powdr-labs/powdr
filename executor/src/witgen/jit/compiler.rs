@@ -337,7 +337,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                 "".to_string()
             };
             format!(
-                "{var_decls}if {} {{\n{}}} else {{\n{}}}",
+                "{var_decls}if {} {{\n{}\n}} else {{\n{}\n}}",
                 format_condition(condition),
                 format_effects_inner(first, false),
                 format_effects_inner(second, false)
@@ -892,5 +892,27 @@ extern \"C\" fn witgen(
         };
         (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(4));
+    }
+
+    #[test]
+    fn branches_codegen() {
+        let x = param(0);
+        let y = param(1);
+        let branch_effect = Effect::Branch(
+            BranchCondition {
+                variable: x.clone(),
+                first_branch: RangeConstraint::from_range(7.into(), 20.into()),
+                second_branch: RangeConstraint::from_range(21.into(), 6.into()),
+            },
+            vec![assignment(&y, symbol(&x) + number(1))],
+            vec![assignment(&y, symbol(&x) + number(2))],
+        );
+        let expectation = "    let p_1;
+    if 7 <= IntType::from(p_0) && IntType::from(p_0) <= 20 {
+        p_1 = (p_0 + FieldElement::from(1));
+    } else {
+        p_1 = (p_0 + FieldElement::from(2));
+    }";
+        assert_eq!(format_effects(&[branch_effect]), expectation);
     }
 }
