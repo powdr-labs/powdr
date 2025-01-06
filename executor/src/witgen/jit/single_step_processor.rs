@@ -119,7 +119,9 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         while progress {
             progress = false;
 
-            // TODO propagate known.
+            // TODO At this point, we should call a function on `witgen`
+            // to propagate known concrete values across the identities
+            // to other known (but not concrete) variables.
 
             for id in &self.machine_parts.identities {
                 if complete.contains(&id.id()) {
