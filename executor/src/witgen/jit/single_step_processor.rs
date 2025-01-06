@@ -10,7 +10,7 @@ use crate::witgen::{machines::MachineParts, FixedData};
 use super::{
     effect::Effect,
     variable::{Cell, Variable},
-    witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
+    witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, WitgenInference},
 };
 
 /// A processor for generating JIT code that computes the next row from the previous row.
@@ -45,6 +45,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         // Check that we could derive all witness values in the next row.
         let unknown_witnesses = self
             .unknown_witness_cols_on_next_row(&witgen)
+            // Sort to get deterministic code.
             .sorted()
             .collect_vec();
 
@@ -52,13 +53,14 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         let code = if unknown_witnesses.is_empty() && missing_identities == 0 {
             witgen.code()
         } else {
-            let Some((most_constrained_var, _)) = witgen
+            let Some(most_constrained_var) = witgen
                 .known_variables()
                 .iter()
                 .filter_map(|var| witgen.range_constraint(var).map(|rc| (var, rc)))
                 .filter(|(_, rc)| rc.try_to_single_value().is_none())
                 .sorted()
                 .min_by_key(|(_, rc)| rc.range_width())
+                .map(|(var, _)| var.clone())
             else {
                 let incomplete_identities = self
                     .machine_parts
@@ -73,15 +75,18 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 ));
             };
 
-            let (common_code, condition, other_branch) =
-                witgen.branch_on(&most_constrained_var.clone());
+            let BranchResult {
+                common_code,
+                condition,
+                branches: [first_branch, second_branch],
+            } = witgen.branch_on(&most_constrained_var.clone());
 
             // TODO Tuning: If this fails (or also if it does not generate progress right away),
             // we could also choose a different variable to branch on.
             let left_branch_code =
-                self.generate_code_for_branch(can_process.clone(), witgen, complete.clone())?;
+                self.generate_code_for_branch(can_process.clone(), first_branch, complete.clone())?;
             let right_branch_code =
-                self.generate_code_for_branch(can_process, other_branch, complete)?;
+                self.generate_code_for_branch(can_process, second_branch, complete)?;
             if left_branch_code == right_branch_code {
                 common_code.into_iter().chain(left_branch_code).collect()
             } else {

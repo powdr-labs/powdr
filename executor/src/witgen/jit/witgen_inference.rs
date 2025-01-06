@@ -35,7 +35,7 @@ pub struct ProcessSummary {
 /// This component can generate code that solves identities.
 /// It needs a driver that tells it which identities to process on which rows.
 #[derive(Clone)]
-pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
+pub struct WitgenInference<'a, T: FieldElement, FixedEval> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_evaluator: FixedEval,
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
@@ -60,6 +60,16 @@ impl<T: Display> Display for Value<T> {
             Value::Unknown => write!(f, "???"),
         }
     }
+}
+
+/// Return type of the `branch_on` method.
+pub struct BranchResult<'a, T: FieldElement, FixedEval> {
+    /// The code common to both branches.
+    pub common_code: Vec<Effect<T, Variable>>,
+    /// The condition of the branch.
+    pub condition: BranchCondition<T, Variable>,
+    /// The two branches.
+    pub branches: [WitgenInference<'a, T, FixedEval>; 2],
 }
 
 impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, FixedEval> {
@@ -101,10 +111,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    pub fn branch_on(
-        &mut self,
-        variable: &Variable,
-    ) -> (Vec<Effect<T, Variable>>, BranchCondition<T, Variable>, Self) {
+    /// Splits the current inference into two copies - one where the provided variable
+    /// is in the "second half" of its range constraint and one where it is in the
+    /// "first half" of its range constraint (determined by calling the `bisect` method).
+    /// Returns the common code, the branch condition and the two branches.
+    pub fn branch_on(mut self, variable: &Variable) -> BranchResult<'a, T, FixedEval> {
         // The variable needs to be known, we need to have a range constraint but
         // it cannot be a single value.
         assert!(self.known_variables.contains(variable));
@@ -118,21 +129,21 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 
         let (low_condition, high_condition) = rc.bisect();
 
-        let code = std::mem::take(&mut self.code);
+        let common_code = std::mem::take(&mut self.code);
         let mut low_branch = self.clone();
 
         self.add_range_constraint(variable.clone(), high_condition.clone());
         low_branch.add_range_constraint(variable.clone(), low_condition.clone());
 
-        (
-            code,
-            BranchCondition {
+        BranchResult {
+            common_code,
+            condition: BranchCondition {
                 variable: variable.clone(),
                 first_branch: high_condition,
                 second_branch: low_condition,
             },
-            low_branch,
-        )
+            branches: [self, low_branch],
+        }
     }
 
     /// Process an identity on a certain row.
