@@ -254,13 +254,13 @@ mod test {
         let pc: col;
 
         col fixed LINE = [0, 1] + [2]*;
-        col fixed INSTR_ADD = [0, 1] +  [0]*;
+        col fixed INSTR_ADD = [0, 1] + [0]*;
         col fixed INSTR_MUL = [1, 0] + [1]*;
 
         pc' = pc + 1;
         [ pc, instr_add, instr_mul ] in [ LINE, INSTR_ADD, INSTR_MUL ];
 
-        instr_add * (A' - (A + B)) + instr_mul * (A' - A * B)  + (1 - instr_add - instr_mul) * (A' - A) = 0;
+        instr_add * (A' - (A + B)) + instr_mul * (A' - A * B) + (1 - instr_add - instr_mul) * (A' - A) = 0;
         B' = B;
         ";
         let code = generate_single_step(input, "Main").unwrap();
