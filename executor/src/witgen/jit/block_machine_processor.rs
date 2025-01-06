@@ -1,15 +1,18 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use bit_vec::BitVec;
-use powdr_ast::analyzed::{AlgebraicReference, Identity};
+use itertools::Itertools;
+use powdr_ast::analyzed::{
+    AlgebraicReference, Identity, PolyID, PolynomialType, SelectedExpressions,
+};
 use powdr_number::FieldElement;
 
-use crate::witgen::{machines::MachineParts, FixedData};
+use crate::witgen::{jit::effect::format_code, machines::MachineParts, FixedData};
 
 use super::{
     effect::Effect,
-    variable::Variable,
-    witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
+    variable::{Cell, Variable},
+    witgen_inference::{CanProcessCall, FixedEvaluator, Value, WitgenInference},
 };
 
 /// A processor for generating JIT code for a block machine.
@@ -43,8 +46,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         identity_id: u64,
         known_args: &BitVec,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
-        let connection_rhs = self.machine_parts.connections[&identity_id].right;
-        assert_eq!(connection_rhs.expressions.len(), known_args.len());
+        let connection = self.machine_parts.connections[&identity_id];
+        assert_eq!(connection.right.expressions.len(), known_args.len());
 
         // Set up WitgenInference with known arguments.
         let known_variables = known_args
@@ -55,26 +58,38 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables);
 
         // In the latch row, set the RHS selector to 1.
-        witgen.assign_constant(&connection_rhs.selector, self.latch_row as i32, T::one());
+        witgen.assign_constant(&connection.right.selector, self.latch_row as i32, T::one());
 
         // For each argument, connect the expression on the RHS with the formal parameter.
-        for (index, expr) in connection_rhs.expressions.iter().enumerate() {
+        for (index, expr) in connection.right.expressions.iter().enumerate() {
             witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
         }
 
         // Solve for the block witness.
         // Fails if any machine call cannot be completed.
-        self.solve_block(can_process, &mut witgen)?;
-
-        for (index, expr) in connection_rhs.expressions.iter().enumerate() {
-            if !witgen.is_known(&Variable::Param(index)) {
-                return Err(format!(
-                    "Unable to derive algorithm to compute output value \"{expr}\""
-                ));
+        match self.solve_block(can_process, &mut witgen, connection.right) {
+            Ok(()) => Ok(witgen.code()),
+            Err(e) => {
+                log::debug!("\nCode generation failed for connection:\n  {connection}");
+                let known_args_str = known_args
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, b)| b.then_some(connection.right.expressions[i].to_string()))
+                    .join("\n  ");
+                log::debug!("Known arguments:\n  {known_args_str}");
+                log::debug!("Error:\n  {e}");
+                log::debug!(
+                    "The following code was generated so far:\n{}",
+                    format_code(witgen.code().as_slice())
+                );
+                Err(format!("Code generation failed: {e}\nRun with RUST_LOG=debug to see the code generated so far."))
             }
         }
+    }
 
-        Ok(witgen.code())
+    fn row_range(&self) -> std::ops::Range<i32> {
+        // We iterate over all rows of the block +/- one row, so that we can also solve for non-rectangular blocks.
+        -1..(self.block_size + 1) as i32
     }
 
     /// Repeatedly processes all identities on all rows, until no progress is made.
@@ -83,16 +98,16 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         &self,
         can_process: CanProcess,
         witgen: &mut WitgenInference<'a, T, &Self>,
+        connection_rhs: &SelectedExpressions<T>,
     ) -> Result<(), String> {
         let mut complete = HashSet::new();
         for iteration in 0.. {
             let mut progress = false;
 
-            // TODO: This algorithm is assuming a rectangular block shape.
-            for row in 0..self.block_size {
+            for row in self.row_range() {
                 for id in &self.machine_parts.identities {
                     if !complete.contains(&(id.id(), row)) {
-                        let result = witgen.process_identity(can_process.clone(), id, row as i32);
+                        let result = witgen.process_identity(can_process.clone(), id, row);
                         if result.complete {
                             complete.insert((id.id(), row));
                         }
@@ -108,22 +123,129 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             }
         }
 
-        // If any machine call could not be completed, that's bad because machine calls typically have side effects.
-        // So, the underlying lookup / permutation / bus argument likely does not hold.
-        // TODO: This assumes a rectangular block shape.
-        let has_incomplete_machine_calls = (0..self.block_size)
-            .flat_map(|row| {
-                self.machine_parts
-                    .identities
-                    .iter()
-                    .filter(|id| is_machine_call(id))
-                    .map(move |id| (id, row))
-            })
-            .any(|(identity, row)| !complete.contains(&(identity.id(), row)));
+        for (index, expr) in connection_rhs.expressions.iter().enumerate() {
+            if !witgen.is_known(&Variable::Param(index)) {
+                return Err(format!(
+                    "Unable to derive algorithm to compute output value \"{expr}\""
+                ));
+            }
+        }
 
-        match has_incomplete_machine_calls {
-            true => Err("Incomplete machine calls".to_string()),
-            false => Ok(()),
+        // TODO: Fail hard (or return a different error), as this should never
+        // happen for valid block machines. Currently fails in:
+        // powdr-pipeline::powdr_std arith256_memory_large_test
+        self.check_block_shape(witgen)?;
+        self.check_incomplete_machine_calls(&complete)?;
+
+        Ok(())
+    }
+
+    /// After solving, the known values should be such that we can stack different blocks.
+    fn check_block_shape(&self, witgen: &mut WitgenInference<'a, T, &Self>) -> Result<(), String> {
+        let known_columns = witgen
+            .known_variables()
+            .iter()
+            .filter_map(|var| match var {
+                Variable::Cell(cell) => Some(cell.id),
+                _ => None,
+            })
+            .collect::<BTreeSet<_>>();
+
+        let can_stack = known_columns.iter().all(|column_id| {
+            // Increase the range by 1, because in row <block_size>,
+            // we might have processed an identity with next references.
+            let row_range = self.row_range();
+            let values = (row_range.start..(row_range.end + 1))
+                .map(|row| {
+                    witgen.value(&Variable::Cell(Cell {
+                        id: *column_id,
+                        row_offset: row,
+                        // Dummy value, the column name is ignored in the implementation
+                        // of Cell::eq, etc.
+                        column_name: "".to_string(),
+                    }))
+                })
+                .collect::<Vec<_>>();
+
+            // Two values that refer to the same row (modulo block size) are compatible if:
+            // - One of them is unknown, or
+            // - Both are concrete and equal
+            let is_compatible = |v1: Value<T>, v2: Value<T>| match (v1, v2) {
+                (Value::Unknown, _) | (_, Value::Unknown) => true,
+                (Value::Concrete(a), Value::Concrete(b)) => a == b,
+                _ => false,
+            };
+            // A column is stackable if all rows equal to each other modulo
+            // the block size are compatible.
+            let stackable = (0..(values.len() - self.block_size))
+                .all(|i| is_compatible(values[i], values[i + self.block_size]));
+
+            if !stackable {
+                let column_name = self.fixed_data.column_name(&PolyID {
+                    id: *column_id,
+                    ptype: PolynomialType::Committed,
+                });
+                let block_list = values.iter().skip(1).take(self.block_size).join(", ");
+                let column_str = format!(
+                    "... {} | {} | {} ...",
+                    values[0],
+                    block_list,
+                    values[self.block_size + 1]
+                );
+                log::debug!("Column {column_name} is not stackable:\n{column_str}");
+            }
+
+            stackable
+        });
+
+        match can_stack {
+            true => Ok(()),
+            false => Err("Block machine shape does not allow stacking".to_string()),
+        }
+    }
+
+    /// If any machine call could not be completed, that's bad because machine calls typically have side effects.
+    /// So, the underlying lookup / permutation / bus argument likely does not hold.
+    /// This function checks that all machine calls are complete, at least for a window of <block_size> rows.
+    fn check_incomplete_machine_calls(&self, complete: &HashSet<(u64, i32)>) -> Result<(), String> {
+        let machine_calls = self
+            .machine_parts
+            .identities
+            .iter()
+            .filter(|id| is_machine_call(id));
+
+        let incomplete_machine_calls = machine_calls
+            .flat_map(|call| {
+                let complete_rows = self
+                    .row_range()
+                    .filter(|row| complete.contains(&(call.id(), *row)))
+                    .collect::<Vec<_>>();
+                // Because we process rows -1..block_size+1, it is fine to have two incomplete machine calls,
+                // as long as <block_size> consecutive rows are complete.
+                if complete_rows.len() >= self.block_size {
+                    let (min, max) = complete_rows.iter().minmax().into_option().unwrap();
+                    let is_consecutive = max - min == complete_rows.len() as i32 - 1;
+                    if is_consecutive {
+                        return vec![];
+                    }
+                }
+                self.row_range()
+                    .filter(|row| !complete.contains(&(call.id(), *row)))
+                    .map(|row| (call, row))
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>();
+
+        if !incomplete_machine_calls.is_empty() {
+            Err(format!(
+                "Incomplete machine calls:\n  {}",
+                incomplete_machine_calls
+                    .iter()
+                    .map(|(identity, row)| format!("{identity} (row {row})"))
+                    .join("\n  ")
+            ))
+        } else {
+            Ok(())
         }
     }
 }
@@ -143,133 +265,98 @@ impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
     fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
         assert!(var.is_fixed());
         let values = self.fixed_data.fixed_cols[&var.poly_id].values_max_size();
-        let row = (row_offset + var.next as i32 + values.len() as i32) as usize % values.len();
+
+        // By assumption of the block machine, all fixed columns are cyclic with a period of <block_size>.
+        // An exception might be the first and last row.
+        assert!(row_offset >= -1);
+        assert!(self.block_size >= 1);
+        // The current row is guaranteed to be at least 1.
+        let current_row = (2 * self.block_size as i32 + row_offset) as usize;
+        let row = current_row + var.next as usize;
+
+        assert!(values.len() >= self.block_size * 4);
+
+        // Fixed columns are assumed to be cyclic, except in the first and last row.
+        // The code above should ensure that we never access the first or last row.
+        assert!(row > 0);
+        assert!(row < values.len() - 1);
+
         Some(values[row])
     }
 }
 
 #[cfg(test)]
 mod test {
-    use std::{collections::BTreeMap, fs::read_to_string};
+    use std::fs::read_to_string;
 
     use test_log::test;
 
-    use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, SelectedExpressions};
     use powdr_number::GoldilocksField;
 
-    use crate::{
-        constant_evaluator,
-        witgen::{
-            global_constraints,
-            jit::{effect::Effect, test_util::format_code},
-            machines::{Connection, ConnectionKind, MachineParts},
-            range_constraints::RangeConstraint,
-            FixedData,
-        },
+    use crate::witgen::{
+        data_structures::mutable_state::MutableState,
+        global_constraints,
+        jit::{effect::Effect, test_util::read_pil},
+        machines::{machine_extractor::MachineExtractor, KnownMachine, Machine},
+        FixedData,
     };
 
     use super::*;
 
-    #[derive(Clone)]
-    struct CannotProcessSubcalls;
-    impl<T: FieldElement> CanProcessCall<T> for CannotProcessSubcalls {
-        fn can_process_call_fully(
-            &self,
-            _identity_id: u64,
-            _known_inputs: &BitVec,
-            _range_constraints: &[Option<RangeConstraint<T>>],
-        ) -> bool {
-            false
-        }
-    }
-
     fn generate_for_block_machine(
         input_pil: &str,
-        block_size: usize,
-        latch_row: usize,
-        selector_name: &str,
-        input_names: &[&str],
-        output_names: &[&str],
+        machine_name: &str,
+        num_inputs: usize,
+        num_outputs: usize,
     ) -> Result<Vec<Effect<GoldilocksField, Variable>>, String> {
-        let analyzed: Analyzed<GoldilocksField> =
-            powdr_pil_analyzer::analyze_string(input_pil).unwrap();
-        let fixed_col_vals = constant_evaluator::generate(&analyzed);
+        let (analyzed, fixed_col_vals) = read_pil(input_pil);
+
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let (fixed_data, retained_identities) =
             global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
-
-        // Build a connection that encodes:
-        // [] is <selector_name> $ [<input_names...>, <output_names...>]
-        let witnesses_by_name = analyzed
-            .committed_polys_in_source_order()
-            .flat_map(|(symbol, _)| symbol.array_elements())
-            .collect::<BTreeMap<_, _>>();
-        let to_expr = |name: &str| {
-            let (column_name, next) = if let Some(name) = name.strip_suffix("'") {
-                (name, true)
-            } else {
-                (name, false)
-            };
-            AlgebraicExpression::Reference(AlgebraicReference {
-                name: name.to_string(),
-                poly_id: witnesses_by_name[column_name],
-                next,
-            })
-        };
-        let rhs = input_names
+        let machines = MachineExtractor::new(&fixed_data).split_out_machines(retained_identities);
+        let [KnownMachine::BlockMachine(machine)] = machines
             .iter()
-            .chain(output_names)
-            .map(|name| to_expr(name))
-            .collect::<Vec<_>>();
-        let right = SelectedExpressions {
-            selector: to_expr(selector_name),
-            expressions: rhs,
+            .filter(|m| m.name().contains(machine_name))
+            .collect_vec()
+            .as_slice()
+        else {
+            panic!("Expected exactly one matching block machine")
         };
-        // The LHS is not used by the processor.
-        let left = SelectedExpressions::default();
-        let connection = Connection {
-            id: 0,
-            left: &left,
-            right: &right,
-            kind: ConnectionKind::Permutation,
-            multiplicity_column: None,
-        };
-
-        let machine_parts = MachineParts::new(
-            &fixed_data,
-            [(0, connection)].into_iter().collect(),
-            retained_identities,
-            witnesses_by_name.values().copied().collect(),
-            // No prover functions
-            Vec::new(),
-        );
-
+        let (machine_parts, block_size, latch_row) = machine.machine_info();
+        assert_eq!(machine_parts.connections.len(), 1);
+        let connection_id = *machine_parts.connections.keys().next().unwrap();
         let processor = BlockMachineProcessor {
             fixed_data: &fixed_data,
-            machine_parts,
+            machine_parts: machine_parts.clone(),
             block_size,
             latch_row,
         };
 
+        let mutable_state = MutableState::new(machines.into_iter(), &|_| {
+            Err("Query not implemented".to_string())
+        });
+
         let known_values = BitVec::from_iter(
-            input_names
-                .iter()
+            (0..num_inputs)
                 .map(|_| true)
-                .chain(output_names.iter().map(|_| false)),
+                .chain((0..num_outputs).map(|_| false)),
         );
 
-        processor.generate_code(CannotProcessSubcalls, 0, &known_values)
+        processor.generate_code(&mutable_state, connection_id, &known_values)
     }
 
     #[test]
     fn add() {
         let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is Add.sel $ [Add.a, Add.b, Add.c]; 
         namespace Add(256);
             col witness sel, a, b, c;
             c = a + b;
         ";
-        let code =
-            generate_for_block_machine(input, 1, 0, "Add::sel", &["Add::a", "Add::b"], &["Add::c"]);
+        let code = generate_for_block_machine(input, "Add", 2, 1);
         assert_eq!(
             format_code(&code.unwrap()),
             "Add::sel[0] = 1;
@@ -283,60 +370,90 @@ params[2] = Add::c[0];"
     #[test]
     fn unconstrained_output() {
         let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is Unconstrained.sel $ [Unconstrained.a, Unconstrained.b, Unconstrained.c]; 
         namespace Unconstrained(256);
             col witness sel, a, b, c;
             a + b = 0;
         ";
-        let err_str = generate_for_block_machine(
-            input,
-            1,
-            0,
-            "Unconstrained::sel",
-            &["Unconstrained::a", "Unconstrained::b"],
-            &["Unconstrained::c"],
-        )
-        .err()
-        .unwrap();
-        assert_eq!(
-            err_str,
-            "Unable to derive algorithm to compute output value \"Unconstrained::c\""
-        );
+        let err_str = generate_for_block_machine(input, "Unconstrained", 2, 1)
+            .err()
+            .unwrap();
+        assert!(err_str
+            .contains("Unable to derive algorithm to compute output value \"Unconstrained::c\""));
     }
 
     #[test]
-    // TODO: Currently fails, because the machine has a non-rectangular block shape.
-    #[should_panic = "Incomplete machine calls"]
+    #[should_panic = "Block machine shape does not allow stacking"]
+    fn not_stackable() {
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a] is NotStackable.sel $ [NotStackable.a]; 
+        namespace NotStackable(256);
+            col witness sel, a;
+            a = a';
+        ";
+        generate_for_block_machine(input, "NotStackable", 1, 0).unwrap();
+    }
+
+    #[test]
     fn binary() {
         let input = read_to_string("../test_data/pil/binary.pil").unwrap();
-        generate_for_block_machine(
-            &input,
-            4,
-            3,
-            "main_binary::sel[0]",
-            &["main_binary::A", "main_binary::B"],
-            &["main_binary::C"],
+        let code = generate_for_block_machine(&input, "main_binary", 3, 1).unwrap();
+        assert_eq!(
+            format_code(&code),
+            "main_binary::sel[0][3] = 1;
+main_binary::operation_id[3] = params[0];
+main_binary::A[3] = params[1];
+main_binary::B[3] = params[2];
+main_binary::operation_id[2] = main_binary::operation_id[3];
+main_binary::A_byte[2] = ((main_binary::A[3] & 4278190080) // 16777216);
+main_binary::A[2] = (main_binary::A[3] & 16777215);
+assert (main_binary::A[3] & 18446744069414584320) == 0;
+main_binary::B_byte[2] = ((main_binary::B[3] & 4278190080) // 16777216);
+main_binary::B[2] = (main_binary::B[3] & 16777215);
+assert (main_binary::B[3] & 18446744069414584320) == 0;
+main_binary::operation_id_next[2] = main_binary::operation_id[3];
+machine_call(9, [Known(main_binary::operation_id_next[2]), Known(main_binary::A_byte[2]), Known(main_binary::B_byte[2]), Unknown(ret(9, 2, 3))]);
+main_binary::C_byte[2] = ret(9, 2, 3);
+main_binary::operation_id[1] = main_binary::operation_id[2];
+main_binary::A_byte[1] = ((main_binary::A[2] & 16711680) // 65536);
+main_binary::A[1] = (main_binary::A[2] & 65535);
+assert (main_binary::A[2] & 18446744073692774400) == 0;
+main_binary::B_byte[1] = ((main_binary::B[2] & 16711680) // 65536);
+main_binary::B[1] = (main_binary::B[2] & 65535);
+assert (main_binary::B[2] & 18446744073692774400) == 0;
+main_binary::operation_id_next[1] = main_binary::operation_id[2];
+machine_call(9, [Known(main_binary::operation_id_next[1]), Known(main_binary::A_byte[1]), Known(main_binary::B_byte[1]), Unknown(ret(9, 1, 3))]);
+main_binary::C_byte[1] = ret(9, 1, 3);
+main_binary::operation_id[0] = main_binary::operation_id[1];
+main_binary::A_byte[0] = ((main_binary::A[1] & 65280) // 256);
+main_binary::A[0] = (main_binary::A[1] & 255);
+assert (main_binary::A[1] & 18446744073709486080) == 0;
+main_binary::B_byte[0] = ((main_binary::B[1] & 65280) // 256);
+main_binary::B[0] = (main_binary::B[1] & 255);
+assert (main_binary::B[1] & 18446744073709486080) == 0;
+main_binary::operation_id_next[0] = main_binary::operation_id[1];
+machine_call(9, [Known(main_binary::operation_id_next[0]), Known(main_binary::A_byte[0]), Known(main_binary::B_byte[0]), Unknown(ret(9, 0, 3))]);
+main_binary::C_byte[0] = ret(9, 0, 3);
+main_binary::A_byte[-1] = main_binary::A[0];
+main_binary::B_byte[-1] = main_binary::B[0];
+main_binary::operation_id_next[-1] = main_binary::operation_id[0];
+machine_call(9, [Known(main_binary::operation_id_next[-1]), Known(main_binary::A_byte[-1]), Known(main_binary::B_byte[-1]), Unknown(ret(9, -1, 3))]);
+main_binary::C_byte[-1] = ret(9, -1, 3);
+main_binary::C[0] = main_binary::C_byte[-1];
+main_binary::C[1] = (main_binary::C[0] + (main_binary::C_byte[0] * 256));
+main_binary::C[2] = (main_binary::C[1] + (main_binary::C_byte[1] * 65536));
+main_binary::C[3] = (main_binary::C[2] + (main_binary::C_byte[2] * 16777216));
+params[3] = main_binary::C[3];"
         )
-        .unwrap();
     }
 
     #[test]
     fn poseidon() {
         let input = read_to_string("../test_data/pil/poseidon_gl.pil").unwrap();
-        let array_element = |name: &str, i: usize| {
-            &*Box::leak(format!("main_poseidon::{name}[{i}]").into_boxed_str())
-        };
-        generate_for_block_machine(
-            &input,
-            31,
-            0,
-            "main_poseidon::sel[0]",
-            &(0..12)
-                .map(|i| array_element("state", i))
-                .collect::<Vec<_>>(),
-            &(0..4)
-                .map(|i| array_element("output", i))
-                .collect::<Vec<_>>(),
-        )
-        .unwrap();
+        generate_for_block_machine(&input, "main_poseidon", 12, 4).unwrap();
     }
 }

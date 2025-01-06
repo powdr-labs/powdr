@@ -5,6 +5,7 @@ use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
+    jit::effect::Effect,
     machines::{LookupCell, MachineParts},
     EvalError, FixedData, MutableState, QueryCallback,
 };
@@ -28,6 +29,7 @@ pub struct FunctionCache<'a, T: FieldElement> {
     /// but failed.
     witgen_functions: HashMap<CacheKey, Option<WitgenFunction<T>>>,
     column_layout: ColumnLayout,
+    block_size: usize,
 }
 
 impl<'a, T: FieldElement> FunctionCache<'a, T> {
@@ -45,6 +47,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             processor,
             column_layout: metadata,
             witgen_functions: HashMap::new(),
+            block_size,
         }
     }
 
@@ -89,9 +92,29 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         cache_key: &CacheKey,
     ) -> Option<WitgenFunction<T>> {
         log::trace!("Compiling JIT function for {:?}", cache_key);
+
         self.processor
             .generate_code(mutable_state, cache_key.identity_id, &cache_key.known_args)
             .ok()
+            .and_then(|code| {
+                // TODO: Remove this once BlockMachine passes the right amount of context for machines with
+                // non-rectangular block shapes.
+                let is_rectangular = code
+                    .iter()
+                    .filter_map(|effect| match effect {
+                        Effect::Assignment(v, _) => Some(v),
+                        _ => None,
+                    })
+                    .filter_map(|assigned_variable| match assigned_variable {
+                        Variable::Cell(cell) => Some(cell.row_offset),
+                        _ => None,
+                    })
+                    .all(|row_offset| row_offset >= 0 && row_offset < self.block_size as i32);
+                if !is_rectangular {
+                    log::debug!("Filtering out code for non-rectangular block shape");
+                }
+                is_rectangular.then_some(code)
+            })
             .map(|code| {
                 log::trace!("Generated code ({} steps)", code.len());
                 let known_inputs = cache_key

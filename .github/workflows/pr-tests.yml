@@ -16,7 +16,7 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   POWDR_GENERATE_PROOFS: "true"
-  POWDR_JIT_OPT_LEVEL: "1"
+  POWDR_JIT_OPT_LEVEL: "0"
   MAX_DEGREE_LOG: "20"
 
 jobs:
@@ -147,8 +147,14 @@ jobs:
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
-      - name: Run examples
-        run: cargo run --profile pr-tests --example hello_world && cargo run --profile pr-tests --example sqrt_with_publics && cargo run --profile pr-tests --example fibonacci
+      - name: Run examples that cargo accepts as examples
+        run: cargo run --profile pr-tests --example hello_world && cargo run --profile pr-tests --example sqrt_with_publics
+      - name: Run crate example serialized_inputs with the given branch
+        run: cd powdr-test/examples/serialized-inputs && cargo run -r
+      - name: Run crate example fibonacci with the given branch
+        run: cd powdr-test/examples/fibonacci && cargo run -r
+      - name: Run crate example fibonacci with the latest powdr release
+        run: cd examples/fibonacci && cargo run -r
 
   test_estark_polygon:
     needs: build

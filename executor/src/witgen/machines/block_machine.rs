@@ -151,6 +151,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             block_count_runtime: 0,
         })
     }
+
+    #[cfg(test)]
+    pub fn machine_info(&self) -> (MachineParts<'a, T>, usize, usize) {
+        (self.parts.clone(), self.block_size, self.latch_row)
+    }
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
@@ -396,6 +401,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             }
         }
 
+        if self.rows() + self.block_size as DegreeType > self.degree {
+            return Err(EvalError::RowsExhausted(self.name.clone()));
+        }
+
         let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
         if self
             .function_cache
@@ -424,10 +433,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             ));
         }
 
-        if self.rows() + self.block_size as DegreeType > self.degree {
-            return Err(EvalError::RowsExhausted(self.name.clone()));
-        }
-
         let process_result =
             self.process(mutable_state, &mut sequence_iterator, outer_query.clone())?;
 
@@ -445,7 +450,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
                 let updates = updates.report_side_effect();
 
-                let global_latch_row_index = self.data.len() - 1 - self.block_size + self.latch_row;
+                let global_latch_row_index = self.data.len() - self.block_size + self.latch_row;
                 self.multiplicity_counter
                     .increment_at_row(identity_id, global_latch_row_index);
 
@@ -476,7 +481,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let values = outer_query.prepare_for_direct_lookup(&mut input_output_data);
 
         assert!(
-            (self.rows() + self.block_size as DegreeType) < self.degree,
+            (self.rows() + self.block_size as DegreeType) <= self.degree,
             "Block machine is full (this should have been checked before)"
         );
         self.data
