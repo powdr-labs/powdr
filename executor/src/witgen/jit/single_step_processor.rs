@@ -67,11 +67,30 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                     .identities
                     .iter()
                     .filter(|id| !complete.contains(&id.id()));
+                let column_errors = if unknown_witnesses.is_empty() {
+                    "".to_string()
+                } else {
+                    format!(
+                        "\nThe following columns are still missing: {}",
+                        unknown_witnesses
+                            .iter()
+                            .map(|wit| self.fixed_data.column_name(wit))
+                            .format(", ")
+                    )
+                };
+                let identity_errors = if missing_identities == 0 {
+                    "".to_string()
+                } else {
+                    format!(
+                        "\nThe following identities have not been fully processed:\n{}",
+                        incomplete_identities
+                            .map(|id| format!("    {id}"))
+                            .join("\n")
+                    )
+                };
                 return Err(format!(
                     "Unable to derive algorithm to compute values for witness columns in the next row and\n\
-                    unable to branch on a variable. The following columns are still missing:\n{}\nThe following identities have not been fully processed:\n{}",
-                    unknown_witnesses.iter().map(|wit| self.fixed_data.column_name(wit)).format(", "),
-                    incomplete_identities.map(|id| format!("    {id}")).join("\n")
+                    unable to branch on a variable.{column_errors}{identity_errors}",
                 ));
             };
 
@@ -237,9 +256,7 @@ mod test {
         assert_eq!(
             err.to_string(),
             "Unable to derive algorithm to compute values for witness columns in the next row and\n\
-            unable to branch on a variable. The following columns are still missing:\n\
-            M::Y\n\
-            The following identities have not been fully processed:\n"
+            unable to branch on a variable.\nThe following columns are still missing: M::Y"
         );
     }
 
