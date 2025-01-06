@@ -99,6 +99,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
     }
 
     fn initialize_witgen(&self) -> WitgenInference<'a, T, NoEval> {
+        // All witness columns in row 0 are known.
         let known_variables = self.machine_parts.witnesses.iter().map(|id| {
             Variable::Cell(Cell {
                 column_name: self.fixed_data.column_name(id).to_string(),
