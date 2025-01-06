@@ -113,7 +113,11 @@ impl<T: FieldElement> EffectsInterpreterBuilder<T> {
             match e {
                 RPNExpressionElem::Concrete(_) => self.stack.push(e),
                 RPNExpressionElem::Symbol(_) => self.stack.push(e),
-                RPNExpressionElem::BinaryOperation(binary_operator) => {
+                RPNExpressionElem::BinaryAdd
+                | RPNExpressionElem::BinaryMul
+                | RPNExpressionElem::BinarySub
+                | RPNExpressionElem::BinaryDiv
+                | RPNExpressionElem::BinaryIntegerDiv => {
                     let mut right = self.stack.pop().unwrap();
                     assert!(matches!(
                         right,
@@ -125,21 +129,15 @@ impl<T: FieldElement> EffectsInterpreterBuilder<T> {
                         RPNExpressionElem::Symbol(_) | RPNExpressionElem::Concrete(_)
                     ));
                     // order commutative operations so e.g., a+b == b+a
-                    match binary_operator {
-                        BinaryOperator::Add | BinaryOperator::Sub | BinaryOperator::Mul => {
-                            if right < left {
-                                std::mem::swap(&mut right, &mut left);
-                            }
-                        }
-                        BinaryOperator::Div => (),
-                        BinaryOperator::IntegerDiv => (),
+                    if matches!(
+                        e,
+                        RPNExpressionElem::BinaryAdd | RPNExpressionElem::BinaryMul
+                    ) && right < left
+                    {
+                        std::mem::swap(&mut right, &mut left);
                     }
                     let expr = RPNExpression {
-                        elems: vec![
-                            left,
-                            right,
-                            RPNExpressionElem::BinaryOperation(binary_operator),
-                        ],
+                        elems: vec![left, right, e],
                     };
                     let idx = self.expr_idx.entry(expr.clone()).or_insert_with(|| {
                         let new_var = self.var_mapper.reserve_idx();
@@ -149,31 +147,14 @@ impl<T: FieldElement> EffectsInterpreterBuilder<T> {
                     });
                     self.stack.push(RPNExpressionElem::Symbol(*idx));
                 }
-                RPNExpressionElem::UnaryOperation(unary_operator) => {
+                RPNExpressionElem::UnaryNeg | RPNExpressionElem::UnaryBitAnd(_) => {
                     let inner = self.stack.pop().unwrap();
                     assert!(matches!(
                         inner,
                         RPNExpressionElem::Symbol(_) | RPNExpressionElem::Concrete(_)
                     ));
                     let expr = RPNExpression {
-                        elems: vec![inner, RPNExpressionElem::UnaryOperation(unary_operator)],
-                    };
-                    let idx = self.expr_idx.entry(expr.clone()).or_insert_with(|| {
-                        let new_var = self.var_mapper.reserve_idx();
-                        self.actions
-                            .push(InterpreterAction::AssignExpression(new_var, expr));
-                        new_var
-                    });
-                    self.stack.push(RPNExpressionElem::Symbol(*idx));
-                }
-                RPNExpressionElem::BitOperation(bit_operator, right) => {
-                    let left = self.stack.pop().unwrap();
-                    assert!(matches!(
-                        left,
-                        RPNExpressionElem::Symbol(_) | RPNExpressionElem::Concrete(_)
-                    ));
-                    let expr = RPNExpression {
-                        elems: vec![left, RPNExpressionElem::BitOperation(bit_operator, right)],
+                        elems: vec![inner, e],
                     };
                     let idx = self.expr_idx.entry(expr.clone()).or_insert_with(|| {
                         let new_var = self.var_mapper.reserve_idx();
@@ -581,9 +562,13 @@ pub struct RPNExpression<T: FieldElement, S> {
 pub enum RPNExpressionElem<T: FieldElement, S> {
     Concrete(T),
     Symbol(S),
-    BinaryOperation(BinaryOperator),
-    UnaryOperation(UnaryOperator),
-    BitOperation(BitOperator, T::Integer),
+    BinaryAdd,
+    BinarySub,
+    BinaryMul,
+    BinaryDiv,
+    BinaryIntegerDiv,
+    UnaryNeg,
+    UnaryBitAnd(T::Integer),
 }
 
 impl<T: FieldElement, S: Clone> From<&SymbolicExpression<T, S>> for RPNExpression<T, S> {
@@ -602,15 +587,35 @@ impl<T: FieldElement, S: Clone> From<&SymbolicExpression<T, S>> for RPNExpressio
                 SymbolicExpression::BinaryOperation(lhs, op, rhs, _) => {
                     from_inner(lhs, elems);
                     from_inner(rhs, elems);
-                    elems.push(RPNExpressionElem::BinaryOperation(op.clone()));
+                    match op {
+                        BinaryOperator::Add => {
+                            elems.push(RPNExpressionElem::BinaryAdd);
+                        }
+                        BinaryOperator::Sub => {
+                            elems.push(RPNExpressionElem::BinarySub);
+                        }
+                        BinaryOperator::Mul => {
+                            elems.push(RPNExpressionElem::BinaryMul);
+                        }
+                        BinaryOperator::Div => {
+                            elems.push(RPNExpressionElem::BinaryDiv);
+                        }
+                        BinaryOperator::IntegerDiv => {
+                            elems.push(RPNExpressionElem::BinaryIntegerDiv);
+                        }
+                    }
                 }
                 SymbolicExpression::UnaryOperation(op, expr, _) => {
                     from_inner(expr, elems);
-                    elems.push(RPNExpressionElem::UnaryOperation(op.clone()));
+                    elems.push(match op {
+                        UnaryOperator::Neg => RPNExpressionElem::UnaryNeg,
+                    });
                 }
                 SymbolicExpression::BitOperation(expr, op, n, _) => {
                     from_inner(expr, elems);
-                    elems.push(RPNExpressionElem::BitOperation(op.clone(), *n));
+                    elems.push(match op {
+                        BitOperator::And => RPNExpressionElem::UnaryBitAnd(*n),
+                    });
                 }
             }
         }
@@ -636,12 +641,8 @@ impl<T: FieldElement> RPNExpression<T, usize> {
                     _ => panic!("Invalid expression"),
                 };
                 match &self.elems[1] {
-                    RPNExpressionElem::UnaryOperation(op) => match op {
-                        UnaryOperator::Neg => -inner,
-                    },
-                    RPNExpressionElem::BitOperation(op, right) => match op {
-                        BitOperator::And => T::from(inner.to_integer() & *right),
-                    },
+                    RPNExpressionElem::UnaryNeg => -inner,
+                    RPNExpressionElem::UnaryBitAnd(right) => T::from(inner.to_integer() & *right),
                     _ => panic!("Invalid expression"),
                 }
             }
@@ -657,15 +658,13 @@ impl<T: FieldElement> RPNExpression<T, usize> {
                     _ => panic!("Invalid expression"),
                 };
                 match &self.elems[2] {
-                    RPNExpressionElem::BinaryOperation(op) => match op {
-                        BinaryOperator::Add => left + right,
-                        BinaryOperator::Sub => left - right,
-                        BinaryOperator::Mul => left * right,
-                        BinaryOperator::Div => left / right,
-                        BinaryOperator::IntegerDiv => {
-                            T::from(left.to_arbitrary_integer() / right.to_arbitrary_integer())
-                        }
-                    },
+                    RPNExpressionElem::BinaryAdd => left + right,
+                    RPNExpressionElem::BinarySub => left - right,
+                    RPNExpressionElem::BinaryMul => left * right,
+                    RPNExpressionElem::BinaryDiv => left / right,
+                    RPNExpressionElem::BinaryIntegerDiv => {
+                        T::from(left.to_arbitrary_integer() / right.to_arbitrary_integer())
+                    }
                     _ => panic!("Invalid expression"),
                 }
             }
