@@ -68,7 +68,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         // Solve for the block witness.
         // Fails if any machine call cannot be completed.
         match self.solve_block(can_process, &mut witgen, connection.right) {
-            Ok(()) => Ok(witgen.code()),
+            Ok(()) => Ok(witgen.finish()),
             Err(e) => {
                 log::debug!("\nCode generation failed for connection:\n  {connection}");
                 let known_args_str = known_args
@@ -80,7 +80,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 log::debug!("Error:\n  {e}");
                 log::debug!(
                     "The following code was generated so far:\n{}",
-                    format_code(witgen.code().as_slice())
+                    format_code(witgen.code())
                 );
                 Err(format!("Code generation failed: {e}\nRun with RUST_LOG=debug to see the code generated so far."))
             }
@@ -131,10 +131,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             }
         }
 
-        // TODO: Fail hard (or return a different error), as this should never
-        // happen for valid block machines. Currently fails in:
-        // powdr-pipeline::powdr_std arith256_memory_large_test
-        self.check_block_shape(witgen)?;
+        if let Err(e) = self.check_block_shape(witgen) {
+            // Fail hard, as this should never happen for a correctly detected block machine.
+            log::debug!(
+                "The following code was generated so far:\n{}",
+                format_code(witgen.code())
+            );
+            panic!("{e}");
+        }
         self.check_incomplete_machine_calls(&complete)?;
 
         Ok(())
@@ -192,7 +196,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                     block_list,
                     values[self.block_size + 1]
                 );
-                log::debug!("Column {column_name} is not stackable:\n{column_str}");
+                log::error!("Column {column_name} is not stackable:\n{column_str}");
             }
 
             stackable

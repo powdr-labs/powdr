@@ -78,7 +78,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
 
         let missing_identities = self.machine_parts.identities.len() - complete.len();
         if unknown_witnesses.is_empty() && missing_identities == 0 {
-            Ok(witgen.code())
+            Ok(witgen.finish())
         } else {
             Err(format!(
                 "Unable to derive algorithm to compute values for witness columns in the next row for the following columns:\n{}\nand {missing_identities} identities are missing.",
