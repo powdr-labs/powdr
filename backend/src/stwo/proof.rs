@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use stwo_prover::core::backend::Backend;
 use stwo_prover::core::backend::Column;
 use stwo_prover::core::backend::ColumnOps;
-use stwo_prover::core::channel::{Channel, MerkleChannel};
+use stwo_prover::core::channel::MerkleChannel;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
@@ -133,5 +133,5 @@ where
     MC::H: DeserializeOwned + Serialize,
 {
     pub starkproof: StarkProof<MC::H>,
-    pub sizes: [Vec<u32>; 2],
+    pub sizes: [Vec<u32>; 3],
 }

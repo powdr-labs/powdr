@@ -3,7 +3,6 @@ use powdr_ast::parsed::visitor::AllChildren;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
-use std::sync::Arc;
 
 extern crate alloc;
 use alloc::collections::btree_map::BTreeMap;
@@ -61,7 +60,7 @@ where
 pub struct PowdrEval<T> {
     log_degree: u32,
     analyzed: Analyzed<T>,
-    //TODO: update this offset when there is shifted constant columns, it needs to add the number of the shifted constant col
+    //the pre-processed columns need to be indexed in whole proof, instead of in each coponent, this offset represented the index of the first pre-processed column in a certain component
     preprocess_col_offset: usize,
     witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
@@ -70,7 +69,6 @@ pub struct PowdrEval<T> {
 
 impl<T: FieldElement> PowdrEval<T> {
     pub fn new(analyzed: Analyzed<T>, preprocess_col_offset: usize, log_degree: u32) -> Self {
-        //println!("Creating witness_columns in PowdrEval");
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())
@@ -88,22 +86,12 @@ impl<T: FieldElement> PowdrEval<T> {
             .map(|(index, (_, id))| (id, index))
             .collect();
 
-        // println!(
-        //     "constant_shifted are created in PowdrEval, constant_shifted cols number is: {}",
-        //     constant_shifted.len()
-        // );
-
         let constant_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Constant)
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
-        // println!(
-        //     "constant_columns are created in PowdrEval, constant columns number is: {}",
-        //     constant_columns.len()
-        // );
-        // println!("constant_columns are created in PowdrEval, PowdrEval:new successfully finished");
 
         Self {
             log_degree,
@@ -147,7 +135,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             .map(|(i, poly_id)| {
                 (
                     *poly_id,
-                    // PreprocessedColumn::Plonk(i) is unused argument in get_preprocessed_column
+                    // PreprocessedColumn::Plonk(i), i is used for indexing the preprocessed columns
                     eval.get_preprocessed_column(PreprocessedColumn::Plonk(
                         i + self.preprocess_col_offset,
                     )),

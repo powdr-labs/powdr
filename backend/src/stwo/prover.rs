@@ -20,7 +20,6 @@ use crate::stwo::proof::{
 use stwo_prover::constraint_framework::{
     TraceLocationAllocator, ORIGINAL_TRACE_IDX, PREPROCESSED_TRACE_IDX,
 };
-use stwo_prover::core::prover::StarkProof;
 
 use stwo_prover::core::air::{Component, ComponentProver};
 use stwo_prover::core::backend::Column;
@@ -55,7 +54,6 @@ impl fmt::Display for KeyExportError {
 }
 
 pub struct StwoProver<T, B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Channel> {
-    pub analyzed: Arc<Analyzed<T>>,
     /// The split analyzed PIL
     split: BTreeMap<String, Analyzed<T>>,
     /// The value of the fixed columns
@@ -86,7 +84,6 @@ where
             .collect();
 
         Ok(Self {
-            analyzed,
             split,
             fixed,
             proving_key: StarkProvingKey { preprocessed: None },
@@ -207,7 +204,6 @@ where
     }
 
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
-      
         let config = get_config();
         let domain_map: BTreeMap<usize, CircleDomain> = self
             .split
@@ -237,11 +233,14 @@ where
         //The preprocessed columns needs to be indexed in the whole execution instead of each machine, so we need to keep track of the offset
         let mut constant_cols_offset_acc = 0;
 
+        let mut sizes = [Vec::new(), Vec::new(), Vec::new()];
+
         //Create components of different column sizes for each namespace
 
         let mut constant_cols = Vec::new();
 
-        let witness_by_machine: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = self.split
+        let witness_by_machine: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = self
+            .split
             .iter()
             .filter_map(|(machine, pil)| {
                 let witness_columns = machine_witness_columns(witness, pil, machine);
@@ -249,8 +248,6 @@ where
                     //TODO: Empty machines can be removed entirely, but in verification it is not removed, need to be handled
                     None
                 } else {
-
-
                     let witness_by_machine = machine_witness_columns(witness, pil, machine);
                     assert!(
                         witness_by_machine
@@ -258,7 +255,6 @@ where
                             .all(|(_name, vec)| vec.len() == witness_by_machine[0].1.len()),
                         "All witness columns in a single machine must have the same length"
                     );
-              
 
                     if let Some(preprocessed) = self.proving_key.preprocessed.as_ref() {
                         if let Some(table_provingkey) =
@@ -304,11 +300,11 @@ where
                     );
                     components.push(component);
 
+                    sizes[2].push(witness_by_machine[0].1.len().ilog2());
+
                     constant_cols_offset_acc += pil.constant_count();
-                   
 
                     constant_cols_offset_acc += get_constant_with_next_list(pil).len();
-                 
 
                     Some(
                         witness_by_machine
@@ -329,33 +325,26 @@ where
             .collect();
 
         let max_log_degree = domain_map.keys().last().unwrap();
-     
+
         let twiddles_maxdegree = B::precompute_twiddles(
             CanonicCoset::new((*max_log_degree as u32) + 1 + FRI_LOG_BLOWUP as u32)
                 .circle_domain()
                 .half_coset,
         );
 
-
         let prover_channel = &mut <MC as MerkleChannel>::C::default();
         let mut commitment_scheme =
             CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles_maxdegree);
 
-    
-
         let mut tree_builder = commitment_scheme.tree_builder();
-
 
         tree_builder.extend_evals(constant_cols.clone());
 
         tree_builder.commit(prover_channel);
 
-    
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(witness_by_machine.clone());
         tree_builder.commit(prover_channel);
-
-    
 
         let mut components_slice: Vec<&dyn ComponentProver<B>> = components
             .iter_mut()
@@ -363,7 +352,6 @@ where
             .collect();
 
         let components_slice = components_slice.as_mut_slice();
-
 
         let proof_result = stwo_prover::core::prover::prove::<B, MC>(
             components_slice,
@@ -376,22 +364,23 @@ where
             Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
         };
 
-        let mut sizes = [Vec::new(), Vec::new()];
         sizes[0].extend(
             constant_cols
                 .iter()
-                .map(|eval| eval.len().ilog2() as u32)
+                .map(|eval| eval.len().ilog2())
                 .collect::<Vec<_>>(),
         );
         sizes[1].extend(
             witness_by_machine
                 .iter()
-                .map(|eval| eval.len().ilog2() as u32)
+                .map(|eval| eval.len().ilog2())
                 .collect::<Vec<_>>(),
         );
 
-        let proof: Proof<MC> = Proof { starkproof, sizes:sizes.clone() };
-
+        let proof: Proof<MC> = Proof {
+            starkproof,
+            sizes: sizes.clone(),
+        };
 
         //to test the verification code here first
         // let verifier_channel = &mut <MC as MerkleChannel>::C::default();
@@ -441,7 +430,6 @@ where
     }
 
     pub fn verify(&self, proof: &[u8], _instances: &[F]) -> Result<(), String> {
-       
         assert!(
             _instances.is_empty(),
             "Expected _instances slice to be empty, but it has {} elements.",
@@ -449,7 +437,6 @@ where
         );
 
         let config = get_config();
-    
 
         let proof: Proof<MC> =
             bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
@@ -463,28 +450,24 @@ where
         let mut components = Vec::new();
 
         let mut constant_cols_offset_acc = 0;
-       
+        let mut index_machine = 0;
 
-        self.split.iter().for_each(|(machine, pil)| {
-
+        self.split.iter().for_each(|(_, pil)| {
             components.push(PowdrComponent::new(
                 tree_span_provider,
                 PowdrEval::new(
                     (*pil).clone(),
                     constant_cols_offset_acc,
-                    proof.sizes[PREPROCESSED_TRACE_IDX][constant_cols_offset_acc],
+                    proof.sizes[2][index_machine],
                 ),
                 (SecureField::zero(), None),
             ));
 
-
-
             constant_cols_offset_acc += pil.constant_count();
 
             constant_cols_offset_acc += get_constant_with_next_list(pil).len();
-
+            index_machine += 1;
         });
-
 
         let mut components_slice: Vec<&dyn Component> = components
             .iter_mut()
