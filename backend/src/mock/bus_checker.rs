@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{cmp::Ordering, collections::BTreeMap, fmt};
 
 use powdr_ast::{
     analyzed::{Analyzed, Identity, PhantomBusInteractionIdentity},
@@ -15,8 +15,54 @@ pub struct BusChecker<'a, F> {
     global_values: OwnedGlobalValues<F>,
 }
 
-type Error = Vec<String>;
+pub struct Error<F> {
+    tuple: Vec<F>,
+    sends: BTreeMap<BusConnection<F>, usize>,
+    receives: BTreeMap<BusConnection<F>, usize>,
+}
 
+impl<F: fmt::Display> fmt::Display for Error<F> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(
+            f,
+            "Bus interaction {} failed for tuple {}:",
+            self.tuple[0],
+            self.tuple
+                .iter()
+                .skip(1)
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )?;
+        for (
+            BusConnection {
+                machine,
+                interaction,
+            },
+            count,
+        ) in &self.sends
+        {
+            writeln!(f, "  - sent {count} times",)?;
+            writeln!(f, "    by `{interaction}`",)?;
+            writeln!(f, "    in {machine}",)?;
+        }
+        for (
+            BusConnection {
+                machine,
+                interaction,
+            },
+            count,
+        ) in &self.receives
+        {
+            writeln!(f, "  - received {count} times",)?;
+            writeln!(f, "    by `{interaction}`",)?;
+            writeln!(f, "    in {machine}",)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(PartialEq, PartialOrd, Eq, Ord, Clone)]
 pub struct BusConnection<F> {
     pub machine: String,
     pub interaction: PhantomBusInteractionIdentity<F>,
@@ -70,9 +116,16 @@ impl<'a, F: FieldElement> BusChecker<'a, F> {
         }
     }
 
-    pub fn check(&self) -> Result<(), Error> {
-        // For each row
-        let interactions: BTreeMap<Vec<F>, (usize, usize)> = self
+    pub fn check(&self) -> Result<(), Vec<Error<F>>> {
+        type BusState<'a, F> = BTreeMap<
+            Vec<F>,
+            (
+                BTreeMap<&'a BusConnection<F>, usize>,
+                BTreeMap<&'a BusConnection<F>, usize>,
+            ),
+        >;
+
+        let bus_state: BusState<F> = self
             .machines
             .iter()
             .flat_map(|(name, machine)| {
@@ -96,36 +149,40 @@ impl<'a, F: FieldElement> BusChecker<'a, F> {
                                 .try_into_i32()
                                 .unwrap();
 
-                            // we interpret the multiplicity as a send if it is positive, and a receive if it is negative
-                            let is_send = multiplicity.is_positive();
-
                             let tuple = bus_interaction
                                 .tuple
                                 .children()
                                 .map(|e| evaluator.evaluate(e))
                                 .collect();
 
-                            let (send, receive) = if is_send {
-                                (multiplicity as usize, 0)
-                            } else {
-                                (0, -multiplicity as usize)
-                            };
-
-                            (tuple, (send, receive))
+                            (bus_connection, tuple, multiplicity)
                         })
                 })
             })
             .fold(
                 Default::default(),
-                |mut counts, (tuple, (send, receive))| {
+                |mut counts, (bus_connection, tuple, multiplicity)| {
                     // update the counts
-                    counts
-                        .entry(tuple)
-                        .and_modify(|(s, r)| {
-                            *s += send;
-                            *r += receive;
-                        })
-                        .or_insert((send, receive));
+                    let (s, r) = counts.entry(tuple).or_default();
+
+                    let abs = multiplicity.unsigned_abs() as usize;
+
+                    match multiplicity.cmp(&0) {
+                        // if the multiplicity is zero, we don't need to do anything
+                        Ordering::Equal => {}
+                        // if the multiplicity is positive, we send
+                        Ordering::Greater => {
+                            s.entry(bus_connection)
+                                .and_modify(|sends| *sends += abs)
+                                .or_insert(abs);
+                        }
+                        // if the multiplicity is negative, we receive
+                        Ordering::Less => {
+                            r.entry(bus_connection)
+                                .and_modify(|receives| *receives += abs)
+                                .or_insert(abs);
+                        }
+                    }
 
                     counts
                 },
@@ -133,15 +190,15 @@ impl<'a, F: FieldElement> BusChecker<'a, F> {
 
         let mut errors = vec![];
 
-        for (tuple, (send, receive)) in interactions {
-            if send != receive {
-                // we interpret the first element of the tuple as the id of the bus interaction
-                let id = &tuple[0];
-                let values = &tuple[1..];
-
-                let error = format!(
-                    "Bus connection with id {id} failed: send {send} != receive {receive} for tuple {values:?}",
-                );
+        for (tuple, (sends, receives)) in bus_state {
+            let send_count = sends.values().sum::<usize>();
+            let receive_count = receives.values().sum::<usize>();
+            if send_count != receive_count {
+                let error = Error {
+                    tuple,
+                    sends: sends.into_iter().map(|(k, v)| (k.clone(), v)).collect(),
+                    receives: receives.into_iter().map(|(k, v)| (k.clone(), v)).collect(),
+                };
 
                 log::error!("{}", error);
 
