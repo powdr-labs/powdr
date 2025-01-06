@@ -38,6 +38,9 @@ pub enum StatementIdentifier {
     TraitImplementation(usize),
 }
 
+// The Hash trait for this struct uses a custom implementation defined below in this file.
+// Any modifications to the struct fields should be reviewed carefully for
+// potential hash collision impacts.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
@@ -505,31 +508,25 @@ impl<T: FieldElement> Analyzed<T> {
 
 impl<T: Hash> Hash for Analyzed<T> {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        for identity in &self.identities {
-            identity.hash(state);
-        }
+        self.identities.hash(state);
 
-        for (key, (_, value)) in self.definitions.iter().sorted_by(|a, b| a.0.cmp(b.0)) {
+        for (key, (symbol, value)) in self.definitions.iter().sorted_by(|a, b| a.0.cmp(b.0)) {
             key.hash(state);
-            if let Some(v) = value {
-                v.hash(state);
-            }
+            symbol.hash(state);
+            value.hash(state);
         }
 
-        for (key, (_, value)) in self
+        for (key, (symbol, value)) in self
             .intermediate_columns
             .iter()
             .sorted_by(|a, b| a.0.cmp(b.0))
         {
             key.hash(state);
-            for v in value.iter() {
-                v.hash(state);
-            }
+            symbol.hash(state);
+            value.hash(state);
         }
 
-        for pf in &self.prover_functions {
-            pf.hash(state);
-        }
+        self.prover_functions.hash(state);
 
         for (key, value) in self
             .public_declarations
@@ -540,13 +537,8 @@ impl<T: Hash> Hash for Analyzed<T> {
             value.hash(state);
         }
 
-        for _impl in &self.trait_impls {
-            _impl.hash(state);
-        }
-
-        for order in &self.source_order {
-            order.hash(state);
-        }
+        self.trait_impls.hash(state);
+        self.source_order.hash(state);
 
         for symbol in self.auto_added_symbols.iter().sorted() {
             symbol.hash(state);

@@ -419,7 +419,7 @@ mod tests {
 
             public outz = z(7);
         "#;
-        let malicious_publics = Some(vec![1]);
+        let malicious_publics = Some(vec![0]);
         run_test_publics(content, &malicious_publics);
     }
 

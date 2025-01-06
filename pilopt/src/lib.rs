@@ -472,9 +472,14 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .filter_map(constrained_to_constant)
         .collect::<Vec<((String, PolyID), _)>>();
     // We cannot remove arrays or array elements, so filter them out.
+    let in_publics: HashSet<_> = pil_file
+        .public_declarations
+        .values()
+        .map(|pubd| pubd.polynomial.name.clone())
+        .collect();
     let columns = pil_file
         .committed_polys_in_source_order()
-        .filter(|&(s, _)| (!s.is_array()))
+        .filter(|&(s, _)| !s.is_array() && !in_publics.contains(&s.absolute_name))
         .map(|(s, _)| s.into())
         .collect::<HashSet<PolyID>>();
     constant_polys.retain(|((_, id), _)| columns.contains(id));
