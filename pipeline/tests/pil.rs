@@ -276,7 +276,6 @@ fn stwo_fibonacci() {
     test_stwo(f, Default::default());
 }
 
-
 #[test]
 fn stwo_different_degrees() {
     let f = "pil/different_degrees.pil";
