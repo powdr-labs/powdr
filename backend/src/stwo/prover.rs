@@ -254,7 +254,7 @@ where
                     assert!(
                         witness_by_machine
                             .iter()
-                            .all(|(_name, vec)| vec.len() == machine_length),
+                            .all(|(_, vec)| vec.len() == machine_length),
                         "All witness columns in a single machine must have the same length"
                     );
 
