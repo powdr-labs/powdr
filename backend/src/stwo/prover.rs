@@ -327,7 +327,7 @@ where
             .map(|eval| eval.len().ilog2())
             .collect::<Vec<_>>();
 
-        let twiddles_maxdegree = B::precompute_twiddles(
+        let twiddles_max_degree = B::precompute_twiddles(
             CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
                 .circle_domain()
                 .half_coset,
