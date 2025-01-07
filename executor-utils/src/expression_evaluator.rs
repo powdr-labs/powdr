@@ -10,7 +10,7 @@ use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 
 /// Accessor for terminal symbols.
-pub trait TerminalAccess<T> {
+pub trait TerminalAccess<T, F> {
     fn get(&self, _poly_ref: &AlgebraicReference) -> T {
         unimplemented!();
     }
@@ -19,6 +19,25 @@ pub trait TerminalAccess<T> {
     }
     fn get_challenge(&self, _challenge: &Challenge) -> T {
         unimplemented!();
+    }
+    fn convert_fe(&self, _fe: F) -> T;
+}
+
+// Some Rust magic that ensures we don't have to implement convert_fe if F == T...
+pub trait ConvertFe<T, F> {
+    fn convert(fe: F) -> T;
+}
+impl<T> ConvertFe<T, T> for () {
+    fn convert(fe: T) -> T {
+        fe
+    }
+}
+impl<T, F> TerminalAccess<T, F> for ()
+where
+    (): ConvertFe<T, F>,
+{
+    fn convert_fe(&self, fe: F) -> T {
+        <() as ConvertFe<T, F>>::convert(fe)
     }
 }
 
@@ -105,6 +124,101 @@ impl<F: FieldElement, T: From<F>> TerminalAccess<T> for RowValues<'_, F> {
 }
 
 /// Evaluates an algebraic expression to a value.
+pub struct ExpressionWalker<'a, T, Expr, TA> {
+    terminal_access: TA,
+    intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
+    /// Maps intermediate reference to their evaluation. Updated throughout the lifetime of the
+    /// ExpressionEvaluator.
+    intermediates_cache: BTreeMap<AlgebraicReferenceThin, Expr>,
+    to_expr: fn(&T) -> Expr,
+    binary_operation: fn(&Expression<T>, &AlgebraicBinaryOperator, &Expression<T>) -> T,
+}
+
+impl<'a, T, TA> ExpressionWalker<'a, T, T, TA>
+where
+    TA: TerminalAccess<T, T>,
+    T: FieldElement,
+{
+    /// Create a new expression evaluator (for the case where Expr = T).
+    pub fn new(
+        terminal_access: TA,
+        intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
+        binary_operation: fn(&Expression<T>, &AlgebraicBinaryOperator, &Expression<T>) -> T,
+    ) -> Self {
+        Self::new_with_custom_expr(
+            terminal_access,
+            intermediate_definitions,
+            |x| *x,
+            binary_operation,
+        )
+    }
+}
+
+impl<'a, T, Expr, TA> ExpressionWalker<'a, T, Expr, TA>
+where
+    TA: TerminalAccess<Expr, T>,
+    Expr: Clone + Add<Output = Expr> + Sub<Output = Expr> + Mul<Output = Expr>,
+    T: FieldElement,
+{
+    /// Create a new expression evaluator with custom expression converters.
+    pub fn new_with_custom_expr(
+        terminal_access: TA,
+        intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
+        to_expr: fn(&T) -> Expr,
+        binary_operation: fn(&Expression<T>, &AlgebraicBinaryOperator, &Expression<T>) -> Expr,
+    ) -> Self {
+        Self {
+            terminal_access,
+            intermediate_definitions,
+            intermediates_cache: Default::default(),
+            to_expr,
+            binary_operation,
+        }
+    }
+
+    pub fn evaluate(&mut self, expr: &'a Expression<T>) -> Expr {
+        match expr {
+            Expression::Reference(reference) => match reference.poly_id.ptype {
+                PolynomialType::Committed => self.terminal_access.get(reference),
+                PolynomialType::Constant => self.terminal_access.get(reference),
+                PolynomialType::Intermediate => {
+                    let reference = reference.to_thin();
+                    let value = self.intermediates_cache.get(&reference).cloned();
+                    match value {
+                        Some(v) => v,
+                        None => {
+                            let definition = self.intermediate_definitions.get(&reference).unwrap();
+                            let result = self.evaluate(definition);
+                            self.intermediates_cache.insert(reference, result.clone());
+                            result
+                        }
+                    }
+                }
+            },
+            Expression::PublicReference(public) => self.terminal_access.get_public(public),
+            Expression::Number(n) => (self.to_expr)(n),
+            Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => match op {
+                AlgebraicBinaryOperator::Add => self.evaluate(left) + self.evaluate(right),
+                AlgebraicBinaryOperator::Sub => self.evaluate(left) - self.evaluate(right),
+                AlgebraicBinaryOperator::Mul => self.evaluate(left) * self.evaluate(right),
+                AlgebraicBinaryOperator::Pow => match &**right {
+                    Expression::Number(n) => {
+                        let left = self.evaluate(left);
+                        (0u32..n.to_integer().try_into_u32().unwrap())
+                            .fold((self.to_expr)(&T::one()), |acc, _| acc * left.clone())
+                    }
+                    _ => unimplemented!("pow with non-constant exponent"),
+                },
+            },
+            Expression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
+                AlgebraicUnaryOperator::Minus => self.evaluate(expr),
+            },
+            Expression::Challenge(challenge) => self.terminal_access.get_challenge(challenge),
+        }
+    }
+}
+
+/// Evaluates an algebraic expression to a value.
 pub struct ExpressionEvaluator<'a, T, Expr, TA> {
     terminal_access: TA,
     intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
@@ -116,7 +230,7 @@ pub struct ExpressionEvaluator<'a, T, Expr, TA> {
 
 impl<'a, T, TA> ExpressionEvaluator<'a, T, T, TA>
 where
-    TA: TerminalAccess<T>,
+    TA: TerminalAccess<T, T>,
     T: FieldElement,
 {
     /// Create a new expression evaluator (for the case where Expr = T).
@@ -130,7 +244,7 @@ where
 
 impl<'a, T, Expr, TA> ExpressionEvaluator<'a, T, Expr, TA>
 where
-    TA: TerminalAccess<Expr>,
+    TA: TerminalAccess<Expr, T>,
     Expr: Clone + Add<Output = Expr> + Sub<Output = Expr> + Mul<Output = Expr>,
     T: FieldElement,
 {
