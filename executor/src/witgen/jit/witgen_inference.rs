@@ -20,7 +20,7 @@ use crate::witgen::{
 
 use super::{
     affine_symbolic_expression::{AffineSymbolicExpression, ProcessResult},
-    effect::{Effect, MachineCallArgument},
+    effect::{BranchCondition, Effect, MachineCallArgument},
     variable::{MachineCallReturnVariable, Variable},
 };
 
@@ -34,7 +34,8 @@ pub struct ProcessSummary {
 
 /// This component can generate code that solves identities.
 /// It needs a driver that tells it which identities to process on which rows.
-pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
+#[derive(Clone)]
+pub struct WitgenInference<'a, T: FieldElement, FixedEval> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_evaluator: FixedEval,
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
@@ -59,6 +60,16 @@ impl<T: Display> Display for Value<T> {
             Value::Unknown => write!(f, "???"),
         }
     }
+}
+
+/// Return type of the `branch_on` method.
+pub struct BranchResult<'a, T: FieldElement, FixedEval> {
+    /// The code common to both branches.
+    pub common_code: Vec<Effect<T, Variable>>,
+    /// The condition of the branch.
+    pub condition: BranchCondition<T, Variable>,
+    /// The two branches.
+    pub branches: [WitgenInference<'a, T, FixedEval>; 2],
 }
 
 impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, FixedEval> {
@@ -97,6 +108,41 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             Value::Known
         } else {
             Value::Unknown
+        }
+    }
+
+    /// Splits the current inference into two copies - one where the provided variable
+    /// is in the "second half" of its range constraint and one where it is in the
+    /// "first half" of its range constraint (determined by calling the `bisect` method).
+    /// Returns the common code, the branch condition and the two branches.
+    pub fn branch_on(mut self, variable: &Variable) -> BranchResult<'a, T, FixedEval> {
+        // The variable needs to be known, we need to have a range constraint but
+        // it cannot be a single value.
+        assert!(self.known_variables.contains(variable));
+        let rc = self.range_constraint(variable).unwrap();
+        assert!(rc.try_to_single_value().is_none());
+
+        log::trace!(
+            "Branching on variable {variable}, which has a range of {}",
+            rc.range_width()
+        );
+
+        let (low_condition, high_condition) = rc.bisect();
+
+        let common_code = std::mem::take(&mut self.code);
+        let mut low_branch = self.clone();
+
+        self.add_range_constraint(variable.clone(), high_condition.clone());
+        low_branch.add_range_constraint(variable.clone(), low_condition.clone());
+
+        BranchResult {
+            common_code,
+            condition: BranchCondition {
+                variable: variable.clone(),
+                first_branch: high_condition,
+                second_branch: low_condition,
+            },
+            branches: [self, low_branch],
         }
     }
 
@@ -293,6 +339,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     self.code.push(e);
                 }
                 Effect::Assertion(_) => self.code.push(e),
+                Effect::Branch(..) => unreachable!(),
             }
         }
         if progress {
@@ -327,7 +374,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 
     /// Returns the current best-known range constraint on the given variable
     /// combining global range constraints and newly derived local range constraints.
-    fn range_constraint(&self, variable: &Variable) -> Option<RangeConstraint<T>> {
+    pub fn range_constraint(&self, variable: &Variable) -> Option<RangeConstraint<T>> {
         variable
             .try_to_witness_poly_id()
             .and_then(|poly_id| {
@@ -462,18 +509,20 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
 
 /// An equality constraint between an algebraic expression evaluated
 /// on a certain row offset and a variable or fixed constant value.
+#[derive(Clone)]
 struct Assignment<'a, T: FieldElement> {
     lhs: &'a Expression<T>,
     row_offset: i32,
     rhs: VariableOrValue<T, Variable>,
 }
 
+#[derive(Clone)]
 enum VariableOrValue<T, V> {
     Variable(V),
     Value(T),
 }
 
-pub trait FixedEvaluator<T: FieldElement> {
+pub trait FixedEvaluator<T: FieldElement>: Clone {
     fn evaluate(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
         None
     }
@@ -518,6 +567,7 @@ mod test {
 
     use super::*;
 
+    #[derive(Clone)]
     pub struct FixedEvaluatorForFixedData<'a, T: FieldElement>(pub &'a FixedData<'a, T>);
     impl<T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'_, T> {
         fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {

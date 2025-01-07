@@ -19,6 +19,12 @@ impl From<IntType> for FieldElement {
         Self(i)
     }
 }
+impl From<FieldElement> for IntType {
+    #[inline]
+    fn from(f: FieldElement) -> Self {
+        f.0
+    }
+}
 impl std::ops::Add for FieldElement {
     type Output = Self;
     #[inline]

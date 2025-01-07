@@ -1,8 +1,8 @@
-use std::{ffi::c_void, iter, mem, sync::Arc};
+use std::{cmp::Ordering, ffi::c_void, iter, mem, sync::Arc};
 
-use auto_enums::auto_enum;
 use itertools::Itertools;
 use libloading::Library;
+use powdr_ast::indent;
 use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
@@ -16,7 +16,7 @@ use crate::witgen::{
 };
 
 use super::{
-    effect::{Assertion, Effect},
+    effect::{Assertion, BranchCondition, Effect},
     symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator},
     variable::Variable,
 };
@@ -157,10 +157,11 @@ fn witgen_code<T: FieldElement>(
             format!("    let {var_name} = {value};")
         })
         .format("\n");
-    let main_code = effects.iter().map(format_effect).format("\n");
+    let main_code = format_effects(effects);
     let vars_known = effects
         .iter()
         .flat_map(written_vars_in_effect)
+        .map(|(var, _)| var)
         .collect_vec();
     let store_values = vars_known
         .iter()
@@ -224,26 +225,51 @@ extern "C" fn witgen(
 }
 
 /// Returns an iterator over all variables written to in the effect.
-#[auto_enum(Iterator)]
+/// The flag indicates if the variable is the return value of a machine call and thus needs
+/// to be declared mutable.
 fn written_vars_in_effect<T: FieldElement>(
     effect: &Effect<T, Variable>,
-) -> impl Iterator<Item = &Variable> + '_ {
+) -> Box<dyn Iterator<Item = (&Variable, bool)> + '_> {
     match effect {
-        Effect::Assignment(var, _) => iter::once(var),
+        Effect::Assignment(var, _) => Box::new(iter::once((var, false))),
         Effect::RangeConstraint(..) => unreachable!(),
-        Effect::Assertion(..) => iter::empty(),
-        Effect::MachineCall(_, arguments) => arguments.iter().flat_map(|e| match e {
-            MachineCallArgument::Unknown(v) => Some(v),
+        Effect::Assertion(..) => Box::new(iter::empty()),
+        Effect::MachineCall(_, arguments) => Box::new(arguments.iter().flat_map(|e| match e {
+            MachineCallArgument::Unknown(v) => Some((v, true)),
             MachineCallArgument::Known(_) => None,
-        }),
+        })),
+        Effect::Branch(_, first, second) => Box::new(
+            first
+                .iter()
+                .chain(second)
+                .flat_map(|e| written_vars_in_effect(e)),
+        ),
     }
 }
 
-fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>) -> String {
+pub fn format_effects<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
+    format_effects_inner(effects, true)
+}
+
+fn format_effects_inner<T: FieldElement>(
+    effects: &[Effect<T, Variable>],
+    is_top_level: bool,
+) -> String {
+    indent(
+        effects
+            .iter()
+            .map(|effect| format_effect(effect, is_top_level))
+            .join("\n"),
+        1,
+    )
+}
+
+fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bool) -> String {
     match effect {
         Effect::Assignment(var, e) => {
             format!(
-                "    let {} = {};",
+                "{}{} = {};",
+                if is_top_level { "let " } else { "" },
                 variable_to_string(var),
                 format_expression(e)
             )
@@ -256,7 +282,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>) -> String {
             rhs,
             expected_equal,
         }) => format!(
-            "    assert!({} {} {});",
+            "assert!({} {} {});",
             format_expression(lhs),
             if *expected_equal { "==" } else { "!=" },
             format_expression(rhs)
@@ -268,7 +294,9 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>) -> String {
                 .map(|a| match a {
                     MachineCallArgument::Unknown(v) => {
                         let var_name = variable_to_string(v);
-                        result_vars.push(var_name.clone());
+                        if is_top_level {
+                            result_vars.push(var_name.clone());
+                        }
                         format!("LookupCell::Output(&mut {var_name})")
                     }
                     MachineCallArgument::Known(v) => {
@@ -279,11 +307,40 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>) -> String {
                 .to_string();
             let var_decls = result_vars
                 .iter()
-                .map(|var_name| format!("    let mut {var_name} = FieldElement::default();"))
-                .format("\n");
+                .map(|var_name| format!("let mut {var_name} = FieldElement::default();\n"))
+                .format("");
             format!(
-                "{var_decls}
-    assert!(call_machine(mutable_state, {id}, MutSlice::from((&mut [{args}]).as_mut_slice())));"
+                "{var_decls}assert!(call_machine(mutable_state, {id}, MutSlice::from((&mut [{args}]).as_mut_slice())));"
+            )
+        }
+        Effect::Branch(condition, first, second) => {
+            let var_decls = if is_top_level {
+                // We need to declare all assigned variables at top level,
+                // so that they are available after the branches.
+                first
+                    .iter()
+                    .chain(second)
+                    .flat_map(|e| written_vars_in_effect(e))
+                    .sorted()
+                    .dedup()
+                    .map(|(v, needs_mut)| {
+                        let v = variable_to_string(v);
+                        if needs_mut {
+                            format!("let mut {v} = FieldElement::default();\n")
+                        } else {
+                            format!("let {v};\n")
+                        }
+                    })
+                    .format("")
+                    .to_string()
+            } else {
+                "".to_string()
+            };
+            format!(
+                "{var_decls}if {} {{\n{}\n}} else {{\n{}\n}}",
+                format_condition(condition),
+                format_effects_inner(first, false),
+                format_effects_inner(second, false)
             )
         }
     }
@@ -316,6 +373,16 @@ fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable>) -> St
                 BitOperator::And => format!("({left} & {right})"),
             }
         }
+    }
+}
+
+fn format_condition<T: FieldElement>(condition: &BranchCondition<T, Variable>) -> String {
+    let var = format!("IntType::from({})", variable_to_string(&condition.variable));
+    let (min, max) = condition.first_branch.range();
+    match min.cmp(&max) {
+        Ordering::Equal => format!("{var} == {min}",),
+        Ordering::Less => format!("{min} <= {var} && {var} <= {max}"),
+        Ordering::Greater => format!("{var} <= {min} || {var} >= {max}"),
     }
 }
 
@@ -423,6 +490,7 @@ mod tests {
 
     use crate::witgen::jit::variable::Cell;
     use crate::witgen::jit::variable::MachineCallReturnVariable;
+    use crate::witgen::range_constraints::RangeConstraint;
 
     use super::*;
 
@@ -779,5 +847,72 @@ extern \"C\" fn witgen(
         assert_eq!(data[0], GoldilocksField::from(9));
         assert_eq!(data[1], GoldilocksField::from(18));
         assert_eq!(data[2], GoldilocksField::from(0));
+    }
+
+    #[test]
+    fn branches() {
+        let x = param(0);
+        let y = param(1);
+        let mut x_val: GoldilocksField = 7.into();
+        let mut y_val: GoldilocksField = 9.into();
+        let effects = vec![Effect::Branch(
+            BranchCondition {
+                variable: x.clone(),
+                first_branch: RangeConstraint::from_range(7.into(), 20.into()),
+                second_branch: RangeConstraint::from_range(21.into(), 6.into()),
+            },
+            vec![assignment(&y, symbol(&x) + number(1))],
+            vec![assignment(&y, symbol(&x) + number(2))],
+        )];
+        let f = compile_effects(0, 1, &[x], &effects).unwrap();
+        let mut data = vec![];
+        let mut known = vec![];
+
+        let mut params = vec![LookupCell::Input(&x_val), LookupCell::Output(&mut y_val)];
+        let params = WitgenFunctionParams {
+            data: data.as_mut_slice().into(),
+            known: known.as_mut_ptr(),
+            row_offset: 0,
+            params: params.as_mut_slice().into(),
+            mutable_state: std::ptr::null(),
+            call_machine: no_call_machine,
+        };
+        (f.function)(params);
+        assert_eq!(y_val, GoldilocksField::from(8));
+
+        x_val = 2.into();
+        let mut params = vec![LookupCell::Input(&x_val), LookupCell::Output(&mut y_val)];
+        let params = WitgenFunctionParams {
+            data: data.as_mut_slice().into(),
+            known: known.as_mut_ptr(),
+            row_offset: 0,
+            params: params.as_mut_slice().into(),
+            mutable_state: std::ptr::null(),
+            call_machine: no_call_machine,
+        };
+        (f.function)(params);
+        assert_eq!(y_val, GoldilocksField::from(4));
+    }
+
+    #[test]
+    fn branches_codegen() {
+        let x = param(0);
+        let y = param(1);
+        let branch_effect = Effect::Branch(
+            BranchCondition {
+                variable: x.clone(),
+                first_branch: RangeConstraint::from_range(7.into(), 20.into()),
+                second_branch: RangeConstraint::from_range(21.into(), 6.into()),
+            },
+            vec![assignment(&y, symbol(&x) + number(1))],
+            vec![assignment(&y, symbol(&x) + number(2))],
+        );
+        let expectation = "    let p_1;
+    if 7 <= IntType::from(p_0) && IntType::from(p_0) <= 20 {
+        p_1 = (p_0 + FieldElement::from(1));
+    } else {
+        p_1 = (p_0 + FieldElement::from(2));
+    }";
+        assert_eq!(format_effects(&[branch_effect]), expectation);
     }
 }
