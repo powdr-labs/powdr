@@ -38,9 +38,6 @@ pub enum StatementIdentifier {
     TraitImplementation(usize),
 }
 
-// The Hash trait for this struct uses a custom implementation defined below in this file.
-// Any modifications to the struct fields should be reviewed carefully for
-// potential hash collision impacts.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
@@ -503,46 +500,6 @@ impl<T: FieldElement> Analyzed<T> {
 
     pub fn deserialize(bytes: &[u8]) -> Result<Self, String> {
         serde_cbor::from_slice(bytes).map_err(|e| format!("Failed to deserialize analyzed: {e}"))
-    }
-}
-
-impl<T: Hash> Hash for Analyzed<T> {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.identities.hash(state);
-
-        for (key, (symbol, value)) in self.definitions.iter().sorted_by(|a, b| a.0.cmp(b.0)) {
-            key.hash(state);
-            symbol.hash(state);
-            value.hash(state);
-        }
-
-        for (key, (symbol, value)) in self
-            .intermediate_columns
-            .iter()
-            .sorted_by(|a, b| a.0.cmp(b.0))
-        {
-            key.hash(state);
-            symbol.hash(state);
-            value.hash(state);
-        }
-
-        self.prover_functions.hash(state);
-
-        for (key, value) in self
-            .public_declarations
-            .iter()
-            .sorted_by(|a, b| a.0.cmp(b.0))
-        {
-            key.hash(state);
-            value.hash(state);
-        }
-
-        self.trait_impls.hash(state);
-        self.source_order.hash(state);
-
-        for symbol in self.auto_added_symbols.iter().sorted() {
-            symbol.hash(state);
-        }
     }
 }
 

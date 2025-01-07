@@ -10,7 +10,7 @@ use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
     FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
     PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialReference, PolynomialType,
-    Reference, Symbol, SymbolKind,
+    Reference, StatementIdentifier, Symbol, SymbolKind,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
@@ -55,7 +55,27 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
 
 fn hash_pil_state<T: Hash>(pil_file: &Analyzed<T>) -> u64 {
     let mut hasher = DefaultHasher::new();
-    pil_file.hash(&mut hasher);
+
+    for so in &pil_file.source_order {
+        match so {
+            StatementIdentifier::Definition(d) => {
+                pil_file.definitions[d].hash(&mut hasher);
+            }
+            StatementIdentifier::PublicDeclaration(pd) => {
+                pil_file.public_declarations[pd].hash(&mut hasher);
+            }
+            StatementIdentifier::ProofItem(pi) => {
+                pil_file.identities[*pi].hash(&mut hasher);
+            }
+            StatementIdentifier::ProverFunction(pf) => {
+                pil_file.prover_functions[*pf].hash(&mut hasher);
+            }
+            StatementIdentifier::TraitImplementation(ti) => {
+                pil_file.trait_impls[*ti].hash(&mut hasher);
+            }
+        }
+    }
+
     hasher.finish()
 }
 
