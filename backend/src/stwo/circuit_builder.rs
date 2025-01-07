@@ -54,7 +54,8 @@ where
 pub struct PowdrEval<T> {
     log_degree: u32,
     analyzed: Analyzed<T>,
-    //the pre-processed columns need to be indexed in whole proof, instead of in each coponent, this offset represented the index of the first pre-processed column in a certain component
+    // the pre-processed are indexed in the whole proof, instead of in each component.
+    // this offset represents the index of the first pre-processed column in this component
     preprocess_col_offset: usize,
     witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
