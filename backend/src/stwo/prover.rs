@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use num_traits::Zero;
 use powdr_ast::analyzed::{Analyzed, DegreeRange};
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
@@ -36,7 +37,6 @@ const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 const LOG_LAST_LAYER_DEGREE_BOUND: usize = 0;
-const MACHINE_SIZES_IDX: usize = 2;
 
 pub enum KeyExportError {
     NoProvingKey,
@@ -231,12 +231,7 @@ where
 
         //The preprocessed columns needs to be indexed in the whole execution instead of each machine, so we need to keep track of the offset
         let mut constant_cols_offset_acc = 0;
-
-        //sizes[0] stores the log_degree of all the constant columns
-        //sizes[1] stores the log_degree of all the witness columns
-        //sizes[2] stores the log_degree of all the machines
-        //size is used in verification function
-        let mut sizes = [Vec::new(), Vec::new(), Vec::new()];
+        let mut machine_log_sizes = Vec::new();
 
         let mut constant_cols = Vec::new();
 
@@ -302,7 +297,7 @@ where
                     );
                     components.push(component);
 
-                    sizes[MACHINE_SIZES_IDX].push(machine_length.ilog2());
+                    machine_log_sizes.push(machine_length.ilog2());
 
                     constant_cols_offset_acc +=
                         pil.constant_count() + get_constant_with_next_list(pil).len();
@@ -325,18 +320,15 @@ where
             .flatten()
             .collect();
 
-        sizes[PREPROCESSED_TRACE_IDX].extend(
-            constant_cols
-                .iter()
-                .map(|eval| eval.len().ilog2())
-                .collect::<Vec<_>>(),
-        );
-        sizes[ORIGINAL_TRACE_IDX].extend(
-            witness_by_machine
-                .iter()
-                .map(|eval| eval.len().ilog2())
-                .collect::<Vec<_>>(),
-        );
+        let constant_col_log_sizes = constant_cols
+            .iter()
+            .map(|eval| eval.len().ilog2())
+            .collect::<Vec<_>>();
+
+        let witness_col_log_sizes = witness_by_machine
+            .iter()
+            .map(|eval| eval.len().ilog2())
+            .collect::<Vec<_>>();
 
         let twiddles_maxdegree = B::precompute_twiddles(
             CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
@@ -376,7 +368,12 @@ where
             Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
         };
 
-        let proof: Proof<MC> = Proof { starkproof, sizes };
+        let proof: Proof<MC> = Proof {
+            starkproof,
+            constant_col_log_sizes,
+            witness_col_log_sizes,
+            machine_log_sizes,
+        };
         Ok(bincode::serialize(&proof).unwrap())
     }
 
@@ -401,24 +398,21 @@ where
         let mut components = Vec::new();
 
         let mut constant_cols_offset_acc = 0;
-        let mut machine_index = 0;
 
-        self.split.iter().for_each(|(_, pil)| {
-            components.push(PowdrComponent::new(
-                tree_span_provider,
-                PowdrEval::new(
-                    (*pil).clone(),
-                    constant_cols_offset_acc,
-                    proof.sizes[MACHINE_SIZES_IDX][index_machine],
-                ),
-                (SecureField::zero(), None),
-            ));
+        self.split
+            .iter()
+            .zip_eq(proof.machine_log_sizes.iter())
+            .for_each(|((_, pil), &machine_size)| {
+                components.push(PowdrComponent::new(
+                    tree_span_provider,
+                    PowdrEval::new((*pil).clone(), constant_cols_offset_acc, machine_size),
+                    (SecureField::zero(), None),
+                ));
 
-            constant_cols_offset_acc += pil.constant_count();
+                constant_cols_offset_acc += pil.constant_count();
 
-            constant_cols_offset_acc += get_constant_with_next_list(pil).len();
-            index_machine += 1;
-        });
+                constant_cols_offset_acc += get_constant_with_next_list(pil).len();
+            });
 
         let mut components_slice: Vec<&dyn Component> = components
             .iter_mut()
@@ -429,12 +423,12 @@ where
 
         commitment_scheme.commit(
             proof.starkproof.commitments[PREPROCESSED_TRACE_IDX],
-            &proof.sizes[PREPROCESSED_TRACE_IDX],
+            &proof.constant_col_log_sizes,
             verifier_channel,
         );
         commitment_scheme.commit(
             proof.starkproof.commitments[ORIGINAL_TRACE_IDX],
-            &proof.sizes[ORIGINAL_TRACE_IDX],
+            &proof.witness_col_log_sizes,
             verifier_channel,
         );
 
