@@ -360,7 +360,7 @@ where
             commitment_scheme,
         );
 
-        let starkproof = match proof_result {
+        let stark_proof = match proof_result {
             Ok(value) => value,
             Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
         };
