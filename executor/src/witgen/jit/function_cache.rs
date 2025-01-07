@@ -74,6 +74,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         identity_id: u64,
         known_args: &BitVec,
     ) -> Option<&CacheEntry<T>> {
+        return &None;
         let cache_key = CacheKey {
             identity_id,
             known_args: known_args.clone(),
@@ -83,6 +84,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
     }
 
     fn ensure_cache(&mut self, can_process: impl CanProcessCall<T>, cache_key: &CacheKey) {
+        return;
         if self.witgen_functions.contains_key(cache_key) {
             return;
         }
