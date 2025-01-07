@@ -161,7 +161,6 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             .map(|(i, poly_id)| {
                 (
                     *poly_id,
-                    // PreprocessedColumn::Plonk(i), i is used for indexing the preprocessed columns
                     eval.get_preprocessed_column(PreprocessedColumn::Plonk(
                         i + self.preprocess_col_offset,
                     )),

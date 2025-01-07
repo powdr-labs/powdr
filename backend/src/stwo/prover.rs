@@ -113,18 +113,25 @@ where
     }
 
     pub fn setup(&mut self) {
-        let mut domain_degree_range = DegreeRange {
-            min: self.analyzed.degree_ranges().iter().next().unwrap().min,
-            max: self.analyzed.degree_ranges().iter().next().unwrap().max,
+        let domain_degree_range = DegreeRange {
+            min: self
+                .analyzed
+                .degree_ranges()
+                .iter()
+                .map(|range| range.min)
+                .min()
+                .unwrap(),
+            max: self
+                .analyzed
+                .degree_ranges()
+                .iter()
+                .map(|range| range.max)
+                .max()
+                .unwrap(),
         };
-        self.analyzed.degree_ranges().iter().for_each(|range| {
-            domain_degree_range.min = domain_degree_range.min.min(range.min);
-            domain_degree_range.max = domain_degree_range.max.max(range.max);
-        });
 
         let domain_map: BTreeMap<usize, CircleDomain> = domain_degree_range
             .iter()
-            .filter(|&size| size.is_power_of_two())
             .map(|size| {
                 (
                     size.ilog2() as usize,
@@ -205,18 +212,25 @@ where
 
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
         let config = get_config();
-        let mut domain_degree_range = DegreeRange {
-            min: self.analyzed.degree_ranges().iter().next().unwrap().min,
-            max: self.analyzed.degree_ranges().iter().next().unwrap().max,
+        let domain_degree_range = DegreeRange {
+            min: self
+                .analyzed
+                .degree_ranges()
+                .iter()
+                .map(|range| range.min)
+                .min()
+                .unwrap(),
+            max: self
+                .analyzed
+                .degree_ranges()
+                .iter()
+                .map(|range| range.max)
+                .max()
+                .unwrap(),
         };
-        self.analyzed.degree_ranges().iter().for_each(|range| {
-            domain_degree_range.min = domain_degree_range.min.min(range.min);
-            domain_degree_range.max = domain_degree_range.max.max(range.max);
-        });
 
         let domain_map: BTreeMap<usize, CircleDomain> = domain_degree_range
             .iter()
-            .filter(|&size| size.is_power_of_two())
             .map(|size| {
                 (
                     size.ilog2() as usize,
@@ -253,37 +267,20 @@ where
                         "All witness columns in a single machine must have the same length"
                     );
 
-                    if let Some(preprocessed) = self.proving_key.preprocessed.as_ref() {
-                        if let Some(table_provingkey) =
-                            preprocessed
-                                .iter()
-                                .find_map(|(namespace, table_provingkey)| {
-                                    if namespace == machine {
-                                        Some(table_provingkey)
-                                    } else {
-                                        None
-                                    }
-                                })
-                        {
-                            if let Some(constant_trace) =
-                                table_provingkey
-                                    .iter()
-                                    .find_map(|(size, table_provingkey)| {
-                                        if *size == machine_length {
-                                            Some(
-                                                table_provingkey
-                                                    .constant_trace_circle_domain
-                                                    .clone(),
-                                            )
-                                        } else {
-                                            None
-                                        }
-                                    })
-                            {
-                                // Extend constant_cols only if the constant_trace exists
-                                constant_cols.extend(constant_trace);
-                            }
-                        }
+                    if let Some(constant_trace) = self
+                        .proving_key
+                        .preprocessed
+                        .as_ref()
+                        .and_then(|preprocessed| preprocessed.get(machine))
+                        .and_then(|table_provingkey| table_provingkey.get(&machine_length))
+                        .map(|table_provingkey_machine_size| {
+                            table_provingkey_machine_size
+                                .constant_trace_circle_domain
+                                .clone()
+                        })
+                    {
+                        // Extend constant_cols only if the constant_trace exists
+                        constant_cols.extend(constant_trace);
                     }
 
                     let component = PowdrComponent::new(
@@ -395,24 +392,24 @@ where
         //Constraints that are to be proved
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
-        let mut components = Vec::new();
 
         let mut constant_cols_offset_acc = 0;
 
-        self.split
+        let mut components = self
+            .split
             .iter()
             .zip_eq(proof.machine_log_sizes.iter())
-            .for_each(|((_, pil), &machine_size)| {
-                components.push(PowdrComponent::new(
-                    tree_span_provider,
-                    PowdrEval::new((*pil).clone(), constant_cols_offset_acc, machine_size),
-                    (SecureField::zero(), None),
-                ));
-
+            .map(|((_, pil), &machine_size)| {
                 constant_cols_offset_acc += pil.constant_count();
 
                 constant_cols_offset_acc += get_constant_with_next_list(pil).len();
-            });
+                PowdrComponent::new(
+                    tree_span_provider,
+                    PowdrEval::new((*pil).clone(), constant_cols_offset_acc, machine_size),
+                    (SecureField::zero(), None),
+                )
+            })
+            .collect::<Vec<_>>();
 
         let mut components_slice: Vec<&dyn Component> = components
             .iter_mut()
