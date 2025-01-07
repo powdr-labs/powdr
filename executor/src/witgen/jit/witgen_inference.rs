@@ -584,7 +584,7 @@ mod test {
             }
             assert!(counter < 10000, "Solving took more than 10000 rounds.");
         }
-        format_code(&witgen.code())
+        format_code(witgen.code())
     }
 
     #[test]
