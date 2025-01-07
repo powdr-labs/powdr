@@ -144,6 +144,10 @@ impl Session {
         run(&mut self.pipeline);
     }
 
+    pub fn run_with_profiler(&mut self, profiler: riscv_executor::ProfilerOptions) {
+        run_with_profiler(&mut self.pipeline, profiler)
+    }
+
     pub fn prove(&mut self) {
         let asm_name = self.pipeline.asm_string().unwrap().0.clone().unwrap();
         let pil_file = pil_file_path(&asm_name);
