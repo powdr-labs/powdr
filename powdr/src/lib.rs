@@ -144,7 +144,13 @@ impl Session {
         run(&mut self.pipeline);
     }
 
-    pub fn run_with_profiler(&mut self, profiler: riscv_executor::ProfilerOptions) {
+    pub fn run_with_profiler(&mut self) {
+        let profiler = riscv_executor::ProfilerOptions {
+            output_directory: ".".to_string(),
+            file_stem: None,
+            flamegraph: true,
+            callgrind: true,
+        };
         run_with_profiler(&mut self.pipeline, profiler)
     }
 
