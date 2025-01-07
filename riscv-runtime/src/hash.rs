@@ -67,12 +67,7 @@ impl Keccak {
     }
 
     fn xor_word_to_state(&mut self, word: u32) {
-        let word_pair = self.next_word & !1;
-        if (self.next_word & 1) == 0 {
-            self.state[word_pair + 1] ^= word;
-        } else {
-            self.state[word_pair] ^= word;
-        }
+        self.state[self.next_word] ^= word;
         self.next_word += 1;
 
         if self.next_word == Self::RATE {
@@ -126,8 +121,8 @@ impl Keccak {
         self.xor_word_to_state(0x80000000);
 
         for i in 0..4 {
-            output[i * 8..(i * 8 + 4)].copy_from_slice(&self.state[i * 2 + 1].to_le_bytes());
-            output[(i * 8 + 4)..(i * 8 + 8)].copy_from_slice(&self.state[i * 2].to_le_bytes());
+            output[i * 8..(i * 8 + 4)].copy_from_slice(&self.state[i * 2].to_ne_bytes());
+            output[(i * 8 + 4)..(i * 8 + 8)].copy_from_slice(&self.state[i * 2 + 1].to_ne_bytes());
         }
     }
 }
