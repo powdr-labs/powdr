@@ -59,7 +59,11 @@ fn hash_pil_state<T: Hash>(pil_file: &Analyzed<T>) -> u64 {
     for so in &pil_file.source_order {
         match so {
             StatementIdentifier::Definition(d) => {
-                pil_file.definitions[d].hash(&mut hasher);
+                if let Some(def) = pil_file.definitions.get(d) {
+                    def.hash(&mut hasher);
+                } else if let Some(def) = pil_file.intermediate_columns.get(d) {
+                    def.hash(&mut hasher);
+                }
             }
             StatementIdentifier::PublicDeclaration(pd) => {
                 pil_file.public_declarations[pd].hash(&mut hasher);
