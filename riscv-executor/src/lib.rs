@@ -1270,6 +1270,7 @@ fn preprocess_main_function<F: FieldElement>(machine: &Machine) -> PreprocessedM
                     if !name.contains("___dot_L") {
                         function_starts.insert(batch_idx + PC_INITIAL_VAL, name.as_str());
                     }
+                    statements.push(s);
                 }
             }
         }
@@ -2847,9 +2848,10 @@ pub fn execute_fast<F: FieldElement>(
     prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     profiling: Option<ProfilerOptions>,
-) -> usize {
+    precompile_blocks: HashMap<String, Vec<FunctionStatement>>,
+) -> (usize, HashMap<String, u64>) {
     log::info!("Executing...");
-    execute_inner(
+    let res = execute_inner(
         asm,
         None,
         None,
@@ -2859,8 +2861,9 @@ pub fn execute_fast<F: FieldElement>(
         usize::MAX,
         ExecMode::Fast,
         profiling,
-    )
-    .trace_len
+        precompile_blocks,
+    );
+    (res.0.trace_len, res.1)
 }
 
 /// Execute and generate a valid witness for a Powdr/RISCV assembly program.
@@ -2874,7 +2877,7 @@ pub fn execute<F: FieldElement>(
     bootloader_inputs: &[F],
     max_steps_to_execute: Option<usize>,
     profiling: Option<ProfilerOptions>,
-) -> Execution<F> {
+) -> (Execution<F>, HashMap<String, u64>) {
     log::info!("Executing (trace generation)...");
 
     execute_inner(
@@ -2887,6 +2890,7 @@ pub fn execute<F: FieldElement>(
         max_steps_to_execute.unwrap_or(usize::MAX),
         ExecMode::Trace,
         profiling,
+        Default::default(),
     )
 }
 
@@ -2901,9 +2905,12 @@ fn execute_inner<F: FieldElement>(
     max_steps_to_execute: usize,
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
-) -> Execution<F> {
+    precompile_blocks: HashMap<String, Vec<FunctionStatement>>,
+) -> (Execution<F>, HashMap<String, u64>) {
     let start = Instant::now();
     let main_machine = get_main_machine(asm);
+
+    let mut label_freq: HashMap<String, u64> = Default::default();
 
     let PreprocessedMain {
         statements,
@@ -2964,7 +2971,7 @@ fn execute_inner<F: FieldElement>(
         mode,
     ) {
         Ok(proc) => proc,
-        Err(ret) => return *ret,
+        Err(ret) => return (*ret, Default::default()),
     };
 
     let bootloader_inputs = bootloader_inputs
@@ -3073,6 +3080,23 @@ fn execute_inner<F: FieldElement>(
                     e.proc.set_reg(dest, val);
                 }
             }
+            FunctionStatement::Instruction(i)
+                if precompile_blocks.contains_key(&i.instruction.to_string()) =>
+            {
+                let name = i.instruction.to_string();
+                let pc = e.proc.get_pc();
+
+                for stmt in precompile_blocks.get(&name).unwrap() {
+                    match stmt {
+                        FunctionStatement::Instruction(i) => {
+                            e.exec_instruction(&i.instruction, &i.inputs);
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+
+                e.proc.set_pc((pc.u() + 1).into());
+            }
             FunctionStatement::Instruction(i) => {
                 e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
 
@@ -3124,8 +3148,12 @@ fn execute_inner<F: FieldElement>(
                     DebugDirective::File(_, _, _) => unreachable!(),
                 };
             }
-            FunctionStatement::Label(_) => {
-                unreachable!()
+            FunctionStatement::Label(LabelStatement { source: _, name }) => {
+                label_freq
+                    .entry(name.clone())
+                    .and_modify(|e| *e += 1)
+                    .or_insert(1);
+                //unreachable!()
             }
         };
 
@@ -3178,7 +3206,26 @@ fn execute_inner<F: FieldElement>(
         );
     }
 
-    e.proc.finish(opt_pil, program_columns)
+    /*
+        let blocks = powdr_analysis::collect_basic_blocks(&asm);
+        let blocks = blocks
+            .into_iter()
+            .map(|(name, b)| {
+                let freq = label_freq.get(&name).unwrap_or(&0);
+                let l = b.len() as u64;
+                (name, b, freq, freq * l)
+            })
+            .sorted_by_key(|(_, _, _, cost)| std::cmp::Reverse(*cost))
+            .collect::<Vec<_>>();
+        for (name, block, freq, cost) in &blocks {
+            println!(
+                "{name}: size = {}, freq = {freq}, cost = {cost}",
+                block.len()
+            );
+        }
+    */
+
+    (e.proc.finish(opt_pil, program_columns), label_freq)
 }
 
 /// Utility function for writing the executor witness CSV file.
