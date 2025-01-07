@@ -960,6 +960,7 @@ impl<T: FieldElement> VMConverter<T> {
                 for (coeff, item) in value {
                     match item {
                         AffineExpressionComponent::Register(reg) => {
+                            println!("p_read_{assign_reg}_{reg}");
                             rom_constants
                                 .get_mut(&format!("p_read_{assign_reg}_{reg}"))
                                 .unwrap()[i] += *coeff;
