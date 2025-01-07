@@ -389,6 +389,7 @@ fn different_degrees() {
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
     regular_test_gl(f, Default::default());
+    test_stwo(f, Default::default());
 }
 
 #[test]
