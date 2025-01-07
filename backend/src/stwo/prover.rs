@@ -267,21 +267,19 @@ where
                         "All witness columns in a single machine must have the same length"
                     );
 
-                    if let Some(constant_trace) = self
-                        .proving_key
-                        .preprocessed
-                        .as_ref()
-                        .and_then(|preprocessed| preprocessed.get(machine))
-                        .and_then(|table_provingkey| table_provingkey.get(&machine_length))
-                        .map(|table_provingkey_machine_size| {
-                            table_provingkey_machine_size
-                                .constant_trace_circle_domain
-                                .clone()
-                        })
-                    {
-                        // Extend constant_cols only if the constant_trace exists
-                        constant_cols.extend(constant_trace);
-                    }
+                    constant_cols.extend(
+                        self.proving_key
+                            .preprocessed
+                            .as_ref()
+                            .and_then(|preprocessed| preprocessed.get(machine))
+                            .and_then(|table_provingkey| table_provingkey.get(&machine_length))
+                            .map(|table_provingkey_machine_size| {
+                                table_provingkey_machine_size
+                                    .constant_trace_circle_domain
+                                    .clone()
+                            })
+                            .unwrap(),
+                    );
 
                     let component = PowdrComponent::new(
                         tree_span_provider,
