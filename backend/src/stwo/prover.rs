@@ -401,7 +401,7 @@ where
         let mut components = Vec::new();
 
         let mut constant_cols_offset_acc = 0;
-        let mut index_machine = 0;
+        let mut machine_index = 0;
 
         self.split.iter().for_each(|(_, pil)| {
             components.push(PowdrComponent::new(
