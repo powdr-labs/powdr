@@ -335,7 +335,7 @@ where
 
         let prover_channel = &mut <MC as MerkleChannel>::C::default();
         let mut commitment_scheme =
-            CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles_maxdegree);
+            CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles_max_degree);
 
         let mut tree_builder = commitment_scheme.tree_builder();
 
@@ -366,7 +366,7 @@ where
         };
 
         let proof: Proof<MC> = Proof {
-            starkproof,
+            starkproof: stark_proof,
             constant_col_log_sizes,
             witness_col_log_sizes,
             machine_log_sizes,
