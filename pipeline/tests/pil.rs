@@ -293,7 +293,6 @@ fn stwo_constant_next_test() {
     let f = "pil/fixed_with_incremental.pil";
     test_stwo(f, Default::default());
 }
-
 #[test]
 fn fibonacci_invalid_witness_stwo() {
     let f = "pil/fibo_no_publics.pil";
