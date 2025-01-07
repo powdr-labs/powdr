@@ -64,6 +64,8 @@ fn hash_pil_state<T: Hash>(pil_file: &Analyzed<T>) -> u64 {
                     def.hash(&mut hasher);
                 } else if let Some(def) = pil_file.intermediate_columns.get(d) {
                     def.hash(&mut hasher);
+                } else {
+                    unreachable!("Missing definition for {:?}", d);
                 }
             }
             StatementIdentifier::PublicDeclaration(pd) => {
@@ -500,12 +502,14 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         })
         .filter_map(constrained_to_constant)
         .collect::<Vec<((String, PolyID), _)>>();
-    // We cannot remove arrays or array elements, so filter them out.
+
     let in_publics: HashSet<_> = pil_file
         .public_declarations
         .values()
         .map(|pubd| pubd.polynomial.name.clone())
         .collect();
+    // We cannot remove arrays or array elements, so filter them out.
+    // Also, we filter out columns that are used in public declarations.
     let columns = pil_file
         .committed_polys_in_source_order()
         .filter(|&(s, _)| !s.is_array() && !in_publics.contains(&s.absolute_name))
