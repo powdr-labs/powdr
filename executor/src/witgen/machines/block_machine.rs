@@ -452,7 +452,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
                 let global_latch_row_index = self.data.len() - self.block_size + self.latch_row;
                 self.multiplicity_counter
-                    .increment_at_row(identity_id, global_latch_row_index);
+                    .increment_at_row(identity_id, global_latch_row_index - 1);
 
                 // We solved the query, so report it to the cache.
                 self.processing_sequence_cache
