@@ -11,8 +11,8 @@ pub struct MultiplicityCounter {
     /// Note that multiple identity IDs can map to the same multiplicity column.
     identity_id_to_multiplicity_column: BTreeMap<u64, PolyID>,
 
-    /// Optional poly_id -> size map.
-    sizes: Option<BTreeMap<PolyID, DegreeType>>,
+    /// poly_id -> size map.
+    sizes: BTreeMap<PolyID, DegreeType>,
 
     /// A map poly_id -> (row -> count).
     /// Has a (possibly empty) entry for each value in `identity_id_to_multiplicity_column`.
@@ -40,7 +40,7 @@ impl MultiplicityCounter {
             .collect();
         Self {
             identity_id_to_multiplicity_column,
-            sizes: Some(sizes),
+            sizes,
             counts,
         }
     }
@@ -68,7 +68,7 @@ impl MultiplicityCounter {
 
     /// Materializes the multiplicity columns, using different sizes for each of them.
     pub fn generate_columns_different_sizes<T: FieldElement>(&self) -> BTreeMap<PolyID, Vec<T>> {
-        self.generate_columns_with_sizes(self.sizes.as_ref().expect("Did not provide sizes!"))
+        self.generate_columns_with_sizes(&self.sizes)
     }
 
     fn generate_columns_with_sizes<T: FieldElement>(
