@@ -65,7 +65,7 @@ fn keccakf16_memory_test() {
 }
 
 #[test]
-#[ignore = "Too slow"]
+//#[ignore = "Too slow"]
 fn keccakf32_memory_test() {
     let f = "std/keccakf32_memory_test.asm";
     regular_test_gl(f, &[]);

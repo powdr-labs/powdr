@@ -364,8 +364,7 @@ machine Keccakf32Memory(mem: Memory) with
     // }
 
     let bits_to_value_le: expr[] -> expr = |bits_le| {
-        let reversed = array::reverse(bits_le);
-        array::fold(reversed, 0, |acc, e| acc * 2 + e)
+        array::fold(bits_le, 0, |acc, e| acc * 2 + e)
     };
 
     array::new(50, |i| {
@@ -598,7 +597,7 @@ machine Keccakf32Memory(mem: Memory) with
     let query_c: int, int, int -> int = query |x, limb, bit_in_limb|
     utils::fold(
         5, 
-        |y| (int(eval(a[y * 10 + x * 2 + limb])) >> (31 - bit_in_limb)) & 0x1, 
+        |y| (int(eval(a[y * 10 + x * 2 + limb])) >> bit_in_limb) & 0x1, 
         0, 
         |acc, e| acc ^ e
     );
@@ -656,7 +655,7 @@ machine Keccakf32Memory(mem: Memory) with
     // }
 
     let query_a_prime: int, int, int, int, int -> int = query |x, y, z, limb, bit_in_limb| 
-        ((int(eval(a[y * 10 + x * 2 + limb])) >> (31 - bit_in_limb)) & 0x1) ^ 
+        ((int(eval(a[y * 10 + x * 2 + limb])) >> bit_in_limb) & 0x1) ^ 
         int(eval(c[x * 64 + z])) ^ 
         int(eval(c_prime[x * 64 + z]));
 
