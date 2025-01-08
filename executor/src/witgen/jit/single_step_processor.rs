@@ -54,6 +54,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             NoEval,
             identities,
             block_size,
+            false,
             requested_known,
         )
         .generate_code(can_process, witgen)

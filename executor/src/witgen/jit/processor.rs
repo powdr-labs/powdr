@@ -1,16 +1,16 @@
 #![allow(dead_code)]
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::Identity;
+use powdr_ast::analyzed::{Identity, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::FixedData;
 
 use super::{
     effect::{format_code, Effect},
-    variable::Variable,
-    witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, WitgenInference},
+    variable::{Cell, Variable},
+    witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, Value, WitgenInference},
 };
 
 /// A generic processor for generating JIT code.
@@ -22,6 +22,8 @@ pub struct Processor<'a, T: FieldElement, FixedEval> {
     identities: Vec<(&'a Identity<T>, i32)>,
     /// The size of a block.
     block_size: usize,
+    /// If the processor should check for correctly stackable block shapes.
+    check_block_shape: bool,
     /// List of variables we want to be known at the end. One of them not being known
     /// is a failure.
     requested_known_vars: Vec<Variable>,
@@ -33,6 +35,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         fixed_evaluator: FixedEval,
         identities: impl IntoIterator<Item = (&'a Identity<T>, i32)>,
         block_size: usize,
+        check_block_shape: bool,
         requested_known_vars: impl IntoIterator<Item = Variable>,
     ) -> Self {
         Self {
@@ -40,6 +43,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             fixed_evaluator,
             identities: identities.into_iter().collect(),
             block_size,
+            check_block_shape,
             requested_known_vars: requested_known_vars.into_iter().collect(),
         }
     }
@@ -59,6 +63,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         mut complete: HashSet<(u64, i32)>,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
         self.process_until_no_progress(can_process.clone(), &mut witgen, &mut complete);
+
+        if self.check_block_shape {
+            self.check_block_shape(&witgen);
+        }
 
         // Check that we could derive all requested variables.
         let missing_vars = self
@@ -227,71 +235,69 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             .collect()
     }
 
-    // TODO at the end of each branch, we need to check the block shape.
+    /// After solving, the known cells should be such that we can stack different blocks.
+    /// TODO the same is actually true for machine calls.
+    fn check_block_shape(&self, witgen: &WitgenInference<'a, T, FixedEval>) {
+        let known_columns: BTreeSet<_> = witgen
+            .known_variables()
+            .iter()
+            .filter_map(|var| match var {
+                Variable::Cell(cell) => Some(cell.id),
+                _ => None,
+            })
+            .collect();
+        for column_id in known_columns {
+            let known_rows = witgen
+                .known_variables()
+                .iter()
+                .filter_map(|var| match var {
+                    Variable::Cell(cell) if cell.id == column_id => Some(cell.row_offset),
+                    _ => None,
+                })
+                .collect::<BTreeSet<_>>();
 
-    // /// After solving, the known values should be such that we can stack different blocks.
-    // fn check_block_shape(&self, witgen: &mut WitgenInference<'a, T, &Self>) -> Result<(), String> {
-    //     let known_columns = witgen
-    //         .known_variables()
-    //         .iter()
-    //         .filter_map(|var| match var {
-    //             Variable::Cell(cell) => Some(cell.id),
-    //             _ => None,
-    //         })
-    //         .collect::<BTreeSet<_>>();
+            // Two values that refer to the same row (modulo block size) are compatible if:
+            // - One of them is unknown, or
+            // - Both are concrete and equal
+            let is_compatible = |v1: Value<T>, v2: Value<T>| match (v1, v2) {
+                (Value::Unknown, _) | (_, Value::Unknown) => true,
+                (Value::Concrete(a), Value::Concrete(b)) => a == b,
+                _ => false,
+            };
+            let cell_var = |row_offset| {
+                Variable::Cell(Cell {
+                    // Column name does not matter.
+                    column_name: "".to_string(),
+                    id: column_id,
+                    row_offset,
+                })
+            };
 
-    //     let can_stack = known_columns.iter().all(|column_id| {
-    //         // Increase the range by 1, because in row <block_size>,
-    //         // we might have processed an identity with next references.
-    //         let row_range = self.row_range();
-    //         let values = (row_range.start..(row_range.end + 1))
-    //             .map(|row| {
-    //                 witgen.value(&Variable::Cell(Cell {
-    //                     id: *column_id,
-    //                     row_offset: row,
-    //                     // Dummy value, the column name is ignored in the implementation
-    //                     // of Cell::eq, etc.
-    //                     column_name: "".to_string(),
-    //                 }))
-    //             })
-    //             .collect::<Vec<_>>();
-
-    //         // Two values that refer to the same row (modulo block size) are compatible if:
-    //         // - One of them is unknown, or
-    //         // - Both are concrete and equal
-    //         let is_compatible = |v1: Value<T>, v2: Value<T>| match (v1, v2) {
-    //             (Value::Unknown, _) | (_, Value::Unknown) => true,
-    //             (Value::Concrete(a), Value::Concrete(b)) => a == b,
-    //             _ => false,
-    //         };
-    //         // A column is stackable if all rows equal to each other modulo
-    //         // the block size are compatible.
-    //         let stackable = (0..(values.len() - self.block_size))
-    //             .all(|i| is_compatible(values[i], values[i + self.block_size]));
-
-    //         if !stackable {
-    //             let column_name = self.fixed_data.column_name(&PolyID {
-    //                 id: *column_id,
-    //                 ptype: PolynomialType::Committed,
-    //             });
-    //             let block_list = values.iter().skip(1).take(self.block_size).join(", ");
-    //             let column_str = format!(
-    //                 "... {} | {} | {} ...",
-    //                 values[0],
-    //                 block_list,
-    //                 values[self.block_size + 1]
-    //             );
-    //             log::debug!("Column {column_name} is not stackable:\n{column_str}");
-    //         }
-
-    //         stackable
-    //     });
-
-    //     match can_stack {
-    //         true => Ok(()),
-    //         false => Err("Block machine shape does not allow stacking".to_string()),
-    //     }
-    // }
+            // A column is stackable if all rows equal to each other modulo
+            // the block size are compatible.
+            for row in &known_rows {
+                let this_val = witgen.value(&cell_var(*row));
+                let next_block_val = witgen.value(&cell_var(row + self.block_size as i32));
+                if !is_compatible(this_val, next_block_val) {
+                    let column_name = self.fixed_data.column_name(&PolyID {
+                        id: column_id,
+                        ptype: PolynomialType::Committed,
+                    });
+                    let row_vals = known_rows
+                        .iter()
+                        .map(|&r| format!("  row {r}: {}\n", witgen.value(&cell_var(r))))
+                        .format("");
+                    let err_str = format!(
+                        "Column {column_name} is not stackable in a {}-row block, conflict in rows {row} and {}.\n{row_vals}",
+                        self.block_size,
+                        row + self.block_size as i32
+                    );
+                    log::debug!("{err_str}");
+                    panic!("{err_str}");
+                }
+            }
+        }
+    }
 }
 
 fn is_machine_call<T>(identity: &Identity<T>) -> bool {

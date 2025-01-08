@@ -78,6 +78,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             self,
             identities,
             self.block_size,
+            true,
             requested_known,
         )
         .generate_code(can_process, witgen)
@@ -227,7 +228,7 @@ params[2] = Add::c[0];"
     }
 
     #[test]
-    #[should_panic = "Block machine shape does not allow stacking"]
+    #[should_panic = "Column NotStackable::a is not stackable in a 1-row block"]
     fn not_stackable() {
         let input = "
         namespace Main(256);
