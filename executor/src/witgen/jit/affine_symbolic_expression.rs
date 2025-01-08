@@ -93,14 +93,14 @@ impl<T: FieldElement, V> From<T> for AffineSymbolicExpression<T, V> {
 }
 
 impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
-    pub fn from_known_symbol(symbol: V, rc: Option<RangeConstraint<T>>) -> Self {
+    pub fn from_known_symbol(symbol: V, rc: RangeConstraint<T>) -> Self {
         SymbolicExpression::from_symbol(symbol, rc).into()
     }
-    pub fn from_unknown_variable(var: V, rc: Option<RangeConstraint<T>>) -> Self {
+    pub fn from_unknown_variable(var: V, rc: RangeConstraint<T>) -> Self {
         AffineSymbolicExpression {
             coefficients: [(var.clone(), T::from(1).into())].into_iter().collect(),
             offset: SymbolicExpression::from(T::from(0)),
-            range_constraints: rc.into_iter().map(|rc| (var.clone(), rc)).collect(),
+            range_constraints: [(var.clone(), rc)].into_iter().collect(),
         }
     }
 
@@ -275,7 +275,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
                 let rc = self.range_constraints.get(var)?;
                 Some(rc.multiple(coeff))
             })
-            .chain(std::iter::once(self.offset.range_constraint()))
+            .chain(std::iter::once(Some(self.offset.range_constraint())))
             .collect::<Option<Vec<_>>>()?;
         let constraint = summands.into_iter().reduce(|c1, c2| c1.combine_sum(&c2))?;
         let constraint = if solve_for_coefficient.is_known_one() {
@@ -408,8 +408,8 @@ mod test {
 
     #[test]
     fn unsolvable_with_vars() {
-        let x = &Ase::from_known_symbol("X", None);
-        let y = &Ase::from_known_symbol("Y", None);
+        let x = &Ase::from_known_symbol("X", Default::default());
+        let y = &Ase::from_known_symbol("Y", Default::default());
         let constr = x + y - from_number(10);
         // We cannot solve it, but we can also not learn anything new from it.
         let result = constr.solve().unwrap();
@@ -427,8 +427,8 @@ mod test {
 
     #[test]
     fn solve_simple_eq() {
-        let y = Ase::from_known_symbol("y", None);
-        let x = Ase::from_unknown_variable("X", None);
+        let y = Ase::from_known_symbol("y", Default::default());
+        let x = Ase::from_unknown_variable("X", Default::default());
         // 2 * X + 7 * y - 10 = 0
         let two = from_number(2);
         let seven = from_number(7);
@@ -446,9 +446,9 @@ mod test {
 
     #[test]
     fn solve_div_by_range_constrained_var() {
-        let y = Ase::from_known_symbol("y", None);
-        let z = Ase::from_known_symbol("z", None);
-        let x = Ase::from_unknown_variable("X", None);
+        let y = Ase::from_known_symbol("y", Default::default());
+        let z = Ase::from_known_symbol("z", Default::default());
+        let x = Ase::from_unknown_variable("X", Default::default());
         // z * X + 7 * y - 10 = 0
         let seven = from_number(7);
         let ten = from_number(10);
@@ -456,8 +456,7 @@ mod test {
         // If we do not range-constrain z, we cannot solve since we don't know if it might be zero.
         let result = constr.solve().unwrap();
         assert!(!result.complete && result.effects.is_empty());
-        let z =
-            Ase::from_known_symbol("z", Some(RangeConstraint::from_range(10.into(), 20.into())));
+        let z = Ase::from_known_symbol("z", RangeConstraint::from_range(10.into(), 20.into()));
         let constr = mul(&z, &x) + mul(&seven, &y) - ten;
         let result = constr.solve().unwrap();
         assert!(result.complete);
@@ -471,12 +470,12 @@ mod test {
 
     #[test]
     fn solve_bit_decomposition() {
-        let rc = Some(RangeConstraint::from_mask(0xffu32));
+        let rc = RangeConstraint::from_mask(0xffu32);
         // First try without range constrain on a
-        let a = Ase::from_unknown_variable("a", None);
+        let a = Ase::from_unknown_variable("a", Default::default());
         let b = Ase::from_unknown_variable("b", rc.clone());
         let c = Ase::from_unknown_variable("c", rc.clone());
-        let z = Ase::from_known_symbol("Z", None);
+        let z = Ase::from_known_symbol("Z", Default::default());
         // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 + Z = 0
         let ten = from_number(10);
         let constr = mul(&a, &from_number(0x100))
@@ -527,11 +526,11 @@ assert (-(10 + Z) & 18446744069414584575) == 0;
 
     #[test]
     fn solve_constraint_transfer() {
-        let rc = Some(RangeConstraint::from_mask(0xffu32));
+        let rc = RangeConstraint::from_mask(0xffu32);
         let a = Ase::from_unknown_variable("a", rc.clone());
         let b = Ase::from_unknown_variable("b", rc.clone());
         let c = Ase::from_unknown_variable("c", rc.clone());
-        let z = Ase::from_unknown_variable("Z", None);
+        let z = Ase::from_unknown_variable("Z", Default::default());
         // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 - Z = 0
         let ten = from_number(10);
         let constr = mul(&a, &from_number(0x100))

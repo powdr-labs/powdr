@@ -56,7 +56,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             let Some(most_constrained_var) = witgen
                 .known_variables()
                 .iter()
-                .filter_map(|var| witgen.range_constraint(var).map(|rc| (var, rc)))
+                .map(|var| (var, witgen.range_constraint(var)))
                 .filter(|(_, rc)| rc.try_to_single_value().is_none())
                 .sorted()
                 .min_by_key(|(_, rc)| rc.range_width())

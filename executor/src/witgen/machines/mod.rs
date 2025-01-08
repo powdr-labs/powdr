@@ -67,7 +67,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         &mut self,
         _identity_id: u64,
         _known_arguments: &BitVec,
-        _range_constraints: &[Option<RangeConstraint<T>>],
+        _range_constraints: &[RangeConstraint<T>],
     ) -> bool {
         false
     }
@@ -187,7 +187,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         &mut self,
         identity_id: u64,
         known_arguments: &BitVec,
-        range_constraints: &[Option<RangeConstraint<T>>],
+        range_constraints: &[RangeConstraint<T>],
     ) -> bool {
         match self {
             KnownMachine::SecondStageMachine(m) => {

@@ -527,7 +527,7 @@ mod tests {
     }
 
     fn symbol(var: &Variable) -> SymbolicExpression<GoldilocksField, Variable> {
-        SymbolicExpression::from_symbol(var.clone(), None)
+        SymbolicExpression::from_symbol(var.clone(), Default::default())
     }
 
     fn number(n: u64) -> SymbolicExpression<GoldilocksField, Variable> {

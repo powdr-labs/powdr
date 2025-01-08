@@ -102,7 +102,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 
     pub fn value(&self, variable: &Variable) -> Value<T> {
         let rc = self.range_constraint(variable);
-        if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
+        if let Some(val) = rc.try_to_single_value() {
             Value::Concrete(val)
         } else if self.is_known(variable) {
             Value::Known
@@ -119,7 +119,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         // The variable needs to be known, we need to have a range constraint but
         // it cannot be a single value.
         assert!(self.known_variables.contains(variable));
-        let rc = self.range_constraint(variable).unwrap();
+        let rc = self.range_constraint(variable);
         assert!(rc.try_to_single_value().is_none());
 
         log::trace!(
@@ -245,7 +245,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .collect::<Vec<_>>();
         let range_constraints = evaluated
             .iter()
-            .map(|e| e.as_ref().and_then(|e| e.range_constraint()))
+            .map(|e| e.as_ref().map(|e| e.range_constraint()).unwrap_or_default())
             .collect_vec();
         let known = evaluated.iter().map(|e| e.is_some()).collect();
 
@@ -318,11 +318,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             match &e {
                 Effect::Assignment(variable, assignment) => {
                     assert!(self.known_variables.insert(variable.clone()));
-                    if let Some(rc) = assignment.range_constraint() {
-                        // If the variable was determined to be a constant, we add this
-                        // as a range constraint, so we can use it in future evaluations.
-                        self.add_range_constraint(variable.clone(), rc);
-                    }
+                    // If the variable was determined to be a constant, we add this
+                    // as a range constraint, so we can use it in future evaluations.
+                    self.add_range_constraint(variable.clone(), assignment.range_constraint());
                     progress = true;
                     self.code.push(e);
                 }
@@ -353,9 +351,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 
     /// Adds a range constraint to the set of derived range constraints. Returns true if progress was made.
     fn add_range_constraint(&mut self, variable: Variable, rc: RangeConstraint<T>) -> bool {
-        let rc = self
-            .range_constraint(&variable)
-            .map_or(rc.clone(), |existing_rc| existing_rc.conjunction(&rc));
+        let old_rc = self.range_constraint(&variable);
+        let rc = old_rc.conjunction(&rc);
+        if rc == old_rc {
+            return false;
+        }
         if !self.known_variables.contains(&variable) {
             if let Some(v) = rc.try_to_single_value() {
                 // Special case: Variable is fixed to a constant by range constraints only.
@@ -364,17 +364,13 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     .push(Effect::Assignment(variable.clone(), v.into()));
             }
         }
-        let old_rc = self
-            .derived_range_constraints
-            .insert(variable.clone(), rc.clone());
-
-        // If the range constraint changed, we made progress.
-        old_rc != Some(rc)
+        self.derived_range_constraints.insert(variable.clone(), rc);
+        true
     }
 
     /// Returns the current best-known range constraint on the given variable
     /// combining global range constraints and newly derived local range constraints.
-    pub fn range_constraint(&self, variable: &Variable) -> Option<RangeConstraint<T>> {
+    pub fn range_constraint(&self, variable: &Variable) -> RangeConstraint<T> {
         variable
             .try_to_witness_poly_id()
             .and_then(|poly_id| {
@@ -390,6 +386,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .chain(self.derived_range_constraints.get(variable))
             .cloned()
             .reduce(|gc, rc| gc.conjunction(&rc))
+            .unwrap_or_default()
     }
 
     fn evaluate(
@@ -537,7 +534,7 @@ pub trait CanProcessCall<T: FieldElement> {
         &self,
         _identity_id: u64,
         _known_inputs: &BitVec,
-        _range_constraints: &[Option<RangeConstraint<T>>],
+        _range_constraints: &[RangeConstraint<T>],
     ) -> bool;
 }
 
@@ -546,7 +543,7 @@ impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'
         &self,
         identity_id: u64,
         known_inputs: &BitVec,
-        range_constraints: &[Option<RangeConstraint<T>>],
+        range_constraints: &[RangeConstraint<T>],
     ) -> bool {
         MutableState::can_process_call_fully(self, identity_id, known_inputs, range_constraints)
     }
