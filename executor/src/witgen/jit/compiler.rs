@@ -124,23 +124,23 @@ pub fn compile_effects<T: FieldElement>(
 #[repr(C)]
 pub struct WitgenFunctionParams<'a, T: 'a> {
     /// A mutable slice to the full trace table. It has to have enough pre-allocated space.
-    pub data: MutSlice<T>,
+    data: MutSlice<T>,
     /// A pointer to the data area of the "known" PaddedBitVec.
-    pub known: *mut u32,
+    known: *mut u32,
     /// The offset of the row considered to be "row zero".
-    pub row_offset: u64,
+    row_offset: u64,
     /// Input and output parameters if this is a machine call.
-    pub params: MutSlice<LookupCell<'a, T>>,
+    params: MutSlice<LookupCell<'a, T>>,
     /// The pointer to the mutable state.
-    pub mutable_state: *const c_void,
+    mutable_state: *const c_void,
     /// A callback to call submachines.
-    pub call_machine: extern "C" fn(*const c_void, u64, MutSlice<LookupCell<'_, T>>) -> bool,
+    call_machine: extern "C" fn(*const c_void, u64, MutSlice<LookupCell<'_, T>>) -> bool,
 }
 
 #[repr(C)]
-pub struct MutSlice<T> {
-    pub data: *mut T,
-    pub len: u64,
+struct MutSlice<T> {
+    data: *mut T,
+    len: u64,
 }
 
 impl<T> Default for MutSlice<T> {
@@ -164,13 +164,6 @@ impl<T> From<&mut [T]> for MutSlice<T> {
 impl<T> From<MutSlice<T>> for &mut [T] {
     fn from(slice: MutSlice<T>) -> Self {
         unsafe { std::slice::from_raw_parts_mut(slice.data, slice.len as usize) }
-    }
-}
-
-impl<T> MutSlice<T> {
-    #[inline]
-    pub fn into_mut_slice<'a>(self) -> &'a mut [T] {
-        unsafe { std::slice::from_raw_parts_mut(self.data, self.len as usize) }
     }
 }
 
