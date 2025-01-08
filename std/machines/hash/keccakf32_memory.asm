@@ -362,7 +362,6 @@ machine Keccakf32Memory(mem: Memory) with
     //     }
     // }
 
-    //let bits_to_value_be: expr[] -> expr = |bits_be| array::fold(bits_be, 0, |acc, e| (acc * 2 + e));
     let bits_to_value_le: expr[] -> expr = |bits_le| {
         let reversed = array::reverse(bits_le);
         array::fold(reversed, 0, |acc, e| acc * 2 + e)
