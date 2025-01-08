@@ -1,5 +1,8 @@
 #![allow(dead_code)]
-use std::collections::{BTreeSet, HashSet};
+use std::{
+    collections::{BTreeSet, HashSet},
+    fmt::{self, Display, Formatter, Write},
+};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{Identity, PolyID, PolynomialType};
@@ -52,7 +55,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         &self,
         can_process: CanProcess,
         witgen: WitgenInference<'a, T, FixedEval>,
-    ) -> Result<Vec<Effect<T, Variable>>, String> {
+    ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T>> {
         self.generate_code_for_branch(can_process, witgen, Default::default())
     }
 
@@ -61,24 +64,31 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         can_process: CanProcess,
         mut witgen: WitgenInference<'a, T, FixedEval>,
         mut complete: HashSet<(u64, i32)>,
-    ) -> Result<Vec<Effect<T, Variable>>, String> {
+    ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T>> {
         self.process_until_no_progress(can_process.clone(), &mut witgen, &mut complete);
 
         if self.check_block_shape {
+            // Check that the "spill" into the previous block is compatible
+            // with the "missing pieces" in the next block.
+            // If this is not the case, this is a hard error
+            // (i.e. cannot be fixed by runtime witgen) and thus we panic inside.
+            // We could do this only at the end of each branch, but it's a bit
+            // more convenient to do it here.
             self.check_block_shape(&witgen);
         }
 
         // Check that we could derive all requested variables.
-        let missing_vars = self
+        let missing_variables = self
             .requested_known_vars
             .iter()
             .filter(|var| !witgen.is_known(var))
             // Sort to get deterministic code.
             .sorted()
+            .cloned()
             .collect_vec();
 
         let incomplete_machine_calls = self.incomplete_machine_calls(&complete);
-        if missing_vars.is_empty() && incomplete_machine_calls.is_empty() {
+        if missing_variables.is_empty() && incomplete_machine_calls.is_empty() {
             return Ok(witgen.code());
         }
 
@@ -96,37 +106,13 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 .identities
                 .iter()
                 .filter(|(id, row_offset)| !complete.contains(&(id.id(), *row_offset)))
+                .map(|(id, row_offset)| (*id, *row_offset))
                 .collect_vec();
-            let column_errors = if missing_vars.is_empty() {
-                "".to_string()
-            } else {
-                format!(
-                    "\nThe following variables are still missing: {}",
-                    // TODO format vars better (column names)
-                    missing_vars.iter().format(", ")
-                )
-            };
-            let identity_errors = if incomplete_identities.is_empty() {
-                "".to_string()
-            } else {
-                format!(
-                    "\nThe following identities have not been fully processed:\n{}",
-                    incomplete_identities
-                        .into_iter()
-                        .map(|(id, row_offset)| format!("    {id} at row {row_offset}"))
-                        .join("\n")
-                )
-            };
-            let code = witgen.code();
-            let code_str = if code.is_empty() {
-                "\nNo code generated so far.".to_string()
-            } else {
-                format!("\nGenerated code so far:\n{}", format_code(&code))
-            };
-            return Err(format!(
-                    "Unable to derive algorithm to compute required values and unable to branch on a variable.\
-                    {column_errors}{identity_errors}{code_str}"
-                ));
+            return Err(Error {
+                code: witgen.code(),
+                missing_variables,
+                incomplete_identities,
+            });
         };
 
         let BranchResult {
@@ -308,5 +294,63 @@ fn is_machine_call<T>(identity: &Identity<T>) -> bool {
         | Identity::PhantomPermutation(_)
         | Identity::PhantomBusInteraction(_) => true,
         Identity::Polynomial(_) | Identity::Connect(_) => false,
+    }
+}
+
+pub struct Error<'a, T: FieldElement> {
+    /// Code generated so far
+    pub code: Vec<Effect<T, Variable>>,
+    /// Required variables that could not be determined
+    pub missing_variables: Vec<Variable>,
+    /// Identities that could not be performed properly.
+    /// Note that we only force submachine calls to be complete.
+    pub incomplete_identities: Vec<(&'a Identity<T>, i32)>,
+}
+
+impl<T: FieldElement> Display for Error<'_, T> {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.to_string_with_variable_formatter(|var| var.to_string())
+        )
+    }
+}
+
+impl<T: FieldElement> Error<'_, T> {
+    pub fn to_string_with_variable_formatter(
+        &self,
+        var_formatter: impl Fn(&Variable) -> String,
+    ) -> String {
+        let mut s = String::new();
+        write!(s, "Unable to derive algorithm to compute required values and unable to branch on a variable.").unwrap();
+        if !self.missing_variables.is_empty() {
+            write!(
+                s,
+                "\nThe following variables or values are still missing: {}",
+                self.missing_variables
+                    .iter()
+                    .map(var_formatter)
+                    .format(", ")
+            )
+            .unwrap();
+        };
+        if !self.incomplete_identities.is_empty() {
+            write!(
+                s,
+                "\nThe following identities have not been fully processed:\n{}",
+                self.incomplete_identities
+                    .iter()
+                    .map(|(id, row_offset)| format!("    {id} at row {row_offset}"))
+                    .join("\n")
+            )
+            .unwrap();
+        };
+        if self.code.is_empty() {
+            write!(s, "\nNo code generated so far.").unwrap();
+        } else {
+            write!(s, "\nGenerated code so far:\n{}", format_code(&self.code)).unwrap();
+        };
+        s
     }
 }

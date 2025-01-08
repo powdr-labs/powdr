@@ -83,6 +83,10 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         )
         .generate_code(can_process, witgen)
         .map_err(|e| {
+            let err_str = e.to_string_with_variable_formatter(|var| match var {
+                Variable::Param(i) => format!("{}", &connection.right.expressions[*i]),
+                _ => var.to_string(),
+            });
             log::debug!("\nCode generation failed for connection:\n  {connection}");
             let known_args_str = known_args
                 .iter()
@@ -90,8 +94,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .filter_map(|(i, b)| b.then_some(connection.right.expressions[i].to_string()))
                 .join("\n  ");
             log::debug!("Known arguments:\n  {known_args_str}");
-            log::debug!("Error:\n  {e}");
-            format!("Code generation failed: {e}\nRun with RUST_LOG=debug to see the code generated so far.")
+            log::debug!("Error:\n  {err_str}");
+            format!("Code generation failed: {err_str}\nRun with RUST_LOG=debug to see the code generated so far.")
         })
     }
 
@@ -224,7 +228,7 @@ params[2] = Add::c[0];"
             .err()
             .unwrap();
         assert!(err_str
-            .contains("Unable to derive algorithm to compute output value \"Unconstrained::c\""));
+            .contains("The following variables or values are still missing: Unconstrained::c"));
     }
 
     #[test]

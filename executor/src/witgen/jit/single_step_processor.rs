@@ -58,6 +58,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             requested_known,
         )
         .generate_code(can_process, witgen)
+        .map_err(|e| e.to_string())
     }
 
     fn cell(&self, id: PolyID, row_offset: i32) -> Variable {
@@ -128,7 +129,9 @@ mod test {
         let mutable_state = MutableState::new(machines.into_iter(), &|_| {
             Err("Query not implemented".to_string())
         });
-        SingleStepProcessor::new(&fixed_data, machine_parts).generate_code(&mutable_state)
+        SingleStepProcessor::new(&fixed_data, machine_parts)
+            .generate_code(&mutable_state)
+            .map_err(|e| e.to_string())
     }
 
     #[test]
