@@ -48,9 +48,10 @@ enum Constr {
     /// Contains:
     /// - An expression for the multiplicity.
     /// - The tuple added to the bus.
+    /// - An expression for the latch, a binary expression which indicates where the multiplicity can be non-zero.
     /// WARNING: As of now, this annotation is largely ignored. When using the bus,
     /// make sure that you also add phantom lookup / permutation constraints.
-    PhantomBusInteraction(expr, expr[])
+    PhantomBusInteraction(expr, expr[], expr)
 }
 
 /// This is the result of the "$" operator. It can be used as the left and

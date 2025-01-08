@@ -13,5 +13,5 @@ machine Main with degree: 8 {
     let LOOKUP_ID = 42;
     let lookup_constraint = [x, y] in [INC_X, INC_Y];
     lookup_send(LOOKUP_ID, lookup_constraint);
-    lookup_receive(LOOKUP_ID, lookup_constraint);
+    lookup_receive(LOOKUP_ID, lookup_constraint, 1);
 }

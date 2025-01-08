@@ -38,8 +38,7 @@ fn replace_intermediate() {
 "#;
     let expectation = r#"namespace N(65536);
     col witness X;
-    col other_intermediate = 0;
-    N::X' = N::X + 1 + N::other_intermediate;
+    N::X' = N::X + 1;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);

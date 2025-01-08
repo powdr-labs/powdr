@@ -5,7 +5,7 @@ use itertools::Itertools;
 use num_traits::{One, Zero};
 use powdr_ast::analyzed::{Analyzed, Identity, PhantomBusInteractionIdentity};
 use powdr_executor_utils::{
-    expression_evaluator::{ExpressionEvaluator, OwnedGlobalValues, OwnedTraceValues},
+    expression_evaluator::{ExpressionEvaluator, OwnedTerminalValues},
     VariablySizedColumn,
 };
 use powdr_number::{DegreeType, FieldElement};
@@ -17,7 +17,7 @@ mod fp2;
 pub struct BusAccumulatorGenerator<'a, T> {
     pil: &'a Analyzed<T>,
     bus_interactions: Vec<&'a PhantomBusInteractionIdentity<T>>,
-    trace_values: OwnedTraceValues<T>,
+    values: OwnedTerminalValues<T>,
     powers_of_alpha: Vec<Fp2<T>>,
     beta: Fp2<T>,
 }
@@ -44,14 +44,6 @@ impl<'a, T: FieldElement> BusAccumulatorGenerator<'a, T> {
             .filter(|(n, _)| fixed_column_names.contains(n))
             .map(|(n, v)| (n.clone(), v.get_by_size(size).unwrap()));
 
-        let trace_values = OwnedTraceValues::new(
-            pil,
-            witness_columns.to_vec(),
-            fixed_columns
-                .map(|(name, values)| (name, values.to_vec()))
-                .collect(),
-        );
-
         let bus_interactions = pil
             .identities
             .iter()
@@ -71,10 +63,19 @@ impl<'a, T: FieldElement> BusAccumulatorGenerator<'a, T> {
         let beta = Fp2::new(challenges[&3], challenges[&4]);
         let powers_of_alpha = powers_of_alpha(alpha, max_tuple_size);
 
+        let values = OwnedTerminalValues::new(
+            pil,
+            witness_columns.to_vec(),
+            fixed_columns
+                .map(|(name, values)| (name, values.to_vec()))
+                .collect(),
+        )
+        .with_challenges(challenges);
+
         Self {
             pil,
             bus_interactions,
-            trace_values,
+            values,
             powers_of_alpha,
             beta,
         }
@@ -100,20 +101,16 @@ impl<'a, T: FieldElement> BusAccumulatorGenerator<'a, T> {
         bus_interaction: &PhantomBusInteractionIdentity<T>,
     ) -> Vec<Vec<T>> {
         let intermediate_definitions = self.pil.intermediate_definitions();
-        let empty_globals = OwnedGlobalValues::default();
 
-        let size = self.trace_values.height();
+        let size = self.values.height();
         let mut folded1 = vec![T::zero(); size];
         let mut folded2 = vec![T::zero(); size];
         let mut acc1 = vec![T::zero(); size];
         let mut acc2 = vec![T::zero(); size];
 
         for i in 0..size {
-            let mut evaluator = ExpressionEvaluator::new(
-                self.trace_values.row(i),
-                &empty_globals,
-                &intermediate_definitions,
-            );
+            let mut evaluator =
+                ExpressionEvaluator::new(self.values.row(i), &intermediate_definitions);
             let current_acc = if i == 0 {
                 Fp2::zero()
             } else {

@@ -26,7 +26,7 @@ struct ProcessResult<'a, T: FieldElement> {
 pub struct DynamicMachine<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     parts: MachineParts<'a, T>,
-    data: FinalizableData<T>,
+    data: FinalizableData<'a, T>,
     publics: BTreeMap<&'a str, T>,
     latch: Option<Expression<T>>,
     name: String,
@@ -138,7 +138,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         parts: MachineParts<'a, T>,
         latch: Option<Expression<T>>,
     ) -> Self {
-        let data = FinalizableData::new(&parts.witnesses);
+        let data = FinalizableData::new(&parts.witnesses, fixed_data);
         let multiplicity_counter = MultiplicityCounter::new(&parts.connections);
 
         Self {
@@ -194,6 +194,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
                 Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
             ]
             .into_iter(),
+            self.fixed_data,
         );
 
         // We're only interested in the first row anyway, so identities without a next reference
@@ -236,6 +237,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.parts.witnesses,
             [first_row].into_iter(),
+            self.fixed_data,
         );
 
         let mut processor = VmProcessor::new(
@@ -268,14 +270,21 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
     fn fix_first_row(&mut self) {
         assert_eq!(self.data.len() as DegreeType, self.degree + 1);
 
+        let mut first_row = self.data.get_in_progress_row(0);
         let last_row = self.data.pop().unwrap();
-        if self.data[0].merge_with(&last_row).is_err() {
-            log::error!("{}", self.data[0].render("First row", false, &self.parts));
+        if first_row.merge_with(&last_row).is_err() {
+            log::error!("{}", first_row.render("First row", false, &self.parts));
             log::error!("{}", last_row.render("Last row", false, &self.parts));
             panic!(
                 "Failed to merge the first and last row of the VM '{}'",
                 self.name()
             );
         }
+        self.data.set(0, first_row);
+    }
+
+    #[cfg(test)]
+    pub fn machine_parts(&self) -> &MachineParts<'a, T> {
+        &self.parts
     }
 }

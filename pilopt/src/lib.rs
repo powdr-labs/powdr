@@ -2,6 +2,7 @@
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::hash::{DefaultHasher, Hash, Hasher};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
@@ -9,7 +10,7 @@ use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
     FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
     PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialReference, PolynomialType,
-    Reference, Symbol, SymbolKind,
+    Reference, StatementIdentifier, Symbol, SymbolKind,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
@@ -22,18 +23,25 @@ use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
-    remove_unreferenced_definitions(&mut pil_file);
-    remove_constant_fixed_columns(&mut pil_file);
-    deduplicate_fixed_columns(&mut pil_file);
-    simplify_identities(&mut pil_file);
-    extract_constant_lookups(&mut pil_file);
-    remove_constant_witness_columns(&mut pil_file);
-    remove_constant_intermediate_columns(&mut pil_file);
-    simplify_identities(&mut pil_file);
-    remove_equal_constrained_witness_columns(&mut pil_file);
-    remove_trivial_identities(&mut pil_file);
-    remove_duplicate_identities(&mut pil_file);
-    remove_unreferenced_definitions(&mut pil_file);
+    let mut pil_hash = hash_pil_state(&pil_file);
+    loop {
+        remove_unreferenced_definitions(&mut pil_file);
+        remove_constant_fixed_columns(&mut pil_file);
+        deduplicate_fixed_columns(&mut pil_file);
+        simplify_identities(&mut pil_file);
+        extract_constant_lookups(&mut pil_file);
+        remove_constant_witness_columns(&mut pil_file);
+        remove_constant_intermediate_columns(&mut pil_file);
+        simplify_identities(&mut pil_file);
+        remove_trivial_identities(&mut pil_file);
+        remove_duplicate_identities(&mut pil_file);
+
+        let new_hash = hash_pil_state(&pil_file);
+        if pil_hash == new_hash {
+            break;
+        }
+        pil_hash = new_hash;
+    }
     let col_count_post = (pil_file.commitment_count(), pil_file.constant_count());
     log::info!(
         "Removed {} witness and {} fixed columns. Total count now: {} witness and {} fixed columns.",
@@ -43,6 +51,43 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         col_count_post.1
     );
     pil_file
+}
+
+fn hash_pil_state<T: Hash>(pil_file: &Analyzed<T>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+
+    for so in &pil_file.source_order {
+        match so {
+            StatementIdentifier::Definition(d) => {
+                d.hash(&mut hasher);
+                if let Some(def) = pil_file.definitions.get(d) {
+                    def.hash(&mut hasher);
+                } else if let Some(def) = pil_file.intermediate_columns.get(d) {
+                    def.hash(&mut hasher);
+                } else {
+                    unreachable!("Missing definition for {:?}", d);
+                }
+            }
+            StatementIdentifier::PublicDeclaration(pd) => {
+                pd.hash(&mut hasher);
+                pil_file.public_declarations[pd].hash(&mut hasher);
+            }
+            StatementIdentifier::ProofItem(pi) => {
+                pi.hash(&mut hasher);
+                pil_file.identities[*pi].hash(&mut hasher);
+            }
+            StatementIdentifier::ProverFunction(pf) => {
+                pf.hash(&mut hasher);
+                pil_file.prover_functions[*pf].hash(&mut hasher);
+            }
+            StatementIdentifier::TraitImplementation(ti) => {
+                ti.hash(&mut hasher);
+                pil_file.trait_impls[*ti].hash(&mut hasher);
+            }
+        }
+    }
+
+    hasher.finish()
 }
 
 /// Removes all definitions that are not referenced by an identity, public declaration
@@ -461,10 +506,17 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         })
         .filter_map(constrained_to_constant)
         .collect::<Vec<((String, PolyID), _)>>();
+
+    let in_publics: HashSet<_> = pil_file
+        .public_declarations
+        .values()
+        .map(|pubd| pubd.polynomial.name.clone())
+        .collect();
     // We cannot remove arrays or array elements, so filter them out.
+    // Also, we filter out columns that are used in public declarations.
     let columns = pil_file
         .committed_polys_in_source_order()
-        .filter(|&(s, _)| (!s.is_array()))
+        .filter(|&(s, _)| !s.is_array() && !in_publics.contains(&s.absolute_name))
         .map(|(s, _)| s.into())
         .collect::<HashSet<PolyID>>();
     constant_polys.retain(|((_, id), _)| columns.contains(id));

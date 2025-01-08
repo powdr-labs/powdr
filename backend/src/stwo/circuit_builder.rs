@@ -1,6 +1,6 @@
 use core::unreachable;
 use powdr_ast::parsed::visitor::AllChildren;
-use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, GlobalValues, TraceValues};
+use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, TerminalAccess};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -100,7 +100,7 @@ struct Data<'a, F> {
     constant_eval: &'a BTreeMap<PolyID, F>,
 }
 
-impl<F: Clone> TraceValues<F> for &Data<'_, F> {
+impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
     fn get(&self, poly_ref: &AlgebraicReference) -> F {
         match poly_ref.poly_id.ptype {
             PolynomialType::Committed => match poly_ref.next {
@@ -114,12 +114,11 @@ impl<F: Clone> TraceValues<F> for &Data<'_, F> {
             PolynomialType::Intermediate => unreachable!(),
         }
     }
-}
 
-impl<F> GlobalValues<F> for &Data<'_, F> {
     fn get_public(&self, _public: &str) -> F {
         unimplemented!("Public references are not supported in stwo yet")
     }
+
     fn get_challenge(&self, _challenge: &Challenge) -> F {
         unimplemented!("challenges are not supported in stwo yet")
     }
@@ -182,12 +181,10 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             constant_shifted_eval: &constant_shifted_eval,
             constant_eval: &constant_eval,
         };
-        let mut evaluator = ExpressionEvaluator::new_with_custom_expr(
-            &data,
-            &data,
-            &intermediate_definitions,
-            |v| E::F::from(M31::from(v.try_into_i32().unwrap())),
-        );
+        let mut evaluator =
+            ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {
+                E::F::from(M31::from(v.try_into_i32().unwrap()))
+            });
 
         for id in &self.analyzed.identities {
             match id {

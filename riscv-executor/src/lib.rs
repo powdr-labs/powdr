@@ -30,6 +30,8 @@ use powdr_ast::{
         BinaryOperation, Expression, FunctionCall, Number, UnaryOperation,
     },
 };
+use tiny_keccak::keccakf;
+
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_number::{write_polys_csv_file, FieldElement, LargeInt};
 pub use profiler::ProfilerOptions;
@@ -132,7 +134,8 @@ instructions! {
     ec_add,
     ec_double,
     commit_public,
-    fail
+    fail,
+    keccakf
 }
 
 /// Enum with columns directly accessed by the executor (as to avoid matching on strings)
@@ -299,7 +302,7 @@ machine_instances! {
     poseidon_gl
     // TODO: these are not implemented yet
     // poseidon2_gl,
-    // keccakf,
+    // keccakf
     // arith,
 }
 
@@ -2587,6 +2590,47 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                     lid,
                     &[idx.into_fe(), limb.into_fe(), 0.into(), 0.into()],
                 );
+                None
+            }
+            Instruction::keccakf => {
+                let reg1 = args[0].u();
+                let reg2 = args[1].u();
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
+                let input_ptr = self.reg_read(0, reg1, lid);
+                let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
+                let output_ptr = self.reg_read(1, reg2, lid);
+
+                set_col!(tmp1_col, input_ptr);
+                set_col!(tmp2_col, output_ptr);
+
+                let mut state = [0u64; 25];
+                // Note: lo/hi positions are swapped (lo at +4 offset, hi at +0) to match
+                // the Keccak machine specification's memory layout
+                for (i, state_i) in state.iter_mut().enumerate() {
+                    let lo = self
+                        .proc
+                        .get_mem(input_ptr.u() + 8 * i as u32 + 4, self.step, lid);
+                    let hi = self
+                        .proc
+                        .get_mem(input_ptr.u() + 8 * i as u32, self.step, lid);
+                    *state_i = ((hi as u64) << 32) | lo as u64;
+                }
+
+                keccakf(&mut state);
+
+                for (i, val) in state.iter().enumerate() {
+                    let lo = *val as u32;
+                    let hi = (val >> 32) as u32;
+
+                    self.proc
+                        .set_mem(output_ptr.u() + i as u32 * 8 + 4, lo, self.step + 1, lid);
+                    self.proc
+                        .set_mem(output_ptr.u() + i as u32 * 8, hi, self.step + 1, lid);
+                }
+
+                //let lid = self.instr_link_id(instr, "main_keccakf", 0);
+                //submachine_op!(keccakf, lid, &[input_ptr.into_fe(), output_ptr.into_fe()],);
+                //main_op!(keccakf32_memory);
                 None
             }
             Instruction::Count => unreachable!(),
