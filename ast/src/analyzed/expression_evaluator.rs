@@ -127,10 +127,9 @@ pub struct ExpressionWalker<'a, T, Expr, TA, C> {
     callback: C,
 }
 
-impl<'a, T, Expr, TA, C> ExpressionWalker<'a, T, Expr, TA, C>
+impl<'a, T, Expr: Clone, TA, C> ExpressionWalker<'a, T, Expr, TA, C>
 where
     TA: TerminalAccess<Expr>,
-    Expr: Clone + Add<Output = Expr> + Sub<Output = Expr> + Mul<Output = Expr>,
     C: ExpressionWalkerCallback<T, Expr>,
 {
     /// Create a new expression evaluator with custom expression converters.

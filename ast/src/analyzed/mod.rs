@@ -1051,17 +1051,55 @@ pub enum Identity<T> {
     PhantomBusInteraction(PhantomBusInteractionIdentity<T>),
 }
 
+struct NextRefCallback();
+impl<T> ExpressionWalkerCallback<T, bool> for &NextRefCallback {
+    fn handle_binary_operation(
+        &self,
+        left: bool,
+        _op: &AlgebraicBinaryOperator,
+        right: bool,
+        _right_expr: &AlgebraicExpression<T>,
+    ) -> bool {
+        left || right
+    }
+
+    fn handle_unary_operation(&self, _op: &AlgebraicUnaryOperator, arg: bool) -> bool {
+        arg
+    }
+
+    fn handle_number(&self, _fe: &T) -> bool {
+        false
+    }
+}
+impl TerminalAccess<bool> for &NextRefCallback {
+    fn get(&self, poly_ref: &AlgebraicReference) -> bool {
+        poly_ref.next
+    }
+    fn get_public(&self, _public: &str) -> bool {
+        false
+    }
+    fn get_challenge(&self, _challenge: &Challenge) -> bool {
+        false
+    }
+}
+
 impl<T> Identity<T> {
-    pub fn contains_next_ref(&self) -> bool {
-        self.children().any(|e| e.contains_next_ref())
+    pub fn contains_next_ref(
+        &self,
+        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+    ) -> bool {
+        let callback = NextRefCallback();
+        let mut expression_walker =
+            ExpressionWalker::new(&callback, intermediate_definitions, &callback);
+        self.children().any(|e| expression_walker.evaluate(e))
     }
 
     pub fn degree(
         &self,
-        intermediate_polynomials: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     ) -> usize {
         self.children()
-            .map(|e| e.degree(intermediate_polynomials))
+            .map(|e| e.degree(intermediate_definitions))
             .max()
             .unwrap_or(0)
     }
