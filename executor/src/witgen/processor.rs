@@ -29,17 +29,17 @@ pub type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
 /// The data mutated by the processor
 pub(crate) struct SolverState<'a, T: FieldElement> {
     /// The block of trace cells
-    pub block: FinalizableData<T>,
+    pub block: FinalizableData<'a, T>,
     /// The values of publics
     pub publics: BTreeMap<&'a str, T>,
 }
 
 impl<'a, T: FieldElement> SolverState<'a, T> {
-    pub fn new(block: FinalizableData<T>, publics: BTreeMap<&'a str, T>) -> Self {
+    pub fn new(block: FinalizableData<'a, T>, publics: BTreeMap<&'a str, T>) -> Self {
         Self { block, publics }
     }
 
-    pub fn without_publics(block: FinalizableData<T>) -> Self {
+    pub fn without_publics(block: FinalizableData<'a, T>) -> Self {
         Self {
             block,
             publics: BTreeMap::new(),
@@ -140,7 +140,7 @@ pub struct Processor<'a, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// The global index of the first row of [Processor::data].
     row_offset: RowIndex,
     /// The rows that are being processed.
-    data: FinalizableData<T>,
+    data: FinalizableData<'a, T>,
     /// The values of the publics
     publics: BTreeMap<&'a str, T>,
     /// The mutable state
@@ -575,12 +575,12 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         self.data.len()
     }
 
-    pub fn finalize_range(&mut self, range: std::ops::Range<usize>) {
+    pub fn finalize_until(&mut self, end: usize) {
         assert!(
             self.copy_constraints.is_empty(),
             "Machines with copy constraints should not be finalized while being processed."
         );
-        self.data.finalize_range(range);
+        self.data.finalize_until(end);
     }
 
     pub fn row(&self, i: usize) -> &Row<T> {
