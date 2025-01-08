@@ -127,32 +127,28 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
 fn build_poly_id_to_definition_name_lookup(
     pil_file: &Analyzed<impl FieldElement>,
 ) -> BTreeMap<PolyID, (&String, Option<usize>)> {
-    let mut poly_id_to_definition_name = BTreeMap::new();
-    #[allow(clippy::iter_over_hash_type)]
-    for (name, (symbol, _)) in &pil_file.definitions {
-        if matches!(symbol.kind, SymbolKind::Poly(_)) {
+    pil_file
+        .definitions
+        .iter()
+        .map(|(name, (symbol, _))| (name, symbol))
+        .chain(
+            pil_file
+                .intermediate_columns
+                .iter()
+                .map(|(name, (symbol, _))| (name, symbol)),
+        )
+        .filter(|(_, symbol)| matches!(symbol.kind, SymbolKind::Poly(_)))
+        .flat_map(|(name, symbol)| {
             symbol
                 .array_elements()
                 .enumerate()
-                .for_each(|(idx, (_, id))| {
+                .map(move |(idx, (_, id))| {
                     let array_pos = symbol.is_array().then_some(idx);
-                    poly_id_to_definition_name.insert(id, (name, array_pos));
-                });
-        }
-    }
-    #[allow(clippy::iter_over_hash_type)]
-    for (name, (symbol, _)) in &pil_file.intermediate_columns {
-        symbol
-            .array_elements()
-            .enumerate()
-            .for_each(|(idx, (_, id))| {
-                let array_pos = symbol.is_array().then_some(idx);
-                poly_id_to_definition_name.insert(id, (name, array_pos));
-            });
-    }
-    poly_id_to_definition_name
+                    (id, (name, array_pos))
+                })
+        })
+        .collect()
 }
-
 /// Collect all names that are referenced in identities and public declarations.
 fn collect_required_symbols<'a, T: FieldElement>(
     pil_file: &'a Analyzed<T>,
@@ -580,33 +576,20 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .filter_map(|(index, identity)| match identity {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => match expression {
                 AlgebraicExpression::Number(n) => {
-                    if *n == 0.into() {
-                        Some(index)
-                    } else {
-                        // Otherwise the constraint is not satisfiable,
-                        // but better to get the error elsewhere.
-                        None
-                    }
+                    // Return None for non-satisfiable constraints - better to get the error elsewhere
+                    (*n == 0.into()).then_some(index)
                 }
                 AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
                     left,
                     op: AlgebraicBinaryOperator::Sub,
                     right,
-                }) => {
-                    if let (
+                }) => match (left.as_ref(), right.as_ref()) {
+                    (
                         AlgebraicExpression::Reference(left),
                         AlgebraicExpression::Reference(right),
-                    ) = (left.as_ref(), right.as_ref())
-                    {
-                        if !left.next && !right.next && left == right {
-                            Some(index)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
-                }
+                    ) => (left == right).then_some(index),
+                    _ => None,
+                },
                 _ => None,
             },
             Identity::Lookup(LookupIdentity { left, right, .. })
@@ -764,15 +747,16 @@ fn equal_constrained<T: FieldElement>(
             (AlgebraicExpression::Reference(l), AlgebraicExpression::Reference(r)) => {
                 let is_valid = |x: &AlgebraicReference, left: bool| {
                     x.is_witness()
-                        && !x.next
                         && if left {
+                            // We don't allow the left-hand side to be an array element
+                            // to preserve array integrity (e.g. `x = y` is valid, but `x[0] = y` is not)
                             poly_id_to_array_elem.get(&x.poly_id).unwrap().1.is_none()
                         } else {
                             true
                         }
                 };
 
-                if is_valid(l, true) && is_valid(r, false) {
+                if is_valid(l, true) && is_valid(r, false) && r.next == l.next {
                     Some(if l.poly_id > r.poly_id {
                         ((l.name.clone(), l.poly_id), (r.name.clone(), r.poly_id))
                     } else {
