@@ -2,7 +2,7 @@ use core::ops::{Add, Mul, Sub};
 use std::collections::BTreeMap;
 use std::ops::Neg;
 
-use powdr_ast::analyzed::{
+use crate::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, AlgebraicReferenceThin, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
     Analyzed, Challenge, PolyID, PolynomialType,
@@ -131,7 +131,6 @@ impl<'a, T, Expr, TA, C> ExpressionWalker<'a, T, Expr, TA, C>
 where
     TA: TerminalAccess<Expr>,
     Expr: Clone + Add<Output = Expr> + Sub<Output = Expr> + Mul<Output = Expr>,
-    T: FieldElement,
     C: ExpressionWalkerCallback<T, Expr>,
 {
     /// Create a new expression evaluator with custom expression converters.
