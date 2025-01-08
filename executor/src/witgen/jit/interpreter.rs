@@ -128,6 +128,9 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                             .collect(),
                     )
                 }
+                Effect::Branch(..) => {
+                    unimplemented!("Branches are not supported in the interpreter yet")
+                }
             };
             actions.push(action);
         })
@@ -141,7 +144,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         effects
             .iter()
             .flat_map(written_vars_in_effect)
-            .for_each(|var| {
+            .for_each(|(var, _mutable)| {
                 match var {
                     Variable::Cell(cell) => {
                         let idx = var_mapper.get_var(var).unwrap();

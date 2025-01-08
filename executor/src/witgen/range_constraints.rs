@@ -62,6 +62,11 @@ impl<T: FieldElement> RangeConstraint<T> {
         Self { mask, min, max }
     }
 
+    /// Returns a constraint that allows any value.
+    pub fn unconstrained() -> Self {
+        Self::from_mask(!T::Integer::zero())
+    }
+
     /// Returns a bit mask. This might be drastically under-fitted in case
     /// the constraint is more resembling an interval.
     /// Semantics: X & mask == X holds for all possible values of X.
@@ -199,6 +204,12 @@ impl<T: FieldElement> RangeConstraint<T> {
         } else {
             None
         }
+    }
+}
+
+impl<T: FieldElement> Default for RangeConstraint<T> {
+    fn default() -> Self {
+        Self::unconstrained()
     }
 }
 

@@ -5,7 +5,6 @@ use std::ops::ControlFlow;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::AlgebraicExpression;
-use powdr_ast::analyzed::AlgebraicReference;
 use powdr_ast::analyzed::Analyzed;
 use powdr_ast::analyzed::{
     Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
@@ -15,8 +14,7 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::visitor::VisitOrder;
 use powdr_backend_utils::referenced_namespaces_algebraic_expression;
 use powdr_executor_utils::expression_evaluator::ExpressionEvaluator;
-use powdr_executor_utils::expression_evaluator::OwnedGlobalValues;
-use powdr_executor_utils::expression_evaluator::TraceValues;
+use powdr_executor_utils::expression_evaluator::TerminalAccess;
 use powdr_number::FieldElement;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
@@ -152,7 +150,6 @@ impl<F: FieldElement> Connection<F> {
 pub struct ConnectionConstraintChecker<'a, F: FieldElement> {
     connections: &'a [Connection<F>],
     machines: BTreeMap<String, Machine<'a, F>>,
-    global_values: OwnedGlobalValues<F>,
 }
 
 impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
@@ -160,17 +157,10 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
     pub fn new(
         connections: &'a [Connection<F>],
         machines: BTreeMap<String, Machine<'a, F>>,
-        challenges: &'a BTreeMap<u64, F>,
     ) -> Self {
-        let global_values = OwnedGlobalValues {
-            // TODO: Support publics.
-            public_values: BTreeMap::new(),
-            challenge_values: challenges.clone(),
-        };
         Self {
             connections,
             machines,
-            global_values,
         }
     }
 }
@@ -276,8 +266,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                     .into_par_iter()
                     .filter_map(|row| {
                         let mut evaluator = ExpressionEvaluator::new(
-                            machine.trace_values.row(row),
-                            &self.global_values,
+                            machine.values.row(row),
                             &machine.intermediate_definitions,
                         );
                         let result = evaluator.evaluate(&selected_expressions.selector);
@@ -300,9 +289,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
             None => {
                 let empty_variables = EmptyVariables {};
                 let empty_definitions = BTreeMap::new();
-                let empty_globals = OwnedGlobalValues::default();
-                let mut evaluator =
-                    ExpressionEvaluator::new(empty_variables, &empty_globals, &empty_definitions);
+                let mut evaluator = ExpressionEvaluator::new(empty_variables, &empty_definitions);
                 let selector_value: F = evaluator.evaluate(&selected_expressions.selector);
 
                 match selector_value.to_degree() {
@@ -339,14 +326,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
 
 struct EmptyVariables;
 
-impl<T> TraceValues<T> for EmptyVariables
-where
-    T: FieldElement,
-{
-    fn get(&self, _reference: &AlgebraicReference) -> T {
-        panic!()
-    }
-}
+impl<T: FieldElement> TerminalAccess<T> for EmptyVariables {}
 
 /// Converts a slice to a multi-set, represented as a map from elements to their count.
 fn to_multi_set<T: Ord>(a: &[T]) -> BTreeMap<&T, usize> {

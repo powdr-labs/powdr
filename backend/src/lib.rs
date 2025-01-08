@@ -73,7 +73,7 @@ pub const DEFAULT_ESTARK_OPTIONS: &str = "stark_gl";
 impl BackendType {
     pub fn factory<T: FieldElement>(&self) -> Box<dyn BackendFactory<T>> {
         match self {
-            BackendType::Mock => Box::new(mock::MockBackendFactory::new()),
+            BackendType::Mock => Box::new(mock::MockBackendFactory),
             #[cfg(feature = "halo2")]
             BackendType::Halo2 => Box::new(halo2::Halo2ProverFactory),
             #[cfg(feature = "halo2")]

@@ -31,7 +31,7 @@ use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 
 use powdr_executor_utils::{
-    expression_evaluator::{ExpressionEvaluator, GlobalValues, TraceValues},
+    expression_evaluator::{ExpressionEvaluator, TerminalAccess},
     WitgenCallback,
 };
 use powdr_number::FieldElement;
@@ -262,7 +262,7 @@ struct Data<'a, T, AB: MultistageAirBuilder> {
     challenges: &'a [BTreeMap<&'a u64, <AB as MultistageAirBuilder>::Challenge>],
 }
 
-impl<T, AB: MultistageAirBuilder> TraceValues<AB::Expr> for &Data<'_, T, AB> {
+impl<T, AB: MultistageAirBuilder> TerminalAccess<AB::Expr> for &Data<'_, T, AB> {
     fn get(&self, reference: &AlgebraicReference) -> AB::Expr {
         match reference.poly_id.ptype {
             PolynomialType::Committed => {
@@ -277,9 +277,7 @@ impl<T, AB: MultistageAirBuilder> TraceValues<AB::Expr> for &Data<'_, T, AB> {
             PolynomialType::Intermediate => unreachable!(),
         }
     }
-}
 
-impl<T, AB: MultistageAirBuilder> GlobalValues<AB::Expr> for &Data<'_, T, AB> {
     fn get_challenge(&self, challenge: &Challenge) -> AB::Expr {
         self.challenges[challenge.stage as usize][&challenge.id]
             .clone()
@@ -351,7 +349,6 @@ where
             fixed: &fixed,
         };
         let mut evaluator = ExpressionEvaluator::new_with_custom_expr(
-            &data,
             &data,
             &self.constraint_system.intermediates,
             |value| AB::Expr::from(value.into_p3_field()),

@@ -302,7 +302,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         &mut self,
         identity_id: u64,
         known_arguments: &BitVec,
-        _range_constraints: &[Option<RangeConstraint<T>>],
+        _range_constraints: &[RangeConstraint<T>],
     ) -> bool {
         if !Self::is_responsible(&self.connections[&identity_id]) {
             return false;

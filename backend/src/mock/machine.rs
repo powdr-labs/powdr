@@ -4,14 +4,14 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReferenceThin, Analyzed};
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
-use powdr_executor_utils::{expression_evaluator::OwnedTraceValues, WitgenCallback};
+use powdr_executor_utils::{expression_evaluator::OwnedTerminalValues, WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
 
 /// A collection of columns with self-contained constraints.
 pub struct Machine<'a, F> {
     pub machine_name: String,
     pub size: usize,
-    pub trace_values: OwnedTraceValues<F>,
+    pub values: OwnedTerminalValues<F>,
     pub pil: &'a Analyzed<F>,
     pub intermediate_definitions: BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<F>>,
 }
@@ -55,12 +55,14 @@ impl<'a, F: FieldElement> Machine<'a, F> {
 
         let intermediate_definitions = pil.intermediate_definitions();
 
-        let trace_values = OwnedTraceValues::new(pil, witness, fixed);
+        // TODO: Supports publics.
+        let values =
+            OwnedTerminalValues::new(pil, witness, fixed).with_challenges(challenges.clone());
 
         Some(Self {
             machine_name,
             size,
-            trace_values,
+            values,
             pil,
             intermediate_definitions,
         })
