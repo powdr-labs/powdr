@@ -61,6 +61,7 @@ machine Keccakf32Memory(mem: Memory) with
     col witness output_addr;
 
     // Load memory
+    // Specifically, this keccakf32 machine accepts little endian inputs in memory.
     link if first_step_used ~> preimage[0] = mem.mload(input_addr, time_step);
     link if first_step_used ~> preimage[1] = mem.mload(input_addr + 4, time_step);
     link if first_step_used ~> preimage[2] = mem.mload(input_addr + 8, time_step);
@@ -115,7 +116,7 @@ machine Keccakf32Memory(mem: Memory) with
     // Expects input of 25 64-bit numbers decomposed to 25 chunks of 2 32-bit little endian limbs. 
     // The output is a_prime_prime_prime_0_0_limbs for the first 2 and a_prime_prime for the rest.
 
-    // Write memory
+    // Write memory. This machine produces little endian outputs in memory.
     link if final_step_used ~> mem.mstore(output_addr, time_step + 1, a_prime_prime_prime_0_0_limbs[0]);
     link if final_step_used ~> mem.mstore(output_addr + 4, time_step + 1, a_prime_prime_prime_0_0_limbs[1]);
     link if final_step_used ~> mem.mstore(output_addr + 8, time_step + 1, a_prime_prime[2]);

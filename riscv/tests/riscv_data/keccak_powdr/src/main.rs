@@ -2,18 +2,16 @@
 #![no_std]
 
 extern crate powdr_riscv_runtime;
-use powdr_riscv_runtime::hash::Keccak as KeccakPwdr;
-use tiny_keccak::{Hasher, Keccak};
+use powdr_riscv_runtime::hash::Keccak;
 
 #[no_mangle]
 pub fn main() {
     let inputs = [b"Solidity", b"Powdrrrr"];
-    let mut hasher = KeccakPwdr::v256();
+    let mut hasher = Keccak::v256();
     let mut output = [0u8; 32];
     for input in inputs.into_iter().cycle().take(100) {
         hasher.update(input);
     }
-    hasher.update(&[]);
     hasher.finalize(&mut output);
 
     // The expected output was generated using tiny-keccak's Keccak256 implementation
