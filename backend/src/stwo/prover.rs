@@ -138,7 +138,7 @@ where
                     CanonicCoset::new(size.ilog2()).circle_domain(),
                 )
             })
-            .collect::<BTreeMap<_, _>>();
+            .collect();
 
         let preprocessed: BTreeMap<String, TableProvingKeyCollection<B>> = self
             .split
@@ -237,7 +237,7 @@ where
                     CanonicCoset::new(size.ilog2()).circle_domain(),
                 )
             })
-            .collect::<BTreeMap<_, _>>();
+            .collect();
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
         //Each column size in machines needs its own component, the components from different machines are stored in this vector
