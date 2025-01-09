@@ -1,4 +1,5 @@
 use core::ops::{Add, Mul, Sub};
+use itertools::Itertools;
 use std::collections::BTreeMap;
 
 use powdr_ast::analyzed::{
@@ -35,7 +36,7 @@ pub struct RowValues<'a, F> {
     row: usize,
 }
 
-impl<F> OwnedTerminalValues<F> {
+impl<F: std::fmt::Debug> OwnedTerminalValues<F> {
     pub fn new(
         pil: &Analyzed<F>,
         witness_columns: Vec<(String, Vec<F>)>,
@@ -72,12 +73,27 @@ impl<F> OwnedTerminalValues<F> {
         self
     }
 
+    /// The height of the trace. Panics if columns have different lengths.
     pub fn height(&self) -> usize {
-        self.trace.values().next().map(|v| v.len()).unwrap()
+        self.trace
+            .values()
+            .map(|v| v.len())
+            .unique()
+            .exactly_one()
+            .unwrap()
+    }
+
+    /// The length of a given column.
+    pub fn column_length(&self, poly_id: &PolyID) -> usize {
+        self.trace.get(poly_id).unwrap().len()
     }
 
     pub fn row(&self, row: usize) -> RowValues<F> {
         RowValues { values: self, row }
+    }
+
+    pub fn destroy(self) -> BTreeMap<PolyID, Vec<F>> {
+        self.trace
     }
 }
 
