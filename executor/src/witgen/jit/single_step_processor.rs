@@ -51,7 +51,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
 
         let missing_identities = self.machine_parts.identities.len() - complete.len();
         let code = if unknown_witnesses.is_empty() && missing_identities == 0 {
-            witgen.code()
+            witgen.finish()
         } else {
             let Some(most_constrained_var) = witgen
                 .known_variables()
