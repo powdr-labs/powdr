@@ -228,6 +228,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                 }
             }
         }
+        assert!(eval_stack.is_empty());
     }
 }
 
@@ -389,7 +390,9 @@ impl<T: FieldElement> RPNExpression<T, usize> {
         RPNExpression { elems }
     }
 
-    /// Evaluate the expression using the provided variables
+    /// Evaluate the expression using the provided variables.
+    /// The stack is used to store intermediate results, it's taken as
+    /// a parameter to avoid allocating on every call to evaluate.
     fn evaluate(&self, stack: &mut Vec<T>, vars: &[T]) -> T {
         self.elems.iter().for_each(|elem| match elem {
             RPNExpressionElem::Concrete(v) => stack.push(*v),
