@@ -46,7 +46,7 @@ impl<T: FieldElement> WitgenFunction<T> {
     ) {
         match self {
             WitgenFunction::Compiled { function, .. } => {
-                let row_offset = data.row_offset().try_into().unwrap();
+                let row_offset = data.row_offset.try_into().unwrap();
                 let (data, known) = data.as_mut_slices();
                 let params = WitgenFunctionParams {
                     data: data.into(),
@@ -86,13 +86,11 @@ extern "C" fn call_machine<T: FieldElement, Q: QueryCallback<T>>(
 
 /// Generate an interpreter for the given effects.
 pub fn interpret_effects<T: FieldElement>(
-    first_column_id: u64,
-    column_count: usize,
     known_inputs: &[Variable],
     effects: &[Effect<T, Variable>],
 ) -> Result<WitgenFunction<T>, String> {
     Ok(WitgenFunction::Interpreted(
-        interpreter::EffectsInterpreter::new(first_column_id, column_count, known_inputs, effects),
+        interpreter::EffectsInterpreter::new(known_inputs, effects),
     ))
 }
 

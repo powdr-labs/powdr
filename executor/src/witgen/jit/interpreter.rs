@@ -14,8 +14,6 @@ use std::collections::{BTreeSet, HashMap};
 
 // Witgen effects compiled into interpreter instructions.
 pub struct EffectsInterpreter<T: FieldElement> {
-    first_column_id: u64,
-    column_count: usize,
     var_count: usize,
     actions: Vec<InterpreterAction<T>>,
 }
@@ -28,7 +26,6 @@ enum InterpreterAction<T: FieldElement> {
     AssignExpression(usize, RPNExpression<T, usize>),
     WriteCell(usize, Cell),
     WriteParam(usize, usize),
-    WriteKnown(Cell),
     MachineCall(u64, Vec<MachineCallArgumentIdx>),
     Assertion(RPNExpression<T, usize>, RPNExpression<T, usize>, bool),
 }
@@ -42,12 +39,7 @@ pub enum MachineCallArgumentIdx {
 }
 
 impl<T: FieldElement> EffectsInterpreter<T> {
-    pub fn new(
-        first_column_id: u64,
-        column_count: usize,
-        known_inputs: &[Variable],
-        effects: &[Effect<T, Variable>],
-    ) -> Self {
+    pub fn new(known_inputs: &[Variable], effects: &[Effect<T, Variable>]) -> Self {
         let mut actions = vec![];
         let mut var_mapper = VariableMapper::new();
 
@@ -56,8 +48,6 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         Self::write_data(&mut var_mapper, &mut actions, effects);
 
         let ret = Self {
-            first_column_id,
-            column_count,
             var_count: var_mapper.var_count(),
             actions,
         };
@@ -149,7 +139,6 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     Variable::Cell(cell) => {
                         let idx = var_mapper.get_var(var).unwrap();
                         actions.push(InterpreterAction::WriteCell(idx, cell.clone()));
-                        actions.push(InterpreterAction::WriteKnown(cell.clone()));
                     }
                     Variable::Param(i) => {
                         let idx = var_mapper.get_var(var).unwrap();
@@ -185,11 +174,8 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         &self,
         mutable_state: &MutableState<'_, T, Q>,
         params: &mut [LookupCell<T>],
-        mut data: CompactDataRef<'_, T>,
+        data: CompactDataRef<'_, T>,
     ) {
-        let row_offset = data.row_offset().try_into().unwrap();
-        let (data, known) = data.as_mut_slices();
-
         let mut vars = vec![T::zero(); self.var_count];
 
         let mut eval_stack = vec![];
@@ -200,40 +186,19 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     vars[*idx] = val;
                 }
                 InterpreterAction::ReadCell(idx, c) => {
-                    vars[*idx] = data[index(
-                        self.first_column_id,
-                        self.column_count,
-                        row_offset,
-                        c.row_offset,
-                        c.id,
-                    )];
+                    let cell_offset: usize = c.row_offset.try_into().unwrap();
+                    vars[*idx] = data.data.get(data.row_offset + cell_offset, c.id).0;
                 }
                 InterpreterAction::ReadParam(idx, i) => {
                     vars[*idx] = get_param(params, *i);
                 }
                 InterpreterAction::WriteCell(idx, c) => {
-                    set(
-                        self.first_column_id,
-                        self.column_count,
-                        data,
-                        row_offset,
-                        c.row_offset,
-                        c.id,
-                        vars[*idx],
-                    );
+                    let cell_offset: usize = c.row_offset.try_into().unwrap();
+                    data.data
+                        .set(data.row_offset + cell_offset, c.id, vars[*idx]);
                 }
                 InterpreterAction::WriteParam(idx, i) => {
                     set_param(params, *i, vars[*idx]);
-                }
-                InterpreterAction::WriteKnown(c) => {
-                    set_known(
-                        self.first_column_id,
-                        self.column_count,
-                        known,
-                        row_offset,
-                        c.row_offset,
-                        c.id,
-                    );
                 }
                 InterpreterAction::MachineCall(id, arguments) => {
                     // we know it's safe to escape the references here, but the compiler doesn't, so we use unsafe
@@ -463,72 +428,6 @@ impl<T: FieldElement> RPNExpression<T, usize> {
 }
 
 // the following functions come from the interface.rs file also included in the compiled jit code
-
-#[inline]
-fn index(
-    first_column_id: u64,
-    column_count: usize,
-    global_offset: u64,
-    local_offset: i32,
-    column: u64,
-) -> usize {
-    let column = column - first_column_id;
-    let row = (global_offset as i64 + local_offset as i64) as u64;
-    (row * column_count as u64 + column) as usize
-}
-
-#[inline]
-fn index_known(
-    first_column_id: u64,
-    column_count: usize,
-    global_offset: u64,
-    local_offset: i32,
-    column: u64,
-) -> (u64, u64) {
-    let column = column - first_column_id;
-    let row = (global_offset as i64 + local_offset as i64) as u64;
-    let words_per_row = (column_count as u64 + 31) / 32;
-    (row * words_per_row + column / 32, column % 32)
-}
-
-#[inline]
-fn set<T: FieldElement>(
-    first_column_id: u64,
-    column_count: usize,
-    data: &mut [T],
-    global_offset: u64,
-    local_offset: i32,
-    column: u64,
-    value: T,
-) {
-    let i = index(
-        first_column_id,
-        column_count,
-        global_offset,
-        local_offset,
-        column,
-    );
-    data[i] = value;
-}
-
-#[inline]
-fn set_known(
-    first_column_id: u64,
-    column_count: usize,
-    known: &mut [u32],
-    global_offset: u64,
-    local_offset: i32,
-    column: u64,
-) {
-    let (known_idx, known_bit) = index_known(
-        first_column_id,
-        column_count,
-        global_offset,
-        local_offset,
-        column,
-    );
-    known[known_idx as usize] |= 1 << (known_bit);
-}
 
 #[inline]
 fn get_param<T: FieldElement>(params: &[LookupCell<T>], i: usize) -> T {

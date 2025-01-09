@@ -138,13 +138,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
                     )
                     .unwrap()
                 } else {
-                    interpret_effects(
-                        self.column_layout.first_column_id,
-                        self.column_layout.column_count,
-                        &known_inputs,
-                        &code,
-                    )
-                    .unwrap()
+                    interpret_effects(&known_inputs, &code).unwrap()
                 }
             })
     }
