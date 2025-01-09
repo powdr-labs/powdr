@@ -1,6 +1,7 @@
 use std::{collections::HashMap, hash::Hash};
 
 use bit_vec::BitVec;
+use itertools::Itertools;
 use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
@@ -30,6 +31,7 @@ pub struct FunctionCache<'a, T: FieldElement> {
     column_layout: ColumnLayout,
     block_size: usize,
     machine_name: String,
+    parts: MachineParts<'a, T>,
 }
 
 impl<'a, T: FieldElement> FunctionCache<'a, T> {
@@ -50,6 +52,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             witgen_functions: HashMap::new(),
             block_size,
             machine_name,
+            parts,
         }
     }
 
@@ -94,19 +97,23 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         cache_key: &CacheKey,
     ) -> Option<WitgenFunction<T>> {
         log::debug!(
-            "Compiling JIT function for {}\n   {:?}",
+            "Compiling JIT function for \n  Machine: {}\n  Identity: {}\n   Known args: {:?}",
             self.machine_name,
-            cache_key
+            self.parts.connections[&cache_key.identity_id],
+            cache_key.known_args
         );
 
         self.processor
             .generate_code(mutable_state, cache_key.identity_id, &cache_key.known_args)
             .map_err(|e| {
-                // log::error!("Error generating JIT code: {:?}", e);
+                // These errors can be pretty verbose and are quite common currently.
+                let e = e.to_string().lines().take(5).join("\n");
+                log::debug!("=> Error generating JIT code: {e}\n...");
                 e
             })
             .ok()
             .map(|code| {
+                log::debug!("=> Success!");
                 let is_in_bounds = code
                     .iter()
                     .flat_map(|effect| effect.referenced_variables())
