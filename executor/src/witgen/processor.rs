@@ -662,15 +662,15 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             .process_identity(identity, &row_pair)
             .is_err()
         {
-            log::debug!(
+            log::trace!(
                 "Previous {}",
                 self.data[row_index - 1].render_values(true, self.parts)
             );
-            log::debug!(
+            log::trace!(
                 "Proposed {:?}",
                 proposed_row.render_values(true, self.parts)
             );
-            log::debug!("Failed on identity: {}", identity);
+            log::trace!("Failed on identity: {}", identity);
 
             return false;
         }

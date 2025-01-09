@@ -87,7 +87,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                     .join("\n  ");
                 log::debug!("Known arguments:\n  {known_args_str}");
                 log::debug!("Error:\n  {e}");
-                log::debug!(
+                log::trace!(
                     "The following code was generated so far:\n{}",
                     format_code(witgen.code())
                 );
