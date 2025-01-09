@@ -108,11 +108,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             .sorted()
             .min_by_key(|(_, rc)| rc.range_width())
             .map(|(var, _)| var.clone());
-        if branch_depth > self.max_branch_depth || most_constrained_var.is_none() {
+        if branch_depth >= self.max_branch_depth || most_constrained_var.is_none() {
             let reason = if most_constrained_var.is_none() {
-                ErrorReason::MissingVariables
+                ErrorReason::NoBranchVariable
             } else {
-                ErrorReason::MaxBranchDepthReached
+                ErrorReason::MaxBranchDepthReached(self.max_branch_depth)
             };
             let incomplete_identities = self
                 .identities
@@ -331,10 +331,9 @@ pub struct Error<'a, T: FieldElement> {
     pub incomplete_identities: Vec<(&'a Identity<T>, i32)>,
 }
 
-enum ErrorReason {
-    MissingVariables,
-    IncompleteIdentities,
-    MaxBranchDepthReached,
+pub enum ErrorReason {
+    NoBranchVariable,
+    MaxBranchDepthReached(usize),
 }
 
 impl<T: FieldElement> Display for Error<'_, T> {
@@ -353,7 +352,17 @@ impl<T: FieldElement> Error<'_, T> {
         var_formatter: impl Fn(&Variable) -> String,
     ) -> String {
         let mut s = String::new();
-        write!(s, "Unable to derive algorithm to compute required values and unable to branch on a variable.").unwrap();
+        let reason_str = match &self.reason {
+            ErrorReason::NoBranchVariable => "no variable available to branch on".to_string(),
+            ErrorReason::MaxBranchDepthReached(depth) => {
+                format!("maximim branch depth of {depth} reached")
+            }
+        };
+        write!(
+            s,
+            "Unable to derive algorithm to compute required values and {reason_str}."
+        )
+        .unwrap();
         if !self.missing_variables.is_empty() {
             write!(
                 s,

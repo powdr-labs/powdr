@@ -1,6 +1,5 @@
 use mktemp::Temp;
 use std::{
-    env,
     fs::{self},
     process::Command,
     str::from_utf8,
