@@ -260,10 +260,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         &mut self,
         identity_id: u64,
         known_arguments: &BitVec,
-        _range_constraints: &[RangeConstraint<T>],
-    ) -> bool {
+        range_constraints: &[RangeConstraint<T>],
+    ) -> Option<Vec<RangeConstraint<T>>> {
         if !Self::is_responsible(&self.connections[&identity_id]) {
-            return false;
+            return None;
         }
         let index = self
             .indices
@@ -274,8 +274,58 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .or_insert_with_key(|application| {
                 create_index(self.fixed_data, application, &self.connections)
             });
-        // Check that if there is a match, it is unique.
-        index.values().all(|value| value.0.is_some())
+        let input_range_constraints = known_arguments
+            .iter()
+            .zip_eq(range_constraints)
+            .filter_map(|(is_known, range_constraint)| is_known.then_some(range_constraint.clone()))
+            .collect_vec();
+
+        // Now only consider the index entries that match the input range constraints,
+        // see that the result is unique and determine new output range constraints.
+        let mut values = index
+            .iter()
+            .filter(|(key, _)| matches_range_constraint(key, &input_range_constraints))
+            .map(|(_, value)| {
+                let (_, values) = value.get()?;
+                Some(values)
+            });
+        let Some(first) = values.next() else {
+            // If the iterator is empty, we have no match, but it can always be answered,
+            // so this is successful.
+            // Unfortunately, we cannot express the "empty" range constraint.
+            return Some(vec![Default::default(); range_constraints.len()]);
+        };
+        // If an item (including the first) is None, it means the match was not unique.
+        let mut new_output_range_constraints = first?
+            .iter()
+            // min, max, mask
+            .map(|v| (*v, *v, v.to_integer()))
+            .collect_vec();
+        for v in values {
+            // If any value is None, the match was not unique.
+            let v = v?;
+            for ((min, max, mask), v) in new_output_range_constraints.iter_mut().zip_eq(v) {
+                *min = (*min).min(*v);
+                *max = (*max).max(*v);
+                *mask |= v.to_integer();
+            }
+        }
+        let mut new_output_range_constraints = new_output_range_constraints.into_iter();
+        Some(
+            known_arguments
+                .iter()
+                .map(|is_known| {
+                    if is_known {
+                        // We could also copy the input range constraint.
+                        RangeConstraint::default()
+                    } else {
+                        let (min, max, mask) = new_output_range_constraints.next().unwrap();
+                        RangeConstraint::from_range(min, max)
+                            .conjunction(&RangeConstraint::from_mask(mask))
+                    }
+                })
+                .collect(),
+        )
     }
 
     fn process_plookup<Q: crate::witgen::QueryCallback<T>>(
@@ -397,4 +447,15 @@ impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
             PolynomialType::Intermediate => unimplemented!(),
         }
     }
+}
+
+/// Checks that an array of values satisfies a set of range constraints.
+fn matches_range_constraint<T: FieldElement>(
+    values: &[T],
+    range_constraints: &[RangeConstraint<T>],
+) -> bool {
+    values
+        .iter()
+        .zip_eq(range_constraints)
+        .all(|(value, range_constraint)| range_constraint.allows_value(*value))
 }

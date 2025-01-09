@@ -242,43 +242,49 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
         let evaluated = arguments
             .iter()
-            .map(|a| {
-                self.evaluate(a, row_offset)
-                    .and_then(|a| a.try_to_known().cloned())
-            })
+            .map(|a| self.evaluate(a, row_offset))
             .collect::<Vec<_>>();
         let range_constraints = evaluated
             .iter()
             .map(|e| e.as_ref().map(|e| e.range_constraint()).unwrap_or_default())
             .collect_vec();
-        let known = evaluated.iter().map(|e| e.is_some()).collect();
+        let known = evaluated
+            .iter()
+            .map(|e| e.as_ref().map(|e| e.try_to_known()).is_some())
+            .collect();
 
-        if !can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints) {
+        let Some(new_range_constraints) =
+            can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints)
+        else {
             log::trace!(
                 "Sub-machine cannot process call fully (will retry later): {lookup_id}, arguments: {}",
                 arguments.iter().zip(known).map(|(arg, known)| {
                     format!("{arg} [{}]", if known { "known" } else { "unknown" })
                 }).format(", "));
             return ProcessResult::empty();
-        }
+        };
+        let mut effects = vec![];
         let vars = arguments
             .iter()
+            .zip_eq(new_range_constraints)
             .enumerate()
-            .map(|(index, arg)| {
+            .map(|(index, (arg, new_rc))| {
                 let var = Variable::MachineCallParam(MachineCallVariable {
                     identity_id: lookup_id,
                     row_offset,
                     index,
                 });
                 self.assign_variable(arg, row_offset, var.clone());
+                effects.push(Effect::RangeConstraint(var.clone(), new_rc.clone()));
                 if known[index] {
                     assert!(self.is_known(&var));
                 }
                 var
             })
             .collect_vec();
+        effects.push(Effect::MachineCall(lookup_id, known, vars.clone()));
         ProcessResult {
-            effects: vec![Effect::MachineCall(lookup_id, known, vars)],
+            effects,
             complete: true,
         }
     }
@@ -523,16 +529,17 @@ pub trait FixedEvaluator<T: FieldElement>: Clone {
 }
 
 pub trait CanProcessCall<T: FieldElement> {
-    /// Returns true if a call to the machine that handles the given identity
+    /// Returns Some(..) if a call to the machine that handles the given identity
     /// can always be processed with the given known inputs and range constraints
     /// on the parameters.
+    /// The value in the Option is a vector of new range constraints.
     /// @see Machine::can_process_call
     fn can_process_call_fully(
         &self,
         _identity_id: u64,
         _known_inputs: &BitVec,
         _range_constraints: &[RangeConstraint<T>],
-    ) -> bool;
+    ) -> Option<Vec<RangeConstraint<T>>>;
 }
 
 impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'_, T, Q> {
@@ -541,7 +548,7 @@ impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'
         identity_id: u64,
         known_inputs: &BitVec,
         range_constraints: &[RangeConstraint<T>],
-    ) -> bool {
+    ) -> Option<Vec<RangeConstraint<T>>> {
         MutableState::can_process_call_fully(self, identity_id, known_inputs, range_constraints)
     }
 }
