@@ -268,8 +268,13 @@ fn is_machine_call<T>(identity: &Identity<T>) -> bool {
         Identity::Lookup(_)
         | Identity::Permutation(_)
         | Identity::PhantomLookup(_)
-        | Identity::PhantomPermutation(_)
-        | Identity::PhantomBusInteraction(_) => true,
+        | Identity::PhantomPermutation(_) => true,
+        // TODO(bus_interaction): Bus interactions are currently ignored,
+        // so processing them does not succeed. We currently assume that for
+        // every bus interaction, there is an equivalent (phantom) lookup or
+        // permutation constraint.
+        // Returning false here to give JITing a chance to succeed.
+        Identity::PhantomBusInteraction(_) => false,
         Identity::Polynomial(_) | Identity::Connect(_) => false,
     }
 }
