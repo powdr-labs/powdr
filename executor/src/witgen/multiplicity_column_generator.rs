@@ -30,7 +30,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
     /// reference in the phantom lookups.
     pub fn generate(
         &self,
-        columns: HashMap<String, Vec<T>>,
+        witness_columns: HashMap<String, Vec<T>>,
         publics: BTreeMap<String, Option<T>>,
     ) -> HashMap<String, Vec<T>> {
         record_start(MULTIPLICITY_WITGEN_NAME);
@@ -53,7 +53,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             })
             .collect::<Vec<_>>();
 
-        let all_columns = columns
+        let all_columns = witness_columns
             .into_iter()
             .map(|(name, col)| {
                 let poly_id = self.fixed.try_column_by_name(&name).unwrap();
@@ -139,7 +139,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
         }
 
         let columns = terminal_values
-            .destroy()
+            .into_trace()
             .into_iter()
             .chain(
                 multiplicity_columns

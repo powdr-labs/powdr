@@ -92,7 +92,7 @@ impl<F: std::fmt::Debug> OwnedTerminalValues<F> {
         RowValues { values: self, row }
     }
 
-    pub fn destroy(self) -> BTreeMap<PolyID, Vec<F>> {
+    pub fn into_trace(self) -> BTreeMap<PolyID, Vec<F>> {
         self.trace
     }
 }

@@ -384,7 +384,6 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 .iter()
                 .filter(|(_, (symbol, _))| matches!(symbol.kind, SymbolKind::Poly(_)))
                 .flat_map(|(_, (symbol, _))| symbol.array_elements())
-                // .map(|(name, (symbol, _))| (name.clone(), symbol.into()))
                 .collect(),
             challenges,
             global_range_constraints,
