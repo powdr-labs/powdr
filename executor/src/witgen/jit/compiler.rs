@@ -76,8 +76,10 @@ pub fn compile_effects<T: FieldElement>(
     let code = format!("{utils}\n//-------------------------------\n{witgen_code}");
 
     record_start("JIT-compilation");
+    let start = std::time::Instant::now();
     log::trace!("Calling cargo...");
     let r = powdr_jit_compiler::call_cargo(&code);
+    log::trace!("Done compiling, took {:.2}s", start.elapsed().as_secs_f32());
     record_end("JIT-compilation");
     let lib_path = r.map_err(|e| format!("Failed to compile generated code: {e}"))?;
 
