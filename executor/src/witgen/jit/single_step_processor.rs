@@ -285,9 +285,10 @@ mod test {
             format_code(&code),
             "\
 VM::pc[1] = (VM::pc[0] + 1);
-machine_call(1, [Known(VM::pc[1]), Unknown(ret(1, 1, 1)), Unknown(ret(1, 1, 2))]);
-VM::instr_add[1] = ret(1, 1, 1);
-VM::instr_mul[1] = ret(1, 1, 2);
+call_var(1, 1, 0) = VM::pc[1];
+machine_call(1, [Known(call_var(1, 1, 0)), Unknown(call_var(1, 1, 1)), Unknown(call_var(1, 1, 2))]);
+VM::instr_add[1] = call_var(1, 1, 1);
+VM::instr_mul[1] = call_var(1, 1, 2);
 VM::B[1] = VM::B[0];
 if (VM::instr_add[0] == 1) {
     if (VM::instr_mul[0] == 1) {
