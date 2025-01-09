@@ -33,6 +33,26 @@ pub struct Assertion<T: FieldElement, V> {
     pub expected_equal: bool,
 }
 
+impl<T: FieldElement> Effect<T, Variable> {
+    /// Returns an iterator over all variables written to in the effect.
+    /// The flag indicates if the variable is the return value of a machine call and thus needs
+    /// to be declared mutable.
+    pub fn written_vars(&self) -> Box<dyn Iterator<Item = (&Variable, bool)> + '_> {
+        match self {
+            Effect::Assignment(var, _) => Box::new(std::iter::once((var, false))),
+            Effect::RangeConstraint(..) => unreachable!(),
+            Effect::Assertion(..) => Box::new(std::iter::empty()),
+            Effect::MachineCall(_, arguments) => Box::new(arguments.iter().flat_map(|e| match e {
+                MachineCallArgument::Unknown(v) => Some((v, true)),
+                MachineCallArgument::Known(_) => None,
+            })),
+            Effect::Branch(_, first, second) => {
+                Box::new(first.iter().chain(second).flat_map(|e| e.written_vars()))
+            }
+        }
+    }
+}
+
 impl<T: FieldElement, V> Assertion<T, V> {
     pub fn assert_is_zero(condition: SymbolicExpression<T, V>) -> Effect<T, V> {
         Self::assert_eq(condition, SymbolicExpression::from(T::from(0)))

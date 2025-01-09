@@ -1,6 +1,5 @@
 // TODO: the unused is only here because the interpreter is not integrated in the final code yet
 #![allow(unused)]
-use super::compiler::written_vars_in_effect;
 use super::effect::{Assertion, Effect};
 
 use super::symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator};
@@ -135,7 +134,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
     ) {
         effects
             .iter()
-            .flat_map(written_vars_in_effect)
+            .flat_map(Effect::written_vars)
             .for_each(|(var, _mutable)| {
                 match var {
                     Variable::Cell(cell) => {

@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, ffi::c_void, iter, mem, sync::Arc};
+use std::{cmp::Ordering, ffi::c_void, mem, sync::Arc};
 
 use itertools::Itertools;
 use libloading::Library;
@@ -160,7 +160,7 @@ fn witgen_code<T: FieldElement>(
     let main_code = format_effects(effects);
     let vars_known = effects
         .iter()
-        .flat_map(written_vars_in_effect)
+        .flat_map(Effect::written_vars)
         .map(|(var, _)| var)
         .collect_vec();
     let store_values = vars_known
@@ -222,29 +222,6 @@ extern "C" fn witgen(
 }}
 "#
     )
-}
-
-/// Returns an iterator over all variables written to in the effect.
-/// The flag indicates if the variable is the return value of a machine call and thus needs
-/// to be declared mutable.
-pub fn written_vars_in_effect<T: FieldElement>(
-    effect: &Effect<T, Variable>,
-) -> Box<dyn Iterator<Item = (&Variable, bool)> + '_> {
-    match effect {
-        Effect::Assignment(var, _) => Box::new(iter::once((var, false))),
-        Effect::RangeConstraint(..) => unreachable!(),
-        Effect::Assertion(..) => Box::new(iter::empty()),
-        Effect::MachineCall(_, arguments) => Box::new(arguments.iter().flat_map(|e| match e {
-            MachineCallArgument::Unknown(v) => Some((v, true)),
-            MachineCallArgument::Known(_) => None,
-        })),
-        Effect::Branch(_, first, second) => Box::new(
-            first
-                .iter()
-                .chain(second)
-                .flat_map(|e| written_vars_in_effect(e)),
-        ),
-    }
 }
 
 pub fn format_effects<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
@@ -320,7 +297,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                 first
                     .iter()
                     .chain(second)
-                    .flat_map(|e| written_vars_in_effect(e))
+                    .flat_map(|e| e.written_vars())
                     .sorted()
                     .dedup()
                     .map(|(v, needs_mut)| {
