@@ -2,7 +2,7 @@ use powdr_linker::LinkerMode;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::{
     test_util::{
-        assert_proofs_fail_for_invalid_witnesses,
+        assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
         assert_proofs_fail_for_invalid_witnesses_mock,
         assert_proofs_fail_for_invalid_witnesses_pilcom,
         assert_proofs_fail_for_invalid_witnesses_stwo, make_prepared_pipeline,
