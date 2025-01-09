@@ -1,3 +1,5 @@
+// TODO: the unused is only here because the interpreter is not integrated in the final code yet
+#![allow(unused)]
 use super::compiler::written_vars_in_effect;
 use super::effect::{Assertion, Effect};
 

@@ -12,7 +12,7 @@ use crate::witgen::{
 
 use super::{
     block_machine_processor::BlockMachineProcessor,
-    compiler::{compile_effects, interpret_effects, WitgenFunction},
+    compiler::{compile_effects, WitgenFunction},
     variable::Variable,
 };
 
@@ -126,20 +126,13 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
 
                 log::trace!("Compiling effects...");
 
-                let compiled_jit =
-                    !matches!(std::env::var("POWDR_JIT_INTERPRETER"), Ok(val) if val == "1");
-
-                if compiled_jit {
-                    compile_effects(
-                        self.column_layout.first_column_id,
-                        self.column_layout.column_count,
-                        &known_inputs,
-                        &code,
-                    )
-                    .unwrap()
-                } else {
-                    interpret_effects(&known_inputs, &code).unwrap()
-                }
+                compile_effects(
+                    self.column_layout.first_column_id,
+                    self.column_layout.column_count,
+                    &known_inputs,
+                    &code,
+                )
+                .unwrap()
             })
     }
 

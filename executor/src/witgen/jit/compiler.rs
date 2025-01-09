@@ -1,6 +1,5 @@
 use std::{cmp::Ordering, ffi::c_void, iter, mem, sync::Arc};
 
-use super::interpreter;
 use itertools::Itertools;
 use libloading::Library;
 use powdr_ast::indent;
@@ -22,15 +21,12 @@ use super::{
     variable::Variable,
 };
 
-pub enum WitgenFunction<T: FieldElement> {
+pub struct WitgenFunction<T: FieldElement> {
     // TODO We might want to pass arguments as direct function parameters
     // (instead of a struct), so that
     // they are stored in registers instead of the stack. Should be checked.
-    Compiled {
-        function: extern "C" fn(WitgenFunctionParams<T>),
-        _library: Arc<Library>,
-    },
-    Interpreted(interpreter::EffectsInterpreter<T>),
+    function: extern "C" fn(WitgenFunctionParams<T>),
+    _library: Arc<Library>,
 }
 
 impl<T: FieldElement> WitgenFunction<T> {
@@ -44,32 +40,16 @@ impl<T: FieldElement> WitgenFunction<T> {
         params: &mut [LookupCell<T>],
         mut data: CompactDataRef<'_, T>,
     ) {
-        match self {
-            WitgenFunction::Compiled { function, .. } => {
-                let row_offset = data.row_offset.try_into().unwrap();
-                let (data, known) = data.as_mut_slices();
-                let params = WitgenFunctionParams {
-                    data: data.into(),
-                    known: known.as_mut_ptr(),
-                    row_offset,
-                    params: params.into(),
-                    mutable_state: mutable_state as *const _ as *const c_void,
-                    call_machine: call_machine::<T, Q>,
-                };
-                function(params)
-            }
-            WitgenFunction::Interpreted(interpreter) => {
-                interpreter.call::<Q>(mutable_state, params, data)
-            }
-        }
-    }
-
-    #[cfg(test)]
-    fn compiled_call(&self, params: WitgenFunctionParams<T>) {
-        match self {
-            WitgenFunction::Compiled { function, .. } => function(params),
-            WitgenFunction::Interpreted(_interpreter) => panic!("not compiled"),
-        }
+        let row_offset = data.row_offset.try_into().unwrap();
+        let (data, known) = data.as_mut_slices();
+        (self.function)(WitgenFunctionParams {
+            data: data.into(),
+            known: known.as_mut_ptr(),
+            row_offset,
+            params: params.into(),
+            mutable_state: mutable_state as *const _ as *const c_void,
+            call_machine: call_machine::<T, Q>,
+        });
     }
 }
 
@@ -82,16 +62,6 @@ extern "C" fn call_machine<T: FieldElement, Q: QueryCallback<T>>(
     mutable_state
         .call_direct(identity_id, params.into())
         .unwrap()
-}
-
-/// Generate an interpreter for the given effects.
-pub fn interpret_effects<T: FieldElement>(
-    known_inputs: &[Variable],
-    effects: &[Effect<T, Variable>],
-) -> Result<WitgenFunction<T>, String> {
-    Ok(WitgenFunction::Interpreted(
-        interpreter::EffectsInterpreter::new(known_inputs, effects),
-    ))
 }
 
 /// Compile the given inferred effects into machine code and load it.
@@ -113,14 +83,14 @@ pub fn compile_effects<T: FieldElement>(
 
     let library = Arc::new(unsafe { libloading::Library::new(&lib_path.path).unwrap() });
     let witgen_fun = unsafe { library.get(b"witgen\0") }.unwrap();
-    Ok(WitgenFunction::Compiled {
+    Ok(WitgenFunction {
         function: *witgen_fun,
         _library: library,
     })
 }
 
 #[repr(C)]
-pub struct WitgenFunctionParams<'a, T: 'a> {
+struct WitgenFunctionParams<'a, T: 'a> {
     /// A mutable slice to the full trace table. It has to have enough pre-allocated space.
     data: MutSlice<T>,
     /// A pointer to the data area of the "known" PaddedBitVec.
@@ -667,7 +637,7 @@ extern \"C\" fn witgen(
         let f = compile_effects(0, 1, &[], &effects).unwrap();
         let mut data = vec![GoldilocksField::from(0); 2];
         let mut known = vec![0; 1];
-        f.compiled_call(witgen_fun_params(&mut data, &mut known));
+        (f.function)(witgen_fun_params(&mut data, &mut known));
         assert_eq!(data[0], GoldilocksField::from(7));
         assert_eq!(data[1], GoldilocksField::from(9));
         assert_eq!(known[0], 3);
@@ -691,7 +661,7 @@ extern \"C\" fn witgen(
         let f2 = compile_effects(0, column_count, &[], &effects2).unwrap();
         let mut data = vec![GoldilocksField::from(0); data_len];
         let mut known = vec![0; row_count];
-        f1.compiled_call(witgen_fun_params(&mut data, &mut known));
+        (f1.function)(witgen_fun_params(&mut data, &mut known));
         assert_eq!(data[0], GoldilocksField::from(7));
         assert_eq!(data[1], GoldilocksField::from(0));
         assert_eq!(data[2], GoldilocksField::from(0));
@@ -705,7 +675,7 @@ extern \"C\" fn witgen(
             mutable_state: std::ptr::null(),
             call_machine: no_call_machine,
         };
-        f2.compiled_call(params2);
+        (f2.function)(params2);
         assert_eq!(data[0], GoldilocksField::from(7));
         assert_eq!(data[1], GoldilocksField::from(0));
         assert_eq!(data[2], GoldilocksField::from(9));
@@ -725,7 +695,7 @@ extern \"C\" fn witgen(
         let f = compile_effects(0, 1, &[], &effects).unwrap();
         let mut data = vec![GoldilocksField::from(0); 5];
         let mut known = vec![0; 5];
-        f.compiled_call(witgen_fun_params(&mut data, &mut known));
+        (f.function)(witgen_fun_params(&mut data, &mut known));
         assert_eq!(data[0], GoldilocksField::from(4));
         assert_eq!(
             data[1],
@@ -750,7 +720,7 @@ extern \"C\" fn witgen(
             -GoldilocksField::from(4),
         ];
         let mut known = vec![0; 1];
-        f.compiled_call(witgen_fun_params(&mut data, &mut known));
+        (f.function)(witgen_fun_params(&mut data, &mut known));
         assert_eq!(data[0], -GoldilocksField::from(12));
     }
 
@@ -771,7 +741,7 @@ extern \"C\" fn witgen(
             GoldilocksField::from(0),
         ];
         let mut known = vec![0; 1];
-        f.compiled_call(witgen_fun_params(&mut data, &mut known));
+        (f.function)(witgen_fun_params(&mut data, &mut known));
         assert_eq!(data[0], GoldilocksField::from(23));
         assert_eq!(data[1], GoldilocksField::from(2));
         assert_eq!(data[2], GoldilocksField::from(0));
@@ -796,7 +766,7 @@ extern \"C\" fn witgen(
             mutable_state: std::ptr::null(),
             call_machine: no_call_machine,
         };
-        f.compiled_call(params);
+        (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(7 * 2));
     }
 
@@ -871,7 +841,7 @@ extern \"C\" fn witgen(
             mutable_state: std::ptr::null(),
             call_machine: mock_call_machine,
         };
-        f.compiled_call(params);
+        (f.function)(params);
         assert_eq!(data[0], GoldilocksField::from(9));
         assert_eq!(data[1], GoldilocksField::from(18));
         assert_eq!(data[2], GoldilocksField::from(0));
@@ -905,7 +875,7 @@ extern \"C\" fn witgen(
             mutable_state: std::ptr::null(),
             call_machine: no_call_machine,
         };
-        f.compiled_call(params);
+        (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(8));
 
         x_val = 2.into();
@@ -918,7 +888,7 @@ extern \"C\" fn witgen(
             mutable_state: std::ptr::null(),
             call_machine: no_call_machine,
         };
-        f.compiled_call(params);
+        (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(4));
     }
 
