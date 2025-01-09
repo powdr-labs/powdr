@@ -151,7 +151,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
             });
     }
 
-    /// Check that actions are valid (e.g., variables writen to only once, and only read after being written to)
+    /// Check that actions are valid (e.g., variables written to only once, and only read after being written to)
     fn is_valid(&self) -> bool {
         let mut prev_writes = BTreeSet::new();
         for action in &self.actions {
