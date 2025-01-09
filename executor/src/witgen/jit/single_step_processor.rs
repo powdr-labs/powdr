@@ -2,7 +2,7 @@
 use std::collections::HashSet;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::AlgebraicReference;
+use powdr_ast::analyzed::{AlgebraicReference, PolyID};
 use powdr_number::FieldElement;
 
 use crate::witgen::{machines::MachineParts, FixedData};
@@ -10,7 +10,7 @@ use crate::witgen::{machines::MachineParts, FixedData};
 use super::{
     effect::Effect,
     variable::{Cell, Variable},
-    witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
+    witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, WitgenInference},
 };
 
 /// A processor for generating JIT code that computes the next row from the previous row.
@@ -31,6 +31,98 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         &self,
         can_process: CanProcess,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
+        self.generate_code_for_branch(can_process, self.initialize_witgen(), Default::default())
+    }
+
+    pub fn generate_code_for_branch<CanProcess: CanProcessCall<T> + Clone>(
+        &self,
+        can_process: CanProcess,
+        mut witgen: WitgenInference<'a, T, NoEval>,
+        mut complete: HashSet<u64>,
+    ) -> Result<Vec<Effect<T, Variable>>, String> {
+        self.process_until_no_progress(can_process.clone(), &mut witgen, &mut complete);
+
+        // Check that we could derive all witness values in the next row.
+        let unknown_witnesses = self
+            .unknown_witness_cols_on_next_row(&witgen)
+            // Sort to get deterministic code.
+            .sorted()
+            .collect_vec();
+
+        let missing_identities = self.machine_parts.identities.len() - complete.len();
+        let code = if unknown_witnesses.is_empty() && missing_identities == 0 {
+            witgen.finish()
+        } else {
+            let Some(most_constrained_var) = witgen
+                .known_variables()
+                .iter()
+                .map(|var| (var, witgen.range_constraint(var)))
+                .filter(|(_, rc)| rc.try_to_single_value().is_none())
+                .sorted()
+                .min_by_key(|(_, rc)| rc.range_width())
+                .map(|(var, _)| var.clone())
+            else {
+                let incomplete_identities = self
+                    .machine_parts
+                    .identities
+                    .iter()
+                    .filter(|id| !complete.contains(&id.id()));
+                let column_errors = if unknown_witnesses.is_empty() {
+                    "".to_string()
+                } else {
+                    format!(
+                        "\nThe following columns are still missing: {}",
+                        unknown_witnesses
+                            .iter()
+                            .map(|wit| self.fixed_data.column_name(wit))
+                            .format(", ")
+                    )
+                };
+                let identity_errors = if missing_identities == 0 {
+                    "".to_string()
+                } else {
+                    format!(
+                        "\nThe following identities have not been fully processed:\n{}",
+                        incomplete_identities
+                            .map(|id| format!("    {id}"))
+                            .join("\n")
+                    )
+                };
+                return Err(format!(
+                    "Unable to derive algorithm to compute values for witness columns in the next row and\n\
+                    unable to branch on a variable.{column_errors}{identity_errors}",
+                ));
+            };
+
+            let BranchResult {
+                common_code,
+                condition,
+                branches: [first_branch, second_branch],
+            } = witgen.branch_on(&most_constrained_var.clone());
+
+            // TODO Tuning: If this fails (or also if it does not generate progress right away),
+            // we could also choose a different variable to branch on.
+            let left_branch_code =
+                self.generate_code_for_branch(can_process.clone(), first_branch, complete.clone())?;
+            let right_branch_code =
+                self.generate_code_for_branch(can_process, second_branch, complete)?;
+            if left_branch_code == right_branch_code {
+                common_code.into_iter().chain(left_branch_code).collect()
+            } else {
+                common_code
+                    .into_iter()
+                    .chain(std::iter::once(Effect::Branch(
+                        condition,
+                        left_branch_code,
+                        right_branch_code,
+                    )))
+                    .collect()
+            }
+        };
+        Ok(code)
+    }
+
+    fn initialize_witgen(&self) -> WitgenInference<'a, T, NoEval> {
         // All witness columns in row 0 are known.
         let known_variables = self.machine_parts.witnesses.iter().map(|id| {
             Variable::Cell(Cell {
@@ -39,56 +131,56 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 row_offset: 0,
             })
         });
-        let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables);
+        WitgenInference::new(self.fixed_data, NoEval, known_variables)
+    }
 
-        let mut complete = HashSet::new();
-        for iteration in 0.. {
-            let mut progress = false;
+    fn process_until_no_progress<CanProcess: CanProcessCall<T> + Clone>(
+        &self,
+        can_process: CanProcess,
+        witgen: &mut WitgenInference<'a, T, NoEval>,
+        complete: &mut HashSet<u64>,
+    ) {
+        let mut progress = true;
+        while progress {
+            progress = false;
+
+            // TODO At this point, we should call a function on `witgen`
+            // to propagate known concrete values across the identities
+            // to other known (but not concrete) variables.
 
             for id in &self.machine_parts.identities {
-                if !complete.contains(&id.id()) {
-                    let row_offset = if id.contains_next_ref() { 0 } else { 1 };
-                    let result = witgen.process_identity(can_process.clone(), id, row_offset);
-                    if result.complete {
-                        complete.insert(id.id());
-                    }
-                    progress |= result.progress;
+                if complete.contains(&id.id()) {
+                    continue;
+                }
+                // TODO this is wrong if intermediate columns are referenced.
+                let row_offset = if id.contains_next_ref() { 0 } else { 1 };
+                let result = witgen.process_identity(can_process.clone(), id, row_offset);
+                progress |= result.progress;
+                if result.complete {
+                    complete.insert(id.id());
                 }
             }
-            if !progress {
-                log::debug!("Finishing after {iteration} iterations");
-                break;
-            }
         }
+    }
 
-        // Check that we could derive all witness values in the next row.
-        let unknown_witnesses = self
-            .machine_parts
-            .witnesses
-            .iter()
-            .filter(|wit| {
-                !witgen.is_known(&Variable::Cell(Cell {
-                    column_name: self.fixed_data.column_name(wit).to_string(),
-                    id: wit.id,
-                    row_offset: 1,
-                }))
-            })
-            .sorted()
-            .collect_vec();
-
-        let missing_identities = self.machine_parts.identities.len() - complete.len();
-        if unknown_witnesses.is_empty() && missing_identities == 0 {
-            Ok(witgen.finish())
-        } else {
-            Err(format!(
-                "Unable to derive algorithm to compute values for witness columns in the next row for the following columns:\n{}\nand {missing_identities} identities are missing.",
-                unknown_witnesses.iter().map(|wit| self.fixed_data.column_name(wit)).format(", ")
-            ))
-        }
+    fn unknown_witness_cols_on_next_row<'b>(
+        &'b self,
+        witgen: &'b WitgenInference<'_, T, NoEval>,
+    ) -> impl Iterator<Item = &'b PolyID> + 'b {
+        self.machine_parts.witnesses.iter().filter(move |wit| {
+            !witgen.is_known(&Variable::Cell(Cell {
+                column_name: self.fixed_data.column_name(wit).to_string(),
+                id: wit.id,
+                row_offset: 1,
+            }))
+        })
     }
 }
 
-impl<T: FieldElement> FixedEvaluator<T> for &SingleStepProcessor<'_, T> {
+#[derive(Clone)]
+pub struct NoEval;
+
+impl<T: FieldElement> FixedEvaluator<T> for NoEval {
     fn evaluate(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
         // We can only return something here if the fixed column is constant
         // in the region we are considering.
@@ -101,19 +193,23 @@ impl<T: FieldElement> FixedEvaluator<T> for &SingleStepProcessor<'_, T> {
 #[cfg(test)]
 mod test {
 
-    use itertools::Itertools;
+    use pretty_assertions::assert_eq;
+    use test_log::test;
 
     use powdr_number::GoldilocksField;
 
     use crate::witgen::{
         data_structures::mutable_state::MutableState,
         global_constraints,
-        jit::{
-            effect::{format_code, Effect},
-            test_util::read_pil,
-        },
-        machines::{machine_extractor::MachineExtractor, KnownMachine, Machine},
+        jit::effect::{format_code, Effect},
+        machines::KnownMachine,
         FixedData,
+    };
+    use itertools::Itertools;
+
+    use crate::witgen::{
+        jit::test_util::read_pil,
+        machines::{machine_extractor::MachineExtractor, Machine},
     };
 
     use super::{SingleStepProcessor, Variable};
@@ -140,12 +236,7 @@ mod test {
         let mutable_state = MutableState::new(machines.into_iter(), &|_| {
             Err("Query not implemented".to_string())
         });
-
-        SingleStepProcessor {
-            fixed_data: &fixed_data,
-            machine_parts,
-        }
-        .generate_code(&mutable_state)
+        SingleStepProcessor::new(&fixed_data, machine_parts).generate_code(&mutable_state)
     }
 
     #[test]
@@ -164,9 +255,53 @@ mod test {
         let err = generate_single_step(input, "M").err().unwrap();
         assert_eq!(
             err.to_string(),
-            "Unable to derive algorithm to compute values for witness columns in the next row for the following columns:\n\
-            M::Y\n\
-            and 0 identities are missing."
+            "Unable to derive algorithm to compute values for witness columns in the next row and\n\
+            unable to branch on a variable.\nThe following columns are still missing: M::Y"
+        );
+    }
+
+    #[test]
+    fn branching() {
+        let input = "
+    namespace VM(256);
+        let A: col;
+        let B: col;
+        let instr_add: col;
+        let instr_mul: col;
+        let pc: col;
+
+        col fixed LINE = [0, 1] + [2]*;
+        col fixed INSTR_ADD = [0, 1] + [0]*;
+        col fixed INSTR_MUL = [1, 0] + [1]*;
+
+        pc' = pc + 1;
+        [ pc, instr_add, instr_mul ] in [ LINE, INSTR_ADD, INSTR_MUL ];
+
+        instr_add * (A' - (A + B)) + instr_mul * (A' - A * B) + (1 - instr_add - instr_mul) * (A' - A) = 0;
+        B' = B;
+        ";
+        let code = generate_single_step(input, "Main").unwrap();
+        assert_eq!(
+            format_code(&code),
+            "\
+VM::pc[1] = (VM::pc[0] + 1);
+machine_call(1, [Known(VM::pc[1]), Unknown(ret(1, 1, 1)), Unknown(ret(1, 1, 2))]);
+VM::instr_add[1] = ret(1, 1, 1);
+VM::instr_mul[1] = ret(1, 1, 2);
+VM::B[1] = VM::B[0];
+if (VM::instr_add[0] == 1) {
+    if (VM::instr_mul[0] == 1) {
+        VM::A[1] = -((-(VM::A[0] + VM::B[0]) + -(VM::A[0] * VM::B[0])) + VM::A[0]);
+    } else {
+        VM::A[1] = (VM::A[0] + VM::B[0]);
+    }
+} else {
+    if (VM::instr_mul[0] == 1) {
+        VM::A[1] = (VM::A[0] * VM::B[0]);
+    } else {
+        VM::A[1] = VM::A[0];
+    }
+}"
         );
     }
 }

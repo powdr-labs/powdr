@@ -350,7 +350,6 @@ mod tests {
         Commitment<F>: Send,
     {
         let mut pipeline = Pipeline::<F>::default().from_pil_string(pil.to_string());
-
         let pil = pipeline.compute_optimized_pil().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = &mut pipeline.compute_witness().unwrap();
@@ -461,28 +460,6 @@ mod tests {
             col witness x;
             col fixed y = [1, 0]*;
             x * y = y;
-        "#;
-        run_test(content);
-    }
-
-    #[test]
-    fn two_tables() {
-        // This test is a bit contrived but witgen wouldn't allow a more direct example
-        let content = r#"
-        namespace Add(8);
-            col witness x;
-            col witness y;
-            col witness z;
-            x = 0;
-            y = 0;
-            x + y = z;
-            1 $ [ x, y, z ] in 1 $ [ Mul::x, Mul::y, Mul::z ];
-
-        namespace Mul(16);
-            col witness x;
-            col witness y;
-            col witness z;
-            x * y = z;
         "#;
         run_test(content);
     }

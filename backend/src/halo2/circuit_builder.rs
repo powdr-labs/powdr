@@ -18,7 +18,7 @@ use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReferenceThin, Identity, PolynomialIdentity, PolynomialType,
     SelectedExpressions,
 };
-use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, GlobalValues, TraceValues};
+use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, TerminalAccess};
 use powdr_number::FieldElement;
 
 const FIRST_STEP_NAME: &str = "__first_step";
@@ -553,8 +553,8 @@ impl<'a, F: PrimeField<Repr = [u8; 32]>> Data<'a, '_, '_, F> {
     fn evaluator<T: FieldElement>(
         &self,
         intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
-    ) -> ExpressionEvaluator<'a, T, Expression<F>, &Self, &Self> {
-        ExpressionEvaluator::new_with_custom_expr(self, self, intermediate_definitions, |n| {
+    ) -> ExpressionEvaluator<'a, T, Expression<F>, &Self> {
+        ExpressionEvaluator::new_with_custom_expr(self, intermediate_definitions, |n| {
             Expression::Constant(convert_field(*n))
         })
     }
@@ -564,7 +564,7 @@ impl<'a, F: PrimeField<Repr = [u8; 32]>> Data<'a, '_, '_, F> {
     }
 }
 
-impl<F: Field> TraceValues<Expression<F>> for &Data<'_, '_, '_, F> {
+impl<F: Field> TerminalAccess<Expression<F>> for &Data<'_, '_, '_, F> {
     fn get(&self, poly_ref: &powdr_ast::analyzed::AlgebraicReference) -> Expression<F> {
         let rotation = match poly_ref.next {
             false => Rotation::cur(),
@@ -578,9 +578,7 @@ impl<F: Field> TraceValues<Expression<F>> for &Data<'_, '_, '_, F> {
             panic!("Unknown reference: {}", poly_ref.name)
         }
     }
-}
 
-impl<F: Field> GlobalValues<Expression<F>> for &Data<'_, '_, '_, F> {
     fn get_public(&self, _public: &str) -> Expression<F> {
         unimplemented!()
     }

@@ -12,29 +12,19 @@ use crate::witgen::range_constraints::RangeConstraint;
 /// A value that is known at run-time, defined through a complex expression
 /// involving known cells or variables and compile-time constants.
 /// Each of the sub-expressions can have its own range constraint.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolicExpression<T: FieldElement, S> {
     /// A concrete constant value known at compile time.
     Concrete(T),
     /// A symbolic value known at run-time, referencing a cell,
     /// an input, a local variable or whatever it is used for.
-    Symbol(S, Option<RangeConstraint<T>>),
-    BinaryOperation(
-        Rc<Self>,
-        BinaryOperator,
-        Rc<Self>,
-        Option<RangeConstraint<T>>,
-    ),
-    UnaryOperation(UnaryOperator, Rc<Self>, Option<RangeConstraint<T>>),
-    BitOperation(
-        Rc<Self>,
-        BitOperator,
-        T::Integer,
-        Option<RangeConstraint<T>>,
-    ),
+    Symbol(S, RangeConstraint<T>),
+    BinaryOperation(Rc<Self>, BinaryOperator, Rc<Self>, RangeConstraint<T>),
+    UnaryOperation(UnaryOperator, Rc<Self>, RangeConstraint<T>),
+    BitOperation(Rc<Self>, BitOperator, T::Integer, RangeConstraint<T>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -45,18 +35,18 @@ pub enum BinaryOperator {
     IntegerDiv,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BitOperator {
     And,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnaryOperator {
     Neg,
 }
 
 impl<T: FieldElement, S> SymbolicExpression<T, S> {
-    pub fn from_symbol(symbol: S, rc: Option<RangeConstraint<T>>) -> Self {
+    pub fn from_symbol(symbol: S, rc: RangeConstraint<T>) -> Self {
         SymbolicExpression::Symbol(symbol, rc)
     }
 
@@ -75,17 +65,12 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
     pub fn is_known_nonzero(&self) -> bool {
         // Only checking range constraint is enough since if this is a known
         // fixed value, we will get a range constraint with just a single value.
-        if let Some(rc) = self.range_constraint() {
-            !rc.allows_value(0.into())
-        } else {
-            // unknown
-            false
-        }
+        !self.range_constraint().allows_value(0.into())
     }
 
-    pub fn range_constraint(&self) -> Option<RangeConstraint<T>> {
+    pub fn range_constraint(&self) -> RangeConstraint<T> {
         match self {
-            SymbolicExpression::Concrete(v) => Some(RangeConstraint::from_value(*v)),
+            SymbolicExpression::Concrete(v) => RangeConstraint::from_value(*v),
             SymbolicExpression::Symbol(.., rc)
             | SymbolicExpression::BinaryOperation(.., rc)
             | SymbolicExpression::UnaryOperation(.., rc)
@@ -179,9 +164,7 @@ impl<T: FieldElement, V: Clone> Add for &SymbolicExpression<T, V> {
                 Rc::new(self.clone()),
                 BinaryOperator::Add,
                 Rc::new(rhs.clone()),
-                self.range_constraint()
-                    .zip(rhs.range_constraint())
-                    .map(|(a, b)| a.combine_sum(&b)),
+                self.range_constraint().combine_sum(&rhs.range_constraint()),
             ),
         }
     }
@@ -206,7 +189,7 @@ impl<T: FieldElement, V: Clone> Neg for &SymbolicExpression<T, V> {
             _ => SymbolicExpression::UnaryOperation(
                 UnaryOperator::Neg,
                 Rc::new(self.clone()),
-                self.range_constraint().map(|rc| rc.multiple(-T::from(1))),
+                self.range_constraint().multiple(-T::from(1)),
             ),
         }
     }
@@ -240,7 +223,7 @@ impl<T: FieldElement, V: Clone> Mul for &SymbolicExpression<T, V> {
                 Rc::new(self.clone()),
                 BinaryOperator::Mul,
                 Rc::new(rhs.clone()),
-                None,
+                Default::default(),
             )
         }
     }
@@ -272,7 +255,7 @@ impl<T: FieldElement, V: Clone> SymbolicExpression<T, V> {
                 Rc::new(self.clone()),
                 BinaryOperator::Div,
                 Rc::new(rhs.clone()),
-                None,
+                Default::default(),
             )
         }
     }
@@ -289,7 +272,7 @@ impl<T: FieldElement, V: Clone> SymbolicExpression<T, V> {
                 Rc::new(self.clone()),
                 BinaryOperator::IntegerDiv,
                 Rc::new(rhs.clone()),
-                None,
+                Default::default(),
             )
         }
     }
@@ -304,13 +287,7 @@ impl<T: FieldElement, V: Clone> BitAnd<T::Integer> for SymbolicExpression<T, V> 
         } else if self.is_known_zero() || rhs.is_zero() {
             SymbolicExpression::Concrete(T::from(0))
         } else {
-            let rc = Some(RangeConstraint::from_mask(
-                if let Some(rc) = self.range_constraint() {
-                    *rc.mask() & rhs
-                } else {
-                    rhs
-                },
-            ));
+            let rc = RangeConstraint::from_mask(*self.range_constraint().mask() & rhs);
             SymbolicExpression::BitOperation(Rc::new(self), BitOperator::And, rhs, rc)
         }
     }

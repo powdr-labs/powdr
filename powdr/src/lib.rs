@@ -144,6 +144,16 @@ impl Session {
         run(&mut self.pipeline);
     }
 
+    pub fn run_with_profiler(&mut self) {
+        let profiler = riscv_executor::ProfilerOptions {
+            output_directory: ".".to_string(),
+            file_stem: None,
+            flamegraph: true,
+            callgrind: true,
+        };
+        run_with_profiler(&mut self.pipeline, profiler)
+    }
+
     pub fn prove(&mut self) {
         let asm_name = self.pipeline.asm_string().unwrap().0.clone().unwrap();
         let pil_file = pil_file_path(&asm_name);
@@ -282,6 +292,20 @@ pub fn pipeline_from_guest(
 }
 
 pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
+    run_internal(pipeline, None)
+}
+
+pub fn run_with_profiler(
+    pipeline: &mut Pipeline<GoldilocksField>,
+    profiler: riscv_executor::ProfilerOptions,
+) {
+    run_internal(pipeline, Some(profiler))
+}
+
+fn run_internal(
+    pipeline: &mut Pipeline<GoldilocksField>,
+    profiler: Option<riscv_executor::ProfilerOptions>,
+) {
     println!("Running powdr-riscv executor in fast mode...");
     let start = Instant::now();
 
@@ -293,7 +317,7 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
         initial_memory,
         pipeline.data_callback().unwrap(),
         &riscv::continuations::bootloader::default_input(&[]),
-        None,
+        profiler,
     );
 
     let duration = start.elapsed();

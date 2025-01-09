@@ -4,7 +4,7 @@ use powdr_ast::{
     analyzed::{AlgebraicExpression, Identity, PolynomialIdentity},
     parsed::visitor::AllChildren,
 };
-use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, OwnedGlobalValues};
+use powdr_executor_utils::expression_evaluator::ExpressionEvaluator;
 use powdr_number::FieldElement;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
@@ -12,20 +12,11 @@ use super::machine::Machine;
 
 pub struct PolynomialConstraintChecker<'a, F> {
     machine: &'a Machine<'a, F>,
-    global_values: OwnedGlobalValues<F>,
 }
 
 impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
-    pub fn new(machine: &'a Machine<'a, F>, challenges: &'a BTreeMap<u64, F>) -> Self {
-        let global_values = OwnedGlobalValues {
-            // TODO: Support publics
-            public_values: Default::default(),
-            challenge_values: challenges.clone(),
-        };
-        Self {
-            machine,
-            global_values,
-        }
+    pub fn new(machine: &'a Machine<'a, F>) -> Self {
+        Self { machine }
     }
 
     pub fn check(&self) -> MachineResult<'a, F> {
@@ -59,8 +50,7 @@ impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
         identities: &[&'a Identity<F>],
     ) -> Vec<FailingPolynomialConstraint<'a, F>> {
         let mut evaluator = ExpressionEvaluator::new(
-            self.machine.trace_values.row(row),
-            &self.global_values,
+            self.machine.values.row(row),
             &self.machine.intermediate_definitions,
         );
         identities
