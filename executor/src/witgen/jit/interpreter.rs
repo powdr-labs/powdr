@@ -293,7 +293,7 @@ impl<T: FieldElement> InterpreterAction<T> {
     }
 }
 
-/// Helper struct to map variables to unique indices, so they can be kept in
+/// Helper struct to map variables to contiguous indices, so they can be kept in
 /// sequential memory and quickly refered to during execution.
 pub struct VariableMapper {
     var_idx: HashMap<Variable, usize>,
@@ -336,7 +336,7 @@ impl VariableMapper {
         &mut self,
         expr: &SymbolicExpression<T, Variable>,
     ) -> RPNExpression<T, usize> {
-        RPNExpression::from(&expr.map_variables(&mut |var| self.map_var(var)))
+        RPNExpression::map_from(expr, self)
     }
 }
 
@@ -354,41 +354,41 @@ pub enum RPNExpressionElem<T: FieldElement, S> {
     BitOperation(BitOperator, T::Integer),
 }
 
-impl<T: FieldElement, S: Clone> From<&SymbolicExpression<T, S>> for RPNExpression<T, S> {
-    fn from(expr: &SymbolicExpression<T, S>) -> Self {
-        fn from_inner<T: FieldElement, S: Clone>(
-            expr: &SymbolicExpression<T, S>,
-            elems: &mut Vec<RPNExpressionElem<T, S>>,
+impl<T: FieldElement> RPNExpression<T, usize> {
+    /// Convert a symbolic expression to RPN, mapping variables to indices
+    fn map_from(expr: &SymbolicExpression<T, Variable>, var_mapper: &mut VariableMapper) -> Self {
+        fn inner<T: FieldElement>(
+            expr: &SymbolicExpression<T, Variable>,
+            elems: &mut Vec<RPNExpressionElem<T, usize>>,
+            var_mapper: &mut VariableMapper,
         ) {
             match expr {
                 SymbolicExpression::Concrete(n) => {
                     elems.push(RPNExpressionElem::Concrete(*n));
                 }
                 SymbolicExpression::Symbol(s, _) => {
-                    elems.push(RPNExpressionElem::Symbol(s.clone()));
+                    elems.push(RPNExpressionElem::Symbol(var_mapper.map_var(s)));
                 }
                 SymbolicExpression::BinaryOperation(lhs, op, rhs, _) => {
-                    from_inner(lhs, elems);
-                    from_inner(rhs, elems);
+                    inner(lhs, elems, var_mapper);
+                    inner(rhs, elems, var_mapper);
                     elems.push(RPNExpressionElem::BinaryOperation(op.clone()));
                 }
                 SymbolicExpression::UnaryOperation(op, expr, _) => {
-                    from_inner(expr, elems);
+                    inner(expr, elems, var_mapper);
                     elems.push(RPNExpressionElem::UnaryOperation(op.clone()));
                 }
                 SymbolicExpression::BitOperation(expr, op, n, _) => {
-                    from_inner(expr, elems);
+                    inner(expr, elems, var_mapper);
                     elems.push(RPNExpressionElem::BitOperation(op.clone(), *n));
                 }
             }
         }
         let mut elems = Vec::new();
-        from_inner(expr, &mut elems);
+        inner(expr, &mut elems, var_mapper);
         RPNExpression { elems }
     }
-}
 
-impl<T: FieldElement> RPNExpression<T, usize> {
     /// Evaluate the expression using the provided variables
     fn evaluate(&self, stack: &mut Vec<T>, vars: &[T]) -> T {
         self.elems.iter().for_each(|elem| match elem {

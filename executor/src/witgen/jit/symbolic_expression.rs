@@ -273,33 +273,6 @@ impl<T: FieldElement, V: Clone> SymbolicExpression<T, V> {
             )
         }
     }
-
-    /// Transform the variables inside the expression using the given function
-    pub fn map_variables<V2, F: FnMut(&V) -> V2>(&self, f: &mut F) -> SymbolicExpression<T, V2> {
-        match self {
-            SymbolicExpression::Concrete(n) => SymbolicExpression::Concrete(*n),
-            SymbolicExpression::Symbol(s, rc) => SymbolicExpression::Symbol(f(s), rc.clone()),
-            SymbolicExpression::BinaryOperation(lhs, op, rhs, rc) => {
-                SymbolicExpression::BinaryOperation(
-                    Arc::new(lhs.map_variables(f)),
-                    op.clone(),
-                    Arc::new(rhs.map_variables(f)),
-                    rc.clone(),
-                )
-            }
-            SymbolicExpression::UnaryOperation(op, expr, rc) => SymbolicExpression::UnaryOperation(
-                op.clone(),
-                Arc::new(expr.map_variables(f)),
-                rc.clone(),
-            ),
-            SymbolicExpression::BitOperation(expr, op, n, rc) => SymbolicExpression::BitOperation(
-                Arc::new(expr.map_variables(f)),
-                op.clone(),
-                *n,
-                rc.clone(),
-            ),
-        }
-    }
 }
 
 impl<T: FieldElement, V: Clone> BitAnd<T::Integer> for SymbolicExpression<T, V> {
