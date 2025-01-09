@@ -213,7 +213,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 // as long as <block_size> consecutive rows are complete.
                 if complete_rows.len() >= self.block_size {
                     let (min, max) = complete_rows.iter().minmax().into_option().unwrap();
-                    // TODO instead of checking for consequitive rows, we could also check
+                    // TODO instead of checking for consecutive rows, we could also check
                     // that they "fit" the next block.
                     // TODO actually I think that we should not allow more than block size
                     // completed calls.
