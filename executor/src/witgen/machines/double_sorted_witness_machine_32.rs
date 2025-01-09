@@ -190,7 +190,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
         &mut self,
         identity_id: u64,
         known_arguments: &BitVec,
-        range_constraints: &[Option<RangeConstraint<T>>],
+        range_constraints: &[RangeConstraint<T>],
     ) -> bool {
         assert!(self.parts.connections.contains_key(&identity_id));
         assert_eq!(known_arguments.len(), 4);
@@ -209,10 +209,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
             true
         } else {
             // It is not known, so we can only process if we do not write.
-            range_constraints[0].as_ref().is_some_and(|rc| {
-                !rc.allows_value(T::from(OPERATION_ID_BOOTLOADER_WRITE))
-                    && !rc.allows_value(T::from(OPERATION_ID_WRITE))
-            })
+            !range_constraints[0].allows_value(T::from(OPERATION_ID_BOOTLOADER_WRITE))
+                && !range_constraints[0].allows_value(T::from(OPERATION_ID_WRITE))
         }
     }
 
