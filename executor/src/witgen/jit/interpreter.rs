@@ -237,13 +237,9 @@ impl<T: FieldElement> InterpreterAction<T> {
     fn writes(&self) -> BTreeSet<usize> {
         let mut set = BTreeSet::new();
         match self {
-            InterpreterAction::ReadCell(idx, _) => {
-                set.insert(*idx);
-            }
-            InterpreterAction::ReadParam(idx, _) => {
-                set.insert(*idx);
-            }
-            InterpreterAction::AssignExpression(idx, _) => {
+            InterpreterAction::ReadCell(idx, _)
+            | InterpreterAction::ReadParam(idx, _)
+            | InterpreterAction::AssignExpression(idx, _) => {
                 set.insert(*idx);
             }
             InterpreterAction::MachineCall(_, params) => params.iter().for_each(|p| {
@@ -260,10 +256,7 @@ impl<T: FieldElement> InterpreterAction<T> {
     fn reads(&self) -> BTreeSet<usize> {
         let mut set = BTreeSet::new();
         match self {
-            InterpreterAction::WriteCell(idx, _) => {
-                set.insert(*idx);
-            }
-            InterpreterAction::WriteParam(idx, _) => {
+            InterpreterAction::WriteCell(idx, _) | InterpreterAction::WriteParam(idx, _) => {
                 set.insert(*idx);
             }
             InterpreterAction::AssignExpression(_, expr) => expr.elems.iter().for_each(|e| {
