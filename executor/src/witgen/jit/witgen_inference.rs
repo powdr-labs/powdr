@@ -122,11 +122,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         let rc = self.range_constraint(variable);
         assert!(rc.try_to_single_value().is_none());
 
-        log::trace!(
-            "Branching on variable {variable}, which has a range of {}",
-            rc.range_width()
-        );
-
         let (low_condition, high_condition) = rc.bisect();
 
         let common_code = std::mem::take(&mut self.code);

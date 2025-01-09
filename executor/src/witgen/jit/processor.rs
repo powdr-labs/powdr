@@ -355,7 +355,7 @@ impl<T: FieldElement> Error<'_, T> {
         let reason_str = match &self.reason {
             ErrorReason::NoBranchVariable => "no variable available to branch on".to_string(),
             ErrorReason::MaxBranchDepthReached(depth) => {
-                format!("maximim branch depth of {depth} reached")
+                format!("maximum branch depth of {depth} reached")
             }
         };
         write!(
