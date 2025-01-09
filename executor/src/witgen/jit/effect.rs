@@ -28,11 +28,9 @@ pub enum Effect<T: FieldElement, V> {
 }
 
 impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
-    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
-        match self {
-            Effect::Assignment(v, expr) => {
-                Box::new(iter::once(v).chain(expr.referenced_symbols()).unique())
-            }
+    pub fn referenced_variables(&self) -> impl Iterator<Item = &V> {
+        let iter: Box<dyn Iterator<Item = &V>> = match self {
+            Effect::Assignment(v, expr) => Box::new(iter::once(v).chain(expr.referenced_symbols())),
             Effect::RangeConstraint(v, _) => Box::new(iter::once(v)),
             Effect::Assertion(Assertion { lhs, rhs, .. }) => Box::new(
                 lhs.referenced_symbols()
@@ -46,7 +44,8 @@ impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
                     .chain(vec1.iter().flat_map(|effect| effect.referenced_variables()))
                     .unique(),
             ),
-        }
+        };
+        iter.unique()
     }
 }
 
