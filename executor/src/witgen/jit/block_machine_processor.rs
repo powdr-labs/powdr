@@ -73,6 +73,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .iter()
             .enumerate()
             .filter_map(|(i, is_input)| (!is_input).then_some(Variable::Param(i)));
+        let max_branch_depth = 6;
         Processor::new(
             self.fixed_data,
             self,
@@ -80,6 +81,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             self.block_size,
             true,
             requested_known,
+            max_branch_depth,
         )
         .generate_code(can_process, witgen)
         .map_err(|e| {

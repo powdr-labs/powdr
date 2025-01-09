@@ -30,6 +30,8 @@ pub struct Processor<'a, T: FieldElement, FixedEval> {
     /// List of variables we want to be known at the end. One of them not being known
     /// is a failure.
     requested_known_vars: Vec<Variable>,
+    /// Maximum branch depth allowed.
+    max_branch_depth: usize,
 }
 
 impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEval> {
@@ -40,6 +42,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         block_size: usize,
         check_block_shape: bool,
         requested_known_vars: impl IntoIterator<Item = Variable>,
+        max_branch_depth: usize,
     ) -> Self {
         Self {
             fixed_data,
@@ -48,6 +51,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             block_size,
             check_block_shape,
             requested_known_vars: requested_known_vars.into_iter().collect(),
+            max_branch_depth,
         }
     }
 
@@ -56,7 +60,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         can_process: CanProcess,
         witgen: WitgenInference<'a, T, FixedEval>,
     ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T>> {
-        self.generate_code_for_branch(can_process, witgen, Default::default())
+        let complete = Default::default();
+        let branch_depth = 0;
+        self.generate_code_for_branch(can_process, witgen, complete, branch_depth)
     }
 
     fn generate_code_for_branch<CanProcess: CanProcessCall<T> + Clone>(
@@ -64,6 +70,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         can_process: CanProcess,
         mut witgen: WitgenInference<'a, T, FixedEval>,
         mut complete: HashSet<(u64, i32)>,
+        branch_depth: usize,
     ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T>> {
         self.process_until_no_progress(can_process.clone(), &mut witgen, &mut complete);
 
@@ -93,15 +100,20 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         }
 
         // We need to do some work, try to branch.
-        let Some(most_constrained_var) = witgen
+        let most_constrained_var = witgen
             .known_variables()
             .iter()
             .map(|var| (var, witgen.range_constraint(var)))
             .filter(|(_, rc)| rc.try_to_single_value().is_none())
             .sorted()
             .min_by_key(|(_, rc)| rc.range_width())
-            .map(|(var, _)| var.clone())
-        else {
+            .map(|(var, _)| var.clone());
+        if branch_depth > self.max_branch_depth || most_constrained_var.is_none() {
+            let reason = if most_constrained_var.is_none() {
+                ErrorReason::MissingVariables
+            } else {
+                ErrorReason::MaxBranchDepthReached
+            };
             let incomplete_identities = self
                 .identities
                 .iter()
@@ -109,11 +121,18 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 .map(|(id, row_offset)| (*id, *row_offset))
                 .collect_vec();
             return Err(Error {
+                reason,
                 code: witgen.code(),
                 missing_variables,
                 incomplete_identities,
             });
         };
+        let most_constrained_var = most_constrained_var.unwrap();
+
+        log::debug!(
+            "Branching on variable {most_constrained_var} with range {} at depth {branch_depth}",
+            witgen.range_constraint(&most_constrained_var)
+        );
 
         let BranchResult {
             common_code,
@@ -123,10 +142,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
 
         // TODO Tuning: If this fails (or also if it does not generate progress right away),
         // we could also choose a different variable to branch on.
-        let left_branch_code =
-            self.generate_code_for_branch(can_process.clone(), first_branch, complete.clone())?;
+        let left_branch_code = self.generate_code_for_branch(
+            can_process.clone(),
+            first_branch,
+            complete.clone(),
+            branch_depth + 1,
+        )?;
         let right_branch_code =
-            self.generate_code_for_branch(can_process, second_branch, complete)?;
+            self.generate_code_for_branch(can_process, second_branch, complete, branch_depth + 1)?;
         let code = if left_branch_code == right_branch_code {
             common_code.into_iter().chain(left_branch_code).collect()
         } else {
@@ -300,11 +323,18 @@ fn is_machine_call<T>(identity: &Identity<T>) -> bool {
 pub struct Error<'a, T: FieldElement> {
     /// Code generated so far
     pub code: Vec<Effect<T, Variable>>,
+    pub reason: ErrorReason,
     /// Required variables that could not be determined
     pub missing_variables: Vec<Variable>,
     /// Identities that could not be performed properly.
     /// Note that we only force submachine calls to be complete.
     pub incomplete_identities: Vec<(&'a Identity<T>, i32)>,
+}
+
+enum ErrorReason {
+    MissingVariables,
+    IncompleteIdentities,
+    MaxBranchDepthReached,
 }
 
 impl<T: FieldElement> Display for Error<'_, T> {

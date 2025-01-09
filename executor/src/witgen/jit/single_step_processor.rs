@@ -49,6 +49,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         let block_size = 1;
         let witgen = WitgenInference::new(self.fixed_data, NoEval, known_variables);
 
+        let max_branch_depth = 6;
         Processor::new(
             self.fixed_data,
             NoEval,
@@ -56,6 +57,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             block_size,
             false,
             requested_known,
+            max_branch_depth,
         )
         .generate_code(can_process, witgen)
         .map_err(|e| e.to_string())
