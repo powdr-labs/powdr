@@ -99,7 +99,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
                 let is_in_bounds = code
                     .iter()
                     .flat_map(|effect| effect.referenced_variables())
-                    .filter_map(|assigned_variable| match assigned_variable {
+                    .filter_map(|var| match var {
                         Variable::Cell(cell) => Some(cell.row_offset),
                         _ => None,
                     })
