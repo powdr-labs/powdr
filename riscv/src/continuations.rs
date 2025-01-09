@@ -375,7 +375,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         // We may have multiple memory accesses in the same row and binary
         // search may return any match in case of multiple: ensure idx points to
         // first match
-        while full_exec.memory_accesses[start_idx - 1].row == proven_trace {
+        while start_idx > 0 && full_exec.memory_accesses[start_idx - 1].row == proven_trace {
             start_idx -= 1;
         }
 
