@@ -1,14 +1,14 @@
+use itertools::Itertools;
+use num_traits::Zero;
+use powdr_ast::parsed::visitor::Children;
+use powdr_number::FieldElement;
+use std::hash::Hash;
 use std::{
-    collections::BTreeSet,
     fmt::{self, Display, Formatter},
     iter,
     ops::{Add, BitAnd, Mul, Neg},
     rc::Rc,
 };
-
-use num_traits::Zero;
-use powdr_ast::parsed::visitor::Children;
-use powdr_number::FieldElement;
 
 use crate::witgen::range_constraints::RangeConstraint;
 
@@ -111,14 +111,15 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
     }
 }
 
-impl<T: FieldElement, S: Ord> SymbolicExpression<T, S> {
-    pub fn referenced_symbols(&self) -> BTreeSet<&S> {
+impl<T: FieldElement, S: Hash + Eq> SymbolicExpression<T, S> {
+    pub fn referenced_symbols(&self) -> Box<dyn Iterator<Item = &S> + '_> {
         match self {
-            SymbolicExpression::Symbol(s, _) => iter::once(s).collect(),
-            _ => self
-                .children()
-                .flat_map(|c| c.referenced_symbols())
-                .collect(),
+            SymbolicExpression::Symbol(s, _) => Box::new(iter::once(s)),
+            _ => Box::new(
+                self.children()
+                    .flat_map(|c| c.referenced_symbols())
+                    .unique(),
+            ),
         }
     }
 }

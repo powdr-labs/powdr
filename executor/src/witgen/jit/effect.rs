@@ -1,10 +1,11 @@
 use std::cmp::Ordering;
 
-use std::{collections::BTreeSet, iter};
+use std::iter;
 
 use itertools::Itertools;
 use powdr_ast::indent;
 use powdr_number::FieldElement;
+use std::hash::Hash;
 
 use crate::witgen::range_constraints::RangeConstraint;
 
@@ -25,27 +26,32 @@ pub enum Effect<T: FieldElement, V> {
     Branch(BranchCondition<T, V>, Vec<Effect<T, V>>, Vec<Effect<T, V>>),
 }
 
-impl<T: FieldElement, V: Ord> Effect<T, V> {
-    pub fn referenced_variables(&self) -> BTreeSet<&V> {
+impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
+    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
         match self {
-            Effect::Assignment(v, expr) => iter::once(v).chain(expr.referenced_symbols()).collect(),
-            Effect::RangeConstraint(v, _) => iter::once(v).collect(),
-            Effect::Assertion(Assertion { lhs, rhs, .. }) => lhs
-                .referenced_symbols()
-                .into_iter()
-                .chain(rhs.referenced_symbols())
-                .collect(),
-            Effect::MachineCall(_, args) => args
-                .iter()
-                .flat_map(|arg| match arg {
-                    MachineCallArgument::Known(k) => k.referenced_symbols(),
-                    MachineCallArgument::Unknown(_) => BTreeSet::new(),
-                })
-                .collect(),
-            Effect::Branch(branch_condition, vec, vec1) => iter::once(&branch_condition.variable)
-                .chain(vec.iter().flat_map(|effect| effect.referenced_variables()))
-                .chain(vec1.iter().flat_map(|effect| effect.referenced_variables()))
-                .collect(),
+            Effect::Assignment(v, expr) => {
+                Box::new(iter::once(v).chain(expr.referenced_symbols()).unique())
+            }
+            Effect::RangeConstraint(v, _) => Box::new(iter::once(v)),
+            Effect::Assertion(Assertion { lhs, rhs, .. }) => Box::new(
+                lhs.referenced_symbols()
+                    .chain(rhs.referenced_symbols())
+                    .unique(),
+            ),
+            Effect::MachineCall(_, args) => Box::new(
+                args.iter()
+                    .flat_map(|arg| match arg {
+                        MachineCallArgument::Known(k) => k.referenced_symbols(),
+                        MachineCallArgument::Unknown(_) => Box::new(iter::empty()),
+                    })
+                    .unique(),
+            ),
+            Effect::Branch(branch_condition, vec, vec1) => Box::new(
+                iter::once(&branch_condition.variable)
+                    .chain(vec.iter().flat_map(|effect| effect.referenced_variables()))
+                    .chain(vec1.iter().flat_map(|effect| effect.referenced_variables()))
+                    .unique(),
+            ),
         }
     }
 }
