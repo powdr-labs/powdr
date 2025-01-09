@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
+use num_traits::One;
 use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 
@@ -641,6 +642,24 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 self.size,
             ),
         };
+
+        if let Ok(connection) = Connection::try_from(identity) {
+            // JITed submachines would panic if passed a wrong input / output pair.
+            // Therefore, if any machine call is activated, we resort to the full
+            // solving routine.
+            // An to this is when the call is always active (e.g. the PC lookup).
+            // In that case, we know that the call has been active before with the
+            // same input / output pair, so we can be sure that it will succeed.
+            let selector = &connection.left.selector;
+            if selector != &Expression::one() {
+                let selector_value = row_pair
+                    .evaluate(selector)
+                    .unwrap()
+                    .constant_value()
+                    .unwrap();
+                return selector_value.is_zero();
+            }
+        }
 
         if identity_processor
             .process_identity(identity, &row_pair)
