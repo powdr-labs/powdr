@@ -123,8 +123,14 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                 .or_insert_with(|| vec![0; rhs_machine_size]);
             assert_eq!(multiplicities.len(), rhs_machine_size);
 
-            for (_, tuple) in lhs_tuples {
-                multiplicities[index[&tuple]] += 1;
+            // Looking up the index is slow, so we do it in parallel.
+            let indices = lhs_tuples
+                .into_par_iter()
+                .map(|(_, tuple)| index[&tuple])
+                .collect::<Vec<_>>();
+
+            for index in indices {
+                multiplicities[index] += 1;
             }
             log::trace!(
                 "    Done updating multiplicities, took: {}s",
