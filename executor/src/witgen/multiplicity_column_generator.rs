@@ -87,7 +87,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             log::trace!("  Updating multiplicity for phantom lookup: {lookup}");
             let start = std::time::Instant::now();
 
-            let (rhs_machine_size, rhs_tuples) = self.get_tuples(&terminal_values, &lookup.right);
+            let (rhs_machine_size, rhs_tuples) = self.get_tuples(&terminal_values, lookup.right);
 
             log::trace!(
                 "    Done collecting RHS tuples, took {}s",
@@ -109,7 +109,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             );
             let start = std::time::Instant::now();
 
-            let (_, lhs_tuples) = self.get_tuples(&terminal_values, &lookup.left);
+            let (_, lhs_tuples) = self.get_tuples(&terminal_values, lookup.left);
 
             log::trace!(
                 "    Done collecting LHS tuples, took: {}s",
