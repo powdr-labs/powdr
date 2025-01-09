@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
 
-use itertools::Itertools;
 use powdr_ast::{
     analyzed::{AlgebraicExpression, Identity, PolynomialType, SelectedExpressions},
     parsed::visitor::AllChildren,
@@ -65,6 +64,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                     .fixed_cols
                     .iter()
                     // TODO: Avoid clone
+                    // TODO: Find the actual size
                     .map(|(poly_id, fixed_col)| (poly_id, fixed_col.values_max_size().to_vec())),
             )
             .collect::<BTreeMap<_, _>>();
@@ -155,7 +155,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
         terminal_values: &OwnedTerminalValues<T>,
         selected_expressions: &SelectedExpressions<T>,
     ) -> (usize, Vec<(usize, Vec<T>)>) {
-        let column_lengths = selected_expressions
+        let machine_size = selected_expressions
             .expressions
             .iter()
             .flat_map(|expr| expr.all_children())
@@ -168,8 +168,11 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                 },
                 _ => None,
             })
-            .collect::<Vec<_>>();
-        let machine_size = column_lengths.into_iter().unique().exactly_one().unwrap();
+            // We add fixed columns in their max size, so they might not be equal...
+            // But in practice, either the machine has a (smaller) witness column, or
+            // it's a fixed lookup, so there is only one size.
+            .min()
+            .unwrap();
 
         let tuples = (0..machine_size)
             .into_par_iter()
