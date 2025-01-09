@@ -101,7 +101,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                     // There might be multiple identical rows, but it's fine, we can pick any.
                     (tuple, *i)
                 })
-                .collect::<BTreeMap<_, _>>();
+                .collect::<HashMap<_, _>>();
 
             log::trace!(
                 "    Done building index, took {}s",
