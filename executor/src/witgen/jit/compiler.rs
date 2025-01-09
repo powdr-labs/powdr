@@ -7,7 +7,6 @@ use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::{finalizable_data::CompactDataRef, mutable_state::MutableState},
-    jit::effect::MachineCallArgument,
     machines::{
         profiling::{record_end, record_start},
         LookupCell,
@@ -151,8 +150,8 @@ fn witgen_code<T: FieldElement>(
                     format!("get(data, row_offset, {}, {})", c.row_offset, c.id)
                 }
                 Variable::Param(i) => format!("get_param(params, {i})"),
-                Variable::MachineCallReturnValue(_) => {
-                    unreachable!("Machine call return values should not be pre-known.")
+                Variable::MachineCallParam(_) => {
+                    unreachable!("Machine call variables should not be pre-known.")
                 }
             };
             format!("    let {var_name} = {value};")
@@ -174,7 +173,7 @@ fn witgen_code<T: FieldElement>(
                     cell.row_offset, cell.id,
                 )),
                 Variable::Param(i) => Some(format!("    set_param(params, {i}, {value});")),
-                Variable::MachineCallReturnValue(_) => {
+                Variable::MachineCallParam(_) => {
                     // This is just an internal variable.
                     None
                 }
@@ -187,7 +186,7 @@ fn witgen_code<T: FieldElement>(
         .iter()
         .filter_map(|var| match var {
             Variable::Cell(cell) => Some(cell),
-            Variable::Param(_) | Variable::MachineCallReturnValue(_) => None,
+            Variable::Param(_) | Variable::MachineCallParam(_) => None,
         })
         .map(|cell| {
             format!(
@@ -235,10 +234,11 @@ fn written_vars_in_effect<T: FieldElement>(
         Effect::Assignment(var, _) => Box::new(iter::once((var, false))),
         Effect::RangeConstraint(..) => unreachable!(),
         Effect::Assertion(..) => Box::new(iter::empty()),
-        Effect::MachineCall(_, arguments) => Box::new(arguments.iter().flat_map(|e| match e {
-            MachineCallArgument::Unknown(v) => Some((v, true)),
-            MachineCallArgument::Known(_) => None,
-        })),
+        Effect::MachineCall(_, known, vars) => Box::new(
+            vars.iter()
+                .zip_eq(known)
+                .flat_map(|(v, known)| (!known).then_some((v, true))),
+        ),
         Effect::Branch(_, first, second) => Box::new(
             first
                 .iter()
@@ -288,20 +288,20 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
             if *expected_equal { "==" } else { "!=" },
             format_expression(rhs)
         ),
-        Effect::MachineCall(id, arguments) => {
+        Effect::MachineCall(id, known, vars) => {
             let mut result_vars = vec![];
-            let args = arguments
+            let args = vars
                 .iter()
-                .map(|a| match a {
-                    MachineCallArgument::Unknown(v) => {
-                        let var_name = variable_to_string(v);
+                .zip_eq(known)
+                .map(|(v, known)| {
+                    let var_name = variable_to_string(v);
+                    if known {
+                        format!("LookupCell::Input(&{var_name})")
+                    } else {
                         if is_top_level {
                             result_vars.push(var_name.clone());
                         }
                         format!("LookupCell::Output(&mut {var_name})")
-                    }
-                    MachineCallArgument::Known(v) => {
-                        format!("LookupCell::Input(&{})", format_expression(v))
                     }
                 })
                 .format(", ")
@@ -397,12 +397,12 @@ fn variable_to_string(v: &Variable) -> String {
             format_row_offset(cell.row_offset)
         ),
         Variable::Param(i) => format!("p_{i}"),
-        Variable::MachineCallReturnValue(ret) => {
+        Variable::MachineCallParam(call_var) => {
             format!(
-                "ret_{}_{}_{}",
-                ret.identity_id,
-                format_row_offset(ret.row_offset),
-                ret.index
+                "call_var_{}_{}_{}",
+                call_var.identity_id,
+                format_row_offset(call_var.row_offset),
+                call_var.index
             )
         }
     }
@@ -484,13 +484,14 @@ fn util_code<T: FieldElement>(first_column_id: u64, column_count: usize) -> Resu
 
 #[cfg(test)]
 mod tests {
+
     use pretty_assertions::assert_eq;
     use test_log::test;
 
     use powdr_number::GoldilocksField;
 
     use crate::witgen::jit::variable::Cell;
-    use crate::witgen::jit::variable::MachineCallReturnVariable;
+    use crate::witgen::jit::variable::MachineCallVariable;
     use crate::witgen::range_constraints::RangeConstraint;
 
     use super::*;
@@ -519,8 +520,8 @@ mod tests {
         Variable::Param(i)
     }
 
-    fn ret_val(identity_id: u64, row_offset: i32, index: usize) -> Variable {
-        Variable::MachineCallReturnValue(MachineCallReturnVariable {
+    fn call_var(identity_id: u64, row_offset: i32, index: usize) -> Variable {
+        Variable::MachineCallParam(MachineCallVariable {
             identity_id,
             row_offset,
             index,
@@ -548,15 +549,15 @@ mod tests {
         let x0 = cell("x", 0, 0);
         let ym1 = cell("y", 1, -1);
         let yp1 = cell("y", 1, 1);
-        let r1 = ret_val(7, 1, 1);
+        let cv1 = call_var(7, 1, 0);
+        let r1 = call_var(7, 1, 1);
         let effects = vec![
             assignment(&x0, number(7) * symbol(&a0)),
+            assignment(&cv1, symbol(&x0)),
             Effect::MachineCall(
                 7,
-                vec![
-                    MachineCallArgument::Unknown(r1.clone()),
-                    MachineCallArgument::Known(symbol(&x0)),
-                ],
+                [false, true].into_iter().collect(),
+                vec![r1.clone(), cv1.clone()],
             ),
             assignment(&ym1, symbol(&r1)),
             assignment(&yp1, symbol(&ym1) + symbol(&x0)),
@@ -569,8 +570,8 @@ mod tests {
         let known_inputs = vec![a0.clone()];
         let code = witgen_code(&known_inputs, &effects);
         assert_eq!(
-            code,
-            "
+                code,
+                "
 #[no_mangle]
 extern \"C\" fn witgen(
     WitgenFunctionParams{
@@ -589,9 +590,10 @@ extern \"C\" fn witgen(
     let c_a_2_0 = get(data, row_offset, 0, 2);
 
     let c_x_0_0 = (FieldElement::from(7) * c_a_2_0);
-    let mut ret_7_1_1 = FieldElement::default();
-    assert!(call_machine(mutable_state, 7, MutSlice::from((&mut [LookupCell::Output(&mut ret_7_1_1), LookupCell::Input(&c_x_0_0)]).as_mut_slice())));
-    let c_y_1_m1 = ret_7_1_1;
+    let call_var_7_1_0 = c_x_0_0;
+    let mut call_var_7_1_1 = FieldElement::default();
+    assert!(call_machine(mutable_state, 7, MutSlice::from((&mut [LookupCell::Output(&mut call_var_7_1_1), LookupCell::Input(&call_var_7_1_0)]).as_mut_slice())));
+    let c_y_1_m1 = call_var_7_1_1;
     let c_y_1_1 = (c_y_1_m1 + c_x_0_0);
     assert!(c_y_1_m1 == c_x_0_0);
 
@@ -604,7 +606,7 @@ extern \"C\" fn witgen(
     set_known(known, row_offset, 1, 1);
 }
 "
-        );
+            );
     }
 
     extern "C" fn no_call_machine(
@@ -818,16 +820,15 @@ extern \"C\" fn witgen(
     fn submachine_calls() {
         let x = cell("x", 0, 0);
         let y = cell("y", 1, 0);
-        let r1 = ret_val(7, 0, 1);
-        let r2 = ret_val(7, 0, 2);
+        let v1 = call_var(7, 0, 0);
+        let r1 = call_var(7, 0, 1);
+        let r2 = call_var(7, 0, 2);
         let effects = vec![
+            Effect::Assignment(v1.clone(), number(7)),
             Effect::MachineCall(
                 7,
-                vec![
-                    MachineCallArgument::Known(number(7)),
-                    MachineCallArgument::Unknown(r1.clone()),
-                    MachineCallArgument::Unknown(r2.clone()),
-                ],
+                [true, false, false].into_iter().collect(),
+                vec![v1, r1.clone(), r2.clone()],
             ),
             Effect::Assignment(x.clone(), symbol(&r1)),
             Effect::Assignment(y.clone(), symbol(&r2)),
