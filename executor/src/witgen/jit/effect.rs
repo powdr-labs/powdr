@@ -32,17 +32,17 @@ impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
         let iter: Box<dyn Iterator<Item = &V>> = match self {
             Effect::Assignment(v, expr) => Box::new(iter::once(v).chain(expr.referenced_symbols())),
             Effect::RangeConstraint(v, _) => Box::new(iter::once(v)),
-            Effect::Assertion(Assertion { lhs, rhs, .. }) => Box::new(
-                lhs.referenced_symbols()
-                    .chain(rhs.referenced_symbols())
-                    .unique(),
-            ),
-            Effect::MachineCall(_, _, args) => Box::new(args.iter().unique()),
-            Effect::Branch(branch_condition, vec, vec1) => Box::new(
-                iter::once(&branch_condition.variable)
-                    .chain(vec.iter().flat_map(|effect| effect.referenced_variables()))
-                    .chain(vec1.iter().flat_map(|effect| effect.referenced_variables()))
-                    .unique(),
+            Effect::Assertion(Assertion { lhs, rhs, .. }) => {
+                Box::new(lhs.referenced_symbols().chain(rhs.referenced_symbols()))
+            }
+            Effect::MachineCall(_, _, args) => Box::new(args.iter()),
+            Effect::Branch(branch_condition, first, second) => Box::new(
+                iter::once(&branch_condition.variable).chain(
+                    [first, second]
+                        .into_iter()
+                        .flatten()
+                        .flat_map(|effect| effect.referenced_variables()),
+                ),
             ),
         };
         iter.unique()
