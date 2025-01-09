@@ -12,14 +12,14 @@ use powdr_number::FieldElement;
 
 use std::collections::{BTreeSet, HashMap};
 
-// Witgen effects compiled into interpreter instructions.
+/// Witgen effects compiled into interpreter instructions.
 pub struct EffectsInterpreter<T: FieldElement> {
     var_count: usize,
     actions: Vec<InterpreterAction<T>>,
 }
 
-// Witgen effects compiled into "instructions".
-// Variables have been removed and replaced by their index in the variable list.
+/// Witgen effects compiled into "instructions".
+/// Variables have been removed and replaced by their index in the variable list.
 enum InterpreterAction<T: FieldElement> {
     ReadCell(usize, Cell),
     ReadParam(usize, usize),
@@ -32,9 +32,9 @@ enum InterpreterAction<T: FieldElement> {
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum MachineCallArgumentIdx {
-    // var index of the evaluated known argument expression
+    /// var index of the evaluated known argument expression
     Known(usize),
-    // var index of the unknown
+    /// var index of the unknown
     Unknown(usize),
 }
 
@@ -151,7 +151,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
             });
     }
 
-    // Check that actions are valid (e.g., variables writen to only once, and only read after being written to)
+    /// Check that actions are valid (e.g., variables writen to only once, and only read after being written to)
     fn is_valid(&self) -> bool {
         let mut prev_writes = BTreeSet::new();
         for action in &self.actions {
@@ -169,7 +169,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         true
     }
 
-    // Execute the machine effects for the given the parameters
+    /// Execute the machine effects for the given the parameters
     pub fn call<Q: QueryCallback<T>>(
         &self,
         mutable_state: &MutableState<'_, T, Q>,
@@ -232,7 +232,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
 }
 
 impl<T: FieldElement> InterpreterAction<T> {
-    // variable indexes written by the action
+    /// variable indexes written by the action
     fn writes(&self) -> BTreeSet<usize> {
         let mut set = BTreeSet::new();
         match self {
@@ -255,7 +255,7 @@ impl<T: FieldElement> InterpreterAction<T> {
         set
     }
 
-    // variable indexes read by the action
+    /// variable indexes read by the action
     fn reads(&self) -> BTreeSet<usize> {
         let mut set = BTreeSet::new();
         match self {
@@ -320,14 +320,14 @@ impl VariableMapper {
         idx
     }
 
-    // reserve a new variable index
+    /// reserve a new variable index
     pub fn reserve_idx(&mut self) -> usize {
         let idx = self.count;
         self.count += 1;
         idx
     }
 
-    // get the index of a variable if it was previously mapped
+    /// get the index of a variable if it was previously mapped
     pub fn get_var(&mut self, var: &Variable) -> Option<usize> {
         self.var_idx.get(var).copied()
     }
@@ -426,8 +426,6 @@ impl<T: FieldElement> RPNExpression<T, usize> {
         stack.pop().unwrap()
     }
 }
-
-// the following functions come from the interface.rs file also included in the compiled jit code
 
 #[inline]
 fn get_param<T: FieldElement>(params: &[LookupCell<T>], i: usize) -> T {
