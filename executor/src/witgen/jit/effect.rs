@@ -1,8 +1,12 @@
 use std::cmp::Ordering;
 
+use std::iter;
+
+use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::indent;
 use powdr_number::FieldElement;
+use std::hash::Hash;
 
 use crate::witgen::range_constraints::RangeConstraint;
 
@@ -17,10 +21,33 @@ pub enum Effect<T: FieldElement, V> {
     RangeConstraint(V, RangeConstraint<T>),
     /// A run-time assertion. If this fails, we have conflicting constraints.
     Assertion(Assertion<T, V>),
-    /// A call to a different machine.
-    MachineCall(u64, Vec<MachineCallArgument<T, V>>),
+    /// A call to a different machine, with identity ID, known inputs and argument variables.
+    MachineCall(u64, BitVec, Vec<V>),
     /// A branch on a variable.
     Branch(BranchCondition<T, V>, Vec<Effect<T, V>>, Vec<Effect<T, V>>),
+}
+
+impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
+    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        match self {
+            Effect::Assignment(v, expr) => {
+                Box::new(iter::once(v).chain(expr.referenced_symbols()).unique())
+            }
+            Effect::RangeConstraint(v, _) => Box::new(iter::once(v)),
+            Effect::Assertion(Assertion { lhs, rhs, .. }) => Box::new(
+                lhs.referenced_symbols()
+                    .chain(rhs.referenced_symbols())
+                    .unique(),
+            ),
+            Effect::MachineCall(_, _, args) => Box::new(args.iter().unique()),
+            Effect::Branch(branch_condition, vec, vec1) => Box::new(
+                iter::once(&branch_condition.variable)
+                    .chain(vec.iter().flat_map(|effect| effect.referenced_variables()))
+                    .chain(vec1.iter().flat_map(|effect| effect.referenced_variables()))
+                    .unique(),
+            ),
+        }
+    }
 }
 
 /// A run-time assertion. If this fails, we have conflicting constraints.
@@ -39,13 +66,14 @@ impl<T: FieldElement> Effect<T, Variable> {
     /// to be declared mutable.
     pub fn written_vars(&self) -> Box<dyn Iterator<Item = (&Variable, bool)> + '_> {
         match self {
-            Effect::Assignment(var, _) => Box::new(std::iter::once((var, false))),
+            Effect::Assignment(var, _) => Box::new(iter::once((var, false))),
             Effect::RangeConstraint(..) => unreachable!(),
-            Effect::Assertion(..) => Box::new(std::iter::empty()),
-            Effect::MachineCall(_, arguments) => Box::new(arguments.iter().flat_map(|e| match e {
-                MachineCallArgument::Unknown(v) => Some((v, true)),
-                MachineCallArgument::Known(_) => None,
-            })),
+            Effect::Assertion(..) => Box::new(iter::empty()),
+            Effect::MachineCall(_, known, vars) => Box::new(
+                vars.iter()
+                    .zip_eq(known)
+                    .flat_map(|(v, known)| (!known).then_some((v, true))),
+            ),
             Effect::Branch(_, first, second) => {
                 Box::new(first.iter().chain(second).flat_map(|e| e.written_vars()))
             }
@@ -80,12 +108,6 @@ impl<T: FieldElement, V> Assertion<T, V> {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub enum MachineCallArgument<T: FieldElement, V> {
-    Known(SymbolicExpression<T, V>),
-    Unknown(V),
-}
-
-#[derive(Clone, PartialEq, Eq)]
 pub struct BranchCondition<T: FieldElement, V> {
     pub variable: V,
     pub first_branch: RangeConstraint<T>,
@@ -108,13 +130,15 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
                     if *expected_equal { "==" } else { "!=" }
                 )
             }
-            Effect::MachineCall(id, args) => {
+            Effect::MachineCall(id, known, vars) => {
                 format!(
                     "machine_call({id}, [{}]);",
-                    args.iter()
-                        .map(|arg| match arg {
-                            MachineCallArgument::Known(k) => format!("Known({k})"),
-                            MachineCallArgument::Unknown(u) => format!("Unknown({u})"),
+                    vars.iter()
+                        .zip(known)
+                        .map(|(v, known)| if known {
+                            format!("Known({v})")
+                        } else {
+                            format!("Unknown({v})")
                         })
                         .join(", ")
                 )

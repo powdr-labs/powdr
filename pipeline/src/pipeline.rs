@@ -1074,7 +1074,9 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn publics(&self) -> Result<Vec<(String, Option<T>)>, Vec<String>> {
         let pil = self.optimized_pil()?;
         let witness = self.witness()?;
-        Ok(extract_publics(&witness, &pil))
+        Ok(extract_publics(witness.iter().map(|(k, v)| (k, v)), &pil)
+            .into_iter()
+            .collect())
     }
 
     pub fn witgen_callback(&mut self) -> Result<WitgenCallback<T>, Vec<String>> {

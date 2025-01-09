@@ -1,10 +1,11 @@
+// TODO: the unused is only here because the interpreter is not integrated in the final code yet
+#![allow(unused)]
 use super::effect::{Assertion, Effect};
 
 use super::symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator};
 use super::variable::{Cell, Variable};
 use crate::witgen::data_structures::finalizable_data::CompactDataRef;
 use crate::witgen::data_structures::mutable_state::MutableState;
-use crate::witgen::jit::effect::MachineCallArgument;
 use crate::witgen::machines::LookupCell;
 use crate::witgen::QueryCallback;
 use powdr_number::FieldElement;
@@ -68,7 +69,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                 let idx = var_mapper.map_var(var);
                 InterpreterAction::ReadParam(idx, *i)
             }
-            Variable::MachineCallReturnValue(_) => unreachable!(),
+            Variable::MachineCallParam(_) => unreachable!(),
         }));
     }
 
@@ -95,27 +96,19 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     var_mapper.map_expr_to_rpn(rhs),
                     *expected_equal,
                 ),
-                Effect::MachineCall(id, arguments) => {
-                    InterpreterAction::MachineCall(
-                        *id,
-                        arguments
-                            .iter()
-                            .map(|a| match a {
-                                MachineCallArgument::Unknown(v) => {
-                                    MachineCallArgumentIdx::Unknown(var_mapper.map_var(v))
-                                }
-                                MachineCallArgument::Known(e) => {
-                                    // convert known arguments into variable assignments that are then referenced
-                                    let idx = var_mapper.reserve_idx();
-                                    actions.push(InterpreterAction::AssignExpression(
-                                        idx,
-                                        var_mapper.map_expr_to_rpn(e),
-                                    ));
-                                    MachineCallArgumentIdx::Known(idx)
-                                }
-                            })
-                            .collect(),
-                    )
+                Effect::MachineCall(id, known_inputs, arguments) => {
+                    let arguments = known_inputs
+                        .iter()
+                        .zip(arguments)
+                        .map(|(is_input, var)| {
+                            if is_input {
+                                MachineCallArgumentIdx::Known(var_mapper.map_var(var))
+                            } else {
+                                MachineCallArgumentIdx::Unknown(var_mapper.map_var(var))
+                            }
+                        })
+                        .collect();
+                    InterpreterAction::MachineCall(*id, arguments)
                 }
                 Effect::Branch(..) => {
                     unimplemented!("Branches are not supported in the interpreter yet")
@@ -143,7 +136,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                         let idx = var_mapper.get_var(var).unwrap();
                         actions.push(InterpreterAction::WriteParam(idx, *i));
                     }
-                    Variable::MachineCallReturnValue(_) => {
+                    Variable::MachineCallParam(_) => {
                         // This is just an internal variable.
                     }
                 }
