@@ -248,9 +248,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .iter()
             .map(|e| e.as_ref().map(|e| e.range_constraint()).unwrap_or_default())
             .collect_vec();
-        let known = evaluated
+        let known: BitVec = evaluated
             .iter()
-            .map(|e| e.as_ref().map(|e| e.try_to_known()).is_some())
+            .map(|e| e.as_ref().and_then(|e| e.try_to_known()).is_some())
             .collect();
 
         let Some(new_range_constraints) =
