@@ -1,5 +1,3 @@
-// TODO: the unused is only here because the interpreter is not integrated in the final code yet
-#![allow(unused)]
 use super::effect::{Assertion, Effect};
 
 use super::symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator};
@@ -13,13 +11,13 @@ use powdr_number::FieldElement;
 
 use std::collections::{BTreeSet, HashMap};
 
-/// Witgen effects compiled into interpreter instructions.
+/// Interpreter for instructions compiled from witgen effects.
 pub struct EffectsInterpreter<T: FieldElement> {
     var_count: usize,
     actions: Vec<InterpreterAction<T>>,
 }
 
-/// Witgen effects compiled into "instructions".
+/// Witgen effects compiled into instructions for a stack machine.
 /// Variables have been removed and replaced by their index in the variable list.
 enum InterpreterAction<T: FieldElement> {
     ReadCell(usize, Cell),
@@ -187,16 +185,22 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     vars[*idx] = val;
                 }
                 InterpreterAction::ReadCell(idx, c) => {
-                    let cell_offset: usize = c.row_offset.try_into().unwrap();
-                    vars[*idx] = data.data.get(data.row_offset + cell_offset, c.id).0;
+                    let row_offset: i32 = data.row_offset.try_into().unwrap();
+                    vars[*idx] = data
+                        .data
+                        .get((row_offset + c.row_offset).try_into().unwrap(), c.id)
+                        .0;
                 }
                 InterpreterAction::ReadParam(idx, i) => {
                     vars[*idx] = get_param(params, *i);
                 }
                 InterpreterAction::WriteCell(idx, c) => {
-                    let cell_offset: usize = c.row_offset.try_into().unwrap();
-                    data.data
-                        .set(data.row_offset + cell_offset, c.id, vars[*idx]);
+                    let row_offset: i32 = data.row_offset.try_into().unwrap();
+                    data.data.set(
+                        (row_offset + c.row_offset).try_into().unwrap(),
+                        c.id,
+                        vars[*idx],
+                    );
                 }
                 InterpreterAction::WriteParam(idx, i) => {
                     set_param(params, *i, vars[*idx]);
@@ -436,5 +440,97 @@ fn set_param<T: FieldElement>(params: &mut [LookupCell<T>], i: usize, value: T) 
     match &mut params[i] {
         LookupCell::Input(_) => panic!("Input cell used as output"),
         LookupCell::Output(v) => **v = value,
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::fs::read_to_string;
+
+    use super::EffectsInterpreter;
+    use crate::witgen::data_structures::{
+        finalizable_data::{CompactData, CompactDataRef},
+        mutable_state::MutableState,
+    };
+    use crate::witgen::global_constraints;
+    use crate::witgen::jit::block_machine_processor::BlockMachineProcessor;
+    use crate::witgen::jit::test_util::read_pil;
+    use crate::witgen::jit::variable::Variable;
+    use crate::witgen::machines::{
+        machine_extractor::MachineExtractor, KnownMachine, LookupCell, Machine,
+    };
+    use crate::witgen::FixedData;
+
+    use bit_vec::BitVec;
+    use itertools::Itertools;
+    use powdr_number::GoldilocksField;
+
+    #[test]
+    fn call_poseidon() {
+        let file = "../test_data/pil/poseidon_gl.pil";
+        let machine_name = "main_poseidon";
+        let (num_inputs, num_outputs) = (12, 4);
+        let pil = read_to_string(file).unwrap();
+
+        let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(&pil);
+
+        let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
+        let (fixed_data, retained_identities) =
+            global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
+        let machines = MachineExtractor::new(&fixed_data).split_out_machines(retained_identities);
+        let [KnownMachine::BlockMachine(machine)] = machines
+            .iter()
+            .filter(|m| m.name().contains(machine_name))
+            .collect_vec()
+            .as_slice()
+        else {
+            panic!("Expected exactly one matching block machine")
+        };
+        let (machine_parts, block_size, latch_row) = machine.machine_info();
+        assert_eq!(machine_parts.connections.len(), 1);
+        let connection_id = *machine_parts.connections.keys().next().unwrap();
+        let processor =
+            BlockMachineProcessor::new(&fixed_data, machine_parts.clone(), block_size, latch_row);
+
+        let mutable_state = MutableState::new(machines.into_iter(), &|_| {
+            Err("Query not implemented".to_string())
+        });
+
+        let known_values = BitVec::from_iter(
+            (0..num_inputs)
+                .map(|_| true)
+                .chain((0..num_outputs).map(|_| false)),
+        );
+
+        let effects = processor
+            .generate_code(&mutable_state, connection_id, &known_values)
+            .unwrap();
+
+        let known_inputs = (0..12).map(Variable::Param).collect::<Vec<_>>();
+
+        // generate interpreter
+        let interpreter = EffectsInterpreter::new(&known_inputs, &effects);
+        // call it
+        let mut params = [GoldilocksField::default(); 16];
+        let mut param_lookups = params
+            .iter_mut()
+            .enumerate()
+            .map(|(i, p)| {
+                if i < 12 {
+                    LookupCell::Input(p)
+                } else {
+                    LookupCell::Output(p)
+                }
+            })
+            .collect::<Vec<_>>();
+        let poly_ids = analyzed
+            .committed_polys_in_source_order()
+            .flat_map(|p| p.0.array_elements().map(|e| e.1))
+            .collect_vec();
+
+        let mut data = CompactData::new(&poly_ids);
+        data.append_new_rows(31);
+        let data_ref = CompactDataRef::new(&mut data, 0);
+        interpreter.call(&mutable_state, &mut param_lookups, data_ref);
     }
 }
