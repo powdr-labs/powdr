@@ -42,7 +42,10 @@ impl<T: FieldElement, V: Ord> Effect<T, V> {
                     MachineCallArgument::Unknown(_) => BTreeSet::new(),
                 })
                 .collect(),
-            Effect::Branch(branch_condition, vec, vec1) => todo!(),
+            Effect::Branch(branch_condition, vec, vec1) => iter::once(&branch_condition.variable)
+                .chain(vec.iter().flat_map(|effect| effect.referenced_variables()))
+                .chain(vec1.iter().flat_map(|effect| effect.referenced_variables()))
+                .collect(),
         }
     }
 }
