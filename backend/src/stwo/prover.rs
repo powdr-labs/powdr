@@ -365,7 +365,7 @@ where
         };
 
         let proof: Proof<MC> = Proof {
-            starkproof: stark_proof,
+            stark_proof,
             constant_col_log_sizes,
             witness_col_log_sizes,
             machine_log_sizes,
@@ -418,12 +418,12 @@ where
         let components_slice = components_slice.as_mut_slice();
 
         commitment_scheme.commit(
-            proof.starkproof.commitments[PREPROCESSED_TRACE_IDX],
+            proof.stark_proof.commitments[PREPROCESSED_TRACE_IDX],
             &proof.constant_col_log_sizes,
             verifier_channel,
         );
         commitment_scheme.commit(
-            proof.starkproof.commitments[ORIGINAL_TRACE_IDX],
+            proof.stark_proof.commitments[ORIGINAL_TRACE_IDX],
             &proof.witness_col_log_sizes,
             verifier_channel,
         );
@@ -432,7 +432,7 @@ where
             components_slice,
             verifier_channel,
             commitment_scheme,
-            proof.starkproof,
+            proof.stark_proof,
         )
         .map_err(|e| e.to_string())
     }

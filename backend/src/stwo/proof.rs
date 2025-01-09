@@ -132,7 +132,7 @@ pub struct Proof<MC: MerkleChannel>
 where
     MC::H: DeserializeOwned + Serialize,
 {
-    pub starkproof: StarkProof<MC::H>,
+    pub stark_proof: StarkProof<MC::H>,
     pub constant_col_log_sizes: Vec<u32>,
     pub witness_col_log_sizes: Vec<u32>,
     pub machine_log_sizes: Vec<u32>,
