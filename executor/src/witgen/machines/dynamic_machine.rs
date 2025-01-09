@@ -4,7 +4,6 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
-use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::{Machine, MachineParts};
 use crate::witgen::processor::{OuterQuery, SolverState};
@@ -31,7 +30,6 @@ pub struct DynamicMachine<'a, T: FieldElement> {
     latch: Option<Expression<T>>,
     name: String,
     degree: DegreeType,
-    multiplicity_counter: MultiplicityCounter,
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
@@ -96,12 +94,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
             self.data.extend(updated_data.block);
             self.publics.extend(updated_data.publics);
 
-            // The block we just added contains the first row of the next block,
-            // so the latch row is the second-to-last row.
-            let latch_row = self.data.len() - 2;
-            self.multiplicity_counter
-                .increment_at_row(identity_id, latch_row);
-
             eval_value.report_side_effect()
         } else {
             log::trace!("End processing VM '{}' (incomplete)", self.name());
@@ -122,10 +114,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
         self.data
             .take_transposed()
             .map(|(id, (values, _))| (id, values))
-            .chain(
-                self.multiplicity_counter
-                    .generate_columns_single_size(self.degree),
-            )
             .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
@@ -139,7 +127,6 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         latch: Option<Expression<T>>,
     ) -> Self {
         let data = FinalizableData::new(&parts.witnesses, fixed_data);
-        let multiplicity_counter = MultiplicityCounter::new(&parts.connections);
 
         Self {
             degree: parts.common_degree_range().max,
@@ -149,7 +136,6 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
             data,
             publics: Default::default(),
             latch,
-            multiplicity_counter,
         }
     }
 
