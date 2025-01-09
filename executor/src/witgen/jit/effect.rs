@@ -1,5 +1,7 @@
 use std::cmp::Ordering;
 
+use std::{collections::BTreeSet, iter};
+
 use itertools::Itertools;
 use powdr_ast::indent;
 use powdr_number::FieldElement;
@@ -21,6 +23,28 @@ pub enum Effect<T: FieldElement, V> {
     MachineCall(u64, Vec<MachineCallArgument<T, V>>),
     /// A branch on a variable.
     Branch(BranchCondition<T, V>, Vec<Effect<T, V>>, Vec<Effect<T, V>>),
+}
+
+impl<T: FieldElement, V: Ord> Effect<T, V> {
+    pub fn referenced_variables(&self) -> BTreeSet<&V> {
+        match self {
+            Effect::Assignment(v, expr) => iter::once(v).chain(expr.referenced_symbols()).collect(),
+            Effect::RangeConstraint(v, _) => iter::once(v).collect(),
+            Effect::Assertion(Assertion { lhs, rhs, .. }) => lhs
+                .referenced_symbols()
+                .into_iter()
+                .chain(rhs.referenced_symbols())
+                .collect(),
+            Effect::MachineCall(_, args) => args
+                .iter()
+                .flat_map(|arg| match arg {
+                    MachineCallArgument::Known(k) => k.referenced_symbols(),
+                    MachineCallArgument::Unknown(_) => BTreeSet::new(),
+                })
+                .collect(),
+            Effect::Branch(branch_condition, vec, vec1) => todo!(),
+        }
+    }
 }
 
 /// A run-time assertion. If this fails, we have conflicting constraints.

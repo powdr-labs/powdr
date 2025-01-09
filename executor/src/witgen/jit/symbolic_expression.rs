@@ -1,10 +1,13 @@
 use std::{
+    collections::BTreeSet,
     fmt::{self, Display, Formatter},
+    iter,
     ops::{Add, BitAnd, Mul, Neg},
     rc::Rc,
 };
 
 use num_traits::Zero;
+use powdr_ast::parsed::visitor::Children;
 use powdr_number::FieldElement;
 
 use crate::witgen::range_constraints::RangeConstraint;
@@ -43,6 +46,25 @@ pub enum BitOperator {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnaryOperator {
     Neg,
+}
+
+impl<T: FieldElement, S> Children<SymbolicExpression<T, S>> for SymbolicExpression<T, S> {
+    fn children(&self) -> Box<dyn Iterator<Item = &SymbolicExpression<T, S>> + '_> {
+        match self {
+            SymbolicExpression::BinaryOperation(lhs, _, rhs, _) => {
+                Box::new(iter::once(lhs.as_ref()).chain(iter::once(rhs.as_ref())))
+            }
+            SymbolicExpression::UnaryOperation(_, expr, _) => Box::new(iter::once(expr.as_ref())),
+            SymbolicExpression::BitOperation(expr, _, _, _) => Box::new(iter::once(expr.as_ref())),
+            SymbolicExpression::Concrete(_) | SymbolicExpression::Symbol(..) => {
+                Box::new(iter::empty())
+            }
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut SymbolicExpression<T, S>> + '_> {
+        unimplemented!()
+    }
 }
 
 impl<T: FieldElement, S> SymbolicExpression<T, S> {
@@ -85,6 +107,18 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
             | SymbolicExpression::BinaryOperation(..)
             | SymbolicExpression::UnaryOperation(..)
             | SymbolicExpression::BitOperation(..) => None,
+        }
+    }
+}
+
+impl<T: FieldElement, S: Ord> SymbolicExpression<T, S> {
+    pub fn referenced_symbols(&self) -> BTreeSet<&S> {
+        match self {
+            SymbolicExpression::Symbol(s, _) => iter::once(s).collect(),
+            _ => self
+                .children()
+                .flat_map(|c| c.referenced_symbols())
+                .collect(),
         }
     }
 }

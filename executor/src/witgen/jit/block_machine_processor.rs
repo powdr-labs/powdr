@@ -58,7 +58,16 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables);
 
         // In the latch row, set the RHS selector to 1.
-        witgen.assign_constant(&connection.right.selector, self.latch_row as i32, T::one());
+        let selector = &connection.right.selector;
+        witgen.assign_constant(selector, self.latch_row as i32, T::one());
+
+        // Set all other selectors to 0 in the latch row.
+        for other_connection in self.machine_parts.connections.values() {
+            let other_selector = &other_connection.right.selector;
+            if other_selector != selector {
+                witgen.assign_constant(other_selector, self.latch_row as i32, T::zero());
+            }
+        }
 
         // For each argument, connect the expression on the RHS with the formal parameter.
         for (index, expr) in connection.right.expressions.iter().enumerate() {

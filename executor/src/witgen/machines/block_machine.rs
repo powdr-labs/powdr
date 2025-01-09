@@ -483,7 +483,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             "Block machine is full (this should have been checked before)"
         );
         self.data.finalize_all();
-        //TODO can we properly access the last row of the dummy block?
         let data = self.data.append_new_finalized_rows(self.block_size);
 
         let success =
