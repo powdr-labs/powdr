@@ -166,7 +166,15 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 .filter(|(_, pf)| {
                     let refs = refs_in_parsed_expression(pf)
                         .unique()
-                        .filter_map(|n| self.fixed.column_by_name.get(n).cloned())
+                        .flat_map(|n| {
+                            self.fixed.try_column_by_name(n).into_iter().chain(
+                                // The reference might be an array, in which case it wouldn't
+                                // be in the list of columns. So we try the first element as well.
+                                self.fixed
+                                    .try_column_by_name(&format!("{n}[0]"))
+                                    .into_iter(),
+                            )
+                        })
                         .collect::<HashSet<_>>();
                     refs.intersection(&machine_witnesses).next().is_some()
                 })
