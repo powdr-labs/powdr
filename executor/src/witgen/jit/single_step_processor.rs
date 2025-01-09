@@ -152,8 +152,8 @@ mod test {
         let err = generate_single_step(input, "M").err().unwrap();
         assert_eq!(
             err.to_string(),
-            "Unable to derive algorithm to compute required values and \
-            maximum branch depth of 6 reached.\nThe following variables or values are still missing: M::Y[1]\n\
+            "Unable to derive algorithm to compute required values: \
+            Maximum branch depth of 6 reached.\nThe following variables or values are still missing: M::Y[1]\n\
             No code generated so far."
         );
     }

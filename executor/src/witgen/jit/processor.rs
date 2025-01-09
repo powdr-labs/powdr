@@ -81,7 +81,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             // (i.e. cannot be fixed by runtime witgen) and thus we panic inside.
             // We could do this only at the end of each branch, but it's a bit
             // more convenient to do it here.
-            self.check_block_shape(&witgen);
+            self.check_block_shape(&witgen)?;
         }
 
         // Check that we could derive all requested variables.
@@ -246,7 +246,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
 
     /// After solving, the known cells should be such that we can stack different blocks.
     /// TODO the same is actually true for machine calls.
-    fn check_block_shape(&self, witgen: &WitgenInference<'a, T, FixedEval>) {
+    fn check_block_shape(
+        &self,
+        witgen: &WitgenInference<'a, T, FixedEval>,
+    ) -> Result<(), Error<'a, T>> {
         let known_columns: BTreeSet<_> = witgen
             .known_variables()
             .iter()
@@ -302,10 +305,16 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                         row + self.block_size as i32
                     );
                     log::debug!("{err_str}");
-                    panic!("{err_str}");
+                    return Err(Error {
+                        reason: ErrorReason::NotStackable,
+                        code: vec![],
+                        missing_variables: vec![],
+                        incomplete_identities: vec![],
+                    });
                 }
             }
         }
+        Ok(())
     }
 }
 
@@ -334,6 +343,7 @@ pub struct Error<'a, T: FieldElement> {
 pub enum ErrorReason {
     NoBranchVariable,
     MaxBranchDepthReached(usize),
+    NotStackable,
 }
 
 impl<T: FieldElement> Display for Error<'_, T> {
@@ -353,14 +363,15 @@ impl<T: FieldElement> Error<'_, T> {
     ) -> String {
         let mut s = String::new();
         let reason_str = match &self.reason {
-            ErrorReason::NoBranchVariable => "no variable available to branch on".to_string(),
+            ErrorReason::NoBranchVariable => "No variable available to branch on".to_string(),
             ErrorReason::MaxBranchDepthReached(depth) => {
-                format!("maximum branch depth of {depth} reached")
+                format!("Maximum branch depth of {depth} reached")
             }
+            ErrorReason::NotStackable => "Some columns are not stackable".to_string(),
         };
         write!(
             s,
-            "Unable to derive algorithm to compute required values and {reason_str}."
+            "Unable to derive algorithm to compute required values: {reason_str}."
         )
         .unwrap();
         if !self.missing_variables.is_empty() {

@@ -234,7 +234,8 @@ params[2] = Add::c[0];"
     }
 
     #[test]
-    #[should_panic = "Column NotStackable::a is not stackable in a 1-row block"]
+    //#[should_panic = "Column NotStackable::a is not stackable in a 1-row block"]
+    #[should_panic = "Unable to derive algorithm to compute required values: Some columns are not stackable"]
     fn not_stackable() {
         let input = "
         namespace Main(256);
