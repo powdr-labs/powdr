@@ -20,8 +20,8 @@ use crate::witgen::{
 
 use super::{
     affine_symbolic_expression::{AffineSymbolicExpression, ProcessResult},
-    effect::{BranchCondition, Effect, MachineCallArgument},
-    variable::{MachineCallReturnVariable, Variable},
+    effect::{BranchCondition, Effect},
+    variable::{MachineCallVariable, Variable},
 };
 
 /// Summary of the effect of processing an action.
@@ -261,30 +261,24 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 }).format(", "));
             return ProcessResult::empty();
         }
-        let args = evaluated
-            .into_iter()
-            .zip(arguments)
+        let vars = arguments
+            .iter()
             .enumerate()
-            .map(|(index, (eval_expr, arg))| {
-                if let Some(e) = eval_expr {
-                    MachineCallArgument::Known(e)
-                } else {
-                    let ret_var = MachineCallReturnVariable {
-                        identity_id: lookup_id,
-                        row_offset,
-                        index,
-                    };
-                    self.assign_variable(
-                        arg,
-                        row_offset,
-                        Variable::MachineCallReturnValue(ret_var.clone()),
-                    );
-                    ret_var.into_argument()
+            .map(|(index, arg)| {
+                let var = Variable::MachineCallParam(MachineCallVariable {
+                    identity_id: lookup_id,
+                    row_offset,
+                    index,
+                });
+                self.assign_variable(arg, row_offset, var.clone());
+                if known[index] {
+                    assert!(self.is_known(&var));
                 }
+                var
             })
             .collect_vec();
         ProcessResult {
-            effects: vec![Effect::MachineCall(lookup_id, args)],
+            effects: vec![Effect::MachineCall(lookup_id, known, vars)],
             complete: true,
         }
     }
@@ -331,11 +325,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 Effect::RangeConstraint(variable, rc) => {
                     progress |= self.add_range_constraint(variable.clone(), rc.clone());
                 }
-                Effect::MachineCall(_, arguments) => {
-                    for arg in arguments {
-                        if let MachineCallArgument::Unknown(v) = arg {
-                            self.known_variables.insert(v.clone());
-                        }
+                Effect::MachineCall(_, _, vars) => {
+                    for v in vars {
+                        // Inputs are already known, but it does not hurt to add all of them.
+                        self.known_variables.insert(v.clone());
                     }
                     progress = true;
                     self.code.push(e);
@@ -732,22 +725,30 @@ assert (Xor::A[6] & 18446744073692774400) == 0;
 Xor::C_byte[5] = ((Xor::C[6] & 16711680) // 65536);
 Xor::C[5] = (Xor::C[6] & 65535);
 assert (Xor::C[6] & 18446744073692774400) == 0;
-machine_call(0, [Known(Xor::A_byte[6]), Unknown(ret(0, 6, 1)), Known(Xor::C_byte[6])]);
-Xor::B_byte[6] = ret(0, 6, 1);
+call_var(0, 6, 0) = Xor::A_byte[6];
+call_var(0, 6, 2) = Xor::C_byte[6];
+machine_call(0, [Known(call_var(0, 6, 0)), Unknown(call_var(0, 6, 1)), Known(call_var(0, 6, 2))]);
+Xor::B_byte[6] = call_var(0, 6, 1);
 Xor::A_byte[4] = ((Xor::A[5] & 65280) // 256);
 Xor::A[4] = (Xor::A[5] & 255);
 assert (Xor::A[5] & 18446744073709486080) == 0;
 Xor::C_byte[4] = ((Xor::C[5] & 65280) // 256);
 Xor::C[4] = (Xor::C[5] & 255);
 assert (Xor::C[5] & 18446744073709486080) == 0;
-machine_call(0, [Known(Xor::A_byte[5]), Unknown(ret(0, 5, 1)), Known(Xor::C_byte[5])]);
-Xor::B_byte[5] = ret(0, 5, 1);
+call_var(0, 5, 0) = Xor::A_byte[5];
+call_var(0, 5, 2) = Xor::C_byte[5];
+machine_call(0, [Known(call_var(0, 5, 0)), Unknown(call_var(0, 5, 1)), Known(call_var(0, 5, 2))]);
+Xor::B_byte[5] = call_var(0, 5, 1);
 Xor::A_byte[3] = Xor::A[4];
 Xor::C_byte[3] = Xor::C[4];
-machine_call(0, [Known(Xor::A_byte[4]), Unknown(ret(0, 4, 1)), Known(Xor::C_byte[4])]);
-Xor::B_byte[4] = ret(0, 4, 1);
-machine_call(0, [Known(Xor::A_byte[3]), Unknown(ret(0, 3, 1)), Known(Xor::C_byte[3])]);
-Xor::B_byte[3] = ret(0, 3, 1);
+call_var(0, 4, 0) = Xor::A_byte[4];
+call_var(0, 4, 2) = Xor::C_byte[4];
+machine_call(0, [Known(call_var(0, 4, 0)), Unknown(call_var(0, 4, 1)), Known(call_var(0, 4, 2))]);
+Xor::B_byte[4] = call_var(0, 4, 1);
+call_var(0, 3, 0) = Xor::A_byte[3];
+call_var(0, 3, 2) = Xor::C_byte[3];
+machine_call(0, [Known(call_var(0, 3, 0)), Unknown(call_var(0, 3, 1)), Known(call_var(0, 3, 2))]);
+Xor::B_byte[3] = call_var(0, 3, 1);
 Xor::B[4] = Xor::B_byte[3];
 Xor::B[5] = (Xor::B[4] + (Xor::B_byte[4] * 256));
 Xor::B[6] = (Xor::B[5] + (Xor::B_byte[5] * 65536));
