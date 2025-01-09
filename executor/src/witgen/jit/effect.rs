@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 
 use std::iter;
 
+use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::indent;
 use powdr_number::FieldElement;
@@ -20,8 +21,8 @@ pub enum Effect<T: FieldElement, V> {
     RangeConstraint(V, RangeConstraint<T>),
     /// A run-time assertion. If this fails, we have conflicting constraints.
     Assertion(Assertion<T, V>),
-    /// A call to a different machine.
-    MachineCall(u64, Vec<MachineCallArgument<T, V>>),
+    /// A call to a different machine, with identity ID, known inputs and argument variables.
+    MachineCall(u64, BitVec, Vec<V>),
     /// A branch on a variable.
     Branch(BranchCondition<T, V>, Vec<Effect<T, V>>, Vec<Effect<T, V>>),
 }
@@ -38,14 +39,7 @@ impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
                     .chain(rhs.referenced_symbols())
                     .unique(),
             ),
-            Effect::MachineCall(_, args) => Box::new(
-                args.iter()
-                    .flat_map(|arg| match arg {
-                        MachineCallArgument::Known(k) => k.referenced_symbols(),
-                        MachineCallArgument::Unknown(_) => Box::new(iter::empty()),
-                    })
-                    .unique(),
-            ),
+            Effect::MachineCall(_, _, args) => Box::new(args.iter().unique()),
             Effect::Branch(branch_condition, vec, vec1) => Box::new(
                 iter::once(&branch_condition.variable)
                     .chain(vec.iter().flat_map(|effect| effect.referenced_variables()))
@@ -93,12 +87,6 @@ impl<T: FieldElement, V> Assertion<T, V> {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub enum MachineCallArgument<T: FieldElement, V> {
-    Known(SymbolicExpression<T, V>),
-    Unknown(V),
-}
-
-#[derive(Clone, PartialEq, Eq)]
 pub struct BranchCondition<T: FieldElement, V> {
     pub variable: V,
     pub first_branch: RangeConstraint<T>,
@@ -121,13 +109,15 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
                     if *expected_equal { "==" } else { "!=" }
                 )
             }
-            Effect::MachineCall(id, args) => {
+            Effect::MachineCall(id, known, vars) => {
                 format!(
                     "machine_call({id}, [{}]);",
-                    args.iter()
-                        .map(|arg| match arg {
-                            MachineCallArgument::Known(k) => format!("Known({k})"),
-                            MachineCallArgument::Unknown(u) => format!("Unknown({u})"),
+                    vars.iter()
+                        .zip(known)
+                        .map(|(v, known)| if known {
+                            format!("Known({v})")
+                        } else {
+                            format!("Unknown({v})")
                         })
                         .join(", ")
                 )

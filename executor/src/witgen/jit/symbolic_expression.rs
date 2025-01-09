@@ -297,7 +297,10 @@ impl<T: FieldElement, V: Clone> SymbolicExpression<T, V> {
 
     /// Integer division, i.e. convert field elements to unsigned integer and divide.
     pub fn integer_div(&self, rhs: &Self) -> Self {
-        if rhs.is_known_one() {
+        if let (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) = (self, rhs) {
+            assert!(b != &T::from(0));
+            SymbolicExpression::Concrete(*a / *b)
+        } else if rhs.is_known_one() {
             self.clone()
         } else {
             SymbolicExpression::BinaryOperation(

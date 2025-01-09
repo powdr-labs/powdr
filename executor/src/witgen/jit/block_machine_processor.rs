@@ -77,7 +77,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         // Solve for the block witness.
         // Fails if any machine call cannot be completed.
         match self.solve_block(can_process, &mut witgen, connection.right) {
-            Ok(()) => Ok(witgen.code()),
+            Ok(()) => Ok(witgen.finish()),
             Err(e) => {
                 log::debug!("\nCode generation failed for connection:\n  {connection}");
                 let known_args_str = known_args
@@ -89,7 +89,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 log::debug!("Error:\n  {e}");
                 log::debug!(
                     "The following code was generated so far:\n{}",
-                    format_code(witgen.code().as_slice())
+                    format_code(witgen.code())
                 );
                 Err(format!("Code generation failed: {e}\nRun with RUST_LOG=debug to see the code generated so far."))
             }
@@ -140,10 +140,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             }
         }
 
-        // TODO: Fail hard (or return a different error), as this should never
-        // happen for valid block machines. Currently fails in:
-        // powdr-pipeline::powdr_std arith256_memory_large_test
-        self.check_block_shape(witgen)?;
+        if let Err(e) = self.check_block_shape(witgen) {
+            // Fail hard, as this should never happen for a correctly detected block machine.
+            log::debug!(
+                "The following code was generated so far:\n{}",
+                format_code(witgen.code())
+            );
+            panic!("{e}");
+        }
         self.check_incomplete_machine_calls(&complete)?;
 
         Ok(())
@@ -201,7 +205,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                     block_list,
                     values[self.block_size + 1]
                 );
-                log::debug!("Column {column_name} is not stackable:\n{column_str}");
+                log::error!("Column {column_name} is not stackable:\n{column_str}");
             }
 
             stackable
@@ -298,6 +302,7 @@ impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
 mod test {
     use std::fs::read_to_string;
 
+    use pretty_assertions::assert_eq;
     use test_log::test;
 
     use powdr_number::GoldilocksField;
@@ -425,8 +430,11 @@ main_binary::B_byte[2] = ((main_binary::B[3] & 4278190080) // 16777216);
 main_binary::B[2] = (main_binary::B[3] & 16777215);
 assert (main_binary::B[3] & 18446744069414584320) == 0;
 main_binary::operation_id_next[2] = main_binary::operation_id[3];
-machine_call(9, [Known(main_binary::operation_id_next[2]), Known(main_binary::A_byte[2]), Known(main_binary::B_byte[2]), Unknown(ret(9, 2, 3))]);
-main_binary::C_byte[2] = ret(9, 2, 3);
+call_var(9, 2, 0) = main_binary::operation_id_next[2];
+call_var(9, 2, 1) = main_binary::A_byte[2];
+call_var(9, 2, 2) = main_binary::B_byte[2];
+machine_call(9, [Known(call_var(9, 2, 0)), Known(call_var(9, 2, 1)), Known(call_var(9, 2, 2)), Unknown(call_var(9, 2, 3))]);
+main_binary::C_byte[2] = call_var(9, 2, 3);
 main_binary::operation_id[1] = main_binary::operation_id[2];
 main_binary::A_byte[1] = ((main_binary::A[2] & 16711680) // 65536);
 main_binary::A[1] = (main_binary::A[2] & 65535);
@@ -435,8 +443,11 @@ main_binary::B_byte[1] = ((main_binary::B[2] & 16711680) // 65536);
 main_binary::B[1] = (main_binary::B[2] & 65535);
 assert (main_binary::B[2] & 18446744073692774400) == 0;
 main_binary::operation_id_next[1] = main_binary::operation_id[2];
-machine_call(9, [Known(main_binary::operation_id_next[1]), Known(main_binary::A_byte[1]), Known(main_binary::B_byte[1]), Unknown(ret(9, 1, 3))]);
-main_binary::C_byte[1] = ret(9, 1, 3);
+call_var(9, 1, 0) = main_binary::operation_id_next[1];
+call_var(9, 1, 1) = main_binary::A_byte[1];
+call_var(9, 1, 2) = main_binary::B_byte[1];
+machine_call(9, [Known(call_var(9, 1, 0)), Known(call_var(9, 1, 1)), Known(call_var(9, 1, 2)), Unknown(call_var(9, 1, 3))]);
+main_binary::C_byte[1] = call_var(9, 1, 3);
 main_binary::operation_id[0] = main_binary::operation_id[1];
 main_binary::A_byte[0] = ((main_binary::A[1] & 65280) // 256);
 main_binary::A[0] = (main_binary::A[1] & 255);
@@ -445,13 +456,19 @@ main_binary::B_byte[0] = ((main_binary::B[1] & 65280) // 256);
 main_binary::B[0] = (main_binary::B[1] & 255);
 assert (main_binary::B[1] & 18446744073709486080) == 0;
 main_binary::operation_id_next[0] = main_binary::operation_id[1];
-machine_call(9, [Known(main_binary::operation_id_next[0]), Known(main_binary::A_byte[0]), Known(main_binary::B_byte[0]), Unknown(ret(9, 0, 3))]);
-main_binary::C_byte[0] = ret(9, 0, 3);
+call_var(9, 0, 0) = main_binary::operation_id_next[0];
+call_var(9, 0, 1) = main_binary::A_byte[0];
+call_var(9, 0, 2) = main_binary::B_byte[0];
+machine_call(9, [Known(call_var(9, 0, 0)), Known(call_var(9, 0, 1)), Known(call_var(9, 0, 2)), Unknown(call_var(9, 0, 3))]);
+main_binary::C_byte[0] = call_var(9, 0, 3);
 main_binary::A_byte[-1] = main_binary::A[0];
 main_binary::B_byte[-1] = main_binary::B[0];
 main_binary::operation_id_next[-1] = main_binary::operation_id[0];
-machine_call(9, [Known(main_binary::operation_id_next[-1]), Known(main_binary::A_byte[-1]), Known(main_binary::B_byte[-1]), Unknown(ret(9, -1, 3))]);
-main_binary::C_byte[-1] = ret(9, -1, 3);
+call_var(9, -1, 0) = main_binary::operation_id_next[-1];
+call_var(9, -1, 1) = main_binary::A_byte[-1];
+call_var(9, -1, 2) = main_binary::B_byte[-1];
+machine_call(9, [Known(call_var(9, -1, 0)), Known(call_var(9, -1, 1)), Known(call_var(9, -1, 2)), Unknown(call_var(9, -1, 3))]);
+main_binary::C_byte[-1] = call_var(9, -1, 3);
 main_binary::C[0] = main_binary::C_byte[-1];
 main_binary::C[1] = (main_binary::C[0] + (main_binary::C_byte[0] * 256));
 main_binary::C[2] = (main_binary::C[1] + (main_binary::C_byte[1] * 65536));

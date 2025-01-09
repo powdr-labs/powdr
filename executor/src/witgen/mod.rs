@@ -4,6 +4,7 @@ use std::sync::Arc;
 use bus_accumulator::BusAccumulatorGenerator;
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
+use multiplicity_column_generator::MultiplicityColumnGenerator;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, AlgebraicReferenceThin, Analyzed, DegreeRange,
     Expression, FunctionValueDefinition, Identity, PolyID, PolynomialType, Symbol, SymbolKind,
@@ -36,6 +37,7 @@ mod global_constraints;
 mod identity_processor;
 mod jit;
 mod machines;
+mod multiplicity_column_generator;
 mod processor;
 mod query_processor;
 mod range_constraints;
@@ -48,7 +50,6 @@ pub use affine_expression::{AffineExpression, AffineResult, AlgebraicVariable};
 pub use evaluators::partial_expression_evaluator::{PartialExpressionEvaluator, SymbolicVariables};
 
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
-static RANGE_CONSTRAINT_MULTIPLICITY_WITGEN: &str = "range constraint multiplicity witgen";
 
 // TODO change this so that it has functions
 // input_from_channel, output_to_channel
@@ -239,9 +240,22 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let machines = MachineExtractor::new(&fixed).split_out_machines(retained_identities);
 
         // Run main machine and extract columns from all machines.
-        let mut columns = MutableState::new(machines.into_iter(), &self.query_callback).run();
+        let columns = MutableState::new(machines.into_iter(), &self.query_callback).run();
 
-        Self::range_constraint_multiplicity_witgen(&fixed, &mut columns);
+        let publics = extract_publics(&columns, self.analyzed);
+        if !publics.is_empty() {
+            log::debug!("Publics:");
+        }
+        for (name, value) in publics.iter() {
+            log::debug!(
+                "  {name:>30}: {}",
+                value
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "Not yet known at this stage".to_string())
+            );
+        }
+
+        let mut columns = MultiplicityColumnGenerator::new(&fixed).generate(columns, publics);
 
         record_end(OUTER_CODE_NAME);
         reset_and_print_profile_summary();
@@ -259,66 +273,17 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 (name, column)
             })
             .collect::<Vec<_>>();
-
-        let publics = extract_publics(&witness_cols, self.analyzed);
-        if !publics.is_empty() {
-            log::debug!("Publics:");
-        }
-        for (name, value) in publics {
-            log::debug!(
-                "  {name:>30}: {}",
-                value
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "Not yet known at this stage".to_string())
-            );
-        }
         witness_cols
-    }
-
-    fn range_constraint_multiplicity_witgen(
-        fixed: &FixedData<T>,
-        columns: &mut HashMap<String, Vec<T>>,
-    ) {
-        record_start(RANGE_CONSTRAINT_MULTIPLICITY_WITGEN);
-
-        // Several range constraints might point to the same target
-        let mut multiplicity_columns = BTreeMap::new();
-
-        // Count multiplicities
-        for (source_id, target) in &fixed.global_range_constraints.phantom_range_constraints {
-            let size = fixed.fixed_cols[&target.column]
-                .values
-                .get_uniquely_sized()
-                .unwrap()
-                .len();
-            let multiplicities = multiplicity_columns
-                .entry(target.multiplicity_column)
-                .or_insert_with(|| vec![0; size]);
-            assert_eq!(multiplicities.len(), size);
-            for value in columns.get(fixed.column_name(source_id)).unwrap() {
-                let index = value.to_degree() as usize;
-                multiplicities[index] += 1;
-            }
-        }
-
-        // Convert to field elements and insert into columns
-        for (poly_id, values) in multiplicity_columns {
-            columns.insert(
-                fixed.column_name(&poly_id).to_string(),
-                values.into_iter().map(T::from).collect(),
-            );
-        }
-
-        record_end(RANGE_CONSTRAINT_MULTIPLICITY_WITGEN);
     }
 }
 
-pub fn extract_publics<T: FieldElement>(
-    witness: &[(String, Vec<T>)],
-    pil: &Analyzed<T>,
-) -> Vec<(String, Option<T>)> {
+pub fn extract_publics<'a, T, I>(witness: I, pil: &Analyzed<T>) -> BTreeMap<String, Option<T>>
+where
+    T: FieldElement,
+    I: IntoIterator<Item = (&'a String, &'a Vec<T>)>,
+{
     let witness = witness
-        .iter()
+        .into_iter()
         .map(|(name, col)| (name.clone(), col))
         .collect::<BTreeMap<_, _>>();
     pil.public_declarations_in_source_order()
@@ -418,7 +383,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 .definitions
                 .iter()
                 .filter(|(_, (symbol, _))| matches!(symbol.kind, SymbolKind::Poly(_)))
-                .map(|(name, (symbol, _))| (name.clone(), symbol.into()))
+                .flat_map(|(_, (symbol, _))| symbol.array_elements())
                 .collect(),
             challenges,
             global_range_constraints,

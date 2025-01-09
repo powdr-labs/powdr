@@ -10,7 +10,6 @@ use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::analysis::detect_connection_type_and_block_size;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
-use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::jit::function_cache::FunctionCache;
 use crate::witgen::processor::{OuterQuery, Processor, SolverState};
@@ -73,7 +72,6 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// If this block machine can be JITed, we store the witgen functions here.
     function_cache: FunctionCache<'a, T>,
     name: String,
-    multiplicity_counter: MultiplicityCounter,
     /// Counts the number of blocks created using the JIT.
     block_count_jit: usize,
     /// Counts the number of blocks created using the runtime solver.
@@ -131,7 +129,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             connection_type: is_permutation,
             data,
             publics: Default::default(),
-            multiplicity_counter: MultiplicityCounter::new(&parts.connections),
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
                 latch_row,
@@ -211,8 +208,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                     .witnesses
                     .iter()
                     .map(|id| (*id, Vec::new()))
-                    // Note that this panics if any count is not 0 (which shouldn't happen).
-                    .chain(self.multiplicity_counter.generate_columns_single_size(0))
                     .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
                     .collect();
             }
@@ -338,10 +333,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             .collect();
         self.handle_last_row(&mut data);
         data.into_iter()
-            .chain(
-                self.multiplicity_counter
-                    .generate_columns_single_size(self.degree),
-            )
             .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
@@ -447,10 +438,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 self.publics.extend(updated_data.publics);
 
                 let updates = updates.report_side_effect();
-
-                let global_latch_row_index = self.data.len() - self.block_size + self.latch_row;
-                self.multiplicity_counter
-                    .increment_at_row(identity_id, global_latch_row_index);
 
                 // We solved the query, so report it to the cache.
                 self.processing_sequence_cache
