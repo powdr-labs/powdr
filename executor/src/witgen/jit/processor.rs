@@ -209,8 +209,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                     .iter()
                     .filter(|&&row| complete.contains(&(call.id(), row)))
                     .collect::<Vec<_>>();
-                // Because we process rows -1..block_size+1, it is fine to have two incomplete machine calls,
-                // as long as <block_size> consecutive rows are complete.
+                // We might process more rows than `self.block_size`, so we check
+                // that the complete calls are on consecutive rows.
                 if complete_rows.len() >= self.block_size {
                     let (min, max) = complete_rows.iter().minmax().into_option().unwrap();
                     // TODO instead of checking for consecutive rows, we could also check
