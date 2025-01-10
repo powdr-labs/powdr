@@ -97,7 +97,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         cache_key: &CacheKey,
     ) -> Option<WitgenFunction<T>> {
         log::debug!(
-            "Compiling JIT function for \n  Machine: {}\n  Identity: {}\n   Known args: {:?}",
+            "Compiling JIT function for\n  Machine: {}\n  Connection: {}\n   Inputs: {:?}",
             self.machine_name,
             self.parts.connections[&cache_key.identity_id],
             cache_key.known_args
