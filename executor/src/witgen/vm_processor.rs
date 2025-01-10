@@ -156,7 +156,6 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
         } else {
             log::Level::Debug
         };
-        let mut finalize_start = 1;
 
         for row_index in 0.. {
             // The total number of rows to run for. Note that `self.degree` might change during
@@ -174,8 +173,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
                 // Periodically make sure most rows are finalized.
                 // Row 0 and the last MAX_PERIOD rows might be needed later, so they are not finalized.
                 let finalize_end = row_index as usize - MAX_PERIOD;
-                self.processor.finalize_range(finalize_start..finalize_end);
-                finalize_start = finalize_end;
+                self.processor.finalize_until(finalize_end);
             }
 
             if row_index >= rows_to_run - 2 {
