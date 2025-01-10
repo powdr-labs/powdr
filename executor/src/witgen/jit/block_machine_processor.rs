@@ -100,15 +100,19 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 Variable::Param(i) => format!("{}", &connection.right.expressions[*i]),
                 _ => var.to_string(),
             });
-            log::debug!("\nCode generation failed for connection:\n  {connection}");
+            log::trace!("\nCode generation failed for connection:\n  {connection}");
             let known_args_str = known_args
                 .iter()
                 .enumerate()
                 .filter_map(|(i, b)| b.then_some(connection.right.expressions[i].to_string()))
                 .join("\n  ");
-            log::debug!("Known arguments:\n  {known_args_str}");
-            log::debug!("Error:\n  {err_str}");
-            format!("Code generation failed: {err_str}\nRun with RUST_LOG=debug to see the code generated so far.")
+            log::trace!("Known arguments:\n  {known_args_str}");
+            log::trace!("Error:\n  {err_str}");
+            let shortened_error = err_str
+                .lines()
+                .take(10)
+                .format("\n  ");
+            format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
         })
     }
 
