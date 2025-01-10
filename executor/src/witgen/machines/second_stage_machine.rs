@@ -150,7 +150,7 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
             self.degree,
         );
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(0, next_parts.identities.len(), 0, None),
+            DefaultSequenceIterator::new(0, next_parts.identities.len(), None),
         );
         processor.solve(&mut sequence_iterator).unwrap();
 

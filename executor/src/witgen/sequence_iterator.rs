@@ -15,7 +15,6 @@ pub struct SequenceStep {
 /// In each row, iterates over all identities until no further progress is made.
 pub struct DefaultSequenceIterator {
     identities_count: usize,
-    link_count: usize,
     row_deltas: Vec<i64>,
     outer_query_row: Option<i64>,
 
@@ -33,16 +32,10 @@ pub struct DefaultSequenceIterator {
 }
 
 impl DefaultSequenceIterator {
-    pub fn new(
-        block_size: usize,
-        identities_count: usize,
-        link_count: usize,
-        outer_query_row: Option<i64>,
-    ) -> Self {
+    pub fn new(block_size: usize, identities_count: usize, outer_query_row: Option<i64>) -> Self {
         let max_row = block_size as i64 - 1;
         DefaultSequenceIterator {
             identities_count,
-            link_count,
             row_deltas: (-1..=max_row)
                 .chain((-1..max_row).rev())
                 .chain(0..=max_row)
@@ -77,10 +70,10 @@ impl DefaultSequenceIterator {
 
         let last_action_index = if is_on_row_with_outer_query {
             // In the last row, we want to do one more action, processing the outer query.
-            (self.identities_count + self.link_count) as i32 + 1
+            self.identities_count as i32 + 1
         } else {
             // Otherwise, we want to process all identities + 1 action processing the prover queries
-            (self.identities_count + self.link_count) as i32
+            self.identities_count as i32
         };
 
         self.cur_action_index < last_action_index
@@ -124,9 +117,7 @@ impl DefaultSequenceIterator {
         let row_delta = self.row_deltas[self.cur_row_delta_index];
         let is_on_row_with_outer_query = self.outer_query_row == Some(row_delta);
 
-        let cur_action_index = if is_on_row_with_outer_query
-            || self.cur_action_index < self.identities_count as i32 + 1
-        {
+        let cur_action_index = if is_on_row_with_outer_query {
             self.cur_action_index as usize
         } else {
             // Skip the outer query action
@@ -135,26 +126,22 @@ impl DefaultSequenceIterator {
 
         SequenceStep {
             row_delta: self.row_deltas[self.cur_row_delta_index],
-            action: if cur_action_index < self.identities_count {
-                Action::PolynomialIdentity(cur_action_index)
-            } else if cur_action_index == self.identities_count {
-                Action::ProverQueries
-            } else if cur_action_index == self.identities_count + 1 {
+            action: if cur_action_index == 0 {
                 Action::OuterQuery
+            } else if cur_action_index == 1 {
+                Action::ProverQueries
             } else {
-                Action::Link(cur_action_index - self.identities_count - 2)
+                Action::InternalIdentity(cur_action_index - 2)
             },
         }
     }
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 pub enum Action {
-    PolynomialIdentity(usize),
-    ProverQueries,
     OuterQuery,
-    Link(usize),
+    ProverQueries,
+    InternalIdentity(usize),
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
@@ -251,22 +238,15 @@ pub struct ProcessingSequenceCache {
     block_size: usize,
     outer_query_row: usize,
     identities_count: usize,
-    link_count: usize,
     cache: BTreeMap<SequenceCacheKey, CacheEntry>,
 }
 
 impl ProcessingSequenceCache {
-    pub fn new(
-        block_size: usize,
-        outer_query_row: usize,
-        identities_count: usize,
-        link_count: usize,
-    ) -> Self {
+    pub fn new(block_size: usize, outer_query_row: usize, identities_count: usize) -> Self {
         ProcessingSequenceCache {
             block_size,
             outer_query_row,
             identities_count,
-            link_count,
             cache: Default::default(),
         }
     }
@@ -304,7 +284,6 @@ impl ProcessingSequenceCache {
         DefaultSequenceIterator::new(
             self.block_size,
             self.identities_count,
-            self.link_count,
             Some(self.outer_query_row as i64),
         )
     }
