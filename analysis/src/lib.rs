@@ -437,6 +437,16 @@ pub fn generate_precompile(
                 .map(|p| Part::Named(p.to_string())),
         )),
     };
+    let split_param = Param {
+        source: Default::default(),
+        name: "split_gl".to_string(),
+        index: None,
+        ty: Some(SymbolPath::from_parts(
+            ["std", "machines", "split", "split_gl", "SplitGL"]
+                .iter()
+                .map(|p| Part::Named(p.to_string())),
+        )),
+    };
     let binary_param = Param {
         source: Default::default(),
         name: "binary".to_string(),
@@ -506,6 +516,7 @@ pub fn generate_precompile(
         params: MachineParams(vec![
             regs_param,
             mem_param,
+            split_param,
             binary_param,
             shift_param,
             byte_param,
@@ -644,6 +655,7 @@ fn optimize_precompiles(mut analyzed_asm: AnalysisASMFile) -> AnalysisASMFile {
     let args = vec![
         "regs",
         "memory",
+        "split_gl",
         "binary",
         "shift",
         "byte",
