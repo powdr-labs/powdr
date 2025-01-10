@@ -5,7 +5,6 @@ use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
-    jit::effect::Effect,
     machines::{LookupCell, MachineParts},
     EvalError, FixedData, MutableState, QueryCallback,
 };
@@ -96,26 +95,17 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         self.processor
             .generate_code(mutable_state, cache_key.identity_id, &cache_key.known_args)
             .ok()
-            .and_then(|code| {
-                // TODO: Remove this once BlockMachine passes the right amount of context for machines with
-                // non-rectangular block shapes.
-                let is_rectangular = code
+            .map(|code| {
+                let is_in_bounds = code
                     .iter()
-                    .filter_map(|effect| match effect {
-                        Effect::Assignment(v, _) => Some(v),
-                        _ => None,
-                    })
-                    .filter_map(|assigned_variable| match assigned_variable {
+                    .flat_map(|effect| effect.referenced_variables())
+                    .filter_map(|var| match var {
                         Variable::Cell(cell) => Some(cell.row_offset),
                         _ => None,
                     })
-                    .all(|row_offset| row_offset >= 0 && row_offset < self.block_size as i32);
-                if !is_rectangular {
-                    log::debug!("Filtering out code for non-rectangular block shape");
-                }
-                is_rectangular.then_some(code)
-            })
-            .map(|code| {
+                    .all(|row_offset| row_offset >= -1 && row_offset < self.block_size as i32);
+                assert!(is_in_bounds, "Expected JITed code to only reference cells in the block + the last row of the previous block.");
+
                 log::trace!("Generated code ({} steps)", code.len());
                 let known_inputs = cache_key
                     .known_args
