@@ -78,7 +78,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'c, T, Q> 
         while let Some(SequenceStep { row_delta, action }) = sequence_iterator.next() {
             let row_index = (1 + row_delta) as usize;
             let progress = match action {
-                Action::InternalIdentity(identity_index) => {
+                Action::PolynomialIdentity(identity_index) => {
                     if is_identity_complete[row_index][identity_index] {
                         // The identity has been completed already, there is no point in processing it again.
                         false
@@ -92,6 +92,8 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'c, T, Q> 
                         res.progress
                     }
                 }
+                // TODO(link)
+                Action::Link(_) => todo!(),
                 Action::OuterQuery => {
                     let (progress, new_outer_assignments) =
                         self.processor.process_outer_query(row_index)?;
@@ -216,7 +218,7 @@ mod tests {
             unused_query_callback(),
             |mut processor, poly_ids, degree, num_identities| {
                 let mut sequence_iterator = ProcessingSequenceIterator::Default(
-                    DefaultSequenceIterator::new(degree as usize - 2, num_identities, None),
+                    DefaultSequenceIterator::new(degree as usize - 2, num_identities, 0, None),
                 );
                 let outer_updates = processor.solve(&mut sequence_iterator).unwrap();
                 assert!(outer_updates.is_complete());

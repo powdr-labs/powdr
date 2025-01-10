@@ -15,6 +15,7 @@ pub struct SequenceStep {
 /// In each row, iterates over all identities until no further progress is made.
 pub struct DefaultSequenceIterator {
     identities_count: usize,
+    link_count: usize,
     row_deltas: Vec<i64>,
     outer_query_row: Option<i64>,
 
@@ -26,21 +27,22 @@ pub struct DefaultSequenceIterator {
     /// [process identity 1, ..., process identity <identities_count>, process queries, process outer query (if on outer_query_row)]
     /// Can be -1 to indicate that the round has just started.
     cur_action_index: i32,
-    /// The number of rounds for the current row delta.
-    /// If this number gets too large, we will assume that we're in an infinite loop and exit.
-    current_round_count: usize,
 
     /// The steps on which we made progress.
     progress_steps: Vec<SequenceStep>,
 }
 
-const MAX_ROUNDS_PER_ROW_DELTA: usize = 100;
-
 impl DefaultSequenceIterator {
-    pub fn new(block_size: usize, identities_count: usize, outer_query_row: Option<i64>) -> Self {
+    pub fn new(
+        block_size: usize,
+        identities_count: usize,
+        link_count: usize,
+        outer_query_row: Option<i64>,
+    ) -> Self {
         let max_row = block_size as i64 - 1;
         DefaultSequenceIterator {
             identities_count,
+            link_count,
             row_deltas: (-1..=max_row)
                 .chain((-1..max_row).rev())
                 .chain(0..=max_row)
@@ -50,7 +52,6 @@ impl DefaultSequenceIterator {
             progress_in_current_round: false,
             cur_row_delta_index: 0,
             cur_action_index: -1,
-            current_round_count: 0,
             progress_steps: vec![],
         }
     }
@@ -59,7 +60,7 @@ impl DefaultSequenceIterator {
     /// If we're not at the last identity in the current row, just moves to the next.
     /// Otherwise, starts with identity 0 and moves to the next row if no progress was made.
     fn update_state(&mut self) {
-        while !self.is_done() && !self.has_more_actions() {
+        if !self.is_done() && (!self.has_more_actions() || self.progress_in_current_round) {
             self.start_next_round();
         }
 
@@ -76,28 +77,19 @@ impl DefaultSequenceIterator {
 
         let last_action_index = if is_on_row_with_outer_query {
             // In the last row, we want to do one more action, processing the outer query.
-            self.identities_count as i32 + 1
+            (self.identities_count + self.link_count) as i32 + 1
         } else {
             // Otherwise, we want to process all identities + 1 action processing the prover queries
-            self.identities_count as i32
+            (self.identities_count + self.link_count) as i32
         };
 
         self.cur_action_index < last_action_index
     }
 
     fn start_next_round(&mut self) {
-        if self.current_round_count > MAX_ROUNDS_PER_ROW_DELTA {
-            panic!("In witness generation for block machine, we have been stuck in the same row for {MAX_ROUNDS_PER_ROW_DELTA} rounds. \
-                    This is a bug in the witness generation algorithm.");
-        }
-
         if !self.progress_in_current_round {
             // Move to next row delta
             self.cur_row_delta_index += 1;
-            self.current_round_count = 0;
-        } else {
-            // Stay and current row delta
-            self.current_round_count += 1;
         }
         // Reset action index and progress flag
         self.cur_action_index = -1;
@@ -128,24 +120,41 @@ impl DefaultSequenceIterator {
 
     fn current_step(&self) -> SequenceStep {
         assert!(self.cur_action_index != -1);
+
+        let row_delta = self.row_deltas[self.cur_row_delta_index];
+        let is_on_row_with_outer_query = self.outer_query_row == Some(row_delta);
+
+        let cur_action_index = if is_on_row_with_outer_query
+            || self.cur_action_index < self.identities_count as i32 + 1
+        {
+            self.cur_action_index as usize
+        } else {
+            // Skip the outer query action
+            self.cur_action_index as usize + 1
+        };
+
         SequenceStep {
             row_delta: self.row_deltas[self.cur_row_delta_index],
-            action: match self.cur_action_index.cmp(&(self.identities_count as i32)) {
-                std::cmp::Ordering::Less => {
-                    Action::InternalIdentity(self.cur_action_index as usize)
-                }
-                std::cmp::Ordering::Equal => Action::ProverQueries,
-                std::cmp::Ordering::Greater => Action::OuterQuery,
+            action: if cur_action_index < self.identities_count {
+                Action::PolynomialIdentity(cur_action_index)
+            } else if cur_action_index == self.identities_count {
+                Action::ProverQueries
+            } else if cur_action_index == self.identities_count + 1 {
+                Action::OuterQuery
+            } else {
+                Action::Link(cur_action_index - self.identities_count - 2)
             },
         }
     }
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug)]
 pub enum Action {
-    InternalIdentity(usize),
-    OuterQuery,
+    PolynomialIdentity(usize),
     ProverQueries,
+    OuterQuery,
+    Link(usize),
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]
@@ -242,15 +251,22 @@ pub struct ProcessingSequenceCache {
     block_size: usize,
     outer_query_row: usize,
     identities_count: usize,
+    link_count: usize,
     cache: BTreeMap<SequenceCacheKey, CacheEntry>,
 }
 
 impl ProcessingSequenceCache {
-    pub fn new(block_size: usize, outer_query_row: usize, identities_count: usize) -> Self {
+    pub fn new(
+        block_size: usize,
+        outer_query_row: usize,
+        identities_count: usize,
+        link_count: usize,
+    ) -> Self {
         ProcessingSequenceCache {
             block_size,
             outer_query_row,
             identities_count,
+            link_count,
             cache: Default::default(),
         }
     }
@@ -288,6 +304,7 @@ impl ProcessingSequenceCache {
         DefaultSequenceIterator::new(
             self.block_size,
             self.identities_count,
+            self.link_count,
             Some(self.outer_query_row as i64),
         )
     }
