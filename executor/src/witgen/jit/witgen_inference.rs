@@ -88,12 +88,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    pub fn finish(self) -> Vec<Effect<T, Variable>> {
+    pub fn code(self) -> Vec<Effect<T, Variable>> {
         self.code
-    }
-
-    pub fn code(&self) -> &[Effect<T, Variable>] {
-        &self.code
     }
 
     pub fn known_variables(&self) -> &HashSet<Variable> {
@@ -619,7 +615,7 @@ mod test {
             }
             assert!(counter < 10000, "Solving took more than 10000 rounds.");
         }
-        format_code(witgen.code())
+        format_code(&witgen.code())
     }
 
     #[test]

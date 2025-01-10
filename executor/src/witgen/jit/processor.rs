@@ -81,7 +81,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             // (i.e. cannot be fixed by runtime witgen) and thus we panic inside.
             // We could do this only at the end of each branch, but it's a bit
             // more convenient to do it here.
-            self.check_block_shape(&witgen)?;
+            self.check_block_shape(&witgen);
         }
 
         // Check that we could derive all requested variables.
@@ -245,11 +245,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
     }
 
     /// After solving, the known cells should be such that we can stack different blocks.
+    /// If this is not the case, this function panics.
     /// TODO the same is actually true for machine calls.
-    fn check_block_shape(
-        &self,
-        witgen: &WitgenInference<'a, T, FixedEval>,
-    ) -> Result<(), Error<'a, T>> {
+    fn check_block_shape(&self, witgen: &WitgenInference<'a, T, FixedEval>) {
         let known_columns: BTreeSet<_> = witgen
             .known_variables()
             .iter()
@@ -299,22 +297,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                         .iter()
                         .map(|&r| format!("  row {r}: {}\n", witgen.value(&cell_var(r))))
                         .format("");
-                    let err_str = format!(
+                    panic!(
                         "Column {column_name} is not stackable in a {}-row block, conflict in rows {row} and {}.\n{row_vals}",
                         self.block_size,
                         row + self.block_size as i32
                     );
-                    log::debug!("{err_str}");
-                    return Err(Error {
-                        reason: ErrorReason::NotStackable,
-                        code: vec![],
-                        missing_variables: vec![],
-                        incomplete_identities: vec![],
-                    });
                 }
             }
         }
-        Ok(())
     }
 }
 
@@ -343,7 +333,6 @@ pub struct Error<'a, T: FieldElement> {
 pub enum ErrorReason {
     NoBranchVariable,
     MaxBranchDepthReached(usize),
-    NotStackable,
 }
 
 impl<T: FieldElement> Display for Error<'_, T> {
@@ -367,7 +356,6 @@ impl<T: FieldElement> Error<'_, T> {
             ErrorReason::MaxBranchDepthReached(depth) => {
                 format!("Maximum branch depth of {depth} reached")
             }
-            ErrorReason::NotStackable => "Some columns are not stackable".to_string(),
         };
         write!(
             s,
