@@ -318,7 +318,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
                 // This means that every call like this will lead to a fatal error, but there is
                 // enough information in the inputs to hanlde the call. Unfortunately, there is
                 // no way to signal this in the return type, yet.
-                // TODO change this.
+                // TODO(#2324): change this.
                 // We just return the input range constraints to signal "everything allright".
                 range_constraints.to_vec()
             }
