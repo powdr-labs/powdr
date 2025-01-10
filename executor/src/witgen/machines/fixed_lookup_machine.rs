@@ -336,7 +336,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .map(|e| try_to_simple_poly(e).unwrap())
             .peekable();
 
-        let outer_query = OuterQuery::new(caller_rows, identity);
+        let outer_query = match OuterQuery::try_new(caller_rows, identity) {
+            Ok(outer_query) => outer_query,
+            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
+        };
         self.process_plookup_internal(mutable_state, identity_id, caller_rows, outer_query, right)
     }
 

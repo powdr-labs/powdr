@@ -238,7 +238,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         let connection = self.parts.connections[&identity_id];
-        let outer_query = OuterQuery::new(caller_rows, connection);
+        let outer_query = match OuterQuery::try_new(caller_rows, connection) {
+            Ok(outer_query) => outer_query,
+            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
+        };
         let mut data = CallerData::from(&outer_query);
         if self.process_lookup_direct(mutable_state, identity_id, &mut data.as_lookup_cells())? {
             Ok(EvalResult::from(data)?.report_side_effect())
