@@ -363,7 +363,7 @@ machine Keccakf32Memory(mem: Memory) with
     //     }
     // }
 
-    let bits_to_value_be: expr[] -> expr = |bits_le| array::fold(bits_le, 0, |acc, e| acc * 2 + e);
+    let bits_to_value_be: expr[] -> expr = |bits_le| array::fold(bits_le, 0, (|acc, e| acc * 2 + e));
 
     array::new(50, |i| {
         let y = i / 10;
