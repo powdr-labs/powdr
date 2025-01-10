@@ -363,7 +363,7 @@ machine Keccakf32Memory(mem: Memory) with
     //     }
     // }
 
-    let bits_to_value_le: expr[] -> expr = |bits_le| {
+    let bits_to_value_be: expr[] -> expr = |bits_le| {
         array::fold(bits_le, 0, |acc, e| acc * 2 + e)
     };
 
@@ -373,8 +373,8 @@ machine Keccakf32Memory(mem: Memory) with
         let limb = i % 2;
         let get_bit: int -> expr = |z| xor3(a_prime[y * 320 + x * 64 + z], c[x * 64 + z], c_prime[x * 64 + z]);
 
-        let limb_bits_le: expr[] = array::reverse(array::new(32, |z| get_bit(limb * 32 + z)));
-        a[i] = bits_to_value_le(limb_bits_le)
+        let limb_bits_be: expr[] = array::reverse(array::new(32, |z| get_bit(limb * 32 + z)));
+        a[i] = bits_to_value_be(limb_bits_be)
     });
 
     // // xor_{i=0}^4 A'[x, i, z] = C'[x, z], so for each x, z,
@@ -426,8 +426,8 @@ machine Keccakf32Memory(mem: Memory) with
         let get_bit: int -> expr = |z| {
             xor(b(x, y, z), andn(b((x + 1) % 5, y, z), b((x + 2) % 5, y, z)))
         };
-        let limb_bits_le: expr[] = array::reverse(array::new(32, |z| get_bit(limb * 32 + z)));
-        a_prime_prime[i] = bits_to_value_le(limb_bits_le)
+        let limb_bits_be: expr[] = array::reverse(array::new(32, |z| get_bit(limb * 32 + z)));
+        a_prime_prime[i] = bits_to_value_be(limb_bits_be)
     });
 
     // pub fn b(&self, x: usize, y: usize, z: usize) -> T {
@@ -467,8 +467,8 @@ machine Keccakf32Memory(mem: Memory) with
     // }
 
     array::new(2, |limb| {
-        let limb_bits_le: expr[] = array::reverse(array::new(32, |z| a_prime_prime_0_0_bits[limb * 32 + z]));
-        a_prime_prime[limb] = bits_to_value_le(limb_bits_le)
+        let limb_bits_be: expr[] = array::reverse(array::new(32, |z| a_prime_prime_0_0_bits[limb * 32 + z]));
+        a_prime_prime[limb] = bits_to_value_be(limb_bits_be)
     });
 
     // let get_xored_bit = |i| {
@@ -497,8 +497,8 @@ machine Keccakf32Memory(mem: Memory) with
     // }
 
     array::new(2, |limb| {
-        let limb_bits_le: expr[] = array::reverse(array::new(32, |z| get_xored_bit(limb * 32 + z)));
-        a_prime_prime_prime_0_0_limbs[limb] = bits_to_value_le(limb_bits_le)
+        let limb_bits_be: expr[] = array::reverse(array::new(32, |z| get_xored_bit(limb * 32 + z)));
+        a_prime_prime_prime_0_0_limbs[limb] = bits_to_value_be(limb_bits_be)
     });
 
     // // Enforce that this round's output equals the next round's input.
