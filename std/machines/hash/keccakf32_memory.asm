@@ -373,7 +373,7 @@ machine Keccakf32Memory(mem: Memory) with
         let limb = i % 2;
         let get_bit: int -> expr = |z| xor3(a_prime[y * 320 + x * 64 + z], c[x * 64 + z], c_prime[x * 64 + z]);
 
-        let limb_bits_le: expr[] = array::new(32, |z| get_bit(limb * 32 + z));
+        let limb_bits_le: expr[] = array::reverse(array::new(32, |z| get_bit(limb * 32 + z)));
         a[i] = bits_to_value_le(limb_bits_le)
     });
 
@@ -426,7 +426,7 @@ machine Keccakf32Memory(mem: Memory) with
         let get_bit: int -> expr = |z| {
             xor(b(x, y, z), andn(b((x + 1) % 5, y, z), b((x + 2) % 5, y, z)))
         };
-        let limb_bits_le: expr[] = array::new(32, |z| get_bit(limb * 32 + z));
+        let limb_bits_le: expr[] = array::reverse(array::new(32, |z| get_bit(limb * 32 + z)));
         a_prime_prime[i] = bits_to_value_le(limb_bits_le)
     });
 
@@ -467,7 +467,7 @@ machine Keccakf32Memory(mem: Memory) with
     // }
 
     array::new(2, |limb| {
-        let limb_bits_le: expr[] = array::new(32, |z| a_prime_prime_0_0_bits[limb * 32 + z]);
+        let limb_bits_le: expr[] = array::reverse(array::new(32, |z| a_prime_prime_0_0_bits[limb * 32 + z]));
         a_prime_prime[limb] = bits_to_value_le(limb_bits_le)
     });
 
@@ -595,12 +595,12 @@ machine Keccakf32Memory(mem: Memory) with
     // }
 
     let query_c: int, int, int -> int = query |x, limb, bit_in_limb|
-    utils::fold(
-        5, 
-        |y| (int(eval(a[y * 10 + x * 2 + limb])) >> bit_in_limb) & 0x1, 
-        0, 
-        |acc, e| acc ^ e
-    );
+        utils::fold(
+            5, 
+            |y| (int(eval(a[y * 10 + x * 2 + limb])) >> bit_in_limb) & 0x1, 
+            0, 
+            |acc, e| acc ^ e
+        );
 
     query |row| {
         let _ = array::map_enumerated(c, |i, c_i| {
