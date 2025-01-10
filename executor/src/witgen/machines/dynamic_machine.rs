@@ -201,7 +201,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
             self.degree,
         );
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(0, next_parts.identities.len(), None),
+            DefaultSequenceIterator::new(0, next_parts.identities.len(), 0, None),
         );
         processor.solve(&mut sequence_iterator).unwrap();
 
