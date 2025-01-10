@@ -282,50 +282,63 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
 
         // Now only consider the index entries that match the input range constraints,
         // see that the result is unique and determine new output range constraints.
-        let mut values = index
+        let values_matching_input_constraints = index
             .iter()
             .filter(|(key, _)| matches_range_constraint(key, &input_range_constraints))
             .map(|(_, value)| {
                 let (_, values) = value.get()?;
                 Some(values)
             });
-        let Some(first) = values.next() else {
-            // If the iterator is empty, we have no match, but it can always be answered,
-            // so this is successful.
-            // Unfortunately, we cannot express the "empty" range constraint.
-            return Some(vec![Default::default(); range_constraints.len()]);
-        };
-        // If an item (including the first) is None, it means the match was not unique.
-        let mut new_output_range_constraints = first?
-            .iter()
-            // min, max, mask
-            .map(|v| (*v, *v, v.to_integer()))
-            .collect_vec();
-        for v in values {
-            // If any value is None, the match was not unique.
-            let v = v?;
-            for ((min, max, mask), v) in new_output_range_constraints.iter_mut().zip_eq(v) {
-                *min = (*min).min(*v);
-                *max = (*max).max(*v);
-                *mask |= v.to_integer();
-            }
-        }
-        let mut new_output_range_constraints = new_output_range_constraints.into_iter();
-        Some(
-            known_arguments
-                .iter()
-                .map(|is_known| {
-                    if is_known {
-                        // We could also copy the input range constraint.
-                        RangeConstraint::default()
-                    } else {
-                        let (min, max, mask) = new_output_range_constraints.next().unwrap();
-                        RangeConstraint::from_range(min, max)
-                            .conjunction(&RangeConstraint::from_mask(mask))
+        let mut new_range_constraints: Option<Vec<(T, T, T::Integer)>> = None;
+        for values in values_matching_input_constraints {
+            // If any value is None, it means the lookup does not have a unique answer,
+            // and thus we cannot process the call.
+            let values = values?;
+            new_range_constraints = Some(match new_range_constraints {
+                // First item, turn each value into (min, max, mask).
+                None => values
+                    .iter()
+                    .map(|v| (*v, *v, v.to_integer()))
+                    .collect_vec(),
+                Some(mut acc) => {
+                    for ((min, max, mask), v) in acc.iter_mut().zip_eq(values) {
+                        *min = (*min).min(*v);
+                        *max = (*max).max(*v);
+                        *mask |= v.to_integer();
                     }
-                })
-                .collect(),
-        )
+                    acc
+                }
+            })
+        }
+        Some(match new_range_constraints {
+            None => {
+                // The iterator was empty, i.e. there are no inputs in the index matching the
+                // range constraints.
+                // This means that every call like this will lead to a fatal error, but there is
+                // enough information in the inputs to hanlde the call. Unfortunately, there is
+                // no way to signal this in the return type, yet.
+                // TODO change this.
+                // We just return the input range constraints to signal "everything allright".
+                range_constraints.to_vec()
+            }
+            Some(new_output_range_constraints) => {
+                let mut new_output_range_constraints = new_output_range_constraints.into_iter();
+                known_arguments
+                    .iter()
+                    .enumerate()
+                    .map(|(i, is_known)| {
+                        if is_known {
+                            // Just copy the input range constraint.
+                            range_constraints[i].clone()
+                        } else {
+                            let (min, max, mask) = new_output_range_constraints.next().unwrap();
+                            RangeConstraint::from_range(min, max)
+                                .conjunction(&RangeConstraint::from_mask(mask))
+                        }
+                    })
+                    .collect()
+            }
+        })
     }
 
     fn process_plookup<Q: crate::witgen::QueryCallback<T>>(
