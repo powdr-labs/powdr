@@ -326,7 +326,7 @@ if (VM::instr_add[0] == 1) {
         let code = generate_single_step(input, "Main").unwrap();
         // After the machine call, we should have a direct assignment `VM::instr_mul[1] = 1`,
         // instead of just an assignment from the call variable.
-        // This is because the fixed lookup machine can alread provide a range constraint.
+        // This is because the fixed lookup machine can already provide a range constraint.
         // For reasons of processing order, the call variable will also be assigned
         // right before the call.
         assert_eq!(
