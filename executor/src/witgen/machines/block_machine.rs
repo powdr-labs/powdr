@@ -133,6 +133,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 block_size,
                 latch_row,
                 parts.identities.len(),
+                // TODO(link)
+                0,
             ),
             function_cache: FunctionCache::new(
                 fixed_data,
@@ -264,7 +266,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             // Run BlockProcessor (to potentially propagate selector values)
             let mut processor = BlockProcessor::from_processor(processor, &self.parts.identities);
             let mut sequence_iterator = ProcessingSequenceIterator::Default(
-                DefaultSequenceIterator::new(self.block_size, self.parts.identities.len(), None),
+                // TODO(link)
+                DefaultSequenceIterator::new(self.block_size, self.parts.identities.len(), 0, None),
             );
             processor.solve(&mut sequence_iterator).unwrap();
             let mut dummy_block = processor.finish().block;
