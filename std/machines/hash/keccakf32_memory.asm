@@ -497,7 +497,7 @@ machine Keccakf32Memory(mem: Memory) with
     // }
 
     array::new(2, |limb| {
-        let limb_bits_le: expr[] = array::new(32, |z| get_xored_bit(limb * 32 + z));
+        let limb_bits_le: expr[] = array::reverse(array::new(32, |z| get_xored_bit(limb * 32 + z)));
         a_prime_prime_prime_0_0_limbs[limb] = bits_to_value_le(limb_bits_le)
     });
 
