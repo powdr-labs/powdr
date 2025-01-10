@@ -930,7 +930,7 @@ fn optimize_precompile(mut machine: Machine) -> Machine {
     // Move all memory links to the end because of witgen.
     let mut memory_links = vec![];
     machine.links.retain(|link| {
-        if link.to.instance == "memory" {
+        if link.to.instance == "memory" || link.to.instance == "regs" {
             memory_links.push(link.clone());
             false
         } else {
