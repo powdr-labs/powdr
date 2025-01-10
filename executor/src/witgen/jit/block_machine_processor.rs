@@ -13,6 +13,9 @@ use super::{
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
 
+/// This is a tuning value. It is the maximum nesting depth of branches in the JIT code.
+const BLOCK_MACHINE_MAX_BRANCH_DEPTH: usize = 6;
+
 /// A processor for generating JIT code for a block machine.
 pub struct BlockMachineProcessor<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
@@ -82,7 +85,6 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .iter()
             .enumerate()
             .filter_map(|(i, is_input)| (!is_input).then_some(Variable::Param(i)));
-        let max_branch_depth = 6;
         Processor::new(
             self.fixed_data,
             self,
@@ -90,7 +92,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             self.block_size,
             true,
             requested_known,
-            max_branch_depth,
+            BLOCK_MACHINE_MAX_BRANCH_DEPTH,
         )
         .generate_code(can_process, witgen)
         .map_err(|e| {

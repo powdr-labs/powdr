@@ -13,6 +13,9 @@ use super::{
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
 
+/// This is a tuning value. It is the maximum nesting depth of branches in the JIT code.
+const SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH: usize = 6;
+
 /// A processor for generating JIT code that computes the next row from the previous row.
 pub struct SingleStepProcessor<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
@@ -49,7 +52,6 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         let block_size = 1;
         let witgen = WitgenInference::new(self.fixed_data, NoEval, known_variables);
 
-        let max_branch_depth = 6;
         Processor::new(
             self.fixed_data,
             NoEval,
@@ -57,7 +59,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             block_size,
             false,
             requested_known,
-            max_branch_depth,
+            SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
         .generate_code(can_process, witgen)
         .map_err(|e| e.to_string())
