@@ -117,24 +117,21 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
     /// This only works for simple expressions since all coefficients
     /// must be known numbers.
     pub fn range_constraint(&self) -> RangeConstraint<T> {
-        let Some(summands) = self
-            .coefficients
+        self.coefficients
             .iter()
             .map(|(var, coeff)| {
                 let coeff = coeff.try_to_number()?;
                 let rc = self.range_constraints.get(var)?;
                 Some(rc.multiple(coeff))
             })
-            .chain(std::iter::once(Some(self.offset.range_constraint())))
             .collect::<Option<Vec<_>>>()
-        else {
-            return Default::default();
-        };
-        summands
-            .into_iter()
-            .reduce(|c1, c2| c1.combine_sum(&c2))
-            // We always have at least the offset.
-            .unwrap()
+            .and_then(|summands| {
+                summands
+                    .into_iter()
+                    .chain(std::iter::once(self.offset.range_constraint()))
+                    .reduce(|c1, c2| c1.combine_sum(&c2))
+            })
+            .unwrap_or_default()
     }
 
     /// If this expression contains a single unknown variable, returns it.
