@@ -79,15 +79,15 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         match self.solve_block(can_process, &mut witgen, connection.right) {
             Ok(()) => Ok(witgen.finish()),
             Err(e) => {
-                log::debug!("\nCode generation failed for connection:\n  {connection}");
+                log::trace!("\nCode generation failed for connection:\n  {connection}");
                 let known_args_str = known_args
                     .iter()
                     .enumerate()
                     .filter_map(|(i, b)| b.then_some(connection.right.expressions[i].to_string()))
                     .join("\n  ");
-                log::debug!("Known arguments:\n  {known_args_str}");
-                log::debug!("Error:\n  {e}");
-                log::debug!(
+                log::trace!("Known arguments:\n  {known_args_str}");
+                log::trace!("Error:\n  {e}");
+                log::trace!(
                     "The following code was generated so far:\n{}",
                     format_code(witgen.code())
                 );
