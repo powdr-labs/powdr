@@ -300,6 +300,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
                     .iter()
                     .map(|v| (*v, *v, v.to_integer()))
                     .collect_vec(),
+                // Reduce range constraint by disjunction.
                 Some(mut acc) => {
                     for ((min, max, mask), v) in acc.iter_mut().zip_eq(values) {
                         *min = (*min).min(*v);
