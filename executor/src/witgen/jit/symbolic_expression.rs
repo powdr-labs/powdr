@@ -1,6 +1,7 @@
+use auto_enums::auto_enum;
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_ast::parsed::visitor::Children;
+use powdr_ast::parsed::visitor::AllChildren;
 use powdr_number::FieldElement;
 use std::hash::Hash;
 use std::{
@@ -48,22 +49,26 @@ pub enum UnaryOperator {
     Neg,
 }
 
-impl<T: FieldElement, S> Children<SymbolicExpression<T, S>> for SymbolicExpression<T, S> {
-    fn children(&self) -> Box<dyn Iterator<Item = &SymbolicExpression<T, S>> + '_> {
+impl<T: FieldElement, S> SymbolicExpression<T, S> {
+    /// Returns all direct children of this expression.
+    /// Does specifically not implement the `Children` trait, because it does not go
+    /// well with recursive types.
+    #[auto_enum(Iterator)]
+    fn children(&self) -> impl Iterator<Item = &SymbolicExpression<T, S>> {
         match self {
             SymbolicExpression::BinaryOperation(lhs, _, rhs, _) => {
-                Box::new(iter::once(lhs.as_ref()).chain(iter::once(rhs.as_ref())))
+                [lhs.as_ref(), rhs.as_ref()].into_iter()
             }
-            SymbolicExpression::UnaryOperation(_, expr, _) => Box::new(iter::once(expr.as_ref())),
-            SymbolicExpression::BitOperation(expr, _, _, _) => Box::new(iter::once(expr.as_ref())),
-            SymbolicExpression::Concrete(_) | SymbolicExpression::Symbol(..) => {
-                Box::new(iter::empty())
-            }
+            SymbolicExpression::UnaryOperation(_, expr, _)
+            | SymbolicExpression::BitOperation(expr, _, _, _) => iter::once(expr.as_ref()),
+            SymbolicExpression::Concrete(_) | SymbolicExpression::Symbol(..) => iter::empty(),
         }
     }
+}
 
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut SymbolicExpression<T, S>> + '_> {
-        unimplemented!()
+impl<T: FieldElement, S> AllChildren<SymbolicExpression<T, S>> for SymbolicExpression<T, S> {
+    fn all_children(&self) -> Box<dyn Iterator<Item = &SymbolicExpression<T, S>> + '_> {
+        Box::new(iter::once(self).chain(self.children().flat_map(|e| e.all_children())))
     }
 }
 
@@ -112,15 +117,13 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
 }
 
 impl<T: FieldElement, S: Hash + Eq> SymbolicExpression<T, S> {
-    pub fn referenced_symbols(&self) -> Box<dyn Iterator<Item = &S> + '_> {
-        match self {
-            SymbolicExpression::Symbol(s, _) => Box::new(iter::once(s)),
-            _ => Box::new(
-                self.children()
-                    .flat_map(|c| c.referenced_symbols())
-                    .unique(),
-            ),
-        }
+    pub fn referenced_symbols(&self) -> impl Iterator<Item = &S> {
+        self.all_children()
+            .flat_map(|e| match e {
+                SymbolicExpression::Symbol(s, _) => Some(s),
+                _ => None,
+            })
+            .unique()
     }
 }
 

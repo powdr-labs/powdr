@@ -88,12 +88,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    pub fn finish(self) -> Vec<Effect<T, Variable>> {
+    pub fn code(self) -> Vec<Effect<T, Variable>> {
         self.code
-    }
-
-    pub fn code(&self) -> &[Effect<T, Variable>] {
-        &self.code
     }
 
     pub fn known_variables(&self) -> &HashSet<Variable> {
@@ -125,11 +121,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         assert!(self.known_variables.contains(variable));
         let rc = self.range_constraint(variable);
         assert!(rc.try_to_single_value().is_none());
-
-        log::trace!(
-            "Branching on variable {variable}, which has a range of {}",
-            rc.range_width()
-        );
 
         let (low_condition, high_condition) = rc.bisect();
 
@@ -624,7 +615,7 @@ mod test {
             }
             assert!(counter < 10000, "Solving took more than 10000 rounds.");
         }
-        format_code(witgen.code())
+        format_code(&witgen.code())
     }
 
     #[test]

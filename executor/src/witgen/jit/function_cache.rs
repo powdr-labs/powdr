@@ -1,6 +1,7 @@
 use std::{collections::HashMap, hash::Hash};
 
 use bit_vec::BitVec;
+use itertools::Itertools;
 use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
@@ -29,6 +30,8 @@ pub struct FunctionCache<'a, T: FieldElement> {
     witgen_functions: HashMap<CacheKey, Option<WitgenFunction<T>>>,
     column_layout: ColumnLayout,
     block_size: usize,
+    machine_name: String,
+    parts: MachineParts<'a, T>,
 }
 
 impl<'a, T: FieldElement> FunctionCache<'a, T> {
@@ -38,6 +41,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         block_size: usize,
         latch_row: usize,
         metadata: ColumnLayout,
+        machine_name: String,
     ) -> Self {
         let processor =
             BlockMachineProcessor::new(fixed_data, parts.clone(), block_size, latch_row);
@@ -47,6 +51,8 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             column_layout: metadata,
             witgen_functions: HashMap::new(),
             block_size,
+            machine_name,
+            parts,
         }
     }
 
@@ -90,12 +96,24 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         mutable_state: &MutableState<'a, T, Q>,
         cache_key: &CacheKey,
     ) -> Option<WitgenFunction<T>> {
-        log::trace!("Compiling JIT function for {:?}", cache_key);
+        log::debug!(
+            "Compiling JIT function for\n  Machine: {}\n  Connection: {}\n   Inputs: {:?}",
+            self.machine_name,
+            self.parts.connections[&cache_key.identity_id],
+            cache_key.known_args
+        );
 
         self.processor
             .generate_code(mutable_state, cache_key.identity_id, &cache_key.known_args)
+            .map_err(|e| {
+                // These errors can be pretty verbose and are quite common currently.
+                let e = e.to_string().lines().take(5).join("\n");
+                log::debug!("=> Error generating JIT code: {e}\n...");
+                e
+            })
             .ok()
             .map(|code| {
+                log::debug!("=> Success!");
                 let is_in_bounds = code
                     .iter()
                     .flat_map(|effect| effect.referenced_variables())
