@@ -192,7 +192,7 @@ fn lookup_via_challenges() {
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
-    
+
     let pipeline = make_simple_prepared_pipeline::<BabyBearField>(f, LinkerMode::Bus);
     test_plonky3_pipeline(pipeline);
 }
