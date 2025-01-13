@@ -55,7 +55,7 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
         &self,
         identity_id: u64,
         known_inputs: &BitVec,
-        range_constraints: &[Option<RangeConstraint<T>>],
+        range_constraints: &[RangeConstraint<T>],
     ) -> bool {
         // TODO We are currently ignoring bus interaction (also, but not only because there is no
         // unique machine responsible for handling a bus send), so just answer "false" if the identity
