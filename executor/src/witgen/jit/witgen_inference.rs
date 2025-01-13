@@ -40,7 +40,7 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval> {
     fixed_evaluator: FixedEval,
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
     known_variables: HashSet<Variable>,
-    /// Internal equalities we were not able to solve yet.
+    /// Internal equality constraints that are not identities from the constraint set.
     assignments: Vec<Assignment<'a, T>>,
     code: Vec<Effect<T, Variable>>,
 }
@@ -283,24 +283,20 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     fn process_assignments(&mut self) {
         loop {
             let mut progress = false;
-            let new_assignments = std::mem::take(&mut self.assignments)
-                .into_iter()
-                .flat_map(|assignment| {
-                    let rhs = match &assignment.rhs {
-                        VariableOrValue::Variable(v) => {
-                            Evaluator::new(self).evaluate_variable(v.clone())
-                        }
-                        VariableOrValue::Value(v) => (*v).into(),
-                    };
-                    let r =
-                        self.process_equality_on_row(assignment.lhs, assignment.row_offset, rhs);
-                    let summary = self.ingest_effects(r);
-                    progress |= summary.progress;
-                    // If it is not complete, queue it again.
-                    (!summary.complete).then_some(assignment)
-                })
-                .collect_vec();
-            self.assignments.extend(new_assignments);
+            // We need to take them out because ingest_effects needs a &mut self.
+            let assignments = std::mem::take(&mut self.assignments);
+            for assignment in &assignments {
+                let rhs = match &assignment.rhs {
+                    VariableOrValue::Variable(v) => {
+                        Evaluator::new(self).evaluate_variable(v.clone())
+                    }
+                    VariableOrValue::Value(v) => (*v).into(),
+                };
+                let r = self.process_equality_on_row(assignment.lhs, assignment.row_offset, rhs);
+                progress |= self.ingest_effects(r).progress;
+            }
+            assert!(self.assignments.is_empty());
+            self.assignments = assignments;
             if !progress {
                 break;
             }
