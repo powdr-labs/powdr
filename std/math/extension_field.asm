@@ -16,6 +16,8 @@ let required_extension_size: -> int = || match known_field() {
     None => panic("The permutation/lookup argument is not implemented for the current field!")
 };
 
+/// Wrapper around Fp2 and Fp4 to abstract which extension field is used.
+/// Once PIL supports traits, we can remove this type and the functions below.
 enum Ext<T> {
     Fp2(std::math::fp2::Fp2<T>),
     Fp4(std::math::fp4::Fp4<T>)
