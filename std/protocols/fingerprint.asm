@@ -70,11 +70,16 @@ mod test {
     let assert_fingerprint_equal: fe[], expr, fe -> () = query |tuple, challenge, expected| {
         let result = fingerprint(tuple, from_base(challenge));
         match result {
-            Ext::Fp2(std::math::fp2::Fp2::Fp2(actual, should_be_zero)) => {
-                assert(should_be_zero == 0, || "Returned an extension field element");
+            Ext::Fp2(std::math::fp2::Fp2::Fp2(actual, zero)) => {
+                assert(zero == 0, || "Returned an extension field element");
                 assert(expected == actual, || "expected != actual");
             },
-            _ => panic("Expected Fp2")
+            Ext::Fp4(std::math::fp4::Fp4::Fp4(actual, zero1, zero2, zero3)) => {
+                assert(zero1 == 0, || "Returned an extension field element");
+                assert(zero2 == 0, || "Returned an extension field element");
+                assert(zero3 == 0, || "Returned an extension field element");
+                assert(expected == actual, || "expected != actual");
+            },
         }
     };
 
