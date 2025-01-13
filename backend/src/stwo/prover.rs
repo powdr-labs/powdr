@@ -390,21 +390,28 @@ where
             .split
             .iter()
             .zip_eq(proof.machine_log_sizes.iter())
-            .map(|((machine_name, pil), (proof_machine_name, &machine_size))| {
-                assert_eq!(machine_name, proof_machine_name);
-                constant_cols_offset_acc += pil.constant_count();
+            .map(
+                |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
+                    assert_eq!(machine_name, proof_machine_name);
+                    let machine_component = PowdrComponent::new(
+                        tree_span_provider,
+                        PowdrEval::new((*pil).clone(), constant_cols_offset_acc, machine_log_size),
+                        (SecureField::zero(), None),
+                    );
 
-                constant_cols_offset_acc += get_constant_with_next_list(pil).len();
+                    constant_cols_offset_acc += pil.constant_count();
 
-                constant_col_log_sizes.extend(repeat(machine_size.ilog2()).take(pil.constant_count()));
-                witness_col_log_sizes.extend(repeat(machine_size.ilog2()).take(pil.commitment_count()));
+                    constant_cols_offset_acc += get_constant_with_next_list(pil).len();
 
-                PowdrComponent::new(
-                    tree_span_provider,
-                    PowdrEval::new((*pil).clone(), constant_cols_offset_acc, machine_size),
-                    (SecureField::zero(), None),
-                )
-            })
+                    constant_col_log_sizes.extend(
+                        repeat(machine_log_size)
+                            .take(pil.constant_count() + get_constant_with_next_list(pil).len()),
+                    );
+                    witness_col_log_sizes
+                        .extend(repeat(machine_log_size).take(pil.commitment_count()));
+                    machine_component
+                },
+            )
             .collect::<Vec<_>>();
 
         let mut components_slice: Vec<&dyn Component> = components
@@ -419,6 +426,7 @@ where
             &constant_col_log_sizes,
             verifier_channel,
         );
+
         commitment_scheme.commit(
             proof.stark_proof.commitments[ORIGINAL_TRACE_IDX],
             &witness_col_log_sizes,
