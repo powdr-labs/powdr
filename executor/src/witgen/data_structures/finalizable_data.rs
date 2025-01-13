@@ -91,7 +91,7 @@ impl<T: FieldElement> CompactData<T> {
     }
 
     /// Sets an entire row at the given index
-    pub fn set(&mut self, row: usize, new_row: Row<T>) {
+    pub fn set_row(&mut self, row: usize, new_row: Row<T>) {
         let idx = row * self.column_count;
         for (i, col_id) in self.column_ids().enumerate() {
             if let Some(v) = new_row.value(&col_id) {
@@ -109,6 +109,7 @@ impl<T: FieldElement> CompactData<T> {
         self.known_cells.append_empty_rows(count);
     }
 
+    #[inline]
     fn index(&self, row: usize, col: u64) -> usize {
         let col = col - self.first_column_id;
         row * self.column_count + col as usize
@@ -119,6 +120,14 @@ impl<T: FieldElement> CompactData<T> {
             id,
             ptype: PolynomialType::Committed,
         })
+    }
+
+    /// Sets a single cell
+    pub fn set(&mut self, row: usize, col: u64, value: T) {
+        let idx = self.index(row, col);
+        self.data[idx] = value;
+        let relative_col = col - self.first_column_id;
+        self.known_cells.set(row, relative_col, true);
     }
 
     pub fn get(&self, row: usize, col: u64) -> (T, bool) {
@@ -146,8 +155,8 @@ impl<T: FieldElement> CompactData<T> {
 /// only for a certain block of rows, starting from row index zero.
 /// It allows negative row indices as well.
 pub struct CompactDataRef<'a, T> {
-    data: &'a mut CompactData<T>,
-    row_offset: usize,
+    pub data: &'a mut CompactData<T>,
+    pub row_offset: usize,
 }
 
 impl<'a, T: FieldElement> CompactDataRef<'a, T> {
@@ -159,10 +168,6 @@ impl<'a, T: FieldElement> CompactDataRef<'a, T> {
 
     pub fn as_mut_slices(&mut self) -> (&mut [T], &mut [u32]) {
         self.data.as_mut_slices()
-    }
-
-    pub fn row_offset(&self) -> usize {
-        self.row_offset
     }
 }
 
@@ -413,7 +418,7 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
     pub fn set(&mut self, i: usize, row: Row<T>) {
         match self.location_of_row(i) {
             Location::Finalized(local) => {
-                self.finalized_data.set(local, row);
+                self.finalized_data.set_row(local, row);
             }
             Location::PostFinalized(local) => self.post_finalized_data[local] = row,
         }

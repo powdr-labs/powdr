@@ -27,6 +27,27 @@ pub enum Effect<T: FieldElement, V> {
     Branch(BranchCondition<T, V>, Vec<Effect<T, V>>, Vec<Effect<T, V>>),
 }
 
+impl<T: FieldElement> Effect<T, Variable> {
+    /// Returns an iterator over all variables written to in the effect.
+    /// The flag indicates if the variable is the return value of a machine call and thus needs
+    /// to be declared mutable.
+    pub fn written_vars(&self) -> Box<dyn Iterator<Item = (&Variable, bool)> + '_> {
+        match self {
+            Effect::Assignment(var, _) => Box::new(iter::once((var, false))),
+            Effect::RangeConstraint(..) => unreachable!(),
+            Effect::Assertion(..) => Box::new(iter::empty()),
+            Effect::MachineCall(_, known, vars) => Box::new(
+                vars.iter()
+                    .zip_eq(known)
+                    .flat_map(|(v, known)| (!known).then_some((v, true))),
+            ),
+            Effect::Branch(_, first, second) => {
+                Box::new(first.iter().chain(second).flat_map(|e| e.written_vars()))
+            }
+        }
+    }
+}
+
 impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
     pub fn referenced_variables(&self) -> impl Iterator<Item = &V> {
         let iter: Box<dyn Iterator<Item = &V>> = match self {

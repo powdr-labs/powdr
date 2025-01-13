@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, ffi::c_void, iter, mem, sync::Arc};
+use std::{cmp::Ordering, ffi::c_void, mem, sync::Arc};
 
 use itertools::Itertools;
 use libloading::Library;
@@ -20,7 +20,7 @@ use super::{
     variable::Variable,
 };
 
-pub struct WitgenFunction<T> {
+pub struct WitgenFunction<T: FieldElement> {
     // TODO We might want to pass arguments as direct function parameters
     // (instead of a struct), so that
     // they are stored in registers instead of the stack. Should be checked.
@@ -39,7 +39,7 @@ impl<T: FieldElement> WitgenFunction<T> {
         params: &mut [LookupCell<T>],
         mut data: CompactDataRef<'_, T>,
     ) {
-        let row_offset = data.row_offset().try_into().unwrap();
+        let row_offset = data.row_offset.try_into().unwrap();
         let (data, known) = data.as_mut_slices();
         (self.function)(WitgenFunctionParams {
             data: data.into(),
@@ -160,7 +160,7 @@ fn witgen_code<T: FieldElement>(
     let main_code = format_effects(effects);
     let vars_known = effects
         .iter()
-        .flat_map(written_vars_in_effect)
+        .flat_map(Effect::written_vars)
         .map(|(var, _)| var)
         .collect_vec();
     let store_values = vars_known
@@ -222,30 +222,6 @@ extern "C" fn witgen(
 }}
 "#
     )
-}
-
-/// Returns an iterator over all variables written to in the effect.
-/// The flag indicates if the variable is the return value of a machine call and thus needs
-/// to be declared mutable.
-fn written_vars_in_effect<T: FieldElement>(
-    effect: &Effect<T, Variable>,
-) -> Box<dyn Iterator<Item = (&Variable, bool)> + '_> {
-    match effect {
-        Effect::Assignment(var, _) => Box::new(iter::once((var, false))),
-        Effect::RangeConstraint(..) => unreachable!(),
-        Effect::Assertion(..) => Box::new(iter::empty()),
-        Effect::MachineCall(_, known, vars) => Box::new(
-            vars.iter()
-                .zip_eq(known)
-                .flat_map(|(v, known)| (!known).then_some((v, true))),
-        ),
-        Effect::Branch(_, first, second) => Box::new(
-            first
-                .iter()
-                .chain(second)
-                .flat_map(|e| written_vars_in_effect(e)),
-        ),
-    }
 }
 
 pub fn format_effects<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
@@ -321,7 +297,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                 first
                     .iter()
                     .chain(second)
-                    .flat_map(|e| written_vars_in_effect(e))
+                    .flat_map(|e| e.written_vars())
                     .sorted()
                     .dedup()
                     .map(|(v, needs_mut)| {
