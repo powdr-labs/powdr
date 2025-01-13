@@ -291,18 +291,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
                 // by input/output).
                 let mut inputs = inputs.iter();
                 let mut outputs = outputs.iter();
-                Some(
-                    known_arguments
-                        .iter()
-                        .map(|is_known| {
-                            if is_known {
-                                *inputs.next().unwrap()
-                            } else {
-                                *outputs.next().unwrap()
-                            }
-                        })
-                        .collect_vec(),
-                )
+                let unpartition = |is_known| {
+                    if is_known {
+                        *inputs.next().unwrap()
+                    } else {
+                        *outputs.next().unwrap()
+                    }
+                };
+                Some(known_arguments.iter().map(unpartition).collect_vec())
             });
         let mut new_range_constraints: Option<Vec<(T, T, T::Integer)>> = None;
         for values in items_matching_input_constraints {
