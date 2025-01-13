@@ -71,6 +71,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
             pipeline.data_callback().unwrap(),
             &[],
             None,
+            true,
             None,
         );
         pipeline.rollback_from_witness();

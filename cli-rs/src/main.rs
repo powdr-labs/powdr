@@ -444,6 +444,7 @@ fn execute<F: FieldElement>(
             pipeline.data_callback().unwrap(),
             &[],
             None,
+            true,
             profiling,
         );
 

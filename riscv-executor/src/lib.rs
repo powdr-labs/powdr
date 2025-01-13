@@ -724,7 +724,7 @@ mod builder {
             regs[pc_idx as usize] = PC_INITIAL_VAL.into();
 
             let submachines: HashMap<_, RefCell<Box<dyn Submachine<F>>>> =
-                if let ExecMode::Trace = mode {
+                if let ExecMode::Witness = mode {
                     [
                         (
                             MachineInstance::memory,
@@ -797,7 +797,7 @@ mod builder {
             lookup_args: &[F],
             extra: &[F],
         ) {
-            if let ExecMode::Trace = self.mode {
+            if let ExecMode::Witness = self.mode {
                 self.trace
                     .submachine_ops
                     .get_mut(m as usize)
@@ -884,31 +884,30 @@ mod builder {
         /// raw set next value of register by register index instead of name
         fn set_reg_idx(&mut self, idx: u16, value: Elem<F>) {
             // Record register write in trace. Only for non-pc, non-assignment registers.
-            if let ExecMode::Trace = self.mode {
+            if let ExecMode::Trace | ExecMode::Witness = self.mode {
                 if idx != self.pc_idx {
                     self.trace.reg_writes[idx as usize] = Some(value.into_fe());
                 }
             }
-
             self.regs[idx as usize] = value;
         }
 
         pub fn set_col_idx(&mut self, col: KnownWitnessCol, idx: usize, value: Elem<F>) {
-            if let ExecMode::Trace = self.mode {
+            if let ExecMode::Witness = self.mode {
                 let idx = (KnownWitnessCol::count() * idx) + col as usize;
                 *self.trace.known_cols.get_mut(idx).unwrap() = value.into_fe();
             }
         }
 
         pub fn set_col(&mut self, col: KnownWitnessCol, value: Elem<F>) {
-            if let ExecMode::Trace = self.mode {
+            if let ExecMode::Witness = self.mode {
                 let idx = (self.trace.known_cols.len() - KnownWitnessCol::count()) + col as usize;
                 *self.trace.known_cols.get_mut(idx).unwrap() = value.into_fe();
             }
         }
 
         pub fn push_row(&mut self, pc: u32) {
-            if let ExecMode::Trace = self.mode {
+            if let ExecMode::Witness = self.mode {
                 let new_len = self.trace.known_cols.len() + KnownWitnessCol::count();
                 self.trace.known_cols.resize(new_len, F::zero());
                 self.trace.pc_trace.push(pc);
@@ -960,6 +959,8 @@ mod builder {
                     &[1.into(), addr.into(), step.into(), val.into()],
                     &[],
                 );
+            }
+            if let ExecMode::Trace | ExecMode::Witness = self.mode {
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Write,
@@ -972,13 +973,15 @@ mod builder {
 
         pub(crate) fn get_mem(&mut self, addr: u32, step: u32, identity_id: u64) -> u32 {
             let val = *self.mem.get(&addr).unwrap_or(&0);
-            if let ExecMode::Trace = self.mode {
+            if let ExecMode::Witness = self.mode {
                 self.submachine_op(
                     MachineInstance::memory,
                     identity_id,
                     &[0.into(), addr.into(), step.into(), val.into()],
                     &[],
                 );
+            }
+            if let ExecMode::Trace | ExecMode::Witness = self.mode {
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Read,
@@ -1040,6 +1043,17 @@ mod builder {
                 "Generating register traces took {}s",
                 start.elapsed().as_secs_f64(),
             );
+
+            // trace mode doesn't generate a full witness
+            if let ExecMode::Trace = self.mode {
+                return Execution {
+                    trace_len: self.trace.len,
+                    memory: self.mem,
+                    memory_accesses: std::mem::take(&mut self.trace.mem_ops),
+                    trace: main_regs.into_iter().collect(),
+                    register_memory: self.reg_mem.for_bootloader(),
+                };
+            }
 
             // This hashmap will be added to until we get the full witness.
             let mut cols = self.generate_main_columns();
@@ -1307,7 +1321,7 @@ impl<F: FieldElement> Executor<'_, '_, F> {
     fn init(&mut self) {
         self.step = 4;
 
-        if let ExecMode::Trace = self.mode {
+        if let ExecMode::Witness = self.mode {
             for c in KnownFixedCol::all() {
                 self.cached_fixed_cols
                     .push(self.get_fixed(c.name()).unwrap().clone());
@@ -1384,30 +1398,33 @@ impl<F: FieldElement> Executor<'_, '_, F> {
     /// Gets the identity id for a link associated with a given instruction.
     /// idx is based on the order link appear in the assembly (assumed to be the same in the optimized pil).
     fn instr_link_id(&mut self, instr: Instruction, target: MachineInstance, idx: usize) -> u64 {
-        if let ExecMode::Fast = self.mode {
-            return 0; // we don't care about identity ids in fast mode
+        if let ExecMode::Witness = self.mode {
+            let entries = self
+                .pil_instruction_links
+                .get_mut(instr as usize * MachineInstance::count() + target as usize)
+                .unwrap()
+                .get_or_insert_with(|| {
+                    pil::find_instruction_links(&self.pil_links, instr.flag(), target.namespace())
+                });
+            entries.get(idx).unwrap().id()
+        } else {
+            // we don't care about identity ids in non witness mode
+            0
         }
-
-        let entries = self
-            .pil_instruction_links
-            .get_mut(instr as usize * MachineInstance::count() + target as usize)
-            .unwrap()
-            .get_or_insert_with(|| {
-                pil::find_instruction_links(&self.pil_links, instr.flag(), target.namespace())
-            });
-        entries.get(idx).unwrap().id()
     }
 
     /// Find the identity id of a link.
     fn link_id(&mut self, from: &'static str, target: &'static str, idx: usize) -> u64 {
-        if let ExecMode::Fast = self.mode {
-            return 0; // we don't care about identity ids in fast mode
+        if let ExecMode::Witness = self.mode {
+            let entries = self
+                .pil_other_links
+                .entry((from, target))
+                .or_insert_with(|| pil::find_links(&self.pil_links, from, target));
+            entries.get(idx).unwrap().id()
+        } else {
+            // we don't care about identity ids in fast mode
+            0
         }
-        let entries = self
-            .pil_other_links
-            .entry((from, target))
-            .or_insert_with(|| pil::find_links(&self.pil_links, from, target));
-        entries.get(idx).unwrap().id()
     }
 
     fn exec_instruction(&mut self, name: &str, args: &[Expression]) -> Option<Elem<F>> {
@@ -1420,7 +1437,7 @@ impl<F: FieldElement> Executor<'_, '_, F> {
 
         macro_rules! get_fixed {
             ($name:ident) => {
-                if let ExecMode::Trace = self.mode {
+                if let ExecMode::Witness = self.mode {
                     Elem::Field(
                         self.get_known_fixed(KnownFixedCol::$name, self.proc.get_pc().u() as usize),
                     )
@@ -2816,8 +2833,12 @@ pub struct Execution<F: FieldElement> {
 
 #[derive(Clone, Copy)]
 enum ExecMode {
+    /// Doesn't generate any execution information besides the length of the trace
     Fast,
+    /// Generate traces for memory and powdr asm registers
     Trace,
+    /// Generate the full witness
+    Witness,
 }
 
 /// Execute a Powdr/RISCV assembly program, without generating a witness.
@@ -2854,6 +2875,7 @@ pub fn execute<F: FieldElement>(
     prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     max_steps_to_execute: Option<usize>,
+    full_witness: bool,
     profiling: Option<ProfilerOptions>,
 ) -> Execution<F> {
     log::info!("Executing (trace generation)...");
@@ -2866,7 +2888,11 @@ pub fn execute<F: FieldElement>(
         prover_ctx,
         bootloader_inputs,
         max_steps_to_execute.unwrap_or(usize::MAX),
-        ExecMode::Trace,
+        if full_witness {
+            ExecMode::Witness
+        } else {
+            ExecMode::Trace
+        },
         profiling,
     )
 }
