@@ -7,6 +7,7 @@ use powdr_number::FieldElement;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 use std::collections::BTreeMap;
+use std::iter::repeat;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::{fmt, io};
@@ -395,7 +396,8 @@ where
 
                 constant_cols_offset_acc += get_constant_with_next_list(pil).len();
 
-                // TODO: add to `constant_col_log_sizes` and `witness_col_log_sizes` the log sizes of the constant and witness columns
+                constant_col_log_sizes.extend(repeat(machine_size.ilog2()).take(pil.constant_count()));
+                witness_col_log_sizes.extend(repeat(machine_size.ilog2()).take(pil.commitment_count()));
 
                 PowdrComponent::new(
                     tree_span_provider,
