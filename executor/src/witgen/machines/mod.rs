@@ -55,12 +55,14 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         );
     }
 
-    /// Returns true if this machine can alway fully process a call via the given
+    /// Returns Some(..) if this machine can alway fully process a call via the given
     /// identity, the set of known arguments and a list of range constraints
     /// on the parameters. Note that the range constraints can be imposed both
     /// on inputs and on outputs.
-    /// If this returns true, then corresponding calls to `process_lookup_direct`
+    /// If this returns Some(..), then corresponding calls to `process_lookup_direct`
     /// are safe.
+    /// The value returned inside the option is a vector of range constraints on the arguments,
+    /// which again can be imposed both on inputs and on outputs.
     /// The function requires `&mut self` because it usually builds an index structure
     /// or something similar.
     fn can_process_call_fully(
@@ -68,8 +70,8 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         _identity_id: u64,
         _known_arguments: &BitVec,
         _range_constraints: &[RangeConstraint<T>],
-    ) -> bool {
-        false
+    ) -> Option<Vec<RangeConstraint<T>>> {
+        None
     }
 
     /// Like `process_plookup`, but also records the time spent in this machine.
@@ -188,7 +190,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         identity_id: u64,
         known_arguments: &BitVec,
         range_constraints: &[RangeConstraint<T>],
-    ) -> bool {
+    ) -> Option<Vec<RangeConstraint<T>>> {
         match self {
             KnownMachine::SecondStageMachine(m) => {
                 m.can_process_call_fully(identity_id, known_arguments, range_constraints)

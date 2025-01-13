@@ -205,4 +205,40 @@ if (VM::instr_add[0] == 1) {
 }"
         );
     }
+
+    #[test]
+    fn range_constraints_from_lookup() {
+        let input = "
+    namespace VM(256);
+        let instr_add: col;
+        let instr_mul: col;
+        let pc: col;
+
+        col fixed LINE = [0, 1] + [2]*;
+        col fixed INSTR_ADD = [0, 1] + [0]*;
+        col fixed INSTR_MUL = [1, 0] + [1]*;
+
+        pc' = pc + 1;
+        instr_add = 0;
+        [ pc, instr_add, instr_mul ] in [ LINE, INSTR_ADD, INSTR_MUL ];
+
+        ";
+        let code = generate_single_step(input, "Main").unwrap();
+        // After the machine call, we should have a direct assignment `VM::instr_mul[1] = 1`,
+        // instead of just an assignment from the call variable.
+        // This is because the fixed lookup machine can already provide a range constraint.
+        // For reasons of processing order, the call variable will also be assigned
+        // right before the call.
+        assert_eq!(
+            format_code(&code),
+            "\
+VM::pc[1] = (VM::pc[0] + 1);
+VM::instr_add[1] = 0;
+call_var(2, 1, 0) = VM::pc[1];
+call_var(2, 1, 1) = 0;
+call_var(2, 1, 2) = 1;
+machine_call(2, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(call_var(2, 1, 2))]);
+VM::instr_mul[1] = 1;"
+        );
+    }
 }
