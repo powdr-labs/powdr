@@ -1,9 +1,12 @@
 use std::cmp::Ordering;
 
+use std::iter;
+
 use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::indent;
 use powdr_number::FieldElement;
+use std::hash::Hash;
 
 use crate::witgen::range_constraints::RangeConstraint;
 
@@ -22,6 +25,28 @@ pub enum Effect<T: FieldElement, V> {
     MachineCall(u64, BitVec, Vec<V>),
     /// A branch on a variable.
     Branch(BranchCondition<T, V>, Vec<Effect<T, V>>, Vec<Effect<T, V>>),
+}
+
+impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
+    pub fn referenced_variables(&self) -> impl Iterator<Item = &V> {
+        let iter: Box<dyn Iterator<Item = &V>> = match self {
+            Effect::Assignment(v, expr) => Box::new(iter::once(v).chain(expr.referenced_symbols())),
+            Effect::RangeConstraint(v, _) => Box::new(iter::once(v)),
+            Effect::Assertion(Assertion { lhs, rhs, .. }) => {
+                Box::new(lhs.referenced_symbols().chain(rhs.referenced_symbols()))
+            }
+            Effect::MachineCall(_, _, args) => Box::new(args.iter()),
+            Effect::Branch(branch_condition, first, second) => Box::new(
+                iter::once(&branch_condition.variable).chain(
+                    [first, second]
+                        .into_iter()
+                        .flatten()
+                        .flat_map(|effect| effect.referenced_variables()),
+                ),
+            ),
+        };
+        iter.unique()
+    }
 }
 
 /// A run-time assertion. If this fails, we have conflicting constraints.

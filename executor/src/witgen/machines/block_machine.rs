@@ -118,6 +118,14 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             fixed_data,
         );
         let layout = data.layout();
+        let function_cache = FunctionCache::new(
+            fixed_data,
+            parts.clone(),
+            block_size,
+            latch_row,
+            layout,
+            name.clone(),
+        );
         Some(BlockMachine {
             name,
             degree_range,
@@ -134,13 +142,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 latch_row,
                 parts.identities.len(),
             ),
-            function_cache: FunctionCache::new(
-                fixed_data,
-                parts.clone(),
-                block_size,
-                latch_row,
-                layout,
-            ),
+            function_cache,
             block_count_jit: 0,
             block_count_runtime: 0,
         })
@@ -470,7 +472,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             "Block machine is full (this should have been checked before)"
         );
         self.data.finalize_all();
-        //TODO can we properly access the last row of the dummy block?
         let data = self.data.append_new_finalized_rows(self.block_size);
 
         let success =

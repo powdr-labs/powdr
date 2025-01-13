@@ -36,8 +36,8 @@ machine Main with min_degree: MIN, max_degree: MAX {
         // Test 1: 0 for all 25 64-bit inputs except setting the second 64-bit input to 1. All 64-bit inputs in chunks of 2 32-bit big endian limbs.
         mstore 0, 0;
         mstore 4, 0;
-        mstore 8, 0;
-        mstore 12, 1;
+        mstore 8, 1;
+        mstore 12, 0;
         mstore 16, 0;
         mstore 20, 0;
         mstore 24, 0;
@@ -63,20 +63,20 @@ machine Main with min_degree: MIN, max_degree: MAX {
         keccakf32_memory 0, 200;
         // Selectively checking a few registers only.
         // Test vector generated from Tiny Keccak.
-        assert_eq 200, 0xfdbbbbdf;
-        assert_eq 204, 0x9001405f;
-        assert_eq 392, 0xeac9f006;
-        assert_eq 396, 0x664deb35;
+        assert_eq 200, 0x9001405f;
+        assert_eq 204, 0xfdbbbbdf;
+        assert_eq 392, 0x664deb35;
+        assert_eq 396, 0xeac9f006;
 
         // Test 2: Same as Test 1 but sets input and output addresses to be the same.
         // No need to rerun the mstores because input values from Test 1 should be intact.
         keccakf32_memory 0, 0;
         // Selectively checking a few registers only.
         // Test vector generated from Tiny Keccak.
-        assert_eq 0, 0xfdbbbbdf;
-        assert_eq 4, 0x9001405f;
-        assert_eq 192, 0xeac9f006;
-        assert_eq 196, 0x664deb35;
+        assert_eq 0, 0x9001405f;
+        assert_eq 4, 0xfdbbbbdf;
+        assert_eq 192, 0x664deb35;
+        assert_eq 196, 0xeac9f006;
 
         return;
     }
