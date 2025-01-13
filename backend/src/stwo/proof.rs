@@ -1,13 +1,15 @@
-use serde::Deserialize;
-use serde::Serialize;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use stwo_prover::core::backend::Backend;
 use stwo_prover::core::backend::Column;
 use stwo_prover::core::backend::ColumnOps;
+use stwo_prover::core::channel::MerkleChannel;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::prover::StarkProof;
 use stwo_prover::core::ColumnVec;
 
 /// For each possible size, the commitment and prover data
@@ -123,4 +125,15 @@ impl<B: Backend> From<StarkProvingKey<B>> for SerializableStarkProvingKey {
 
         Self { preprocessed }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Proof<MC: MerkleChannel>
+where
+    MC::H: DeserializeOwned + Serialize,
+{
+    pub stark_proof: StarkProof<MC::H>,
+    pub constant_col_log_sizes: Vec<u32>,
+    pub witness_col_log_sizes: Vec<u32>,
+    pub machine_log_sizes: Vec<u32>,
 }
