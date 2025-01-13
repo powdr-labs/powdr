@@ -14,7 +14,7 @@ use super::{
 };
 
 /// This is a tuning value. It is the maximum nesting depth of branches in the JIT code.
-const BLOCK_MACHINE_MAX_BRANCH_DEPTH: usize = 6;
+const BLOCK_MACHINE_MAX_BRANCH_DEPTH: usize = 0;
 
 /// A processor for generating JIT code for a block machine.
 pub struct BlockMachineProcessor<'a, T: FieldElement> {

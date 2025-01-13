@@ -340,8 +340,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     // as a range constraint, so we can use it in future evaluations.
                     progress |=
                         self.add_range_constraint(variable.clone(), assignment.range_constraint());
-                    if !self.is_known(variable) {
-                        self.known_variables.insert(variable.clone());
+                    if self.known_variables.insert(variable.clone()) {
                         progress = true;
                         self.code.push(e);
                     }
@@ -353,7 +352,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     // If the machine call is already complete, it means that we have
                     // processed itand created code for it in the past. We might still process it
                     // multiple times to get better range constraints.
-                    if self.complete_identities.contains(&identity_id.unwrap()) {
+                    if self.complete_identities.insert(identity_id.unwrap()) {
                         for v in vars {
                             // Inputs are already known, but it does not hurt to add all of them.
                             self.known_variables.insert(v.clone());

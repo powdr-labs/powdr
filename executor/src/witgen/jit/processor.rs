@@ -165,18 +165,19 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         can_process: CanProcess,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
     ) {
-        let mut progress = true;
-        while progress {
-            progress = false;
-
-            // TODO At this point, we should call a function on `witgen`
-            // to propagate known concrete values across the identities
-            // to other known (but not concrete) variables.
-
-            for (id, row_offset) in &self.identities {
-                progress |= witgen
-                    .process_identity(can_process.clone(), id, *row_offset)
-                    .progress;
+        loop {
+            let progress = self
+                .identities
+                .iter()
+                .map(|(id, row_offset)| {
+                    witgen
+                        .process_identity(can_process.clone(), id, *row_offset)
+                        .progress
+                })
+                .reduce(std::ops::BitOr::bitor)
+                .unwrap_or(false);
+            if !progress {
+                break;
             }
         }
     }
