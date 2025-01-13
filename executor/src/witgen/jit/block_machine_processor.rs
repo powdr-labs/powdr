@@ -56,7 +56,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .enumerate()
             .filter_map(|(i, is_input)| is_input.then_some(Variable::Param(i)))
             .collect::<HashSet<_>>();
-        let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables);
+        let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables, []);
 
         // In the latch row, set the RHS selector to 1.
         let selector = &connection.right.selector;

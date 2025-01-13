@@ -40,6 +40,9 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval> {
     fixed_evaluator: FixedEval,
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
     known_variables: HashSet<Variable>,
+    /// Identities where we do not want to generate a submachine call
+    /// to avoid two calls to the same submachine on the same row.
+    complete_identities: HashSet<(u64, i32)>,
     /// Internal equalities we were not able to solve yet.
     assignments: Vec<Assignment<'a, T>>,
     code: Vec<Effect<T, Variable>>,
@@ -77,12 +80,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         fixed_data: &'a FixedData<'a, T>,
         fixed_evaluator: FixedEval,
         known_variables: impl IntoIterator<Item = Variable>,
+        complete_identities: impl IntoIterator<Item = (u64, i32)>,
     ) -> Self {
         Self {
             fixed_data,
             fixed_evaluator,
             derived_range_constraints: Default::default(),
             known_variables: known_variables.into_iter().collect(),
+            complete_identities: complete_identities.into_iter().collect(),
             assignments: Default::default(),
             code: Default::default(),
         }
@@ -98,6 +103,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 
     pub fn is_known(&self, variable: &Variable) -> bool {
         self.known_variables.contains(variable)
+    }
+
+    pub fn is_complete(&self, identity: &Identity<T>, row_offset: i32) -> bool {
+        self.complete_identities
+            .contains(&(identity.id(), row_offset))
     }
 
     pub fn value(&self, variable: &Variable) -> Value<T> {
@@ -148,6 +158,13 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         id: &'a Identity<T>,
         row_offset: i32,
     ) -> ProcessSummary {
+        // TODO remove this once we propagate range constraints.
+        if self.is_complete(id, row_offset) {
+            return ProcessSummary {
+                complete: true,
+                progress: false,
+            };
+        }
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                 self.process_equality_on_row(expression, row_offset, T::from(0).into())
@@ -166,7 +183,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             Identity::PhantomBusInteraction(_) => ProcessResult::empty(),
             Identity::Connect(_) => ProcessResult::empty(),
         };
-        self.ingest_effects(result)
+        self.ingest_effects(result, Some((id.id(), row_offset)))
     }
 
     /// Process the constraint that the expression evaluated at the given offset equals the given value.
@@ -294,7 +311,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     };
                     let r =
                         self.process_equality_on_row(assignment.lhs, assignment.row_offset, rhs);
-                    let summary = self.ingest_effects(r);
+                    let summary = self.ingest_effects(r, None);
                     progress |= summary.progress;
                     // If it is not complete, queue it again.
                     (!summary.complete).then_some(assignment)
@@ -307,31 +324,52 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    fn ingest_effects(&mut self, process_result: ProcessResult<T, Variable>) -> ProcessSummary {
+    /// Analyze the effects and update the internal state.
+    /// If the effect is the result of a machine call, `identity_id` must be given
+    /// to avoid two calls to the same sub-machine on the same row.
+    fn ingest_effects(
+        &mut self,
+        process_result: ProcessResult<T, Variable>,
+        identity_id: Option<(u64, i32)>,
+    ) -> ProcessSummary {
         let mut progress = false;
         for e in process_result.effects {
             match &e {
                 Effect::Assignment(variable, assignment) => {
-                    assert!(self.known_variables.insert(variable.clone()));
                     // If the variable was determined to be a constant, we add this
                     // as a range constraint, so we can use it in future evaluations.
-                    self.add_range_constraint(variable.clone(), assignment.range_constraint());
-                    progress = true;
-                    self.code.push(e);
+                    progress |=
+                        self.add_range_constraint(variable.clone(), assignment.range_constraint());
+                    if !self.is_known(variable) {
+                        self.known_variables.insert(variable.clone());
+                        progress = true;
+                        self.code.push(e);
+                    }
                 }
                 Effect::RangeConstraint(variable, rc) => {
                     progress |= self.add_range_constraint(variable.clone(), rc.clone());
                 }
                 Effect::MachineCall(_, _, vars) => {
-                    for v in vars {
-                        // Inputs are already known, but it does not hurt to add all of them.
-                        self.known_variables.insert(v.clone());
+                    // If the machine call is already complete, it means that we have
+                    // processed itand created code for it in the past. We might still process it
+                    // multiple times to get better range constraints.
+                    if self.complete_identities.contains(&identity_id.unwrap()) {
+                        for v in vars {
+                            // Inputs are already known, but it does not hurt to add all of them.
+                            self.known_variables.insert(v.clone());
+                        }
+                        progress = true;
+
+                        self.code.push(e);
                     }
-                    progress = true;
-                    self.code.push(e);
                 }
                 Effect::Assertion(_) => self.code.push(e),
                 Effect::Branch(..) => unreachable!(),
+            }
+        }
+        if process_result.complete {
+            if let Some(identity_id) = identity_id {
+                self.complete_identities.insert(identity_id);
             }
         }
         if progress {
@@ -605,7 +643,7 @@ mod test {
         });
 
         let ref_eval = FixedEvaluatorForFixedData(&fixed_data);
-        let mut witgen = WitgenInference::new(&fixed_data, ref_eval, known_cells);
+        let mut witgen = WitgenInference::new(&fixed_data, ref_eval, known_cells, []);
         let mut complete = HashSet::new();
         let mut counter = 0;
         let expected_complete = expected_complete.unwrap_or(retained_identities.len() * rows.len());
