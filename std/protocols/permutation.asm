@@ -1,20 +1,19 @@
 use std::array::map;
 use std::check::assert;
 use std::check::panic;
-use std::math::fp2::Fp2;
-use std::math::fp2::add_ext;
-use std::math::fp2::sub_ext;
-use std::math::fp2::mul_ext;
-use std::math::fp2::unpack_ext;
-use std::math::fp2::unpack_ext_array;
-use std::math::fp2::next_ext;
-use std::math::fp2::inv_ext;
-use std::math::fp2::eval_ext;
-use std::math::fp2::from_base;
-use std::math::fp2::fp2_from_array;
-use std::math::fp2::constrain_eq_ext;
-use std::math::fp2::required_extension_size;
-use std::math::fp2::needs_extension;
+use std::math::extension_field::Ext;
+use std::math::extension_field::add_ext;
+use std::math::extension_field::sub_ext;
+use std::math::extension_field::mul_ext;
+use std::math::extension_field::unpack_ext_array;
+use std::math::extension_field::next_ext;
+use std::math::extension_field::inv_ext;
+use std::math::extension_field::eval_ext;
+use std::math::extension_field::from_base;
+use std::math::extension_field::from_array;
+use std::math::extension_field::constrain_eq_ext;
+use std::math::extension_field::required_extension_size;
+use std::math::extension_field::needs_extension;
 use std::protocols::fingerprint::fingerprint;
 use std::protocols::fingerprint::fingerprint_inter;
 use std::prover::eval;
@@ -34,14 +33,14 @@ let unpack_permutation_constraint: Constr -> (expr, expr[], expr, expr[]) = |per
 
 /// Takes a boolean selector (0/1) and a value, returns equivalent of `if selector { value } else { 1 }`
 /// Implemented as: selector * (value - 1) + 1
-let<T: Add + Mul + Sub + FromLiteral> selected_or_one: T, Fp2<T> -> Fp2<T> = |selector, value| add_ext(mul_ext(from_base(selector), sub_ext(value, from_base(1))), from_base(1));
+let<T: Add + Mul + Sub + FromLiteral> selected_or_one: T, Ext<T> -> Ext<T> = |selector, value| add_ext(mul_ext(from_base(selector), sub_ext(value, from_base(1))), from_base(1));
 
 /// Compute acc' = acc * selected_or_one(sel_a, beta - a) / selected_or_one(sel_b, beta - b),
 /// using extension field arithmetic (where expressions for sel_a, a, sel_b, b are derived from
 /// the provided permutation constraint).
 /// This is intended to be used as a hint in the extension field case; for the base case
 /// automatic witgen is smart enough to figure out the value of the accumulator.
-let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc, alpha, beta, permutation_constraint| {
+let compute_next_z: Ext<expr>, Ext<expr>, Ext<expr>, Constr -> fe[] = query |acc, alpha, beta, permutation_constraint| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
     
@@ -75,11 +74,10 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc
 /// accumulator is the same as the first one, because of wrapping.
 /// For small fields, this computation should happen in the extension field.
 let permutation: Constr -> () = constr |permutation_constraint| {
-    std::check::assert(required_extension_size() <= 2, || "Invalid extension size");
     // Alpha is used to compress the LHS and RHS arrays
-    let alpha = fp2_from_array(std::array::new(required_extension_size(), |i| challenge(0, i + 1)));
+    let alpha = from_array(std::array::new(required_extension_size(), |i| challenge(0, i + 1)));
     // Beta is used to update the accumulator
-    let beta = fp2_from_array(std::array::new(required_extension_size(), |i| challenge(0, i + 3)));
+    let beta = from_array(std::array::new(required_extension_size(), |i| challenge(0, i + 3)));
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
 
@@ -90,7 +88,7 @@ let permutation: Constr -> () = constr |permutation_constraint| {
     let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, fingerprint_inter(rhs, alpha)));
 
     let acc = std::array::new(required_extension_size(), |i| std::prover::new_witness_col_at_stage("acc", 1));
-    let acc_ext = fp2_from_array(acc);
+    let acc_ext = from_array(acc);
     let next_acc = next_ext(acc_ext);
 
     // Update rule:
@@ -103,12 +101,10 @@ let permutation: Constr -> () = constr |permutation_constraint| {
 
     let is_first: col = std::well_known::is_first;
 
-    let (acc_1, acc_2) = unpack_ext(acc_ext);
-
     // First and last acc needs to be 1
     // (because of wrapping, the acc[0] and acc[N] are the same)
-    is_first * (acc_1 - 1) = 0;
-    is_first * acc_2 = 0;
+    is_first * (acc[0] - 1) = 0;
+    array::new(array::len(acc) - 1, |i| is_first * acc[i + 1] = 0);
     constrain_eq_ext(update_expr, from_base(0));
 
     // Add an annotation for witness generation

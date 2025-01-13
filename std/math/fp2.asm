@@ -8,6 +8,7 @@ use std::convert::expr;
 use std::field::known_field;
 use std::field::KnownField;
 use std::math::ff::inv_field;
+use std::math::extension_field::needs_extension;
 use std::prover::eval;
 
 /// Corresponding Sage code to test irreducibility
@@ -139,31 +140,14 @@ let<T> unpack_ext_array: Fp2<T> -> T[] = |a| match a {
     Fp2::Fp2(a0, a1) => [a0, a1]
 };
 
-/// Whether we need to operate on the F_{p^2} extension field (because the current field is too small).
-let needs_extension: -> bool = || required_extension_size() > 1;
-
-/// How many field elements / field extensions are recommended for the current base field.
-let required_extension_size: -> int = || match known_field() {
-    Option::Some(KnownField::Goldilocks) => 2,
-    Option::Some(KnownField::BN254) => 1,
-    None => panic("The permutation/lookup argument is not implemented for the current field!")
-};
-
-/// Matches whether the length of a given array is correct to operate on the extension field
-let is_extension = |arr| match len(arr) {
-        1 => false,
-        2 => true,
-        _ => panic("Expected 1 or 2 accumulator columns!")
-};
-
 /// Constructs an extension field element `a0 + a1 * X` from either `[a0, a1]` or `[a0]` (setting `a1`to zero in that case)
-let fp2_from_array = |arr| {
-    if is_extension(arr) {
-        Fp2::Fp2(arr[0], arr[1])
-    } else {
+let<T: FromLiteral> from_array: T[] -> Fp2<T> = |arr| match len(arr) {
+    1 => {
         let _ = assert(!needs_extension(), || "The field is too small and needs to move to the extension field. Pass two elements instead!");
         from_base(arr[0])
-    }
+    },
+    2 => Fp2::Fp2(arr[0], arr[1]),
+    _ => panic("Expected array of length 1 or 2")
 };
 
 mod test {

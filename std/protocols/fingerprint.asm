@@ -1,24 +1,23 @@
 use std::array;
 use std::array::len;
-use std::math::fp2::Fp2;
-use std::math::fp2::add_ext;
-use std::math::fp2::mul_ext;
-use std::math::fp2::pow_ext;
-use std::math::fp2::from_base;
-use std::math::fp2::eval_ext;
+use std::math::extension_field::Ext;
+use std::math::extension_field::add_ext;
+use std::math::extension_field::mul_ext;
+use std::math::extension_field::from_base;
+use std::math::extension_field::eval_ext;
 use std::check::assert;
 
 /// Maps [x_1, x_2, ..., x_n] to its Read-Solomon fingerprint, using a challenge alpha: $\sum_{i=1}^n alpha**{(n - i)} * x_i$
 /// To generate an expression that computes the fingerprint, use `fingerprint_inter` instead.
 /// Note that alpha is passed as an expressions, so that it is only evaluated if needed (i.e., if len(expr_array) > 1).
-let fingerprint: fe[], Fp2<expr> -> Fp2<fe> = query |expr_array, alpha| if array::len(expr_array) == 1 {
+let fingerprint: fe[], Ext<expr> -> Ext<fe> = query |expr_array, alpha| if array::len(expr_array) == 1 {
     // No need to evaluate `alpha` (which would be removed by the optimizer).
     from_base(expr_array[0])
 } else {
     fingerprint_impl(expr_array, eval_ext(alpha), len(expr_array))
 };
 
-let fingerprint_impl: fe[], Fp2<fe>, int -> Fp2<fe> = query |expr_array, alpha, l| if l == 1 {
+let fingerprint_impl: fe[], Ext<fe>, int -> Ext<fe> = query |expr_array, alpha, l| if l == 1 {
     // Base case
     from_base(expr_array[0])
 } else {
@@ -30,7 +29,7 @@ let fingerprint_impl: fe[], Fp2<fe>, int -> Fp2<fe> = query |expr_array, alpha, 
 
 /// Like `fingerprint`, but "materializes" the intermediate results as intermediate columns.
 /// Inlining them would lead to an exponentially-sized expression.
-let fingerprint_inter: expr[], Fp2<expr> -> Fp2<expr> = |expr_array, alpha| if len(expr_array) == 1 {
+let fingerprint_inter: expr[], Ext<expr> -> Ext<expr> = |expr_array, alpha| if len(expr_array) == 1 {
     // Base case
     from_base(expr_array[0])
 } else {
@@ -38,35 +37,44 @@ let fingerprint_inter: expr[], Fp2<expr> -> Fp2<expr> = |expr_array, alpha| if l
 
     // Recursively compute the fingerprint as fingerprint(expr_array[:-1], alpha) * alpha + expr_array[-1]
     let intermediate_fingerprint = match fingerprint_inter(array::sub_array(expr_array, 0, len(expr_array) - 1), alpha) {
-        Fp2::Fp2(a0, a1) => {
+        Ext::Fp2(std::math::fp2::Fp2::Fp2(a0, a1)) => {
             let intermediate_fingerprint_0: inter = a0;
             let intermediate_fingerprint_1: inter = a1;
-            Fp2::Fp2(intermediate_fingerprint_0, intermediate_fingerprint_1)
+            Ext::Fp2(std::math::fp2::Fp2::Fp2(intermediate_fingerprint_0, intermediate_fingerprint_1))
+        },
+        Ext::Fp4(std::math::fp4::Fp4::Fp4(a0, a1, a2, a3)) => {
+            let intermediate_fingerprint_0: inter = a0;
+            let intermediate_fingerprint_1: inter = a1;
+            let intermediate_fingerprint_2: inter = a2;
+            let intermediate_fingerprint_3: inter = a3;
+            Ext::Fp4(std::math::fp4::Fp4::Fp4(intermediate_fingerprint_0, intermediate_fingerprint_1, intermediate_fingerprint_2, intermediate_fingerprint_3))
         }
     };
     add_ext(mul_ext(alpha, intermediate_fingerprint), from_base(expr_array[len(expr_array) - 1]))
 };
 
 /// Maps [id, x_1, x_2, ..., x_n] to its Read-Solomon fingerprint, using a challenge alpha: $\sum_{i=1}^n alpha**{(n - i)} * x_i$
-let fingerprint_with_id: fe, fe[], Fp2<expr> -> Fp2<fe> = query |id, expr_array, alpha| fingerprint([id] + expr_array, alpha);
+let fingerprint_with_id: fe, fe[], Ext<expr> -> Ext<fe> = query |id, expr_array, alpha| fingerprint([id] + expr_array, alpha);
 
 /// Maps [id, x_1, x_2, ..., x_n] to its Read-Solomon fingerprint, using a challenge alpha: $\sum_{i=1}^n alpha**{(n - i)} * x_i$
-let fingerprint_with_id_inter: expr, expr[], Fp2<expr> -> Fp2<expr> = |id, expr_array, alpha| fingerprint_inter([id] + expr_array, alpha);
+let fingerprint_with_id_inter: expr, expr[], Ext<expr> -> Ext<expr> = |id, expr_array, alpha| fingerprint_inter([id] + expr_array, alpha);
 
 mod test {
     use super::fingerprint;
     use std::check::assert;
-    use std::math::fp2::Fp2;
-    use std::math::fp2::from_base;
+    use std::math::extension_field::Ext;
+    use std::math::extension_field::from_base;
+    use std::check::panic;
 
     /// Helper function to assert that the fingerprint of a tuple is equal to the expected value.
     let assert_fingerprint_equal: fe[], expr, fe -> () = query |tuple, challenge, expected| {
         let result = fingerprint(tuple, from_base(challenge));
         match result {
-            Fp2::Fp2(actual, should_be_zero) => {
+            Ext::Fp2(std::math::fp2::Fp2::Fp2(actual, should_be_zero)) => {
                 assert(should_be_zero == 0, || "Returned an extension field element");
                 assert(expected == actual, || "expected != actual");
-            }
+            },
+            _ => panic("Expected Fp2")
         }
     };
 
