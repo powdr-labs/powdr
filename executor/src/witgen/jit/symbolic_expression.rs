@@ -1,11 +1,15 @@
+use auto_enums::auto_enum;
+use itertools::Itertools;
+use num_traits::Zero;
+use powdr_ast::parsed::visitor::AllChildren;
+use powdr_number::FieldElement;
+use std::hash::Hash;
 use std::{
     fmt::{self, Display, Formatter},
+    iter,
     ops::{Add, BitAnd, Mul, Neg},
     rc::Rc,
 };
-
-use num_traits::Zero;
-use powdr_number::FieldElement;
 
 use crate::witgen::range_constraints::RangeConstraint;
 
@@ -43,6 +47,29 @@ pub enum BitOperator {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnaryOperator {
     Neg,
+}
+
+impl<T: FieldElement, S> SymbolicExpression<T, S> {
+    /// Returns all direct children of this expression.
+    /// Does specifically not implement the `Children` trait, because it does not go
+    /// well with recursive types.
+    #[auto_enum(Iterator)]
+    fn children(&self) -> impl Iterator<Item = &SymbolicExpression<T, S>> {
+        match self {
+            SymbolicExpression::BinaryOperation(lhs, _, rhs, _) => {
+                [lhs.as_ref(), rhs.as_ref()].into_iter()
+            }
+            SymbolicExpression::UnaryOperation(_, expr, _)
+            | SymbolicExpression::BitOperation(expr, _, _, _) => iter::once(expr.as_ref()),
+            SymbolicExpression::Concrete(_) | SymbolicExpression::Symbol(..) => iter::empty(),
+        }
+    }
+}
+
+impl<T: FieldElement, S> AllChildren<SymbolicExpression<T, S>> for SymbolicExpression<T, S> {
+    fn all_children(&self) -> Box<dyn Iterator<Item = &SymbolicExpression<T, S>> + '_> {
+        Box::new(iter::once(self).chain(self.children().flat_map(|e| e.all_children())))
+    }
 }
 
 impl<T: FieldElement, S> SymbolicExpression<T, S> {
@@ -86,6 +113,17 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
             | SymbolicExpression::UnaryOperation(..)
             | SymbolicExpression::BitOperation(..) => None,
         }
+    }
+}
+
+impl<T: FieldElement, S: Hash + Eq> SymbolicExpression<T, S> {
+    pub fn referenced_symbols(&self) -> impl Iterator<Item = &S> {
+        self.all_children()
+            .flat_map(|e| match e {
+                SymbolicExpression::Symbol(s, _) => Some(s),
+                _ => None,
+            })
+            .unique()
     }
 }
 

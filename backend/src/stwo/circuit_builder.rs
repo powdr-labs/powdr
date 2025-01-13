@@ -2,7 +2,6 @@ use core::unreachable;
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, TerminalAccess};
 use std::collections::HashSet;
-use std::sync::Arc;
 
 extern crate alloc;
 use alloc::collections::btree_map::BTreeMap;
@@ -53,14 +52,18 @@ where
 }
 
 pub struct PowdrEval<T> {
-    analyzed: Arc<Analyzed<T>>,
+    log_degree: u32,
+    analyzed: Analyzed<T>,
+    // the pre-processed are indexed in the whole proof, instead of in each component.
+    // this offset represents the index of the first pre-processed column in this component
+    preprocess_col_offset: usize,
     witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
     constant_columns: BTreeMap<PolyID, usize>,
 }
 
 impl<T: FieldElement> PowdrEval<T> {
-    pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
+    pub fn new(analyzed: Analyzed<T>, preprocess_col_offset: usize, log_degree: u32) -> Self {
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())
@@ -86,7 +89,9 @@ impl<T: FieldElement> PowdrEval<T> {
             .collect();
 
         Self {
+            log_degree,
             analyzed,
+            preprocess_col_offset,
             witness_columns,
             constant_shifted,
             constant_columns,
@@ -126,10 +131,10 @@ impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
 
 impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
     fn log_size(&self) -> u32 {
-        self.analyzed.degree().ilog2()
+        self.log_degree
     }
     fn max_constraint_log_degree_bound(&self) -> u32 {
-        self.analyzed.degree().ilog2() + 1
+        self.log_degree + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         assert!(
@@ -155,8 +160,9 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             .map(|(i, poly_id)| {
                 (
                     *poly_id,
-                    // PreprocessedColumn::Plonk(i) is unused argument in get_preprocessed_column
-                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(i)),
+                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(
+                        i + self.preprocess_col_offset,
+                    )),
                 )
             })
             .collect();
@@ -169,7 +175,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                 (
                     *poly_id,
                     eval.get_preprocessed_column(PreprocessedColumn::Plonk(
-                        i + constant_eval.len(),
+                        i + constant_eval.len() + self.preprocess_col_offset,
                     )),
                 )
             })

@@ -368,10 +368,16 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         let mut accessed_pages = BTreeSet::new();
         let mut accessed_addresses = BTreeSet::new();
 
-        let start_idx = full_exec
+        let mut start_idx = full_exec
             .memory_accesses
             .binary_search_by_key(&proven_trace, |a| a.row)
             .unwrap_or_else(|v| v);
+        // We may have multiple memory accesses in the same row and binary
+        // search may return any match in case of multiple: ensure idx points to
+        // first match
+        while start_idx > 0 && full_exec.memory_accesses[start_idx - 1].row == proven_trace {
+            start_idx -= 1;
+        }
 
         for access in &full_exec.memory_accesses[start_idx..] {
             // proven_trace + length is an upper bound for the last row index we'll reach in the next chunk.

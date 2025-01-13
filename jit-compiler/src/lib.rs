@@ -85,7 +85,11 @@ pub fn compile<T: FieldElement>(
 
     let glue_code = generate_glue_code(&successful_symbols, analyzed)?;
 
-    let lib_file = call_cargo(&format!("{glue_code}\n{}\n", codegen.generated_code()))?;
+    let opt_level = None;
+    let lib_file = call_cargo(
+        &format!("{glue_code}\n{}\n", codegen.generated_code()),
+        opt_level,
+    )?;
     let metadata = fs::metadata(&lib_file.path).unwrap();
 
     log::info!(
