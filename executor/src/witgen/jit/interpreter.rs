@@ -525,5 +525,27 @@ mod test {
         data.append_new_rows(31);
         let data_ref = CompactDataRef::new(&mut data, 0);
         interpreter.call(&mutable_state, &mut param_lookups, data_ref);
+
+        assert_eq!(
+            &params,
+            &[
+                GoldilocksField::from(0),
+                GoldilocksField::from(0),
+                GoldilocksField::from(0),
+                GoldilocksField::from(0),
+                GoldilocksField::from(0),
+                GoldilocksField::from(0),
+                GoldilocksField::from(0),
+                GoldilocksField::from(0),
+                GoldilocksField::from(0),
+                GoldilocksField::from(0),
+                GoldilocksField::from(0),
+                GoldilocksField::from(0),
+                GoldilocksField::from(4330397376401421145u64),
+                GoldilocksField::from(14124799381142128323u64),
+                GoldilocksField::from(8742572140681234676u64),
+                GoldilocksField::from(14345658006221440202u64),
+            ]
+        )
     }
 }
