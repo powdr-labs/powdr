@@ -4,6 +4,7 @@ use std::fmt;
 use std::iter::once;
 use std::ops::ControlFlow;
 
+use derive_more::{Display, From};
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_ast::analyzed::Analyzed;
 use powdr_ast::analyzed::{
@@ -196,16 +197,17 @@ enum ConnectionPart {
 
 impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
     /// Checks all connections.
-    pub fn check(&self) -> Result<(), FailingConnectionConstraints<'a, F>> {
+    pub fn check(&self) -> Result<(), Errors<'a, F>> {
         let errors = self
             .connections
             .iter()
             .filter_map(|connection| self.check_connection(connection).err())
+            .flatten()
             .collect::<Vec<_>>();
 
         (!errors.is_empty())
             .then(|| {
-                let error = FailingConnectionConstraints {
+                let error = Errors {
                     connection_count: self.connections.len(),
                     errors,
                 };
@@ -216,10 +218,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
     }
 
     /// Checks a single connection.
-    fn check_connection(
-        &self,
-        connection: &'a Connection<F>,
-    ) -> Result<(), FailingConnectionConstraint<'a, F>> {
+    fn check_connection(&self, connection: &'a Connection<F>) -> Result<(), Vec<Error<'a, F>>> {
         let caller_multi_set = self.selected_tuples(connection, ConnectionPart::Caller);
         let callee_multi_set = self.selected_tuples(connection, ConnectionPart::Callee);
 
@@ -233,23 +232,29 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                     .cloned()
                     .collect::<Vec<_>>();
                 if !not_in_callee.is_empty() {
-                    Err(FailingConnectionConstraint {
+                    Err(vec![FailingConnectionConstraint {
                         connection,
                         not_in_callee: not_in_callee.into_iter().cloned().collect(),
                         not_in_caller: Default::default(),
-                    })
+                    }
+                    .into()])
                 } else if connection.multiplicity.is_some() {
                     // We additionally check that the multiplicities match
-                    let mut errors = vec![];
-                    for (tuple, multiplicity) in caller_multi_set {
-                        let callee_multiplicity = callee_multi_set.get(&tuple).unwrap();
-                        if multiplicity != *callee_multiplicity {
+
+                    let errors = caller_multi_set.iter().filter_map(|(tuple, multiplicity)| {
+                        let callee_multiplicity = callee_multi_set.get(tuple).unwrap();
+                        (multiplicity != callee_multiplicity).then(|| {
                             log::error!("Connection {}: Multiplicities don't match for tuple {}: caller = {:?}, callee = {:?}", connection.identity, tuple, multiplicity, callee_multiplicity);
-                            errors.push(());
-                        }
-                    }
+                            MultiplicityMismatch {
+                                connection,
+                                tuple: tuple.clone(),
+                                caller_multiplicity: *multiplicity,
+                                callee_multiplicity: *callee_multiplicity,
+                            }.into()
+                        })
+                    }).collect::<Vec<_>>();
                     if !errors.is_empty() {
-                        unimplemented!("Multiplicities don't match for some tuples");
+                        Err(errors)
                     } else {
                         Ok(())
                     }
@@ -270,11 +275,12 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                 let not_in_callee = caller_set.difference(&callee_set).collect::<Vec<_>>();
 
                 if !is_equal {
-                    Err(FailingConnectionConstraint {
+                    Err(vec![FailingConnectionConstraint {
                         connection,
                         not_in_caller: not_in_caller.into_iter().cloned().cloned().collect(),
                         not_in_callee: not_in_callee.into_iter().cloned().cloned().collect(),
-                    })
+                    }
+                    .into()])
                 } else {
                     Ok(())
                 }
@@ -435,6 +441,19 @@ impl<F: fmt::Display> fmt::Display for Tuple<F> {
     }
 }
 
+#[derive(From, Display)]
+pub enum Error<'a, T> {
+    MultiplicityMismatch(MultiplicityMismatch<'a, T>),
+    FailingConnectionConstraint(FailingConnectionConstraint<'a, T>),
+}
+
+pub struct MultiplicityMismatch<'a, F> {
+    connection: &'a Connection<F>,
+    tuple: Tuple<F>,
+    caller_multiplicity: usize,
+    callee_multiplicity: usize,
+}
+
 pub struct FailingConnectionConstraint<'a, F> {
     /// The connection that failed.
     connection: &'a Connection<F>,
@@ -487,14 +506,27 @@ impl<F: FieldElement> fmt::Display for FailingConnectionConstraint<'_, F> {
     }
 }
 
-const MAX_ERRORS: usize = 5;
-
-pub struct FailingConnectionConstraints<'a, F> {
-    connection_count: usize,
-    errors: Vec<FailingConnectionConstraint<'a, F>>,
+impl<F: FieldElement> fmt::Display for MultiplicityMismatch<'_, F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "Connection {}: Multiplicities don't match for tuple {}: caller = {:?}, callee = {:?}",
+            self.connection.identity,
+            self.tuple,
+            self.caller_multiplicity,
+            self.callee_multiplicity
+        )
+    }
 }
 
-impl<F: FieldElement> fmt::Display for FailingConnectionConstraints<'_, F> {
+const MAX_ERRORS: usize = 5;
+
+pub struct Errors<'a, F> {
+    connection_count: usize,
+    errors: Vec<Error<'a, F>>,
+}
+
+impl<F: FieldElement> fmt::Display for Errors<'_, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
