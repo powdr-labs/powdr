@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt;
 
-use itertools::Itertools;
 use std::iter::once;
 
 use derive_more::{Display, From};
