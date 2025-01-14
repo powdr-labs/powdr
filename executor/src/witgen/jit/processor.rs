@@ -170,9 +170,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 .identities
                 .iter()
                 .map(|(id, row_offset)| {
-                    witgen
-                        .process_identity(can_process.clone(), id, *row_offset)
-                        .progress
+                    witgen.process_identity(can_process.clone(), id, *row_offset)
                 })
                 .reduce(std::ops::BitOr::bitor)
                 .unwrap_or(false);

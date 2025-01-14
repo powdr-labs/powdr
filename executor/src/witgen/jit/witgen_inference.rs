@@ -24,14 +24,6 @@ use super::{
     variable::{MachineCallVariable, Variable},
 };
 
-/// Summary of the effect of processing an action.
-pub struct ProcessSummary {
-    /// The action has been fully completed, processing it again will not have any effect.
-    pub complete: bool,
-    /// Processing the action changed the state of the inference.
-    pub progress: bool,
-}
-
 /// This component can generate code that solves identities.
 /// It needs a driver that tells it which identities to process on which rows.
 #[derive(Clone)]
@@ -152,18 +144,16 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 
     /// Process an identity on a certain row.
+    /// Returns true if there was progress.
     pub fn process_identity<CanProcess: CanProcessCall<T>>(
         &mut self,
         can_process: CanProcess,
         id: &'a Identity<T>,
         row_offset: i32,
-    ) -> ProcessSummary {
+    ) -> bool {
         // TODO remove this once we propagate range constraints.
         if self.is_complete(id, row_offset) {
-            return ProcessSummary {
-                complete: true,
-                progress: false,
-            };
+            return false;
         }
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
@@ -310,7 +300,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     VariableOrValue::Value(v) => (*v).into(),
                 };
                 let r = self.process_equality_on_row(assignment.lhs, assignment.row_offset, rhs);
-                progress |= self.ingest_effects(r, None).progress;
+                progress |= self.ingest_effects(r, None);
             }
             assert!(self.assignments.is_empty());
             self.assignments = assignments;
@@ -323,11 +313,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Analyze the effects and update the internal state.
     /// If the effect is the result of a machine call, `identity_id` must be given
     /// to avoid two calls to the same sub-machine on the same row.
+    /// Returns true if there was progress.
     fn ingest_effects(
         &mut self,
         process_result: ProcessResult<T, Variable>,
         identity_id: Option<(u64, i32)>,
-    ) -> ProcessSummary {
+    ) -> bool {
         let mut progress = false;
         for e in process_result.effects {
             match &e {
@@ -370,10 +361,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         if progress {
             self.process_assignments();
         }
-        ProcessSummary {
-            complete: process_result.complete,
-            progress,
-        }
+        progress
     }
 
     /// Adds a range constraint to the set of derived range constraints. Returns true if progress was made.
@@ -603,12 +591,7 @@ mod test {
         }
     }
 
-    fn solve_on_rows(
-        input: &str,
-        rows: &[i32],
-        known_cells: Vec<(&str, i32)>,
-        expected_complete: Option<usize>,
-    ) -> String {
+    fn solve_on_rows(input: &str, rows: &[i32], known_cells: Vec<(&str, i32)>) -> String {
         let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(input);
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let (fixed_data, retained_identities) =
@@ -639,19 +622,17 @@ mod test {
 
         let ref_eval = FixedEvaluatorForFixedData(&fixed_data);
         let mut witgen = WitgenInference::new(&fixed_data, ref_eval, known_cells, []);
-        let mut complete = HashSet::new();
         let mut counter = 0;
-        let expected_complete = expected_complete.unwrap_or(retained_identities.len() * rows.len());
-        while complete.len() != expected_complete {
+        loop {
+            let mut progress = false;
             counter += 1;
             for row in rows {
                 for id in retained_identities.iter() {
-                    if !complete.contains(&(id.id(), *row))
-                        && witgen.process_identity(&mutable_state, id, *row).complete
-                    {
-                        complete.insert((id.id(), *row));
-                    }
+                    progress |= witgen.process_identity(&mutable_state, id, *row);
                 }
+            }
+            if !progress {
+                break;
             }
             assert!(counter < 10000, "Solving took more than 10000 rounds.");
         }
@@ -661,14 +642,14 @@ mod test {
     #[test]
     fn simple_polynomial_solving() {
         let input = "let X; let Y; let Z; X = 1; Y = X + 1; Z * Y = X + 10;";
-        let code = solve_on_rows(input, &[0], vec![], None);
+        let code = solve_on_rows(input, &[0], vec![]);
         assert_eq!(code, "X[0] = 1;\nY[0] = 2;\nZ[0] = -9223372034707292155;");
     }
 
     #[test]
     fn fib() {
         let input = "let X; let Y; X' = Y; Y' = X + Y;";
-        let code = solve_on_rows(input, &[0, 1], vec![("X", 0), ("Y", 0)], None);
+        let code = solve_on_rows(input, &[0, 1], vec![("X", 0), ("Y", 0)]);
         assert_eq!(
             code,
             "X[1] = Y[0];\nY[1] = (X[0] + Y[0]);\nX[2] = Y[1];\nY[2] = (X[1] + Y[1]);"
@@ -688,7 +669,7 @@ mod test {
             x' - y = 0;
             y' - (x + y) = 0;
         ";
-        let code = solve_on_rows(input, &[0, 1, 2, 3], vec![], None);
+        let code = solve_on_rows(input, &[0, 1, 2, 3], vec![]);
         assert_eq!(
             code,
             "Fib::y[0] = 1;
@@ -739,7 +720,6 @@ namespace Xor(256 * 256);
                 ("Xor::A", 7),
                 ("Xor::C", 7), // We solve it in reverse, just for fun.
             ],
-            Some(16),
         );
         assert_eq!(
             code,
