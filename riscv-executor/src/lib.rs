@@ -952,7 +952,7 @@ mod builder {
         }
 
         pub(crate) fn set_mem(&mut self, addr: u32, val: u32, step: u32, identity_id: u64) {
-            if let ExecMode::Trace = self.mode {
+            if let ExecMode::Witness = self.mode {
                 self.submachine_op(
                     MachineInstance::memory,
                     identity_id,
@@ -3137,7 +3137,7 @@ fn execute_inner<F: FieldElement>(
 
     log::debug!("Program execution took {}s", start.elapsed().as_secs_f64());
 
-    if let ExecMode::Trace = mode {
+    if let ExecMode::Trace | ExecMode::Witness = mode {
         let sink_id = e.sink_id();
 
         // reset
@@ -3164,12 +3164,14 @@ fn execute_inner<F: FieldElement>(
         e.proc
             .set_col(KnownWitnessCol::_operation_id, sink_id.into());
 
-        let start = Instant::now();
-        program_columns = e.generate_program_columns();
-        log::debug!(
-            "Generating program columns took {}s",
-            start.elapsed().as_secs_f64()
-        );
+        if let ExecMode::Witness = mode {
+            let start = Instant::now();
+            program_columns = e.generate_program_columns();
+            log::debug!(
+                "Generating program columns took {}s",
+                start.elapsed().as_secs_f64()
+            );
+        }
     }
 
     e.proc.finish(opt_pil, program_columns)
