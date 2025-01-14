@@ -60,19 +60,22 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
 }
 
 impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
-    pub fn new(caller_rows: &'b RowPair<'b, 'a, T>, connection: Connection<'a, T>) -> Self {
+    pub fn try_new(
+        caller_rows: &'b RowPair<'b, 'a, T>,
+        connection: Connection<'a, T>,
+    ) -> Result<Self, IncompleteCause<AlgebraicVariable<'a>>> {
         // Evaluate once, for performance reasons.
         let left = connection
             .left
             .expressions
             .iter()
-            .map(|e| caller_rows.evaluate(e).unwrap())
-            .collect();
-        Self {
+            .map(|e| caller_rows.evaluate(e))
+            .collect::<Result<_, _>>()?;
+        Ok(Self {
             caller_rows,
             connection,
             left,
-        }
+        })
     }
 
     pub fn is_complete(&self) -> bool {
