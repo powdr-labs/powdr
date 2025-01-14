@@ -9,6 +9,7 @@ pub use powdr_pipeline as pipeline;
 pub use powdr_riscv as riscv;
 pub use powdr_riscv_executor as riscv_executor;
 
+use powdr_pipeline::pipeline::{DegreeMode, LinkerMode, LinkerParams};
 pub use powdr_pipeline::Pipeline;
 
 pub use powdr_number::Bn254Field;
@@ -29,6 +30,12 @@ pub struct SessionBuilder {
     asm_file: Option<String>,
     chunk_size_log2: Option<u8>,
     precompiles: RuntimeLibs,
+    linker: Option<Linker>,
+}
+
+pub enum Linker {
+    Native,
+    Bus,
 }
 
 pub struct Session {
@@ -58,6 +65,7 @@ impl SessionBuilder {
                 DEFAULT_MIN_DEGREE_LOG,
                 self.chunk_size_log2.unwrap_or(DEFAULT_MAX_DEGREE_LOG),
                 self.precompiles,
+                self.linker,
             ),
         };
         Session {
@@ -98,6 +106,14 @@ impl SessionBuilder {
 
     pub fn precompiles(mut self, precompiles: RuntimeLibs) -> Self {
         self.precompiles = precompiles;
+        self
+    }
+
+    /// Set the linker mode, whether native or bus.
+    /// At some point bus will be the default, but for now
+    /// we allow both for testing.
+    pub fn linker(mut self, linker: Linker) -> Self {
+        self.linker = Some(linker);
         self
     }
 }
@@ -274,6 +290,7 @@ pub fn pipeline_from_guest(
     min_degree_log: u8,
     max_degree_log: u8,
     precompiles: RuntimeLibs,
+    linker: Option<Linker>,
 ) -> Pipeline<GoldilocksField> {
     println!("Compiling guest program...");
 
@@ -286,9 +303,18 @@ pub fn pipeline_from_guest(
     );
 
     // Create a pipeline from the asm program
-    Pipeline::<GoldilocksField>::default()
+    let pipeline = Pipeline::<GoldilocksField>::default()
         .from_asm_string(asm_contents.clone(), Some(asm_file_path.clone()))
-        .with_output(out_path.into(), true)
+        .with_output(out_path.into(), true);
+
+    if let Some(Linker::Bus) = linker {
+        pipeline.with_linker_params(LinkerParams {
+            mode: LinkerMode::Bus,
+            degree_mode: DegreeMode::Vadcop,
+        })
+    } else {
+        pipeline
+    }
 }
 
 pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
