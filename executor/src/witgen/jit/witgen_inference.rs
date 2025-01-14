@@ -227,7 +227,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         // If solve returns an error, it means that the constraint is conflicting.
         // In the future, we might run this in a runtime-conditional, so an error
         // could just mean that this case cannot happen in practice.
-        let result = (lhs_evaluated - rhs_evaluated).solve().unwrap();
+        let result = (lhs_evaluated - rhs_evaluated)
+            .solve()
+            .map_err(|e| {
+                panic!("Error solving equality constraint: {lhs} = {rhs} on row {offset}: {e}");
+            })
+            .unwrap();
         if result.complete && result.effects.is_empty() {
             // A complete result without effects means that there were no unknowns
             // in the constraint.
@@ -258,7 +263,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             VariableOrValue::Variable(v) => evaluator.evaluate_variable(v.clone()),
             VariableOrValue::Value(v) => (*v).into(),
         };
-        (lhs_evaluated - rhs_evaluated).solve().unwrap()
+        (lhs_evaluated - rhs_evaluated)
+            .solve()
+            .map_err(|e| {
+                panic!("Error solving equality constraint: {lhs} = {rhs} on row {offset}: {e}");
+            })
+            .unwrap()
     }
 
     fn process_call<CanProcess: CanProcessCall<T>>(
@@ -568,7 +578,7 @@ struct Assignment<'a, T: FieldElement> {
     rhs: VariableOrValue<T, Variable>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, derive_more::Display)]
 enum VariableOrValue<T, V> {
     Variable(V),
     Value(T),
