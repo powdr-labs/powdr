@@ -15,7 +15,7 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     data_structures::mutable_state::MutableState, global_constraints::RangeConstraintSet,
-    range_constraints::RangeConstraint, FixedData, QueryCallback,
+    jit::effect::format_code, range_constraints::RangeConstraint, FixedData, QueryCallback,
 };
 
 use super::{
@@ -230,7 +230,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         let result = (lhs_evaluated - rhs_evaluated)
             .solve()
             .map_err(|e| {
-                panic!("Error solving equality constraint: {lhs} = {rhs} on row {offset}: {e}");
+                panic!(
+                    "Error solving equality constraint: {lhs} = {rhs} on row {offset}: {e}\n\
+                    Code generated since the previous branching point:\n{}",
+                    format_code(&self.code)
+                );
             })
             .unwrap();
         if result.complete && result.effects.is_empty() {
@@ -266,7 +270,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         (lhs_evaluated - rhs_evaluated)
             .solve()
             .map_err(|e| {
-                panic!("Error solving equality constraint: {lhs} = {rhs} on row {offset}: {e}");
+                panic!(
+                    "Error solving equality constraint: {lhs} = {rhs} on row {offset}: {e}\n\
+                    Code generated since the previous branching point:\n{}",
+                    format_code(&self.code)
+                );
             })
             .unwrap()
     }
