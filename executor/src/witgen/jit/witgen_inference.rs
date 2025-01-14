@@ -152,14 +152,13 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         id: &'a Identity<T>,
         row_offset: i32,
     ) -> bool {
-        // TODO remove this once we propagate range constraints.
-        if self.is_complete(id, row_offset) {
-            return false;
-        }
         let result = match id {
-            Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                self.process_equality_on_row(expression, row_offset, T::from(0).into())
-            }
+            Identity::Polynomial(PolynomialIdentity { expression, .. }) => self
+                .process_equality_on_row(
+                    expression,
+                    row_offset,
+                    &VariableOrValue::Value(T::from(0)),
+                ),
             Identity::Lookup(LookupIdentity { id, left, .. })
             | Identity::Permutation(PermutationIdentity { id, left, .. })
             | Identity::PhantomPermutation(PhantomPermutationIdentity { id, left, .. })
@@ -210,17 +209,47 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         &self,
         lhs: &Expression<T>,
         offset: i32,
-        rhs: AffineSymbolicExpression<T, Variable>,
+        rhs: &VariableOrValue<T, Variable>,
     ) -> ProcessResult<T, Variable> {
-        if let Some(r) = self.evaluate(lhs, offset) {
-            // TODO propagate or report error properly.
-            // If solve returns an error, it means that the constraint is conflicting.
-            // In the future, we might run this in a runtime-conditional, so an error
-            // could just mean that this case cannot happen in practice.
-            (r - rhs).solve().unwrap()
-        } else {
-            ProcessResult::empty()
+        // First we try to find a new assignment to a variable in the equality.
+
+        let evaluator = Evaluator::new(self);
+        let Some(lhs_evaluated) = evaluator.evaluate(lhs, offset) else {
+            return ProcessResult::empty();
+        };
+
+        let rhs_evaluated = match rhs {
+            VariableOrValue::Variable(v) => evaluator.evaluate_variable(v.clone()),
+            VariableOrValue::Value(v) => (*v).into(),
+        };
+
+        // TODO propagate or report error properly.
+        // If solve returns an error, it means that the constraint is conflicting.
+        // In the future, we might run this in a runtime-conditional, so an error
+        // could just mean that this case cannot happen in practice.
+        let result = (lhs_evaluated - rhs_evaluated).solve().unwrap();
+        if result.complete && result.effects.is_empty() {
+            // TODO refactor this part into its own function and call this function
+            // directly for complete identities (if it is a performance problem)
+
+            // A complete result without effects means that there were no unknowns
+            // in the constraint.
+            // We try again, but this time we treat all non-concrete variables
+            // as unknown and in that way try to find new concrete values for
+            // already known variables.
+            let evaluator = Evaluator::new(self).only_concrete_known();
+            if let Some(lhs_evaluated) = evaluator.evaluate(lhs, offset) {
+                let rhs_evaluated = match rhs {
+                    VariableOrValue::Variable(v) => evaluator.evaluate_variable(v.clone()),
+                    VariableOrValue::Value(v) => (*v).into(),
+                };
+                let result = (lhs_evaluated - rhs_evaluated).solve().unwrap();
+                if !result.effects.is_empty() {
+                    return result;
+                }
+            }
         }
+        result
     }
 
     fn process_call<CanProcess: CanProcessCall<T>>(
@@ -294,13 +323,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             // We need to take them out because ingest_effects needs a &mut self.
             let assignments = std::mem::take(&mut self.assignments);
             for assignment in &assignments {
-                let rhs = match &assignment.rhs {
-                    VariableOrValue::Variable(v) => {
-                        Evaluator::new(self).evaluate_variable(v.clone())
-                    }
-                    VariableOrValue::Value(v) => (*v).into(),
-                };
-                let r = self.process_equality_on_row(assignment.lhs, assignment.row_offset, rhs);
+                let r = self.process_equality_on_row(
+                    assignment.lhs,
+                    assignment.row_offset,
+                    &assignment.rhs,
+                );
                 progress |= self.ingest_effects(r, None);
             }
             assert!(self.assignments.is_empty());
