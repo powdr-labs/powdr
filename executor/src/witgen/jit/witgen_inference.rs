@@ -187,7 +187,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             row_offset,
             rhs: VariableOrValue::Value(value),
         });
-        self.process_assignments();
+        self.process_assignments().unwrap();
     }
 
     /// Process the constraint that the expression evaluated at the given offset equals the given formal variable.
@@ -204,7 +204,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             row_offset,
             rhs: VariableOrValue::Variable(variable),
         });
-        self.process_assignments();
+        self.process_assignments().unwrap();
     }
 
     /// Processes an equality constraint.
@@ -410,7 +410,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             }
         }
         if progress {
-            self.process_assignments();
+            self.process_assignments().unwrap();
         }
         progress
     }
