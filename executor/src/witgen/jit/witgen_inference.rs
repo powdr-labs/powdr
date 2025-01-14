@@ -229,27 +229,36 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         // could just mean that this case cannot happen in practice.
         let result = (lhs_evaluated - rhs_evaluated).solve().unwrap();
         if result.complete && result.effects.is_empty() {
-            // TODO refactor this part into its own function and call this function
-            // directly for complete identities (if it is a performance problem)
-
             // A complete result without effects means that there were no unknowns
             // in the constraint.
             // We try again, but this time we treat all non-concrete variables
             // as unknown and in that way try to find new concrete values for
             // already known variables.
-            let evaluator = Evaluator::new(self).only_concrete_known();
-            if let Some(lhs_evaluated) = evaluator.evaluate(lhs, offset) {
-                let rhs_evaluated = match rhs {
-                    VariableOrValue::Variable(v) => evaluator.evaluate_variable(v.clone()),
-                    VariableOrValue::Value(v) => (*v).into(),
-                };
-                let result = (lhs_evaluated - rhs_evaluated).solve().unwrap();
-                if !result.effects.is_empty() {
-                    return result;
-                }
+            let result = self.process_equality_on_row_concrete(lhs, offset, rhs);
+            if !result.effects.is_empty() {
+                return result;
             }
         }
         result
+    }
+
+    /// Process an equality but only consider concrete variables as known
+    /// and thus propagate range constraints across the equality.
+    fn process_equality_on_row_concrete(
+        &self,
+        lhs: &Expression<T>,
+        offset: i32,
+        rhs: &VariableOrValue<T, Variable>,
+    ) -> ProcessResult<T, Variable> {
+        let evaluator = Evaluator::new(self).only_concrete_known();
+        let Some(lhs_evaluated) = evaluator.evaluate(lhs, offset) else {
+            return ProcessResult::empty();
+        };
+        let rhs_evaluated = match rhs {
+            VariableOrValue::Variable(v) => evaluator.evaluate_variable(v.clone()),
+            VariableOrValue::Value(v) => (*v).into(),
+        };
+        (lhs_evaluated - rhs_evaluated).solve().unwrap()
     }
 
     fn process_call<CanProcess: CanProcessCall<T>>(
