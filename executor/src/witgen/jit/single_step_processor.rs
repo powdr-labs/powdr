@@ -200,8 +200,6 @@ mod test {
         B' = B;
         ";
 
-        // TODO see if we can avoid the "unused" call_var assignments.
-        // (they are for the completed call)
         let code = generate_single_step(input, "Main").unwrap();
         assert_eq!(
             format_code(&code),

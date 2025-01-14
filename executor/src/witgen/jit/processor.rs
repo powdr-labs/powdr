@@ -166,7 +166,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         witgen: &mut WitgenInference<'a, T, FixedEval>,
     ) {
         loop {
-            // TODO call witgen.process_assignments?
             let progress = self
                 .identities
                 .iter()
