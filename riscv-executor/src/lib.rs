@@ -814,7 +814,9 @@ mod builder {
             let cols_len = self.trace.known_cols.len() / KnownWitnessCol::count();
 
             // sanity check
-            assert!(self.trace.len <= cols_len);
+            if let ExecMode::Witness = self.mode {
+                assert!(self.trace.len <= cols_len);
+            }
 
             cols_len
         }
@@ -1027,14 +1029,6 @@ mod builder {
 
             let pil = opt_pil.unwrap();
 
-            let main_degree = {
-                let range = namespace_degree_range(pil, "main");
-                std::cmp::max(
-                    self.main_columns_len().next_power_of_two() as u32,
-                    range.min as u32,
-                )
-            };
-
             let start = Instant::now();
 
             // turn register write operations into witness columns
@@ -1054,6 +1048,14 @@ mod builder {
                     register_memory: self.reg_mem.for_bootloader(),
                 };
             }
+
+            let main_degree = {
+                let range = namespace_degree_range(pil, "main");
+                std::cmp::max(
+                    self.main_columns_len().next_power_of_two() as u32,
+                    range.min as u32,
+                )
+            };
 
             // This hashmap will be added to until we get the full witness.
             let mut cols = self.generate_main_columns();
