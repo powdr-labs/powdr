@@ -32,8 +32,9 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval> {
     fixed_evaluator: FixedEval,
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
     known_variables: HashSet<Variable>,
-    /// Identities where we do not want to generate a submachine call
-    /// to avoid two calls to the same submachine on the same row.
+    /// Identities that have already been completed.
+    /// This mainly avoids generating multiple submachine calls for the same
+    /// connection on the same row.
     complete_identities: HashSet<(u64, i32)>,
     /// Internal equality constraints that are not identities from the constraint set.
     assignments: Vec<Assignment<'a, T>>,
@@ -337,9 +338,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 }
                 Effect::MachineCall(_, _, vars) => {
                     // If the machine call is already complete, it means that we have
-                    // processed itand created code for it in the past. We might still process it
+                    // should not create another submachine call. We might still process it
                     // multiple times to get better range constraints.
                     if self.complete_identities.insert(identity_id.unwrap()) {
+                        assert!(process_result.complete);
                         for v in vars {
                             // Inputs are already known, but it does not hurt to add all of them.
                             self.known_variables.insert(v.clone());
@@ -355,6 +357,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
         if process_result.complete {
             if let Some(identity_id) = identity_id {
+                // We actually only need to store completeness for submachine calls,
+                // but we do it for all identities.
                 self.complete_identities.insert(identity_id);
             }
         }

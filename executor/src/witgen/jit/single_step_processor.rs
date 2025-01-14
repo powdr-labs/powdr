@@ -56,8 +56,8 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 if id.contains_next_ref() {
                     vec![(id, 0)]
                 } else {
-                    // Process it on both rows, but do not call it on row 0 if it is
-                    // a submachine call.
+                    // Process it on both rows, but mark it as complete on row 0,
+                    // so that we do not produce two submachine calls.
                     complete_identities.push((id.id(), 0));
                     vec![(id, 0), (id, 1)]
                 }
