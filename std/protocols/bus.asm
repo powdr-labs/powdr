@@ -52,6 +52,7 @@ let bus_interaction: expr, expr[], expr, expr -> () = constr |id, tuple, multipl
         Option::Some(KnownField::Goldilocks) => true,
         Option::Some(KnownField::BabyBear) => true,
         Option::Some(KnownField::KoalaBear) => true,
+        Option::Some(KnownField::M31) => true,
         // The case above triggers our hand-written witness generation, but on Bn254, we'd not be
         // on the extension field and use the automatic witness generation.
         // However, it does not work with a materialized folded tuple. At the same time, Halo2
