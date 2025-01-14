@@ -133,7 +133,5 @@ where
     MC::H: DeserializeOwned + Serialize,
 {
     pub stark_proof: StarkProof<MC::H>,
-    pub constant_col_log_sizes: Vec<u32>,
-    pub witness_col_log_sizes: Vec<u32>,
-    pub machine_log_sizes: Vec<u32>,
+    pub machine_log_sizes: BTreeMap<String, u32>,
 }
