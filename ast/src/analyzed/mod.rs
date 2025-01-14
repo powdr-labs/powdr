@@ -761,7 +761,7 @@ pub enum FunctionValueDefinition {
     Expression(TypedExpression),
     TypeDeclaration(TypeDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
-    TraitDeclaration(TraitDeclaration),
+    TraitDeclaration(Arc<TraitDeclaration>),
     TraitFunction(Arc<TraitDeclaration>, NamedType),
 }
 
@@ -791,7 +791,9 @@ impl Children<Expression> for FunctionValueDefinition {
                 type_declaration.children_mut()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
-            FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
+            FunctionValueDefinition::TraitDeclaration(trait_decl) => {
+                Arc::get_mut(trait_decl).unwrap().children_mut()
+            }
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
         }
     }
