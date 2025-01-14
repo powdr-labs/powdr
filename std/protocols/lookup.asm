@@ -59,10 +59,13 @@ let compute_next_z: Ext<expr>, Ext<expr>, Ext<expr>, Constr, expr -> fe[] = quer
 /// higher-stage witness columns.
 /// Use this function if the backend does not support lookup constraints natively.
 let lookup: Constr -> () = constr |lookup_constraint| {
+
+    let extension_field_size = required_extension_size();
+
     // Alpha is used to compress the LHS and RHS arrays.
-    let alpha = from_array(array::new(required_extension_size(), |i| challenge(0, i + 1)));
+    let alpha = from_array(array::new(extension_field_size, |i| challenge(0, i + 1)));
     // Beta is used to update the accumulator.
-    let beta = from_array(array::new(required_extension_size(), |i| challenge(0, i + 3)));
+    let beta = from_array(array::new(extension_field_size, |i| challenge(0, i + 1 + extension_field_size)));
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
 
@@ -71,7 +74,7 @@ let lookup: Constr -> () = constr |lookup_constraint| {
     let multiplicities;
     let m_ext = from_base(multiplicities);
 
-    let acc = array::new(required_extension_size(), |i| std::prover::new_witness_col_at_stage("acc", 1));
+    let acc = array::new(extension_field_size, |i| std::prover::new_witness_col_at_stage("acc", 1));
     let acc_ext = from_array(acc);
     let next_acc = next_ext(acc_ext);
 

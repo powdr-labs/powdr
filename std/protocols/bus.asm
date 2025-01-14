@@ -35,10 +35,12 @@ let bus_interaction: expr, expr[], expr, expr -> () = constr |id, tuple, multipl
     let full_tuple = [id] + tuple;
     Constr::PhantomBusInteraction(multiplicity, full_tuple, latch);
 
+    let extension_field_size = required_extension_size();
+
     // Alpha is used to compress the LHS and RHS arrays.
-    let alpha = from_array(array::new(required_extension_size(), |i| challenge(0, i + 1)));
+    let alpha = from_array(array::new(extension_field_size, |i| challenge(0, i + 1)));
     // Beta is used to update the accumulator.
-    let beta = from_array(array::new(required_extension_size(), |i| challenge(0, i + 3)));
+    let beta = from_array(array::new(extension_field_size, |i| challenge(0, i + 1 + extension_field_size)));
 
     // Implemented as: folded = (beta - fingerprint(id, tuple...));
     let materialize_folded = match known_field() {
@@ -60,7 +62,7 @@ let bus_interaction: expr, expr[], expr, expr -> () = constr |id, tuple, multipl
     };
     let folded = if materialize_folded {
         let folded = from_array(
-            array::new(required_extension_size(),
+            array::new(extension_field_size,
                     |i| std::prover::new_witness_col_at_stage("folded", 1))
         );
         constrain_eq_ext(folded, sub_ext(beta, fingerprint_with_id_inter(id, tuple, alpha)));
@@ -74,7 +76,7 @@ let bus_interaction: expr, expr[], expr, expr -> () = constr |id, tuple, multipl
     let m_ext = from_base(multiplicity);
     let m_ext_next = next_ext(m_ext);
 
-    let acc = array::new(required_extension_size(), |i| std::prover::new_witness_col_at_stage("acc", 1));
+    let acc = array::new(extension_field_size, |i| std::prover::new_witness_col_at_stage("acc", 1));
     let acc_ext = from_array(acc);
     let next_acc = next_ext(acc_ext);
 
