@@ -1,5 +1,7 @@
 use std::{
-    collections::BTreeMap, iter::Sum, ops::{Add, Div, Mul, Sub}
+    collections::BTreeMap,
+    iter::Sum,
+    ops::{Add, Div, Mul, Sub},
 };
 
 use num_traits::{One, Zero};
