@@ -105,8 +105,7 @@ let lookup: Constr -> () = constr |lookup_constraint| {
 
     // First and last acc needs to be 0
     // (because of wrapping, the acc[0] and acc[N] are the same)
-    is_first * (acc[0] - 1) = 0;
-    array::new(array::len(acc) - 1, |i| is_first * acc[i + 1] = 0);
+    array::new(array::len(acc), |i| is_first * acc[i] = 0);
     constrain_eq_ext(update_expr, from_base(0));
 
     // Add an annotation for witness generation
