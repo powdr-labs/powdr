@@ -118,7 +118,7 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
             | KnownField::BabyBearField
             | KnownField::KoalaBearField
             | KnownField::Mersenne31Field => true,
-            KnownField::Bn254Field => todo!(),
+            KnownField::Bn254Field => false,
         };
 
         if has_phantom_bus_sends && supports_field {

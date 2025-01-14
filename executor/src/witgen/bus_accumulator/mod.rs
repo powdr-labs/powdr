@@ -16,6 +16,7 @@ mod extension_field;
 mod fp2;
 mod fp4;
 
+/// Generates the second-stage columns for the bus accumulator.
 pub fn generate_bus_accumulator_columns<'a, T>(
     pil: &'a Analyzed<T>,
     witness_columns: &'a [(String, Vec<T>)],
@@ -162,7 +163,7 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
             acc_list[i] = new_acc;
         }
 
-        // Transpose:
+        // Transpose from row-major to column-major & flatten.
         let mut result = vec![Vec::with_capacity(size); Ext::size() * 2];
         for row_index in 0..size {
             for (col_index, x) in folded_list[row_index]
