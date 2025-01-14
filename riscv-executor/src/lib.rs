@@ -1034,11 +1034,26 @@ mod builder {
             let start = Instant::now();
 
             // turn register write operations into witness columns
-            let main_regs = self.trace.generate_registers_trace();
+            let mut cols = self
+                .trace
+                .generate_registers_trace()
+                .into_iter()
+                .collect::<HashMap<_, _>>();
             log::debug!(
                 "Generating register traces took {}s",
                 start.elapsed().as_secs_f64(),
             );
+
+            let main_degree = {
+                let range = namespace_degree_range(pil, "main");
+                std::cmp::max(self.trace.len.next_power_of_two() as u32, range.min as u32)
+            };
+
+            // fill up main trace to degree
+            cols.values_mut().for_each(|v| {
+                let last = *v.last().unwrap();
+                v.resize(main_degree as usize, last);
+            });
 
             // trace mode doesn't generate a full witness
             if let ExecMode::Trace = self.mode {
@@ -1046,24 +1061,13 @@ mod builder {
                     trace_len: self.trace.len,
                     memory: self.mem,
                     memory_accesses: std::mem::take(&mut self.trace.mem_ops),
-                    trace: main_regs.into_iter().collect(),
+                    trace: cols,
                     register_memory: self.reg_mem.for_bootloader(),
                 };
             }
 
-            let main_degree = {
-                let range = namespace_degree_range(pil, "main");
-                std::cmp::max(
-                    self.main_columns_len().next_power_of_two() as u32,
-                    range.min as u32,
-                )
-            };
-
-            // This hashmap will be added to until we get the full witness.
-            let mut cols = self.generate_main_columns();
-
             // add reg columns to trace
-            cols.extend(main_regs);
+            cols.extend(self.generate_main_columns());
 
             // sanity check that program columns and main trace have the same length
             assert_eq!(
