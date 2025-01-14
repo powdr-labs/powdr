@@ -235,7 +235,7 @@ if (VM::instr_add[0] == 1) {
         col fixed INSTR_ADD = [0, 1] + [0]*;
         col fixed INSTR_MUL = [1, 0] + [1]*;
 
-        pc' = pc + 1;
+        pc' = pc;
         instr_add = 0;
         [ pc, instr_add, instr_mul ] in [ LINE, INSTR_ADD, INSTR_MUL ];
 
@@ -249,8 +249,11 @@ if (VM::instr_add[0] == 1) {
         assert_eq!(
             format_code(&code),
             "\
-VM::pc[1] = (VM::pc[0] + 1);
+VM::pc[1] = VM::pc[0];
 VM::instr_add[1] = 0;
+call_var(2, 0, 0) = VM::pc[0];
+call_var(2, 0, 1) = 0;
+call_var(2, 0, 2) = VM::instr_mul[0];
 call_var(2, 1, 0) = VM::pc[1];
 call_var(2, 1, 1) = 0;
 call_var(2, 1, 2) = 1;
