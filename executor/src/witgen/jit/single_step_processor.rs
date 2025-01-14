@@ -1,12 +1,19 @@
-#![allow(dead_code)]
-
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, KnownField};
 
-use crate::witgen::{machines::MachineParts, FixedData};
+use crate::witgen::{
+    data_structures::{
+        finalizable_data::{ColumnLayout, CompactDataRef},
+        mutable_state::MutableState,
+    },
+    jit::compiler::compile_effects,
+    machines::MachineParts,
+    FixedData, QueryCallback,
+};
 
 use super::{
+    compiler::WitgenFunction,
     effect::Effect,
     processor::Processor,
     prover_function_heuristics::decode_simple_prover_functions,
@@ -21,17 +28,87 @@ const SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH: usize = 6;
 pub struct SingleStepProcessor<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     machine_parts: MachineParts<'a, T>,
+    column_layout: ColumnLayout,
+    single_step_function: Option<Option<WitgenFunction<T>>>,
 }
 
 impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
-    pub fn new(fixed_data: &'a FixedData<'a, T>, machine_parts: MachineParts<'a, T>) -> Self {
+    pub fn new(
+        fixed_data: &'a FixedData<'a, T>,
+        machine_parts: MachineParts<'a, T>,
+        column_layout: ColumnLayout,
+    ) -> Self {
         SingleStepProcessor {
             fixed_data,
             machine_parts,
+            column_layout,
+            single_step_function: None,
         }
     }
 
-    pub fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
+    pub fn try_compile<CanProcess: CanProcessCall<T> + Clone>(
+        &mut self,
+        can_process: CanProcess,
+    ) -> bool {
+        if !matches!(T::known_field(), Some(KnownField::GoldilocksField)) {
+            // Currently, we only support the Goldilocks fields
+            // We could run the interpreter on other fields, though.
+            return false;
+        }
+
+        match self.single_step_function {
+            Some(None) => return false,
+            Some(Some(_)) => return true,
+            None => {}
+        }
+        match self.generate_code(can_process.clone()) {
+            Err(e) => {
+                // These errors can be pretty verbose and are quite common currently.
+                let e = e.to_string().lines().take(5).join("\n");
+                log::debug!("=> Error generating JIT code: {e}\n...");
+                false
+            }
+            Ok(code) => {
+                log::trace!("Generated code ({} steps)", code.len());
+                log::trace!("Compiling effects...");
+
+                let known_inputs = self
+                    .machine_parts
+                    .witnesses
+                    .iter()
+                    .map(|&id| self.cell(id, 0))
+                    .collect_vec();
+                self.single_step_function = Some(Some(
+                    compile_effects(
+                        self.column_layout.first_column_id,
+                        self.column_layout.column_count,
+                        &known_inputs,
+                        &code,
+                    )
+                    .unwrap(),
+                ));
+                true
+            }
+        }
+    }
+
+    /// Computes the next row from the previous row.
+    /// Due to fixed columns being evaluated, the caller must ensure that
+    /// neither the alerady known nor the to be computed row are the first or last row.
+    /// This means that the two first rows must be fully computed.
+    pub fn compute_next_row<'d, Q: QueryCallback<T>>(
+        &self,
+        mutable_state: &MutableState<'a, T, Q>,
+        data: CompactDataRef<'d, T>,
+    ) {
+        assert!(data.row_offset > 0);
+        let Some(Some(f)) = self.single_step_function.as_ref() else {
+            panic!("try_compile must be called first")
+        };
+        f.call(mutable_state, &mut [], data);
+    }
+
+    fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
         &self,
         can_process: CanProcess,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
@@ -126,7 +203,7 @@ mod test {
     use powdr_number::GoldilocksField;
 
     use crate::witgen::{
-        data_structures::mutable_state::MutableState,
+        data_structures::{finalizable_data::ColumnLayout, mutable_state::MutableState},
         global_constraints,
         jit::effect::{format_code, Effect},
         machines::KnownMachine,
@@ -163,7 +240,8 @@ mod test {
         let mutable_state = MutableState::new(machines.into_iter(), &|_| {
             Err("Query not implemented".to_string())
         });
-        SingleStepProcessor::new(&fixed_data, machine_parts)
+        let layout = ColumnLayout::from_id_list(machine_parts.witnesses.iter());
+        SingleStepProcessor::new(&fixed_data, machine_parts, layout)
             .generate_code(&mutable_state)
             .map_err(|e| e.to_string())
     }
