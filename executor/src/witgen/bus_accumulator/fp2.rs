@@ -1,10 +1,13 @@
 use std::{
+    collections::BTreeMap,
     iter::Sum,
     ops::{Add, Div, Mul, Sub},
 };
 
 use num_traits::{One, Zero};
 use powdr_number::FieldElement;
+
+use super::extension_field::ExtensionField;
 
 /// An implementation of Fp2, analogous to `std/math/fp2.asm`.
 /// An Fp2 element. The tuple (a, b) represents the polynomial a + b * X.
@@ -98,6 +101,21 @@ impl<T: FieldElement> Div for Fp2<T> {
     #[allow(clippy::suspicious_arithmetic_impl)]
     fn div(self, other: Self) -> Self {
         self * other.inverse()
+    }
+}
+
+impl<T: FieldElement> ExtensionField<T> for Fp2<T> {
+    fn get_challenge(challenges: &BTreeMap<u64, T>, index: u64) -> Self {
+        Fp2::new(challenges[&(index * 2 + 1)], challenges[&(index * 2 + 2)])
+    }
+    fn size() -> usize {
+        2
+    }
+    fn inverse(self) -> Self {
+        self.inverse()
+    }
+    fn to_vec(self) -> Vec<T> {
+        vec![self.0, self.1]
     }
 }
 
