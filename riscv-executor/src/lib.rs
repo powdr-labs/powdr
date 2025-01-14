@@ -1049,7 +1049,7 @@ mod builder {
                 std::cmp::max(self.trace.len.next_power_of_two() as u32, range.min as u32)
             };
 
-            // fill up main trace to degree
+            // fill up reg trace to degree
             cols.values_mut().for_each(|v| {
                 let last = *v.last().unwrap();
                 v.resize(main_degree as usize, last);
