@@ -190,8 +190,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
         &mut self,
         identity_id: u64,
         known_arguments: &BitVec,
-        range_constraints: &[Option<RangeConstraint<T>>],
-    ) -> bool {
+        range_constraints: &[RangeConstraint<T>],
+    ) -> Option<Vec<RangeConstraint<T>>> {
         assert!(self.parts.connections.contains_key(&identity_id));
         assert_eq!(known_arguments.len(), 4);
         assert_eq!(range_constraints.len(), 4);
@@ -200,19 +200,18 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
 
         // We need to known operation_id, step and address for all calls.
         if !known_arguments[0] || !known_arguments[1] || !known_arguments[2] {
-            return false;
+            return None;
         }
 
         // For the value, it depends: If we write, we need to know it, if we read we do not need to know it.
         if known_arguments[3] {
             // It is known, so we are good anyway.
-            true
+            Some(vec![RangeConstraint::unconstrained(); 4])
         } else {
             // It is not known, so we can only process if we do not write.
-            range_constraints[0].as_ref().is_some_and(|rc| {
-                !rc.allows_value(T::from(OPERATION_ID_BOOTLOADER_WRITE))
-                    && !rc.allows_value(T::from(OPERATION_ID_WRITE))
-            })
+            (!range_constraints[0].allows_value(T::from(OPERATION_ID_BOOTLOADER_WRITE))
+                && !range_constraints[0].allows_value(T::from(OPERATION_ID_WRITE)))
+            .then(|| vec![RangeConstraint::unconstrained(); 4])
         }
     }
 

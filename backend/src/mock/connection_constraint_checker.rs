@@ -3,15 +3,17 @@ use std::collections::BTreeSet;
 use std::fmt;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::AlgebraicReference;
+use std::iter::once;
+
+use derive_more::{Display, From};
+use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_ast::analyzed::Analyzed;
 use powdr_ast::analyzed::{
     Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
     PhantomPermutationIdentity, SelectedExpressions,
 };
 use powdr_executor_utils::expression_evaluator::ExpressionEvaluator;
-use powdr_executor_utils::expression_evaluator::OwnedGlobalValues;
-use powdr_executor_utils::expression_evaluator::TraceValues;
+use powdr_executor_utils::expression_evaluator::TerminalAccess;
 use powdr_number::FieldElement;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
@@ -31,6 +33,7 @@ pub struct Connection<F> {
     pub right: SelectedExpressions<F>,
     /// For [ConnectionKind::Permutation], rows of `left` are a permutation of rows of `right`. For [ConnectionKind::Lookup], all rows in `left` are in `right`.
     pub kind: ConnectionKind,
+    pub multiplicity: Option<AlgebraicExpression<F>>,
 }
 
 impl<F: FieldElement> Connection<F> {
@@ -51,17 +54,30 @@ impl<F: FieldElement> Connection<F> {
         global_pil: &Analyzed<F>,
         machine_to_pil: &BTreeMap<String, Analyzed<F>>,
     ) -> Result<Self, ()> {
-        let (left, right, kind) = match identity {
+        let (left, right, kind, multiplicity) = match identity {
             Identity::Polynomial(_) => Err(()),
             Identity::Connect(_) => unimplemented!(),
-            Identity::Lookup(LookupIdentity { left, right, .. })
-            | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => {
-                Ok((left.clone(), right.clone(), ConnectionKind::Lookup))
+            Identity::Lookup(LookupIdentity { left, right, .. }) => {
+                Ok((left.clone(), right.clone(), ConnectionKind::Lookup, None))
             }
+            Identity::PhantomLookup(PhantomLookupIdentity {
+                left,
+                right,
+                multiplicity,
+                ..
+            }) => Ok((
+                left.clone(),
+                right.clone(),
+                ConnectionKind::Lookup,
+                Some(multiplicity.clone()),
+            )),
             Identity::Permutation(PermutationIdentity { left, right, .. })
-            | Identity::PhantomPermutation(PhantomPermutationIdentity { left, right, .. }) => {
-                Ok((left.clone(), right.clone(), ConnectionKind::Permutation))
-            }
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { left, right, .. }) => Ok((
+                left.clone(),
+                right.clone(),
+                ConnectionKind::Permutation,
+                None,
+            )),
             // TODO(bus_interaction)
             Identity::PhantomBusInteraction(_) => Err(()),
         }?;
@@ -72,6 +88,7 @@ impl<F: FieldElement> Connection<F> {
             left,
             right,
             kind,
+            multiplicity,
         };
         if let Some(caller) = connection.caller() {
             connection.left = localize(
@@ -86,6 +103,10 @@ impl<F: FieldElement> Connection<F> {
                 global_pil,
                 &machine_to_pil[&callee],
             );
+            connection.multiplicity = connection
+                .multiplicity
+                .clone()
+                .map(|multiplicity| localize(multiplicity, global_pil, &machine_to_pil[&callee]));
         }
 
         Ok(connection)
@@ -108,7 +129,6 @@ impl<F: FieldElement> Connection<F> {
 pub struct ConnectionConstraintChecker<'a, F> {
     connections: &'a [Connection<F>],
     machines: &'a BTreeMap<String, Machine<'a, F>>,
-    global_values: OwnedGlobalValues<F>,
 }
 
 impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
@@ -116,17 +136,10 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
     pub fn new(
         connections: &'a [Connection<F>],
         machines: &'a BTreeMap<String, Machine<'a, F>>,
-        challenges: &'a BTreeMap<u64, F>,
     ) -> Self {
-        let global_values = OwnedGlobalValues {
-            // TODO: Support publics.
-            public_values: BTreeMap::new(),
-            challenge_values: challenges.clone(),
-        };
         Self {
             connections,
             machines,
-            global_values,
         }
     }
 }
@@ -139,16 +152,17 @@ enum ConnectionPart {
 
 impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
     /// Checks all connections.
-    pub fn check(&self) -> Result<(), FailingConnectionConstraints<'a, F>> {
+    pub fn check(&self) -> Result<(), Errors<'a, F>> {
         let errors = self
             .connections
             .iter()
             .filter_map(|connection| self.check_connection(connection).err())
+            .flatten()
             .collect::<Vec<_>>();
 
         (!errors.is_empty())
             .then(|| {
-                let error = FailingConnectionConstraints {
+                let error = Errors {
                     connection_count: self.connections.len(),
                     errors,
                 };
@@ -159,50 +173,69 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
     }
 
     /// Checks a single connection.
-    fn check_connection(
-        &self,
-        connection: &'a Connection<F>,
-    ) -> Result<(), FailingConnectionConstraint<'a, F>> {
-        let caller_set = self.selected_tuples(connection, ConnectionPart::Caller);
-        let callee_set = self.selected_tuples(connection, ConnectionPart::Callee);
+    fn check_connection(&self, connection: &'a Connection<F>) -> Result<(), Vec<Error<'a, F>>> {
+        let caller_multi_set = self.selected_tuples(connection, ConnectionPart::Caller);
+        let callee_multi_set = self.selected_tuples(connection, ConnectionPart::Callee);
 
         match connection.kind {
             ConnectionKind::Lookup => {
                 // Check if $caller \subseteq callee$.
-                let caller_set = caller_set.into_iter().collect::<BTreeSet<_>>();
-                let callee_set = callee_set.into_iter().collect::<BTreeSet<_>>();
+                let caller_set = caller_multi_set.keys().collect::<BTreeSet<_>>();
+                let callee_set = callee_multi_set.keys().collect::<BTreeSet<_>>();
                 let not_in_callee = caller_set
                     .difference(&callee_set)
                     .cloned()
                     .collect::<Vec<_>>();
                 if !not_in_callee.is_empty() {
-                    Err(FailingConnectionConstraint {
+                    Err(vec![FailingConnectionConstraint {
                         connection,
-                        not_in_callee,
-                        not_in_caller: Vec::new(),
-                    })
+                        not_in_callee: not_in_callee.into_iter().cloned().collect(),
+                        not_in_caller: Default::default(),
+                    }
+                    .into()])
+                } else if connection.multiplicity.is_some() {
+                    // We additionally check that the multiplicities match
+
+                    let errors = caller_multi_set.iter().filter_map(|(tuple, multiplicity)| {
+                        let callee_multiplicity = callee_multi_set.get(tuple).unwrap();
+                        (multiplicity != callee_multiplicity).then(|| {
+                            log::error!("Connection {}: Multiplicities don't match for tuple {}: caller = {:?}, callee = {:?}", connection.identity, tuple, multiplicity, callee_multiplicity);
+                            MultiplicityMismatch {
+                                connection,
+                                tuple: tuple.clone(),
+                                caller_multiplicity: *multiplicity,
+                                callee_multiplicity: *callee_multiplicity,
+                            }.into()
+                        })
+                    }).collect::<Vec<_>>();
+                    if !errors.is_empty() {
+                        Err(errors)
+                    } else {
+                        Ok(())
+                    }
                 } else {
                     Ok(())
                 }
             }
             ConnectionKind::Permutation => {
                 // Check if $caller = callee$ (as multi-set).
-                let is_equal = to_multi_set(&caller_set) == to_multi_set(&callee_set);
+                let is_equal = caller_multi_set == callee_multi_set;
 
                 // Find the tuples that are in one set, but not in the other.
                 // Note that both `not_in_caller` and `not_in_callee` might actually be empty,
                 // if `caller_set` and `callee_set` are equal as sets but not as multi-sets.
-                let caller_set = caller_set.into_iter().collect::<BTreeSet<_>>();
-                let callee_set = callee_set.into_iter().collect::<BTreeSet<_>>();
+                let caller_set = caller_multi_set.keys().collect::<BTreeSet<_>>();
+                let callee_set = callee_multi_set.keys().collect::<BTreeSet<_>>();
                 let not_in_caller = callee_set.difference(&caller_set).collect::<Vec<_>>();
                 let not_in_callee = caller_set.difference(&callee_set).collect::<Vec<_>>();
 
                 if !is_equal {
-                    Err(FailingConnectionConstraint {
+                    Err(vec![FailingConnectionConstraint {
                         connection,
-                        not_in_caller: not_in_caller.into_iter().cloned().collect(),
-                        not_in_callee: not_in_callee.into_iter().cloned().collect(),
-                    })
+                        not_in_caller: not_in_caller.into_iter().cloned().cloned().collect(),
+                        not_in_callee: not_in_callee.into_iter().cloned().cloned().collect(),
+                    }
+                    .into()])
                 } else {
                     Ok(())
                 }
@@ -210,19 +243,23 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
         }
     }
 
-    /// Returns the set of all selected tuples for a given machine.
+    /// Returns the set of all selected tuples for a given machine, with the multiplicity of each tuple.
+    /// In the callee:
+    /// - In the absence of a multiplicity column, each match has a multiplicity of 1.
+    /// - Therefore, in this case, the multiplicity of the caller and callee likely won't match.
+    /// - In the presence of a multiplicity column, each match adds the associated multiplicity.
     fn selected_tuples(
         &self,
         connection: &Connection<F>,
         connection_part: ConnectionPart,
-    ) -> Vec<Tuple<F>> {
+    ) -> BTreeMap<Tuple<F>, usize> {
         let machine_name = match connection_part {
             ConnectionPart::Caller => connection.caller(),
             ConnectionPart::Callee => connection.callee(),
         };
-        let selected_expressions = match connection_part {
-            ConnectionPart::Caller => &connection.left,
-            ConnectionPart::Callee => &connection.right,
+        let (selected_expressions, multiplicity) = match connection_part {
+            ConnectionPart::Caller => (&connection.left, &None),
+            ConnectionPart::Callee => (&connection.right, &connection.multiplicity),
         };
 
         match machine_name {
@@ -232,8 +269,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                     .into_par_iter()
                     .filter_map(|row| {
                         let mut evaluator = ExpressionEvaluator::new(
-                            machine.trace_values.row(row),
-                            &self.global_values,
+                            machine.values.row(row),
                             &machine.intermediate_definitions,
                         );
                         let result = evaluator.evaluate(&selected_expressions.selector);
@@ -245,26 +281,47 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                                 .iter()
                                 .map(|expression| evaluator.evaluate(expression))
                                 .collect::<Vec<_>>();
-                            Tuple { values, row }
+                            let absolute_multiplicity = multiplicity
+                                .as_ref()
+                                .map(|multiplicity| {
+                                    evaluator
+                                        .evaluate(multiplicity)
+                                        .try_into_i32()
+                                        .unwrap()
+                                        .unsigned_abs() as usize
+                                })
+                                .unwrap_or(1);
+                            (Tuple { values, row }, absolute_multiplicity)
                         })
                     })
-                    .collect(),
+                    .fold(BTreeMap::default, |mut tuples, (tuple, multiplicity)| {
+                        let entry = tuples.entry(tuple).or_insert(0);
+                        *entry += multiplicity;
+                        tuples
+                    })
+                    .reduce(
+                        BTreeMap::default, // Create the global accumulator
+                        |mut acc, tuples| {
+                            for (tuple, count) in tuples {
+                                *acc.entry(tuple).or_insert(0) += count;
+                            }
+                            acc
+                        },
+                    ),
                 // The machine is empty, so there are no tuples.
-                None => Vec::new(),
+                None => Default::default(),
             },
             // There are no column references in the selected expressions.
             None => {
                 let empty_variables = EmptyVariables {};
                 let empty_definitions = BTreeMap::new();
-                let empty_globals = OwnedGlobalValues::default();
-                let mut evaluator =
-                    ExpressionEvaluator::new(empty_variables, &empty_globals, &empty_definitions);
+                let mut evaluator = ExpressionEvaluator::new(empty_variables, &empty_definitions);
                 let selector_value: F = evaluator.evaluate(&selected_expressions.selector);
 
                 match selector_value.to_degree() {
                     // Selected expressions is of the form `0 $ [ <constants> ]`
                     // => The tuples is the empty set.
-                    0 => Vec::new(),
+                    0 => Default::default(),
                     // This one is tricky, because we don't know the size of the machine.
                     // But for lookups, we can return one tuple, so something like `[ 5 ] in [ BYTES ]`
                     // would still work.
@@ -284,7 +341,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                             .iter()
                             .map(|expression| evaluator.evaluate(expression))
                             .collect::<Vec<_>>();
-                        vec![Tuple { values, row: 0 }]
+                        once((Tuple { values, row: 0 }, 1)).collect()
                     }
                     _ => unreachable!("Non-binary selector"),
                 }
@@ -295,24 +352,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
 
 struct EmptyVariables;
 
-impl<T> TraceValues<T> for EmptyVariables
-where
-    T: FieldElement,
-{
-    fn get(&self, _reference: &AlgebraicReference) -> T {
-        panic!()
-    }
-}
-
-/// Converts a slice to a multi-set, represented as a map from elements to their count.
-fn to_multi_set<T: Ord>(a: &[T]) -> BTreeMap<&T, usize> {
-    a.iter()
-        .sorted()
-        .chunk_by(|&t| t)
-        .into_iter()
-        .map(|(key, group)| (key, group.count()))
-        .collect()
-}
+impl<T: FieldElement> TerminalAccess<T> for EmptyVariables {}
 
 #[derive(Debug, Clone)]
 /// A tuple of field elements.
@@ -354,6 +394,19 @@ impl<F: fmt::Display> fmt::Display for Tuple<F> {
             .join(", ");
         write!(f, "Row {}: ({})", self.row, values_str)
     }
+}
+
+#[derive(From, Display)]
+pub enum Error<'a, T> {
+    MultiplicityMismatch(MultiplicityMismatch<'a, T>),
+    FailingConnectionConstraint(FailingConnectionConstraint<'a, T>),
+}
+
+pub struct MultiplicityMismatch<'a, F> {
+    connection: &'a Connection<F>,
+    tuple: Tuple<F>,
+    caller_multiplicity: usize,
+    callee_multiplicity: usize,
 }
 
 pub struct FailingConnectionConstraint<'a, F> {
@@ -408,14 +461,27 @@ impl<F: FieldElement> fmt::Display for FailingConnectionConstraint<'_, F> {
     }
 }
 
-const MAX_ERRORS: usize = 5;
-
-pub struct FailingConnectionConstraints<'a, F> {
-    connection_count: usize,
-    errors: Vec<FailingConnectionConstraint<'a, F>>,
+impl<F: FieldElement> fmt::Display for MultiplicityMismatch<'_, F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "Connection {}: Multiplicities don't match for tuple {}: caller = {:?}, callee = {:?}",
+            self.connection.identity,
+            self.tuple,
+            self.caller_multiplicity,
+            self.callee_multiplicity
+        )
+    }
 }
 
-impl<F: FieldElement> fmt::Display for FailingConnectionConstraints<'_, F> {
+const MAX_ERRORS: usize = 5;
+
+pub struct Errors<'a, F> {
+    connection_count: usize,
+    errors: Vec<Error<'a, F>>,
+}
+
+impl<F: FieldElement> fmt::Display for Errors<'_, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,

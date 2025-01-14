@@ -4,7 +4,7 @@ use powdr_ast::{
     analyzed::{Analyzed, Identity, PhantomBusInteractionIdentity},
     parsed::visitor::Children,
 };
-use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, OwnedGlobalValues};
+use powdr_executor_utils::expression_evaluator::ExpressionEvaluator;
 use powdr_number::FieldElement;
 
 use super::{localize, machine::Machine, unique_referenced_namespaces};
@@ -12,7 +12,6 @@ use super::{localize, machine::Machine, unique_referenced_namespaces};
 pub struct BusChecker<'a, F> {
     connections: &'a [BusConnection<F>],
     machines: &'a BTreeMap<String, Machine<'a, F>>,
-    global_values: OwnedGlobalValues<F>,
 }
 
 pub struct Error<F> {
@@ -102,17 +101,10 @@ impl<'a, F: FieldElement> BusChecker<'a, F> {
     pub fn new(
         connections: &'a [BusConnection<F>],
         machines: &'a BTreeMap<String, Machine<'a, F>>,
-        challenges: &'a BTreeMap<u64, F>,
     ) -> Self {
-        let global_values = OwnedGlobalValues {
-            // TODO: Support publics.
-            public_values: BTreeMap::new(),
-            challenge_values: challenges.clone(),
-        };
         Self {
             connections,
             machines,
-            global_values,
         }
     }
 
@@ -132,8 +124,7 @@ impl<'a, F: FieldElement> BusChecker<'a, F> {
                 (0..machine.size).flat_map(|row_id| {
                     // create an evaluator for this row
                     let mut evaluator = ExpressionEvaluator::new(
-                        machine.trace_values.row(row_id),
-                        &self.global_values,
+                        machine.values.row(row_id),
                         &machine.intermediate_definitions,
                     );
 

@@ -6,11 +6,10 @@ use std::mem;
 
 use itertools::{Either, Itertools};
 use powdr_ast::analyzed::{AlgebraicReference, PolynomialType};
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::FieldElement;
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
 use crate::witgen::data_structures::caller_data::CallerData;
-use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
 use crate::witgen::processor::OuterQuery;
@@ -160,7 +159,6 @@ pub struct FixedLookup<'a, T: FieldElement> {
     indices: HashMap<Application, Index<T>>,
     connections: BTreeMap<u64, Connection<'a, T>>,
     fixed_data: &'a FixedData<'a, T>,
-    multiplicity_counter: MultiplicityCounter,
 }
 
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
@@ -180,23 +178,11 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         connections: BTreeMap<u64, Connection<'a, T>>,
     ) -> Self {
-        let multiplicity_column_sizes = connections
-            .values()
-            .filter_map(|connection| {
-                connection
-                    .multiplicity_column
-                    .map(|poly_id| (poly_id, unique_size(fixed_data, connection)))
-            })
-            .collect();
-        let multiplicity_counter =
-            MultiplicityCounter::new_with_sizes(&connections, multiplicity_column_sizes);
-
         Self {
             global_constraints,
             indices: Default::default(),
             connections,
             fixed_data,
-            multiplicity_counter,
         }
     }
 
@@ -265,34 +251,6 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
     }
 }
 
-/// Get the unique size of the fixed lookup machine referenced by the provided connection.
-/// Panics if any expression in the connection's RHS is not a reference to a fixed column,
-/// if the fixed columns are variably-sized, or if the fixed columns have different sizes.
-fn unique_size<T: FieldElement>(
-    fixed_data: &FixedData<T>,
-    connection: &Connection<T>,
-) -> DegreeType {
-    let fixed_columns = connection
-        .right
-        .expressions
-        .iter()
-        .map(|expr| try_to_simple_poly(expr).unwrap().poly_id)
-        .collect::<Vec<_>>();
-    fixed_columns
-        .iter()
-        .map(|fixed_col| {
-            // Get unique size for fixed column
-            fixed_data.fixed_cols[fixed_col]
-                .values
-                .get_uniquely_sized()
-                .unwrap()
-                .len() as DegreeType
-        })
-        .unique()
-        .exactly_one()
-        .expect("All fixed columns on the same RHS must have the same size")
-}
-
 impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
     fn name(&self) -> &str {
         "FixedLookup"
@@ -302,10 +260,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         &mut self,
         identity_id: u64,
         known_arguments: &BitVec,
-        _range_constraints: &[Option<RangeConstraint<T>>],
-    ) -> bool {
+        range_constraints: &[RangeConstraint<T>],
+    ) -> Option<Vec<RangeConstraint<T>>> {
         if !Self::is_responsible(&self.connections[&identity_id]) {
-            return false;
+            return None;
         }
         let index = self
             .indices
@@ -316,8 +274,72 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .or_insert_with_key(|application| {
                 create_index(self.fixed_data, application, &self.connections)
             });
-        // Check that if there is a match, it is unique.
-        index.values().all(|value| value.0.is_some())
+        let input_range_constraints = known_arguments
+            .iter()
+            .zip_eq(range_constraints)
+            .filter_map(|(is_known, range_constraint)| is_known.then_some(range_constraint.clone()))
+            .collect_vec();
+
+        // Now only consider the index entries that match the input range constraints,
+        // see that the result is unique and determine new output range constraints.
+        let values_matching_input_constraints = index
+            .iter()
+            .filter(|(key, _)| matches_range_constraint(key, &input_range_constraints))
+            .map(|(_, value)| {
+                let (_, values) = value.get()?;
+                Some(values)
+            });
+        let mut new_range_constraints: Option<Vec<(T, T, T::Integer)>> = None;
+        for values in values_matching_input_constraints {
+            // If any value is None, it means the lookup does not have a unique answer,
+            // and thus we cannot process the call.
+            let values = values?;
+            new_range_constraints = Some(match new_range_constraints {
+                // First item, turn each value into (min, max, mask).
+                None => values
+                    .iter()
+                    .map(|v| (*v, *v, v.to_integer()))
+                    .collect_vec(),
+                // Reduce range constraint by disjunction.
+                Some(mut acc) => {
+                    for ((min, max, mask), v) in acc.iter_mut().zip_eq(values) {
+                        *min = (*min).min(*v);
+                        *max = (*max).max(*v);
+                        *mask |= v.to_integer();
+                    }
+                    acc
+                }
+            })
+        }
+        Some(match new_range_constraints {
+            None => {
+                // The iterator was empty, i.e. there are no inputs in the index matching the
+                // range constraints.
+                // This means that every call like this will lead to a fatal error, but there is
+                // enough information in the inputs to hanlde the call. Unfortunately, there is
+                // no way to signal this in the return type, yet.
+                // TODO(#2324): change this.
+                // We just return the input range constraints to signal "everything allright".
+                range_constraints.to_vec()
+            }
+            Some(new_output_range_constraints) => {
+                let mut new_output_range_constraints = new_output_range_constraints.into_iter();
+                known_arguments
+                    .iter()
+                    .enumerate()
+                    .map(|(i, is_known)| {
+                        if is_known {
+                            // Just copy the input range constraint.
+                            range_constraints[i].clone()
+                        } else {
+                            let (min, max, mask) = new_output_range_constraints.next().unwrap();
+                            RangeConstraint::from_range(min, max)
+                                .conjunction(&RangeConstraint::from_mask(mask))
+                        }
+                    })
+                    .collect()
+            }
+        })
     }
 
     fn process_plookup<Q: crate::witgen::QueryCallback<T>>(
@@ -386,12 +408,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             EvalError::FixedLookupFailed(input_assignment)
         })?;
 
-        let Some((row, output)) = index_value.get() else {
+        let Some((_, output)) = index_value.get() else {
             // multiple matches, we stop and learnt nothing
             return Ok(false);
         };
-
-        self.multiplicity_counter.increment_at_row(identity_id, row);
 
         values
             .iter_mut()
@@ -410,11 +430,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         &mut self,
         _mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
-        self.multiplicity_counter
-            .generate_columns_different_sizes()
-            .into_iter()
-            .map(|(poly_id, column)| (self.fixed_data.column_name(&poly_id).to_string(), column))
-            .collect()
+        Default::default()
     }
 
     fn identity_ids(&self) -> Vec<u64> {
@@ -445,4 +461,15 @@ impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
             PolynomialType::Intermediate => unimplemented!(),
         }
     }
+}
+
+/// Checks that an array of values satisfies a set of range constraints.
+fn matches_range_constraint<T: FieldElement>(
+    values: &[T],
+    range_constraints: &[RangeConstraint<T>],
+) -> bool {
+    values
+        .iter()
+        .zip_eq(range_constraints)
+        .all(|(value, range_constraint)| range_constraint.allows_value(*value))
 }

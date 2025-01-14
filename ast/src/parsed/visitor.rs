@@ -16,7 +16,8 @@ pub trait Children<O> {
 }
 
 pub trait AllChildren<O> {
-    /// Returns an iterator over all direct and indirect children of kind O in this object.
+    /// Returns an iterator over all direct and indirect children of kind `O` in this object.
+    /// If `O` and `Self` are the same type, also includes `self`.
     /// Pre-order visitor.
     fn all_children(&self) -> Box<dyn Iterator<Item = &O> + '_>;
 }

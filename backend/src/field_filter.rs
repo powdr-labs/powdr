@@ -75,4 +75,3 @@ macro_rules! generalize_factory {
     };
 }
 
-pub(crate) use generalize_factory;

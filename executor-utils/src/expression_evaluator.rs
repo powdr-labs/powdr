@@ -1,4 +1,5 @@
 use core::ops::{Add, Mul, Sub};
+use itertools::Itertools;
 use std::collections::BTreeMap;
 
 use powdr_ast::analyzed::{
@@ -9,39 +10,43 @@ use powdr_ast::analyzed::{
 use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 
-/// Accessor for trace values.
-pub trait TraceValues<T> {
-    fn get(&self, poly_ref: &AlgebraicReference) -> T;
-}
-
-/// Accessor for global values.
-pub trait GlobalValues<T> {
-    fn get_public(&self, public: &str) -> T;
-    fn get_challenge(&self, challenge: &Challenge) -> T;
+/// Accessor for terminal symbols.
+pub trait TerminalAccess<T> {
+    fn get(&self, _poly_ref: &AlgebraicReference) -> T {
+        unimplemented!();
+    }
+    fn get_public(&self, _public: &str) -> T {
+        unimplemented!();
+    }
+    fn get_challenge(&self, _challenge: &Challenge) -> T {
+        unimplemented!();
+    }
 }
 
 /// A simple container for trace values.
-pub struct OwnedTraceValues<T> {
-    pub values: BTreeMap<PolyID, Vec<T>>,
+pub struct OwnedTerminalValues<F> {
+    pub trace: BTreeMap<PolyID, Vec<F>>,
+    pub public_values: BTreeMap<String, F>,
+    pub challenge_values: BTreeMap<u64, F>,
 }
 
 /// A view into the trace values for a single row.
-pub struct RowTraceValues<'a, T> {
-    trace: &'a OwnedTraceValues<T>,
+pub struct RowValues<'a, F> {
+    values: &'a OwnedTerminalValues<F>,
     row: usize,
 }
 
-impl<T> OwnedTraceValues<T> {
+impl<F: std::fmt::Debug> OwnedTerminalValues<F> {
     pub fn new(
-        pil: &Analyzed<T>,
-        witness_columns: Vec<(String, Vec<T>)>,
-        fixed_columns: Vec<(String, Vec<T>)>,
+        pil: &Analyzed<F>,
+        witness_columns: Vec<(String, Vec<F>)>,
+        fixed_columns: Vec<(String, Vec<F>)>,
     ) -> Self {
         let mut columns_by_name = witness_columns
             .into_iter()
             .chain(fixed_columns)
             .collect::<BTreeMap<_, _>>();
-        let values = pil
+        let trace = pil
             .committed_polys_in_source_order()
             .chain(pil.constant_polys_in_source_order())
             .flat_map(|(symbol, _)| symbol.array_elements())
@@ -51,53 +56,73 @@ impl<T> OwnedTraceValues<T> {
                     .map(|column| (poly_id, column))
             })
             .collect();
-        Self { values }
+        Self {
+            trace,
+            public_values: Default::default(),
+            challenge_values: Default::default(),
+        }
     }
 
+    pub fn with_publics(mut self, publics: Vec<(String, F)>) -> Self {
+        self.public_values = publics.into_iter().collect();
+        self
+    }
+
+    pub fn with_challenges(mut self, challenges: BTreeMap<u64, F>) -> Self {
+        self.challenge_values = challenges;
+        self
+    }
+
+    /// The height of the trace. Panics if columns have different lengths.
     pub fn height(&self) -> usize {
-        self.values.values().next().map(|v| v.len()).unwrap()
+        self.trace
+            .values()
+            .map(|v| v.len())
+            .unique()
+            .exactly_one()
+            .unwrap()
     }
 
-    pub fn row(&self, row: usize) -> RowTraceValues<T> {
-        RowTraceValues { trace: self, row }
+    /// The length of a given column.
+    pub fn column_length(&self, poly_id: &PolyID) -> usize {
+        self.trace.get(poly_id).unwrap().len()
+    }
+
+    pub fn row(&self, row: usize) -> RowValues<F> {
+        RowValues { values: self, row }
+    }
+
+    pub fn into_trace(self) -> BTreeMap<PolyID, Vec<F>> {
+        self.trace
     }
 }
 
-impl<F: FieldElement> TraceValues<F> for RowTraceValues<'_, F> {
-    fn get(&self, column: &AlgebraicReference) -> F {
+impl<F: FieldElement, T: From<F>> TerminalAccess<T> for RowValues<'_, F> {
+    fn get(&self, column: &AlgebraicReference) -> T {
         match column.poly_id.ptype {
             PolynomialType::Committed | PolynomialType::Constant => {
-                let column_values = self.trace.values.get(&column.poly_id).unwrap();
+                let column_values = self.values.trace.get(&column.poly_id).unwrap();
                 let row = (self.row + column.next as usize) % column_values.len();
-                column_values[row]
+                column_values[row].into()
             }
             PolynomialType::Intermediate => unreachable!(
                 "Intermediate polynomials should have been handled by ExpressionEvaluator"
             ),
         }
     }
-}
 
-#[derive(Default)]
-pub struct OwnedGlobalValues<T> {
-    pub public_values: BTreeMap<String, T>,
-    pub challenge_values: BTreeMap<u64, T>,
-}
-
-impl<T: Clone> GlobalValues<T> for &OwnedGlobalValues<T> {
     fn get_public(&self, public: &str) -> T {
-        self.public_values[public].clone()
+        self.values.public_values[public].into()
     }
 
     fn get_challenge(&self, challenge: &Challenge) -> T {
-        self.challenge_values[&challenge.id].clone()
+        self.values.challenge_values[&challenge.id].into()
     }
 }
 
 /// Evaluates an algebraic expression to a value.
-pub struct ExpressionEvaluator<'a, T, Expr, TV, GV> {
-    trace_values: TV,
-    global_values: GV,
+pub struct ExpressionEvaluator<'a, T, Expr, TA> {
+    terminal_access: TA,
     intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
     /// Maps intermediate reference to their evaluation. Updated throughout the lifetime of the
     /// ExpressionEvaluator.
@@ -105,41 +130,34 @@ pub struct ExpressionEvaluator<'a, T, Expr, TV, GV> {
     to_expr: fn(&T) -> Expr,
 }
 
-impl<'a, T, TV, GV> ExpressionEvaluator<'a, T, T, TV, GV>
+impl<'a, T, TA> ExpressionEvaluator<'a, T, T, TA>
 where
-    TV: TraceValues<T>,
-    GV: GlobalValues<T>,
+    TA: TerminalAccess<T>,
     T: FieldElement,
 {
     /// Create a new expression evaluator (for the case where Expr = T).
     pub fn new(
-        trace_values: TV,
-        global_values: GV,
+        terminal_access: TA,
         intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
     ) -> Self {
-        Self::new_with_custom_expr(trace_values, global_values, intermediate_definitions, |x| {
-            *x
-        })
+        Self::new_with_custom_expr(terminal_access, intermediate_definitions, |x| *x)
     }
 }
 
-impl<'a, T, Expr, TV, GV> ExpressionEvaluator<'a, T, Expr, TV, GV>
+impl<'a, T, Expr, TA> ExpressionEvaluator<'a, T, Expr, TA>
 where
-    TV: TraceValues<Expr>,
-    GV: GlobalValues<Expr>,
+    TA: TerminalAccess<Expr>,
     Expr: Clone + Add<Output = Expr> + Sub<Output = Expr> + Mul<Output = Expr>,
     T: FieldElement,
 {
     /// Create a new expression evaluator with custom expression converters.
     pub fn new_with_custom_expr(
-        trace_values: TV,
-        global_values: GV,
+        terminal_access: TA,
         intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
         to_expr: fn(&T) -> Expr,
     ) -> Self {
         Self {
-            trace_values,
-            global_values,
+            terminal_access,
             intermediate_definitions,
             intermediates_cache: Default::default(),
             to_expr,
@@ -149,8 +167,8 @@ where
     pub fn evaluate(&mut self, expr: &'a Expression<T>) -> Expr {
         match expr {
             Expression::Reference(reference) => match reference.poly_id.ptype {
-                PolynomialType::Committed => self.trace_values.get(reference),
-                PolynomialType::Constant => self.trace_values.get(reference),
+                PolynomialType::Committed => self.terminal_access.get(reference),
+                PolynomialType::Constant => self.terminal_access.get(reference),
                 PolynomialType::Intermediate => {
                     let reference = reference.to_thin();
                     let value = self.intermediates_cache.get(&reference).cloned();
@@ -165,7 +183,7 @@ where
                     }
                 }
             },
-            Expression::PublicReference(_public) => unimplemented!(),
+            Expression::PublicReference(public) => self.terminal_access.get_public(public),
             Expression::Number(n) => (self.to_expr)(n),
             Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => match op {
                 AlgebraicBinaryOperator::Add => self.evaluate(left) + self.evaluate(right),
@@ -183,7 +201,7 @@ where
             Expression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
                 AlgebraicUnaryOperator::Minus => self.evaluate(expr),
             },
-            Expression::Challenge(challenge) => self.global_values.get_challenge(challenge),
+            Expression::Challenge(challenge) => self.terminal_access.get_challenge(challenge),
         }
     }
 }

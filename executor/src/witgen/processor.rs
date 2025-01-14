@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
+use num_traits::One;
 use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 
@@ -29,17 +30,17 @@ pub type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
 /// The data mutated by the processor
 pub(crate) struct SolverState<'a, T: FieldElement> {
     /// The block of trace cells
-    pub block: FinalizableData<T>,
+    pub block: FinalizableData<'a, T>,
     /// The values of publics
     pub publics: BTreeMap<&'a str, T>,
 }
 
 impl<'a, T: FieldElement> SolverState<'a, T> {
-    pub fn new(block: FinalizableData<T>, publics: BTreeMap<&'a str, T>) -> Self {
+    pub fn new(block: FinalizableData<'a, T>, publics: BTreeMap<&'a str, T>) -> Self {
         Self { block, publics }
     }
 
-    pub fn without_publics(block: FinalizableData<T>) -> Self {
+    pub fn without_publics(block: FinalizableData<'a, T>) -> Self {
         Self {
             block,
             publics: BTreeMap::new(),
@@ -140,7 +141,7 @@ pub struct Processor<'a, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// The global index of the first row of [Processor::data].
     row_offset: RowIndex,
     /// The rows that are being processed.
-    data: FinalizableData<T>,
+    data: FinalizableData<'a, T>,
     /// The values of the publics
     publics: BTreeMap<&'a str, T>,
     /// The mutable state
@@ -575,12 +576,12 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         self.data.len()
     }
 
-    pub fn finalize_range(&mut self, range: std::ops::Range<usize>) {
+    pub fn finalize_until(&mut self, end: usize) {
         assert!(
             self.copy_constraints.is_empty(),
             "Machines with copy constraints should not be finalized while being processed."
         );
-        self.data.finalize_range(range);
+        self.data.finalize_until(end);
     }
 
     pub fn row(&self, i: usize) -> &Row<T> {
@@ -639,19 +640,37 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             ),
         };
 
+        if let Ok(connection) = Connection::try_from(identity) {
+            // JITed submachines would panic if passed a wrong input / output pair.
+            // Therefore, if any machine call is activated, we resort to the full
+            // solving routine.
+            // An to this is when the call is always active (e.g. the PC lookup).
+            // In that case, we know that the call has been active before with the
+            // same input / output pair, so we can be sure that it will succeed.
+            let selector = &connection.left.selector;
+            if selector != &Expression::one() {
+                let selector_value = row_pair
+                    .evaluate(selector)
+                    .unwrap()
+                    .constant_value()
+                    .unwrap();
+                return selector_value.is_zero();
+            }
+        }
+
         if identity_processor
             .process_identity(identity, &row_pair)
             .is_err()
         {
-            log::debug!(
+            log::trace!(
                 "Previous {}",
                 self.data[row_index - 1].render_values(true, self.parts)
             );
-            log::debug!(
+            log::trace!(
                 "Proposed {:?}",
                 proposed_row.render_values(true, self.parts)
             );
-            log::debug!("Failed on identity: {}", identity);
+            log::trace!("Failed on identity: {}", identity);
 
             return false;
         }
