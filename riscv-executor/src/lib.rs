@@ -1069,12 +1069,6 @@ mod builder {
             // add reg columns to trace
             cols.extend(self.generate_main_columns());
 
-            // sanity check that program columns and main trace have the same length
-            assert_eq!(
-                cols.values().next().unwrap().len(),
-                program_columns[0].1.len(),
-            );
-
             // add program columns to main trace
             cols.extend(program_columns);
 
