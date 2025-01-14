@@ -196,12 +196,12 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
                 }
             }
             _ => {
-                let r = self.solve_bit_decomposition();
+                let r = self.solve_bit_decomposition()?;
                 if r.complete {
                     r
                 } else {
                     let negated = -self;
-                    let r = negated.solve_bit_decomposition();
+                    let r = negated.solve_bit_decomposition()?;
                     if r.complete {
                         r
                     } else {
@@ -221,7 +221,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
     }
 
     /// Tries to solve a bit-decomposition equation.
-    fn solve_bit_decomposition(&self) -> ProcessResult<T, V> {
+    fn solve_bit_decomposition(&self) -> Result<ProcessResult<T, V>, EvalError<T>> {
         // All the coefficients need to be known numbers and the
         // variables need to be range-constrained.
         let constrained_coefficients = self
@@ -234,7 +234,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             })
             .collect::<Option<Vec<_>>>();
         let Some(constrained_coefficients) = constrained_coefficients else {
-            return ProcessResult::empty();
+            return Ok(ProcessResult::empty());
         };
 
         // Check if they are mutually exclusive and compute assignments.
@@ -244,7 +244,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             let mask = *constraint.multiple(coeff).mask();
             if !(mask & covered_bits).is_zero() {
                 // Overlapping range constraints.
-                return ProcessResult::empty();
+                return Ok(ProcessResult::empty());
             } else {
                 covered_bits |= mask;
             }
@@ -256,18 +256,24 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
         }
 
         if covered_bits >= T::modulus() {
-            return ProcessResult::empty();
+            return Ok(ProcessResult::empty());
         }
 
         // We need to assert that the masks cover "-offset",
         // otherwise the equation is not solvable.
         // We assert -offset & !masks == 0
-        effects.push(Assertion::assert_eq(
-            -&self.offset & !covered_bits,
-            T::from(0).into(),
-        ));
+        if let Some(offset) = self.offset.try_to_number() {
+            if (-offset).to_integer() & !covered_bits != 0.into() {
+                return Err(EvalError::ConflictingRangeConstraints);
+            }
+        } else {
+            effects.push(Assertion::assert_eq(
+                -&self.offset & !covered_bits,
+                T::from(0).into(),
+            ));
+        }
 
-        ProcessResult::complete(effects)
+        Ok(ProcessResult::complete(effects))
     }
 
     fn transfer_constraints(&self) -> Option<Effect<T, V>> {
