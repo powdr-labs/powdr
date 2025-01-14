@@ -909,9 +909,7 @@ mod builder {
         }
 
         pub fn push_row(&mut self, pc: u32) {
-            if let ExecMode::Witness = self.mode {
-                let new_len = self.trace.known_cols.len() + KnownWitnessCol::count();
-                self.trace.known_cols.resize(new_len, F::zero());
+            if let ExecMode::Trace | ExecMode::Witness = self.mode {
                 self.trace.pc_trace.push(pc);
                 self.trace
                     .reg_trace
@@ -925,6 +923,10 @@ mod builder {
                             v.push(v.last().cloned().unwrap_or(F::zero()));
                         }
                     });
+            }
+            if let ExecMode::Witness = self.mode {
+                let new_len = self.trace.known_cols.len() + KnownWitnessCol::count();
+                self.trace.known_cols.resize(new_len, F::zero());
             }
         }
 
