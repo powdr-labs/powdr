@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use powdr_executor::constant_evaluator;
 use powdr_linker::{LinkerMode, LinkerParams};
-use powdr_number::{FieldElement, GoldilocksField};
+use powdr_number::{BabyBearField, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, make_prepared_pipeline, make_simple_prepared_pipeline,
@@ -182,6 +182,9 @@ fn block_to_block_empty_submachine() {
 fn block_to_block_with_bus_monolithic() {
     let f = "asm/block_to_block_with_bus.asm";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
+    test_plonky3_pipeline(pipeline);
+    let pipeline = make_simple_prepared_pipeline::<BabyBearField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
