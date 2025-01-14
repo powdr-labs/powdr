@@ -8,7 +8,7 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{Identity, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
-use crate::witgen::FixedData;
+use crate::witgen::{EvalError, FixedData};
 
 use super::{
     effect::{format_code, Effect},
@@ -70,7 +70,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         mut witgen: WitgenInference<'a, T, FixedEval>,
         branch_depth: usize,
     ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T>> {
-        self.process_until_no_progress(can_process.clone(), &mut witgen);
+        self.process_until_no_progress(can_process.clone(), &mut witgen)
+            .map_err(|_| Error::conflicting_constraints())?;
 
         if self.check_block_shape {
             // Check that the "spill" into the previous block is compatible
@@ -140,42 +141,58 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
 
         // TODO Tuning: If this fails (or also if it does not generate progress right away),
         // we could also choose a different variable to branch on.
-        let left_branch_code =
-            self.generate_code_for_branch(can_process.clone(), first_branch, branch_depth + 1)?;
-        let right_branch_code =
-            self.generate_code_for_branch(can_process, second_branch, branch_depth + 1)?;
-        let code = if left_branch_code == right_branch_code {
-            common_code.into_iter().chain(left_branch_code).collect()
-        } else {
-            common_code
+
+        let first_branch_result =
+            self.generate_code_for_branch(can_process.clone(), first_branch, branch_depth + 1);
+        let second_branch_result =
+            self.generate_code_for_branch(can_process, second_branch, branch_depth + 1);
+        // There is a recoverable error: It might be that a branch has conflicting
+        // constraints, which means we can just take the other branch without actually
+        // branching.
+        match (first_branch_result, second_branch_result) {
+            (Err(el), Err(er))
+                if el.reason == ErrorReason::ConflictingConstraints
+                    && er.reason == ErrorReason::ConflictingConstraints =>
+            {
+                // Both are conflicting, so we push it up.
+                Err(Error::conflicting_constraints())
+            }
+            (Err(e), Ok(code)) | (Ok(code), Err(e))
+                if e.reason == ErrorReason::ConflictingConstraints =>
+            {
+                log::trace!("Branching on {most_constrained_var} resulted in a conflict, we can reduce to a sigle branch.");
+                Ok(common_code.into_iter().chain(code).collect())
+            }
+            (Err(e), _) | (_, Err(e)) => Err(e),
+            (Ok(first_code), Ok(second_code)) if first_code == second_code => {
+                log::trace!("Branching on {most_constrained_var} resulted in the same code, we can reduce to a sigle branch.");
+                Ok(common_code.into_iter().chain(first_code).collect())
+            }
+            (Ok(first_code), Ok(second_code)) => Ok(common_code
                 .into_iter()
                 .chain(std::iter::once(Effect::Branch(
                     condition,
-                    left_branch_code,
-                    right_branch_code,
+                    first_code,
+                    second_code,
                 )))
-                .collect()
-        };
-
-        Ok(code)
+                .collect()),
+        }
     }
 
     fn process_until_no_progress<CanProcess: CanProcessCall<T> + Clone>(
         &self,
         can_process: CanProcess,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-    ) {
+    ) -> Result<(), EvalError<T>> {
         loop {
-            let progress = self
-                .identities
-                .iter()
-                .any(|(id, row_offset)| {
-                    witgen.process_identity(can_process.clone(), id, *row_offset)
-                });
+            let progress = self.identities.iter().any(|(id, row_offset)| {
+                witgen.process_identity(can_process.clone(), id, *row_offset)
+            });
             if !progress {
                 break;
             }
         }
+        Ok(())
     }
 
     /// If any machine call could not be completed, that's bad because machine calls typically have side effects.
@@ -323,8 +340,16 @@ pub struct Error<'a, T: FieldElement> {
     pub incomplete_identities: Vec<(&'a Identity<T>, i32)>,
 }
 
+#[derive(PartialEq, Eq)]
 pub enum ErrorReason {
+    /// This error means that the current branch (if it is a branch)
+    /// is actually not reachable.
+    ConflictingConstraints,
+    /// We were not able to solve all required constraints and
+    /// there is no variable left to branch on.
     NoBranchVariable,
+    /// We were not able to solve all required constraints and
+    /// the maximum branch depth was reached.
     MaxBranchDepthReached(usize),
 }
 
@@ -339,12 +364,22 @@ impl<T: FieldElement> Display for Error<'_, T> {
 }
 
 impl<T: FieldElement> Error<'_, T> {
+    pub fn conflicting_constraints() -> Self {
+        Self {
+            code: vec![],
+            reason: ErrorReason::ConflictingConstraints,
+            missing_variables: vec![],
+            incomplete_identities: vec![],
+        }
+    }
+
     pub fn to_string_with_variable_formatter(
         &self,
         var_formatter: impl Fn(&Variable) -> String,
     ) -> String {
         let mut s = String::new();
         let reason_str = match &self.reason {
+            ErrorReason::ConflictingConstraints => "Conflicting constraints".to_string(),
             ErrorReason::NoBranchVariable => "No variable available to branch on".to_string(),
             ErrorReason::MaxBranchDepthReached(depth) => {
                 format!("Maximum branch depth of {depth} reached")

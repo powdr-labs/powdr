@@ -15,7 +15,8 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     data_structures::mutable_state::MutableState, global_constraints::RangeConstraintSet,
-    jit::effect::format_code, range_constraints::RangeConstraint, FixedData, QueryCallback,
+    jit::effect::format_code, range_constraints::RangeConstraint, EvalError, FixedData,
+    QueryCallback,
 };
 
 use super::{
@@ -145,20 +146,21 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 
     /// Process an identity on a certain row.
-    /// Returns true if there was progress.
+    /// Returns Ok(true) if there was progress and Ok(false) if there was no progress.
+    /// If this returns an error, it means we have conflicting constraints.
     pub fn process_identity<CanProcess: CanProcessCall<T>>(
         &mut self,
         can_process: CanProcess,
         id: &'a Identity<T>,
         row_offset: i32,
-    ) -> bool {
+    ) -> Result<bool, EvalError<T>> {
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => self
                 .process_equality_on_row(
                     expression,
                     row_offset,
                     &VariableOrValue::Value(T::from(0)),
-                ),
+                )?,
             Identity::Lookup(LookupIdentity { id, left, .. })
             | Identity::Permutation(PermutationIdentity { id, left, .. })
             | Identity::PhantomPermutation(PhantomPermutationIdentity { id, left, .. })
@@ -173,7 +175,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             Identity::PhantomBusInteraction(_) => ProcessResult::empty(),
             Identity::Connect(_) => ProcessResult::empty(),
         };
-        self.ingest_effects(result, Some((id.id(), row_offset)))
+        Ok(self.ingest_effects(result, Some((id.id(), row_offset))))
     }
 
     /// Process the constraint that the expression evaluated at the given offset equals the given value.
@@ -205,17 +207,19 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.process_assignments();
     }
 
+    /// Processes an equality constraint.
+    /// If this returns an error, it means we have conflicting constraints.
     fn process_equality_on_row(
         &self,
         lhs: &Expression<T>,
         offset: i32,
         rhs: &VariableOrValue<T, Variable>,
-    ) -> ProcessResult<T, Variable> {
+    ) -> Result<ProcessResult<T, Variable>, EvalError<T>> {
         // First we try to find a new assignment to a variable in the equality.
 
         let evaluator = Evaluator::new(self);
         let Some(lhs_evaluated) = evaluator.evaluate(lhs, offset) else {
-            return ProcessResult::empty();
+            return Ok(ProcessResult::empty());
         };
 
         let rhs_evaluated = match rhs {
@@ -223,32 +227,24 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             VariableOrValue::Value(v) => (*v).into(),
         };
 
-        // TODO propagate or report error properly.
-        // If solve returns an error, it means that the constraint is conflicting.
-        // In the future, we might run this in a runtime-conditional, so an error
-        // could just mean that this case cannot happen in practice.
         let result = (lhs_evaluated - rhs_evaluated)
             .solve()
-            .map_err(|e| {
-                panic!(
-                    "Error solving equality constraint: {lhs} = {rhs} on row {offset}: {e}\n\
-                    Code generated since the previous branching point:\n{}",
-                    format_code(&self.code)
-                );
-            })
-            .unwrap();
+            .map_err(|e| match e {
+                EvalError::ConflictingRangeConstraints | EvalError::ConstraintUnsatisfiable(_) => e,
+                _ => panic!("Unexpected error: {e}"),
+            })?;
         if result.complete && result.effects.is_empty() {
             // A complete result without effects means that there were no unknowns
             // in the constraint.
             // We try again, but this time we treat all non-concrete variables
             // as unknown and in that way try to find new concrete values for
             // already known variables.
-            let result = self.process_equality_on_row_concrete(lhs, offset, rhs);
+            let result = self.process_equality_on_row_concrete(lhs, offset, rhs)?;
             if !result.effects.is_empty() {
-                return result;
+                return Ok(result);
             }
         }
-        result
+        Ok(result)
     }
 
     /// Process an equality but only consider concrete variables as known
@@ -258,10 +254,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         lhs: &Expression<T>,
         offset: i32,
         rhs: &VariableOrValue<T, Variable>,
-    ) -> ProcessResult<T, Variable> {
+    ) -> Result<ProcessResult<T, Variable>, EvalError<T>> {
         let evaluator = Evaluator::new(self).only_concrete_known();
         let Some(lhs_evaluated) = evaluator.evaluate(lhs, offset) else {
-            return ProcessResult::empty();
+            return Ok(ProcessResult::empty());
         };
         let rhs_evaluated = match rhs {
             VariableOrValue::Variable(v) => evaluator.evaluate_variable(v.clone()),
@@ -269,14 +265,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         };
         (lhs_evaluated - rhs_evaluated)
             .solve()
-            .map_err(|e| {
-                panic!(
-                    "Error solving equality constraint: {lhs} = {rhs} on row {offset}: {e}\n\
-                    Code generated since the previous branching point:\n{}",
-                    format_code(&self.code)
-                );
+            .map_err(|e| match e {
+                EvalError::ConflictingRangeConstraints | EvalError::ConstraintUnsatisfiable(_) => e,
+                _ => panic!("Unexpected error: {e}"),
             })
-            .unwrap()
     }
 
     fn process_call<CanProcess: CanProcessCall<T>>(
@@ -344,7 +336,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    fn process_assignments(&mut self) {
+    fn process_assignments(&mut self) -> Result<(), EvalError<T>> {
         loop {
             let mut progress = false;
             // We need to take them out because ingest_effects needs a &mut self.
@@ -354,7 +346,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     assignment.lhs,
                     assignment.row_offset,
                     &assignment.rhs,
-                );
+                )?;
                 progress |= self.ingest_effects(r, None);
             }
             assert!(self.assignments.is_empty());
@@ -363,6 +355,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 break;
             }
         }
+        Ok(())
     }
 
     /// Analyze the effects and update the internal state.
@@ -686,7 +679,7 @@ mod test {
             counter += 1;
             for row in rows {
                 for id in retained_identities.iter() {
-                    progress |= witgen.process_identity(&mutable_state, id, *row);
+                    progress |= witgen.process_identity(&mutable_state, id, *row).unwrap();
                 }
             }
             if !progress {
