@@ -15,8 +15,7 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     data_structures::mutable_state::MutableState, global_constraints::RangeConstraintSet,
-    jit::effect::format_code, range_constraints::RangeConstraint, EvalError, FixedData,
-    QueryCallback,
+    range_constraints::RangeConstraint, EvalError, FixedData, QueryCallback,
 };
 
 use super::{
@@ -303,11 +302,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         let Some(new_range_constraints) =
             can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints)
         else {
-            log::trace!(
-                "Sub-machine cannot process call fully (will retry later): {lookup_id}, arguments: {}",
-                arguments.iter().zip(known).map(|(arg, known)| {
-                    format!("{arg} [{}]", if known { "known" } else { "unknown" })
-                }).format(", "));
             return ProcessResult::empty();
         };
         let mut effects = vec![];
@@ -376,6 +370,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     progress |=
                         self.add_range_constraint(variable.clone(), assignment.range_constraint());
                     if self.known_variables.insert(variable.clone()) {
+                        log::trace!("{variable} := {assignment}");
                         progress = true;
                         self.code.push(e);
                     }
@@ -388,6 +383,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     // not create another submachine call. We might still process it
                     // multiple times to get better range constraints.
                     if self.complete_identities.insert(identity_id.unwrap()) {
+                        log::trace!("Machine call: {:?}", identity_id.unwrap());
                         assert!(process_result.complete);
                         for v in vars {
                             // Inputs are already known, but it does not hurt to add all of them.
