@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 
-use bus_checker::{BusChecker, BusConnection};
+use bus_checker::{BusChecker, BusInteraction};
 use connection_constraint_checker::{Connection, ConnectionConstraintChecker};
 use machine::Machine;
 use polynomial_constraint_checker::PolynomialConstraintChecker;
@@ -50,7 +50,7 @@ impl<F: FieldElement> BackendFactory<F> for MockBackendFactory {
         }
         let machine_to_pil = powdr_backend_utils::split_pil(&pil);
         let connections = Connection::get_all(&pil, &machine_to_pil);
-        let bus_connections = BusConnection::get_all(&pil, &machine_to_pil);
+        let bus_connections = BusInteraction::get_all(&pil, &machine_to_pil);
 
         Ok(Box::new(MockBackend {
             machine_to_pil,
@@ -69,7 +69,7 @@ pub(crate) struct MockBackend<F> {
     machine_to_pil: BTreeMap<String, Analyzed<F>>,
     fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
     connections: Vec<Connection<F>>,
-    bus_connections: Vec<BusConnection<F>>,
+    bus_connections: Vec<BusInteraction<F>>,
 }
 
 impl<F: FieldElement> Backend<F> for MockBackend<F> {
