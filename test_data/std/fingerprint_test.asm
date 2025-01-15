@@ -1,8 +1,7 @@
-use std::math::fp2::from_base;
 use std::math::fp2::Fp2;
-use std::math::fp2::eval_ext;
-use std::math::fp2::unpack_ext_array;
-use std::math::fp2::constrain_eq_ext;
+use std::math::extension_field::Ext;
+use std::math::extension_field::unpack_ext_array;
+use std::math::extension_field::constrain_eq_ext;
 use std::prover::challenge;
 use std::protocols::fingerprint::fingerprint;
 use std::protocols::fingerprint::fingerprint_inter;
@@ -21,8 +20,8 @@ machine Main with degree: 2048 {
 
     // Add `fingerprint_value` witness columns and constrain them using `fingerprint_inter`
     col witness stage(1) fingerprint_value0, fingerprint_value1;
-    let fingerprint_value = Fp2::Fp2(fingerprint_value0, fingerprint_value1);
-    let alpha = Fp2::Fp2(challenge(0, 0), challenge(0, 1));
+    let fingerprint_value = Ext::Fp2(Fp2::Fp2(fingerprint_value0, fingerprint_value1));
+    let alpha = Ext::Fp2(Fp2::Fp2(challenge(0, 0), challenge(0, 1)));
     constrain_eq_ext(fingerprint_inter(tuple, alpha), fingerprint_value);
 
     // Add `fingerprint_value_hint` witness columns and compute the fingerprint in a hint using `fingerprint`
