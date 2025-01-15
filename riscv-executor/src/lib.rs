@@ -656,7 +656,7 @@ mod builder {
     }
 
     pub struct TraceBuilder<'b, F: FieldElement> {
-        pub trace: ExecutionTrace<F>,
+        trace: ExecutionTrace<F>,
 
         submachines: HashMap<MachineInstance, RefCell<Box<dyn Submachine<F>>>>,
 
