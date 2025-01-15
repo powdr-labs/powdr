@@ -103,6 +103,7 @@ struct Data<'a, F> {
     witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
     constant_shifted_eval: &'a BTreeMap<PolyID, F>,
     constant_eval: &'a BTreeMap<PolyID, F>,
+    challenges: &'a BTreeMap<String, F>,
 }
 
 impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
