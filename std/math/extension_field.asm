@@ -13,6 +13,7 @@ let required_extension_size: -> int = || match known_field() {
     Option::Some(KnownField::BN254) => 1,
     Option::Some(KnownField::BabyBear) => 4,
     Option::Some(KnownField::KoalaBear) => 4,
+    Option::Some(KnownField::M31) => 4,
     None => panic("The permutation/lookup argument is not implemented for the current field!")
 };
 

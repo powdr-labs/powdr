@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use std::{
-    collections::{BTreeSet, HashSet},
+    collections::BTreeSet,
     fmt::{self, Display, Formatter, Write},
 };
 
@@ -60,19 +60,17 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         can_process: CanProcess,
         witgen: WitgenInference<'a, T, FixedEval>,
     ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T>> {
-        let complete = Default::default();
         let branch_depth = 0;
-        self.generate_code_for_branch(can_process, witgen, complete, branch_depth)
+        self.generate_code_for_branch(can_process, witgen, branch_depth)
     }
 
     fn generate_code_for_branch<CanProcess: CanProcessCall<T> + Clone>(
         &self,
         can_process: CanProcess,
         mut witgen: WitgenInference<'a, T, FixedEval>,
-        mut complete: HashSet<(u64, i32)>,
         branch_depth: usize,
     ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T>> {
-        self.process_until_no_progress(can_process.clone(), &mut witgen, &mut complete);
+        self.process_until_no_progress(can_process.clone(), &mut witgen);
 
         if self.check_block_shape {
             // Check that the "spill" into the previous block is compatible
@@ -94,7 +92,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             .cloned()
             .collect_vec();
 
-        let incomplete_machine_calls = self.incomplete_machine_calls(&complete);
+        let incomplete_machine_calls = self.incomplete_machine_calls(&witgen);
         if missing_variables.is_empty() && incomplete_machine_calls.is_empty() {
             return Ok(witgen.code());
         }
@@ -117,7 +115,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             let incomplete_identities = self
                 .identities
                 .iter()
-                .filter(|(id, row_offset)| !complete.contains(&(id.id(), *row_offset)))
+                .filter(|(id, row_offset)| !witgen.is_complete(id, *row_offset))
                 .map(|(id, row_offset)| (*id, *row_offset))
                 .collect_vec();
             return Err(Error {
@@ -142,14 +140,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
 
         // TODO Tuning: If this fails (or also if it does not generate progress right away),
         // we could also choose a different variable to branch on.
-        let left_branch_code = self.generate_code_for_branch(
-            can_process.clone(),
-            first_branch,
-            complete.clone(),
-            branch_depth + 1,
-        )?;
+        let left_branch_code =
+            self.generate_code_for_branch(can_process.clone(), first_branch, branch_depth + 1)?;
         let right_branch_code =
-            self.generate_code_for_branch(can_process, second_branch, complete, branch_depth + 1)?;
+            self.generate_code_for_branch(can_process, second_branch, branch_depth + 1)?;
         let code = if left_branch_code == right_branch_code {
             common_code.into_iter().chain(left_branch_code).collect()
         } else {
@@ -170,25 +164,13 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         &self,
         can_process: CanProcess,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        complete: &mut HashSet<(u64, i32)>,
     ) {
-        let mut progress = true;
-        while progress {
-            progress = false;
-
-            // TODO At this point, we should call a function on `witgen`
-            // to propagate known concrete values across the identities
-            // to other known (but not concrete) variables.
-
-            for (id, row_offset) in &self.identities {
-                if complete.contains(&(id.id(), *row_offset)) {
-                    continue;
-                }
-                let result = witgen.process_identity(can_process.clone(), id, *row_offset);
-                progress |= result.progress;
-                if result.complete {
-                    complete.insert((id.id(), *row_offset));
-                }
+        loop {
+            let progress = self.identities.iter().any(|(id, row_offset)| {
+                witgen.process_identity(can_process.clone(), id, *row_offset)
+            });
+            if !progress {
+                break;
             }
         }
     }
@@ -197,7 +179,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
     /// So, the underlying lookup / permutation / bus argument likely does not hold.
     /// This function checks that all machine calls are complete, at least for a window of <block_size> rows.
     /// It returns the list of incomplete calls, if any.
-    fn incomplete_machine_calls(&self, complete: &HashSet<(u64, i32)>) -> Vec<(&Identity<T>, i32)> {
+    fn incomplete_machine_calls(
+        &self,
+        witgen: &WitgenInference<'a, T, FixedEval>,
+    ) -> Vec<(&Identity<T>, i32)> {
         self.identities
             .iter()
             .map(|(id, _)| id)
@@ -207,7 +192,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 let rows = self.rows_for_identity(call);
                 let complete_rows = rows
                     .iter()
-                    .filter(|&&row| complete.contains(&(call.id(), row)))
+                    .filter(|&&row| witgen.is_complete(call, row))
                     .collect::<Vec<_>>();
                 // We might process more rows than `self.block_size`, so we check
                 // that the complete calls are on consecutive rows.
@@ -223,7 +208,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                     }
                 }
                 rows.iter()
-                    .filter(|&row| !complete.contains(&(call.id(), *row)))
+                    .filter(|&row| !witgen.is_complete(call, *row))
                     .map(|row| (call, *row))
                     .collect::<Vec<_>>()
             })
