@@ -1,5 +1,5 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     fmt::{Display, Formatter},
 };
 
@@ -41,7 +41,7 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval> {
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
     known_variables: HashSet<Variable>,
     /// Internal equality constraints that are not identities from the constraint set.
-    assignments: Vec<Assignment<'a, T>>,
+    assignments: BTreeSet<Assignment<'a, T>>,
     code: Vec<Effect<T, Variable>>,
 }
 
@@ -173,7 +173,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// This does not have to be solvable right away, but is always processed as soon as we have progress.
     /// Note that all variables in the expression can be unknown and their status can also change over time.
     pub fn assign_constant(&mut self, expression: &'a Expression<T>, row_offset: i32, value: T) {
-        self.assignments.push(Assignment {
+        self.assignments.insert(Assignment {
             lhs: expression,
             row_offset,
             rhs: VariableOrValue::Value(value),
@@ -190,7 +190,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         row_offset: i32,
         variable: Variable,
     ) {
-        self.assignments.push(Assignment {
+        self.assignments.insert(Assignment {
             lhs: expression,
             row_offset,
             rhs: VariableOrValue::Variable(variable),
@@ -496,14 +496,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
 
 /// An equality constraint between an algebraic expression evaluated
 /// on a certain row offset and a variable or fixed constant value.
-#[derive(Clone)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 struct Assignment<'a, T: FieldElement> {
     lhs: &'a Expression<T>,
     row_offset: i32,
     rhs: VariableOrValue<T, Variable>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
 enum VariableOrValue<T, V> {
     Variable(V),
     Value(T),
