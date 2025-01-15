@@ -23,7 +23,7 @@ machine Arith(byte: Byte, byte2: Byte2) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    require_field_bits(18, || "Arith equires a field that fits any 18-Bit value.");
+    require_field_bits(18, || "Arith requires a field that fits any 18-Bit value.");
 
     col witness is_division;
 
