@@ -672,13 +672,14 @@ where
                 ty: self.type_processor(&type_vars).process_type(f.ty),
             })
             .collect();
-        let trait_decl = TraitDeclaration {
+
+        let trait_decl = Arc::new(TraitDeclaration {
             name: self.driver.resolve_decl(&trait_decl.name),
             type_vars: trait_decl.type_vars,
             functions,
-        };
+        });
 
-        let inner_items = trait_decl
+        let trait_functions = trait_decl
             .functions
             .iter()
             .map(|function| {
@@ -688,19 +689,18 @@ where
                         .relative_to(&Default::default())
                         .to_string(),
                     FunctionValueDefinition::TraitFunction(
-                        Arc::new(trait_decl.clone()),
+                        Arc::clone(&trait_decl),
                         function.clone(),
                     ),
                 )
             })
             .collect();
-        let trait_functions = self.process_inner_definitions(source, inner_items);
+
+        let trait_functions = self.process_inner_definitions(source, trait_functions);
 
         iter::once(PILItem::Definition(
             symbol,
-            Some(FunctionValueDefinition::TraitDeclaration(Arc::new(
-                trait_decl.clone(),
-            ))),
+            Some(FunctionValueDefinition::TraitDeclaration(trait_decl)),
         ))
         .chain(trait_functions)
         .collect()
