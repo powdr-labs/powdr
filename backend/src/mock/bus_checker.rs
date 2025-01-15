@@ -12,7 +12,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use super::{localize, machine::Machine, unique_referenced_namespaces};
 
 pub struct BusChecker<'a, F> {
-    connections: &'a [BusInteraction<F>],
+    interactions: &'a [BusInteraction<F>],
     machines: &'a BTreeMap<String, Machine<'a, F>>,
 }
 
@@ -30,28 +30,14 @@ impl<F: fmt::Display> fmt::Display for Error<F> {
             self.tuple[0],
             self.tuple.iter().skip(1).map(|v| v.to_string()).join(", ")
         )?;
-        for (
-            BusInteraction {
-                machine,
-                interaction,
-            },
-            count,
-        ) in &self.sends
-        {
+        for (BusInteraction { machine, identity }, count) in &self.sends {
             writeln!(f, "  - sent {count} times",)?;
-            writeln!(f, "    by `{interaction}`",)?;
+            writeln!(f, "    by `{identity}`",)?;
             writeln!(f, "    in {machine}",)?;
         }
-        for (
-            BusInteraction {
-                machine,
-                interaction,
-            },
-            count,
-        ) in &self.receives
-        {
+        for (BusInteraction { machine, identity }, count) in &self.receives {
             writeln!(f, "  - received {count} times",)?;
-            writeln!(f, "    by `{interaction}`",)?;
+            writeln!(f, "    by `{identity}`",)?;
             writeln!(f, "    in {machine}",)?;
         }
         Ok(())
@@ -61,11 +47,11 @@ impl<F: fmt::Display> fmt::Display for Error<F> {
 #[derive(PartialEq, PartialOrd, Eq, Ord, Clone)]
 pub struct BusInteraction<F> {
     pub machine: String,
-    pub interaction: PhantomBusInteractionIdentity<F>,
+    pub identity: PhantomBusInteractionIdentity<F>,
 }
 
 impl<F: FieldElement> BusInteraction<F> {
-    /// Extracts all bus connections from the global PIL.
+    /// Extracts all bus interactions from the global PIL.
     pub fn get_all(
         global_pil: &Analyzed<F>,
         machine_to_pil: &BTreeMap<String, Analyzed<F>>,
@@ -74,7 +60,7 @@ impl<F: FieldElement> BusInteraction<F> {
             .identities
             .iter()
             .filter_map(|identity| {
-                // TODO: turn other relevant identities into bus connections
+                // TODO: turn other relevant identities into bus interactions
                 if let Identity::PhantomBusInteraction(identity) = identity {
                     Some(identity.clone())
                 } else {
@@ -84,11 +70,8 @@ impl<F: FieldElement> BusInteraction<F> {
             .map(|interaction| {
                 // Localize the interaction assuming a single namespace is accessed.
                 let machine = unique_referenced_namespaces(&interaction).unwrap();
-                let interaction = localize(interaction, global_pil, &machine_to_pil[&machine]);
-                BusInteraction {
-                    machine,
-                    interaction,
-                }
+                let identity = localize(interaction, global_pil, &machine_to_pil[&machine]);
+                BusInteraction { machine, identity }
             })
             .collect()
     }
@@ -96,11 +79,11 @@ impl<F: FieldElement> BusInteraction<F> {
 
 impl<'a, F: FieldElement> BusChecker<'a, F> {
     pub fn new(
-        connections: &'a [BusInteraction<F>],
+        interactions: &'a [BusInteraction<F>],
         machines: &'a BTreeMap<String, Machine<'a, F>>,
     ) -> Self {
         Self {
-            connections,
+            interactions,
             machines,
         }
     }
@@ -112,92 +95,78 @@ impl<'a, F: FieldElement> BusChecker<'a, F> {
             receives: BTreeMap<&'a BusInteraction<F>, usize>,
         }
 
+        impl<'a, F: Ord> TupleState<'a, F> {
+            fn update(&mut self, interaction: &'a BusInteraction<F>, count: i32) {
+                let entry = match count.cmp(&0) {
+                    Ordering::Equal => {
+                        panic!("Performance bug: This case should be handled before!")
+                    }
+                    Ordering::Greater => self.sends.entry(interaction),
+                    Ordering::Less => self.receives.entry(interaction),
+                };
+                let count = count.unsigned_abs() as usize;
+                entry.and_modify(|sends| *sends += count).or_insert(count);
+            }
+        }
+
         type BusState<'a, F> = BTreeMap<Vec<F>, TupleState<'a, F>>;
 
         let bus_state: BusState<F> = self
             .machines
             .into_par_iter()
             .flat_map(|(name, machine)| {
-                (0..machine.size).into_par_iter().flat_map(|row_id| {
+                (0..machine.size).into_par_iter().map(|row_id| {
                     // create an evaluator for this row
                     let mut evaluator = ExpressionEvaluator::new(
                         machine.values.row(row_id),
                         &machine.intermediate_definitions,
                     );
 
-                    // for all connections of this machine
-                    self.connections
+                    // for all interactions of this machine
+                    self.interactions
                         .iter()
-                        .filter(|bus_connection| bus_connection.machine == *name)
-                        .map(move |bus_connection| {
-                            let bus_interaction = &bus_connection.interaction;
+                        .filter(|bus_interaction| bus_interaction.machine == *name)
+                        .filter_map(move |bus_interaction| {
+                            let identity = &bus_interaction.identity;
 
                             let multiplicity = evaluator
-                                .evaluate(&bus_interaction.multiplicity)
+                                .evaluate(&identity.multiplicity)
                                 .try_into_i32()
                                 .unwrap();
 
-                            let tuple = bus_interaction
+                            let tuple = identity
                                 .tuple
                                 .children()
                                 .map(|e| evaluator.evaluate(e))
                                 .collect();
 
-                            (bus_connection, tuple, multiplicity)
+                            // if the multiplicity is not zero, return the bus interaction
+                            (multiplicity != 0).then_some((bus_interaction, tuple, multiplicity))
                         })
-                        .collect::<Vec<_>>()
+                        // for each row, collect the bus interactions into a single state
+                        .fold(
+                            BusState::default(),
+                            |mut state, (bus_interaction, tuple, multiplicity)| {
+                                state
+                                    .entry(tuple)
+                                    .or_default()
+                                    .update(bus_interaction, multiplicity);
+                                state
+                            },
+                        )
                 })
             })
-            // fold the interactions from a row into a state
-            .fold(
-                BusState::default,
-                |mut state, (bus_connection, tuple, multiplicity)| {
-                    let abs = multiplicity.unsigned_abs() as usize;
-
-                    match multiplicity.cmp(&0) {
-                        // if the multiplicity is zero, we don't need to do anything
-                        Ordering::Equal => {}
-                        // if the multiplicity is positive, we send
-                        Ordering::Greater => {
-                            let TupleState { sends, .. } = state.entry(tuple).or_default();
-                            sends
-                                .entry(bus_connection)
-                                .and_modify(|sends| *sends += abs)
-                                .or_insert(abs);
-                        }
-                        // if the multiplicity is negative, we receive
-                        Ordering::Less => {
-                            let TupleState { receives, .. } = state.entry(tuple).or_default();
-                            receives
-                                .entry(bus_connection)
-                                .and_modify(|receives| *receives += abs)
-                                .or_insert(abs);
-                        }
-                    }
-
-                    state
-                },
-            )
-            // combine all the states to one
+            // combine all the states into one, in parallel
             .reduce(BusState::default, |mut a, b| {
                 for (tuple, TupleState { sends, receives }) in b {
-                    let TupleState {
-                        sends: sends_a,
-                        receives: receives_a,
-                    } = a.entry(tuple).or_default();
+                    let state = a.entry(tuple).or_default();
 
-                    for (bus_connection, count) in sends {
-                        sends_a
-                            .entry(bus_connection)
-                            .and_modify(|sends| *sends += count)
-                            .or_insert(count);
+                    for (bus_interaction, count) in sends {
+                        state.update(bus_interaction, count as i32);
                     }
 
-                    for (bus_connection, count) in receives {
-                        receives_a
-                            .entry(bus_connection)
-                            .and_modify(|receives| *receives += count)
-                            .or_insert(count);
+                    for (bus_interaction, count) in receives {
+                        state.update(bus_interaction, -(count as i32));
                     }
                 }
 
