@@ -382,7 +382,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let outer_query = OuterQuery::new(caller_rows, self.parts.connections[&identity_id]);
+        let outer_query =
+            match OuterQuery::try_new(caller_rows, self.parts.connections[&identity_id]) {
+                Ok(outer_query) => outer_query,
+                Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
+            };
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");

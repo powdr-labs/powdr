@@ -118,7 +118,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
     fn row_range(&self) -> std::ops::Range<i32> {
         // We iterate over all rows of the block +/- one row, so that we can also solve for non-rectangular blocks.
-        -1..(self.block_size + 1) as i32
+        -1..self.block_size as i32
     }
 }
 

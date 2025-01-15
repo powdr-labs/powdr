@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
-use bus_accumulator::BusAccumulatorGenerator;
+use bus_accumulator::generate_bus_accumulator_columns;
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
 use multiplicity_column_generator::MultiplicityColumnGenerator;
@@ -113,16 +113,23 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
             .iter()
             .any(|identity| matches!(identity, Identity::PhantomBusInteraction(_)));
 
-        if has_phantom_bus_sends && T::known_field() == Some(KnownField::GoldilocksField) {
+        let supports_field = match T::known_field().unwrap() {
+            KnownField::GoldilocksField
+            | KnownField::BabyBearField
+            | KnownField::KoalaBearField
+            | KnownField::Mersenne31Field => true,
+            KnownField::Bn254Field => false,
+        };
+
+        if has_phantom_bus_sends && supports_field {
             log::debug!("Using hand-written bus witgen.");
             assert_eq!(stage, 1);
-            let bus_columns = BusAccumulatorGenerator::new(
+            let bus_columns = generate_bus_accumulator_columns(
                 pil,
                 current_witness,
                 &self.fixed_col_values,
                 challenges,
-            )
-            .generate();
+            );
 
             current_witness.iter().cloned().chain(bus_columns).collect()
         } else {

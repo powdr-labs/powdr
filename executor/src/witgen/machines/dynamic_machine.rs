@@ -67,7 +67,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
         let identity = *self.parts.connections.get(&identity_id).unwrap();
-        let outer_query = OuterQuery::new(caller_rows, identity);
+        let outer_query = match OuterQuery::try_new(caller_rows, identity) {
+            Ok(outer_query) => outer_query,
+            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
+        };
 
         log::trace!("Start processing secondary VM '{}'", self.name());
         log::trace!("Arguments:");

@@ -281,16 +281,27 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .collect_vec();
 
         // Now only consider the index entries that match the input range constraints,
-        // see that the result is unique and determine new output range constraints.
-        let values_matching_input_constraints = index
+        // see that the result is unique and determine new range constraints.
+        let items_matching_input_constraints = index
             .iter()
-            .filter(|(key, _)| matches_range_constraint(key, &input_range_constraints))
-            .map(|(_, value)| {
-                let (_, values) = value.get()?;
-                Some(values)
+            .filter(|(inputs, _)| matches_range_constraint(inputs, &input_range_constraints))
+            .map(|(inputs, value)| {
+                let (_, outputs) = value.get()?;
+                // Now re-order the items according to the connection (instead of
+                // by input/output).
+                let mut inputs = inputs.iter();
+                let mut outputs = outputs.iter();
+                let unpartition = |is_known| {
+                    if is_known {
+                        *inputs.next().unwrap()
+                    } else {
+                        *outputs.next().unwrap()
+                    }
+                };
+                Some(known_arguments.iter().map(unpartition).collect_vec())
             });
         let mut new_range_constraints: Option<Vec<(T, T, T::Integer)>> = None;
-        for values in values_matching_input_constraints {
+        for values in items_matching_input_constraints {
             // If any value is None, it means the lookup does not have a unique answer,
             // and thus we cannot process the call.
             let values = values?;
@@ -303,8 +314,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
                 // Reduce range constraint by disjunction.
                 Some(mut acc) => {
                     for ((min, max, mask), v) in acc.iter_mut().zip_eq(values) {
-                        *min = (*min).min(*v);
-                        *max = (*max).max(*v);
+                        *min = (*min).min(v);
+                        *max = (*max).max(v);
                         *mask |= v.to_integer();
                     }
                     acc
@@ -320,25 +331,16 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
                 // no way to signal this in the return type, yet.
                 // TODO(#2324): change this.
                 // We just return the input range constraints to signal "everything allright".
+                log::trace!("Call to FixedLookup resulted in no match.");
                 range_constraints.to_vec()
             }
-            Some(new_output_range_constraints) => {
-                let mut new_output_range_constraints = new_output_range_constraints.into_iter();
-                known_arguments
-                    .iter()
-                    .enumerate()
-                    .map(|(i, is_known)| {
-                        if is_known {
-                            // Just copy the input range constraint.
-                            range_constraints[i].clone()
-                        } else {
-                            let (min, max, mask) = new_output_range_constraints.next().unwrap();
-                            RangeConstraint::from_range(min, max)
-                                .conjunction(&RangeConstraint::from_mask(mask))
-                        }
-                    })
-                    .collect()
-            }
+            Some(new_range_constraints) => new_range_constraints
+                .into_iter()
+                .map(|(min, max, mask)| {
+                    RangeConstraint::from_range(min, max)
+                        .conjunction(&RangeConstraint::from_mask(mask))
+                })
+                .collect(),
         })
     }
 
@@ -358,7 +360,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .map(|e| try_to_simple_poly(e).unwrap())
             .peekable();
 
-        let outer_query = OuterQuery::new(caller_rows, identity);
+        let outer_query = match OuterQuery::try_new(caller_rows, identity) {
+            Ok(outer_query) => outer_query,
+            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
+        };
         self.process_plookup_internal(mutable_state, identity_id, caller_rows, outer_query, right)
     }
 
