@@ -179,33 +179,30 @@ impl<'a, F: FieldElement> BusChecker<'a, F> {
                 },
             )
             // combine all the states to one
-            .reduce(
-                BusState::default,
-                |mut a, b| {
-                    for (tuple, TupleState { sends, receives }) in b {
-                        let TupleState {
-                            sends: sends_a,
-                            receives: receives_a,
-                        } = a.entry(tuple).or_default();
+            .reduce(BusState::default, |mut a, b| {
+                for (tuple, TupleState { sends, receives }) in b {
+                    let TupleState {
+                        sends: sends_a,
+                        receives: receives_a,
+                    } = a.entry(tuple).or_default();
 
-                        for (bus_connection, count) in sends {
-                            sends_a
-                                .entry(bus_connection)
-                                .and_modify(|sends| *sends += count)
-                                .or_insert(count);
-                        }
-
-                        for (bus_connection, count) in receives {
-                            receives_a
-                                .entry(bus_connection)
-                                .and_modify(|receives| *receives += count)
-                                .or_insert(count);
-                        }
+                    for (bus_connection, count) in sends {
+                        sends_a
+                            .entry(bus_connection)
+                            .and_modify(|sends| *sends += count)
+                            .or_insert(count);
                     }
 
-                    a
-                },
-            );
+                    for (bus_connection, count) in receives {
+                        receives_a
+                            .entry(bus_connection)
+                            .and_modify(|receives| *receives += count)
+                            .or_insert(count);
+                    }
+                }
+
+                a
+            });
 
         let mut errors = vec![];
 
