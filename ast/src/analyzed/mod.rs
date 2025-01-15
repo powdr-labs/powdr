@@ -792,7 +792,7 @@ impl Children<Expression> for FunctionValueDefinition {
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => {
-                Arc::get_mut(trait_decl).unwrap().children_mut()
+                Arc::make_mut(trait_decl).children_mut()
             }
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
         }
