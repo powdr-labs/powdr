@@ -337,8 +337,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     progress |= self.add_range_constraint(variable.clone(), rc.clone());
                 }
                 Effect::MachineCall(_, _, vars) => {
-                    // If the machine call is already complete, it means that we have
-                    // should not create another submachine call. We might still process it
+                    // If the machine call is already complete, it means that we should
+                    // not create another submachine call. We might still process it
                     // multiple times to get better range constraints.
                     if self.complete_identities.insert(identity_id.unwrap()) {
                         assert!(process_result.complete);
