@@ -132,7 +132,7 @@ machine Arith(byte: Byte, byte2: Byte2) with
     // being copied syntactically before resolving the closures.
     // Moving these expressions out of the link fixes it.
     let sum0 = sum(4, |i| x1[i] * CLK8[i]) + sum(4, |i| y1[i] * CLK8[4 + i]);
-    link => byte2.check(sum0);
+    link => byte.check(sum0);
     let sum1 = sum(4, |i| x2[i] * CLK8[i]) + sum(4, |i| y2[i] * CLK8[4 + i]);
     link => byte.check(sum1);
     let sum2 = sum(4, |i| y3[i] * CLK8[i]);
