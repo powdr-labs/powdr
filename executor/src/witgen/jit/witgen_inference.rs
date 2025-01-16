@@ -33,6 +33,8 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval> {
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
     known_variables: HashSet<Variable>,
     /// Identities that have already been completed.
+    /// Completed identities are still processed to propagate range constraints
+    /// and concrete values.
     /// This mainly avoids generating multiple submachine calls for the same
     /// connection on the same row.
     complete_identities: HashSet<(u64, i32)>,
