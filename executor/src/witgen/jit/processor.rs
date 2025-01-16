@@ -160,12 +160,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             (Err(e), Ok(code)) | (Ok(code), Err(e))
                 if e.reason == ErrorReason::ConflictingConstraints =>
             {
-                log::trace!("Branching on {most_constrained_var} resulted in a conflict, we can reduce to a sigle branch.");
+                log::trace!("Branching on {most_constrained_var} resulted in a conflict, we can reduce to a single branch.");
                 Ok(common_code.into_iter().chain(code).collect())
             }
             (Err(e), _) | (_, Err(e)) => Err(e),
             (Ok(first_code), Ok(second_code)) if first_code == second_code => {
-                log::trace!("Branching on {most_constrained_var} resulted in the same code, we can reduce to a sigle branch.");
+                log::trace!("Branching on {most_constrained_var} resulted in the same code, we can reduce to a single branch.");
                 Ok(common_code.into_iter().chain(first_code).collect())
             }
             (Ok(first_code), Ok(second_code)) => Ok(common_code
