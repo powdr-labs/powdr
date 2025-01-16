@@ -4,13 +4,13 @@ use super::super::affine_expression::AffineExpression;
 use super::{Connection, EvalResult, FixedData, LookupCell};
 use super::{Machine, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
+use crate::witgen::data_structures::identity::Identity;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::evaluators::fixed_evaluator::FixedEvaluator;
 use crate::witgen::evaluators::partial_expression_evaluator::PartialExpressionEvaluator;
 use crate::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use crate::witgen::rows::RowPair;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause, QueryCallback};
-use crate::Identity;
 use itertools::Itertools;
 use num_traits::One;
 use powdr_ast::analyzed::{

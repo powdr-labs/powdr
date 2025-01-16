@@ -14,11 +14,11 @@ use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
 use super::Machine;
+use crate::witgen::data_structures::identity::Identity;
 use crate::witgen::machines::dynamic_machine::DynamicMachine;
 use crate::witgen::machines::second_stage_machine::SecondStageMachine;
 use crate::witgen::machines::Connection;
 use crate::witgen::machines::{write_once_memory::WriteOnceMemory, MachineParts};
-use crate::Identity;
 
 use powdr_ast::analyzed::{
     self, AlgebraicExpression as Expression, PolyID, PolynomialReference, Reference,
@@ -391,10 +391,7 @@ struct PublicsTracker<'a>(BTreeSet<&'a String>);
 impl<'a> PublicsTracker<'a> {
     /// Given a machine's identities, add all publics that are referenced by them.
     /// Panics if a public is referenced by more than one machine.
-    fn add_all<T>(
-        &mut self,
-        identities: &[&'a powdr_ast::analyzed::Identity<T>],
-    ) -> Result<(), String> {
+    fn add_all<T>(&mut self, identities: &[&'a Identity<T>]) -> Result<(), String> {
         let referenced_publics = identities
             .iter()
             .flat_map(|id| id.all_children())

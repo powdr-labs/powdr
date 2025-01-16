@@ -1,10 +1,8 @@
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::Identity;
-
 use super::{
     affine_expression::AlgebraicVariable,
-    data_structures::mutable_state::MutableState,
+    data_structures::{identity::Identity, mutable_state::MutableState},
     machines::MachineParts,
     processor::{OuterQuery, Processor, SolverState},
     rows::{RowIndex, UnknownStrategy},

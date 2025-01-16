@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use bus_accumulator::generate_bus_accumulator_columns;
+use data_structures::identity::convert;
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
 use multiplicity_column_generator::MultiplicityColumnGenerator;
@@ -210,10 +211,8 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             self.challenges,
             self.stage,
         );
-        let identities = self
-            .analyzed
-            .identities
-            .clone()
+        let identities = convert(&self.analyzed.identities);
+        let identities = identities
             .into_iter()
             .filter(|identity| {
                 let references_later_stage_challenge = identity.expr_any(|expr| {

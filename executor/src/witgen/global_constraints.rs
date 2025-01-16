@@ -13,9 +13,9 @@ use powdr_ast::analyzed::{
 use powdr_number::FieldElement;
 
 use crate::witgen::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
-use crate::Identity;
 
 use super::affine_expression::AlgebraicVariable;
+use super::data_structures::identity::Identity;
 use super::evaluators::partial_expression_evaluator::PartialExpressionEvaluator;
 use super::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use super::machines::Connection;
@@ -449,7 +449,9 @@ mod test {
     use pretty_assertions::assert_eq;
     use test_log::test;
 
-    use crate::constant_evaluator::get_uniquely_sized;
+    use crate::{
+        constant_evaluator::get_uniquely_sized, witgen::data_structures::identity::convert,
+    };
 
     use super::*;
 
@@ -558,7 +560,7 @@ namespace Global(2**20);
             .collect()
         );
         let mut range_constraint_multiplicities = BTreeMap::new();
-        for identity in &analyzed.identities {
+        for identity in &convert(&analyzed.identities) {
             propagate_constraints(
                 &BTreeMap::new(),
                 &mut known_constraints,
@@ -650,7 +652,7 @@ namespace Global(2**20);
             .collect()
         );
         let mut range_constraint_multiplicities = BTreeMap::new();
-        for identity in &analyzed.identities {
+        for identity in &convert(&analyzed.identities) {
             propagate_constraints(
                 &BTreeMap::new(),
                 &mut known_constraints,
@@ -727,12 +729,13 @@ namespace Global(1024);
             .into_iter()
             .collect();
         let mut range_constraint_multiplicities = BTreeMap::new();
-        assert_eq!(analyzed.identities.len(), 1);
+        let identities = convert(&analyzed.identities);
+        assert_eq!(identities.len(), 1);
         let removed = propagate_constraints(
             &BTreeMap::new(),
             &mut known_constraints,
             &mut range_constraint_multiplicities,
-            analyzed.identities.first().unwrap(),
+            identities.first().unwrap(),
             &Default::default(),
         );
         assert!(!removed);

@@ -10,8 +10,8 @@ use powdr_number::{DegreeType, FieldElement};
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
-use crate::Identity;
 
+use super::data_structures::identity::Identity;
 use super::machines::{Connection, LookupCell, MachineParts};
 use super::{
     affine_expression::AffineExpression,

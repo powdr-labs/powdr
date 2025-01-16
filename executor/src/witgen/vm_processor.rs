@@ -11,9 +11,9 @@ use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::identity_processor::{self};
 use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::IncompleteCause;
-use crate::Identity;
 
 use super::affine_expression::AlgebraicVariable;
+use super::data_structures::identity::Identity;
 use super::machines::MachineParts;
 use super::processor::{OuterQuery, Processor, SolverState};
 

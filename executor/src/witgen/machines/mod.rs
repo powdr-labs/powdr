@@ -11,7 +11,6 @@ use powdr_number::DegreeType;
 use powdr_number::FieldElement;
 
 use crate::witgen::data_structures::mutable_state::MutableState;
-use crate::Identity;
 
 use self::block_machine::BlockMachine;
 use self::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
@@ -22,6 +21,7 @@ use self::second_stage_machine::SecondStageMachine;
 use self::sorted_witness_machine::SortedWitnesses;
 use self::write_once_memory::WriteOnceMemory;
 
+use super::data_structures::identity::Identity;
 use super::range_constraints::RangeConstraint;
 use super::rows::RowPair;
 use super::{EvalError, EvalResult, FixedData, QueryCallback};
