@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use powdr_ast::{
-    analyzed::{AlgebraicExpression, Identity, PolynomialType, SelectedExpressions},
+    analyzed::{AlgebraicExpression, ExpressionList, Identity, PolynomialType},
     parsed::visitor::AllChildren,
 };
 use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, OwnedTerminalValues};
@@ -49,7 +49,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             .iter()
             .filter_map(|identity| match identity {
                 // TODO(bus_interaction)
-                Identity::PhantomLookup(_) => Some(Connection::try_from(identity).unwrap()),
+                Identity::PhantomLookup(_) => Some(Connection::try_new(identity, &self.fixed.bus_receives).unwrap()),
                 _ => None,
             })
             .collect::<Vec<_>>();
@@ -88,7 +88,11 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             log::trace!("  Updating multiplicity for phantom lookup: {lookup}");
             let start = std::time::Instant::now();
 
-            let (rhs_machine_size, rhs_tuples) = self.get_tuples(&terminal_values, lookup.right);
+            let (rhs_machine_size, rhs_tuples) = self.get_tuples(
+                &terminal_values,
+                &lookup.receive_latch,
+                &lookup.receive_tuple,
+            );
 
             log::trace!(
                 "    Done collecting RHS tuples, took {}s",
@@ -110,7 +114,8 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             );
             let start = std::time::Instant::now();
 
-            let (_, lhs_tuples) = self.get_tuples(&terminal_values, lookup.left);
+            let (_, lhs_tuples) =
+                self.get_tuples(&terminal_values, &lookup.send_latch, &lookup.send_tuple);
 
             log::trace!(
                 "    Done collecting LHS tuples, took: {}s",
@@ -160,10 +165,11 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
     fn get_tuples(
         &self,
         terminal_values: &OwnedTerminalValues<T>,
-        selected_expressions: &SelectedExpressions<T>,
+        latch: &AlgebraicExpression<T>,
+        expressions: &ExpressionList<T>,
     ) -> (usize, Vec<(usize, Vec<T>)>) {
-        let machine_size = selected_expressions
-            .expressions
+        let machine_size = expressions
+            .0
             .iter()
             .flat_map(|expr| expr.all_children())
             .filter_map(|expr| match expr {
@@ -188,14 +194,14 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                     terminal_values.row(row),
                     &self.fixed.intermediate_definitions,
                 );
-                let result = evaluator.evaluate(&selected_expressions.selector);
+                let result = evaluator.evaluate(latch);
 
                 assert!(result.is_zero() || result.is_one(), "Non-binary selector");
                 result.is_one().then(|| {
                     (
                         row,
-                        selected_expressions
-                            .expressions
+                        expressions
+                            .0
                             .iter()
                             .map(|expression| evaluator.evaluate(expression))
                             .collect::<Vec<_>>(),

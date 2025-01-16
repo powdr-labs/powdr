@@ -66,8 +66,8 @@ impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
     ) -> Result<Self, IncompleteCause<AlgebraicVariable<'a>>> {
         // Evaluate once, for performance reasons.
         let left = connection
-            .left
-            .expressions
+            .send_tuple
+            .0
             .iter()
             .map(|e| caller_rows.evaluate(e))
             .collect::<Result<_, _>>()?;
@@ -214,7 +214,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
         for (l, r) in outer_query
             .left
             .iter()
-            .zip(&outer_query.connection.right.expressions)
+            .zip_eq(&outer_query.connection.receive_tuple.0)
         {
             if let Some(right_poly) = try_to_simple_poly(r).map(|p| p.poly_id) {
                 if let Some(l) = l.constant_value() {
@@ -262,7 +262,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
             .as_ref()
             .and_then(|outer_query| {
                 row_pair
-                    .evaluate(&outer_query.connection.right.selector)
+                    .evaluate(&outer_query.connection.receive_latch)
                     .ok()
             })
             .and_then(|l| l.constant_value())
@@ -371,9 +371,9 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         row_index: usize,
     ) -> Result<(bool, Constraints<AlgebraicVariable<'a>, T>), EvalError<T>> {
         let mut progress = false;
-        let right = self.outer_query.as_ref().unwrap().connection.right;
+        let connection = self.outer_query.as_ref().unwrap().connection;
         progress |= self
-            .set_value(row_index, &right.selector, T::one(), || {
+            .set_value(row_index, &connection.receive_latch, T::one(), || {
                 "Set selector to 1".to_string()
             })
             .unwrap_or(false);
@@ -399,7 +399,11 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             .map_err(|e| {
                 log::warn!("Error in outer query: {e}");
                 log::warn!("Some of the following entries could not be matched:");
-                for (l, r) in outer_query.left.iter().zip(right.expressions.iter()) {
+                for (l, r) in outer_query
+                    .left
+                    .iter()
+                    .zip_eq(connection.receive_tuple.0.iter())
+                {
                     if let Ok(r) = row_pair.evaluate(r) {
                         log::warn!("  => {} = {}", l, r);
                     }
@@ -643,14 +647,15 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             ),
         };
 
-        if let Ok(connection) = Connection::try_from(identity) {
+        // TODO: This is bad, because try_new() linearly searches for the matching receive
+        if let Some(connection) = Connection::try_new(identity, &self.fixed_data.bus_receives) {
             // JITed submachines would panic if passed a wrong input / output pair.
             // Therefore, if any machine call is activated, we resort to the full
             // solving routine.
             // An to this is when the call is always active (e.g. the PC lookup).
             // In that case, we know that the call has been active before with the
             // same input / output pair, so we can be sure that it will succeed.
-            let selector = &connection.left.selector;
+            let selector = connection.send_latch;
             if selector != &Expression::one() {
                 let selector_value = row_pair
                     .evaluate(selector)
