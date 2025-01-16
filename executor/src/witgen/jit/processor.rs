@@ -185,9 +185,13 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         witgen: &mut WitgenInference<'a, T, FixedEval>,
     ) -> Result<(), EvalError<T>> {
         loop {
-            let progress = self.identities.iter().any(|(id, row_offset)| {
-                witgen.process_identity(can_process.clone(), id, *row_offset)
-            });
+            let mut progress = false;
+            for (id, row_offset) in &self.identities {
+                if witgen.process_identity(can_process.clone(), id, *row_offset)? {
+                    progress = true;
+                    break;
+                }
+            }
             if !progress {
                 break;
             }
