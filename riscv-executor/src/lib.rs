@@ -909,7 +909,7 @@ mod builder {
         }
 
         pub fn col_is_defined(&self, name: &str) -> bool {
-            if let ExecMode::Trace = self.mode {
+            if let ExecMode::Trace | ExecMode::Witness = self.mode {
                 self.trace.all_cols.contains(&name.to_string())
             } else {
                 false
