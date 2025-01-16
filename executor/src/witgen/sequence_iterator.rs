@@ -166,14 +166,21 @@ where
     }
 }
 
+/// The iterator to be used when the a cached sequence is available.
+/// In theory, it should only yield the steps from `cached_iterator`.
+/// However, we also run the default iterator afterwards, because the cached sequence
+/// is not guaranteed to be sufficient.
+pub struct CachedSequenceIterator {
+    cached_iterator: <Vec<SequenceStep> as IntoIterator>::IntoIter,
+    cached_iterator_exhausted: bool,
+    default_iterator: DefaultSequenceIterator,
+}
+
 pub enum ProcessingSequenceIterator {
     /// The default strategy
     Default(DefaultSequenceIterator),
     /// The machine has been run successfully before and the sequence is cached.
-    Cached(
-        <Vec<SequenceStep> as IntoIterator>::IntoIter,
-        DefaultSequenceIterator,
-    ),
+    Cached(CachedSequenceIterator),
     /// The machine has been run before, but did not succeed. There is no point in trying again.
     Incomplete,
 }
@@ -182,14 +189,21 @@ impl ProcessingSequenceIterator {
     pub fn report_progress(&mut self, progress_in_last_step: bool) {
         match self {
             Self::Default(it) => it.report_progress(progress_in_last_step),
-            Self::Cached(_, _) => {} // Progress is ignored
+            Self::Cached(it) => {
+                if it.cached_iterator_exhausted {
+                    // The default iterator changes its behavior depending on whether
+                    // we made any progress, so we need to report it even though we won't
+                    // ever access the progress steps.
+                    it.default_iterator.report_progress(progress_in_last_step)
+                }
+            }
             Self::Incomplete => unreachable!(),
         }
     }
 
     pub fn has_steps(&self) -> bool {
         match self {
-            Self::Default(_) | Self::Cached(_, _) => true,
+            Self::Default(_) | Self::Cached(_) => true,
             Self::Incomplete => false,
         }
     }
@@ -207,7 +221,11 @@ impl Iterator for ProcessingSequenceIterator {
             // In the typical scenario, most identities will be completed at this point and
             // the block processor will skip them. But if an identity was not completed before,
             // it will try again.
-            Self::Cached(it, default_iterator) => it.next().or_else(|| default_iterator.next()),
+            Self::Cached(it) => {
+                let cached_step = it.cached_iterator.next();
+                it.cached_iterator_exhausted = cached_step.is_none();
+                cached_step.or_else(|| it.default_iterator.next())
+            }
             Self::Incomplete => unreachable!(),
         }
     }
@@ -248,14 +266,11 @@ impl ProcessingSequenceCache {
         match self.cache.get(&left.into()) {
             Some(CacheEntry::Complete(cached_sequence)) => {
                 log::trace!("Using cached sequence");
-                ProcessingSequenceIterator::Cached(
-                    cached_sequence.clone().into_iter(),
-                    DefaultSequenceIterator::new(
-                        self.block_size,
-                        self.identities_count,
-                        Some(self.outer_query_row as i64),
-                    ),
-                )
+                ProcessingSequenceIterator::Cached(CachedSequenceIterator {
+                    cached_iterator: cached_sequence.clone().into_iter(),
+                    cached_iterator_exhausted: false,
+                    default_iterator: self.get_default_sequence_iterator_inner(),
+                })
             }
             Some(CacheEntry::Incomplete) => ProcessingSequenceIterator::Incomplete,
             None => {
@@ -266,11 +281,15 @@ impl ProcessingSequenceCache {
     }
 
     pub fn get_default_sequence_iterator(&self) -> ProcessingSequenceIterator {
-        ProcessingSequenceIterator::Default(DefaultSequenceIterator::new(
+        ProcessingSequenceIterator::Default(self.get_default_sequence_iterator_inner())
+    }
+
+    fn get_default_sequence_iterator_inner(&self) -> DefaultSequenceIterator {
+        DefaultSequenceIterator::new(
             self.block_size,
             self.identities_count,
             Some(self.outer_query_row as i64),
-        ))
+        )
     }
 
     pub fn report_incomplete<K, T>(&mut self, left: &[AffineExpression<K, T>])
@@ -300,7 +319,7 @@ impl ProcessingSequenceCache {
                     .is_none());
             }
             ProcessingSequenceIterator::Incomplete => unreachable!(),
-            ProcessingSequenceIterator::Cached(_, _) => {} // Already cached, do nothing
+            ProcessingSequenceIterator::Cached(_) => {} // Already cached, do nothing
         }
     }
 }

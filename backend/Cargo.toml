@@ -9,9 +9,25 @@ repository = { workspace = true }
 
 [features]
 default = []
-halo2 = ["dep:halo2_proofs", "dep:halo2_curves", "dep:snark-verifier", "dep:halo2_solidity_verifier"]
-estark-polygon = ["dep:pil-stark-prover"]
-plonky3 = ["dep:powdr-plonky3"]
+halo2 = [
+  "dep:halo2_proofs",
+  "dep:halo2_curves",
+  "dep:snark-verifier",
+  "dep:halo2_solidity_verifier",
+]
+estark-starky = ["dep:starky"]
+estark-polygon = ["dep:pil-stark-prover", "dep:starky"]
+plonky3 = [
+  "dep:powdr-plonky3",
+  "dep:p3-commit",
+  "dep:p3-matrix",
+  "dep:p3-uni-stark",
+]
+stwo = ["dep:stwo-prover"]
+
+# Enable AVX or Neon accordingly in backends that support them.
+plonky3-simd = ["powdr-plonky3?/nightly-features"]
+estark-starky-simd = ["starky?/avx512"]
 
 [dependencies]
 powdr-ast.workspace = true
@@ -19,21 +35,35 @@ powdr-number.workspace = true
 powdr-parser.workspace = true
 powdr-pil-analyzer.workspace = true
 powdr-executor.workspace = true
+powdr-executor-utils.workspace = true
 powdr-parser-util.workspace = true
+powdr-backend-utils.workspace = true
 
 powdr-plonky3 = { path = "../plonky3", optional = true }
 
-starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", rev = "cf405b2e2cecb8567cfd083a55936b71722276d5" }
+starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", rev = "cf405b2e2cecb8567cfd083a55936b71722276d5", optional = true }
 pil-stark-prover = { git = "https://github.com/powdr-labs/pil-stark-prover.git", rev = "769b1153f3ae2d7cbab4c8acf33865ed13f8a823", optional = true }
 
 # TODO change this once Halo2 releases 0.3.1
 #halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2", tag = "v0.3.0", features = ["circuit-params"] }
-halo2_proofs = { git = "https://github.com/powdr-labs/halo2", branch = "make-emit-public-v0.3.0", features = ["circuit-params"], optional = true }
-halo2_curves = { version = "0.6.1", package = "halo2curves", optional = true}
+halo2_proofs = { git = "https://github.com/powdr-labs/halo2.git", rev = "fb8087565115ff38da4074b9d1777e9a97222caa", features = [
+  "circuit-params",
+], optional = true }
+halo2_curves = { version = "0.6.1", package = "halo2curves", optional = true }
 # TODO change this once Halo2 releases 0.3.1 and snark-verifier uses it
 #snark-verifier = { git = "https://github.com/privacy-scaling-explorations/snark-verifier", tag = "v2024_01_31" }
-snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier", branch = "powdr-halo2", optional = true }
-halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier", branch = "main", features = ["evm"], optional = true }
+snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier.git", rev = "55012261fd4b0b8d21b581a9782d05258afe4104", optional = true }
+halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier.git", rev = "ecae7fd2f62178c18b5fe18011630aa71da3371f", features = [
+  "evm",
+], optional = true }
+rayon = "1.7.0"
+
+p3-commit = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", features = [
+  "test-utils",
+], optional = true }
+p3-matrix = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", optional = true }
+p3-uni-stark = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", optional = true }
+stwo-prover = { git = "https://github.com/starkware-libs/stwo.git", optional = true, rev = "f24cde6f8de3f1db75d04f87807f052aa889b077",features = ["parallel"] }
 
 strum = { version = "0.24.1", features = ["derive"] }
 log = "0.4.17"
@@ -47,14 +77,19 @@ num-traits = "0.2.15"
 num-integer = "0.1.45"
 itertools = "0.13"
 rand = "0.8.5"
+derive_more = { version = "1.0.0", features = ["from", "display"] }
 
 [dev-dependencies]
 test-log = "0.2.12"
 env_logger = "0.10.0"
 pretty_assertions = "1.4.0"
+powdr-pipeline.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]
 
-[lints.clippy]
-uninlined_format_args = "deny"
+[lints]
+workspace = true
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458

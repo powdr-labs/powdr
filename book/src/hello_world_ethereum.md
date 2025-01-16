@@ -6,10 +6,6 @@ generate proofs directly using a Keccak transcript instead of the Poseidon
 transcript of the previous example, which will enable us to verify proofs
 onchain. There are almost no differences from the CLI perspective.
 
-```
-{{#include ../../test_data/asm/book/hello_world.asm}}
-```
-
 Since the following command creates a proof, a Solidity verifier, and verifies
 the proof on the EVM, we need to have `solc` available in the system. One easy
 way to install it is by using [svm](https://github.com/alloy-rs/svm-rs).
@@ -21,9 +17,9 @@ powdr pil test_data/asm/book/hello_world.asm --field bn254 --inputs 0 --prove-wi
 The extra parameter `--backend-options snark_single` tells powdr to produce a single
 SNARK that uses Keccak. The option `-f` forces overwriting the compiled files
 that have been generated before, which is useful if you are running the examples
-on the same directory as the previous example.
+in the same directory.
 
-When the a proof is generated, it is verified on a simulated EVM transaction as well!
+When the proof is generated, it is verified on a simulated EVM transaction as well!
 
 ```console
 Verifying SNARK in the EVM...

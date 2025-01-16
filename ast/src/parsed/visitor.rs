@@ -3,6 +3,7 @@ use std::{iter, ops::ControlFlow};
 use super::Expression;
 
 /// Generic trait that allows to iterate over sub-structures.
+///
 /// It is only meant to iterate non-recursively over the direct children.
 /// Self and O do not have to be the same type and we can also have
 /// Children<O1> and Children<O2> implemented for the same type,
@@ -15,7 +16,8 @@ pub trait Children<O> {
 }
 
 pub trait AllChildren<O> {
-    /// Returns an iterator over all direct and indirect children of kind O in this object.
+    /// Returns an iterator over all direct and indirect children of kind `O` in this object.
+    /// If `O` and `Self` are the same type, also includes `self`.
     /// Pre-order visitor.
     fn all_children(&self) -> Box<dyn Iterator<Item = &O> + '_>;
 }
@@ -27,6 +29,7 @@ pub enum VisitOrder {
 }
 
 /// A trait to be implemented by an AST node.
+///
 /// The idea is that it calls a callback function on each of the sub-nodes
 /// that are expressions.
 /// The difference to the Children<Expr> trait is that ExpressionVisitable

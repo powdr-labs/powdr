@@ -28,8 +28,9 @@ machine Sqrt with
             sqrt_rec((y + x / y) / 2, x)
         };
 
-    col witness y(i) query Query::Hint(sqrt_hint(std::prover::eval(x)));
-    
+    col witness y;
+    query |i| std::prover::provide_value(y, i, sqrt_hint(std::prover::eval(x)));
+
     y * y = x;
     
     // Note that this is required to make the witness unique
@@ -39,7 +40,7 @@ machine Sqrt with
 
 
 machine Main with degree: 8 {
-    Sqrt sqrt;
+    Sqrt sqrt(8, 8);
 
     reg pc[@pc];
     reg X[<=];

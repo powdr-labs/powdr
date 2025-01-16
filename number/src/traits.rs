@@ -1,4 +1,9 @@
-use std::{fmt, hash::Hash, ops::*, str::FromStr};
+use std::{
+    fmt::{self, Display},
+    hash::Hash,
+    ops::*,
+    str::FromStr,
+};
 
 use num_traits::{ConstOne, ConstZero, One, Zero};
 use schemars::JsonSchema;
@@ -62,11 +67,44 @@ pub trait LargeInt:
     fn from_hex(s: &str) -> Self;
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub enum FieldSize {
+    /// Fields that fit a 29-Bit number, but not much more.
+    Small,
+    /// Fields that at least fit a product of two 32-Bit numbers
+    /// (Goldilocks and larger)
+    Large,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum KnownField {
     BabyBearField,
+    KoalaBearField,
+    Mersenne31Field,
     GoldilocksField,
     Bn254Field,
+}
+
+impl KnownField {
+    pub fn field_size(&self) -> FieldSize {
+        match self {
+            KnownField::BabyBearField
+            | KnownField::KoalaBearField
+            | KnownField::Mersenne31Field => FieldSize::Small,
+            KnownField::GoldilocksField | KnownField::Bn254Field => FieldSize::Large,
+        }
+    }
+}
+
+impl Display for KnownField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            KnownField::BabyBearField => write!(f, "BabyBear"),
+            KnownField::KoalaBearField => write!(f, "KoalaBear"),
+            KnownField::Mersenne31Field => write!(f, "Mersenne31"),
+            KnownField::GoldilocksField => write!(f, "Goldilocks"),
+            KnownField::Bn254Field => write!(f, "Bn254"),
+        }
+    }
 }
 
 /// A field element
@@ -147,6 +185,17 @@ pub trait FieldElement:
     /// As conventional, negative values are in relation to 0 in the field.
     /// Returns None if out of the range [0 - 2^31, 2^31).
     fn try_into_i32(&self) -> Option<i32>;
+
+    /// Returns `true` if values of this type are directly stored as their integer
+    /// value, i.e
+    /// - montgomery representation is not used
+    /// - values are always canonical (i.e. smaller than the modulus)
+    /// - there are no additional fields and
+    /// - `repr(transparent)` is used.
+    ///
+    /// In other words, the `to_integer` function can be implemented as
+    /// a mem::transmute operation on pointers.
+    fn has_direct_repr() -> bool;
 }
 
 #[cfg(test)]

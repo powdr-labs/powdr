@@ -1,39 +1,45 @@
-use powdr_ast::analyzed::AlgebraicReference;
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::Identity;
 
 use super::{
-    data_structures::finalizable_data::FinalizableData,
+    affine_expression::AlgebraicVariable,
+    data_structures::mutable_state::MutableState,
     machines::MachineParts,
-    processor::{OuterQuery, Processor},
+    processor::{OuterQuery, Processor, SolverState},
     rows::{RowIndex, UnknownStrategy},
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
-    EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
+    EvalError, EvalValue, FixedData, IncompleteCause, QueryCallback,
 };
 
 /// A basic processor that knows how to determine a unique satisfying witness
 /// for a given list of identities.
 /// The lifetimes mean the following:
 /// - `'a`: The duration of the entire witness generation (e.g. references to identities)
-/// - `'b`: The duration of this machine's call (e.g. the mutable references of the other machines)
 /// - `'c`: The duration of this Processor's lifetime (e.g. the reference to the identity processor)
-pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
-    processor: Processor<'a, 'b, 'c, T, Q>,
+pub struct BlockProcessor<'a, 'c, T: FieldElement, Q: QueryCallback<T>> {
+    processor: Processor<'a, 'c, T, Q>,
     /// The list of identities
     identities: &'c [&'a Identity<T>],
 }
 
-impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c, T, Q> {
+impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'c, T, Q> {
     pub fn new(
         row_offset: RowIndex,
-        data: FinalizableData<T>,
-        mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+        mutable_data: SolverState<'a, T>,
+        mutable_state: &'c MutableState<'a, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         size: DegreeType,
     ) -> Self {
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, parts, size);
+        let processor = Processor::new(
+            row_offset,
+            mutable_data,
+            mutable_state,
+            fixed_data,
+            parts,
+            size,
+        );
         Self {
             processor,
             identities: &parts.identities,
@@ -41,7 +47,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
     }
 
     pub fn from_processor(
-        processor: Processor<'a, 'b, 'c, T, Q>,
+        processor: Processor<'a, 'c, T, Q>,
         identities: &'c [&'a Identity<T>],
     ) -> Self {
         Self {
@@ -52,8 +58,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
 
     pub fn with_outer_query(
         self,
-        outer_query: OuterQuery<'a, 'b, T>,
-    ) -> BlockProcessor<'a, 'b, 'c, T, Q> {
+        outer_query: OuterQuery<'a, 'c, T>,
+    ) -> BlockProcessor<'a, 'c, T, Q> {
         let processor = self.processor.with_outer_query(outer_query);
         Self { processor, ..self }
     }
@@ -63,7 +69,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
     pub fn solve(
         &mut self,
         sequence_iterator: &mut ProcessingSequenceIterator,
-    ) -> Result<EvalValue<&'a AlgebraicReference, T>, EvalError<T>> {
+    ) -> Result<EvalValue<AlgebraicVariable<'a>, T>, EvalError<T>> {
         let mut outer_assignments = vec![];
 
         let mut is_identity_complete =
@@ -106,14 +112,15 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         }
     }
 
-    pub fn finish(self) -> FinalizableData<T> {
+    /// Returns the updated data and values for publics
+    pub fn finish(self) -> SolverState<'a, T> {
         self.processor.finish()
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, iter};
 
     use powdr_ast::analyzed::{PolyID, PolynomialType};
     use powdr_number::{FieldElement, GoldilocksField};
@@ -123,8 +130,8 @@ mod tests {
         constant_evaluator::generate,
         witgen::{
             data_structures::finalizable_data::FinalizableData,
-            identity_processor::Machines,
             machines::MachineParts,
+            processor::SolverState,
             rows::{Row, RowIndex},
             sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
             unused_query_callback, FixedData, MutableState, QueryCallback,
@@ -147,15 +154,18 @@ mod tests {
     /// Constructs a processor for a given PIL, then calls a function on it.
     fn do_with_processor<T: FieldElement, Q: QueryCallback<T>, R>(
         src: &str,
-        mut query_callback: Q,
+        query_callback: Q,
         f: impl Fn(BlockProcessor<T, Q>, BTreeMap<String, PolyID>, u64, usize) -> R,
     ) -> R {
-        let analyzed = analyze_string(src);
+        let analyzed = analyze_string(src)
+            .map_err(|errors| {
+                for e in errors {
+                    e.output_to_stderr();
+                }
+            })
+            .expect("Failed to analyze test input.");
         let constants = generate(&analyzed);
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
-
-        // No submachines
-        let mut machines = [];
 
         let degree = fixed_data.analyzed.degree();
 
@@ -167,13 +177,12 @@ mod tests {
             .collect();
         let data = FinalizableData::with_initial_rows_in_progress(
             &columns,
-            (0..degree).map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, degree))),
+            (0..degree).map(|i| Row::fresh(&fixed_data, i)),
+            &fixed_data,
         );
 
-        let mut mutable_state = MutableState {
-            machines: Machines::from(machines.iter_mut()),
-            query_callback: &mut query_callback,
-        };
+        let mutable_state = MutableState::new(iter::empty(), &query_callback);
+
         let row_offset = RowIndex::from_degree(0, degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
         let machine_parts = MachineParts::new(
@@ -181,12 +190,13 @@ mod tests {
             Default::default(),
             identities,
             fixed_data.witness_cols.keys().collect(),
+            Default::default(),
         );
 
         let processor = BlockProcessor::new(
             row_offset,
-            data,
-            &mut mutable_state,
+            SolverState::without_publics(data),
+            &mutable_state,
             &fixed_data,
             &machine_parts,
             degree,
@@ -212,7 +222,7 @@ mod tests {
                 assert!(outer_updates.is_complete());
                 assert!(outer_updates.is_empty());
 
-                let data = processor.finish();
+                let data = processor.finish().block;
 
                 for &(i, name, expected) in asserted_values.iter() {
                     let poly_id = poly_ids[name];

@@ -1,8 +1,7 @@
 //! The main powdr lib, used to compile from assembly to PIL
 
-#![deny(clippy::print_stdout)]
-
 pub mod pipeline;
+pub mod test_runner;
 pub mod test_util;
 pub mod util;
 pub mod verify;
@@ -35,6 +34,11 @@ impl HostContext {
         (ctx, cb)
     }
 
+    pub fn clear(&mut self) {
+        let mut fs = self.file_data.lock().unwrap();
+        fs.clear();
+    }
+
     pub fn read<T: DeserializeOwned>(&self, fd: u32) -> Result<T, String> {
         let fs = self.file_data.lock().unwrap();
         if let Some(data) = fs.get(&fd) {
@@ -59,13 +63,17 @@ impl HostContext {
                         .map_err(|e| format!("Invalid char to print: {e}"))?
                         as char;
                     match fd {
-                        // stdin, stdout and stderr are supported by the default callback
-                        0..=2 => return Err(format!("Unsupported file descriptor: {fd}")),
+                        // stdin cannot be used for Output
+                        0 => return Err(format!("Unsupported file descriptor: {fd}")),
                         _ => {
                             let mut map = fs.lock().unwrap();
                             map.entry(fd).or_default().push(byte as u8);
                         }
                     }
+                    Ok(Some(0.into()))
+                }
+                "Clear" => {
+                    fs.lock().unwrap().clear();
                     Ok(Some(0.into()))
                 }
                 _ => Err(format!("Unsupported query: {query}")),
@@ -77,6 +85,7 @@ impl HostContext {
 // TODO at some point, we could also just pass evaluator::Values around - would be much faster.
 pub fn parse_query(query: &str) -> Result<(&str, Vec<&str>), String> {
     // We are expecting an enum value
+    let query = query.strip_prefix("std::prelude::Query::").unwrap_or(query);
     if let Some(paren) = query.find('(') {
         let name = &query[..paren];
         let data = query[paren + 1..].strip_suffix(')').ok_or_else(|| {
@@ -90,26 +99,6 @@ pub fn parse_query(query: &str) -> Result<(&str, Vec<&str>), String> {
     }
 }
 
-pub fn access_element<T: FieldElement>(
-    name: &str,
-    elements: &[T],
-    index_str: &str,
-) -> Result<Option<T>, String> {
-    let index = index_str
-        .parse::<usize>()
-        .map_err(|e| format!("Error parsing index: {e})"))?;
-    let value = elements.get(index).cloned();
-    if let Some(value) = value {
-        log::trace!("Query for {name}: Index {index} -> {value}");
-        Ok(Some(value))
-    } else {
-        Err(format!(
-            "Error accessing {name}: Index {index} out of bounds {}",
-            elements.len()
-        ))
-    }
-}
-
 pub fn serde_data_to_query_callback<T: FieldElement>(
     channel: u32,
     bytes: Vec<u8>,
@@ -117,9 +106,8 @@ pub fn serde_data_to_query_callback<T: FieldElement>(
     move |query: &str| -> Result<Option<T>, String> {
         let (id, data) = parse_query(query)?;
         match id {
-            "None" => Ok(None),
-            "DataIdentifier" => {
-                let [index, cb_channel] = data[..] else {
+            "Input" => {
+                let [cb_channel, index] = data[..] else {
                     panic!()
                 };
                 let cb_channel = cb_channel
@@ -151,16 +139,15 @@ pub fn dict_data_to_query_callback<T: FieldElement>(
     move |query: &str| -> Result<Option<T>, String> {
         let (id, data) = parse_query(query)?;
         match id {
-            "None" => Ok(None),
-            "DataIdentifier" => {
-                let [index, cb_channel] = data[..] else {
+            "Input" => {
+                let [cb_channel, index] = data[..] else {
                     panic!()
                 };
                 let cb_channel = cb_channel
                     .parse::<u32>()
                     .map_err(|e| format!("Error parsing callback data channel: {e})"))?;
 
-                let Some(bytes) = dict.get(&cb_channel) else {
+                let Some(elems) = dict.get(&cb_channel) else {
                     return Err("Callback channel mismatch".to_string());
                 };
 
@@ -170,8 +157,8 @@ pub fn dict_data_to_query_callback<T: FieldElement>(
 
                 // query index 0 means the length
                 Ok(Some(match index {
-                    0 => (bytes.len() as u64).into(),
-                    index => bytes[index - 1],
+                    0 => (elems.len() as u64).into(),
+                    index => elems[index - 1],
                 }))
             }
             _ => Err(format!("Unsupported query: {query}")),
@@ -180,17 +167,9 @@ pub fn dict_data_to_query_callback<T: FieldElement>(
 }
 
 pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCallback<T> {
-    move |query: &str| -> Result<Option<T>, String> {
-        let (id, data) = parse_query(query)?;
-        match id {
-            "None" => Ok(None),
-            "Input" => {
-                assert_eq!(data.len(), 1);
-                access_element("prover inputs", &inputs, data[0])
-            }
-            _ => Err(format!("Unsupported query: {query}")),
-        }
-    }
+    let mut dict = BTreeMap::new();
+    dict.insert(0, inputs);
+    dict_data_to_query_callback(dict)
 }
 
 #[allow(clippy::print_stdout)]
@@ -204,15 +183,14 @@ pub fn handle_simple_queries_callback<'a, T: FieldElement>() -> impl QueryCallba
                 let fd = data[0]
                     .parse::<u32>()
                     .map_err(|e| format!("Invalid fd: {e}"))?;
+                if fd != 0 {
+                    return Err("Debug print requires output fd 0".to_string());
+                }
                 let byte = data[1]
                     .parse::<u8>()
                     .map_err(|e| format!("Invalid char to print: {e}"))?
                     as char;
-                match fd {
-                    1 => print!("{byte}"),
-                    2 => eprint!("{byte}"),
-                    _ => return Err(format!("Unsupported file descriptor: {fd}")),
-                }
+                print!("{byte}");
                 Ok(Some(0.into()))
             }
             "Hint" => {

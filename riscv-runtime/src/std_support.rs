@@ -25,7 +25,7 @@ extern "C" fn sys_rand(buf: *mut u32, words: usize) {
 
 #[no_mangle]
 extern "C" fn sys_panic(msg_ptr: *const u8, len: usize) -> ! {
-    let out = u32::from(Syscall::Output);
+    let out: u32 = u8::from(Syscall::Output).into();
     unsafe {
         write_slice(out, "Panic: ".as_bytes());
         write_slice(out, slice::from_raw_parts(msg_ptr, len));
@@ -58,7 +58,9 @@ extern "C" fn sys_getenv(
     _varname: *const u8,
     _varname_len: usize,
 ) -> usize {
-    todo!()
+    // For now we return the empty env without panicking.
+    // TODO Implement properly.
+    0
 }
 
 #[no_mangle]

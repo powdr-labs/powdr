@@ -9,9 +9,9 @@ use std::{
 };
 
 use itertools::Itertools;
-use parsed::{display::format_type_args, LambdaExpression, TypedExpression};
+use parsed::{display::format_type_args, LambdaExpression, TypeDeclaration, TypedExpression};
 
-use crate::{parsed::FunctionKind, writeln_indented, writeln_indented_by};
+use crate::{parsed::FunctionKind, writeln_indented};
 
 use self::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
@@ -31,27 +31,43 @@ impl Display for DegreeRange {
 
 impl<T: Display> Display for Analyzed<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let (mut current_namespace, mut current_degree) = (AbsoluteSymbolPath::default(), None);
-        let mut update_namespace =
-            |name: &str, degree: Option<DegreeRange>, f: &mut Formatter<'_>| {
-                let mut namespace =
-                    AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
-                let name = namespace.pop().unwrap();
-                if namespace != current_namespace {
-                    current_namespace = namespace;
-                    current_degree = degree;
-                    writeln!(
-                        f,
-                        "namespace {}{};",
-                        current_namespace.relative_to(&Default::default()),
-                        degree.map(|d| format!("({d})")).unwrap_or_default()
-                    )?;
-                } else {
-                    // If we're in the same namespace, the degree must match
-                    assert_eq!(current_degree, degree);
-                };
-                Ok((name, !current_namespace.is_empty()))
+        // Compute map from namespace name to its degree (if not None).
+        let namespace_degrees = self
+            .definitions
+            .values()
+            .filter_map(|(symbol, _)| {
+                symbol.degree.map(|degree| {
+                    let (namespace, _) = split_into_namespace_and_name(&symbol.absolute_name);
+                    (namespace, degree)
+                })
+            })
+            .unique()
+            .fold(BTreeMap::default(), |mut degrees, (namespace, degree)| {
+                let is_new = degrees.insert(namespace.clone(), degree).is_none();
+                assert!(
+                    is_new,
+                    "Found symbols with different degrees in namespace {namespace}"
+                );
+                degrees
+            });
+        let mut current_namespace = AbsoluteSymbolPath::default();
+        // Helper function to emit a `namespace` statement if the namespace changes.
+        let mut update_namespace = |name: &str, f: &mut Formatter<'_>| {
+            let (namespace, name) = split_into_namespace_and_name(name);
+            if namespace != current_namespace {
+                current_namespace = namespace;
+                let degree = namespace_degrees
+                    .get(&current_namespace)
+                    .map(|d| format!("({d})"))
+                    .unwrap_or_default();
+                writeln!(
+                    f,
+                    "namespace {}{degree};",
+                    current_namespace.relative_to(&Default::default()),
+                )?;
             };
+            Ok(name)
+        };
 
         for statement in &self.source_order {
             match statement {
@@ -64,14 +80,12 @@ impl<T: Display> Display for Analyzed<T> {
                         if matches!(
                             definition,
                             Some(FunctionValueDefinition::TypeConstructor(_, _))
-                        ) || matches!(
-                            definition,
-                            Some(FunctionValueDefinition::TraitFunction(_, _))
+                                | Some(FunctionValueDefinition::TraitFunction(_, _))
                         ) {
                             // These are printed as part of the enum / trait.
                             continue;
                         }
-                        let (name, _) = update_namespace(name, symbol.degree, f)?;
+                        let name = update_namespace(name, f)?;
                         match symbol.kind {
                             SymbolKind::Poly(PolynomialType::Constant) => {
                                 writeln_indented(f, format_fixed_column(&name, symbol, definition))?
@@ -96,17 +110,28 @@ impl<T: Display> Display for Analyzed<T> {
                                         )?;
                                     }
                                     Some(FunctionValueDefinition::TypeDeclaration(
-                                        enum_declaration,
+                                        TypeDeclaration::Enum(enum_declaration),
                                     )) => {
                                         writeln_indented(
                                             f,
                                             enum_declaration.to_string_with_name(&name),
                                         )?;
                                     }
+                                    Some(FunctionValueDefinition::TypeDeclaration(
+                                        TypeDeclaration::Struct(struct_declaration),
+                                    )) => {
+                                        writeln_indented(
+                                            f,
+                                            struct_declaration.to_string_with_name(&name),
+                                        )?;
+                                    }
                                     Some(FunctionValueDefinition::TraitDeclaration(
                                         trait_declaration,
                                     )) => {
-                                        writeln_indented(f, trait_declaration)?;
+                                        writeln_indented(
+                                            f,
+                                            trait_declaration.to_string_with_name(&name),
+                                        )?;
                                     }
                                     _ => {
                                         unreachable!("Invalid definition for symbol: {}", name)
@@ -116,7 +141,7 @@ impl<T: Display> Display for Analyzed<T> {
                         }
                     } else if let Some((symbol, definition)) = self.intermediate_columns.get(name) {
                         assert!(symbol.stage.is_none());
-                        let (name, _) = update_namespace(name, symbol.degree, f)?;
+                        let name = update_namespace(name, f)?;
                         assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Intermediate));
                         if let Some(length) = symbol.length {
                             writeln_indented(
@@ -136,15 +161,17 @@ impl<T: Display> Display for Analyzed<T> {
                 }
                 StatementIdentifier::PublicDeclaration(name) => {
                     let decl = &self.public_declarations[name];
-                    let (name, is_local) = update_namespace(&decl.name, None, f)?;
-                    writeln_indented_by(
-                        f,
-                        format_public_declaration(&name, decl),
-                        is_local.into(),
-                    )?;
+                    let name = update_namespace(&decl.name, f)?;
+                    writeln_indented(f, format_public_declaration(&name, decl))?;
                 }
-                StatementIdentifier::Identity(i) => {
+                StatementIdentifier::ProofItem(i) => {
                     writeln_indented(f, &self.identities[*i])?;
+                }
+                StatementIdentifier::ProverFunction(i) => {
+                    writeln_indented(f, format!("{};", &self.prover_functions[*i]))?;
+                }
+                StatementIdentifier::TraitImplementation(i) => {
+                    writeln_indented(f, format!("{}", self.trait_impls[*i]))?;
                 }
             }
         }
@@ -153,18 +180,20 @@ impl<T: Display> Display for Analyzed<T> {
     }
 }
 
+fn split_into_namespace_and_name(name: &str) -> (AbsoluteSymbolPath, String) {
+    let mut path = AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
+    let name = path.pop().unwrap();
+    (path, name)
+}
+
 fn format_fixed_column(
     name: &str,
     symbol: &Symbol,
     definition: &Option<FunctionValueDefinition>,
 ) -> String {
     assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Constant));
-    let stage = symbol
-        .stage
-        .map(|s| format!("stage({s}) "))
-        .unwrap_or_default();
+    assert!(symbol.stage.is_none());
     if let Some(TypedExpression { type_scheme, e }) = try_to_simple_expression(definition) {
-        assert!(symbol.stage.is_none());
         if symbol.length.is_some() {
             assert!(matches!(
                 type_scheme,
@@ -184,7 +213,7 @@ fn format_fixed_column(
             .as_ref()
             .map(ToString::to_string)
             .unwrap_or_default();
-        format!("col fixed {stage}{name}{value};",)
+        format!("col fixed {name}{value};",)
     }
 }
 
@@ -196,7 +225,7 @@ fn format_witness_column(
     assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Committed));
     let stage = symbol
         .stage
-        .map(|s| format!("stage({s}) "))
+        .and_then(|s| (s > 0).then(|| format!("stage({s}) ")))
         .unwrap_or_default();
     let length = symbol
         .length
@@ -300,53 +329,113 @@ fn format_outer_function(e: &Expression, f: &mut Formatter<'_>) -> Result {
     }
 }
 
-impl<Expr: Display> Display for SelectedExpressions<Expr> {
+impl<T: Display> Display for SelectedExpressions<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
             "{}[{}]",
-            self.selector
-                .as_ref()
-                .map(|s| format!("{s} $ "))
-                .unwrap_or_default(),
+            {
+                // we only print the selector if it is not 1. The comparison is string-based to avoid introducing invasive type bounds on T.
+                let s = self.selector.to_string();
+                match s.as_str() {
+                    "1" => "".to_string(),
+                    s => format!("{s} $ "),
+                }
+            },
             self.expressions.iter().format(", ")
         )
     }
 }
 
-impl Display for Identity<parsed::SelectedExpressions<Expression>> {
+impl<T: Display> Display for PolynomialIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self.kind {
-            IdentityKind::Polynomial => {
-                let (left, right) = self.as_polynomial_identity();
-                let right = right
-                    .as_ref()
-                    .map(|r| r.to_string())
-                    .unwrap_or_else(|| "0".into());
+        match &self.expression {
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left,
+                op: AlgebraicBinaryOperator::Sub,
+                right,
+            }) => {
                 write!(f, "{left} = {right};")
             }
-            IdentityKind::Plookup => write!(f, "{} in {};", self.left, self.right),
-            IdentityKind::Permutation => write!(f, "{} is {};", self.left, self.right),
-            IdentityKind::Connect => write!(f, "{} connect {};", self.left, self.right),
+            e => write!(f, "{e} = 0;"),
         }
     }
 }
 
-impl<T: Display> Display for Identity<SelectedExpressions<AlgebraicExpression<T>>> {
+impl<T: Display> Display for LookupIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self.kind {
-            IdentityKind::Polynomial => {
-                let (left, right) = self.as_polynomial_identity();
-                let right = right
-                    .as_ref()
-                    .map(|r| r.to_string())
-                    .unwrap_or_else(|| "0".into());
-                write!(f, "{left} = {right};")
-            }
-            IdentityKind::Plookup => write!(f, "{} in {};", self.left, self.right),
-            IdentityKind::Permutation => write!(f, "{} is {};", self.left, self.right),
-            IdentityKind::Connect => write!(f, "{} connect {};", self.left, self.right),
-        }
+        write!(f, "{} in {};", self.left, self.right)
+    }
+}
+
+fn format_selector<T: Display>(selector: &AlgebraicExpression<T>) -> String {
+    match selector.to_string().as_str() {
+        "1" => "Option::None".to_string(),
+        s => format!("Option::Some({s})"),
+    }
+}
+
+impl<T: Display> Display for PhantomLookupIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "Constr::PhantomLookup(({}, {}), [{}], {});",
+            format_selector(&self.left.selector),
+            format_selector(&self.right.selector),
+            self.left
+                .expressions
+                .iter()
+                .zip_eq(&self.right.expressions)
+                .map(|(left, right)| format!("({left}, {right})"))
+                .format(", "),
+            self.multiplicity
+        )
+    }
+}
+
+impl<T: Display> Display for PermutationIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{} is {};", self.left, self.right)
+    }
+}
+
+impl<T: Display> Display for PhantomPermutationIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "Constr::PhantomPermutation(({}, {}), [{}]);",
+            format_selector(&self.left.selector),
+            format_selector(&self.right.selector),
+            self.left
+                .expressions
+                .iter()
+                .zip_eq(&self.right.expressions)
+                .map(|(left, right)| format!("({left}, {right})"))
+                .format(", ")
+        )
+    }
+}
+
+impl<T: Display> Display for ConnectIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "[{}] connect [{}];",
+            self.left.iter().format(", "),
+            self.right.iter().format(", ")
+        )
+    }
+}
+
+impl<T: Display> Display for PhantomBusInteractionIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "Constr::PhantomBusInteraction({}, [{}], {});",
+            self.multiplicity,
+            self.tuple.0.iter().map(ToString::to_string).format(", "),
+            self.latch,
+        )
     }
 }
 
@@ -504,7 +593,7 @@ mod test {
         };
 
         let (input, expected) = &(&wrap(input), &wrap(expected));
-        let analyzed = analyze_string::<GoldilocksField>(input);
+        let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
         let printed = analyzed.to_string();
 
         assert_eq!(expected.trim(), printed.trim());

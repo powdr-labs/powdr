@@ -1,12 +1,15 @@
-#![deny(clippy::print_stdout)]
-
+#[cfg(any(feature = "estark-polygon", feature = "estark-starky"))]
 mod estark;
 #[cfg(feature = "halo2")]
 mod halo2;
 #[cfg(feature = "plonky3")]
 mod plonky3;
+#[cfg(feature = "stwo")]
+mod stwo;
 
 mod composite;
+mod field_filter;
+mod mock;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
@@ -16,6 +19,8 @@ use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy)]
 pub enum BackendType {
+    #[strum(serialize = "mock")]
+    Mock,
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2")]
     Halo2,
@@ -34,12 +39,16 @@ pub enum BackendType {
     #[cfg(feature = "estark-polygon")]
     #[strum(serialize = "estark-polygon-composite")]
     EStarkPolygonComposite,
+    #[cfg(feature = "estark-starky")]
     #[strum(serialize = "estark-starky")]
     EStarkStarky,
+    #[cfg(feature = "estark-starky")]
     #[strum(serialize = "estark-starky-composite")]
     EStarkStarkyComposite,
+    #[cfg(feature = "estark-starky")]
     #[strum(serialize = "estark-dump")]
     EStarkDump,
+    #[cfg(feature = "estark-starky")]
     #[strum(serialize = "estark-dump-composite")]
     EStarkDumpComposite,
     #[cfg(feature = "plonky3")]
@@ -48,6 +57,12 @@ pub enum BackendType {
     #[cfg(feature = "plonky3")]
     #[strum(serialize = "plonky3-composite")]
     Plonky3Composite,
+    #[cfg(feature = "stwo")]
+    #[strum(serialize = "stwo")]
+    Stwo,
+    #[cfg(feature = "stwo")]
+    #[strum(serialize = "stwo-composite")]
+    StwoComposite,
 }
 
 pub type BackendOptions = String;
@@ -58,6 +73,7 @@ pub const DEFAULT_ESTARK_OPTIONS: &str = "stark_gl";
 impl BackendType {
     pub fn factory<T: FieldElement>(&self) -> Box<dyn BackendFactory<T>> {
         match self {
+            BackendType::Mock => Box::new(mock::MockBackendFactory),
             #[cfg(feature = "halo2")]
             BackendType::Halo2 => Box::new(halo2::Halo2ProverFactory),
             #[cfg(feature = "halo2")]
@@ -76,11 +92,16 @@ impl BackendType {
             BackendType::EStarkPolygonComposite => Box::new(
                 composite::CompositeBackendFactory::new(estark::polygon_wrapper::Factory),
             ),
+            #[cfg(feature = "estark-starky")]
             BackendType::EStarkStarky => Box::new(estark::starky_wrapper::Factory),
+            #[cfg(feature = "estark-starky")]
             BackendType::EStarkStarkyComposite => Box::new(
                 composite::CompositeBackendFactory::new(estark::starky_wrapper::Factory),
             ),
+            // We need starky here because the dump backend uses some types that come from starky.
+            #[cfg(feature = "estark-starky")]
             BackendType::EStarkDump => Box::new(estark::DumpFactory),
+            #[cfg(feature = "estark-starky")]
             BackendType::EStarkDumpComposite => {
                 Box::new(composite::CompositeBackendFactory::new(estark::DumpFactory))
             }
@@ -89,6 +110,12 @@ impl BackendType {
             #[cfg(feature = "plonky3")]
             BackendType::Plonky3Composite => {
                 Box::new(composite::CompositeBackendFactory::new(plonky3::Factory))
+            }
+            #[cfg(feature = "stwo")]
+            BackendType::Stwo => Box::new(stwo::Factory),
+            #[cfg(feature = "stwo")]
+            BackendType::StwoComposite => {
+                Box::new(composite::CompositeBackendFactory::new(stwo::Factory))
             }
         }
     }
@@ -102,6 +129,8 @@ pub enum Error {
     EmptyWitness,
     #[error("the backend has no setup operations")]
     NoSetupAvailable,
+    #[error("the backend does not use a proving key setup")]
+    NoProvingKeyAvailable,
     #[error("the backend does not implement proof verification")]
     NoVerificationAvailable,
     #[error("the backend does not support Ethereum onchain verification")]
@@ -112,6 +141,8 @@ pub enum Error {
     NoVariableDegreeAvailable,
     #[error("internal backend error")]
     BackendError(String),
+    #[error("the backend does not support public values which rely on later stage witnesses")]
+    NoLaterStagePublicAvailable,
 }
 
 impl From<String> for Error {
@@ -137,6 +168,7 @@ pub trait BackendFactory<F: FieldElement> {
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
+        proving_key: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         backend_options: BackendOptions,
@@ -183,6 +215,10 @@ pub trait Backend<F: FieldElement>: Send {
             .write_all(&v)
             .map_err(|_| Error::BackendError("Could not write verification key".to_string()))?;
         Ok(())
+    }
+
+    fn export_proving_key(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
+        Err(Error::NoProvingKeyAvailable)
     }
 
     fn verification_key_bytes(&self) -> Result<Vec<u8>, Error> {

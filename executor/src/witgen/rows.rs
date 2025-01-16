@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fmt::Display,
     ops::{Add, Sub},
 };
@@ -10,14 +11,13 @@ use powdr_number::{DegreeType, FieldElement};
 use crate::witgen::Constraint;
 
 use super::{
-    affine_expression::{AffineExpression, AffineResult},
-    data_structures::{column_map::WitnessColumnMap, finalizable_data::FinalizedRow},
-    expression_evaluator::ExpressionEvaluator,
+    affine_expression::{AffineExpression, AffineResult, AlgebraicVariable},
+    data_structures::column_map::WitnessColumnMap,
+    evaluators::symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},
     global_constraints::RangeConstraintSet,
     machines::MachineParts,
     range_constraints::RangeConstraint,
-    symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},
-    FixedData,
+    FixedData, PartialExpressionEvaluator,
 };
 
 /// A small wrapper around a row index, which knows the total number of rows.
@@ -183,6 +183,10 @@ pub struct Row<T: FieldElement> {
 }
 
 impl<T: FieldElement> Row<T> {
+    pub fn columns(&self) -> impl Iterator<Item = PolyID> {
+        self.values.keys()
+    }
+
     pub fn value_or_zero(&self, poly_id: &PolyID) -> T {
         self.values[poly_id].unwrap_or_zero()
     }
@@ -224,8 +228,33 @@ impl<T: FieldElement> Row<T> {
         Ok(())
     }
 
+    /// Merges a list of known values into the current row.
+    /// Returns an error if there is a conflict.
+    pub fn merge_with_values(
+        &mut self,
+        values: impl Iterator<Item = (PolyID, T)>,
+    ) -> Result<(), ()> {
+        let stored = self.values.clone();
+
+        for (poly_id, value) in values {
+            let v = &mut self.values[&poly_id];
+            if let CellValue::Known(stored_value) = v {
+                if *stored_value != value {
+                    self.values = stored;
+                    return Err(());
+                }
+            }
+            *v = CellValue::Known(value);
+        }
+        Ok(())
+    }
+
     pub fn value_is_known(&self, poly_id: &PolyID) -> bool {
         self.values[poly_id].is_known()
+    }
+
+    pub fn set_cell_known(&mut self, poly_id: &PolyID, value: T) {
+        self.values[poly_id] = CellValue::Known(value);
     }
 
     pub fn set_cell_unknown(&mut self, poly_id: &PolyID) {
@@ -235,35 +264,28 @@ impl<T: FieldElement> Row<T> {
     pub fn apply_update(&mut self, poly_id: &PolyID, constr: &Constraint<T>) {
         self.values[poly_id].apply_update(constr);
     }
-
-    pub fn finalize(&self, column_ids: &[PolyID]) -> FinalizedRow<T> {
-        let (values, known_cells) = column_ids
-            .iter()
-            .map(|poly_id| {
-                // TODO avoid these accesses.
-                let cell = &self.values[poly_id];
-                (cell.unwrap_or_zero(), cell.is_known())
-            })
-            .unzip();
-        FinalizedRow::new(values, known_cells)
-    }
 }
 
 impl<T: FieldElement> Row<T> {
     /// Creates a "fresh" row, i.e., one that is empty but initialized with the global range constraints.
-    pub fn fresh(fixed_data: &FixedData<'_, T>, row: RowIndex) -> Row<T> {
+    pub fn fresh<E>(
+        fixed_data: &FixedData<'_, T>,
+        row: impl TryInto<DegreeType, Error = E>,
+    ) -> Row<T>
+    where
+        E: std::fmt::Debug,
+    {
         // TODO this instance could be computed exactly once (per column set) and then cloned.
         // TODO and we could copy in the external witnesses later on
         // TODO we should really only have a subset of the columns.
+        let row = row.try_into().unwrap();
         let values = WitnessColumnMap::from(
             fixed_data
                 .global_range_constraints()
                 .witness_constraints
                 .iter()
                 .map(|(poly_id, rc)| {
-                    if let Some(external_witness) =
-                        fixed_data.external_witness(row.into(), &poly_id)
-                    {
+                    if let Some(external_witness) = fixed_data.external_witness(row, &poly_id) {
                         CellValue::Known(external_witness)
                     } else if let Some(rc) = rc {
                         CellValue::RangeConstraint(rc.clone())
@@ -390,6 +412,7 @@ pub struct RowPair<'row, 'a, T: FieldElement> {
     pub current: &'row Row<T>,
     pub next: Option<&'row Row<T>>,
     pub current_row_index: RowIndex,
+    publics: &'row BTreeMap<&'a str, T>,
     fixed_data: &'a FixedData<'a, T>,
     unknown_strategy: UnknownStrategy,
     size: DegreeType,
@@ -400,6 +423,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         current: &'row Row<T>,
         next: &'row Row<T>,
         current_row_index: RowIndex,
+        publics: &'row BTreeMap<&'a str, T>,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
         size: DegreeType,
@@ -408,6 +432,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             current,
             next: Some(next),
             current_row_index,
+            publics,
             fixed_data,
             unknown_strategy,
             size,
@@ -418,6 +443,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     pub fn from_single_row(
         current: &'row Row<T>,
         current_row_index: RowIndex,
+        publics: &'row BTreeMap<&'a str, T>,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
         size: DegreeType,
@@ -426,6 +452,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             current,
             next: None,
             current_row_index,
+            publics,
             fixed_data,
             unknown_strategy,
             size,
@@ -454,31 +481,37 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         }
     }
 
-    pub fn get_value(&self, poly: &AlgebraicReference) -> Option<T> {
-        let row = self.get_row(poly.next);
-        if self.unknown_strategy == UnknownStrategy::Zero {
-            Some(row.value_or_zero(&poly.poly_id))
-        } else {
-            row.value(&poly.poly_id)
+    pub fn get_value(&self, poly: AlgebraicVariable) -> Option<T> {
+        let value = match poly {
+            AlgebraicVariable::Column(poly) => self.get_row(poly.next).value(&poly.poly_id),
+            AlgebraicVariable::Public(public_name) => self.publics.get(public_name).copied(),
+        };
+        match self.unknown_strategy {
+            UnknownStrategy::Zero => value.or(Some(T::ZERO)),
+            UnknownStrategy::Unknown => value,
         }
     }
 
     /// Tries to evaluate the expression to an expression affine in the witness polynomials,
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
-    pub fn evaluate<'b>(&self, expr: &'b Expression<T>) -> AffineResult<&'b AlgebraicReference, T> {
-        ExpressionEvaluator::new(SymbolicWitnessEvaluator::new(
+    pub fn evaluate(&self, expr: &'a Expression<T>) -> AffineResult<AlgebraicVariable<'a>, T> {
+        let variables = SymbolicWitnessEvaluator::new(
             self.fixed_data,
             self.current_row_index.into(),
             self,
             self.size,
-        ))
-        .evaluate(expr)
+        );
+        // Note that because we instantiate a fresh evaluator here, we don't benefit from caching
+        // of intermediate values across calls of `RowPair::evaluate`. In practice, we only call
+        // it many times for the same RowPair though.
+        PartialExpressionEvaluator::new(variables, &self.fixed_data.intermediate_definitions)
+            .evaluate(expr)
     }
 }
 
 impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPair<'_, '_, T> {
-    fn value<'b>(&self, poly: &'b AlgebraicReference) -> AffineResult<&'b AlgebraicReference, T> {
+    fn value<'b>(&self, poly: AlgebraicVariable<'b>) -> AffineResult<AlgebraicVariable<'b>, T> {
         Ok(match self.get_value(poly) {
             Some(v) => v.into(),
             None => AffineExpression::from_variable_id(poly),
@@ -486,8 +519,14 @@ impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPair<'_, '_, T> {
     }
 }
 
-impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for RowPair<'_, '_, T> {
-    fn range_constraint(&self, poly: &AlgebraicReference) -> Option<RangeConstraint<T>> {
-        self.get_row(poly.next).range_constraint(&poly.poly_id)
+impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T> for RowPair<'_, '_, T> {
+    fn range_constraint(&self, poly: AlgebraicVariable<'a>) -> Option<RangeConstraint<T>> {
+        match poly {
+            AlgebraicVariable::Column(poly) => {
+                self.get_row(poly.next).range_constraint(&poly.poly_id)
+            }
+            // No range constraints stored for publics.
+            AlgebraicVariable::Public(_) => None,
+        }
     }
 }

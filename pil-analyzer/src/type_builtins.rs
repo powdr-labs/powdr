@@ -42,7 +42,16 @@ lazy_static! {
         ("std::debug::print", ("T: ToString", "T -> ()")),
         ("std::field::modulus", ("", "-> int")),
         ("std::prelude::challenge", ("", "int, int -> expr")),
+        (
+            "std::prover::new_witness_col_at_stage",
+            ("", "string, int -> expr")
+        ),
         ("std::prover::min_degree", ("", "-> int")),
+        (
+            "std::prover::capture_constraints",
+            ("", "(-> ()) -> std::prelude::Constr[]")
+        ),
+        ("std::prover::at_next_stage", ("", "(-> ()) -> ()")),
         ("std::prover::max_degree", ("", "-> int")),
         ("std::prover::degree", ("", "-> int")),
         (
@@ -50,6 +59,13 @@ lazy_static! {
             ("", "expr, (int -> std::prelude::Query) -> ()")
         ),
         ("std::prover::eval", ("", "expr -> fe")),
+        (
+            "std::prover::try_eval",
+            ("", "expr -> std::prelude::Option<fe>")
+        ),
+        ("std::prover::provide_value", ("", "expr, int, fe -> ()")),
+        ("std::prover::input_from_channel", ("", "int, int -> fe")),
+        ("std::prover::output_to_channel", ("", "int, fe -> ()"))
     ]
     .into_iter()
     .map(|(name, (vars, ty))| { (name.to_string(), parse_type_scheme(vars, ty)) })
@@ -78,6 +94,28 @@ lazy_static! {
         (BinaryOperator::Greater, ("T: Ord", "T, T -> bool")),
         (BinaryOperator::LogicalOr, ("", "bool, bool -> bool")),
         (BinaryOperator::LogicalAnd, ("", "bool, bool -> bool")),
+        (
+            BinaryOperator::In,
+            (
+                "T: ToSelectedExprs, U: ToSelectedExprs",
+                "T, U -> std::prelude::Constr"
+            )
+        ),
+        (
+            BinaryOperator::Is,
+            (
+                "T: ToSelectedExprs, U: ToSelectedExprs",
+                "T, U -> std::prelude::Constr"
+            )
+        ),
+        (
+            BinaryOperator::Connect,
+            ("", "expr[], expr[] -> std::prelude::Constr")
+        ),
+        (
+            BinaryOperator::Select,
+            ("", "expr, expr[] -> std::prelude::SelectedExprs")
+        )
     ]
     .into_iter()
     .map(|(op, (vars, ty))| { (op, parse_type_scheme(vars, ty)) })
@@ -92,6 +130,7 @@ lazy_static! {
     .collect();
     static ref CONSTR_FUNCTION_STATEMENT_TYPE: ExpectedType = ExpectedType {
         ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
+        allow_int_to_empty_fun: true,
         allow_array: true,
         allow_empty: true,
     };
@@ -154,6 +193,7 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
             "Eq",
         ],
         Type::Col | Type::Inter => &[],
+        Type::Array(t) if *t.base == Type::Expr => &["Add", "ToSelectedExprs"],
         Type::Array(_) => &["Add"],
         Type::Tuple(_) => &[],
         Type::Function(_) => &[],

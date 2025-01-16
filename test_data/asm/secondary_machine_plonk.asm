@@ -33,6 +33,7 @@ machine Main with
 }
 
 machine Pythagoras with
+    degree: 32,
     latch: latch
 {
 

@@ -1,9 +1,8 @@
 use std::fmt::{self, Debug};
 
-use powdr_ast::analyzed::AlgebraicReference;
 use powdr_number::FieldElement;
 
-use super::range_constraints::RangeConstraint;
+use super::{affine_expression::AlgebraicVariable, range_constraints::RangeConstraint};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IncompleteCause<K = usize> {
@@ -160,8 +159,9 @@ impl<K, T: FieldElement> EvalValue<K, T> {
 
 /// Result of evaluating an expression / lookup.
 /// New assignments or constraints for witness columns identified by an ID.
-pub type EvalResult<'a, T, K = &'a AlgebraicReference> = Result<EvalValue<K, T>, EvalError<T>>;
+pub type EvalResult<'a, T, K = AlgebraicVariable<'a>> = Result<EvalValue<K, T>, EvalError<T>>;
 
+/// A fatal error for witness generation.
 #[derive(Clone, PartialEq)]
 pub enum EvalError<T: FieldElement> {
     /// We ran out of rows
@@ -176,6 +176,8 @@ pub enum EvalError<T: FieldElement> {
     FixedLookupFailed(Vec<(String, T)>),
     /// Error getting information from the prover.
     ProverQueryError(String),
+    /// Machines depend on each other recursively.
+    RecursiveMachineCalls(String),
     Generic(String),
     Multiple(Vec<EvalError<T>>),
 }
@@ -240,6 +242,9 @@ impl<T: FieldElement> fmt::Display for EvalError<T> {
             }
             EvalError::ProverQueryError(s) => {
                 write!(f, "Error getting external information from the prover: {s}")
+            }
+            EvalError::RecursiveMachineCalls(err) => {
+                write!(f, "Recursive machine dependency: {err}")
             }
             EvalError::Generic(s) => write!(f, "{s}"),
         }

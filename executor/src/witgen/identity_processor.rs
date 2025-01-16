@@ -1,140 +1,33 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Mutex,
-};
+use std::{collections::HashMap, sync::Mutex};
 
 use lazy_static::lazy_static;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, IdentityKind};
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
+    PhantomPermutationIdentity, PolynomialIdentity,
+};
 use powdr_number::FieldElement;
 
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::{
-    witgen::{global_constraints::CombinedRangeConstraintSet, machines::Machine, EvalError},
+    witgen::{global_constraints::CombinedRangeConstraintSet, EvalError},
     Identity,
 };
 
 use super::{
-    machines::KnownMachine, processor::OuterQuery, rows::RowPair, EvalResult, EvalValue,
-    IncompleteCause, MutableState, QueryCallback,
+    affine_expression::AlgebraicVariable, processor::OuterQuery, rows::RowPair, EvalResult,
+    EvalValue, IncompleteCause, QueryCallback,
 };
-
-/// A list of mutable references to machines.
-pub struct Machines<'a, 'b, T: FieldElement> {
-    identity_to_machine_index: BTreeMap<u64, usize>,
-    machines: Vec<&'b mut KnownMachine<'a, T>>,
-}
-
-impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
-    /// Splits out the machine at `index` and returns it together with a list of all other machines.
-    /// As a result, they can be mutated independently.
-    fn split<'c>(&'c mut self, index: usize) -> (&'c mut KnownMachine<'a, T>, Machines<'a, 'c, T>) {
-        let (before, after) = self.machines.split_at_mut(index);
-        let (current, after) = after.split_at_mut(1);
-        let current: &'c mut KnownMachine<'a, T> = current.first_mut().unwrap();
-
-        // Re-borrow machines to convert from `&'c mut &'b mut KnownMachine<'a, T>` to
-        // `&'c mut KnownMachine<'a, T>`.
-        let others: Machines<'a, 'c, T> = before
-            .iter_mut()
-            .chain(after.iter_mut())
-            .map(|m| &mut **m)
-            .into();
-
-        (current, others)
-    }
-
-    /// Like `split`, but with the "other" machines only containing machines after the current one.
-    fn split_skipping_previous_machines<'c>(
-        &'c mut self,
-        index: usize,
-    ) -> (&'c mut KnownMachine<'a, T>, Machines<'a, 'c, T>) {
-        let (before, after) = self.machines.split_at_mut(index + 1);
-        let current: &'c mut KnownMachine<'a, T> = before.last_mut().unwrap();
-
-        // Re-borrow machines to convert from `&'c mut &'b mut KnownMachine<'a, T>` to
-        // `&'c mut KnownMachine<'a, T>`.
-        let others: Machines<'a, 'c, T> = after.iter_mut().map(|m| &mut **m).into();
-
-        (current, others)
-    }
-
-    pub fn len(&self) -> usize {
-        self.machines.len()
-    }
-
-    pub fn iter_mut(&'b mut self) -> impl Iterator<Item = &'b mut KnownMachine<'a, T>> {
-        self.machines.iter_mut().map(|m| &mut **m)
-    }
-
-    pub fn call<Q: QueryCallback<T>>(
-        &mut self,
-        identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
-        query_callback: &mut Q,
-    ) -> EvalResult<'a, T> {
-        let machine_index = *self
-            .identity_to_machine_index
-            .get(&identity_id)
-            .unwrap_or_else(|| panic!("No executor machine matched identity ID: {identity_id}"));
-
-        let (current, others) = self.split(machine_index);
-        let mut mutable_state = MutableState {
-            machines: others,
-            query_callback,
-        };
-
-        current.process_plookup_timed(&mut mutable_state, identity_id, caller_rows)
-    }
-
-    pub fn take_witness_col_values<Q: QueryCallback<T>>(
-        &mut self,
-        query_callback: &mut Q,
-    ) -> HashMap<String, Vec<T>> {
-        (0..self.len())
-            .flat_map(|machine_index| {
-                // Don't include the previous machines, as they are already finalized.
-                let (current, others) = self.split_skipping_previous_machines(machine_index);
-                let mut mutable_state = MutableState {
-                    machines: others,
-                    query_callback,
-                };
-                current
-                    .take_witness_col_values(&mut mutable_state)
-                    .into_iter()
-            })
-            .collect()
-    }
-}
-
-impl<'a, 'b, T, I> From<I> for Machines<'a, 'b, T>
-where
-    T: FieldElement,
-    I: Iterator<Item = &'b mut KnownMachine<'a, T>>,
-{
-    fn from(machines: I) -> Self {
-        let machines = machines.collect::<Vec<_>>();
-        let identity_to_machine_index = machines
-            .iter()
-            .enumerate()
-            .flat_map(|(index, m)| m.identity_ids().into_iter().map(move |id| (id, index)))
-            .collect();
-        Self {
-            machines,
-            identity_to_machine_index,
-        }
-    }
-}
 
 /// Computes (value or range constraint) updates given a [RowPair] and [Identity].
 /// The lifetimes mean the following:
 /// - `'a`: The duration of the entire witness generation (e.g. references to identities)
-/// - `'b`: The duration of this machine's call (e.g. the mutable references of the other machines)
 /// - `'c`: The duration of this IdentityProcessor's lifetime (e.g. the reference to the mutable state)
-pub struct IdentityProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
-    mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+pub struct IdentityProcessor<'a, 'c, T: FieldElement, Q: QueryCallback<T>> {
+    mutable_state: &'c MutableState<'a, T, Q>,
 }
 
-impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b, 'c, T, Q> {
-    pub fn new(mutable_state: &'c mut MutableState<'a, 'b, T, Q>) -> Self {
+impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, Q> {
+    pub fn new(mutable_state: &'c MutableState<'a, T, Q>) -> Self {
         Self { mutable_state }
     }
 
@@ -147,18 +40,23 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         identity: &'a Identity<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let result = match identity.kind {
-            IdentityKind::Polynomial => self.process_polynomial_identity(identity, rows),
-            IdentityKind::Plookup | IdentityKind::Permutation => {
-                self.process_plookup(identity, rows)
+        let result = match identity {
+            Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
+            Identity::Lookup(LookupIdentity { left, id, .. })
+            | Identity::Permutation(PermutationIdentity { left, id, .. })
+            | Identity::PhantomLookup(PhantomLookupIdentity { left, id, .. })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { left, id, .. }) => {
+                self.process_lookup_or_permutation(*id, left, rows)
             }
-            IdentityKind::Connect => {
+            Identity::Connect(..) => {
                 // TODO this is not the right cause.
                 Ok(EvalValue::incomplete(IncompleteCause::SolvingFailed))
                 // unimplemented!(
                 //     "Identity of kind {kind:?} is not supported by the identity processor."
                 // )
             }
+            // TODO(bus_interaction)
+            Identity::PhantomBusInteraction(..) => Ok(EvalValue::complete(Vec::new())),
         };
         report_identity_solving(identity, &result);
         result
@@ -166,29 +64,26 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
     fn process_polynomial_identity(
         &self,
-        identity: &'a Identity<T>,
-        rows: &RowPair<T>,
+        identity: &'a PolynomialIdentity<T>,
+        rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        match rows.evaluate(identity.expression_for_poly_id()) {
+        match rows.evaluate(&identity.expression) {
             Err(incomplete_cause) => Ok(EvalValue::incomplete(incomplete_cause)),
             Ok(evaluated) => evaluated.solve_with_range_constraints(rows),
         }
     }
 
-    fn process_plookup(
+    fn process_lookup_or_permutation(
         &mut self,
-        identity: &'a Identity<T>,
+        id: u64,
+        left: &'a powdr_ast::analyzed::SelectedExpressions<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        if let Some(left_selector) = &identity.left.selector {
-            if let Some(status) = self.handle_left_selector(left_selector, rows) {
-                return Ok(status);
-            }
+        if let Some(status) = self.handle_left_selector(&left.selector, rows) {
+            return Ok(status);
         }
 
-        self.mutable_state
-            .machines
-            .call(identity.id, rows, self.mutable_state.query_callback)
+        self.mutable_state.call(id, rows)
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.
@@ -196,6 +91,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     /// - `left`: The evaluation of the left side of the lookup (symbolic for unknown values).
     /// - `right`: The expressions on the right side of the lookup.
     /// - `current_rows`: The [RowPair] needed to evaluate the right side of the lookup.
+    ///
     /// Returns:
     /// - `Ok(updates)`: The updates for the lookup.
     /// - `Err(e)`: If the constraint system is not satisfiable.
@@ -204,20 +100,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         outer_query: &OuterQuery<'a, '_, T>,
         current_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let right = &outer_query.connecting_identity.right;
+        let right = outer_query.connection.right;
         // sanity check that the right hand side selector is active
-        let selector_value = right
-            .selector
-            .as_ref()
-            .map(|s| {
-                current_rows
-                    .evaluate(s)
-                    .ok()
-                    .and_then(|affine_expression| affine_expression.constant_value())
-                    .ok_or(EvalError::Generic("Selector is not 1!".to_string()))
-            })
-            .unwrap_or(Ok(T::one()))?;
-        assert_eq!(selector_value, T::one());
+        current_rows
+            .evaluate(&right.selector)
+            .ok()
+            .and_then(|affine_expression| affine_expression.constant_value())
+            .and_then(|v| v.is_one().then_some(()))
+            .ok_or(EvalError::Generic("Selector is not 1!".to_string()))?;
 
         let range_constraint =
             CombinedRangeConstraintSet::new(outer_query.caller_rows, current_rows);
@@ -242,8 +132,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     fn handle_left_selector(
         &self,
         left_selector: &'a Expression<T>,
-        rows: &RowPair<T>,
-    ) -> Option<EvalValue<&'a AlgebraicReference, T>> {
+        rows: &RowPair<'_, 'a, T>,
+    ) -> Option<EvalValue<AlgebraicVariable<'a>, T>> {
         let value = match rows.evaluate(left_selector) {
             Err(incomplete_cause) => return Some(EvalValue::incomplete(incomplete_cause)),
             Ok(value) => value,
@@ -273,7 +163,7 @@ lazy_static! {
 fn report_identity_solving<T: FieldElement, K>(identity: &Identity<T>, result: &EvalResult<T, K>) {
     let success = result.as_ref().map(|r| r.is_complete()).unwrap_or_default() as u64;
     let mut stat = STATISTICS.lock().unwrap();
-    stat.entry(identity.id)
+    stat.entry(identity.id())
         .and_modify(|s| {
             s.invocations += 1;
             s.success += success;

@@ -13,30 +13,64 @@ enum Option<T> {
     Some(T)
 }
 
-/// The "constraint" type.
+/// The "constraint" type, i.e. the result of the operators
+/// "=", "in", "is" and "connect".
 enum Constr {
-    /// A polynomial identity.
+    /// A polynomial identity, result of the "=" operator.
     Identity(expr, expr),
-    /// A lookup constraint with selectors.
+
+    /// A lookup constraint with selectors, result of the "in" operator.
     Lookup((Option<expr>, Option<expr>), (expr, expr)[]),
-    /// A permutation constraint with selectors.
+
+    /// A "phantom" lookup constraint, i.e., an annotation for witness generation.
+    /// The actual constraint should be enforced via other constraints.
+    /// Contains:
+    /// - The selectors (if any) for the left and right hand side.
+    /// - The LHS and RHS values.
+    /// - The multiplicity column.
+    PhantomLookup((Option<expr>, Option<expr>), (expr, expr)[], expr),
+
+    /// A permutation constraint with selectors, result of the "is" operator.
     Permutation((Option<expr>, Option<expr>), (expr, expr)[]),
-    /// A connection constraint (copy constraint).
-    Connection((expr, expr)[])
+
+    /// A "phantom" permutation constraint, i.e., an annotation for witness generation.
+    /// The actual constraint should be enforced via other constraints.
+    /// Contains:
+    /// - The selectors (if any) for the left and right hand side.
+    /// - The LHS and RHS values.
+    PhantomPermutation((Option<expr>, Option<expr>), (expr, expr)[]),
+
+    /// A connection constraint (copy constraint), result of the "connect" operator.
+    Connection((expr, expr)[]),
+
+    /// A "phantom" bus interaction, i.e., an annotation for witness generation.
+    /// The actual constraint should be enforced via other constraints.
+    /// Contains:
+    /// - An expression for the multiplicity.
+    /// - The tuple added to the bus.
+    /// - An expression for the latch, a binary expression which indicates where the multiplicity can be non-zero.
+    /// WARNING: As of now, this annotation is largely ignored. When using the bus,
+    /// make sure that you also add phantom lookup / permutation constraints.
+    PhantomBusInteraction(expr, expr[], expr)
+}
+
+/// This is the result of the "$" operator. It can be used as the left and
+/// right hand side of a lookup or permutation constraint.
+enum SelectedExprs {
+    SelectedExprs(expr, expr[]),
+    JustExprs(expr[]),
 }
 
 
 /// The return type of a prover query function.
 enum Query {
-    /// Query a prover input element by index.
-    Input(int),
-    /// Writes a byte (second argument) to a file descriptor (first argument).
-    /// fd 1 is stdout, fd 2 is stderr.
-    Output(int, int),
     /// Generate a hint to fill a witness column with.
     Hint(fe),
-    /// Query a prover input element by index and data id.
-    DataIdentifier(int, int),
+    /// Query a prover input (field element) by channel id and index.
+    Input(int, int),
+    /// Writes a field element (second argument) to an output channel (first argument).
+    /// It is the host's responsibility to give semantics to each channel.
+    Output(int, fe),
     /// This value is not (additionally) constrained by the query.
     None,
 }

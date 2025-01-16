@@ -1,19 +1,21 @@
 use std::collections::{BTreeMap, HashMap};
 
-use itertools::Itertools;
-
 use super::super::affine_expression::AffineExpression;
-use super::{EvalResult, FixedData};
+use super::{Connection, EvalResult, FixedData, LookupCell};
 use super::{Machine, MachineParts};
+use crate::witgen::affine_expression::AlgebraicVariable;
+use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::evaluators::fixed_evaluator::FixedEvaluator;
+use crate::witgen::evaluators::partial_expression_evaluator::PartialExpressionEvaluator;
+use crate::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use crate::witgen::rows::RowPair;
-use crate::witgen::{
-    expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
-    symbolic_evaluator::SymbolicEvaluator,
-};
-use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
+use crate::witgen::{EvalError, EvalValue, IncompleteCause, QueryCallback};
 use crate::Identity;
+use itertools::Itertools;
+use num_traits::One;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, LookupIdentity, PhantomLookupIdentity,
+    PolyID,
 };
 use powdr_number::{DegreeType, FieldElement};
 
@@ -27,7 +29,7 @@ use powdr_number::{DegreeType, FieldElement};
 pub struct SortedWitnesses<'a, T: FieldElement> {
     degree: DegreeType,
     rhs_references: BTreeMap<u64, Vec<&'a AlgebraicReference>>,
-    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+    connections: BTreeMap<u64, Connection<'a, T>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
@@ -45,6 +47,9 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         if parts.identities.len() != 1 {
             return None;
         }
+        if parts.connections.is_empty() {
+            return None;
+        }
 
         let degree = parts.common_degree_range().max;
 
@@ -59,10 +64,10 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 .collect();
 
             let rhs_references = parts
-                .connecting_identities
-                .values()
-                .filter_map(|&id| {
-                    let rhs_expressions = id
+                .connections
+                .iter()
+                .filter_map(|(id, &identity)| {
+                    let rhs_expressions = identity
                         .right
                         .expressions
                         .iter()
@@ -73,19 +78,27 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                         })
                         .collect::<Option<Vec<_>>>()?;
 
-                    Some((id.id, rhs_expressions))
+                    Some((*id, rhs_expressions))
                 })
                 .collect::<BTreeMap<_, _>>();
 
-            if rhs_references.len() != parts.connecting_identities.len() {
+            if rhs_references.len() != parts.connections.len() {
                 // Not all connected identities meet the criteria above, so this is not a DoubleSortedWitnesses machine.
                 return None;
+            }
+
+            if !parts.prover_functions.is_empty() {
+                log::warn!(
+                    "SortedWitness machine does not support prover functions.\
+                    The following prover functions are ignored:\n{}",
+                    parts.prover_functions.iter().format("\n")
+                );
             }
 
             Some(SortedWitnesses {
                 degree,
                 rhs_references,
-                connecting_identities: parts.connecting_identities.clone(),
+                connections: parts.connections.clone(),
                 name,
                 key_col,
                 witness_positions,
@@ -101,24 +114,30 @@ fn check_identity<T: FieldElement>(
     id: &Identity<T>,
     degree: DegreeType,
 ) -> Option<PolyID> {
+    // Looking for a lookup
+    let (left, right) = match id {
+        Identity::Lookup(LookupIdentity { left, right, .. })
+        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => (left, right),
+        _ => return None,
+    };
+
     // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
-    if id.kind != IdentityKind::Plookup
-        || id.right.selector.is_some()
-        || id.left.expressions.len() != 1
-    {
+    if !right.selector.is_one() || left.expressions.len() != 1 {
         return None;
     }
 
     // Check for A' - A in the LHS
-    let key_column = check_constraint(id.left.expressions.first().unwrap())?;
+    let key_column = check_constraint(fixed_data, left.expressions.first().unwrap())?;
 
-    let not_last = id.left.selector.as_ref()?;
-    let positive = id.right.expressions.first().unwrap();
+    let not_last = &left.selector;
+    let positive = right.expressions.first().unwrap();
 
     // TODO this could be rather slow. We should check the code for identity instead
     // of evaluating it.
     for row in 0..(degree as usize) {
-        let ev = ExpressionEvaluator::new(FixedEvaluator::new(fixed_data, row, degree));
+        let fixed_evaluator = FixedEvaluator::new(fixed_data, row, degree);
+        let mut ev =
+            PartialExpressionEvaluator::new(fixed_evaluator, &fixed_data.intermediate_definitions);
         let degree = degree as usize;
         let nl = ev.evaluate(not_last).ok()?.constant_value()?;
         if (row == degree - 1 && !nl.is_zero()) || (row < degree - 1 && !nl.is_one()) {
@@ -134,20 +153,29 @@ fn check_identity<T: FieldElement>(
 
 /// Checks that the identity has a constraint of the form `a' - a` as the first expression
 /// on the left hand side and returns the ID of the witness column.
-fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyID> {
-    let symbolic_ev = SymbolicEvaluator;
-    let sort_constraint = match ExpressionEvaluator::new(symbolic_ev).evaluate(constraint) {
-        Ok(c) => c,
-        Err(_) => return None,
-    };
+fn check_constraint<T: FieldElement>(
+    fixed: &FixedData<T>,
+    constraint: &Expression<T>,
+) -> Option<PolyID> {
+    let sort_constraint =
+        match PartialExpressionEvaluator::new(SymbolicEvaluator, &fixed.intermediate_definitions)
+            .evaluate(constraint)
+        {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
     let mut coeff = sort_constraint.nonzero_coefficients();
-    let first = coeff.next()?;
-    let second = coeff.next()?;
+    let first = coeff
+        .next()
+        .and_then(|(k, v)| k.try_as_column().map(|k| (k, v)))?;
+    let second = coeff
+        .next()
+        .and_then(|(k, v)| k.try_as_column().map(|k| (k, v)))?;
     if coeff.next().is_some() {
         return None;
     }
     let key_column_id = match (first, second) {
-        ((key, _), _) | (_, (key, _)) if !key.next => *key,
+        ((key, _), _) | (_, (key, _)) if !key.next => key,
         _ => return None,
     };
     if key_column_id.next || key_column_id.is_fixed() {
@@ -157,8 +185,8 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
         next: true,
         ..key_column_id.clone()
     };
-    let pattern = AffineExpression::from_variable_id(&poly_next)
-        - AffineExpression::from_variable_id(key_column_id);
+    let pattern = AffineExpression::from_variable_id(AlgebraicVariable::Column(&poly_next))
+        - AffineExpression::from_variable_id(AlgebraicVariable::Column(key_column_id));
     if sort_constraint != pattern {
         return None;
     }
@@ -167,6 +195,15 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b MutableState<'a, T, Q>,
+        _identity_id: u64,
+        _values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup not supported by machine {}.", self.name())
+    }
+
     fn identity_ids(&self) -> Vec<u64> {
         self.rhs_references.keys().cloned().collect()
     }
@@ -177,7 +214,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
 
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &mut MutableState<'a, '_, T, Q>,
+        _mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -186,7 +223,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         let mut result = HashMap::new();
 
@@ -200,6 +237,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
         }
         result.insert(self.fixed_data.column_name(&self.key_col).to_string(), keys);
 
+        #[allow(clippy::iter_over_hash_type)]
+        // TODO: Is this deterministic?
         for (col, &i) in &self.witness_positions {
             let mut col_values = values
                 .iter_mut()
@@ -219,7 +258,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let left = self.connecting_identities[&identity_id]
+        let left = self.connections[&identity_id]
             .left
             .expressions
             .iter()

@@ -1,12 +1,14 @@
 //! Numerical types used across powdr
 
-#![deny(clippy::print_stdout)]
-
 #[macro_use]
 mod macros;
 mod baby_bear;
 mod bn254;
 mod goldilocks;
+mod koala_bear;
+mod mersenne31;
+#[macro_use]
+mod plonky3_macros;
 mod serialize;
 mod traits;
 pub use serialize::{
@@ -16,12 +18,13 @@ pub use serialize::{
 pub use baby_bear::BabyBearField;
 pub use bn254::Bn254Field;
 pub use goldilocks::GoldilocksField;
-pub use traits::KnownField;
+pub use koala_bear::KoalaBearField;
+pub use mersenne31::Mersenne31Field;
+pub use traits::{FieldSize, KnownField};
 
 pub use ibig::{IBig as BigInt, UBig as BigUint};
 pub use traits::{FieldElement, LargeInt};
 /// An arbitrary precision big integer, to be used as a last recourse
-
 /// The type of polynomial degrees and indices into columns.
 pub type DegreeType = u64;
 

@@ -3,13 +3,12 @@
 
 namespace std::prover;
     enum Query {
-        Input(int),
-        Output(int, int),
         Hint(fe),
-        DataIdentifier(int, int),
+        Input(int, int),
+        Output(int, int),
         None,
     }
-namespace main(256);
+namespace main(128);
     col witness _operation_id(i) query std::prelude::Query::Hint(6);
     col fixed _block_enforcer_last_step = [0]* + [1];
     (1 - main::_block_enforcer_last_step) * (1 - main::instr_return) * (main::_operation_id' - main::_operation_id) = 0;

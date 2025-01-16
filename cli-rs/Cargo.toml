@@ -8,16 +8,15 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [features]
-default = []
-halo2 = ["powdr-pipeline/halo2"]
-plonky3 = ["powdr-pipeline/plonky3"]
-estark-polygon = ["powdr-pipeline/estark-polygon", "powdr-riscv/estark-polygon"]
+default = ["plonky3"]
+halo2 = ["powdr/halo2"]
+plonky3 = ["powdr/plonky3"]
+estark-starky = ["powdr/estark-starky"]
+estark-polygon = ["powdr/estark-polygon"]
+stwo = ["powdr/stwo"]
 
 [dependencies]
-powdr-number.workspace = true
-powdr-riscv.workspace = true
-powdr-riscv-executor.workspace = true
-powdr-pipeline.workspace = true
+powdr.workspace = true
 
 clap = { version = "^4.3", features = ["derive"] }
 env_logger = "0.10.0"
@@ -28,3 +27,4 @@ clap-markdown = "0.1.3"
 [[bin]]
 name = "powdr-rs"
 path = "src/main.rs"
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458

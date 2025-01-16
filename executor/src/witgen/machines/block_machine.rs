@@ -1,35 +1,34 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
-use std::iter::{self, once};
+use std::iter::{self};
 
-use super::{EvalResult, FixedData, MachineParts};
+use super::{
+    compute_size_and_log, ConnectionKind, EvalResult, FixedData, LookupCell, MachineParts,
+};
 
+use crate::witgen::affine_expression::AlgebraicVariable;
+use crate::witgen::analysis::detect_connection_type_and_block_size;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
-use crate::witgen::processor::{OuterQuery, Processor};
+use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::jit::function_cache::FunctionCache;
+use crate::witgen::processor::{OuterQuery, Processor, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
 };
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
-use crate::witgen::{MutableState, QueryCallback};
-use crate::Identity;
-use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, DegreeRange, IdentityKind, PolyID,
-    PolynomialType,
-};
-use powdr_ast::parsed::visitor::ExpressionVisitable;
+use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause, QueryCallback};
+use powdr_ast::analyzed::{DegreeRange, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
-    Success(FinalizableData<T>, EvalValue<&'a AlgebraicReference, T>),
-    Incomplete(EvalValue<&'a AlgebraicReference, T>),
+    Success(SolverState<'a, T>, EvalValue<AlgebraicVariable<'a>, T>),
+    Incomplete(EvalValue<AlgebraicVariable<'a>, T>),
 }
 
 impl<'a, T: FieldElement> ProcessResult<'a, T> {
-    fn new(data: FinalizableData<T>, updates: EvalValue<&'a AlgebraicReference, T>) -> Self {
+    fn new(data: SolverState<'a, T>, updates: EvalValue<AlgebraicVariable<'a>, T>) -> Self {
         match updates.is_complete() {
             true => ProcessResult::Success(data, updates),
             false => ProcessResult::Incomplete(updates),
@@ -37,47 +36,7 @@ impl<'a, T: FieldElement> ProcessResult<'a, T> {
     }
 }
 
-fn collect_fixed_cols<T: FieldElement>(
-    expression: &Expression<T>,
-    result: &mut BTreeSet<Option<Expression<T>>>,
-) {
-    expression.pre_visit_expressions(&mut |e| {
-        if let Expression::Reference(r) = e {
-            if r.is_fixed() {
-                result.insert(Some(e.clone()));
-            }
-        }
-    });
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum ConnectionType {
-    Permutation,
-    Lookup,
-}
-
-impl From<ConnectionType> for IdentityKind {
-    fn from(value: ConnectionType) -> Self {
-        match value {
-            ConnectionType::Permutation => IdentityKind::Permutation,
-            ConnectionType::Lookup => IdentityKind::Plookup,
-        }
-    }
-}
-
-impl TryFrom<IdentityKind> for ConnectionType {
-    type Error = ();
-
-    fn try_from(value: IdentityKind) -> Result<Self, Self::Error> {
-        match value {
-            IdentityKind::Permutation => Ok(ConnectionType::Permutation),
-            IdentityKind::Plookup => Ok(ConnectionType::Lookup),
-            _ => Err(()),
-        }
-    }
-}
-
-impl<'a, T: FieldElement> Display for BlockMachine<'a, T> {
+impl<T: FieldElement> Display for BlockMachine<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -103,16 +62,20 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// The parts of the machine (identities, witness columns, etc.)
     parts: MachineParts<'a, T>,
     /// The type of constraint used to connect this machine to its caller.
-    connection_type: ConnectionType,
+    connection_type: ConnectionKind,
     /// The data of the machine.
-    data: FinalizableData<T>,
-    /// The index of the first row that has not been finalized yet.
-    /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
-    first_in_progress_row: usize,
+    data: FinalizableData<'a, T>,
+    publics: BTreeMap<&'a str, T>,
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
     processing_sequence_cache: ProcessingSequenceCache,
+    /// If this block machine can be JITed, we store the witgen functions here.
+    function_cache: FunctionCache<'a, T>,
     name: String,
+    /// Counts the number of blocks created using the JIT.
+    block_count_jit: usize,
+    /// Counts the number of blocks created using the runtime solver.
+    block_count_runtime: usize,
 }
 
 impl<'a, T: FieldElement> BlockMachine<'a, T> {
@@ -127,9 +90,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let degree = degree_range.max;
 
         let (is_permutation, block_size, latch_row) =
-            detect_connection_type_and_block_size(fixed_data, &parts.connecting_identities)?;
+            detect_connection_type_and_block_size(fixed_data, &parts.connections)?;
 
-        for id in parts.connecting_identities.values() {
+        for id in parts.connections.values() {
             for r in id.right.expressions.iter() {
                 if let Some(poly) = try_to_simple_poly(r) {
                     if poly.poly_id.ptype == PolynomialType::Constant {
@@ -152,6 +115,16 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let data = FinalizableData::with_initial_rows_in_progress(
             &parts.witnesses,
             (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
+            fixed_data,
+        );
+        let layout = data.layout();
+        let function_cache = FunctionCache::new(
+            fixed_data,
+            parts.clone(),
+            block_size,
+            latch_row,
+            layout,
+            name.clone(),
         );
         Some(BlockMachine {
             name,
@@ -163,125 +136,41 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             parts: parts.clone(),
             connection_type: is_permutation,
             data,
-            first_in_progress_row: block_size,
+            publics: Default::default(),
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
                 latch_row,
                 parts.identities.len(),
             ),
+            function_cache,
+            block_count_jit: 0,
+            block_count_runtime: 0,
         })
     }
-}
 
-fn detect_connection_type_and_block_size<'a, T: FieldElement>(
-    fixed_data: &'a FixedData<'a, T>,
-    connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
-) -> Option<(ConnectionType, usize, usize)> {
-    // TODO we should check that the other constraints/fixed columns are also periodic.
-
-    // Connecting identities should either all be permutations or all lookups.
-    let connection_type = connecting_identities
-        .values()
-        .map(|id| id.kind.try_into())
-        .unique()
-        .exactly_one()
-        .ok()?
-        .ok()?;
-
-    // Detect the block size.
-    let (latch_row, block_size) = match connection_type {
-        ConnectionType::Lookup => {
-            // We'd expect all RHS selectors to be fixed columns of the same period.
-            connecting_identities
-                .values()
-                .map(|id| try_to_period(&id.right.selector, fixed_data))
-                .unique()
-                .exactly_one()
-                .ok()??
-        }
-        ConnectionType::Permutation => {
-            // We check all fixed columns appearing in RHS selectors. If there is none, the block size is 1.
-
-            let find_max_period = |latch_candidates: BTreeSet<Option<Expression<T>>>| {
-                latch_candidates
-                    .iter()
-                    .filter_map(|e| try_to_period(e, fixed_data))
-                    // If there is more than one period, the block size is the maximum period.
-                    .max_by_key(|&(_, period)| period)
-            };
-            let mut latch_candidates = BTreeSet::new();
-            for id in connecting_identities.values() {
-                if let Some(selector) = &id.right.selector {
-                    collect_fixed_cols(selector, &mut latch_candidates);
-                }
-            }
-            if latch_candidates.is_empty() {
-                (0, 1)
-            } else {
-                find_max_period(latch_candidates)?
-            }
-        }
-    };
-    Some((connection_type, block_size, latch_row))
-}
-
-/// Check if `expr` is a reference to a function of the form
-/// f(i) { if (i + o) % k == 0 { 1 } else { 0 } }
-/// for some k < degree / 2, o.
-/// If so, returns (o, k).
-fn try_to_period<T: FieldElement>(
-    expr: &Option<Expression<T>>,
-    fixed_data: &FixedData<T>,
-) -> Option<(usize, usize)> {
-    match expr {
-        Some(expr) => {
-            if let Expression::Number(ref n) = expr {
-                if *n == T::one() {
-                    return Some((0, 1));
-                }
-            }
-
-            let poly = try_to_simple_poly(expr)?;
-            if !poly.is_fixed() {
-                return None;
-            }
-
-            let degree = fixed_data.common_degree_range(once(&poly.poly_id)).max;
-
-            let values = fixed_data.fixed_cols[&poly.poly_id].values(degree);
-
-            let offset = values.iter().position(|v| v.is_one())?;
-            let period = 1 + values.iter().skip(offset + 1).position(|v| v.is_one())?;
-            if period > degree as usize / 2 {
-                // This filters out columns like [0]* + [1], which might appear in a block machine
-                // but shouldn't be detected as the latch.
-                return None;
-            }
-            values
-                .iter()
-                .enumerate()
-                .all(|(i, v)| {
-                    let expected = if i % period == offset {
-                        1.into()
-                    } else {
-                        0.into()
-                    };
-                    *v == expected
-                })
-                .then_some((offset, period))
-        }
-        None => Some((0, 1)),
+    #[cfg(test)]
+    pub fn machine_info(&self) -> (MachineParts<'a, T>, usize, usize) {
+        (self.parts.clone(), self.block_size, self.latch_row)
     }
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
-        self.parts.connecting_identities.keys().copied().collect()
+        self.parts.connections.keys().copied().collect()
+    }
+
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b MutableState<'a, T, Q>,
+        _identity_id: u64,
+        _values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup not supported by machine {}.", self.name())
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -302,27 +191,45 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         if self.data.len() < 2 * self.block_size {
-            log::warn!(
-                "Filling empty blocks with zeros, because the block machine is never used. \
+            if self.fixed_data.is_monolithic() {
+                log::warn!(
+                    "Filling empty blocks with zeros, because the block machine is never used. \
                  This might violate some internal constraints."
+                );
+            } else {
+                log::info!(
+                    "Machine {} is never used at runtime, so we remove it.",
+                    self.name
+                );
+                // Return empty columns for all witnesses.
+                return self
+                    .parts
+                    .witnesses
+                    .iter()
+                    .map(|id| (*id, Vec::new()))
+                    .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
+                    .collect();
+            }
+        } else {
+            let total_block_count = self.block_count_jit + self.block_count_runtime;
+            log::debug!(
+                "{}: {} / {total_block_count} blocks computed via JIT.",
+                self.name,
+                self.block_count_jit
             );
         }
-
-        let new_degree = self.data.len().next_power_of_two() as DegreeType;
-        let new_degree = self.degree_range.fit(new_degree);
-        log::info!(
-            "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-            self.name,
-            self.degree,
-            new_degree,
-            self.data.len()
+        self.degree = compute_size_and_log(
+            &self.name,
+            // At this point, the data still contains the dummy block, which will be removed below.
+            // Therefore, we subtract the block size here.
+            self.data.len() - self.block_size,
+            self.degree_range,
         );
-        self.degree = new_degree;
 
-        if matches!(self.connection_type, ConnectionType::Permutation) {
+        if matches!(self.connection_type, ConnectionKind::Permutation) {
             // We have to make sure that *all* selectors are 0 in the dummy block,
             // because otherwise this block won't have a matching block on the LHS.
 
@@ -332,14 +239,15 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 iter::once(self.block_size - 1)
                     .chain(0..self.block_size)
                     .chain(iter::once(0))
-                    .map(|i| self.data[i].clone()),
+                    .map(|i| self.data.get_in_progress_row(i)),
+                self.fixed_data,
             );
 
             // Instantiate a processor
             let row_offset = RowIndex::from_i64(-1, self.degree);
             let mut processor = Processor::new(
                 row_offset,
-                dummy_block,
+                SolverState::new(dummy_block, self.publics.clone()),
                 mutable_state,
                 self.fixed_data,
                 &self.parts,
@@ -347,14 +255,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
 
             // Set all selectors to 0
-            for id in self.parts.connecting_identities.values() {
+            for id in self.parts.connections.values() {
                 processor
-                    .set_value(
-                        self.latch_row + 1,
-                        id.right.selector.as_ref().unwrap(),
-                        T::zero(),
-                        || "Zero selectors".to_string(),
-                    )
+                    .set_value(self.latch_row + 1, &id.right.selector, T::zero(), || {
+                        "Zero selectors".to_string()
+                    })
                     .unwrap();
             }
 
@@ -364,12 +269,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 DefaultSequenceIterator::new(self.block_size, self.parts.identities.len(), None),
             );
             processor.solve(&mut sequence_iterator).unwrap();
-            let mut dummy_block = processor.finish();
+            let mut dummy_block = processor.finish().block;
 
             // Replace the dummy block, discarding first and last row
             dummy_block.pop().unwrap();
             for i in (0..self.block_size).rev() {
-                self.data[i] = dummy_block.pop().unwrap();
+                self.data.set(i, dummy_block.pop().unwrap());
             }
         }
 
@@ -436,7 +341,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 }
 
 impl<'a, T: FieldElement> BlockMachine<'a, T> {
-    /// The characteristic of a block machine is that that all fixed columns are
+    /// The characteristic of a block machine is that all fixed columns are
     /// periodic. However, there are exceptions to handle wrapping.
     /// This becomes a problem when a witness polynomial depends on a fixed column
     /// that is not periodic, because values of committed polynomials are copy-pasted
@@ -446,6 +351,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - <Latch>));
     /// This function fixes this exception by setting _operation_id_no_change to 0.
     fn handle_last_row(&self, data: &mut HashMap<PolyID, Vec<T>>) {
+        #[allow(clippy::iter_over_hash_type)]
+        // This is deterministic because there is no shared state.
         for (poly_id, col) in data.iter_mut() {
             if self
                 .parts
@@ -469,25 +376,40 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         RowIndex::from_i64(self.rows() as i64 - 1, self.degree)
     }
 
-    fn get_row(&self, row: RowIndex) -> &Row<T> {
-        // The first block is a dummy block corresponding to rows (-block_size, 0),
-        // so we have to add the block size to the row index.
-        &self.data[(row + self.block_size).into()]
-    }
-
     fn process_plookup_internal<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
         let outer_query =
-            OuterQuery::new(caller_rows, self.parts.connecting_identities[&identity_id]);
+            match OuterQuery::try_new(caller_rows, self.parts.connections[&identity_id]) {
+                Ok(outer_query) => outer_query,
+                Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
+            };
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
-        for l in &outer_query.left {
-            log::trace!("  {}", l);
+        if log::log_enabled!(log::Level::Trace) {
+            for l in &outer_query.left {
+                log::trace!("  {}", l);
+            }
+        }
+
+        if self.rows() + self.block_size as DegreeType > self.degree {
+            return Err(EvalError::RowsExhausted(self.name.clone()));
+        }
+
+        let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
+        if self
+            .function_cache
+            .compile_cached(mutable_state, identity_id, &known_inputs)
+            .is_some()
+        {
+            let updates = self.process_lookup_via_jit(mutable_state, identity_id, outer_query)?;
+            assert!(updates.is_complete());
+            self.block_count_jit += 1;
+            return Ok(updates);
         }
 
         // TODO this assumes we are always using the same lookup for this machine.
@@ -506,20 +428,20 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             ));
         }
 
-        if self.rows() + self.block_size as DegreeType >= self.degree {
-            return Err(EvalError::RowsExhausted(self.name.clone()));
-        }
-
         let process_result =
             self.process(mutable_state, &mut sequence_iterator, outer_query.clone())?;
 
         match process_result {
-            ProcessResult::Success(new_block, updates) => {
+            ProcessResult::Success(updated_data, updates) => {
+                assert!(updates.is_complete());
+                self.block_count_runtime += 1;
+
                 log::trace!(
                     "End processing block machine '{}' (successfully)",
                     self.name()
                 );
-                self.append_block(new_block)?;
+                self.append_block(updated_data.block)?;
+                self.publics.extend(updated_data.publics);
 
                 let updates = updates.report_side_effect();
 
@@ -540,9 +462,35 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
     }
 
+    fn process_lookup_via_jit<'b, Q: QueryCallback<T>>(
+        &mut self,
+        mutable_state: &MutableState<'a, T, Q>,
+        identity_id: u64,
+        outer_query: OuterQuery<'a, 'b, T>,
+    ) -> EvalResult<'a, T> {
+        let mut input_output_data = vec![T::zero(); outer_query.left.len()];
+        let values = outer_query.prepare_for_direct_lookup(&mut input_output_data);
+
+        assert!(
+            (self.rows() + self.block_size as DegreeType) <= self.degree,
+            "Block machine is full (this should have been checked before)"
+        );
+        self.data.finalize_all();
+        let data = self.data.append_new_finalized_rows(self.block_size);
+
+        let success =
+            self.function_cache
+                .process_lookup_direct(mutable_state, identity_id, values, data)?;
+        assert!(success);
+
+        Ok(outer_query
+            .direct_lookup_to_eval_result(input_output_data)?
+            .report_side_effect())
+    }
+
     fn process<'b, Q: QueryCallback<T>>(
         &self,
-        mutable_state: &mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &MutableState<'a, T, Q>,
         sequence_iterator: &mut ProcessingSequenceIterator,
         outer_query: OuterQuery<'a, 'b, T>,
     ) -> Result<ProcessResult<'a, T>, EvalError<T>> {
@@ -553,10 +501,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let block = FinalizableData::with_initial_rows_in_progress(
             &self.parts.witnesses,
             (0..(self.block_size + 2)).map(|i| Row::fresh(self.fixed_data, row_offset + i)),
+            self.fixed_data,
         );
         let mut processor = BlockProcessor::new(
             row_offset,
-            block,
+            SolverState::new(block, self.publics.clone()),
             mutable_state,
             self.fixed_data,
             &self.parts,
@@ -565,9 +514,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         .with_outer_query(outer_query);
 
         let outer_assignments = processor.solve(sequence_iterator)?;
-        let new_block = processor.finish();
+        let updated_data = processor.finish();
 
-        Ok(ProcessResult::new(new_block, outer_assignments))
+        Ok(ProcessResult::new(updated_data, outer_assignments))
     }
 
     /// Takes a block of rows, which contains the last row of its previous block
@@ -575,36 +524,33 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// the last row of its previous block is merged with the one we have already.
     /// This is necessary to handle non-rectangular block machines, which already use
     /// unused cells in the previous block.
-    fn append_block(&mut self, mut new_block: FinalizableData<T>) -> Result<(), EvalError<T>> {
+    fn append_block(&mut self, mut new_block: FinalizableData<'a, T>) -> Result<(), EvalError<T>> {
         assert!(
-            (self.rows() + self.block_size as DegreeType) < self.degree,
+            (self.rows() + self.block_size as DegreeType) <= self.degree,
             "Block machine is full (this should have been checked before)"
         );
 
         assert_eq!(new_block.len(), self.block_size + 2);
 
         // 1. Ignore the first row of the next block:
-        new_block.pop();
-        // 2. Merge the last row of the previous block
+        new_block.pop().unwrap();
 
+        // 2. Merge the last row of the previous block
         new_block
             .get_mut(0)
             .unwrap()
-            .merge_with(self.get_row(self.last_row_index()))
+            .merge_with_values(self.data.known_values_in_row(self.data.len() - 1))
             .map_err(|_| {
                 EvalError::Generic(
                     "Block machine overwrites existing value with different value!".to_string(),
                 )
             })?;
-        // 3. Remove the last row of the previous block from data
-        self.data.pop();
 
-        // 4. Finalize everything so far (except the dummy block)
-        if self.data.len() > self.block_size {
-            self.data
-                .finalize_range(self.first_in_progress_row..self.data.len());
-            self.first_in_progress_row = self.data.len();
-        }
+        // 3. Remove the last row of the previous block from data
+        self.data.truncate(self.data.len() - 1);
+
+        // 4. Finalize everything so far
+        self.data.finalize_all();
 
         // 5. Append the new block (including the merged last row of the previous block)
         self.data.extend(new_block);

@@ -1,12 +1,16 @@
 use std::collections::HashMap;
 
+use num_traits::One;
 use powdr_ast::analyzed::{
     Analyzed, Identity, PolynomialType, PublicDeclaration, SelectedExpressions,
     StatementIdentifier, Symbol, SymbolKind,
 };
+use powdr_number::FieldElement;
 
 /// Computes expression IDs for each intermediate polynomial.
-pub fn compute_intermediate_expression_ids<T>(analyzed: &Analyzed<T>) -> HashMap<u64, u64> {
+pub fn compute_intermediate_expression_ids<T: FieldElement>(
+    analyzed: &Analyzed<T>,
+) -> HashMap<u64, u64> {
     let mut expression_counter: usize = 0;
     let mut ids = HashMap::new();
     for item in &analyzed.source_order {
@@ -28,7 +32,9 @@ pub fn compute_intermediate_expression_ids<T>(analyzed: &Analyzed<T>) -> HashMap
             StatementIdentifier::PublicDeclaration(name) => {
                 analyzed.public_declarations[name].expression_count()
             }
-            StatementIdentifier::Identity(id) => analyzed.identities[*id].expression_count(),
+            StatementIdentifier::ProofItem(id) => analyzed.identities[*id].expression_count(),
+            StatementIdentifier::ProverFunction(_)
+            | StatementIdentifier::TraitImplementation(_) => 0,
         }
     }
     ids
@@ -39,9 +45,25 @@ trait ExpressionCounter {
     fn expression_count(&self) -> usize;
 }
 
-impl<Expr> ExpressionCounter for Identity<SelectedExpressions<Expr>> {
+impl<T: FieldElement> ExpressionCounter for Identity<T> {
     fn expression_count(&self) -> usize {
-        self.left.expression_count() + self.right.expression_count()
+        match self {
+            Identity::Polynomial(_) => 1,
+            Identity::Lookup(plookup_identity) => {
+                plookup_identity.left.expression_count() + plookup_identity.right.expression_count()
+            }
+            Identity::Permutation(permutation_identity) => {
+                permutation_identity.left.expression_count()
+                    + permutation_identity.right.expression_count()
+            }
+            Identity::Connect(connect_identity) => {
+                connect_identity.left.len() + connect_identity.right.len()
+            }
+            // phantom identities are not relevant in this context
+            Identity::PhantomLookup(..)
+            | Identity::PhantomPermutation(..)
+            | Identity::PhantomBusInteraction(..) => 0,
+        }
     }
 }
 
@@ -61,8 +83,8 @@ impl ExpressionCounter for PublicDeclaration {
     }
 }
 
-impl<Expr> ExpressionCounter for SelectedExpressions<Expr> {
+impl<T: FieldElement> ExpressionCounter for SelectedExpressions<T> {
     fn expression_count(&self) -> usize {
-        self.selector.is_some() as usize + self.expressions.len()
+        (if self.selector.is_one() { 0 } else { 1 }) + self.expressions.len()
     }
 }

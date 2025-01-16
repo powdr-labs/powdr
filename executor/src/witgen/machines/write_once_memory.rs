@@ -2,18 +2,17 @@ use std::collections::{BTreeMap, HashMap};
 
 use itertools::{Either, Itertools};
 
-use powdr_ast::analyzed::{IdentityKind, PolyID, PolynomialType};
+use num_traits::One;
+use powdr_ast::analyzed::{Identity, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::{
-    witgen::{
-        rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
-        IncompleteCause, MutableState, QueryCallback,
-    },
-    Identity,
+use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::{
+    rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
+    IncompleteCause, QueryCallback,
 };
 
-use super::{Machine, MachineParts};
+use super::{Connection, LookupCell, Machine, MachineParts};
 
 /// A memory machine with a fixed address space, and each address can only have one
 /// value during the lifetime of the program.
@@ -30,7 +29,7 @@ use super::{Machine, MachineParts};
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
     degree: DegreeType,
-    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+    connections: BTreeMap<u64, Connection<'a, T>>,
     /// The fixed data
     fixed_data: &'a FixedData<'a, T>,
     /// The polynomials that are used as values (witness polynomials on the RHS)
@@ -48,32 +47,35 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        if !parts.identities.is_empty() {
-            return None;
-        }
-
-        if !parts
-            .connecting_identities
-            .values()
-            .all(|i| i.kind == IdentityKind::Plookup)
+        if parts
+            .identities
+            .iter()
+            // The only identity we'd expect is a PhantomBusInteraction
+            .any(|id| !matches!(id, Identity::PhantomBusInteraction(_)))
         {
             return None;
         }
 
-        // All connecting identities should have no selector or a selector of 1
-        if parts.connecting_identities.values().any(|i| {
-            i.right
-                .selector
-                .as_ref()
-                .map(|s| s != &T::one().into())
-                .unwrap_or(false)
-        }) {
+        if parts.connections.is_empty() {
+            return None;
+        }
+
+        if !parts.connections.values().all(|i| i.is_lookup()) {
+            return None;
+        }
+
+        // All connecting identities should have a selector of 1
+        if parts
+            .connections
+            .values()
+            .any(|i| !i.right.selector.is_one())
+        {
             return None;
         }
 
         // All RHS expressions should be the same
         let rhs_exprs = parts
-            .connecting_identities
+            .connections
             .values()
             .map(|i| &i.right.expressions)
             .collect_vec();
@@ -115,9 +117,17 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             }
         }
 
+        if !parts.prover_functions.is_empty() {
+            log::warn!(
+                "WriteOnceMemory machine does not support prover functions.\
+                The following prover functions are ignored:\n{}",
+                parts.prover_functions.iter().format("\n")
+            );
+        }
+
         Some(Self {
             degree,
-            connecting_identities: parts.connecting_identities.clone(),
+            connections: parts.connections.clone(),
             name,
             fixed_data,
             value_polys,
@@ -131,7 +141,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let identity = self.connecting_identities[&identity_id];
+        let identity = self.connections[&identity_id];
         let args = identity
             .left
             .expressions
@@ -226,8 +236,17 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b MutableState<'a, T, Q>,
+        _identity_id: u64,
+        _values: &mut [LookupCell<'c, T>],
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup not supported by machine {}.", self.name())
+    }
+
     fn identity_ids(&self) -> Vec<u64> {
-        self.connecting_identities.keys().copied().collect()
+        self.connections.keys().copied().collect()
     }
 
     fn name(&self) -> &str {
@@ -236,7 +255,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -245,7 +264,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         self.value_polys
             .iter()
@@ -266,8 +285,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
                         }
                         column
                     });
-                (self.fixed_data.column_name(poly).to_string(), column)
+                (*poly, column)
             })
+            .map(|(poly_id, column)| (self.fixed_data.column_name(&poly_id).to_string(), column))
             .collect()
     }
 }

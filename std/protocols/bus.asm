@@ -1,21 +1,23 @@
 use std::check::assert;
-use std::check::panic;
-use std::math::fp2::Fp2;
-use std::math::fp2::add_ext;
-use std::math::fp2::sub_ext;
-use std::math::fp2::mul_ext;
-use std::math::fp2::inv_ext;
-use std::math::fp2::eval_ext;
-use std::math::fp2::unpack_ext;
-use std::math::fp2::unpack_ext_array;
-use std::math::fp2::next_ext;
-use std::math::fp2::from_base;
-use std::math::fp2::needs_extension;
-use std::math::fp2::is_extension;
-use std::math::fp2::fp2_from_array;
-use std::math::fp2::constrain_eq_ext;
+use std::array;
+use std::math::extension_field::Ext;
+use std::math::extension_field::add_ext;
+use std::math::extension_field::sub_ext;
+use std::math::extension_field::mul_ext;
+use std::math::extension_field::inv_ext;
+use std::math::extension_field::eval_ext;
+use std::math::extension_field::unpack_ext_array;
+use std::math::extension_field::next_ext;
+use std::math::extension_field::from_base;
+use std::math::extension_field::from_array;
+use std::math::extension_field::constrain_eq_ext;
 use std::protocols::fingerprint::fingerprint_with_id;
+use std::protocols::fingerprint::fingerprint_with_id_inter;
+use std::math::extension_field::required_extension_size;
 use std::prover::eval;
+use std::field::known_field;
+use std::field::KnownField;
+use std::check::panic;
 
 /// Sends the tuple (id, tuple...) to the bus by adding
 /// `multiplicity / (beta - fingerprint(id, tuple...))` to `acc`
@@ -23,31 +25,62 @@ use std::prover::eval;
 /// it to be boolean) if needed.
 ///
 /// # Arguments:
-///
-/// - is_first: A column that is 1 for the first row and 0 for the rest
 /// - id: Interaction Id
 /// - tuple: An array of columns to be sent to the bus
 /// - multiplicity: The multiplicity which shows how many times a column will be sent
-/// - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
-///        are done on the F_{p^2} extension field.
-/// - alpha: A challenge used to compress id and tuple
-/// - beta: A challenge used to update the accumulator
-///
-/// # Returns:
-///
-/// - Constraints to be added to enforce the bus
-let bus_interaction: expr, expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> Constr[] = |is_first, id, tuple, multiplicity, acc, alpha, beta| {
+/// - latch: a binary expression which indicates where the multiplicity can be non-zero.
+let bus_interaction: expr, expr[], expr, expr -> () = constr |id, tuple, multiplicity, latch| {
+
+    // Add phantom bus interaction
+    let full_tuple = [id] + tuple;
+    Constr::PhantomBusInteraction(multiplicity, full_tuple, latch);
+
+    let extension_field_size = required_extension_size();
+
+    // Alpha is used to compress the LHS and RHS arrays.
+    let alpha = from_array(array::new(extension_field_size, |i| challenge(0, i + 1)));
+    // Beta is used to update the accumulator.
+    let beta = from_array(array::new(extension_field_size, |i| challenge(0, i + 1 + extension_field_size)));
 
     // Implemented as: folded = (beta - fingerprint(id, tuple...));
-    let folded = sub_ext(beta, fingerprint_with_id(id, tuple, alpha));
+    let materialize_folded = match known_field() {
+        // Materialized as a witness column for two reasons:
+        // - It makes sure the constraint degree is independent of the input tuple.
+        // - We can access folded', even if the tuple contains next references.
+        // Note that if all expressions are degree-1 and there is no next reference,
+        // this is wasteful, but we can't check that here.
+        Option::Some(KnownField::Goldilocks) => true,
+        Option::Some(KnownField::BabyBear) => true,
+        Option::Some(KnownField::KoalaBear) => true,
+        // The case above triggers our hand-written witness generation, but on Bn254, we'd not be
+        // on the extension field and use the automatic witness generation.
+        // However, it does not work with a materialized folded tuple. At the same time, Halo2
+        // (the only prover that supports BN254) does not have a hard degree bound. So, we can
+        // in-line the expression here.
+        Option::Some(KnownField::BN254) => false,
+        _ => panic("Unexpected field!")
+    };
+    let folded = if materialize_folded {
+        let folded = from_array(
+            array::new(extension_field_size,
+                    |i| std::prover::new_witness_col_at_stage("folded", 1))
+        );
+        constrain_eq_ext(folded, sub_ext(beta, fingerprint_with_id_inter(id, tuple, alpha)));
+        folded
+    } else {
+        sub_ext(beta, fingerprint_with_id_inter(id, tuple, alpha))
+    };
+
     let folded_next = next_ext(folded);
 
     let m_ext = from_base(multiplicity);
     let m_ext_next = next_ext(m_ext);
 
-    let acc_ext = fp2_from_array(acc);
+    let acc = array::new(extension_field_size, |i| std::prover::new_witness_col_at_stage("acc", 1));
+    let acc_ext = from_array(acc);
     let next_acc = next_ext(acc_ext);
 
+    let is_first: col = std::well_known::is_first;
     let is_first_next = from_base(is_first');
 
     // Update rule:
@@ -58,47 +91,43 @@ let bus_interaction: expr, expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> C
         mul_ext(folded_next, sub_ext(next_acc, mul_ext(acc_ext, sub_ext(from_base(1), is_first_next)))), m_ext_next
     );
     
-    constrain_eq_ext(update_expr, from_base(0))
+    constrain_eq_ext(update_expr, from_base(0));
 };
 
-/// Compute acc' = acc * (1 - is_first') + multiplicity' / fingerprint_with_id(id, (a1', a2')),
+/// Compute acc' = acc * (1 - is_first') + multiplicity' / fingerprint(id, tuple...),
 /// using extension field arithmetic.
 /// This is intended to be used as a hint in the extension field case; for the base case
 /// automatic witgen is smart enough to figure out the value of the accumulator.
-let compute_next_z_send: expr, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<expr> -> fe[] = query |is_first, id, tuple, multiplicity, acc, alpha, beta| {
-    // Implemented as: folded = (beta - fingerprint(id, tuple...));
-    // `multiplicity / (beta - fingerprint(id, tuple...))` to `acc`
-    let folded = sub_ext(beta, fingerprint_with_id(id, tuple, alpha));
-    let folded_next = next_ext(folded);
+let compute_next_z: expr, expr, expr[], expr, Ext<expr>, Ext<expr>, Ext<expr> -> fe[] = query |is_first, id, tuple, multiplicity, acc, alpha, beta| {
 
-    let m_ext = from_base(multiplicity);
-    let m_ext_next = next_ext(m_ext);
+    let m_next = eval(multiplicity');
+    let m_ext_next = from_base(m_next);
 
     let is_first_next = eval(is_first');
     let current_acc = if is_first_next == 1 {from_base(0)} else {eval_ext(acc)};
     
-    // acc' = acc * (1 - is_first') + multiplicity / fingerprint_with_id(id, (a1', a2'))
-    let res = add_ext(
-        current_acc,
-        mul_ext(eval_ext(m_ext_next), inv_ext(eval_ext(folded_next)))
-    );
+    // acc' = current_acc + multiplicity' / folded'
+    let res = if m_next == 0 {
+        current_acc
+    } else {
+        // Implemented as: folded = (beta - fingerprint(id, tuple...));
+        // `multiplicity / (beta - fingerprint(id, tuple...))` to `acc`
+        let folded_next = sub_ext(eval_ext(beta), fingerprint_with_id(eval(id'), array::eval(array::next(tuple)), alpha));
+        add_ext(
+            current_acc,
+            mul_ext(m_ext_next, inv_ext(folded_next))
+        )
+    };
 
     unpack_ext_array(res)
 };
 
-/// Compute acc' = acc * (1 - is_first') - multiplicity' / fingerprint_with_id(id, (a1', a2')),
-/// using extension field arithmetic.
-/// This is intended to be used as a hint in the extension field case; for the base case
-/// automatic witgen is smart enough to figure out the value of the accumulator.
-let compute_next_z_receive: expr, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<expr> -> fe[] = query |is_first, id, tuple, multiplicity, acc, alpha, beta| 
-    compute_next_z_send(is_first, id, tuple, -multiplicity, acc, alpha, beta);
-
 /// Convenience function for bus interaction to send columns
-let bus_send: expr, expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> Constr[] = |is_first, id, tuple, multiplicity, acc, alpha, beta| {
-    bus_interaction(is_first, id, tuple, multiplicity, acc, alpha, beta)
+let bus_send: expr, expr[], expr -> () = constr |id, tuple, multiplicity| {
+    bus_interaction(id, tuple, multiplicity, 1);
 };
 
 /// Convenience function for bus interaction to receive columns
-let bus_receive: expr, expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> Constr[] = |is_first, id, tuple, multiplicity, acc, alpha, beta| {
-    bus_interaction(is_first, id, tuple, -1 * multiplicity, acc, alpha, beta)
+let bus_receive: expr, expr[], expr, expr -> () = constr |id, tuple, multiplicity, latch| {
+    bus_interaction(id, tuple, -1 * multiplicity, latch);
 };

@@ -39,6 +39,11 @@ impl Unifier {
                     self.ensure_bound(c, "ToString".to_string())?;
                 }
             }
+            Type::NamedType(n, _)
+                if bound == "ToSelectedExprs" && n.to_string() == "std::prelude::SelectedExprs" =>
+            {
+                return Ok(())
+            }
             Type::NamedType(n, _) => {
                 // Change this as soon as we support user-implemented traits.
                 return Err(format!("Type {n} does not satisfy trait {bound}."));
@@ -167,6 +172,8 @@ impl Unifier {
             ));
         }
 
+        #[allow(clippy::iter_over_hash_type)]
+        // TODO: Is this deterministic?
         for bound in self.type_var_bounds(&type_var) {
             self.ensure_bound(&ty, bound)?;
         }

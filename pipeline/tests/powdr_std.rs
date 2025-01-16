@@ -1,207 +1,279 @@
 use std::sync::Arc;
 
+use powdr_linker::LinkerMode;
 use powdr_number::{BabyBearField, BigInt, Bn254Field, GoldilocksField};
 
 use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
+    test_runner::run_tests,
     test_util::{
-        evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
-        gen_halo2_proof, make_simple_prepared_pipeline, regular_test, std_analyzed, test_halo2,
-        test_pilcom, test_plonky3_with_backend_variant, BackendVariant,
+        evaluate_function, evaluate_integer_function, gen_estark_proof_with_backend_variant,
+        gen_halo2_proof, make_simple_prepared_pipeline, regular_test_bb, regular_test_gl,
+        regular_test_small_field, std_analyzed, test_halo2_with_backend_variant, test_mock_backend,
+        test_plonky3_pipeline, BackendVariant,
     },
     Pipeline,
 };
 use test_log::test;
 
 #[test]
+fn fingerprint_test() {
+    let f = "std/fingerprint_test.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_plonky3_pipeline(pipeline);
+}
+
+#[test]
 #[ignore = "Too slow"]
 fn poseidon_bn254_test() {
     let f = "std/poseidon_bn254_test.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2(pipeline.clone());
+    // Native linker mode, because bus constraints are exponential in Halo2
+    let pipeline = make_simple_prepared_pipeline(f, LinkerMode::Native);
+    test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Composite);
 
     // `test_halo2` only does a mock proof in the PR tests.
     // This makes sure we test the whole proof generation for one example
     // file even in the PR tests.
-    gen_halo2_proof(pipeline.clone(), BackendVariant::Monolithic);
-    gen_halo2_proof(pipeline, BackendVariant::Composite);
+    gen_halo2_proof(pipeline.clone(), BackendVariant::Composite);
 }
 
 #[test]
 fn poseidon_gl_test() {
     let f = "std/poseidon_gl_test.asm";
-    test_pilcom(make_simple_prepared_pipeline(f));
-    gen_estark_proof(make_simple_prepared_pipeline(f));
+    regular_test_gl(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn poseidon_gl_memory_test() {
     let f = "std/poseidon_gl_memory_test.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
-    gen_estark_proof(pipeline);
+    regular_test_gl(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn keccakf16_test() {
+    let f = "std/keccakf16_test.asm";
+    regular_test_small_field(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn keccakf16_memory_test() {
+    let f = "std/keccakf16_memory_test.asm";
+    regular_test_small_field(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn keccakf32_memory_test() {
+    let f = "std/keccakf32_memory_test.asm";
+    regular_test_gl(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn poseidon_bb_test() {
+    let f = "std/poseidon_bb_test.asm";
+    regular_test_bb(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn poseidon2_bb_test() {
+    let f = "std/poseidon2_bb_test.asm";
+    regular_test_bb(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn poseidon2_gl_test() {
+    let f = "std/poseidon2_gl_test.asm";
+    regular_test_gl(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
+    // Native linker mode, because bus constraints are exponential in Halo2
+    let pipeline = make_simple_prepared_pipeline(f, LinkerMode::Native);
+    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn split_gl_test() {
     let f = "std/split_gl_test.asm";
-    test_pilcom(make_simple_prepared_pipeline(f));
-    gen_estark_proof(make_simple_prepared_pipeline(f));
+    regular_test_gl(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn arith_test() {
-    let f = "std/arith_test.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
-
-    // Running gen_estark_proof(f, Default::default())
-    // is too slow for the PR tests. This will only create a single
-    // eStark proof instead of 3.
-    pipeline
-        .with_backend(powdr_backend::BackendType::EStarkStarky, None)
-        .compute_proof()
-        .unwrap();
-
-    test_halo2(make_simple_prepared_pipeline(f));
+fn split_bb_test() {
+    let f = "std/split_bb_test.asm";
+    regular_test_bb(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn memory_test() {
-    let f = "std/memory_test.asm";
-    regular_test(f, &[]);
+fn add_sub_small_test() {
+    let f = "std/add_sub_small_test.asm";
+    regular_test_small_field(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn memory_with_bootloader_write_test() {
-    let f = "std/memory_with_bootloader_write_test.asm";
-    regular_test(f, &[]);
+fn arith_small_test() {
+    let f = "std/arith_small_test.asm";
+    regular_test_small_field(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn memory_test_parallel_accesses() {
-    let f = "std/memory_test_parallel_accesses.asm";
-    regular_test(f, &[]);
+fn arith_large_test() {
+    let f = "std/arith_large_test.asm";
+    regular_test_gl(f, &[]);
 }
 
 #[test]
-fn permutation_via_challenges_bn() {
+#[ignore = "Too slow"]
+fn arith256_memory_large_test() {
+    let f = "std/arith256_memory_large_test.asm";
+    regular_test_gl(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn memory_large_test() {
+    let f = "std/memory_large_test.asm";
+    regular_test_gl(f, &[]);
+
+    // This one test was selected to also run estark.
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Native);
+    gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Composite);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn memory_large_with_bootloader_write_test() {
+    let f = "std/memory_large_with_bootloader_write_test.asm";
+    regular_test_gl(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn memory_large_test_parallel_accesses() {
+    let f = "std/memory_large_test_parallel_accesses.asm";
+    regular_test_gl(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn memory_small_test() {
+    let f = "std/memory_small_test.asm";
+    regular_test_small_field(f, &[]);
+}
+
+#[test]
+fn permutation_via_challenges() {
     let f = "std/permutation_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
+    test_plonky3_pipeline(pipeline);
+
+    let pipeline = make_simple_prepared_pipeline::<BabyBearField>(f, LinkerMode::Bus);
+    test_plonky3_pipeline(pipeline);
 }
 
 #[test]
-#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation(main::is_first, [main::z], main::alpha, main::beta, main::permutation_constraint)\nError: FailedAssertion(\"The field is too small and needs to move to the extension field. Pass two elements instead!\")"]
-fn permutation_via_challenges_gl() {
-    let f = "std/permutation_via_challenges.asm";
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
-}
-
-#[test]
-fn permutation_via_challenges_ext() {
-    let f = "std/permutation_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet. But at least it tests that the panic from
-    // the previous test is not happening.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
-}
-
-#[test]
-fn lookup_via_challenges_bn() {
+fn lookup_via_challenges() {
     let f = "std/lookup_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
+    test_plonky3_pipeline(pipeline);
+
+    let pipeline = make_simple_prepared_pipeline::<BabyBearField>(f, LinkerMode::Bus);
+    test_plonky3_pipeline(pipeline);
 }
 
 #[test]
-fn lookup_via_challenges_ext() {
-    let f = "std/lookup_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+fn lookup_via_challenges_range_constraint() {
+    let f = "std/lookup_via_challenges_range_constraint.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
+    test_plonky3_pipeline(pipeline);
 }
 
 #[test]
-fn lookup_via_challenges_ext_simple() {
-    let f = "std/lookup_via_challenges_ext_simple.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+fn bus_lookup() {
+    let f = "std/bus_lookup.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
+    test_plonky3_pipeline(pipeline);
 }
 
 #[test]
-fn bus_permutation_via_challenges_bn() {
-    let f = "std/bus_permutation_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn bus_permutation_via_challenges_ext_bn() {
-    let f = "std/bus_permutation_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn bus_lookup_via_challenges_bn() {
-    let f = "std/bus_lookup_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn bus_lookup_via_challenges_ext_bn() {
-    let f = "std/bus_lookup_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
+fn bus_permutation() {
+    let f = "std/bus_permutation.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
+    test_plonky3_pipeline(pipeline);
 }
 
 #[test]
 fn write_once_memory_test() {
     let f = "std/write_once_memory_test.asm";
-    regular_test(f, &[]);
+    regular_test_gl(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn binary_test() {
-    let f = "std/binary_test.asm";
-    test_pilcom(make_simple_prepared_pipeline(f));
-    test_halo2(make_simple_prepared_pipeline(f));
+fn binary_large_test() {
+    let f = "std/binary_large_test.asm";
+    regular_test_gl(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn binary_bb_8_test() {
-    let f = "std/binary_bb_test_8.asm";
-    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+fn binary_small_8_test() {
+    let f = "std/binary_small_8_test.asm";
+    regular_test_small_field(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn binary_bb_16_test() {
-    let f = "std/binary_bb_test_16.asm";
-    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+fn binary_small_test() {
+    let f = "std/binary_small_test.asm";
+    regular_test_small_field(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn shift_test() {
-    let f = "std/shift_test.asm";
-    test_pilcom(make_simple_prepared_pipeline(f));
-    test_halo2(make_simple_prepared_pipeline(f));
+fn shift_large_test() {
+    let f = "std/shift_large_test.asm";
+    regular_test_gl(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn shift_small_test() {
+    let f = "std/shift_small_test.asm";
+    regular_test_small_field(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn rotate_large_test() {
+    let f = "std/rotate_large_test.asm";
+    regular_test_gl(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn rotate_small_test() {
+    let f = "std/rotate_small_test.asm";
+    regular_test_small_field(f, &[]);
 }
 
 #[test]
@@ -329,39 +401,13 @@ fn ff_inv_big() {
 }
 
 #[test]
-fn fp2() {
-    let analyzed = std_analyzed::<GoldilocksField>();
-    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<Bn254Field>();
-    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
-}
-
-#[test]
-fn fp4() {
-    let analyzed = std_analyzed::<GoldilocksField>();
-    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<Bn254Field>();
-    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<BabyBearField>();
-    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
+fn std_tests() {
+    let count1 = run_tests(&std_analyzed::<GoldilocksField>(), true).unwrap();
+    let count2 = run_tests(&std_analyzed::<Bn254Field>(), true).unwrap();
+    let count3 = run_tests(&std_analyzed::<BabyBearField>(), true).unwrap();
+    assert_eq!(count1, count2);
+    assert_eq!(count2, count3);
+    assert!(count1 >= 9);
 }
 
 #[test]
@@ -378,7 +424,7 @@ fn sort() {
         vec![8, 0, 9, 20, 23, 88, 14, -9],
     ];
     let code =
-        "let test_sort: int[] -> int[] = |x| std::array::sort(x, |a, b| a < b); machine Main { }"
+        "let test_sort: int[] -> int[] = |x| std::array::sort(x, |a, b| a < b); machine Main with degree: 1024 { }"
             .to_string();
     let mut pipeline = Pipeline::<GoldilocksField>::default().from_asm_string(code, None);
     let analyzed = pipeline.compute_analyzed_pil().unwrap().clone();
@@ -408,11 +454,6 @@ fn sort() {
         assert_eq!(input_sorted, result);
     }
 }
-#[test]
-fn btree() {
-    let f = "std/btree_test.asm";
-    execute_test_file(f, Default::default(), vec![]).unwrap();
-}
 
 mod reparse {
 
@@ -423,14 +464,7 @@ mod reparse {
     /// but these tests panic if the field is too small. This is *probably*
     /// fine, because all of these tests have a similar variant that does
     /// run on Goldilocks.
-    const BLACKLIST: [&str; 6] = [
-        "std/bus_permutation_via_challenges.asm",
-        "std/permutation_via_challenges.asm",
-        "std/lookup_via_challenges.asm",
-        "std/poseidon_bn254_test.asm",
-        "std/split_bn254_test.asm",
-        "std/bus_lookup_via_challenges.asm",
-    ];
+    const BLACKLIST: [&str; 2] = ["std/poseidon_bn254_test.asm", "std/split_bn254_test.asm"];
 
     fn run_reparse_test(file: &str) {
         run_reparse_test_with_blacklist(file, &BLACKLIST);

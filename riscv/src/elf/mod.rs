@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     cell::Cell,
     cmp::Ordering,
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
@@ -14,8 +13,8 @@ use goblin::elf::{
     Elf, ProgramHeader,
 };
 use itertools::{Either, Itertools};
-use powdr_asm_utils::data_storage::SingleDataValue;
-use powdr_number::FieldElement;
+use powdr_isa_utils::SingleDataValue;
+use powdr_riscv_syscalls::Syscall;
 use raki::{
     decode::Decode,
     instruction::{Extensions, Instruction as Ins, OpcodeKind as Op},
@@ -25,21 +24,20 @@ use raki::{
 use crate::{
     code_gen::{self, InstructionArgs, MemEntry, Register, RiscVProgram, Statement},
     elf::debug_info::SymbolTable,
-    Runtime,
+    CompilerOptions,
 };
 
 use self::debug_info::DebugInfo;
 
 mod debug_info;
 
+/// The program header type (p_type) for Powdr prover data segments.
+pub const PT_POWDR_PROVER_DATA: u32 = 0x600000da;
+
 /// Generates a Powdr Assembly program from a RISC-V 32 executable ELF file.
-pub fn translate<F: FieldElement>(
-    file_name: &Path,
-    runtime: &Runtime,
-    with_bootloader: bool,
-) -> String {
+pub fn translate(file_name: &Path, options: CompilerOptions) -> String {
     let elf_program = load_elf(file_name);
-    code_gen::translate_program::<F>(elf_program, runtime, with_bootloader)
+    code_gen::translate_program(elf_program, options)
 }
 
 struct ElfProgram {
@@ -47,6 +45,7 @@ struct ElfProgram {
     data_map: BTreeMap<u32, Data>,
     text_labels: BTreeSet<u32>,
     instructions: Vec<HighLevelInsn>,
+    prover_data_bounds: (u32, u32),
     entry_point: u32,
 }
 
@@ -84,13 +83,27 @@ fn load_elf(file_name: &Path) -> ElfProgram {
 
     // Map of addresses into memory sections, so we can know what address belong
     // in what section.
-    let address_map = AddressMap(
-        elf.program_headers
-            .iter()
-            .filter(|p| p.p_type == PT_LOAD)
-            .map(|p| (p.p_vaddr as u32, p))
-            .collect(),
-    );
+    let mut address_map = AddressMap(BTreeMap::new());
+    let mut prover_data_bounds = None;
+    for ph in elf.program_headers.iter() {
+        match ph.p_type {
+            PT_LOAD => {
+                address_map.0.insert(ph.p_vaddr as u32, ph);
+            }
+            PT_POWDR_PROVER_DATA => {
+                assert_eq!(
+                    prover_data_bounds, None,
+                    "Only one prover data segment is supported!"
+                );
+                prover_data_bounds =
+                    Some((ph.p_vaddr as u32, ph.p_vaddr as u32 + ph.p_memsz as u32));
+            }
+            _ => {}
+        }
+    }
+
+    // If no prover data segment was provided, make it empty.
+    let prover_data_bounds = prover_data_bounds.unwrap_or((0, 0));
 
     // Set of R_RISCV_HI20 relocations, needed in non-PIE code to identify
     // loading of absolute addresses to text.
@@ -195,6 +208,7 @@ fn load_elf(file_name: &Path) -> ElfProgram {
         text_labels: referenced_text_addrs,
         instructions: lifted_text_sections,
         entry_point: elf.entry as u32,
+        prover_data_bounds,
     }
 }
 
@@ -306,7 +320,7 @@ impl RiscVProgram for ElfProgram {
 
     fn take_executable_statements(
         &mut self,
-    ) -> impl Iterator<Item = crate::code_gen::Statement<impl AsRef<str>, WrappedArgs>> {
+    ) -> impl Iterator<Item = code_gen::Statement<impl AsRef<str>, impl InstructionArgs>> {
         // In the output, the precedence is labels, locations, and then instructions.
         // We merge the 3 iterators with this operations: merge(labels, merge(locs, instructions)), where each is sorted by address.
 
@@ -370,7 +384,11 @@ impl RiscVProgram for ElfProgram {
             })
     }
 
-    fn start_function(&self) -> Cow<str> {
+    fn prover_data_bounds(&self) -> (u32, u32) {
+        self.prover_data_bounds
+    }
+
+    fn start_function(&self) -> impl AsRef<str> {
         self.dbg.symbols.get_one(self.entry_point)
     }
 }
@@ -382,17 +400,17 @@ struct WrappedArgs<'a> {
     symbol_table: &'a SymbolTable,
 }
 
-impl<'a> InstructionArgs for WrappedArgs<'a> {
+impl InstructionArgs for WrappedArgs<'_> {
     type Error = String;
 
-    fn l(&self) -> Result<String, Self::Error> {
+    fn l(&self) -> Result<impl AsRef<str>, Self::Error> {
         match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),
                 rd: None,
                 rs1: None,
                 rs2: None,
-            } => Ok(self.symbol_table.get_one(*addr).into()),
+            } => Ok(self.symbol_table.get_one(*addr).to_string()),
             _ => Err(format!("Expected: label, got {:?}", self.args)),
         }
     }
@@ -481,7 +499,9 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
         }
     }
 
-    fn rrl(&self) -> Result<(Register, Register, String), Self::Error> {
+    fn rrl(
+        &self,
+    ) -> Result<(Register, Register, impl AsRef<str>), <Self as InstructionArgs>::Error> {
         match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),
@@ -491,13 +511,13 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
             } => Ok((
                 Register::new(*rs1 as u8),
                 Register::new(*rs2 as u8),
-                self.symbol_table.get_one(*addr).into(),
+                self.symbol_table.get_one(*addr).to_string(),
             )),
             _ => Err(format!("Expected: rs1, rs2, label, got {:?}", self.args)),
         }
     }
 
-    fn rl(&self) -> Result<(Register, String), Self::Error> {
+    fn rl(&self) -> Result<(Register, impl AsRef<str>), Self::Error> {
         match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),
@@ -506,7 +526,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
                 rs2: None,
             } => Ok((
                 Register::new(*rs1 as u8),
-                self.symbol_table.get_one(*addr).into(),
+                self.symbol_table.get_one(*addr).to_string(),
             )),
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),
@@ -571,12 +591,12 @@ struct AddressMap<'a>(BTreeMap<u32, &'a ProgramHeader>);
 impl AddressMap<'_> {
     fn is_in_data_section(&self, addr: u32) -> bool {
         self.get_section_of_addr(addr)
-            .map_or(false, |section| !section.is_executable())
+            .is_some_and(|section| !section.is_executable())
     }
 
     fn is_in_text_section(&self, addr: u32) -> bool {
         self.get_section_of_addr(addr)
-            .map_or(false, ProgramHeader::is_executable)
+            .is_some_and(ProgramHeader::is_executable)
     }
 
     fn get_section_of_addr(&self, addr: u32) -> Option<&ProgramHeader> {
@@ -786,6 +806,30 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     self.composed_immediate(*hi, *lo, *rd_lui, *rd_addi, insn2_addr, is_address)?;
 
                 HighLevelInsn { op, args, loc }
+            }
+            (
+                // inline-able system call:
+                //   addi t0, x0, immediate
+                //   ecall
+                Ins {
+                    opc: Op::ADDI,
+                    rd: Some(5),
+                    rs1: Some(0),
+                    imm: Some(opcode),
+                    ..
+                },
+                Ins { opc: Op::ECALL, .. },
+            ) => {
+                // If this is not a know system call, we just let the executor deal with the problem.
+                let syscall = u8::try_from(*opcode)
+                    .ok()
+                    .and_then(|opcode| Syscall::try_from(opcode).ok())?;
+
+                HighLevelInsn {
+                    loc,
+                    op: syscall.name(),
+                    args: Default::default(),
+                }
             }
             (
                 // All other double instructions we can lift start with auipc.
@@ -1019,7 +1063,7 @@ fn search_text_addrs(
 
 /// Lift the instructions back to higher-level instructions.
 ///
-/// Turn addresses into labels and and merge instructions into
+/// Turn addresses into labels and merge instructions into
 /// pseudoinstructions.
 fn lift_instructions(
     base_addr: u32,

@@ -23,6 +23,7 @@ machine Main with degree: 16 {
 
 // ANCHOR: links
 machine Add4 with
+    degree: 32,
     latch: latch,
     operation_id: operation_id
 {
@@ -52,6 +53,7 @@ machine Add4 with
 
 // ANCHOR: one_operation
 machine Add with
+    degree: 32,
     latch: latch
 {
     // operation name, with column names as inputs and outputs
@@ -72,6 +74,7 @@ machine Add with
 // ANCHOR: many_operations
 // machine declaration must include an operation id column name
 machine AddSub with
+    degree: 32,
     latch: latch,
     operation_id: op_id
 {

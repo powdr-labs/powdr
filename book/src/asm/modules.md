@@ -2,7 +2,7 @@
 
 powdr exposes a module system to help organise and reuse code.
 
-```
+```rust
 {{#include ../../../test_data/asm/book/modules.asm}}
 ```
 

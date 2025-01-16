@@ -21,5 +21,8 @@ pretty_assertions = "1.4.0"
 powdr-analysis = { path = "../analysis" }
 powdr-importer = { path = "../importer" }
 
-[lints.clippy]
-uninlined_format_args = "deny"
+[lints]
+workspace = true
+
+[lib]
+bench = false # See https://github.com/bheisler/criterion.rs/issues/458

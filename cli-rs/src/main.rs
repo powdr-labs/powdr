@@ -7,21 +7,42 @@ use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 
-use powdr_number::{BigUint, Bn254Field, FieldElement, GoldilocksField};
-use powdr_pipeline::Pipeline;
-use powdr_riscv_executor::ProfilerOptions;
+use powdr::number::{
+    BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KnownField, KoalaBearField,
+};
+use powdr::riscv::{CompilerOptions, RuntimeLibs};
+use powdr::riscv_executor::{write_executor_csv, ProfilerOptions};
+use powdr::Pipeline;
 
 use std::ffi::OsStr;
-use std::{borrow::Cow, io::Write, path::Path};
-use std::{fs, io};
+use std::time::Instant;
+use std::{
+    io::{self, Write},
+    path::Path,
+};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
 pub enum FieldArgument {
+    #[strum(serialize = "bb")]
+    Bb,
+    #[strum(serialize = "kb")]
+    Kb,
     #[strum(serialize = "gl")]
     Gl,
     #[strum(serialize = "bn254")]
     Bn254,
+}
+
+impl FieldArgument {
+    pub fn as_known_field(&self) -> KnownField {
+        match self {
+            FieldArgument::Bb => KnownField::BabyBearField,
+            FieldArgument::Kb => KnownField::KoalaBearField,
+            FieldArgument::Gl => KnownField::GoldilocksField,
+            FieldArgument::Bn254 => KnownField::Bn254Field,
+        }
+    }
 }
 
 #[derive(Parser)]
@@ -41,7 +62,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Compiles rust code to Powdr assembly.
+    /// Compile rust code to Powdr assembly.
     /// Needs `rustup component add rust-src --toolchain nightly-2024-08-01`.
     Compile {
         /// input rust code, points to a crate dir or its Cargo.toml file
@@ -62,43 +83,16 @@ enum Commands {
         #[arg(long)]
         coprocessors: Option<String>,
 
-        /// Convert from the assembly files instead of the ELF executable.
-        #[arg(short, long)]
-        #[arg(default_value_t = false)]
-        asm: bool,
-
         /// Run a long execution in chunks (Experimental and not sound!)
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         continuations: bool,
-    },
-    /// Compiles riscv assembly to powdr assembly.
-    RiscvAsm {
-        /// Input files
-        #[arg(required = true)]
-        files: Vec<String>,
 
-        /// The field to use
+        /// Maximum trace length for powdr machines (2 ^ max_degree_log).
         #[arg(long)]
-        #[arg(default_value_t = FieldArgument::Gl)]
-        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
-        field: FieldArgument,
-
-        /// Directory for output files.
-        #[arg(short, long)]
-        #[arg(default_value_t = String::from("."))]
-        output_directory: String,
-
-        /// Comma-separated list of coprocessors.
-        #[arg(long)]
-        coprocessors: Option<String>,
-
-        /// Run a long execution in chunks (Experimental and not sound!)
-        #[arg(short, long)]
-        #[arg(default_value_t = false)]
-        continuations: bool,
+        max_degree_log: Option<u8>,
     },
-    /// Translates a RISC-V statically linked executable to powdr assembly.
+    /// Translate a RISC-V statically linked executable to powdr assembly.
     RiscvElf {
         /// Input file
         #[arg(required = true)]
@@ -124,8 +118,40 @@ enum Commands {
         #[arg(default_value_t = false)]
         continuations: bool,
     },
-    /// Executes a powdr-asm file with given inputs.
+    /// Execute a RISCV powdr-asm file with given inputs.
+    /// Does not generate a witness.
     Execute {
+        /// input powdr-asm code compiled from Rust/RISCV
+        file: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
+        /// Comma-separated list of free inputs (numbers).
+        #[arg(short, long)]
+        #[arg(default_value_t = String::new())]
+        inputs: String,
+
+        /// Directory for output files.
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        output_directory: String,
+
+        /// Generate a flamegraph plot of the execution ("[file].svg")
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        generate_flamegraph: bool,
+
+        /// Generate callgrind file of the execution ("[file].callgrind")
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        generate_callgrind: bool,
+    },
+    /// Execute and generate a valid witness for a RISCV powdr-asm file with the given inputs.
+    Witgen {
         /// input powdr-asm code compiled from Rust/RISCV
         file: String,
 
@@ -150,10 +176,10 @@ enum Commands {
         #[arg(default_value_t = false)]
         continuations: bool,
 
-        /// Generate witness(es) that can be used for proofs.
-        #[arg(short, long)]
+        /// Export the executor generated witness columns as a CSV file. Useful for debugging executor issues.
+        #[arg(long)]
         #[arg(default_value_t = false)]
-        witness: bool,
+        executor_csv: bool,
 
         /// Generate a flamegraph plot of the execution ("[file].svg")
         #[arg(long)]
@@ -224,60 +250,64 @@ fn run_command(command: Commands) {
             field,
             output_directory,
             coprocessors,
-            asm,
             continuations,
-        } => {
-            call_with_field!(compile_rust::<field>(
-                &file,
-                Path::new(&output_directory),
-                coprocessors,
-                !asm,
-                continuations
-            ))
-        }
-        Commands::RiscvAsm {
-            files,
-            field,
-            output_directory,
+            max_degree_log,
+        } => compile_rust(
+            &file,
+            field.as_known_field(),
+            Path::new(&output_directory),
             coprocessors,
             continuations,
-        } => {
-            assert!(!files.is_empty());
-            let name = if files.len() == 1 {
-                Cow::Owned(files[0].clone())
-            } else {
-                Cow::Borrowed("output")
-            };
-
-            call_with_field!(compile_riscv_asm::<field>(
-                &name,
-                files.into_iter(),
-                Path::new(&output_directory),
-                coprocessors,
-                continuations
-            ))
-        }
+            max_degree_log,
+        ),
         Commands::RiscvElf {
             file,
             field,
             output_directory,
             coprocessors,
             continuations,
-        } => {
-            call_with_field!(compile_riscv_elf::<field>(
-                &file,
-                Path::new(&output_directory),
-                coprocessors,
-                continuations
-            ))
-        }
+        } => compile_riscv_elf(
+            &file,
+            field.as_known_field(),
+            Path::new(&output_directory),
+            coprocessors,
+            continuations,
+        ),
         Commands::Execute {
             file,
             field,
             inputs,
             output_directory,
+            generate_flamegraph,
+            generate_callgrind,
+        } => {
+            let profiling = if generate_callgrind || generate_flamegraph {
+                Some(ProfilerOptions {
+                    file_stem: Path::new(&file)
+                        .file_stem()
+                        .and_then(OsStr::to_str)
+                        .map(String::from),
+                    output_directory: output_directory.clone(),
+                    flamegraph: generate_flamegraph,
+                    callgrind: generate_callgrind,
+                })
+            } else {
+                None
+            };
+            call_with_field!(execute_fast::<field>(
+                Path::new(&file),
+                split_inputs(&inputs),
+                Path::new(&output_directory),
+                profiling
+            ))
+        }
+        Commands::Witgen {
+            file,
+            field,
+            inputs,
+            output_directory,
             continuations,
-            witness,
+            executor_csv,
             generate_flamegraph,
             generate_callgrind,
         } => {
@@ -299,7 +329,7 @@ fn run_command(command: Commands) {
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 continuations,
-                witness,
+                executor_csv,
                 profiling
             ))
         }
@@ -313,99 +343,66 @@ fn run_command(command: Commands) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn compile_rust<F: FieldElement>(
+fn compile_rust(
     file_name: &str,
+    field: KnownField,
     output_dir: &Path,
     coprocessors: Option<String>,
-    via_elf: bool,
     continuations: bool,
+    max_degree_log: Option<u8>,
 ) -> Result<(), Vec<String>> {
-    let mut runtime = match coprocessors {
-        Some(list) => {
-            powdr_riscv::Runtime::try_from(list.split(',').collect::<Vec<_>>().as_ref()).unwrap()
-        }
-        None => powdr_riscv::Runtime::base(),
-    };
-
-    if continuations {
-        if runtime.has_submachine("poseidon_gl") {
-            return Err(vec![
-                "Poseidon continuations mode is chosen automatically and incompatible with the chosen standard Poseidon coprocessor".to_string(),
-            ]);
-        }
-        runtime = runtime.with_poseidon_for_continuations();
+    let libs = coprocessors_to_options(coprocessors)?;
+    let mut options = CompilerOptions::new(field, libs, continuations);
+    if let Some(max_degree_log) = max_degree_log {
+        options = options.with_max_degree_log(max_degree_log);
     }
-
-    powdr_riscv::compile_rust::<F>(
-        file_name,
-        output_dir,
-        true,
-        &runtime,
-        via_elf,
-        continuations,
-        None,
-    )
-    .ok_or_else(|| vec!["could not compile rust".to_string()])?;
+    powdr::riscv::compile_rust(file_name, options, output_dir, true, None)
+        .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-fn compile_riscv_asm<F: FieldElement>(
-    original_file_name: &str,
-    file_names: impl Iterator<Item = String>,
-    output_dir: &Path,
-    coprocessors: Option<String>,
-    continuations: bool,
-) -> Result<(), Vec<String>> {
-    let runtime = match coprocessors {
-        Some(list) => {
-            powdr_riscv::Runtime::try_from(list.split(',').collect::<Vec<_>>().as_ref()).unwrap()
-        }
-        None => powdr_riscv::Runtime::base(),
-    };
-
-    powdr_riscv::compile_riscv_asm_bundle::<F>(
-        original_file_name,
-        file_names
-            .map(|name| {
-                let contents = fs::read_to_string(&name).unwrap();
-                (name, contents)
-            })
-            .collect(),
-        output_dir,
-        true,
-        &runtime,
-        continuations,
-    )
-    .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;
-
-    Ok(())
-}
-
-fn compile_riscv_elf<F: FieldElement>(
+fn compile_riscv_elf(
     input_file: &str,
+    field: KnownField,
     output_dir: &Path,
     coprocessors: Option<String>,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let runtime = match coprocessors {
-        Some(list) => {
-            powdr_riscv::Runtime::try_from(list.split(',').collect::<Vec<_>>().as_ref()).unwrap()
-        }
-        None => powdr_riscv::Runtime::base(),
-    };
+    let libs = coprocessors_to_options(coprocessors)?;
+    let options = CompilerOptions::new(field, libs, continuations);
+    powdr::riscv::compile_riscv_elf(input_file, Path::new(input_file), options, output_dir, true)
+        .ok_or_else(|| vec!["could not translate RISC-V executable".to_string()])?;
 
-    powdr_riscv::compile_riscv_elf::<F>(
-        input_file,
-        Path::new(input_file),
-        output_dir,
-        true,
-        &runtime,
-        continuations,
-    )
-    .ok_or_else(|| vec!["could not translate RISC-V executable".to_string()])?;
+    Ok(())
+}
 
+fn execute_fast<F: FieldElement>(
+    file_name: &Path,
+    inputs: Vec<F>,
+    output_dir: &Path,
+    profiling: Option<ProfilerOptions>,
+) -> Result<(), Vec<String>> {
+    let mut pipeline = Pipeline::<F>::default()
+        .from_asm_file(file_name.to_path_buf())
+        .with_prover_inputs(inputs)
+        .with_output(output_dir.into(), true);
+
+    let asm = pipeline.compute_analyzed_asm().unwrap().clone();
+
+    let start = Instant::now();
+
+    let trace_len = powdr::riscv_executor::execute_fast::<F>(
+        &asm,
+        powdr::riscv_executor::MemoryState::new(),
+        pipeline.data_callback().unwrap(),
+        &[],
+        profiling,
+    );
+
+    let duration = start.elapsed();
+    log::info!("Executor done in: {:?}", duration);
+    log::info!("Execution trace length: {}", trace_len);
     Ok(())
 }
 
@@ -415,44 +412,80 @@ fn execute<F: FieldElement>(
     inputs: Vec<F>,
     output_dir: &Path,
     continuations: bool,
-    witness: bool,
+    executor_csv: bool,
     profiling: Option<ProfilerOptions>,
 ) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<F>::default()
-        .from_file(file_name.to_path_buf())
+        .from_asm_file(file_name.to_path_buf())
         .with_prover_inputs(inputs)
         .with_output(output_dir.into(), true);
 
-    let generate_witness = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
+    let generate_witness = |pipeline: &mut Pipeline<F>| -> Result<(), Vec<String>> {
         pipeline.compute_witness().unwrap();
         Ok(())
     };
 
-    match (witness, continuations) {
-        (false, true) => {
-            powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
-        }
-        (false, false) => {
-            let program = pipeline.compute_asm_string().unwrap().clone();
-            let (trace, _mem, _reg_mem) = powdr_riscv_executor::execute::<F>(
-                &program.1,
-                powdr_riscv_executor::MemoryState::new(),
-                pipeline.data_callback().unwrap(),
-                &[],
-                powdr_riscv_executor::ExecMode::Fast,
-                profiling,
+    if continuations {
+        let dry_run =
+            powdr::riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
+        powdr::riscv::continuations::rust_continuations(&mut pipeline, generate_witness, dry_run)?;
+    } else {
+        let fixed = pipeline.compute_fixed_cols().unwrap().clone();
+        let asm = pipeline.compute_analyzed_asm().unwrap().clone();
+        let pil = pipeline.compute_optimized_pil().unwrap();
+
+        let start = Instant::now();
+
+        let execution = powdr::riscv_executor::execute::<F>(
+            &asm,
+            &pil,
+            fixed,
+            powdr::riscv_executor::MemoryState::new(),
+            pipeline.data_callback().unwrap(),
+            &[],
+            None,
+            profiling,
+        );
+
+        let duration = start.elapsed();
+        log::info!("Executor done in: {:?}", duration);
+        log::info!("Execution trace length: {}", execution.trace_len);
+
+        let witness_cols: Vec<_> = pil
+            .committed_polys_in_source_order()
+            .flat_map(|(s, _)| s.array_elements().map(|(name, _)| name))
+            .collect();
+
+        let trace: Vec<_> = execution.trace.into_iter().collect();
+
+        if executor_csv {
+            let file_name = format!(
+                "{}_executor.csv",
+                file_name.file_stem().unwrap().to_str().unwrap()
             );
-            log::info!("Execution trace length: {}", trace.len);
+            write_executor_csv(file_name, &trace, Some(&witness_cols));
         }
-        (true, true) => {
-            let dry_run =
-                powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
-            powdr_riscv::continuations::rust_continuations(pipeline, generate_witness, dry_run)?;
-        }
-        (true, false) => {
-            generate_witness(pipeline)?;
-        }
+
+        pipeline = pipeline.add_external_witness_values(trace);
+
+        generate_witness(&mut pipeline)?;
     }
 
     Ok(())
+}
+
+fn coprocessors_to_options(coprocessors: Option<String>) -> Result<RuntimeLibs, Vec<String>> {
+    let mut libs = RuntimeLibs::new();
+    if let Some(list) = coprocessors {
+        let names = list.split(',').collect::<Vec<_>>();
+        for name in names {
+            match name {
+                "poseidon2_gl" => libs = libs.with_poseidon2(),
+                "keccakf" => libs = libs.with_keccak(),
+                "arith" => libs = libs.with_arith(),
+                _ => return Err(vec![format!("Invalid co-processor specified: {name}")]),
+            }
+        }
+    }
+    Ok(libs)
 }

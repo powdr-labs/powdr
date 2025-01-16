@@ -1,5 +1,6 @@
 // ANCHOR: submachine
 machine SubMachine with
+    degree: 32,
     latch: latch,
     operation_id: operation_id
 {

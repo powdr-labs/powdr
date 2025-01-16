@@ -1,12 +1,10 @@
-#![deny(clippy::print_stdout)]
-
 use std::collections::BTreeMap;
 
 use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
         FunctionBody, FunctionStatements, FunctionSymbol, InstructionDefinitionStatement,
-        InstructionStatement, Item, LabelStatement, LinkDefinition, Machine, MachineDegree,
+        InstructionStatement, LabelStatement, LinkDefinition, Machine, MachineDegree, Module,
         OperationSymbol, RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
     },
     parsed::{
@@ -23,10 +21,8 @@ use powdr_ast::{
 /// Also transfers generic PIL definitions but does not verify anything about them.
 pub fn check(file: ASMProgram) -> Result<AnalysisASMFile, Vec<String>> {
     let ctx = AbsoluteSymbolPath::default();
-    let machines = TypeChecker::default().check_module(file.main, &ctx)?;
-    Ok(AnalysisASMFile {
-        items: machines.into_iter().collect(),
-    })
+    let modules = TypeChecker::default().check_module(file.main, &ctx)?;
+    Ok(AnalysisASMFile { modules })
 }
 
 #[derive(Default)]
@@ -86,12 +82,6 @@ impl TypeChecker {
                     pil.push(statement);
                 }
                 MachineStatement::Submachine(_, ty, name, args) => {
-                    args.iter().for_each(|arg| {
-                        if arg.try_to_identifier().is_none() {
-                            errors
-                                .push(format!("submachine argument not a machine instance: {arg}"))
-                        }
-                    });
                     submachines.push(SubmachineDeclaration {
                         name,
                         ty: AbsoluteSymbolPath::default().join(ty),
@@ -312,10 +302,11 @@ impl TypeChecker {
         &mut self,
         module: ASMModule,
         ctx: &AbsoluteSymbolPath,
-    ) -> Result<BTreeMap<AbsoluteSymbolPath, Item>, Vec<String>> {
+    ) -> Result<BTreeMap<AbsoluteSymbolPath, Module>, Vec<String>> {
         let mut errors = vec![];
 
-        let mut res: BTreeMap<AbsoluteSymbolPath, Item> = BTreeMap::default();
+        let mut checked_module = Module::default();
+        let mut res = BTreeMap::default();
 
         for m in module.statements {
             match m {
@@ -327,7 +318,7 @@ impl TypeChecker {
                                     errors.extend(e);
                                 }
                                 Ok(machine) => {
-                                    res.insert(ctx.with_part(&name), Item::Machine(machine));
+                                    checked_module.push_machine(name, machine);
                                 }
                             };
                         }
@@ -343,6 +334,8 @@ impl TypeChecker {
                                 asm::Module::Local(m) => m,
                             };
 
+                            checked_module.push_module(name);
+
                             match self.check_module(m, &ctx) {
                                 Err(err) => {
                                     errors.extend(err);
@@ -352,28 +345,16 @@ impl TypeChecker {
                                 }
                             };
                         }
-                        asm::SymbolValue::Expression(e) => {
-                            res.insert(ctx.clone().with_part(&name), Item::Expression(e));
-                        }
-                        asm::SymbolValue::TypeDeclaration(enum_decl) => {
-                            res.insert(
-                                ctx.clone().with_part(&name),
-                                Item::TypeDeclaration(enum_decl),
-                            );
-                        }
-                        asm::SymbolValue::TraitDeclaration(trait_decl) => {
-                            res.insert(
-                                ctx.clone().with_part(&name),
-                                Item::TraitDeclaration(trait_decl),
-                            );
-                        }
                     }
                 }
-                ModuleStatement::TraitImplementation(trait_impl) => {
-                    res.insert(ctx.clone(), Item::TraitImplementation(trait_impl));
+                ModuleStatement::PilStatement(s) => {
+                    checked_module.push_pil_statement(s);
                 }
             }
         }
+
+        // add this module to the map of modules found inside it
+        res.insert(ctx.clone(), checked_module);
 
         if !errors.is_empty() {
             Err(errors)
@@ -395,15 +376,13 @@ impl TypeChecker {
             .body
             .0
             .iter()
-            .filter_map(|s| match s {
+            .filter_map(|s| {
                 // TODO this could be a function call that returns an identity including a selector in the future.
-                powdr_ast::parsed::PilStatement::Expression(_, _) => None,
-                powdr_ast::parsed::PilStatement::PermutationIdentity(_, l, _)
-                | powdr_ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
-                    .selector
-                    .is_some()
-                    .then_some(format!("LHS selector not yet supported in {s}.")),
-                _ => Some(format!("Statement not allowed in instruction body: {s}")),
+                if let powdr_ast::parsed::PilStatement::Expression(_, _) = s {
+                    None
+                } else {
+                    Some(format!("Statement not allowed in instruction body: {s}"))
+                }
             })
             .collect();
         if !errors.is_empty() {

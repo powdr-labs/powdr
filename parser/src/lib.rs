@@ -1,7 +1,5 @@
 //! Parser for powdr assembly and PIL
 
-#![deny(clippy::print_stdout)]
-
 use lalrpop_util::*;
 use powdr_ast::parsed::{
     asm::ASMProgram,
@@ -11,8 +9,6 @@ use powdr_ast::parsed::{
 use powdr_parser_util::{handle_parse_error, Error, SourceRef};
 
 use std::sync::Arc;
-
-pub mod test_utils;
 
 lalrpop_mod!(
     #[allow(clippy::all)]
@@ -138,15 +134,11 @@ pub fn unescape_string(s: &str) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
-    use powdr_ast::parsed::{
-        build::direct_reference, ArrayLiteral, PILFile, PilStatement, PolynomialName,
-        SelectedExpressions,
-    };
+    use powdr_ast::parsed::{PILFile, PilStatement, PolynomialName};
     use powdr_parser_util::UnwrapErrToStderr;
     use pretty_assertions::assert_eq;
     use similar::TextDiff;
     use test_log::test;
-    use test_utils::ClearSourceRefs;
     use walkdir::WalkDir;
 
     #[test]
@@ -210,44 +202,6 @@ mod test {
         );
     }
 
-    #[test]
-    fn simple_plookup() {
-        let input = "[f] in [g];";
-        let ctx = ParserContext::new(None, input);
-        let parsed = powdr::PILFileParser::new()
-            .parse(&ctx, "[f] in [g];")
-            .unwrap();
-        assert_eq!(
-            parsed,
-            PILFile(vec![PilStatement::PlookupIdentity(
-                SourceRef {
-                    file_name: None,
-                    file_contents: Some(input.into()),
-                    start: 0,
-                    end: 10,
-                },
-                SelectedExpressions {
-                    selector: None,
-                    expressions: Box::new(
-                        ArrayLiteral {
-                            items: vec![direct_reference("f")]
-                        }
-                        .into()
-                    )
-                },
-                SelectedExpressions {
-                    selector: None,
-                    expressions: Box::new(
-                        ArrayLiteral {
-                            items: vec![direct_reference("g")]
-                        }
-                        .into()
-                    )
-                }
-            )])
-        );
-    }
-
     fn find_files_with_ext(
         dir: std::path::PathBuf,
         ext: String,
@@ -272,19 +226,16 @@ mod test {
     #[test]
     /// Test that (source -> AST -> source -> AST) works properly for asm files
     fn parse_write_reparse_asm() {
-        let crate_dir = env!("CARGO_MANIFEST_DIR");
-        let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
+        let basedir = std::path::Path::new("../test_data/").to_owned();
         let asm_files = find_files_with_ext(basedir, "asm".into());
         for (file, orig_string) in asm_files {
-            let mut orig_asm = parse_asm(Some(&file), &orig_string).unwrap_err_to_stderr();
+            let orig_asm = parse_asm(Some(&file), &orig_string).unwrap_err_to_stderr();
             let orig_asm_to_string = format!("{orig_asm}");
-            let mut reparsed_asm = parse_asm(
+            let reparsed_asm = parse_asm(
                 Some((file.clone() + " reparsed").as_ref()),
                 &orig_asm_to_string,
             )
             .unwrap_err_to_stderr();
-            orig_asm.clear_source_refs();
-            reparsed_asm.clear_source_refs();
             if orig_asm != reparsed_asm {
                 let orig_ast = format!("{orig_asm:#?}");
                 let reparsed_ast = format!("{reparsed_asm:#?}");
@@ -298,6 +249,7 @@ mod test {
                     };
                     eprint!("\t{sign}{change}");
                 }
+                eprintln!("The following string was re-parsed:\n{orig_asm_to_string}");
                 panic!("parsed and re-parsed ASTs differ for file: {file}");
             }
         }
@@ -306,20 +258,16 @@ mod test {
     #[test]
     /// Test that (source -> AST -> source -> AST) works properly for pil files
     fn parse_write_reparse_pil() {
-        use test_utils::ClearSourceRefs;
-        let crate_dir = env!("CARGO_MANIFEST_DIR");
-        let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
+        let basedir = std::path::Path::new("../test_data/").to_owned();
         let pil_files = find_files_with_ext(basedir, "pil".into());
         for (file, orig_string) in pil_files {
-            let mut orig_pil = parse(Some(&file), &orig_string).unwrap_err_to_stderr();
+            let orig_pil = parse(Some(&file), &orig_string).unwrap_err_to_stderr();
             let orig_pil_to_string = format!("{orig_pil}");
-            let mut reparsed_pil = parse(
+            let reparsed_pil = parse(
                 Some((file.clone() + " reparsed").as_ref()),
                 &orig_pil_to_string,
             )
             .unwrap_err_to_stderr();
-            orig_pil.clear_source_refs();
-            reparsed_pil.clear_source_refs();
             assert_eq!(orig_pil, reparsed_pil);
             if orig_pil != reparsed_pil {
                 let orig_ast = format!("{orig_pil:#?}");
@@ -514,6 +462,28 @@ namespace N(2);
     }
 
     #[test]
+    fn parse_impl3() {
+        let input = "impl ToCol<(int -> fe)> { to_col: |x| x }";
+        let expected = "impl ToCol<(int -> fe)> {
+        to_col: |x| x,
+    }";
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_impl4() {
+        let input = "impl ToCol<(int -> fe), int[]> { to_col: |x| x }";
+        let expected = "impl ToCol<(int -> fe), int[]> {
+        to_col: |x| x,
+    }";
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
     fn parse_trait() {
         let input = r#"
     trait Add<T> {
@@ -590,6 +560,138 @@ namespace;
 namespace N(8);
     let z = 8;
 "#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_trailing_commas() {
+        let input = r#"
+    let<T1, T2,> left: T1, T2, -> T1 = |a, b,| a;
+
+    let<T1: Trait1, T2: Trait2,> func: T1 -> T2 = |x| x;
+
+    enum MyEnum {
+        Variant1,
+        Variant2(int, int,),
+    }
+
+    trait MyTrait<T, U,> {
+        func1: T -> U,
+        func2: U -> T,
+    }
+
+    let tuple = (1, 2, 3,);
+
+    let array = [1, 2, 3,];
+
+    let match_expr = match x {
+        1 => "one",
+        2 => "two",
+        _ => "other",
+    };
+"#;
+        let expected = r#"
+    let<T1, T2> left: T1, T2 -> T1 = |a, b| a;
+    let<T1: Trait1, T2: Trait2> func: T1 -> T2 = |x| x;
+    enum MyEnum {
+        Variant1,
+        Variant2(int, int),
+    }
+    trait MyTrait<T, U> {
+        func1: T -> U,
+        func2: U -> T,
+    }
+    let tuple = (1, 2, 3);
+    let array = [1, 2, 3];
+    let match_expr = match x {
+        1 => "one",
+        2 => "two",
+        _ => "other",
+    };
+"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_trailing_commas_asm() {
+        let input = r#"
+machine Main (a: Byte, b: Byte,) {
+    reg pc[@pc];
+    reg X[<=];
+
+    function get a, step, -> b {
+        A <== mload(a, step,);
+        return A;
+    }
+
+    instr assert_eq X, Y, { X = Y }
+}
+"#;
+        let expected = r#"
+machine Main(a: Byte, b: Byte) {
+    reg pc[@pc];
+    reg X[<=];
+    function get a, step -> b {
+    A <== mload(a, step);
+    return A;
+    }
+    instr assert_eq X, Y{ X = Y }
+}
+"#;
+        let printed = format!("{}", parse_asm(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn struct_decls() {
+        let input = r#"
+namespace N(2);
+    struct X {
+    }
+    struct Y<T, U> {
+        a: int,
+        b: fe,
+        c: fe[3],
+        d: ((int, fe), fe[2] -> (fe -> int)),
+        e: ((int -> fe) -> int),
+        f: (T -> (U -> T)),
+        g: Y,
+    }
+"#;
+
+        let expected = r#"
+namespace N(2);
+    struct X {
+    }
+    struct Y<T, U> {
+        a: int,
+        b: fe,
+        c: fe[3],
+        d: (int, fe), fe[2] -> (fe -> int),
+        e: (int -> fe) -> int,
+        f: T -> (U -> T),
+        g: Y,
+    }
+"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn simple_struct() {
+        let input = r#"
+    struct A {
+        x: int,
+        y: fe,
+    }"#;
+        let expected = r#"
+    struct A {
+        x: int,
+        y: fe,
+    }"#;
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(expected.trim(), printed.trim());
     }

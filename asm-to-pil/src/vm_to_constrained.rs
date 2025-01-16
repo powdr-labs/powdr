@@ -89,6 +89,7 @@ fn rom_machine<'a>(
                         inputs: (&mut line_lookup)
                             .take(1)
                             .map(|x| Param {
+                                source: SourceRef::unknown(),
                                 name: x.to_string(),
                                 index: None,
                                 ty: None,
@@ -96,6 +97,7 @@ fn rom_machine<'a>(
                             .collect(),
                         outputs: line_lookup
                             .map(|x| Param {
+                                source: SourceRef::unknown(),
                                 name: x.to_string(),
                                 index: None,
                                 ty: None,
@@ -280,14 +282,7 @@ impl<T: FieldElement> VMConverter<T> {
             input.pil.extend(self.pil);
         }
 
-        // This is hacky: in the absence of proof objects, we want to support both monolithic proofs and composite proofs.
-        // In the monolithic case, all degrees must be the same, so we align the degree of the rom to that of the vm.
-        // In the composite case, we set the minimum degree for the rom, which is the number of lines in the code.
-        // this can lead to false negatives as we apply expression equality here, so `4` and `2 + 2` would be considered different.
-        let rom_degree = match input.degree.is_static() {
-            true => input.degree.clone(),
-            false => Expression::from(self.code_lines.len().next_power_of_two() as u32).into(),
-        };
+        let rom_degree = Expression::from(self.code_lines.len().next_power_of_two() as u32).into();
 
         (
             input,
@@ -529,41 +524,31 @@ impl<T: FieldElement> VMConverter<T> {
             });
         });
 
-        for mut statement in body.0 {
-            if let PilStatement::Expression(source, expr) = statement {
-                match extract_update(expr) {
-                    (Some(var), expr) => {
-                        let reference = direct_reference(flag);
+        let instr_flag = direct_reference(flag);
+        for statement in body.0 {
+            let PilStatement::Expression(source, expr) = statement else {
+                panic!("Invalid statement for instruction body: {statement}");
+            };
+            if let Some((var, expr)) = try_extract_update(&expr) {
+                // Try to reduce the update to linear by introducing intermediate variables.
+                // We do this to keep the degree of the update expression low, but it is
+                // not strictly necessary.
+                let expr = self.linearize(&format!("{flag}_{var}_update"), expr);
 
-                        // reduce the update to linear by introducing intermediate variables
-                        let expr = self.linearize(&format!("{flag}_{var}_update"), expr);
-
-                        self.registers
-                            .get_mut(&var)
-                            .unwrap()
-                            .conditioned_updates
-                            .push((reference, expr));
-                    }
-                    (None, expr) => self.pil.push(PilStatement::Expression(
-                        source,
-                        build::identity(direct_reference(flag) * expr.clone(), 0.into()),
-                    )),
-                }
+                self.registers
+                    .get_mut(&var)
+                    .unwrap()
+                    .conditioned_updates
+                    .push((instr_flag.clone(), expr));
             } else {
-                match &mut statement {
-                    PilStatement::PermutationIdentity(_, left, _)
-                    | PilStatement::PlookupIdentity(_, left, _) => {
-                        assert!(
-                                    left.selector.is_none(),
-                                    "LHS selector not supported, could and-combine with instruction flag later."
-                                );
-                        left.selector = Some(direct_reference(flag));
-                        self.pil.push(statement)
-                    }
-                    _ => {
-                        panic!("Invalid statement for instruction body: {statement}");
-                    }
-                }
+                let fun_call = Expression::FunctionCall(
+                    source.clone(),
+                    FunctionCall {
+                        function: absolute_reference("::std::constraints::make_conditional").into(),
+                        arguments: vec![expr, instr_flag.clone()],
+                    },
+                );
+                self.pil.push(PilStatement::Expression(source, fun_call))
             }
         }
     }
@@ -866,7 +851,11 @@ impl<T: FieldElement> VMConverter<T> {
                 | BinaryOperator::Identity
                 | BinaryOperator::NotEqual
                 | BinaryOperator::GreaterEqual
-                | BinaryOperator::Greater => {
+                | BinaryOperator::Greater
+                | BinaryOperator::Is
+                | BinaryOperator::In
+                | BinaryOperator::Select
+                | BinaryOperator::Connect => {
                     panic!("Invalid operation in expression {left} {op} {right}")
                 }
             },
@@ -874,6 +863,7 @@ impl<T: FieldElement> VMConverter<T> {
                 assert!(op == UnaryOperator::Minus);
                 self.negate_assignment_value(self.process_assignment_value(*expr))
             }
+            Expression::StructExpression(_, _) => panic!(),
         }
     }
 
@@ -1026,10 +1016,15 @@ impl<T: FieldElement> VMConverter<T> {
         let pc_name = self.pc_name.clone();
         let free_value_pil = self
             .assignment_register_names()
-            .map(|reg| {
+            .flat_map(|reg| {
                 let free_value = format!("{reg}_free_value");
                 let prover_query_arms = free_value_query_arms.remove(reg).unwrap();
-                let prover_query = (!prover_query_arms.is_empty()).then_some({
+                let mut statements = vec![witness_column(
+                    SourceRef::unknown(),
+                    free_value.clone(),
+                    None,
+                )];
+                if !prover_query_arms.is_empty() {
                     let mut prover_query_arms = prover_query_arms;
                     prover_query_arms.push(MatchArm {
                         pattern: Pattern::CatchAll(SourceRef::unknown()),
@@ -1044,22 +1039,31 @@ impl<T: FieldElement> VMConverter<T> {
                         .into(),
                     );
 
-                    let lambda = LambdaExpression {
-                        kind: FunctionKind::Query,
-                        params: vec![Pattern::Variable(SourceRef::unknown(), "__i".to_string())],
-                        body: Box::new(
+                    let call_to_handle_query = FunctionCall {
+                        function: Box::new(absolute_reference("::std::prover::handle_query")),
+                        arguments: vec![
+                            direct_reference(&free_value),
+                            direct_reference("__i"),
                             MatchExpression {
                                 scrutinee,
                                 arms: prover_query_arms,
                             }
                             .into(),
-                        ),
-                    }
-                    .into();
+                        ],
+                    };
+                    let prover_function = LambdaExpression {
+                        kind: FunctionKind::Query,
+                        params: vec![Pattern::Variable(SourceRef::unknown(), "__i".to_string())],
+                        body: Box::new(call_to_handle_query.into()),
+                        param_types: vec![],
+                    };
 
-                    FunctionDefinition::Expression(lambda)
-                });
-                witness_column(SourceRef::unknown(), free_value, prover_query)
+                    statements.push(PilStatement::Expression(
+                        SourceRef::unknown(),
+                        prover_function.into(),
+                    ));
+                }
+                statements
             })
             .collect::<Vec<_>>();
         self.pil.extend(free_value_pil);
@@ -1134,9 +1138,11 @@ impl<T: FieldElement> VMConverter<T> {
         return_instruction(self.output_count, self.pc_name.as_ref().unwrap())
     }
 
-    /// Return an expression of degree at most 1 whose value matches that of `expr`
+    /// Return an expression of degree at most 1 whose value matches that of `expr`.
     /// Intermediate witness columns can be introduced, with names starting with `prefix` optionally followed by a suffix
-    /// Suffixes are defined as follows: "", "_1", "_2", "_3" etc
+    /// Suffixes are defined as follows: "", "_1", "_2", "_3" etc.
+    /// In some situations, this function can fail and it will return an expression
+    /// that might not be linear.
     fn linearize(&mut self, prefix: &str, expr: Expression) -> Expression {
         self.linearize_rec(prefix, 0, expr).1
     }
@@ -1147,47 +1153,40 @@ impl<T: FieldElement> VMConverter<T> {
         counter: usize,
         expr: Expression,
     ) -> (usize, Expression) {
-        match expr {
-            Expression::BinaryOperation(
-                _,
-                BinaryOperation {
-                    left,
-                    op: operator,
-                    right,
-                },
-            ) => match operator {
-                BinaryOperator::Add => {
-                    let (counter, left) = self.linearize_rec(prefix, counter, *left);
-                    let (counter, right) = self.linearize_rec(prefix, counter, *right);
-                    (counter, left + right)
-                }
-                BinaryOperator::Sub => {
-                    let (counter, left) = self.linearize_rec(prefix, counter, *left);
-                    let (counter, right) = self.linearize_rec(prefix, counter, *right);
-                    (counter, left - right)
-                }
-                BinaryOperator::Mul => {
-                    // if we have a quadratic term, we linearize each factor and introduce an intermediate variable for the product
-                    let (counter, left) = self.linearize_rec(prefix, counter, *left);
-                    let (counter, right) = self.linearize_rec(prefix, counter, *right);
-                    let intermediate_name = format!(
-                        "{prefix}{}",
-                        if counter == 0 {
-                            "".to_string()
-                        } else {
-                            format!("_{counter}")
-                        }
-                    );
-                    self.pil.push(PilStatement::PolynomialDefinition(
-                        SourceRef::unknown(),
-                        intermediate_name.clone().into(),
-                        left * right,
-                    ));
-                    (counter + 1, direct_reference(intermediate_name))
-                }
-                op => unimplemented!("{op} is not supported when linearizing"),
-            },
-            expr => (counter, expr),
+        let Expression::BinaryOperation(source, BinaryOperation { left, op, right }) = expr else {
+            return (counter, expr);
+        };
+        let (counter, left) = self.linearize_rec(prefix, counter, *left);
+        let (counter, right) = self.linearize_rec(prefix, counter, *right);
+        match op {
+            BinaryOperator::Mul => {
+                // if we have a quadratic term, we linearize each factor and introduce an intermediate variable for the product
+                let intermediate_name = format!(
+                    "{prefix}{}",
+                    if counter == 0 {
+                        "".to_string()
+                    } else {
+                        format!("_{counter}")
+                    }
+                );
+                self.pil.push(PilStatement::PolynomialDefinition(
+                    SourceRef::unknown(),
+                    intermediate_name.clone().into(),
+                    left * right,
+                ));
+                (counter + 1, direct_reference(intermediate_name))
+            }
+            _ => (
+                counter,
+                Expression::BinaryOperation(
+                    source,
+                    BinaryOperation {
+                        left: Box::new(left),
+                        op,
+                        right: Box::new(right),
+                    },
+                ),
+            ),
         }
     }
 }
@@ -1284,7 +1283,8 @@ fn witness_column<S: Into<String>>(
     )
 }
 
-fn extract_update(expr: Expression) -> (Option<String>, Expression) {
+/// If the expression is of the form "x' = expr", returns x and expr.
+fn try_extract_update(expr: &Expression) -> Option<(String, Expression)> {
     let Expression::BinaryOperation(
         _,
         BinaryOperation {
@@ -1294,45 +1294,30 @@ fn extract_update(expr: Expression) -> (Option<String>, Expression) {
         },
     ) = expr
     else {
-        panic!("Invalid statement for instruction body, expected constraint: {expr}");
+        return None;
     };
     // TODO check that there are no other "next" references in the expression
-    match *left {
+    match left.as_ref() {
         Expression::UnaryOperation(
-            source_ref,
+            _,
             UnaryOperation {
                 op: UnaryOperator::Next,
                 expr: column,
             },
-        ) => match *column {
-            Expression::Reference(_, column) => {
-                (Some(column.try_to_identifier().unwrap().clone()), *right)
-            }
-            _ => (
-                None,
-                Expression::UnaryOperation(
-                    source_ref,
-                    UnaryOperation {
-                        op: UnaryOperator::Next,
-                        expr: column,
-                    },
-                ) - *right,
-            ),
+        ) => match column.as_ref() {
+            Expression::Reference(_, column) => Some((
+                column.try_to_identifier().unwrap().clone(),
+                (**right).clone(),
+            )),
+            _ => None,
         },
-        _ => (None, *left - *right),
+        _ => None,
     }
 }
 
 #[cfg(test)]
 mod test {
-    use powdr_ast::{
-        asm_analysis::{AnalysisASMFile, Item},
-        parsed::{
-            asm::{parse_absolute_path, Part, SymbolPath},
-            types::{FunctionType, Type},
-            TraitDeclaration,
-        },
-    };
+    use powdr_ast::asm_analysis::AnalysisASMFile;
     use powdr_importer::load_dependencies_and_resolve_str;
     use powdr_number::{FieldElement, GoldilocksField};
 
@@ -1364,52 +1349,5 @@ machine Main {
 }
 ";
         parse_analyze_and_compile::<GoldilocksField>(asm);
-    }
-
-    #[test]
-    fn trait_parsing() {
-        let asm = r"
-        mod types {
-            enum DoubleOpt<T> {
-                None,
-                Some(T, T)
-            }
-
-            trait ArraySum<T> {
-                array_sum: T[4 + 1] -> DoubleOpt<T>,
-            }
-        }
-
-        machine Empty {
-            col witness w;
-            w = w * w;
-        }
-        ";
-
-        let analyzed = parse_analyze_and_compile::<GoldilocksField>(asm);
-        let arraysum = parse_absolute_path("::types::ArraySum");
-        let trait_decl = analyzed.items.get(&arraysum).unwrap();
-        if let Item::TraitDeclaration(TraitDeclaration { functions, .. }) = trait_decl {
-            assert_eq!(functions.len(), 1);
-            let func_ty = &functions.iter().next().unwrap().ty;
-            match func_ty {
-                Type::Function(FunctionType { value, .. }) => {
-                    assert_eq!(
-                        value.as_ref(),
-                        &Type::NamedType(
-                            SymbolPath::from_parts(
-                                ["types", "DoubleOpt"]
-                                    .iter()
-                                    .map(|arg| Part::Named(arg.to_string()))
-                            ),
-                            Some(vec![Type::TypeVar("T".to_string())])
-                        )
-                    );
-                }
-                _ => panic!("Expected function type"),
-            }
-        } else {
-            panic!("Expected trait declaration");
-        }
     }
 }

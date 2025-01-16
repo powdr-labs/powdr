@@ -1,199 +1,92 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::{Arc, RwLock},
-};
-
 pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn};
 use itertools::Itertools;
-use powdr_ast::{
-    analyzed::{Analyzed, Expression, FunctionValueDefinition, Symbol, TypedExpression},
-    parsed::{
-        types::{ArrayType, Type},
-        IndexAccess,
-    },
-};
-use powdr_number::{BigInt, BigUint, DegreeType, FieldElement};
-use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use powdr_ast::analyzed::Analyzed;
+use powdr_number::FieldElement;
 
 mod data_structures;
+mod interpreter;
+mod jit_compiler;
 
-/// Generates the fixed column values for all fixed columns that are defined
-/// (and not just declared).
+/// Generates the fixed column values for all fixed columns that are defined (and not just declared).
+///
 /// @returns the names (in source order) and the values for the columns.
 /// Arrays of columns are flattened, the name of the `i`th array element
 /// is `name[i]`.
 pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, VariablySizedColumn<T>)> {
-    let mut fixed_cols = HashMap::new();
+    let max_degree = analyzed
+        .constant_polys_in_source_order()
+        .map(|(poly, _)| poly.degree.unwrap().max)
+        .max()
+        .unwrap_or_default();
+
+    let mut fixed_cols = Default::default();
+    if max_degree > (1 << 18) {
+        fixed_cols = jit_compiler::generate_values(analyzed);
+    }
+    let mut used_interpreter = false;
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
             // For arrays, generate values for each index,
             // for non-arrays, set index to None.
             for (index, (name, id)) in poly.array_elements().enumerate() {
-                let index = poly.is_array().then_some(index as u64);
-                let range = poly.degree.unwrap();
-                let values = range
-                    .iter()
-                    .map(|degree| generate_values(analyzed, degree, &name, value, index))
-                    .collect::<Vec<_>>()
-                    .into();
-                assert!(fixed_cols.insert(name, (id, values)).is_none());
+                fixed_cols.entry((name.clone(), id)).or_insert_with(|| {
+                    let index = poly.is_array().then_some(index as u64);
+                    let range = poly.degree.unwrap();
+                    let start_time = std::time::Instant::now();
+                    let column = range
+                        .iter()
+                        .map(|degree| {
+                            used_interpreter = true;
+                            interpreter::generate_values(analyzed, degree, &name, value, index)
+                        })
+                        .collect::<Vec<_>>()
+                        .into();
+                    let time = start_time.elapsed().as_secs_f32();
+                    let log_level = if time > 1.0 {
+                        log::Level::Debug
+                    } else {
+                        log::Level::Trace
+                    };
+                    log::log!(
+                        log_level,
+                        "  Generated values for {} ({}) in {:.2}s",
+                        name,
+                        range,
+                        time
+                    );
+                    column
+                });
             }
         }
+    }
+    if !used_interpreter && !fixed_cols.is_empty() {
+        log::info!("All columns were generated using JIT-code.");
     }
 
     fixed_cols
         .into_iter()
-        .sorted_by_key(|(_, (id, _))| *id)
-        .map(|(name, (_, values))| (name, values))
+        .sorted_by_key(|((_, id), _)| *id)
+        .map(|((name, _), values)| (name, values))
         .collect()
 }
 
-fn generate_values<T: FieldElement>(
+/// Generates the fixed column values only using JIT-compiled code.
+/// Might not return all fixed columns.
+pub fn generate_only_via_jit<T: FieldElement>(
     analyzed: &Analyzed<T>,
-    degree: DegreeType,
-    name: &str,
-    body: &FunctionValueDefinition,
-    index: Option<u64>,
-) -> Vec<T> {
-    let symbols = CachedSymbols {
-        symbols: &analyzed.definitions,
-        solved_impls: &analyzed.solved_impls,
-        cache: Arc::new(RwLock::new(Default::default())),
-        degree,
-    };
-    let result = match body {
-        FunctionValueDefinition::Expression(TypedExpression { e, type_scheme }) => {
-            if let Some(type_scheme) = type_scheme {
-                assert!(type_scheme.vars.is_empty());
-                let ty = &type_scheme.ty;
-                if ty == &Type::Col {
-                    assert!(index.is_none());
-                } else if let Type::Array(ArrayType { base, length: _ }) = ty {
-                    assert!(index.is_some());
-                    assert_eq!(base.as_ref(), &Type::Col);
-                } else {
-                    panic!("Invalid fixed column type: {ty}");
-                }
-            };
-            let index_expr;
-            let e = if let Some(index) = index {
-                index_expr = IndexAccess {
-                    array: e.clone().into(),
-                    index: Box::new(BigUint::from(index).into()),
-                }
-                .into();
-                &index_expr
-            } else {
-                e
-            };
-            let fun = evaluator::evaluate(e, &mut symbols.clone()).unwrap();
-            (0..degree)
-                .into_par_iter()
-                .map(|i| {
-                    evaluator::evaluate_function_call(
-                        fun.clone(),
-                        vec![Arc::new(Value::Integer(BigInt::from(i)))],
-                        &mut symbols.clone(),
-                    )?
-                    .try_to_field_element()
-                })
-                .collect::<Result<Vec<_>, _>>()
-        }
-        FunctionValueDefinition::Array(values) => {
-            assert!(index.is_none());
-            values
-                .to_repeated_arrays(degree)
-                .map(|elements| {
-                    let items = elements
-                        .pattern()
-                        .iter()
-                        .map(|v| {
-                            let mut symbols = symbols.clone();
-                            evaluator::evaluate(v, &mut symbols)
-                                .and_then(|v| v.try_to_field_element())
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    Ok(items
-                        .into_iter()
-                        .cycle()
-                        .take(elements.size() as usize)
-                        .collect::<Vec<_>>())
-                })
-                .collect::<Result<Vec<_>, _>>()
-                .map(|values| {
-                    let values: Vec<T> = values.into_iter().flatten().collect();
-                    assert_eq!(values.len(), degree as usize);
-                    values
-                })
-        }
-        FunctionValueDefinition::TypeDeclaration(_)
-        | FunctionValueDefinition::TypeConstructor(_, _)
-        | FunctionValueDefinition::TraitDeclaration(_)
-        | FunctionValueDefinition::TraitFunction(_, _) => panic!(),
-    };
-    match result {
-        Err(err) => {
-            eprintln!("Error evaluating fixed polynomial {name}{body}:\n{err}");
-            panic!("{err}");
-        }
-        Ok(v) => v,
-    }
-}
-
-type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<'a, T>>>>;
-
-#[derive(Clone)]
-pub struct CachedSymbols<'a, T> {
-    symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
-    cache: Arc<RwLock<SymbolCache<'a, T>>>,
-    degree: DegreeType,
-}
-
-impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
-    fn lookup(
-        &mut self,
-        name: &'a str,
-        type_args: &Option<Vec<Type>>,
-    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        if let Some(v) = self
-            .cache
-            .read()
-            .unwrap()
-            .get(name)
-            .and_then(|map| map.get(type_args))
-        {
-            return Ok(v.clone());
-        }
-        let result = Definitions::lookup_with_symbols(
-            self.symbols,
-            self.solved_impls,
-            name,
-            type_args,
-            self,
-        )?;
-        self.cache
-            .write()
-            .unwrap()
-            .entry(name.to_string())
-            .or_default()
-            .entry(type_args.clone())
-            .or_insert_with(|| result.clone());
-        Ok(result)
-    }
-
-    fn degree(&self) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        Ok(Value::Integer(self.degree.into()).into())
-    }
+) -> Vec<(String, VariablySizedColumn<T>)> {
+    jit_compiler::generate_values(analyzed)
+        .into_iter()
+        .sorted_by_key(|((_, id), _)| *id)
+        .map(|((name, _), values)| (name, values))
+        .collect()
 }
 
 #[cfg(test)]
 mod test {
+    use itertools::Itertools;
     use powdr_ast::analyzed::Analyzed;
     use powdr_number::GoldilocksField;
-    use powdr_pil_analyzer::analyze_string;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -213,12 +106,28 @@ mod test {
             .collect()
     }
 
+    fn analyze_string<T: powdr_number::FieldElement>(src: &str) -> Analyzed<T> {
+        powdr_pil_analyzer::analyze_string::<T>(src)
+            .map_err(|errors| {
+                eprintln!("Error analyzing test input:");
+                errors
+                    .into_iter()
+                    .map(|e| {
+                        e.output_to_stderr();
+                        e.to_string()
+                    })
+                    .format("\n")
+                    .to_string()
+            })
+            .unwrap()
+    }
+
     #[test]
     fn last() {
         let src = r#"
             let N = 8;
             namespace F(N);
-            col fixed LAST(i) { if i == N - 1 { 1 } else { 0 } };
+            col fixed LAST(i) { if i == N - 1_int { 1_fe } else { 0_fe } };
             "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
@@ -233,8 +142,10 @@ mod test {
     fn counter() {
         let src = r#"
             let N: int = 8;
+            namespace std::convert;
+            let fe = [];
             namespace F(N);
-            pol constant EVEN(i) { 2 * (i - 1) + 4 };
+            pol constant EVEN(i) { std::convert::fe(2 * (i - 1) + 4_int) };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
@@ -252,8 +163,10 @@ mod test {
     fn xor() {
         let src = r#"
             let N: int = 8;
+            namespace std::convert;
+            let fe = [];
             namespace F(N);
-            pol constant X(i) { i ^ (i + 17) | 3 };
+            pol constant X(i) { std::convert::fe(i ^ (i + 17) | 3_int) };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
@@ -271,13 +184,16 @@ mod test {
     fn match_expression() {
         let src = r#"
             let N: int = 8;
+            namespace std::convert;
+            let fe = [];
             namespace F(N);
-            pol constant X(i) { match i {
+            let x: int -> fe = |i| std::convert::fe(match i {
                 0 => 7,
                 3 => 9,
                 5 => 2,
                 _ => 4,
-            } + 1 };
+            } + 1_int);
+            pol constant X(i) { x(i) };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
@@ -293,7 +209,7 @@ mod test {
         let src = r#"
             let N: int = 8;
             namespace F(N);
-            let X: col = |i| if i < 3 { 7 } else { 9 };
+            let X: col = |i| if i < 3_int { 7_fe } else { 9 };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
@@ -308,9 +224,11 @@ mod test {
     fn macro_directive() {
         let src = r#"
             let N: int = 8;
+            namespace std::convert;
+            let fe = [];
             namespace F(N);
             let minus_one: int -> int = |x| x - 1;
-            pol constant EVEN(i) { 2 * minus_one(i) + 2 };
+            pol constant EVEN(i) { std::convert::fe(2 * minus_one(i) + 2) };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
@@ -330,13 +248,14 @@ mod test {
             let N = 16;
             namespace std::convert(N);
             let int = [];
+            let fe = [];
             namespace F(N);
-            let seq_f = |i| i;
-            col fixed seq(i) { i };
-            col fixed double_plus_one(i) { std::convert::int(seq_f((2 * i) % N)) + 1 };
+            let seq_f: int -> int = |i| i;
+            col fixed seq(i) { std::convert::fe(seq_f(i)) };
+            col fixed double_plus_one(i) { std::convert::fe(std::convert::int(seq_f((2 * i) % N)) + 1) };
             let half_nibble_f = |i| i & 0x7;
-            col fixed half_nibble(i) { half_nibble_f(i) };
-            col fixed doubled_half_nibble(i) { half_nibble_f(i / 2) };
+            col fixed half_nibble(i) { std::convert::fe(half_nibble_f(i)) };
+            col fixed doubled_half_nibble(i) { std::convert::fe(half_nibble_f(i / 2)) };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 16);
@@ -439,15 +358,15 @@ mod test {
             let inv = |i| N - i;
             let a: int -> int = |i| [0, 1, 0, 1, 2, 1, 1, 1][i];
             let b: int -> int = |i| [0, 0, 1, 1, 0, 5, 5, 5][i];
-            col fixed or(i) { if (a(i) != 0) || (b(i) != 0) { 1 } else { 0 } };
-            col fixed and(i) { if (a(i) != 0) && (b(i) != 0) { 1 } else { 0 } };
-            col fixed not(i) { if !(a(i) != 0) { 1 } else { 0 } };
-            col fixed less(i) { if id(i) < inv(i) { 1 } else { 0 } };
-            col fixed less_eq(i) { if id(i) <= inv(i) { 1 } else { 0 } };
-            col fixed eq(i) { if id(i) == inv(i) { 1 } else { 0 } };
-            col fixed not_eq(i) { if id(i) != inv(i) { 1 } else { 0 } };
-            col fixed greater(i) { if id(i) > inv(i) { 1 } else { 0 } };
-            col fixed greater_eq(i) { if id(i) >= inv(i) { 1 } else { 0 } };
+            col fixed or(i) { if (a(i) != 0) || (b(i) != 0) { 1_fe } else { 0_fe } };
+            col fixed and(i) { if (a(i) != 0) && (b(i) != 0) { 1_fe } else { 0_fe } };
+            col fixed not(i) { if !(a(i) != 0) { 1_fe } else { 0_fe } };
+            col fixed less(i) { if id(i) < inv(i) { 1_fe } else { 0_fe } };
+            col fixed less_eq(i) { if id(i) <= inv(i) { 1_fe } else { 0_fe } };
+            col fixed eq(i) { if id(i) == inv(i) { 1_fe } else { 0_fe } };
+            col fixed not_eq(i) { if id(i) != inv(i) { 1_fe } else { 0_fe } };
+            col fixed greater(i) { if id(i) > inv(i) { 1_fe } else { 0_fe } };
+            col fixed greater_eq(i) { if id(i) >= inv(i) { 1_fe } else { 0_fe } };
         "#;
         let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 8);
@@ -526,7 +445,7 @@ mod test {
             let w;
             let x: col = |i| w(i) + 1;
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 10);
         generate(&analyzed);
     }
@@ -539,7 +458,7 @@ mod test {
             namespace F(N);
             let x = |i| w(i) + 1;
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 10);
         generate(&analyzed);
     }
@@ -550,10 +469,10 @@ mod test {
         let src = r#"
             let N: int = 10;
             namespace F(N);
-            let x: col = |i| y(i) + 1;
+            let x: col = |i| { let t = y(i) + 1; 1_fe };
             col fixed y = [1, 2, 3]*;
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 10);
         generate(&analyzed);
     }
@@ -562,13 +481,16 @@ mod test {
     fn forward_reference_to_function() {
         let src = r#"
             let N: int = 4;
+            namespace std::convert(N);
+            let int = [];
+            let fe = [];
             namespace F(N);
-            let x = |i| y(i) + 1;
-            let y = |i| i + 20;
+            let x: int -> fe = |i| std::convert::fe(y(i) + 1);
+            let y: int -> fe = |i| std::convert::fe(i + 20);
             let X: col = x;
             let Y: col = y;
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
@@ -589,9 +511,9 @@ mod test {
             let int = [];
             let fe = [];
             namespace F(N);
-            let x: col = |i| (1 << (2000 + i)) >> 2000;
+            let x: col = |i| std::convert::fe((1 << (2000 + i)) >> 2000);
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
@@ -609,9 +531,9 @@ mod test {
             let fe = [];
             namespace F(N);
             let x_arr = [ 3 % 4, (-3) % 4, 3 % (-4), (-3) % (-4)];
-            let x: col = |i| 100 + x_arr[i];
+            let x: col = |i| std::convert::fe(100 + x_arr[i]);
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
         // Semantics of p % q involving negative numbers:
@@ -631,7 +553,7 @@ mod test {
             namespace std::convert(4);
                 let fe = || fe();
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
@@ -653,9 +575,9 @@ mod test {
                 let fe = || fe();
             namespace F(4);
                 let<T: FromLiteral> seven: T = 7;
-                let a: col = |i| std::convert::fe(i + seven) + seven;
+                let a: col = |i| std::convert::fe(i + seven + 0_int) + seven;
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
@@ -668,19 +590,20 @@ mod test {
     fn do_not_add_constraint_for_empty_tuple() {
         let input = r#"namespace N(4);
             let f: -> () = || ();
-            let g: col = |i| {
+            let r: int -> fe = |i| {
                 // This returns an empty tuple, we check that this does not lead to
-                // a call to add_constraints()
+                // a call to add_proof_items()
                 f();
-                i
+                7_fe
             };
+            let g: col = r;
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(input);
+        let analyzed = analyze_string(input);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],
-            ("N::g".to_string(), convert([0, 1, 2, 3].to_vec()))
+            ("N::g".to_string(), convert([7, 7, 7, 7].to_vec()))
         );
     }
 }
