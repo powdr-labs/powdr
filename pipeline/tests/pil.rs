@@ -293,7 +293,6 @@ fn stwo_constant_next_test() {
     let f = "pil/fixed_with_incremental.pil";
     test_stwo(f, Default::default());
 }
-
 #[test]
 fn fibonacci_invalid_witness_stwo() {
     let f = "pil/fibo_no_publics.pil";
@@ -389,6 +388,7 @@ fn different_degrees() {
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
     regular_test_gl(f, Default::default());
+    test_stwo(f, Default::default());
 }
 
 #[test]

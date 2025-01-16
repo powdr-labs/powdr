@@ -1,8 +1,7 @@
 use core::unreachable;
 use powdr_ast::parsed::visitor::AllChildren;
-use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, GlobalValues, TraceValues};
+use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, TerminalAccess};
 use std::collections::HashSet;
-use std::sync::Arc;
 
 extern crate alloc;
 use alloc::collections::btree_map::BTreeMap;
@@ -53,14 +52,18 @@ where
 }
 
 pub struct PowdrEval<T> {
-    analyzed: Arc<Analyzed<T>>,
+    log_degree: u32,
+    analyzed: Analyzed<T>,
+    // the pre-processed are indexed in the whole proof, instead of in each component.
+    // this offset represents the index of the first pre-processed column in this component
+    preprocess_col_offset: usize,
     witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
     constant_columns: BTreeMap<PolyID, usize>,
 }
 
 impl<T: FieldElement> PowdrEval<T> {
-    pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
+    pub fn new(analyzed: Analyzed<T>, preprocess_col_offset: usize, log_degree: u32) -> Self {
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())
@@ -86,7 +89,9 @@ impl<T: FieldElement> PowdrEval<T> {
             .collect();
 
         Self {
+            log_degree,
             analyzed,
+            preprocess_col_offset,
             witness_columns,
             constant_shifted,
             constant_columns,
@@ -100,7 +105,7 @@ struct Data<'a, F> {
     constant_eval: &'a BTreeMap<PolyID, F>,
 }
 
-impl<F: Clone> TraceValues<F> for &Data<'_, F> {
+impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
     fn get(&self, poly_ref: &AlgebraicReference) -> F {
         match poly_ref.poly_id.ptype {
             PolynomialType::Committed => match poly_ref.next {
@@ -114,12 +119,11 @@ impl<F: Clone> TraceValues<F> for &Data<'_, F> {
             PolynomialType::Intermediate => unreachable!(),
         }
     }
-}
 
-impl<F> GlobalValues<F> for &Data<'_, F> {
     fn get_public(&self, _public: &str) -> F {
         unimplemented!("Public references are not supported in stwo yet")
     }
+
     fn get_challenge(&self, _challenge: &Challenge) -> F {
         unimplemented!("challenges are not supported in stwo yet")
     }
@@ -127,10 +131,10 @@ impl<F> GlobalValues<F> for &Data<'_, F> {
 
 impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
     fn log_size(&self) -> u32 {
-        self.analyzed.degree().ilog2()
+        self.log_degree
     }
     fn max_constraint_log_degree_bound(&self) -> u32 {
-        self.analyzed.degree().ilog2() + 1
+        self.log_degree + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         assert!(
@@ -156,8 +160,9 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             .map(|(i, poly_id)| {
                 (
                     *poly_id,
-                    // PreprocessedColumn::Plonk(i) is unused argument in get_preprocessed_column
-                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(i)),
+                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(
+                        i + self.preprocess_col_offset,
+                    )),
                 )
             })
             .collect();
@@ -170,7 +175,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                 (
                     *poly_id,
                     eval.get_preprocessed_column(PreprocessedColumn::Plonk(
-                        i + constant_eval.len(),
+                        i + constant_eval.len() + self.preprocess_col_offset,
                     )),
                 )
             })
@@ -182,12 +187,10 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             constant_shifted_eval: &constant_shifted_eval,
             constant_eval: &constant_eval,
         };
-        let mut evaluator = ExpressionEvaluator::new_with_custom_expr(
-            &data,
-            &data,
-            &intermediate_definitions,
-            |v| E::F::from(M31::from(v.try_into_i32().unwrap())),
-        );
+        let mut evaluator =
+            ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {
+                E::F::from(M31::from(v.try_into_i32().unwrap()))
+            });
 
         for id in &self.analyzed.identities {
             match id {

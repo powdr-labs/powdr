@@ -1,19 +1,20 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicReference, Identity, PolyID, PolynomialType, SelectedExpressions,
-};
+use powdr_ast::analyzed::AlgebraicReference;
 use powdr_number::FieldElement;
 
-use crate::witgen::{jit::effect::format_code, machines::MachineParts, FixedData};
+use crate::witgen::{jit::processor::Processor, machines::MachineParts, FixedData};
 
 use super::{
     effect::Effect,
-    variable::{Cell, Variable},
-    witgen_inference::{CanProcessCall, FixedEvaluator, Value, WitgenInference},
+    variable::Variable,
+    witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
+
+/// This is a tuning value. It is the maximum nesting depth of branches in the JIT code.
+const BLOCK_MACHINE_MAX_BRANCH_DEPTH: usize = 6;
 
 /// A processor for generating JIT code for a block machine.
 pub struct BlockMachineProcessor<'a, T: FieldElement> {
@@ -55,209 +56,69 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .enumerate()
             .filter_map(|(i, is_input)| is_input.then_some(Variable::Param(i)))
             .collect::<HashSet<_>>();
-        let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables);
+        let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables, []);
 
         // In the latch row, set the RHS selector to 1.
-        witgen.assign_constant(&connection.right.selector, self.latch_row as i32, T::one());
+        let selector = &connection.right.selector;
+        witgen.assign_constant(selector, self.latch_row as i32, T::one());
+
+        // Set all other selectors to 0 in the latch row.
+        for other_connection in self.machine_parts.connections.values() {
+            let other_selector = &other_connection.right.selector;
+            if other_selector != selector {
+                witgen.assign_constant(other_selector, self.latch_row as i32, T::zero());
+            }
+        }
 
         // For each argument, connect the expression on the RHS with the formal parameter.
         for (index, expr) in connection.right.expressions.iter().enumerate() {
             witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
         }
 
-        // Solve for the block witness.
-        // Fails if any machine call cannot be completed.
-        match self.solve_block(can_process, &mut witgen, connection.right) {
-            Ok(()) => Ok(witgen.code()),
-            Err(e) => {
-                log::debug!("\nCode generation failed for connection:\n  {connection}");
-                let known_args_str = known_args
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, b)| b.then_some(connection.right.expressions[i].to_string()))
-                    .join("\n  ");
-                log::debug!("Known arguments:\n  {known_args_str}");
-                log::debug!("Error:\n  {e}");
-                log::debug!(
-                    "The following code was generated so far:\n{}",
-                    format_code(witgen.code().as_slice())
-                );
-                Err(format!("Code generation failed: {e}\nRun with RUST_LOG=debug to see the code generated so far."))
-            }
-        }
+        let identities = self.row_range().flat_map(move |row| {
+            self.machine_parts
+                .identities
+                .iter()
+                .map(move |&id| (id, row))
+        });
+        let requested_known = known_args
+            .iter()
+            .enumerate()
+            .filter_map(|(i, is_input)| (!is_input).then_some(Variable::Param(i)));
+        Processor::new(
+            self.fixed_data,
+            self,
+            identities,
+            self.block_size,
+            true,
+            requested_known,
+            BLOCK_MACHINE_MAX_BRANCH_DEPTH,
+        )
+        .generate_code(can_process, witgen)
+        .map_err(|e| {
+            let err_str = e.to_string_with_variable_formatter(|var| match var {
+                Variable::Param(i) => format!("{}", &connection.right.expressions[*i]),
+                _ => var.to_string(),
+            });
+            log::trace!("\nCode generation failed for connection:\n  {connection}");
+            let known_args_str = known_args
+                .iter()
+                .enumerate()
+                .filter_map(|(i, b)| b.then_some(connection.right.expressions[i].to_string()))
+                .join("\n  ");
+            log::trace!("Known arguments:\n  {known_args_str}");
+            log::trace!("Error:\n  {err_str}");
+            let shortened_error = err_str
+                .lines()
+                .take(10)
+                .format("\n  ");
+            format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
+        })
     }
 
     fn row_range(&self) -> std::ops::Range<i32> {
         // We iterate over all rows of the block +/- one row, so that we can also solve for non-rectangular blocks.
-        -1..(self.block_size + 1) as i32
-    }
-
-    /// Repeatedly processes all identities on all rows, until no progress is made.
-    /// Fails iff there are incomplete machine calls in the latch row.
-    fn solve_block<CanProcess: CanProcessCall<T> + Clone>(
-        &self,
-        can_process: CanProcess,
-        witgen: &mut WitgenInference<'a, T, &Self>,
-        connection_rhs: &SelectedExpressions<T>,
-    ) -> Result<(), String> {
-        let mut complete = HashSet::new();
-        for iteration in 0.. {
-            let mut progress = false;
-
-            for row in self.row_range() {
-                for id in &self.machine_parts.identities {
-                    if !complete.contains(&(id.id(), row)) {
-                        let result = witgen.process_identity(can_process.clone(), id, row);
-                        if result.complete {
-                            complete.insert((id.id(), row));
-                        }
-                        progress |= result.progress;
-                    }
-                }
-            }
-            if !progress {
-                log::trace!(
-                    "Finishing block machine witgen code generation after {iteration} iterations"
-                );
-                break;
-            }
-        }
-
-        for (index, expr) in connection_rhs.expressions.iter().enumerate() {
-            if !witgen.is_known(&Variable::Param(index)) {
-                return Err(format!(
-                    "Unable to derive algorithm to compute output value \"{expr}\""
-                ));
-            }
-        }
-
-        // TODO: Fail hard (or return a different error), as this should never
-        // happen for valid block machines. Currently fails in:
-        // powdr-pipeline::powdr_std arith256_memory_large_test
-        self.check_block_shape(witgen)?;
-        self.check_incomplete_machine_calls(&complete)?;
-
-        Ok(())
-    }
-
-    /// After solving, the known values should be such that we can stack different blocks.
-    fn check_block_shape(&self, witgen: &mut WitgenInference<'a, T, &Self>) -> Result<(), String> {
-        let known_columns = witgen
-            .known_variables()
-            .iter()
-            .filter_map(|var| match var {
-                Variable::Cell(cell) => Some(cell.id),
-                _ => None,
-            })
-            .collect::<BTreeSet<_>>();
-
-        let can_stack = known_columns.iter().all(|column_id| {
-            // Increase the range by 1, because in row <block_size>,
-            // we might have processed an identity with next references.
-            let row_range = self.row_range();
-            let values = (row_range.start..(row_range.end + 1))
-                .map(|row| {
-                    witgen.value(&Variable::Cell(Cell {
-                        id: *column_id,
-                        row_offset: row,
-                        // Dummy value, the column name is ignored in the implementation
-                        // of Cell::eq, etc.
-                        column_name: "".to_string(),
-                    }))
-                })
-                .collect::<Vec<_>>();
-
-            // Two values that refer to the same row (modulo block size) are compatible if:
-            // - One of them is unknown, or
-            // - Both are concrete and equal
-            let is_compatible = |v1: Value<T>, v2: Value<T>| match (v1, v2) {
-                (Value::Unknown, _) | (_, Value::Unknown) => true,
-                (Value::Concrete(a), Value::Concrete(b)) => a == b,
-                _ => false,
-            };
-            // A column is stackable if all rows equal to each other modulo
-            // the block size are compatible.
-            let stackable = (0..(values.len() - self.block_size))
-                .all(|i| is_compatible(values[i], values[i + self.block_size]));
-
-            if !stackable {
-                let column_name = self.fixed_data.column_name(&PolyID {
-                    id: *column_id,
-                    ptype: PolynomialType::Committed,
-                });
-                let block_list = values.iter().skip(1).take(self.block_size).join(", ");
-                let column_str = format!(
-                    "... {} | {} | {} ...",
-                    values[0],
-                    block_list,
-                    values[self.block_size + 1]
-                );
-                log::debug!("Column {column_name} is not stackable:\n{column_str}");
-            }
-
-            stackable
-        });
-
-        match can_stack {
-            true => Ok(()),
-            false => Err("Block machine shape does not allow stacking".to_string()),
-        }
-    }
-
-    /// If any machine call could not be completed, that's bad because machine calls typically have side effects.
-    /// So, the underlying lookup / permutation / bus argument likely does not hold.
-    /// This function checks that all machine calls are complete, at least for a window of <block_size> rows.
-    fn check_incomplete_machine_calls(&self, complete: &HashSet<(u64, i32)>) -> Result<(), String> {
-        let machine_calls = self
-            .machine_parts
-            .identities
-            .iter()
-            .filter(|id| is_machine_call(id));
-
-        let incomplete_machine_calls = machine_calls
-            .flat_map(|call| {
-                let complete_rows = self
-                    .row_range()
-                    .filter(|row| complete.contains(&(call.id(), *row)))
-                    .collect::<Vec<_>>();
-                // Because we process rows -1..block_size+1, it is fine to have two incomplete machine calls,
-                // as long as <block_size> consecutive rows are complete.
-                if complete_rows.len() >= self.block_size {
-                    let (min, max) = complete_rows.iter().minmax().into_option().unwrap();
-                    let is_consecutive = max - min == complete_rows.len() as i32 - 1;
-                    if is_consecutive {
-                        return vec![];
-                    }
-                }
-                self.row_range()
-                    .filter(|row| !complete.contains(&(call.id(), *row)))
-                    .map(|row| (call, row))
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Vec<_>>();
-
-        if !incomplete_machine_calls.is_empty() {
-            Err(format!(
-                "Incomplete machine calls:\n  {}",
-                incomplete_machine_calls
-                    .iter()
-                    .map(|(identity, row)| format!("{identity} (row {row})"))
-                    .join("\n  ")
-            ))
-        } else {
-            Ok(())
-        }
-    }
-}
-
-fn is_machine_call<T>(identity: &Identity<T>) -> bool {
-    match identity {
-        Identity::Lookup(_)
-        | Identity::Permutation(_)
-        | Identity::PhantomLookup(_)
-        | Identity::PhantomPermutation(_)
-        | Identity::PhantomBusInteraction(_) => true,
-        Identity::Polynomial(_) | Identity::Connect(_) => false,
+        -1..self.block_size as i32
     }
 }
 
@@ -289,6 +150,7 @@ impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
 mod test {
     use std::fs::read_to_string;
 
+    use pretty_assertions::assert_eq;
     use test_log::test;
 
     use powdr_number::GoldilocksField;
@@ -296,7 +158,10 @@ mod test {
     use crate::witgen::{
         data_structures::mutable_state::MutableState,
         global_constraints,
-        jit::{effect::Effect, test_util::read_pil},
+        jit::{
+            effect::{format_code, Effect},
+            test_util::read_pil,
+        },
         machines::{machine_extractor::MachineExtractor, KnownMachine, Machine},
         FixedData,
     };
@@ -381,11 +246,11 @@ params[2] = Add::c[0];"
             .err()
             .unwrap();
         assert!(err_str
-            .contains("Unable to derive algorithm to compute output value \"Unconstrained::c\""));
+            .contains("The following variables or values are still missing: Unconstrained::c"));
     }
 
     #[test]
-    #[should_panic = "Block machine shape does not allow stacking"]
+    #[should_panic = "Column NotStackable::a is not stackable in a 1-row block"]
     fn not_stackable() {
         let input = "
         namespace Main(256);
@@ -409,43 +274,55 @@ main_binary::operation_id[3] = params[0];
 main_binary::A[3] = params[1];
 main_binary::B[3] = params[2];
 main_binary::operation_id[2] = main_binary::operation_id[3];
+main_binary::operation_id[1] = main_binary::operation_id[2];
+main_binary::operation_id[0] = main_binary::operation_id[1];
+main_binary::operation_id_next[-1] = main_binary::operation_id[0];
+main_binary::operation_id_next[0] = main_binary::operation_id[1];
+main_binary::operation_id_next[1] = main_binary::operation_id[2];
 main_binary::A_byte[2] = ((main_binary::A[3] & 4278190080) // 16777216);
 main_binary::A[2] = (main_binary::A[3] & 16777215);
 assert (main_binary::A[3] & 18446744069414584320) == 0;
-main_binary::B_byte[2] = ((main_binary::B[3] & 4278190080) // 16777216);
-main_binary::B[2] = (main_binary::B[3] & 16777215);
-assert (main_binary::B[3] & 18446744069414584320) == 0;
-main_binary::operation_id_next[2] = main_binary::operation_id[3];
-machine_call(9, [Known(main_binary::operation_id_next[2]), Known(main_binary::A_byte[2]), Known(main_binary::B_byte[2]), Unknown(ret(9, 2, 3))]);
-main_binary::C_byte[2] = ret(9, 2, 3);
-main_binary::operation_id[1] = main_binary::operation_id[2];
 main_binary::A_byte[1] = ((main_binary::A[2] & 16711680) // 65536);
 main_binary::A[1] = (main_binary::A[2] & 65535);
 assert (main_binary::A[2] & 18446744073692774400) == 0;
-main_binary::B_byte[1] = ((main_binary::B[2] & 16711680) // 65536);
-main_binary::B[1] = (main_binary::B[2] & 65535);
-assert (main_binary::B[2] & 18446744073692774400) == 0;
-main_binary::operation_id_next[1] = main_binary::operation_id[2];
-machine_call(9, [Known(main_binary::operation_id_next[1]), Known(main_binary::A_byte[1]), Known(main_binary::B_byte[1]), Unknown(ret(9, 1, 3))]);
-main_binary::C_byte[1] = ret(9, 1, 3);
-main_binary::operation_id[0] = main_binary::operation_id[1];
 main_binary::A_byte[0] = ((main_binary::A[1] & 65280) // 256);
 main_binary::A[0] = (main_binary::A[1] & 255);
 assert (main_binary::A[1] & 18446744073709486080) == 0;
+main_binary::A_byte[-1] = main_binary::A[0];
+main_binary::B_byte[2] = ((main_binary::B[3] & 4278190080) // 16777216);
+main_binary::B[2] = (main_binary::B[3] & 16777215);
+assert (main_binary::B[3] & 18446744069414584320) == 0;
+main_binary::B_byte[1] = ((main_binary::B[2] & 16711680) // 65536);
+main_binary::B[1] = (main_binary::B[2] & 65535);
+assert (main_binary::B[2] & 18446744073692774400) == 0;
 main_binary::B_byte[0] = ((main_binary::B[1] & 65280) // 256);
 main_binary::B[0] = (main_binary::B[1] & 255);
 assert (main_binary::B[1] & 18446744073709486080) == 0;
-main_binary::operation_id_next[0] = main_binary::operation_id[1];
-machine_call(9, [Known(main_binary::operation_id_next[0]), Known(main_binary::A_byte[0]), Known(main_binary::B_byte[0]), Unknown(ret(9, 0, 3))]);
-main_binary::C_byte[0] = ret(9, 0, 3);
-main_binary::A_byte[-1] = main_binary::A[0];
 main_binary::B_byte[-1] = main_binary::B[0];
-main_binary::operation_id_next[-1] = main_binary::operation_id[0];
-machine_call(9, [Known(main_binary::operation_id_next[-1]), Known(main_binary::A_byte[-1]), Known(main_binary::B_byte[-1]), Unknown(ret(9, -1, 3))]);
-main_binary::C_byte[-1] = ret(9, -1, 3);
+call_var(9, -1, 0) = main_binary::operation_id_next[-1];
+call_var(9, -1, 1) = main_binary::A_byte[-1];
+call_var(9, -1, 2) = main_binary::B_byte[-1];
+machine_call(9, [Known(call_var(9, -1, 0)), Known(call_var(9, -1, 1)), Known(call_var(9, -1, 2)), Unknown(call_var(9, -1, 3))]);
+main_binary::C_byte[-1] = call_var(9, -1, 3);
 main_binary::C[0] = main_binary::C_byte[-1];
+call_var(9, 0, 0) = main_binary::operation_id_next[0];
+call_var(9, 0, 1) = main_binary::A_byte[0];
+call_var(9, 0, 2) = main_binary::B_byte[0];
+machine_call(9, [Known(call_var(9, 0, 0)), Known(call_var(9, 0, 1)), Known(call_var(9, 0, 2)), Unknown(call_var(9, 0, 3))]);
+main_binary::C_byte[0] = call_var(9, 0, 3);
 main_binary::C[1] = (main_binary::C[0] + (main_binary::C_byte[0] * 256));
+call_var(9, 1, 0) = main_binary::operation_id_next[1];
+call_var(9, 1, 1) = main_binary::A_byte[1];
+call_var(9, 1, 2) = main_binary::B_byte[1];
+machine_call(9, [Known(call_var(9, 1, 0)), Known(call_var(9, 1, 1)), Known(call_var(9, 1, 2)), Unknown(call_var(9, 1, 3))]);
+main_binary::C_byte[1] = call_var(9, 1, 3);
 main_binary::C[2] = (main_binary::C[1] + (main_binary::C_byte[1] * 65536));
+main_binary::operation_id_next[2] = main_binary::operation_id[3];
+call_var(9, 2, 0) = main_binary::operation_id_next[2];
+call_var(9, 2, 1) = main_binary::A_byte[2];
+call_var(9, 2, 2) = main_binary::B_byte[2];
+machine_call(9, [Known(call_var(9, 2, 0)), Known(call_var(9, 2, 1)), Known(call_var(9, 2, 2)), Unknown(call_var(9, 2, 3))]);
+main_binary::C_byte[2] = call_var(9, 2, 3);
 main_binary::C[3] = (main_binary::C[2] + (main_binary::C_byte[2] * 16777216));
 params[3] = main_binary::C[3];"
         )

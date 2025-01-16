@@ -20,26 +20,23 @@ use crate::witgen::{
 
 use super::{
     affine_symbolic_expression::{AffineSymbolicExpression, ProcessResult},
-    effect::{Effect, MachineCallArgument},
-    variable::{MachineCallReturnVariable, Variable},
+    effect::{BranchCondition, Effect},
+    variable::{MachineCallVariable, Variable},
 };
-
-/// Summary of the effect of processing an action.
-pub struct ProcessSummary {
-    /// The action has been fully completed, processing it again will not have any effect.
-    pub complete: bool,
-    /// Processing the action changed the state of the inference.
-    pub progress: bool,
-}
 
 /// This component can generate code that solves identities.
 /// It needs a driver that tells it which identities to process on which rows.
-pub struct WitgenInference<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
+#[derive(Clone)]
+pub struct WitgenInference<'a, T: FieldElement, FixedEval> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_evaluator: FixedEval,
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
     known_variables: HashSet<Variable>,
-    /// Internal equalities we were not able to solve yet.
+    /// Identities that have already been completed.
+    /// This mainly avoids generating multiple submachine calls for the same
+    /// connection on the same row.
+    complete_identities: HashSet<(u64, i32)>,
+    /// Internal equality constraints that are not identities from the constraint set.
     assignments: Vec<Assignment<'a, T>>,
     code: Vec<Effect<T, Variable>>,
 }
@@ -61,17 +58,29 @@ impl<T: Display> Display for Value<T> {
     }
 }
 
+/// Return type of the `branch_on` method.
+pub struct BranchResult<'a, T: FieldElement, FixedEval> {
+    /// The code common to both branches.
+    pub common_code: Vec<Effect<T, Variable>>,
+    /// The condition of the branch.
+    pub condition: BranchCondition<T, Variable>,
+    /// The two branches.
+    pub branches: [WitgenInference<'a, T, FixedEval>; 2],
+}
+
 impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, FixedEval> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         fixed_evaluator: FixedEval,
         known_variables: impl IntoIterator<Item = Variable>,
+        complete_identities: impl IntoIterator<Item = (u64, i32)>,
     ) -> Self {
         Self {
             fixed_data,
             fixed_evaluator,
             derived_range_constraints: Default::default(),
             known_variables: known_variables.into_iter().collect(),
+            complete_identities: complete_identities.into_iter().collect(),
             assignments: Default::default(),
             code: Default::default(),
         }
@@ -89,9 +98,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.known_variables.contains(variable)
     }
 
+    pub fn is_complete(&self, identity: &Identity<T>, row_offset: i32) -> bool {
+        self.complete_identities
+            .contains(&(identity.id(), row_offset))
+    }
+
     pub fn value(&self, variable: &Variable) -> Value<T> {
         let rc = self.range_constraint(variable);
-        if let Some(val) = rc.as_ref().and_then(|rc| rc.try_to_single_value()) {
+        if let Some(val) = rc.try_to_single_value() {
             Value::Concrete(val)
         } else if self.is_known(variable) {
             Value::Known
@@ -100,13 +114,48 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
+    /// Splits the current inference into two copies - one where the provided variable
+    /// is in the "second half" of its range constraint and one where it is in the
+    /// "first half" of its range constraint (determined by calling the `bisect` method).
+    /// Returns the common code, the branch condition and the two branches.
+    pub fn branch_on(mut self, variable: &Variable) -> BranchResult<'a, T, FixedEval> {
+        // The variable needs to be known, we need to have a range constraint but
+        // it cannot be a single value.
+        assert!(self.known_variables.contains(variable));
+        let rc = self.range_constraint(variable);
+        assert!(rc.try_to_single_value().is_none());
+
+        let (low_condition, high_condition) = rc.bisect();
+
+        let common_code = std::mem::take(&mut self.code);
+        let mut low_branch = self.clone();
+
+        self.add_range_constraint(variable.clone(), high_condition.clone());
+        low_branch.add_range_constraint(variable.clone(), low_condition.clone());
+
+        BranchResult {
+            common_code,
+            condition: BranchCondition {
+                variable: variable.clone(),
+                first_branch: high_condition,
+                second_branch: low_condition,
+            },
+            branches: [self, low_branch],
+        }
+    }
+
     /// Process an identity on a certain row.
+    /// Returns true if there was progress.
     pub fn process_identity<CanProcess: CanProcessCall<T>>(
         &mut self,
         can_process: CanProcess,
         id: &'a Identity<T>,
         row_offset: i32,
-    ) -> ProcessSummary {
+    ) -> bool {
+        // TODO remove this once we propagate range constraints.
+        if self.is_complete(id, row_offset) {
+            return false;
+        }
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                 self.process_equality_on_row(expression, row_offset, T::from(0).into())
@@ -125,7 +174,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             Identity::PhantomBusInteraction(_) => ProcessResult::empty(),
             Identity::Connect(_) => ProcessResult::empty(),
         };
-        self.ingest_effects(result)
+        self.ingest_effects(result, Some((id.id(), row_offset)))
     }
 
     /// Process the constraint that the expression evaluated at the given offset equals the given value.
@@ -192,49 +241,49 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
         let evaluated = arguments
             .iter()
-            .map(|a| {
-                self.evaluate(a, row_offset)
-                    .and_then(|a| a.try_to_known().cloned())
-            })
+            .map(|a| self.evaluate(a, row_offset))
             .collect::<Vec<_>>();
         let range_constraints = evaluated
             .iter()
-            .map(|e| e.as_ref().and_then(|e| e.range_constraint()))
+            .map(|e| e.as_ref().map(|e| e.range_constraint()).unwrap_or_default())
             .collect_vec();
-        let known = evaluated.iter().map(|e| e.is_some()).collect();
+        let known: BitVec = evaluated
+            .iter()
+            .map(|e| e.as_ref().and_then(|e| e.try_to_known()).is_some())
+            .collect();
 
-        if !can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints) {
+        let Some(new_range_constraints) =
+            can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints)
+        else {
             log::trace!(
                 "Sub-machine cannot process call fully (will retry later): {lookup_id}, arguments: {}",
                 arguments.iter().zip(known).map(|(arg, known)| {
                     format!("{arg} [{}]", if known { "known" } else { "unknown" })
                 }).format(", "));
             return ProcessResult::empty();
-        }
-        let args = evaluated
-            .into_iter()
-            .zip(arguments)
+        };
+        let mut effects = vec![];
+        let vars = arguments
+            .iter()
+            .zip_eq(new_range_constraints)
             .enumerate()
-            .map(|(index, (eval_expr, arg))| {
-                if let Some(e) = eval_expr {
-                    MachineCallArgument::Known(e)
-                } else {
-                    let ret_var = MachineCallReturnVariable {
-                        identity_id: lookup_id,
-                        row_offset,
-                        index,
-                    };
-                    self.assign_variable(
-                        arg,
-                        row_offset,
-                        Variable::MachineCallReturnValue(ret_var.clone()),
-                    );
-                    ret_var.into_argument()
+            .map(|(index, (arg, new_rc))| {
+                let var = Variable::MachineCallParam(MachineCallVariable {
+                    identity_id: lookup_id,
+                    row_offset,
+                    index,
+                });
+                self.assign_variable(arg, row_offset, var.clone());
+                effects.push(Effect::RangeConstraint(var.clone(), new_rc.clone()));
+                if known[index] {
+                    assert!(self.is_known(&var));
                 }
+                var
             })
             .collect_vec();
+        effects.push(Effect::MachineCall(lookup_id, known, vars.clone()));
         ProcessResult {
-            effects: vec![Effect::MachineCall(lookup_id, args)],
+            effects,
             complete: true,
         }
     }
@@ -242,73 +291,90 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     fn process_assignments(&mut self) {
         loop {
             let mut progress = false;
-            let new_assignments = std::mem::take(&mut self.assignments)
-                .into_iter()
-                .flat_map(|assignment| {
-                    let rhs = match &assignment.rhs {
-                        VariableOrValue::Variable(v) => {
-                            Evaluator::new(self).evaluate_variable(v.clone())
-                        }
-                        VariableOrValue::Value(v) => (*v).into(),
-                    };
-                    let r =
-                        self.process_equality_on_row(assignment.lhs, assignment.row_offset, rhs);
-                    let summary = self.ingest_effects(r);
-                    progress |= summary.progress;
-                    // If it is not complete, queue it again.
-                    (!summary.complete).then_some(assignment)
-                })
-                .collect_vec();
-            self.assignments.extend(new_assignments);
+            // We need to take them out because ingest_effects needs a &mut self.
+            let assignments = std::mem::take(&mut self.assignments);
+            for assignment in &assignments {
+                let rhs = match &assignment.rhs {
+                    VariableOrValue::Variable(v) => {
+                        Evaluator::new(self).evaluate_variable(v.clone())
+                    }
+                    VariableOrValue::Value(v) => (*v).into(),
+                };
+                let r = self.process_equality_on_row(assignment.lhs, assignment.row_offset, rhs);
+                progress |= self.ingest_effects(r, None);
+            }
+            assert!(self.assignments.is_empty());
+            self.assignments = assignments;
             if !progress {
                 break;
             }
         }
     }
 
-    fn ingest_effects(&mut self, process_result: ProcessResult<T, Variable>) -> ProcessSummary {
+    /// Analyze the effects and update the internal state.
+    /// If the effect is the result of a machine call, `identity_id` must be given
+    /// to avoid two calls to the same sub-machine on the same row.
+    /// Returns true if there was progress.
+    fn ingest_effects(
+        &mut self,
+        process_result: ProcessResult<T, Variable>,
+        identity_id: Option<(u64, i32)>,
+    ) -> bool {
         let mut progress = false;
         for e in process_result.effects {
             match &e {
                 Effect::Assignment(variable, assignment) => {
-                    assert!(self.known_variables.insert(variable.clone()));
-                    if let Some(rc) = assignment.range_constraint() {
-                        // If the variable was determined to be a constant, we add this
-                        // as a range constraint, so we can use it in future evaluations.
-                        self.add_range_constraint(variable.clone(), rc);
+                    // If the variable was determined to be a constant, we add this
+                    // as a range constraint, so we can use it in future evaluations.
+                    progress |=
+                        self.add_range_constraint(variable.clone(), assignment.range_constraint());
+                    if self.known_variables.insert(variable.clone()) {
+                        progress = true;
+                        self.code.push(e);
                     }
-                    progress = true;
-                    self.code.push(e);
                 }
                 Effect::RangeConstraint(variable, rc) => {
                     progress |= self.add_range_constraint(variable.clone(), rc.clone());
                 }
-                Effect::MachineCall(_, arguments) => {
-                    for arg in arguments {
-                        if let MachineCallArgument::Unknown(v) = arg {
+                Effect::MachineCall(_, _, vars) => {
+                    // If the machine call is already complete, it means that we should
+                    // not create another submachine call. We might still process it
+                    // multiple times to get better range constraints.
+                    if self.complete_identities.insert(identity_id.unwrap()) {
+                        assert!(process_result.complete);
+                        for v in vars {
+                            // Inputs are already known, but it does not hurt to add all of them.
                             self.known_variables.insert(v.clone());
                         }
+                        progress = true;
+
+                        self.code.push(e);
                     }
-                    progress = true;
-                    self.code.push(e);
                 }
                 Effect::Assertion(_) => self.code.push(e),
+                Effect::Branch(..) => unreachable!(),
+            }
+        }
+        if process_result.complete {
+            if let Some(identity_id) = identity_id {
+                // We actually only need to store completeness for submachine calls,
+                // but we do it for all identities.
+                self.complete_identities.insert(identity_id);
             }
         }
         if progress {
             self.process_assignments();
         }
-        ProcessSummary {
-            complete: process_result.complete,
-            progress,
-        }
+        progress
     }
 
     /// Adds a range constraint to the set of derived range constraints. Returns true if progress was made.
     fn add_range_constraint(&mut self, variable: Variable, rc: RangeConstraint<T>) -> bool {
-        let rc = self
-            .range_constraint(&variable)
-            .map_or(rc.clone(), |existing_rc| existing_rc.conjunction(&rc));
+        let old_rc = self.range_constraint(&variable);
+        let rc = old_rc.conjunction(&rc);
+        if rc == old_rc {
+            return false;
+        }
         if !self.known_variables.contains(&variable) {
             if let Some(v) = rc.try_to_single_value() {
                 // Special case: Variable is fixed to a constant by range constraints only.
@@ -317,17 +383,13 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     .push(Effect::Assignment(variable.clone(), v.into()));
             }
         }
-        let old_rc = self
-            .derived_range_constraints
-            .insert(variable.clone(), rc.clone());
-
-        // If the range constraint changed, we made progress.
-        old_rc != Some(rc)
+        self.derived_range_constraints.insert(variable.clone(), rc);
+        true
     }
 
     /// Returns the current best-known range constraint on the given variable
     /// combining global range constraints and newly derived local range constraints.
-    fn range_constraint(&self, variable: &Variable) -> Option<RangeConstraint<T>> {
+    pub fn range_constraint(&self, variable: &Variable) -> RangeConstraint<T> {
         variable
             .try_to_witness_poly_id()
             .and_then(|poly_id| {
@@ -343,6 +405,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .chain(self.derived_range_constraints.get(variable))
             .cloned()
             .reduce(|gc, rc| gc.conjunction(&rc))
+            .unwrap_or_default()
     }
 
     fn evaluate(
@@ -462,34 +525,37 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
 
 /// An equality constraint between an algebraic expression evaluated
 /// on a certain row offset and a variable or fixed constant value.
+#[derive(Clone)]
 struct Assignment<'a, T: FieldElement> {
     lhs: &'a Expression<T>,
     row_offset: i32,
     rhs: VariableOrValue<T, Variable>,
 }
 
+#[derive(Clone)]
 enum VariableOrValue<T, V> {
     Variable(V),
     Value(T),
 }
 
-pub trait FixedEvaluator<T: FieldElement> {
+pub trait FixedEvaluator<T: FieldElement>: Clone {
     fn evaluate(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
         None
     }
 }
 
 pub trait CanProcessCall<T: FieldElement> {
-    /// Returns true if a call to the machine that handles the given identity
+    /// Returns Some(..) if a call to the machine that handles the given identity
     /// can always be processed with the given known inputs and range constraints
     /// on the parameters.
+    /// The value in the Option is a vector of new range constraints.
     /// @see Machine::can_process_call
     fn can_process_call_fully(
         &self,
         _identity_id: u64,
         _known_inputs: &BitVec,
-        _range_constraints: &[Option<RangeConstraint<T>>],
-    ) -> bool;
+        _range_constraints: &[RangeConstraint<T>],
+    ) -> Option<Vec<RangeConstraint<T>>>;
 }
 
 impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'_, T, Q> {
@@ -497,8 +563,8 @@ impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'
         &self,
         identity_id: u64,
         known_inputs: &BitVec,
-        range_constraints: &[Option<RangeConstraint<T>>],
-    ) -> bool {
+        range_constraints: &[RangeConstraint<T>],
+    ) -> Option<Vec<RangeConstraint<T>>> {
         MutableState::can_process_call_fully(self, identity_id, known_inputs, range_constraints)
     }
 }
@@ -518,6 +584,7 @@ mod test {
 
     use super::*;
 
+    #[derive(Clone)]
     pub struct FixedEvaluatorForFixedData<'a, T: FieldElement>(pub &'a FixedData<'a, T>);
     impl<T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'_, T> {
         fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
@@ -528,12 +595,7 @@ mod test {
         }
     }
 
-    fn solve_on_rows(
-        input: &str,
-        rows: &[i32],
-        known_cells: Vec<(&str, i32)>,
-        expected_complete: Option<usize>,
-    ) -> String {
+    fn solve_on_rows(input: &str, rows: &[i32], known_cells: Vec<(&str, i32)>) -> String {
         let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(input);
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let (fixed_data, retained_identities) =
@@ -563,20 +625,18 @@ mod test {
         });
 
         let ref_eval = FixedEvaluatorForFixedData(&fixed_data);
-        let mut witgen = WitgenInference::new(&fixed_data, ref_eval, known_cells);
-        let mut complete = HashSet::new();
+        let mut witgen = WitgenInference::new(&fixed_data, ref_eval, known_cells, []);
         let mut counter = 0;
-        let expected_complete = expected_complete.unwrap_or(retained_identities.len() * rows.len());
-        while complete.len() != expected_complete {
+        loop {
+            let mut progress = false;
             counter += 1;
             for row in rows {
                 for id in retained_identities.iter() {
-                    if !complete.contains(&(id.id(), *row))
-                        && witgen.process_identity(&mutable_state, id, *row).complete
-                    {
-                        complete.insert((id.id(), *row));
-                    }
+                    progress |= witgen.process_identity(&mutable_state, id, *row);
                 }
+            }
+            if !progress {
+                break;
             }
             assert!(counter < 10000, "Solving took more than 10000 rounds.");
         }
@@ -586,14 +646,14 @@ mod test {
     #[test]
     fn simple_polynomial_solving() {
         let input = "let X; let Y; let Z; X = 1; Y = X + 1; Z * Y = X + 10;";
-        let code = solve_on_rows(input, &[0], vec![], None);
+        let code = solve_on_rows(input, &[0], vec![]);
         assert_eq!(code, "X[0] = 1;\nY[0] = 2;\nZ[0] = -9223372034707292155;");
     }
 
     #[test]
     fn fib() {
         let input = "let X; let Y; X' = Y; Y' = X + Y;";
-        let code = solve_on_rows(input, &[0, 1], vec![("X", 0), ("Y", 0)], None);
+        let code = solve_on_rows(input, &[0, 1], vec![("X", 0), ("Y", 0)]);
         assert_eq!(
             code,
             "X[1] = Y[0];\nY[1] = (X[0] + Y[0]);\nX[2] = Y[1];\nY[2] = (X[1] + Y[1]);"
@@ -613,7 +673,7 @@ mod test {
             x' - y = 0;
             y' - (x + y) = 0;
         ";
-        let code = solve_on_rows(input, &[0, 1, 2, 3], vec![], None);
+        let code = solve_on_rows(input, &[0, 1, 2, 3], vec![]);
         assert_eq!(
             code,
             "Fib::y[0] = 1;
@@ -664,7 +724,6 @@ namespace Xor(256 * 256);
                 ("Xor::A", 7),
                 ("Xor::C", 7), // We solve it in reverse, just for fun.
             ],
-            Some(16),
         );
         assert_eq!(
             code,
@@ -681,22 +740,30 @@ assert (Xor::A[6] & 18446744073692774400) == 0;
 Xor::C_byte[5] = ((Xor::C[6] & 16711680) // 65536);
 Xor::C[5] = (Xor::C[6] & 65535);
 assert (Xor::C[6] & 18446744073692774400) == 0;
-machine_call(0, [Known(Xor::A_byte[6]), Unknown(ret(0, 6, 1)), Known(Xor::C_byte[6])]);
-Xor::B_byte[6] = ret(0, 6, 1);
+call_var(0, 6, 0) = Xor::A_byte[6];
+call_var(0, 6, 2) = Xor::C_byte[6];
+machine_call(0, [Known(call_var(0, 6, 0)), Unknown(call_var(0, 6, 1)), Known(call_var(0, 6, 2))]);
+Xor::B_byte[6] = call_var(0, 6, 1);
 Xor::A_byte[4] = ((Xor::A[5] & 65280) // 256);
 Xor::A[4] = (Xor::A[5] & 255);
 assert (Xor::A[5] & 18446744073709486080) == 0;
 Xor::C_byte[4] = ((Xor::C[5] & 65280) // 256);
 Xor::C[4] = (Xor::C[5] & 255);
 assert (Xor::C[5] & 18446744073709486080) == 0;
-machine_call(0, [Known(Xor::A_byte[5]), Unknown(ret(0, 5, 1)), Known(Xor::C_byte[5])]);
-Xor::B_byte[5] = ret(0, 5, 1);
+call_var(0, 5, 0) = Xor::A_byte[5];
+call_var(0, 5, 2) = Xor::C_byte[5];
+machine_call(0, [Known(call_var(0, 5, 0)), Unknown(call_var(0, 5, 1)), Known(call_var(0, 5, 2))]);
+Xor::B_byte[5] = call_var(0, 5, 1);
 Xor::A_byte[3] = Xor::A[4];
 Xor::C_byte[3] = Xor::C[4];
-machine_call(0, [Known(Xor::A_byte[4]), Unknown(ret(0, 4, 1)), Known(Xor::C_byte[4])]);
-Xor::B_byte[4] = ret(0, 4, 1);
-machine_call(0, [Known(Xor::A_byte[3]), Unknown(ret(0, 3, 1)), Known(Xor::C_byte[3])]);
-Xor::B_byte[3] = ret(0, 3, 1);
+call_var(0, 4, 0) = Xor::A_byte[4];
+call_var(0, 4, 2) = Xor::C_byte[4];
+machine_call(0, [Known(call_var(0, 4, 0)), Unknown(call_var(0, 4, 1)), Known(call_var(0, 4, 2))]);
+Xor::B_byte[4] = call_var(0, 4, 1);
+call_var(0, 3, 0) = Xor::A_byte[3];
+call_var(0, 3, 2) = Xor::C_byte[3];
+machine_call(0, [Known(call_var(0, 3, 0)), Unknown(call_var(0, 3, 1)), Known(call_var(0, 3, 2))]);
+Xor::B_byte[3] = call_var(0, 3, 1);
 Xor::B[4] = Xor::B_byte[3];
 Xor::B[5] = (Xor::B[4] + (Xor::B_byte[4] * 256));
 Xor::B[6] = (Xor::B[5] + (Xor::B_byte[5] * 65536));

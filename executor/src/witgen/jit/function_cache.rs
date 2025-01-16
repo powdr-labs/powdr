@@ -1,11 +1,11 @@
 use std::{collections::HashMap, hash::Hash};
 
 use bit_vec::BitVec;
+use itertools::Itertools;
 use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
-    jit::effect::Effect,
     machines::{LookupCell, MachineParts},
     EvalError, FixedData, MutableState, QueryCallback,
 };
@@ -30,6 +30,8 @@ pub struct FunctionCache<'a, T: FieldElement> {
     witgen_functions: HashMap<CacheKey, Option<WitgenFunction<T>>>,
     column_layout: ColumnLayout,
     block_size: usize,
+    machine_name: String,
+    parts: MachineParts<'a, T>,
 }
 
 impl<'a, T: FieldElement> FunctionCache<'a, T> {
@@ -39,6 +41,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         block_size: usize,
         latch_row: usize,
         metadata: ColumnLayout,
+        machine_name: String,
     ) -> Self {
         let processor =
             BlockMachineProcessor::new(fixed_data, parts.clone(), block_size, latch_row);
@@ -48,6 +51,8 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             column_layout: metadata,
             witgen_functions: HashMap::new(),
             block_size,
+            machine_name,
+            parts,
         }
     }
 
@@ -91,31 +96,34 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         mutable_state: &MutableState<'a, T, Q>,
         cache_key: &CacheKey,
     ) -> Option<WitgenFunction<T>> {
-        log::trace!("Compiling JIT function for {:?}", cache_key);
+        log::debug!(
+            "Compiling JIT function for\n  Machine: {}\n  Connection: {}\n   Inputs: {:?}",
+            self.machine_name,
+            self.parts.connections[&cache_key.identity_id],
+            cache_key.known_args
+        );
 
         self.processor
             .generate_code(mutable_state, cache_key.identity_id, &cache_key.known_args)
+            .map_err(|e| {
+                // These errors can be pretty verbose and are quite common currently.
+                let e = e.to_string().lines().take(5).join("\n");
+                log::debug!("=> Error generating JIT code: {e}\n...");
+                e
+            })
             .ok()
-            .and_then(|code| {
-                // TODO: Remove this once BlockMachine passes the right amount of context for machines with
-                // non-rectangular block shapes.
-                let is_rectangular = code
+            .map(|code| {
+                log::debug!("=> Success!");
+                let is_in_bounds = code
                     .iter()
-                    .filter_map(|effect| match effect {
-                        Effect::Assignment(v, _) => Some(v),
-                        _ => None,
-                    })
-                    .filter_map(|assigned_variable| match assigned_variable {
+                    .flat_map(|effect| effect.referenced_variables())
+                    .filter_map(|var| match var {
                         Variable::Cell(cell) => Some(cell.row_offset),
                         _ => None,
                     })
-                    .all(|row_offset| row_offset >= 0 && row_offset < self.block_size as i32);
-                if !is_rectangular {
-                    log::debug!("Filtering out code for non-rectangular block shape");
-                }
-                is_rectangular.then_some(code)
-            })
-            .map(|code| {
+                    .all(|row_offset| row_offset >= -1 && row_offset < self.block_size as i32);
+                assert!(is_in_bounds, "Expected JITed code to only reference cells in the block + the last row of the previous block.");
+
                 log::trace!("Generated code ({} steps)", code.len());
                 let known_inputs = cache_key
                     .known_args

@@ -4,7 +4,6 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
-use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::{Machine, MachineParts};
 use crate::witgen::processor::{OuterQuery, SolverState};
@@ -26,12 +25,11 @@ struct ProcessResult<'a, T: FieldElement> {
 pub struct DynamicMachine<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     parts: MachineParts<'a, T>,
-    data: FinalizableData<T>,
+    data: FinalizableData<'a, T>,
     publics: BTreeMap<&'a str, T>,
     latch: Option<Expression<T>>,
     name: String,
     degree: DegreeType,
-    multiplicity_counter: MultiplicityCounter,
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
@@ -69,7 +67,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
         let identity = *self.parts.connections.get(&identity_id).unwrap();
-        let outer_query = OuterQuery::new(caller_rows, identity);
+        let outer_query = match OuterQuery::try_new(caller_rows, identity) {
+            Ok(outer_query) => outer_query,
+            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
+        };
 
         log::trace!("Start processing secondary VM '{}'", self.name());
         log::trace!("Arguments:");
@@ -96,12 +97,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
             self.data.extend(updated_data.block);
             self.publics.extend(updated_data.publics);
 
-            // The block we just added contains the first row of the next block,
-            // so the latch row is the second-to-last row.
-            let latch_row = self.data.len() - 2;
-            self.multiplicity_counter
-                .increment_at_row(identity_id, latch_row);
-
             eval_value.report_side_effect()
         } else {
             log::trace!("End processing VM '{}' (incomplete)", self.name());
@@ -122,10 +117,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
         self.data
             .take_transposed()
             .map(|(id, (values, _))| (id, values))
-            .chain(
-                self.multiplicity_counter
-                    .generate_columns_single_size(self.degree),
-            )
             .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
@@ -138,8 +129,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         parts: MachineParts<'a, T>,
         latch: Option<Expression<T>>,
     ) -> Self {
-        let data = FinalizableData::new(&parts.witnesses);
-        let multiplicity_counter = MultiplicityCounter::new(&parts.connections);
+        let data = FinalizableData::new(&parts.witnesses, fixed_data);
 
         Self {
             degree: parts.common_degree_range().max,
@@ -149,7 +139,6 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
             data,
             publics: Default::default(),
             latch,
-            multiplicity_counter,
         }
     }
 
@@ -194,6 +183,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
                 Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
             ]
             .into_iter(),
+            self.fixed_data,
         );
 
         // We're only interested in the first row anyway, so identities without a next reference
@@ -236,6 +226,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.parts.witnesses,
             [first_row].into_iter(),
+            self.fixed_data,
         );
 
         let mut processor = VmProcessor::new(
@@ -268,15 +259,17 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
     fn fix_first_row(&mut self) {
         assert_eq!(self.data.len() as DegreeType, self.degree + 1);
 
+        let mut first_row = self.data.get_in_progress_row(0);
         let last_row = self.data.pop().unwrap();
-        if self.data[0].merge_with(&last_row).is_err() {
-            log::error!("{}", self.data[0].render("First row", false, &self.parts));
+        if first_row.merge_with(&last_row).is_err() {
+            log::error!("{}", first_row.render("First row", false, &self.parts));
             log::error!("{}", last_row.render("Last row", false, &self.parts));
             panic!(
                 "Failed to merge the first and last row of the VM '{}'",
                 self.name()
             );
         }
+        self.data.set(0, first_row);
     }
 
     #[cfg(test)]

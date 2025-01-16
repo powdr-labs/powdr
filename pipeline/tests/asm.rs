@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use powdr_executor::constant_evaluator;
 use powdr_linker::{LinkerMode, LinkerParams};
-use powdr_number::{FieldElement, GoldilocksField};
+use powdr_number::{BabyBearField, FieldElement, GoldilocksField, Mersenne31Field};
 use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, make_prepared_pipeline, make_simple_prepared_pipeline,
@@ -182,6 +182,12 @@ fn block_to_block_empty_submachine() {
 fn block_to_block_with_bus_monolithic() {
     let f = "asm/block_to_block_with_bus.asm";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
+    test_plonky3_pipeline(pipeline);
+    let pipeline = make_simple_prepared_pipeline::<BabyBearField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
+    test_plonky3_pipeline(pipeline);
+    let pipeline = make_simple_prepared_pipeline::<Mersenne31Field>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
@@ -467,7 +473,7 @@ fn permutation_to_block() {
 }
 
 #[test]
-#[should_panic = "called `Result::unwrap()` on an `Err` value: Linear constraint is not satisfiable: 18446744069414584320 != 0"]
+#[should_panic = "Column main_bin::pc is not stackable in a 1-row block, conflict in rows 0 and 1"]
 fn permutation_to_vm() {
     // TODO: witgen issue: Machine incorrectly detected as block machine.
     let f = "asm/permutations/vm_to_vm.asm";

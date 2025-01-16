@@ -10,7 +10,6 @@ use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::analysis::detect_connection_type_and_block_size;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
-use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::jit::function_cache::FunctionCache;
 use crate::witgen::processor::{OuterQuery, Processor, SolverState};
@@ -65,18 +64,14 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// The type of constraint used to connect this machine to its caller.
     connection_type: ConnectionKind,
     /// The data of the machine.
-    data: FinalizableData<T>,
+    data: FinalizableData<'a, T>,
     publics: BTreeMap<&'a str, T>,
-    /// The index of the first row that has not been finalized yet.
-    /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
-    first_in_progress_row: usize,
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
     processing_sequence_cache: ProcessingSequenceCache,
     /// If this block machine can be JITed, we store the witgen functions here.
     function_cache: FunctionCache<'a, T>,
     name: String,
-    multiplicity_counter: MultiplicityCounter,
     /// Counts the number of blocks created using the JIT.
     block_count_jit: usize,
     /// Counts the number of blocks created using the runtime solver.
@@ -120,8 +115,17 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let data = FinalizableData::with_initial_rows_in_progress(
             &parts.witnesses,
             (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
+            fixed_data,
         );
         let layout = data.layout();
+        let function_cache = FunctionCache::new(
+            fixed_data,
+            parts.clone(),
+            block_size,
+            latch_row,
+            layout,
+            name.clone(),
+        );
         Some(BlockMachine {
             name,
             degree_range,
@@ -133,20 +137,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             connection_type: is_permutation,
             data,
             publics: Default::default(),
-            first_in_progress_row: block_size,
-            multiplicity_counter: MultiplicityCounter::new(&parts.connections),
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
                 latch_row,
                 parts.identities.len(),
             ),
-            function_cache: FunctionCache::new(
-                fixed_data,
-                parts.clone(),
-                block_size,
-                latch_row,
-                layout,
-            ),
+            function_cache,
             block_count_jit: 0,
             block_count_runtime: 0,
         })
@@ -214,8 +210,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                     .witnesses
                     .iter()
                     .map(|id| (*id, Vec::new()))
-                    // Note that this panics if any count is not 0 (which shouldn't happen).
-                    .chain(self.multiplicity_counter.generate_columns_single_size(0))
                     .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
                     .collect();
             }
@@ -245,7 +239,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 iter::once(self.block_size - 1)
                     .chain(0..self.block_size)
                     .chain(iter::once(0))
-                    .map(|i| self.data[i].clone()),
+                    .map(|i| self.data.get_in_progress_row(i)),
+                self.fixed_data,
             );
 
             // Instantiate a processor
@@ -279,7 +274,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             // Replace the dummy block, discarding first and last row
             dummy_block.pop().unwrap();
             for i in (0..self.block_size).rev() {
-                self.data[i] = dummy_block.pop().unwrap();
+                self.data.set(i, dummy_block.pop().unwrap());
             }
         }
 
@@ -340,10 +335,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             .collect();
         self.handle_last_row(&mut data);
         data.into_iter()
-            .chain(
-                self.multiplicity_counter
-                    .generate_columns_single_size(self.degree),
-            )
             .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
@@ -391,7 +382,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let outer_query = OuterQuery::new(caller_rows, self.parts.connections[&identity_id]);
+        let outer_query =
+            match OuterQuery::try_new(caller_rows, self.parts.connections[&identity_id]) {
+                Ok(outer_query) => outer_query,
+                Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
+            };
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
@@ -450,10 +445,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
                 let updates = updates.report_side_effect();
 
-                let global_latch_row_index = self.data.len() - self.block_size + self.latch_row;
-                self.multiplicity_counter
-                    .increment_at_row(identity_id, global_latch_row_index);
-
                 // We solved the query, so report it to the cache.
                 self.processing_sequence_cache
                     .report_processing_sequence(&outer_query.left, sequence_iterator);
@@ -484,10 +475,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             (self.rows() + self.block_size as DegreeType) <= self.degree,
             "Block machine is full (this should have been checked before)"
         );
-        self.data
-            .finalize_range(self.first_in_progress_row..self.data.len());
-        self.first_in_progress_row = self.data.len() + self.block_size;
-        //TODO can we properly access the last row of the dummy block?
+        self.data.finalize_all();
         let data = self.data.append_new_finalized_rows(self.block_size);
 
         let success =
@@ -513,6 +501,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let block = FinalizableData::with_initial_rows_in_progress(
             &self.parts.witnesses,
             (0..(self.block_size + 2)).map(|i| Row::fresh(self.fixed_data, row_offset + i)),
+            self.fixed_data,
         );
         let mut processor = BlockProcessor::new(
             row_offset,
@@ -535,7 +524,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// the last row of its previous block is merged with the one we have already.
     /// This is necessary to handle non-rectangular block machines, which already use
     /// unused cells in the previous block.
-    fn append_block(&mut self, mut new_block: FinalizableData<T>) -> Result<(), EvalError<T>> {
+    fn append_block(&mut self, mut new_block: FinalizableData<'a, T>) -> Result<(), EvalError<T>> {
         assert!(
             (self.rows() + self.block_size as DegreeType) <= self.degree,
             "Block machine is full (this should have been checked before)"
@@ -560,12 +549,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // 3. Remove the last row of the previous block from data
         self.data.truncate(self.data.len() - 1);
 
-        // 4. Finalize everything so far (except the dummy block)
-        if self.data.len() > self.block_size {
-            self.data
-                .finalize_range(self.first_in_progress_row..self.data.len());
-            self.first_in_progress_row = self.data.len();
-        }
+        // 4. Finalize everything so far
+        self.data.finalize_all();
 
         // 5. Append the new block (including the merged last row of the previous block)
         self.data.extend(new_block);

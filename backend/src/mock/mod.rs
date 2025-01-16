@@ -2,7 +2,6 @@ use std::{
     collections::BTreeMap,
     hash::{DefaultHasher, Hash, Hasher},
     io,
-    marker::PhantomData,
     path::PathBuf,
     sync::Arc,
 };
@@ -24,19 +23,9 @@ mod connection_constraint_checker;
 mod machine;
 mod polynomial_constraint_checker;
 
-pub(crate) struct MockBackendFactory<F: FieldElement> {
-    _marker: PhantomData<F>,
-}
+pub(crate) struct MockBackendFactory;
 
-impl<F: FieldElement> MockBackendFactory<F> {
-    pub(crate) const fn new() -> Self {
-        Self {
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
+impl<F: FieldElement> BackendFactory<F> for MockBackendFactory {
     fn create(
         &self,
         pil: Arc<Analyzed<F>>,
@@ -128,14 +117,13 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             );
         }
 
-        let is_ok =
-            machines.values().all(|machine| {
-                !PolynomialConstraintChecker::new(machine, &challenges)
-                    .check()
-                    .has_errors()
-            }) && ConnectionConstraintChecker::new(&self.connections, machines, &challenges)
+        let is_ok = machines.values().all(|machine| {
+            !PolynomialConstraintChecker::new(machine)
                 .check()
-                .is_ok();
+                .has_errors()
+        }) && ConnectionConstraintChecker::new(&self.connections, machines)
+            .check()
+            .is_ok();
 
         match is_ok {
             true => Ok(Vec::new()),
