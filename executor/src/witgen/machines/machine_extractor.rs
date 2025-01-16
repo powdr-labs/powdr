@@ -1,10 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::LookupIdentity;
-use powdr_ast::analyzed::PermutationIdentity;
-use powdr_ast::analyzed::PhantomLookupIdentity;
-use powdr_ast::analyzed::PhantomPermutationIdentity;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
@@ -135,9 +131,8 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 base_identities.iter().cloned().partition(|i| {
                     // The identity's left side has at least one machine witness, but
                     // all referenced witnesses are machine witnesses.
-                    // For lookups, any lookup calling from the current machine belongs
-                    // to the machine; lookups to the machine do not.
-                    let all_refs = &self.refs_in_identity_left(i) & (&current_stage_witnesses);
+                    let all_refs =
+                        &self.fixed.polynomial_references(*i) & (&current_stage_witnesses);
                     !all_refs.is_empty() && all_refs.is_subset(&machine_witnesses)
                 });
             base_identities = remaining_identities;
@@ -273,27 +268,16 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                             witnesses.extend(in_identity);
                         }
                     }
-                    Identity::Lookup(LookupIdentity { left, .. })
-                    | Identity::Permutation(PermutationIdentity { left, .. })
-                    | Identity::PhantomLookup(PhantomLookupIdentity { left, .. })
-                    | Identity::PhantomPermutation(PhantomPermutationIdentity { left, .. }) => {
-                        // If we already have witnesses on the LHS, include the LHS,
-                        // and vice-versa, but not across the "sides".
-                        let in_lhs = &self.fixed.polynomial_references(left) & all_witnesses;
-                        let in_rhs = &self
-                            .refs_in_connection_rhs(&Connection::try_from(*i).unwrap())
-                            & all_witnesses;
-                        if in_lhs.intersection(&witnesses).next().is_some() {
-                            witnesses.extend(in_lhs);
-                        } else if in_rhs.intersection(&witnesses).next().is_some() {
-                            witnesses.extend(in_rhs);
+                    Identity::BusInteraction(bus_interaction) => {
+                        let in_interaction =
+                            &self.fixed.polynomial_references(bus_interaction) & all_witnesses;
+                        if in_interaction.intersection(&witnesses).next().is_some() {
+                            witnesses.extend(in_interaction);
                         }
                     }
                     Identity::Connect(..) => {
                         unimplemented!()
                     }
-                    // TODO(bus_interaction)
-                    Identity::PhantomBusInteraction(..) => {}
                 };
             }
             if witnesses.len() == count {
@@ -309,26 +293,6 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             .into_iter()
             .chain(connection.multiplicity_column)
             .collect()
-    }
-
-    /// Extracts all references to names from the "left" side of an identity. This is the left selected expressions for connecting identities, and everything for other identities.
-    fn refs_in_identity_left(&self, identity: &Identity<T>) -> HashSet<PolyID> {
-        match identity {
-            Identity::Lookup(LookupIdentity { left, .. })
-            | Identity::PhantomLookup(PhantomLookupIdentity { left, .. })
-            | Identity::Permutation(PermutationIdentity { left, .. })
-            | Identity::PhantomPermutation(PhantomPermutationIdentity { left, .. }) => {
-                self.fixed.polynomial_references(left)
-            }
-            Identity::Polynomial(i) => self.fixed.polynomial_references(i),
-            Identity::Connect(i) => self.fixed.polynomial_references(i),
-            Identity::PhantomBusInteraction(i) => self
-                .fixed
-                .polynomial_references(&i.tuple)
-                .into_iter()
-                .chain(self.fixed.polynomial_references(&i.multiplicity))
-                .collect(),
-        }
     }
 }
 
