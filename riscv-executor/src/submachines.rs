@@ -455,11 +455,11 @@ impl SubmachineKind for ShiftMachine {
 
         let mut shl = 0;
         let mut shr = 0;
-        match op_id.try_into_i32().unwrap() {
-            0 => {
+        match op_id {
+            id if id.is_zero() => {
                 shl = b.to_integer().try_into_u32().unwrap();
             }
-            1 => {
+            id if id.is_one() => {
                 shr = b.to_integer().try_into_u32().unwrap();
             }
             _ => unreachable!(),

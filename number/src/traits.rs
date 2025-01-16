@@ -5,6 +5,7 @@ use std::{
     str::FromStr,
 };
 
+use ibig::IBig;
 use num_traits::{ConstOne, ConstZero, One, Zero};
 use schemars::JsonSchema;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -180,11 +181,18 @@ pub trait FieldElement:
     /// If the field is a known field (as listed in the `KnownField` enum), returns the field variant.
     fn known_field() -> Option<KnownField>;
 
-    /// Tries to convert to i32.
+    /// Converts to a signed integer.
     ///
-    /// As conventional, negative values are in relation to 0 in the field.
-    /// Returns None if out of the range [0 - 2^31, 2^31).
-    fn try_into_i32(&self) -> Option<i32>;
+    /// Negative values are in relation to 0 in the field.
+    /// Values up to the modulus / 2 are positive, values above are negative.
+    fn to_signed_integer(&self) -> IBig {
+        if self.is_in_lower_half() {
+            self.to_arbitrary_integer().into()
+        } else {
+            IBig::from(self.to_arbitrary_integer())
+                - IBig::from(Self::modulus().to_arbitrary_integer())
+        }
+    }
 
     /// Returns `true` if values of this type are directly stored as their integer
     /// value, i.e
