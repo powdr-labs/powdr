@@ -429,7 +429,7 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
         if code.is_empty() {
             write!(s, "\nNo code generated so far.").unwrap();
         } else {
-            write!(s, "\nGenerated code so far:\n{}", format_code(&code)).unwrap();
+            write!(s, "\nGenerated code so far:\n{}", format_code(code)).unwrap();
         };
         s
     }
