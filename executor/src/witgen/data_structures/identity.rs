@@ -67,8 +67,8 @@ impl<T: FieldElement> BusInteractionIdentity<T> {
     }
 
     pub fn is_unconstrained_receive(&self) -> bool {
-        // TODO: Check whether there is a binary constraint on multiplicity
-        self.is_receive()
+        // TODO: This is a hack (but should work if it was originally a lookup / permutation)
+        self.is_receive() && (self.multiplicity.as_ref() == Some(&self.selected_tuple.selector))
     }
 }
 
