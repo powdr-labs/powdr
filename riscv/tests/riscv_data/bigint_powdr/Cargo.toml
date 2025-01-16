@@ -1,0 +1,10 @@
+[package]
+name = "bigint_powdr"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+powdr-riscv-runtime = { path = "../../../../riscv-runtime" }
+crypto-bigint = { git = "https://github.com/qwang98/crypto-bigint", branch = "powdr" }
+
+[workspace]
