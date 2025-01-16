@@ -29,14 +29,14 @@ pub struct BusInteractionIdentity<T> {
 impl<T: FieldElement> BusInteractionIdentity<T> {
     pub fn try_match_static<'a>(
         &self,
-        all_bus_interactions: &'a [BusInteractionIdentity<T>],
+        others: &'a [BusInteractionIdentity<T>],
     ) -> Option<&'a BusInteractionIdentity<T>> {
         assert_eq!(self.interaction_type, InteractionType::Send);
         let id = self.interaction_id()?;
 
         let mut matching_receive = None;
-        for other in all_bus_interactions {
-            if other.interaction_id() == Some(id) {
+        for other in others {
+            if other.is_receive() && other.interaction_id() == Some(id) {
                 match matching_receive {
                     None => {
                         matching_receive = Some(other);
@@ -65,6 +65,11 @@ impl<T: FieldElement> BusInteractionIdentity<T> {
 
     pub fn is_receive(&self) -> bool {
         self.interaction_type == InteractionType::Receive
+    }
+
+    pub fn is_unconstrained_receive(&self) -> bool {
+        // TODO: Check whether there is a binary constraint on multiplicity
+        self.is_receive()
     }
 }
 

@@ -6,8 +6,7 @@ use num_traits::Zero;
 use num_traits::One;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicReferenceThin, LookupIdentity, PhantomLookupIdentity, PolyID,
-    PolynomialType,
+    AlgebraicReference, AlgebraicReferenceThin, PolyID, PolynomialType,
 };
 
 use powdr_number::FieldElement;
@@ -15,7 +14,7 @@ use powdr_number::FieldElement;
 use crate::witgen::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 
 use super::affine_expression::AlgebraicVariable;
-use super::data_structures::identity::Identity;
+use super::data_structures::identity::{BusInteractionIdentity, Identity};
 use super::evaluators::partial_expression_evaluator::PartialExpressionEvaluator;
 use super::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use super::machines::Connection;
@@ -130,9 +129,9 @@ impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConst
 /// Returns fixed data with the global constraints & the retained identities.
 /// TODO at some point, we should check that they still hold.
 pub fn set_global_constraints<'a, T: FieldElement>(
-    fixed_data: FixedData<T>,
-    identities: impl IntoIterator<Item = &'a Identity<T>>,
-) -> (FixedData<T>, Vec<&'a Identity<T>>) {
+    fixed_data: FixedData<'a, T>,
+    identities: &'a [Identity<T>],
+) -> (FixedData<'a, T>, Vec<&'a Identity<T>>) {
     let mut known_constraints = BTreeMap::new();
     // For these columns, we know that they are not only constrained to those bits
     // but also have one row for each possible value.
@@ -151,6 +150,14 @@ pub fn set_global_constraints<'a, T: FieldElement>(
         fixed_data.fixed_cols.len(),
     );
 
+    let bus_receives = identities
+        .iter()
+        .filter_map(|identity| match identity {
+            Identity::BusInteraction(id) => id.is_receive().then_some(id.clone()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
     let mut retained_identities = vec![];
     let mut removed_identities = vec![];
     let mut range_constraint_multiplicities = BTreeMap::new();
@@ -161,6 +168,7 @@ pub fn set_global_constraints<'a, T: FieldElement>(
             &mut range_constraint_multiplicities,
             identity,
             &full_span,
+            &bus_receives,
         );
 
         (if remove {
@@ -263,6 +271,7 @@ fn propagate_constraints<T: FieldElement>(
     range_constraint_multiplicities: &mut BTreeMap<PolyID, PhantomRangeConstraintTarget>,
     identity: &Identity<T>,
     full_span: &BTreeSet<PolyID>,
+    bus_receives: &[BusInteractionIdentity<T>],
 ) -> bool {
     match identity {
         Identity::Polynomial(identity) => {
@@ -280,16 +289,31 @@ fn propagate_constraints<T: FieldElement>(
                 false
             }
         }
-        Identity::Lookup(LookupIdentity { left, right, .. })
-        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => {
-            if !left.selector.is_one() || !right.selector.is_one() {
+        Identity::BusInteraction(bus_interaction) => {
+            if bus_interaction.is_receive() {
+                // Only do something for the send
+                return false;
+            }
+            let send = bus_interaction;
+            let receive = match bus_interaction.try_match_static(bus_receives) {
+                Some(receive) => receive,
+                None => {
+                    return false;
+                }
+            };
+            if !receive.is_unconstrained_receive() {
+                // TODO: We used to return false for permutations,
+                // but wouldn't we be able to do some of the stuff below?
+                return false;
+            }
+            if !send.latch.is_one() || !receive.latch.is_one() {
                 return false;
             }
 
             // For lookups of the form [ a, b, ... ] in [ c, d, ... ], where a, b, ... are columns,
             // transfer constraints from the right to the left side.
             // A special case of this would be [ x ] in [ RANGE ], where RANGE is in the full span.
-            for (left, right) in left.expressions.iter().zip(right.expressions.iter()) {
+            for (left, right) in send.tuple.0.iter().zip(receive.tuple.0.iter()) {
                 if let (Some(left), Some(right)) =
                     (try_to_simple_poly(left), try_to_simple_poly(right))
                 {
@@ -302,10 +326,10 @@ fn propagate_constraints<T: FieldElement>(
             // Detect [ x ] in [ RANGE ], where RANGE is in the full span.
             // In that case, we can remove the lookup, because its only function is to enforce
             // the range constraint.
-            if right.expressions.len() == 1 {
+            if receive.tuple.0.len() == 1 {
                 if let (Some(left_ref), Some(right_ref)) = (
-                    try_to_simple_poly(&left.expressions[0]),
-                    try_to_simple_poly(&right.expressions[0]),
+                    try_to_simple_poly(&send.tuple.0[0]),
+                    try_to_simple_poly(&receive.tuple.0[0]),
                 ) {
                     if full_span.contains(&right_ref.poly_id) {
                         let connection = Connection::try_from(identity).unwrap();
@@ -326,15 +350,6 @@ fn propagate_constraints<T: FieldElement>(
         }
         Identity::Connect(..) => {
             // we do not handle connect identities yet, so we do nothing
-            false
-        }
-        Identity::Permutation(..) | Identity::PhantomPermutation(..) => {
-            // permutation identities are stronger than just range constraints, so we do nothing
-            false
-        }
-        Identity::PhantomBusInteraction(..) => {
-            // TODO(bus_interaction): If we can statically match sends & receives, we could extract
-            // range constraints from them.
             false
         }
     }
@@ -444,7 +459,7 @@ fn smallest_period_candidate<T: FieldElement>(fixed: &[T]) -> Option<u64> {
 mod test {
     use std::collections::BTreeMap;
 
-    use powdr_ast::analyzed::{PolyID, PolynomialType};
+    use powdr_ast::analyzed::{Analyzed, PolyID, PolynomialType};
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
@@ -505,6 +520,20 @@ mod test {
         }
     }
 
+    fn identities_and_receives<T: FieldElement>(
+        analyzed: &Analyzed<T>,
+    ) -> (Vec<Identity<T>>, Vec<BusInteractionIdentity<T>>) {
+        let identities = convert(&analyzed.identities);
+        let bus_receives = identities
+            .iter()
+            .filter_map(|identity| match identity {
+                Identity::BusInteraction(id) => id.is_receive().then_some(id.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        (identities, bus_receives)
+    }
+
     #[test]
     fn constraints_propagation() {
         let pil_source = r"
@@ -560,13 +589,15 @@ namespace Global(2**20);
             .collect()
         );
         let mut range_constraint_multiplicities = BTreeMap::new();
-        for identity in &convert(&analyzed.identities) {
+        let (identities, receives) = identities_and_receives(&analyzed);
+        for identity in &identities {
             propagate_constraints(
                 &BTreeMap::new(),
                 &mut known_constraints,
                 &mut range_constraint_multiplicities,
                 identity,
                 &full_span,
+                &receives,
             );
         }
         assert_eq!(
@@ -652,13 +683,15 @@ namespace Global(2**20);
             .collect()
         );
         let mut range_constraint_multiplicities = BTreeMap::new();
-        for identity in &convert(&analyzed.identities) {
+        let (identities, receives) = identities_and_receives(&analyzed);
+        for identity in &identities {
             propagate_constraints(
                 &BTreeMap::new(),
                 &mut known_constraints,
                 &mut range_constraint_multiplicities,
                 identity,
                 &full_span,
+                &receives,
             );
         }
         assert_eq!(
@@ -729,7 +762,7 @@ namespace Global(1024);
             .into_iter()
             .collect();
         let mut range_constraint_multiplicities = BTreeMap::new();
-        let identities = convert(&analyzed.identities);
+        let (identities, receives) = identities_and_receives(&analyzed);
         assert_eq!(identities.len(), 1);
         let removed = propagate_constraints(
             &BTreeMap::new(),
@@ -737,6 +770,7 @@ namespace Global(1024);
             &mut range_constraint_multiplicities,
             identities.first().unwrap(),
             &Default::default(),
+            &receives,
         );
         assert!(!removed);
     }
