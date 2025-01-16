@@ -186,13 +186,10 @@ pub trait FieldElement:
     /// Negative values are in relation to 0 in the field.
     /// Values up to the modulus / 2 are positive, values above are negative.
     fn to_signed_integer(&self) -> IBig {
-        let modulus = Self::modulus().to_arbitrary_integer();
-        let half_modulus = &modulus >> 1;
-        let value = self.to_arbitrary_integer();
-        if value < half_modulus {
-            value.into()
+        if self.is_in_lower_half() {
+            self.to_arbitrary_integer().into()
         } else {
-            IBig::from(value) - IBig::from(modulus)
+            IBig::from(self.to_arbitrary_integer()) - IBig::from(Self::modulus().to_arbitrary_integer())
         }
     }
 
