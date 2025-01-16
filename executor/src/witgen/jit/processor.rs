@@ -14,7 +14,7 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::FixedData;
+use crate::witgen::{jit::debug_formatter::format_identities, FixedData};
 
 use super::{
     affine_symbolic_expression,
@@ -86,7 +86,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             .process_until_no_progress(can_process.clone(), &mut witgen)
             .is_err()
         {
-            return Err(Error::conflicting_constraints(witgen));
+            return Err(Error::conflicting_constraints(
+                witgen,
+                self.fixed_evaluator.clone(),
+            ));
         }
 
         if self.check_block_shape {
@@ -144,6 +147,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             return Err(Error {
                 reason,
                 witgen,
+                fixed_evaluator: self.fixed_evaluator.clone(),
                 missing_variables,
                 incomplete_identities,
             });
@@ -475,6 +479,7 @@ fn is_machine_call<T>(identity: &Identity<T>) -> bool {
 pub struct Error<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     pub reason: ErrorReason,
     pub witgen: WitgenInference<'a, T, FixedEval>,
+    pub fixed_evaluator: FixedEval,
     /// Required variables that could not be determined
     pub missing_variables: Vec<Variable>,
     /// Identities that could not be processed completely.
@@ -506,9 +511,13 @@ impl<T: FieldElement, FE: FixedEvaluator<T>> Display for Error<'_, T, FE> {
 }
 
 impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
-    pub fn conflicting_constraints(witgen: WitgenInference<'a, T, FE>) -> Self {
+    pub fn conflicting_constraints(
+        witgen: WitgenInference<'a, T, FE>,
+        fixed_evaluator: FE,
+    ) -> Self {
         Self {
             witgen,
+            fixed_evaluator,
             reason: ErrorReason::ConflictingConstraints,
             missing_variables: vec![],
             incomplete_identities: vec![],
@@ -547,10 +556,11 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
             write!(
                 s,
                 "\nThe following identities have not been fully processed:\n{}",
-                self.incomplete_identities
-                    .iter()
-                    .map(|(id, row_offset)| format!("    {id} at row {row_offset}"))
-                    .join("\n")
+                format_identities(
+                    &self.incomplete_identities,
+                    &self.witgen,
+                    self.fixed_evaluator.clone()
+                )
             )
             .unwrap();
         };
