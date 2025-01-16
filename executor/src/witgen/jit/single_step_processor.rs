@@ -45,12 +45,31 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         let known_variables = all_witnesses.iter().map(|&id| self.cell(id, 0));
         // and we want to know the ones in the next row.
         let requested_known = all_witnesses.iter().map(|&id| self.cell(id, 1));
-        let identities = self.machine_parts.identities.iter().map(|&id| {
-            let row_offset = if id.contains_next_ref() { 0 } else { 1 };
-            (id, row_offset)
-        });
+        // Identities that span two rows are only processed on row 0,
+        // the others are processed on both rows.
+        let mut complete_identities = vec![];
+        let identities = self
+            .machine_parts
+            .identities
+            .iter()
+            .flat_map(|&id| {
+                if id.contains_next_ref() {
+                    vec![(id, 0)]
+                } else {
+                    // Process it on both rows, but mark it as complete on row 0,
+                    // so that we do not produce two submachine calls.
+                    complete_identities.push((id.id(), 0));
+                    vec![(id, 0), (id, 1)]
+                }
+            })
+            .collect_vec();
         let block_size = 1;
-        let witgen = WitgenInference::new(self.fixed_data, NoEval, known_variables);
+        let witgen = WitgenInference::new(
+            self.fixed_data,
+            NoEval,
+            known_variables,
+            complete_identities,
+        );
 
         Processor::new(
             self.fixed_data,
