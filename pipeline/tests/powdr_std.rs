@@ -138,6 +138,13 @@ fn arith_large_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn arith256_small_test() {
+    let f = "std/arith256_small_test.asm";
+    regular_test_small_field(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn arith256_memory_large_test() {
     let f = "std/arith256_memory_large_test.asm";
     regular_test_gl(f, &[]);
