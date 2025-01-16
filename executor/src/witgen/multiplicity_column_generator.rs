@@ -49,7 +49,10 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             .iter()
             .filter_map(|identity| {
                 Connection::try_new(identity, &self.fixed.bus_receives).and_then(|connection| {
-                    connection.multiplicity_column.is_some().then(|| connection)
+                    connection
+                        .multiplicity_column
+                        .is_some()
+                        .then_some(connection)
                 })
             })
             .collect::<Vec<_>>();
