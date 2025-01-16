@@ -68,7 +68,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         if parts
             .connections
             .values()
-            .any(|connection| !connection.receive_latch.is_one())
+            .any(|i| !i.right.selector.is_one())
         {
             return None;
         }
@@ -77,7 +77,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         let rhs_exprs = parts
             .connections
             .values()
-            .map(|connection| &connection.receive_tuple.0)
+            .map(|i| &i.right.expressions)
             .collect_vec();
         if !rhs_exprs.iter().all_equal() {
             return None;
@@ -141,16 +141,16 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let connection = self.connections[&identity_id];
-        let args = connection
-            .receive_tuple
-            .0
+        let identity = self.connections[&identity_id];
+        let args = identity
+            .left
+            .expressions
             .iter()
             .map(|e| caller_rows.evaluate(e).unwrap())
             .collect::<Vec<_>>();
         let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = args
             .iter()
-            .zip(connection.receive_tuple.0.iter())
+            .zip(identity.right.expressions.iter())
             .partition(|(_, r)| {
                 try_to_simple_poly(r).unwrap().poly_id.ptype == PolynomialType::Constant
             });

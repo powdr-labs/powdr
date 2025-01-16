@@ -48,7 +48,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         known_args: &BitVec,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
         let connection = self.machine_parts.connections[&identity_id];
-        assert_eq!(connection.receive_tuple.0.len(), known_args.len());
+        assert_eq!(connection.right.expressions.len(), known_args.len());
 
         // Set up WitgenInference with known arguments.
         let known_variables = known_args
@@ -59,19 +59,19 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables, []);
 
         // In the latch row, set the RHS selector to 1.
-        let selector = &connection.receive_latch;
+        let selector = &connection.right.selector;
         witgen.assign_constant(selector, self.latch_row as i32, T::one());
 
         // Set all other selectors to 0 in the latch row.
         for other_connection in self.machine_parts.connections.values() {
-            let other_selector = &other_connection.receive_latch;
+            let other_selector = &other_connection.right.selector;
             if other_selector != selector {
                 witgen.assign_constant(other_selector, self.latch_row as i32, T::zero());
             }
         }
 
         // For each argument, connect the expression on the RHS with the formal parameter.
-        for (index, expr) in connection.receive_tuple.0.iter().enumerate() {
+        for (index, expr) in connection.right.expressions.iter().enumerate() {
             witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
         }
 
@@ -97,14 +97,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string_with_variable_formatter(|var| match var {
-                Variable::Param(i) => format!("{}", &connection.receive_tuple.0[*i]),
+                Variable::Param(i) => format!("{}", &connection.right.expressions[*i]),
                 _ => var.to_string(),
             });
             log::trace!("\nCode generation failed for connection:\n  {connection}");
             let known_args_str = known_args
                 .iter()
                 .enumerate()
-                .filter_map(|(i, b)| b.then_some(connection.receive_tuple.0[i].to_string()))
+                .filter_map(|(i, b)| b.then_some(connection.right.expressions[i].to_string()))
                 .join("\n  ");
             log::trace!("Known arguments:\n  {known_args_str}");
             log::trace!("Error:\n  {err_str}");

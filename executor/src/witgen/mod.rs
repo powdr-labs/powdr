@@ -2,14 +2,14 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use bus_accumulator::generate_bus_accumulator_columns;
-use data_structures::identity::{convert, BusInteractionIdentity, Identity};
+use data_structures::identity::convert;
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
 use multiplicity_column_generator::MultiplicityColumnGenerator;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, AlgebraicReferenceThin, Analyzed, DegreeRange,
-    Expression, FunctionValueDefinition, Identity as AnalyzedIdentity, PolyID, PolynomialType,
-    Symbol, SymbolKind, TypedExpression,
+    Expression, FunctionValueDefinition, Identity, PolyID, PolynomialType, Symbol, SymbolKind,
+    TypedExpression,
 };
 use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
@@ -112,7 +112,7 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
         let has_phantom_bus_sends = pil
             .identities
             .iter()
-            .any(|identity| matches!(identity, AnalyzedIdentity::PhantomBusInteraction(_)));
+            .any(|identity| matches!(identity, Identity::PhantomBusInteraction(_)));
 
         let supports_field = match T::known_field().unwrap() {
             KnownField::GoldilocksField
@@ -308,8 +308,6 @@ where
 /// (i.e., a call to [WitnessGenerator::generate]).
 pub struct FixedData<'a, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
-    identities: Vec<Identity<T>>,
-    bus_receives: Vec<BusInteractionIdentity<T>>,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
     witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
     column_by_name: HashMap<String, PolyID>,
@@ -383,19 +381,8 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             phantom_range_constraints: BTreeMap::new(),
         };
 
-        let identities = convert(&analyzed.identities);
-        let bus_receives = identities
-            .iter()
-            .filter_map(|identity| match identity {
-                Identity::BusInteraction(id) => id.is_receive().then_some(id.clone()),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-
         FixedData {
             analyzed,
-            identities,
-            bus_receives,
             fixed_cols,
             witness_cols,
             column_by_name: analyzed

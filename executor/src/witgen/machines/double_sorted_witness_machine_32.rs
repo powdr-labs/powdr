@@ -115,7 +115,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
         let selector_ids = parts
             .connections
             .iter()
-            .map(|(id, i)| try_to_simple_poly(&i.receive_latch).map(|p| (*id, p.poly_id)))
+            .map(|(id, i)| try_to_simple_poly(&i.right.selector).map(|p| (*id, p.poly_id)))
             .collect::<Option<BTreeMap<_, _>>>()?;
 
         let namespace = namespaces.drain().next().unwrap().into();

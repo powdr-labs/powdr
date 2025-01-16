@@ -93,7 +93,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             detect_connection_type_and_block_size(fixed_data, &parts.connections)?;
 
         for id in parts.connections.values() {
-            for r in id.receive_tuple.0.iter() {
+            for r in id.right.expressions.iter() {
                 if let Some(poly) = try_to_simple_poly(r) {
                     if poly.poly_id.ptype == PolynomialType::Constant {
                         // It does not really make sense to have constant polynomials on the RHS
@@ -257,7 +257,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             // Set all selectors to 0
             for id in self.parts.connections.values() {
                 processor
-                    .set_value(self.latch_row + 1, &id.receive_latch, T::zero(), || {
+                    .set_value(self.latch_row + 1, &id.right.selector, T::zero(), || {
                         "Zero selectors".to_string()
                     })
                     .unwrap();

@@ -146,7 +146,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         let selector_ids = parts
             .connections
             .iter()
-            .map(|(id, i)| try_to_simple_poly(&i.receive_latch).map(|p| (*id, p.poly_id)))
+            .map(|(id, i)| try_to_simple_poly(&i.right.selector).map(|p| (*id, p.poly_id)))
             .collect::<Option<BTreeMap<_, _>>>()?;
 
         let namespace = namespaces.drain().next().unwrap().into();
@@ -421,8 +421,8 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         // - operation_id == 2: Bootloader write
 
         let args = self.parts.connections[&identity_id]
-            .send_tuple
-            .0
+            .left
+            .expressions
             .iter()
             .map(|e| caller_rows.evaluate(e).unwrap())
             .collect::<Vec<_>>();

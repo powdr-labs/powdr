@@ -54,12 +54,11 @@ fn create_index<T: FieldElement>(
     application: &Application,
     connections: &BTreeMap<u64, Connection<'_, T>>,
 ) -> HashMap<Vec<T>, IndexValue<T>> {
-    let connection = connections[&application.identity_id];
-    assert!(connection.receive_latch.is_one());
+    let right = connections[&application.identity_id].right;
+    assert!(right.selector.is_one());
 
-    let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = connection
-        .receive_tuple
-        .0
+    let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
+        .expressions
         .iter()
         .map(|e| try_to_simple_poly(e).unwrap().poly_id)
         .zip(&application.inputs)
@@ -165,13 +164,13 @@ pub struct FixedLookup<'a, T: FieldElement> {
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
     pub fn is_responsible(connection: &Connection<T>) -> bool {
         connection.is_lookup()
-            && connection.receive_latch.is_one()
-            && connection.receive_tuple.0.iter().all(|e| {
+            && connection.right.selector.is_one()
+            && connection.right.expressions.iter().all(|e| {
                 try_to_simple_poly(e)
                     .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
                     .unwrap_or(false)
             })
-            && !connection.receive_tuple.0.is_empty()
+            && !connection.right.expressions.is_empty()
     }
 
     pub fn new(
@@ -351,17 +350,17 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let connection = self.connections[&identity_id];
+        let identity = self.connections[&identity_id];
+        let right = identity.right;
 
         // get the values of the fixed columns
-        let right = connection
-            .receive_tuple
-            .0
+        let right = right
+            .expressions
             .iter()
             .map(|e| try_to_simple_poly(e).unwrap())
             .peekable();
 
-        let outer_query = match OuterQuery::try_new(caller_rows, connection) {
+        let outer_query = match OuterQuery::try_new(caller_rows, identity) {
             Ok(outer_query) => outer_query,
             Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
         };
@@ -399,10 +398,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
                 create_index(self.fixed_data, application, &self.connections)
             });
         let index_value = index.get(&input_values).ok_or_else(|| {
-            let connection = self.connections[&identity_id];
+            let right = self.connections[&identity_id].right;
             let input_assignment = values
                 .iter()
-                .zip(&connection.receive_tuple.0)
+                .zip(&right.expressions)
                 .filter_map(|(l, r)| match l {
                     LookupCell::Input(v) => {
                         let name = try_to_simple_poly(r).unwrap().name.clone();

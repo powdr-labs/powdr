@@ -92,7 +92,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
 
         let all_connections = identities
             .iter()
-            .filter_map(|i| Connection::try_new(*i, &self.fixed.bus_receives))
+            .filter_map(|i| Connection::try_from(*i).ok())
             .collect::<Vec<_>>();
 
         let mut fixed_lookup_connections = BTreeMap::new();
@@ -288,12 +288,9 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
 
     /// Like refs_in_selected_expressions(connection.right), but also includes the multiplicity column.
     fn refs_in_connection_rhs(&self, connection: &Connection<T>) -> HashSet<PolyID> {
-        connection
-            .receive_tuple
-            .0
-            .iter()
-            .flat_map(|e| self.fixed.polynomial_references(e))
-            .chain(self.fixed.polynomial_references(connection.receive_latch))
+        self.fixed
+            .polynomial_references(connection.right)
+            .into_iter()
             .chain(connection.multiplicity_column)
             .collect()
     }
@@ -432,8 +429,10 @@ fn build_machine<'a, T: FieldElement>(
         // If there is no connection to this machine, it is the main machine and there is no latch.
         let latch = machine_parts.connections
             .values()
-            .fold(None, |existing_latch, connection| {
-                let current_latch = connection.receive_latch;
+            .fold(None, |existing_latch, identity| {
+                let current_latch = &identity
+                    .right
+                    .selector;
                 if let Some(existing_latch) = existing_latch {
                     assert_eq!(
                         &existing_latch, current_latch,

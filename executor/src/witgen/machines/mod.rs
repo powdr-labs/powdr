@@ -3,8 +3,9 @@ use std::fmt::Display;
 
 use bit_vec::BitVec;
 use dynamic_machine::DynamicMachine;
-use itertools::Itertools;
-use powdr_ast::analyzed::{self, AlgebraicExpression, DegreeRange, PolyID};
+use powdr_ast::analyzed::{
+    self, AlgebraicExpression, DegreeRange, PermutationIdentity, PhantomPermutationIdentity, PolyID,
+};
 
 use powdr_number::DegreeType;
 use powdr_number::FieldElement;
@@ -20,7 +21,7 @@ use self::second_stage_machine::SecondStageMachine;
 use self::sorted_witness_machine::SortedWitnesses;
 use self::write_once_memory::WriteOnceMemory;
 
-use super::data_structures::identity::{BusInteractionIdentity, Identity};
+use super::data_structures::identity::Identity;
 use super::range_constraints::RangeConstraint;
 use super::rows::RowPair;
 use super::{EvalError, EvalResult, FixedData, QueryCallback};
@@ -333,10 +334,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
 /// A connection is a witness generation directive to propagate rows across machines
 pub struct Connection<'a, T> {
     pub id: u64,
-    pub send_latch: &'a analyzed::AlgebraicExpression<T>,
-    pub send_tuple: &'a analyzed::ExpressionList<T>,
-    pub receive_latch: &'a analyzed::AlgebraicExpression<T>,
-    pub receive_tuple: &'a analyzed::ExpressionList<T>,
+    pub left: &'a analyzed::SelectedExpressions<T>,
+    pub right: &'a analyzed::SelectedExpressions<T>,
+    /// For [ConnectionKind::Permutation], rows of `left` are a permutation of rows of `right`. For [ConnectionKind::Lookup], all rows in `left` are in `right`.
     pub kind: ConnectionKind,
     /// If the connection comes from a phantom lookup, this is the multiplicity column.
     /// For each row of `right` it counts how often that row occurs in `left`.
@@ -346,72 +346,60 @@ pub struct Connection<'a, T> {
 
 impl<T: Display> Display for Connection<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{} $ [{}] {} {} $ [{}]",
-            self.send_latch,
-            self.send_tuple.0.iter().map(ToString::to_string).join(", "),
-            self.kind,
-            self.receive_latch,
-            self.receive_tuple
-                .0
-                .iter()
-                .map(ToString::to_string)
-                .join(", "),
-        )
+        write!(f, "{} {} {}", self.left, self.kind, self.right)
     }
 }
 
-impl<'a, T: FieldElement> Connection<'a, T> {
-    /// Creates a connection if the identity is a bus send.
-    pub fn try_new(
-        identity: &'a Identity<T>,
-        bus_receives: &'a [BusInteractionIdentity<T>],
-    ) -> Option<Self> {
-        match identity {
-            Identity::BusInteraction(bus_interaction) => {
-                if bus_interaction.is_receive() {
-                    return None;
-                }
-                let send = bus_interaction;
-                let receive = send
-                    .try_match_static(bus_receives)
-                    .expect("No matching receive!");
-                let multiplicity_column =
-                    receive
-                        .multiplicity
-                        .as_ref()
-                        .map(|multiplicity| match multiplicity {
-                            AlgebraicExpression::Reference(reference) => reference.poly_id,
-                            _ => unimplemented!(
-                                "Only simple references are supported, got: {}",
-                                multiplicity
-                            ),
-                        });
-                Some(Connection {
-                    id: send.id,
-                    send_latch: &send.latch,
-                    send_tuple: &send.tuple,
-                    receive_latch: &receive.latch,
-                    receive_tuple: &receive.tuple,
-                    kind: if receive.is_unconstrained_receive() {
-                        ConnectionKind::Lookup
-                    } else {
-                        ConnectionKind::Permutation
-                    },
-                    multiplicity_column,
-                })
-            }
-            _ => None,
-        }
-    }
-
+impl<T> Connection<'_, T> {
     fn is_permutation(&self) -> bool {
         self.kind == ConnectionKind::Permutation
     }
 
     fn is_lookup(&self) -> bool {
         self.kind == ConnectionKind::Lookup
+    }
+}
+
+impl<'a, T: Display> TryFrom<&'a Identity<T>> for Connection<'a, T> {
+    type Error = &'a Identity<T>;
+
+    /// Creates a connection if the identity is a (phantom) lookup or permutation.
+    fn try_from(identity: &'a Identity<T>) -> Result<Self, Self::Error> {
+        match identity {
+            Identity::Lookup(i) => Ok(Connection {
+                id: i.id,
+                left: &i.left,
+                right: &i.right,
+                kind: ConnectionKind::Lookup,
+                multiplicity_column: None,
+            }),
+            Identity::PhantomLookup(i) => Ok(Connection {
+                id: i.id,
+                left: &i.left,
+                right: &i.right,
+                kind: ConnectionKind::Lookup,
+                multiplicity_column: Some(match &i.multiplicity {
+                    AlgebraicExpression::Reference(reference) => reference.poly_id,
+                    _ => unimplemented!(
+                        "Only simple references are supported, got: {}",
+                        i.multiplicity
+                    ),
+                }),
+            }),
+            Identity::Permutation(PermutationIdentity {
+                id, left, right, ..
+            })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity {
+                id, left, right, ..
+            }) => Ok(Connection {
+                id: *id,
+                left,
+                right,
+                kind: ConnectionKind::Permutation,
+                multiplicity_column: None,
+            }),
+            _ => Err(identity),
+        }
     }
 }
 

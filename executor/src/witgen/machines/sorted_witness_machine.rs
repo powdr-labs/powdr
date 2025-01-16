@@ -66,10 +66,10 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
             let rhs_references = parts
                 .connections
                 .iter()
-                .filter_map(|(id, &connection)| {
-                    let rhs_expressions = connection
-                        .receive_tuple
-                        .0
+                .filter_map(|(id, &identity)| {
+                    let rhs_expressions = identity
+                        .right
+                        .expressions
                         .iter()
                         .map(|expr| match expr {
                             // Expect all RHS expressions to be references without a next operator applied.
@@ -259,8 +259,8 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         let left = self.connections[&identity_id]
-            .receive_tuple
-            .0
+            .left
+            .expressions
             .iter()
             .map(|e| caller_rows.evaluate(e).unwrap())
             .collect::<Vec<_>>();

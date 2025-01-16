@@ -607,7 +607,7 @@ mod test {
 
         let fixed_lookup_connections = retained_identities
             .iter()
-            .filter_map(|i| Connection::try_new(*i, &fixed_data.bus_receives))
+            .filter_map(|i| Connection::try_from(*i).ok())
             .filter(|c| FixedLookup::is_responsible(c))
             .map(|c| (c.id, c))
             .collect();

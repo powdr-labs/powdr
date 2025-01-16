@@ -332,7 +332,7 @@ fn propagate_constraints<T: FieldElement>(
                     try_to_simple_poly(&receive.tuple.0[0]),
                 ) {
                     if full_span.contains(&right_ref.poly_id) {
-                        let connection = Connection::try_new(identity, bus_receives).unwrap();
+                        let connection = Connection::try_from(identity).unwrap();
                         if let Some(multiplicity) = connection.multiplicity_column {
                             let target = PhantomRangeConstraintTarget {
                                 column: right_ref.poly_id,

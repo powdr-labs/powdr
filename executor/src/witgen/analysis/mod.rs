@@ -38,7 +38,7 @@ pub fn detect_connection_type_and_block_size<'a, T: FieldElement>(
             // We'd expect all RHS selectors to be fixed columns of the same period.
             connections
                 .values()
-                .map(|connection| try_to_period(&connection.receive_latch, fixed_data))
+                .map(|id| try_to_period(&id.right.selector, fixed_data))
                 .unique()
                 .exactly_one()
                 .ok()??
@@ -54,8 +54,8 @@ pub fn detect_connection_type_and_block_size<'a, T: FieldElement>(
                     .max_by_key(|&(_, period)| period)
             };
             let mut latch_candidates = BTreeSet::new();
-            for connection in connections.values() {
-                collect_fixed_cols(&connection.receive_latch, &mut latch_candidates);
+            for id in connections.values() {
+                collect_fixed_cols(&id.right.selector, &mut latch_candidates);
             }
             if latch_candidates.is_empty() {
                 (0, 1)
