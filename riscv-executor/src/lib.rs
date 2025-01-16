@@ -2845,7 +2845,7 @@ enum ExecMode {
 
 /// Execute a Powdr/RISCV assembly program, without generating a witness.
 /// Returns the execution trace length.
-pub fn execute_fast<F: FieldElement>(
+pub fn execute<F: FieldElement>(
     asm: &AnalysisASMFile,
     initial_memory: MemoryState,
     prover_ctx: &Callback<F>,
@@ -2867,9 +2867,9 @@ pub fn execute_fast<F: FieldElement>(
     .trace_len
 }
 
-/// Execute and generate a valid witness for a Powdr/RISCV assembly program.
+/// Execute generating a witness for the PC and powdr asm registers.
 #[allow(clippy::too_many_arguments)]
-pub fn execute<F: FieldElement>(
+pub fn execute_with_trace<F: FieldElement>(
     asm: &AnalysisASMFile,
     opt_pil: &Analyzed<F>,
     fixed: FixedColumns<F>,
@@ -2877,7 +2877,6 @@ pub fn execute<F: FieldElement>(
     prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     max_steps_to_execute: Option<usize>,
-    full_witness: bool,
     profiling: Option<ProfilerOptions>,
 ) -> Execution<F> {
     log::info!("Executing (trace generation)...");
@@ -2890,11 +2889,34 @@ pub fn execute<F: FieldElement>(
         prover_ctx,
         bootloader_inputs,
         max_steps_to_execute.unwrap_or(usize::MAX),
-        if full_witness {
-            ExecMode::Witness
-        } else {
-            ExecMode::Trace
-        },
+        ExecMode::Trace,
+        profiling,
+    )
+}
+
+/// Execute generating a full witness for the program
+#[allow(clippy::too_many_arguments)]
+pub fn execute_with_witness<F: FieldElement>(
+    asm: &AnalysisASMFile,
+    opt_pil: &Analyzed<F>,
+    fixed: FixedColumns<F>,
+    initial_memory: MemoryState,
+    prover_ctx: &Callback<F>,
+    bootloader_inputs: &[F],
+    max_steps_to_execute: Option<usize>,
+    profiling: Option<ProfilerOptions>,
+) -> Execution<F> {
+    log::info!("Executing (trace generation)...");
+
+    execute_inner(
+        asm,
+        Some(opt_pil),
+        Some(fixed),
+        initial_memory,
+        prover_ctx,
+        bootloader_inputs,
+        max_steps_to_execute.unwrap_or(usize::MAX),
+        ExecMode::Witness,
         profiling,
     )
 }
