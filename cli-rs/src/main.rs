@@ -392,7 +392,7 @@ fn execute_fast<F: FieldElement>(
 
     let start = Instant::now();
 
-    let trace_len = powdr::riscv_executor::execute_fast::<F>(
+    let trace_len = powdr::riscv_executor::execute::<F>(
         &asm,
         powdr::riscv_executor::MemoryState::new(),
         pipeline.data_callback().unwrap(),
@@ -436,7 +436,7 @@ fn execute<F: FieldElement>(
 
         let start = Instant::now();
 
-        let execution = powdr::riscv_executor::execute::<F>(
+        let execution = powdr::riscv_executor::execute_with_witness::<F>(
             &asm,
             &pil,
             fixed,
