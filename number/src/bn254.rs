@@ -86,8 +86,8 @@ mod tests {
     }
 
     #[test]
-    fn try_into_i32() {
-        let valid_values = [
+    fn to_signed_integer() {
+        let values = [
             i32::MIN as i64,
             i32::MIN as i64 + 1,
             i32::MIN as i64 + 4242,
@@ -102,24 +102,10 @@ mod tests {
             i32::MAX as i64 - 1,
             i32::MAX as i64,
         ];
-        for &value in &valid_values {
+        for &value in &values {
             let field_value = Bn254Field::from(value);
-            let i32_value = field_value.try_into_i32();
-            assert_eq!(i32_value, Some(i32::try_from(value).unwrap()));
-        }
-
-        let invalid_values = [
-            i64::MIN,
-            -0x4c9039be0185fcba,
-            i32::MIN as i64 - 1,
-            i32::MAX as i64 + 1,
-            0x4c9039be0185fcba,
-            i64::MAX,
-        ];
-        for &value in &invalid_values {
-            let field_value = Bn254Field::from(value);
-            let i32_value = field_value.try_into_i32();
-            assert_eq!(i32_value, None);
+            let signed_integer_value = field_value.to_signed_integer();
+            assert_eq!(signed_integer_value, value.into());
         }
     }
 }

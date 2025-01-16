@@ -114,10 +114,6 @@ macro_rules! powdr_field_plonky3 {
                 Some(KnownField::$name)
             }
 
-            fn try_into_i32(&self) -> Option<i32> {
-                Some(self.to_canonical_u32() as i32)
-            }
-
             fn has_direct_repr() -> bool {
                 // No direct repr, because 'mod' is not always applied.
                 false

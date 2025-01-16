@@ -329,9 +329,9 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                             let absolute_multiplicity = multiplicity
                                 .as_ref()
                                 .map(|multiplicity| {
-                                    evaluator
+                                    TryInto::<i64>::try_into(evaluator
                                         .evaluate(multiplicity)
-                                        .try_into_i32()
+                                        .to_signed_integer())
                                         .unwrap()
                                         .unsigned_abs() as usize
                                 })
