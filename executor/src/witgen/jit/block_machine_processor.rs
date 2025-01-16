@@ -156,7 +156,7 @@ mod test {
     use powdr_number::GoldilocksField;
 
     use crate::witgen::{
-        data_structures::{identity::convert, mutable_state::MutableState},
+        data_structures::mutable_state::MutableState,
         global_constraints,
         jit::{
             effect::{format_code, Effect},
@@ -177,10 +177,8 @@ mod test {
         let (analyzed, fixed_col_vals) = read_pil(input_pil);
 
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
-        let identities = convert(&analyzed.identities);
-        let (fixed_data, retained_identities) =
-            global_constraints::set_global_constraints(fixed_data, &identities);
-        let machines = MachineExtractor::new(&fixed_data).split_out_machines(retained_identities);
+        let fixed_data = global_constraints::set_global_constraints(fixed_data);
+        let machines = MachineExtractor::new(&fixed_data).split_out_machines();
         let [KnownMachine::BlockMachine(machine)] = machines
             .iter()
             .filter(|m| m.name().contains(machine_name))

@@ -34,7 +34,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
     /// Finds machines in the witness columns and identities and returns a list of machines and the identities
     /// that are not "internal" to the machines.
     /// The first returned machine is the "main machine", i.e. a machine that has no incoming connections.
-    pub fn split_out_machines(&self, identities: Vec<&'a Identity<T>>) -> Vec<KnownMachine<'a, T>> {
+    pub fn split_out_machines(&self) -> Vec<KnownMachine<'a, T>> {
         // Ignore prover functions that reference columns of later stages.
         let all_witnesses = self.fixed.witness_cols.keys().collect::<HashSet<_>>();
         let current_stage_witnesses = self
@@ -61,7 +61,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             let machine_parts = MachineParts::new(
                 self.fixed,
                 Default::default(),
-                identities,
+                self.fixed.identities.iter().collect(),
                 self.fixed.witness_cols.keys().collect::<HashSet<_>>(),
                 prover_functions,
             );
@@ -86,13 +86,15 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             .difference(&range_constraint_multiplicities)
             .cloned()
             .collect::<HashSet<_>>();
-        let mut base_identities = identities.clone();
+        let mut base_identities = self.fixed.identities.iter().collect::<Vec<_>>();
         let mut extracted_prover_functions = HashSet::new();
         let mut id_counter = 0;
 
-        let all_connections = identities
+        let all_connections = self
+            .fixed
+            .identities
             .iter()
-            .filter_map(|i| Connection::try_from(*i).ok())
+            .filter_map(|i| Connection::try_new(i, &self.fixed.bus_receives))
             .collect::<Vec<_>>();
 
         let mut fixed_lookup_connections = BTreeMap::new();
@@ -122,7 +124,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             let machine_witnesses = self.all_row_connected_witnesses(
                 lookup_witnesses,
                 &remaining_witnesses,
-                &identities,
+                &self.fixed.identities,
             );
 
             // Split identities into those that only concern the machine
@@ -255,7 +257,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         &self,
         mut witnesses: HashSet<PolyID>,
         all_witnesses: &HashSet<PolyID>,
-        identities: &[&Identity<T>],
+        identities: &[Identity<T>],
     ) -> HashSet<PolyID> {
         loop {
             let count = witnesses.len();

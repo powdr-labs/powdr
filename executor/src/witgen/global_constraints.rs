@@ -130,8 +130,7 @@ impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConst
 /// TODO at some point, we should check that they still hold.
 pub fn set_global_constraints<'a, T: FieldElement>(
     fixed_data: FixedData<'a, T>,
-    identities: &'a [Identity<T>],
-) -> (FixedData<'a, T>, Vec<&'a Identity<T>>) {
+) -> FixedData<'a, T> {
     let mut known_constraints = BTreeMap::new();
     // For these columns, we know that they are not only constrained to those bits
     // but also have one row for each possible value.
@@ -150,7 +149,8 @@ pub fn set_global_constraints<'a, T: FieldElement>(
         fixed_data.fixed_cols.len(),
     );
 
-    let bus_receives = identities
+    let bus_receives = fixed_data
+        .identities
         .iter()
         .filter_map(|identity| match identity {
             Identity::BusInteraction(id) => id.is_receive().then_some(id.clone()),
@@ -161,12 +161,12 @@ pub fn set_global_constraints<'a, T: FieldElement>(
     let mut retained_identities = vec![];
     let mut removed_identities = vec![];
     let mut range_constraint_multiplicities = BTreeMap::new();
-    for identity in identities.into_iter() {
+    for identity in fixed_data.identities.clone().into_iter() {
         let remove = propagate_constraints(
             &fixed_data.intermediate_definitions,
             &mut known_constraints,
             &mut range_constraint_multiplicities,
-            identity,
+            &identity,
             &full_span,
             &bus_receives,
         );
@@ -222,10 +222,7 @@ pub fn set_global_constraints<'a, T: FieldElement>(
         phantom_range_constraints: range_constraint_multiplicities,
     };
 
-    (
-        fixed_data.with_global_range_constraints(global_constraints),
-        retained_identities,
-    )
+    fixed_data.with_global_range_constraints(global_constraints, retained_identities)
 }
 
 /// Analyzes a fixed column and checks if its values correspond exactly
@@ -306,14 +303,19 @@ fn propagate_constraints<T: FieldElement>(
                 // but wouldn't we be able to do some of the stuff below?
                 return false;
             }
-            if !send.latch.is_one() || !receive.latch.is_one() {
+            if !send.selected_tuple.selector.is_one() || !receive.selected_tuple.selector.is_one() {
                 return false;
             }
 
             // For lookups of the form [ a, b, ... ] in [ c, d, ... ], where a, b, ... are columns,
             // transfer constraints from the right to the left side.
             // A special case of this would be [ x ] in [ RANGE ], where RANGE is in the full span.
-            for (left, right) in send.tuple.0.iter().zip(receive.tuple.0.iter()) {
+            for (left, right) in send
+                .selected_tuple
+                .expressions
+                .iter()
+                .zip(receive.selected_tuple.expressions.iter())
+            {
                 if let (Some(left), Some(right)) =
                     (try_to_simple_poly(left), try_to_simple_poly(right))
                 {
@@ -326,13 +328,13 @@ fn propagate_constraints<T: FieldElement>(
             // Detect [ x ] in [ RANGE ], where RANGE is in the full span.
             // In that case, we can remove the lookup, because its only function is to enforce
             // the range constraint.
-            if receive.tuple.0.len() == 1 {
+            if receive.selected_tuple.expressions.len() == 1 {
                 if let (Some(left_ref), Some(right_ref)) = (
-                    try_to_simple_poly(&send.tuple.0[0]),
-                    try_to_simple_poly(&receive.tuple.0[0]),
+                    try_to_simple_poly(&send.selected_tuple.expressions[0]),
+                    try_to_simple_poly(&receive.selected_tuple.expressions[0]),
                 ) {
                     if full_span.contains(&right_ref.poly_id) {
-                        let connection = Connection::try_from(identity).unwrap();
+                        let connection = Connection::try_new(identity, bus_receives).unwrap();
                         if let Some(multiplicity) = connection.multiplicity_column {
                             let target = PhantomRangeConstraintTarget {
                                 column: right_ref.poly_id,

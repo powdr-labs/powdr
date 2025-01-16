@@ -578,7 +578,6 @@ mod test {
     use test_log::test;
 
     use crate::witgen::{
-        data_structures::identity::convert,
         global_constraints,
         jit::{effect::format_code, test_util::read_pil, variable::Cell},
         machines::{Connection, FixedLookup, KnownMachine},
@@ -601,13 +600,12 @@ mod test {
     fn solve_on_rows(input: &str, rows: &[i32], known_cells: Vec<(&str, i32)>) -> String {
         let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(input);
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
-        let identities = convert(&analyzed.identities);
-        let (fixed_data, retained_identities) =
-            global_constraints::set_global_constraints(fixed_data, &identities);
+        let fixed_data = global_constraints::set_global_constraints(fixed_data);
 
-        let fixed_lookup_connections = retained_identities
+        let fixed_lookup_connections = fixed_data
+            .identities
             .iter()
-            .filter_map(|i| Connection::try_from(*i).ok())
+            .filter_map(|i| Connection::try_new(i, &fixed_data.bus_receives))
             .filter(|c| FixedLookup::is_responsible(c))
             .map(|c| (c.id, c))
             .collect();
@@ -635,7 +633,7 @@ mod test {
             let mut progress = false;
             counter += 1;
             for row in rows {
-                for id in retained_identities.iter() {
+                for id in fixed_data.identities.iter() {
                     progress |= witgen.process_identity(&mutable_state, id, *row);
                 }
             }

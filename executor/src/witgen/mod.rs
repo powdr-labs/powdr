@@ -2,14 +2,14 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use bus_accumulator::generate_bus_accumulator_columns;
-use data_structures::identity::convert;
+use data_structures::identity::{convert, BusInteractionIdentity, Identity};
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
 use multiplicity_column_generator::MultiplicityColumnGenerator;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, AlgebraicReferenceThin, Analyzed, DegreeRange,
-    Expression, FunctionValueDefinition, Identity, PolyID, PolynomialType, Symbol, SymbolKind,
-    TypedExpression,
+    Expression, FunctionValueDefinition, Identity as AnalyzedIdentity, PolyID, PolynomialType,
+    Symbol, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
@@ -112,7 +112,7 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
         let has_phantom_bus_sends = pil
             .identities
             .iter()
-            .any(|identity| matches!(identity, Identity::PhantomBusInteraction(_)));
+            .any(|identity| matches!(identity, AnalyzedIdentity::PhantomBusInteraction(_)));
 
         let supports_field = match T::known_field().unwrap() {
             KnownField::GoldilocksField
@@ -211,39 +211,34 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             self.challenges,
             self.stage,
         );
-        let identities = convert(&self.analyzed.identities);
-        let identities = identities
-            .into_iter()
-            .filter(|identity| {
-                let references_later_stage_challenge = identity.expr_any(|expr| {
-                    if let AlgebraicExpression::Challenge(challenge) = expr {
-                        challenge.stage >= self.stage.into()
-                    } else {
-                        false
-                    }
-                });
-                let references_later_stage_witness = fixed
-                    .polynomial_references(identity)
-                    .into_iter()
-                    .any(|poly_id| {
-                        (poly_id.ptype == PolynomialType::Committed)
-                            && fixed.witness_cols[&poly_id].stage > self.stage as u32
-                    });
-
-                let discard = references_later_stage_challenge || references_later_stage_witness;
-
-                if discard {
-                    log::trace!("Skipping identity that references later-stage items: {identity}",);
+        let fixed = fixed.filter_identities(|fixed, identity| {
+            let references_later_stage_challenge = identity.expr_any(|expr| {
+                if let AlgebraicExpression::Challenge(challenge) = expr {
+                    challenge.stage >= self.stage.into()
+                } else {
+                    false
                 }
-                !discard
-            })
-            .collect::<Vec<_>>();
+            });
+            let references_later_stage_witness = fixed
+                .polynomial_references(identity)
+                .into_iter()
+                .any(|poly_id| {
+                    (poly_id.ptype == PolynomialType::Committed)
+                        && fixed.witness_cols[&poly_id].stage > self.stage as u32
+                });
+
+            let discard = references_later_stage_challenge || references_later_stage_witness;
+
+            if discard {
+                log::trace!("Skipping identity that references later-stage items: {identity}",);
+            }
+            !discard
+        });
 
         // Removes identities like X * (X - 1) = 0 or [ A ] in [ BYTES ]
         // These are already captured in the range constraints.
-        let (fixed, retained_identities) =
-            global_constraints::set_global_constraints(fixed, &identities);
-        let machines = MachineExtractor::new(&fixed).split_out_machines(retained_identities);
+        let fixed = global_constraints::set_global_constraints(fixed);
+        let machines = MachineExtractor::new(&fixed).split_out_machines();
 
         // Run main machine and extract columns from all machines.
         let columns = MutableState::new(machines.into_iter(), &self.query_callback).run();
@@ -308,6 +303,8 @@ where
 /// (i.e., a call to [WitnessGenerator::generate]).
 pub struct FixedData<'a, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
+    identities: Vec<Identity<T>>,
+    bus_receives: Vec<BusInteractionIdentity<T>>,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
     witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
     column_by_name: HashMap<String, PolyID>,
@@ -381,8 +378,19 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             phantom_range_constraints: BTreeMap::new(),
         };
 
+        let identities = convert(&analyzed.identities);
+        let bus_receives = identities
+            .iter()
+            .filter_map(|identity| match identity {
+                Identity::BusInteraction(id) => id.is_receive().then_some(id.clone()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
         FixedData {
             analyzed,
+            identities,
+            bus_receives,
             fixed_cols,
             witness_cols,
             column_by_name: analyzed
@@ -398,9 +406,26 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         }
     }
 
+    pub fn filter_identities(self, f: impl Fn(&FixedData<T>, &Identity<T>) -> bool) -> Self {
+        let keep = self
+            .identities
+            .iter()
+            .map(|id| f(&self, id))
+            .collect::<Vec<_>>();
+        let identities = self
+            .identities
+            .into_iter()
+            .zip_eq(keep)
+            .filter(|(_, keep)| *keep)
+            .map(|(id, _)| id)
+            .collect();
+        Self { identities, ..self }
+    }
+
     pub fn with_global_range_constraints(
         self,
         global_range_constraints: GlobalConstraints<T>,
+        retained_identities: Vec<Identity<T>>,
     ) -> Self {
         assert!(
             self.global_range_constraints
@@ -413,6 +438,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
         Self {
             global_range_constraints,
+            identities: retained_identities,
             ..self
         }
     }

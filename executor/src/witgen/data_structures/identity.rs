@@ -2,9 +2,9 @@ use core::fmt;
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, AlgebraicUnaryOperator, ConnectIdentity, ExpressionList,
-        Identity as AnalyzedIdentity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
-        PhantomPermutationIdentity, PolynomialIdentity,
+        AlgebraicExpression, AlgebraicUnaryOperator, ConnectIdentity, Identity as AnalyzedIdentity,
+        LookupIdentity, PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity,
+        PolynomialIdentity, SelectedExpressions,
     },
     parsed::visitor::Children,
 };
@@ -21,8 +21,7 @@ pub struct BusInteractionIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
     pub multiplicity: Option<AlgebraicExpression<T>>,
-    pub tuple: ExpressionList<T>,
-    pub latch: AlgebraicExpression<T>,
+    pub selected_tuple: SelectedExpressions<T>,
     interaction_type: InteractionType,
 }
 
@@ -53,7 +52,7 @@ impl<T: FieldElement> BusInteractionIdentity<T> {
     }
 
     fn interaction_id(&self) -> Option<T> {
-        match &self.tuple.0[0] {
+        match &self.selected_tuple.expressions[0] {
             AlgebraicExpression::Number(id) => Some(*id),
             _ => None,
         }
@@ -76,17 +75,15 @@ impl<T: FieldElement> BusInteractionIdentity<T> {
 impl<T> Children<AlgebraicExpression<T>> for BusInteractionIdentity<T> {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
         Box::new(
-            self.tuple
+            self.selected_tuple
                 .children_mut()
-                .chain(std::iter::once(&mut self.latch))
                 .chain(self.multiplicity.iter_mut()),
         )
     }
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(
-            self.tuple
+            self.selected_tuple
                 .children()
-                .chain(std::iter::once(&self.latch))
                 .chain(self.multiplicity.iter()),
         )
     }
@@ -96,8 +93,8 @@ impl<T: fmt::Display + fmt::Debug> fmt::Display for BusInteractionIdentity<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "BusInteractionIdentity(id={}, multiplicity={:?}, tuple={:?}, latch={})",
-            self.id, self.multiplicity, self.tuple, self.latch
+            "BusInteractionIdentity(id={}, multiplicity={:?}, tuple={})",
+            self.id, self.multiplicity, self.selected_tuple
         )
     }
 }
@@ -185,8 +182,10 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                 vec![Identity::BusInteraction(BusInteractionIdentity {
                     id,
                     multiplicity: Some(identity.multiplicity.clone()),
-                    tuple: identity.tuple.clone(),
-                    latch: identity.latch.clone(),
+                    selected_tuple: SelectedExpressions {
+                        selector: identity.latch.clone(),
+                        expressions: identity.tuple.0.clone(),
+                    },
                     interaction_type,
                 })]
                 .into_iter()
@@ -204,15 +203,13 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                     Identity::BusInteraction(BusInteractionIdentity {
                         id: id_left,
                         multiplicity: Some(left.selector.clone()),
-                        tuple: ExpressionList(left.expressions.clone()),
-                        latch: left.selector.clone(),
+                        selected_tuple: left.clone(),
                         interaction_type: InteractionType::Send,
                     }),
                     Identity::BusInteraction(BusInteractionIdentity {
                         id: id_right,
                         multiplicity: Some(right.selector.clone()),
-                        tuple: ExpressionList(right.expressions.clone()),
-                        latch: right.selector.clone(),
+                        selected_tuple: right.clone(),
                         interaction_type: InteractionType::Receive,
                     }),
                 ]
@@ -226,15 +223,13 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                     Identity::BusInteraction(BusInteractionIdentity {
                         id: id_left,
                         multiplicity: None,
-                        tuple: ExpressionList(left.expressions.clone()),
-                        latch: left.selector.clone(),
+                        selected_tuple: left.clone(),
                         interaction_type: InteractionType::Send,
                     }),
                     Identity::BusInteraction(BusInteractionIdentity {
                         id: id_right,
                         multiplicity: None,
-                        tuple: ExpressionList(right.expressions.clone()),
-                        latch: right.selector.clone(),
+                        selected_tuple: right.clone(),
                         interaction_type: InteractionType::Receive,
                     }),
                 ]
@@ -253,15 +248,13 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                     Identity::BusInteraction(BusInteractionIdentity {
                         id: id_left,
                         multiplicity: Some(multiplicity.clone()),
-                        tuple: ExpressionList(left.expressions.clone()),
-                        latch: left.selector.clone(),
+                        selected_tuple: left.clone(),
                         interaction_type: InteractionType::Send,
                     }),
                     Identity::BusInteraction(BusInteractionIdentity {
                         id: id_right,
                         multiplicity: Some(multiplicity.clone()),
-                        tuple: ExpressionList(right.expressions.clone()),
-                        latch: right.selector.clone(),
+                        selected_tuple: right.clone(),
                         interaction_type: InteractionType::Receive,
                     }),
                 ]
