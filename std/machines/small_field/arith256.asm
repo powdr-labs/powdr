@@ -13,7 +13,7 @@ use std::machines::range::Byte;
 
 // Arithmetic machine, ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
 // Currently only supports "Equation 0", i.e., 256-Bit addition and multiplication.
-machine Arith16 with
+machine Arith256 with
     latch: CLK64_63,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
