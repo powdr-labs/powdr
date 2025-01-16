@@ -39,6 +39,13 @@ pub fn analyze(file: ASMProgram) -> Result<AnalysisASMFile, Vec<String>> {
     log::debug!("Run machine check analysis step");
     let file = machine_check::check(file)?;
 
+    /*
+        let mut blocks = collect_basic_blocks(&file);
+        blocks.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+        for (name, block) in &blocks {
+            println!("Block {name} has {} instructions", block.len());
+        }
+    */
     let file = optimize(file);
 
     // run analysis on virtual machines, batching instructions
@@ -604,7 +611,7 @@ fn optimize_precompiles(mut analyzed_asm: AnalysisASMFile) -> AnalysisASMFile {
     let blocks = simplify_autoprecompile_blocks(&mut main_function.body.statements);
     let new_fs = FunctionStatements::new(main_function.body.statements.inner.clone());
     main_function.body.statements = new_fs.clone();
-    println!("new statements: {new_fs}");
+    //println!("new statements: {new_fs}");
 
     let wits = machine
         .pil
@@ -952,4 +959,60 @@ fn optimize_precompile(mut machine: Machine) -> Machine {
     machine.links.extend(memory_links);
 
     machine
+}
+
+pub fn collect_basic_blocks(
+    analyzed_asm: &AnalysisASMFile,
+) -> Vec<(String, Vec<FunctionStatement>)> {
+    let machine = analyzed_asm
+        .get_machine(&parse_absolute_path("::Main"))
+        .unwrap();
+    let CallableSymbol::Function(ref main_function) = &mut machine.callable.0.get("main").unwrap()
+    else {
+        panic!("main function missing")
+    };
+
+    let program = &main_function.body.statements.inner;
+
+    let mut blocks = Vec::new();
+    let mut ghost_labels = 0;
+    let mut curr_label = format!("ghost_label_{ghost_labels}");
+    let mut block_statements = Vec::new();
+
+    for op in program {
+        match &op {
+            FunctionStatement::Label(LabelStatement { source: _, name }) => {
+                blocks.push((curr_label.clone(), block_statements.clone()));
+                block_statements.clear();
+                curr_label = name.clone();
+            }
+            FunctionStatement::Instruction(InstructionStatement {
+                source: _,
+                instruction,
+                inputs: _,
+            }) if instruction.starts_with("branch") || instruction.starts_with("jump") => {
+                blocks.push((curr_label.clone(), block_statements.clone()));
+                block_statements.clear();
+                ghost_labels += 1;
+                curr_label = format!("ghost_label_{ghost_labels}");
+            }
+            FunctionStatement::Instruction(InstructionStatement {
+                source: _,
+                instruction: _,
+                inputs: _,
+            })
+            | FunctionStatement::Assignment(_) => {
+                block_statements.push(op.clone());
+            }
+            FunctionStatement::Return(_) => {
+                blocks.push((curr_label.clone(), block_statements.clone()));
+                block_statements.clear();
+                ghost_labels += 1;
+                curr_label = format!("ghost_label_{ghost_labels}");
+            }
+            _ => {}
+        }
+    }
+
+    blocks
 }

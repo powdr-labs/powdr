@@ -1262,6 +1262,7 @@ fn preprocess_main_function<F: FieldElement>(machine: &Machine) -> PreprocessedM
                     if !name.contains("___dot_L") {
                         function_starts.insert(batch_idx + PC_INITIAL_VAL, name.as_str());
                     }
+                    statements.push(s);
                 }
             }
         }
@@ -2887,6 +2888,8 @@ fn execute_inner<F: FieldElement>(
     let start = Instant::now();
     let main_machine = get_main_machine(asm);
 
+    let mut label_freq: HashMap<String, u64> = Default::default();
+
     let PreprocessedMain {
         statements,
         label_map,
@@ -3093,8 +3096,12 @@ fn execute_inner<F: FieldElement>(
                     DebugDirective::File(_, _, _) => unreachable!(),
                 };
             }
-            FunctionStatement::Label(_) => {
-                unreachable!()
+            FunctionStatement::Label(LabelStatement { source: _, name }) => {
+                label_freq
+                    .entry(name.clone())
+                    .and_modify(|e| *e += 1)
+                    .or_insert(1);
+                //unreachable!()
             }
         };
 
@@ -3144,6 +3151,23 @@ fn execute_inner<F: FieldElement>(
         log::debug!(
             "Generating program columns took {}s",
             start.elapsed().as_secs_f64()
+        );
+    }
+
+    let blocks = powdr_analysis::collect_basic_blocks(&asm);
+    let blocks = blocks
+        .into_iter()
+        .map(|(name, b)| {
+            let freq = label_freq.get(&name).unwrap_or(&0);
+            let l = b.len() as u64;
+            (name, b, freq, freq * l)
+        })
+        .sorted_by_key(|(_, _, _, cost)| std::cmp::Reverse(*cost))
+        .collect::<Vec<_>>();
+    for (name, block, freq, cost) in &blocks {
+        println!(
+            "{name}: size = {}, freq = {freq}, cost = {cost}",
+            block.len()
         );
     }
 
