@@ -8,7 +8,7 @@ use itertools::Itertools;
 use num_traits::Zero;
 use powdr_number::FieldElement;
 
-use crate::witgen::{jit::effect::Assertion, EvalError};
+use crate::witgen::jit::effect::Assertion;
 
 use super::{
     super::range_constraints::RangeConstraint, effect::Effect,
@@ -34,6 +34,14 @@ impl<T: FieldElement, V> ProcessResult<T, V> {
             complete: true,
         }
     }
+}
+
+#[derive(Debug)]
+pub enum Error {
+    /// The range constraints of the parts do not cover the full constant sum.
+    ConflictingRangeConstraints,
+    /// An equality constraint evaluates to a known-nonzero value.
+    ConstraintUnsatisfiable,
 }
 
 /// Represents an expression `a_1 * x_1 + ... + a_k * x_k + offset`,
@@ -161,11 +169,11 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
     /// constraints) has been found, but it still contains
     /// unknown variables, returns an empty, incomplete result.
     /// If the equation is known to be unsolvable, returns an error.
-    pub fn solve(&self) -> Result<ProcessResult<T, V>, EvalError<T>> {
+    pub fn solve(&self) -> Result<ProcessResult<T, V>, Error> {
         Ok(match self.coefficients.len() {
             0 => {
                 if self.offset.is_known_nonzero() {
-                    return Err(EvalError::ConstraintUnsatisfiable(self.to_string()));
+                    return Err(Error::ConstraintUnsatisfiable);
                 } else {
                     ProcessResult::complete(vec![])
                 }
@@ -221,7 +229,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
     }
 
     /// Tries to solve a bit-decomposition equation.
-    fn solve_bit_decomposition(&self) -> Result<ProcessResult<T, V>, EvalError<T>> {
+    fn solve_bit_decomposition(&self) -> Result<ProcessResult<T, V>, Error> {
         // All the coefficients need to be known numbers and the
         // variables need to be range-constrained.
         let constrained_coefficients = self
@@ -264,7 +272,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
         // We assert -offset & !masks == 0
         if let Some(offset) = self.offset.try_to_number() {
             if (-offset).to_integer() & !covered_bits != 0.into() {
-                return Err(EvalError::ConflictingRangeConstraints);
+                return Err(Error::ConflictingRangeConstraints);
             }
         } else {
             effects.push(Assertion::assert_eq(

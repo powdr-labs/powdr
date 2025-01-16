@@ -15,11 +15,11 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     data_structures::mutable_state::MutableState, global_constraints::RangeConstraintSet,
-    range_constraints::RangeConstraint, EvalError, FixedData, QueryCallback,
+    range_constraints::RangeConstraint, FixedData, QueryCallback,
 };
 
 use super::{
-    affine_symbolic_expression::{AffineSymbolicExpression, ProcessResult},
+    affine_symbolic_expression::{AffineSymbolicExpression, Error, ProcessResult},
     effect::{BranchCondition, Effect},
     variable::{MachineCallVariable, Variable},
 };
@@ -30,6 +30,8 @@ use super::{
 pub struct WitgenInference<'a, T: FieldElement, FixedEval> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_evaluator: FixedEval,
+    /// Sequences of branches taken in the past to get to the current state.
+    branches_taken: Vec<(Variable, RangeConstraint<T>)>,
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
     known_variables: HashSet<Variable>,
     /// Identities that have already been completed.
@@ -80,6 +82,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         Self {
             fixed_data,
             fixed_evaluator,
+            branches_taken: Default::default(),
             derived_range_constraints: Default::default(),
             known_variables: known_variables.into_iter().collect(),
             complete_identities: complete_identities.into_iter().collect(),
@@ -88,8 +91,16 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    pub fn code(self) -> Vec<Effect<T, Variable>> {
+    pub fn finish(self) -> Vec<Effect<T, Variable>> {
         self.code
+    }
+
+    pub fn code(&self) -> &Vec<Effect<T, Variable>> {
+        &self.code
+    }
+
+    pub fn branches_taken(&self) -> &[(Variable, RangeConstraint<T>)] {
+        &self.branches_taken
     }
 
     pub fn known_variables(&self) -> &HashSet<Variable> {
@@ -132,8 +143,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         let common_code = std::mem::take(&mut self.code);
         let mut low_branch = self.clone();
 
-        self.add_range_constraint(variable.clone(), high_condition.clone());
-        low_branch.add_range_constraint(variable.clone(), low_condition.clone());
+        self.branch_to(variable, high_condition.clone());
+        low_branch.branch_to(variable, low_condition.clone());
 
         BranchResult {
             common_code,
@@ -146,6 +157,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
+    fn branch_to(&mut self, var: &Variable, range_constraint: RangeConstraint<T>) {
+        self.branches_taken
+            .push((var.clone(), range_constraint.clone()));
+        self.add_range_constraint(var.clone(), range_constraint);
+    }
+
     /// Process an identity on a certain row.
     /// Returns Ok(true) if there was progress and Ok(false) if there was no progress.
     /// If this returns an error, it means we have conflicting constraints.
@@ -154,7 +171,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         can_process: CanProcess,
         id: &'a Identity<T>,
         row_offset: i32,
-    ) -> Result<bool, EvalError<T>> {
+    ) -> Result<bool, Error> {
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => self
                 .process_equality_on_row(
@@ -215,7 +232,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         lhs: &Expression<T>,
         offset: i32,
         rhs: &VariableOrValue<T, Variable>,
-    ) -> Result<ProcessResult<T, Variable>, EvalError<T>> {
+    ) -> Result<ProcessResult<T, Variable>, Error> {
         // First we try to find a new assignment to a variable in the equality.
 
         let evaluator = Evaluator::new(self);
@@ -228,12 +245,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             VariableOrValue::Value(v) => (*v).into(),
         };
 
-        let result = (lhs_evaluated - rhs_evaluated)
-            .solve()
-            .map_err(|e| match e {
-                EvalError::ConflictingRangeConstraints | EvalError::ConstraintUnsatisfiable(_) => e,
-                _ => panic!("Unexpected error: {e}"),
-            })?;
+        let result = (lhs_evaluated - rhs_evaluated).solve()?;
         if result.complete && result.effects.is_empty() {
             // A complete result without effects means that there were no unknowns
             // in the constraint.
@@ -255,7 +267,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         lhs: &Expression<T>,
         offset: i32,
         rhs: &VariableOrValue<T, Variable>,
-    ) -> Result<ProcessResult<T, Variable>, EvalError<T>> {
+    ) -> Result<ProcessResult<T, Variable>, Error> {
         let evaluator = Evaluator::new(self).only_concrete_known();
         let Some(lhs_evaluated) = evaluator.evaluate(lhs, offset) else {
             return Ok(ProcessResult::empty());
@@ -264,12 +276,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             VariableOrValue::Variable(v) => evaluator.evaluate_variable(v.clone()),
             VariableOrValue::Value(v) => (*v).into(),
         };
-        (lhs_evaluated - rhs_evaluated)
-            .solve()
-            .map_err(|e| match e {
-                EvalError::ConflictingRangeConstraints | EvalError::ConstraintUnsatisfiable(_) => e,
-                _ => panic!("Unexpected error: {e}"),
-            })
+        (lhs_evaluated - rhs_evaluated).solve()
     }
 
     fn process_call<CanProcess: CanProcessCall<T>>(
@@ -332,7 +339,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    fn process_assignments(&mut self) -> Result<(), EvalError<T>> {
+    fn process_assignments(&mut self) -> Result<(), Error> {
         loop {
             let mut progress = false;
             // We need to take them out because ingest_effects needs a &mut self.
@@ -685,7 +692,7 @@ mod test {
             }
             assert!(counter < 10000, "Solving took more than 10000 rounds.");
         }
-        format_code(&witgen.code())
+        format_code(&witgen.finish())
     }
 
     #[test]

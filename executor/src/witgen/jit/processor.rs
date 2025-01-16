@@ -8,9 +8,10 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{Identity, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
-use crate::witgen::{EvalError, FixedData};
+use crate::witgen::FixedData;
 
 use super::{
+    affine_symbolic_expression,
     effect::{format_code, Effect},
     variable::{Cell, Variable},
     witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, Value, WitgenInference},
@@ -59,7 +60,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         &self,
         can_process: CanProcess,
         witgen: WitgenInference<'a, T, FixedEval>,
-    ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T>> {
+    ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T, FixedEval>> {
         let branch_depth = 0;
         self.generate_code_for_branch(can_process, witgen, branch_depth)
     }
@@ -69,9 +70,13 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         can_process: CanProcess,
         mut witgen: WitgenInference<'a, T, FixedEval>,
         branch_depth: usize,
-    ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T>> {
-        self.process_until_no_progress(can_process.clone(), &mut witgen)
-            .map_err(|_| Error::conflicting_constraints())?;
+    ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T, FixedEval>> {
+        if self
+            .process_until_no_progress(can_process.clone(), &mut witgen)
+            .is_err()
+        {
+            return Err(Error::conflicting_constraints(witgen));
+        }
 
         if self.check_block_shape {
             // Check that the "spill" into the previous block is compatible
@@ -95,7 +100,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
 
         let incomplete_machine_calls = self.incomplete_machine_calls(&witgen);
         if missing_variables.is_empty() && incomplete_machine_calls.is_empty() {
-            return Ok(witgen.code());
+            return Ok(witgen.finish());
         }
 
         // We need to do some work, try to branch.
@@ -106,9 +111,15 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             .filter(|(_, rc)| rc.try_to_single_value().is_none())
             .sorted()
             .min_by_key(|(_, rc)| rc.range_width())
-            .map(|(var, _)| var.clone());
-        if branch_depth >= self.max_branch_depth || most_constrained_var.is_none() {
-            let reason = if most_constrained_var.is_none() {
+            .map(|(var, rc)| (var.clone(), rc.clone()));
+        // Either there is no variable left to branch on or the most constrained
+        // still has more than (1 << max_branch_depth) possible values.
+        let no_viable_branch_variable = most_constrained_var
+            .as_ref()
+            .map(|(_, rc)| (rc.range_width() >> self.max_branch_depth) > 0.into())
+            .unwrap_or(true);
+        if branch_depth >= self.max_branch_depth || no_viable_branch_variable {
+            let reason = if no_viable_branch_variable {
                 ErrorReason::NoBranchVariable
             } else {
                 ErrorReason::MaxBranchDepthReached(self.max_branch_depth)
@@ -121,17 +132,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 .collect_vec();
             return Err(Error {
                 reason,
-                code: witgen.code(),
+                witgen,
                 missing_variables,
                 incomplete_identities,
             });
         };
-        let most_constrained_var = most_constrained_var.unwrap();
+        let (most_constrained_var, range) = most_constrained_var.unwrap();
 
-        log::debug!(
-            "Branching on variable {most_constrained_var} with range {} at depth {branch_depth}",
-            witgen.range_constraint(&most_constrained_var)
-        );
+        log::debug!("Branching on variable {most_constrained_var} with range {range} at depth {branch_depth}");
 
         let BranchResult {
             common_code,
@@ -146,44 +154,36 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             self.generate_code_for_branch(can_process.clone(), first_branch, branch_depth + 1);
         let second_branch_result =
             self.generate_code_for_branch(can_process, second_branch, branch_depth + 1);
-        // There is a recoverable error: It might be that a branch has conflicting
-        // constraints, which means we can just take the other branch without actually
-        // branching.
-        match (first_branch_result, second_branch_result) {
-            (Err(el), Err(er))
-                if el.reason == ErrorReason::ConflictingConstraints
-                    && er.reason == ErrorReason::ConflictingConstraints =>
-            {
-                // Both are conflicting, so we push it up.
-                Err(Error::conflicting_constraints())
-            }
-            (Err(e), Ok(code)) | (Ok(code), Err(e))
+        let result = match (first_branch_result, second_branch_result) {
+            (Err(e), other) | (other, Err(e))
                 if e.reason == ErrorReason::ConflictingConstraints =>
             {
+                // Any branch with a conflicting constraint is not reachable and thus
+                // can be pruned. We do not branch but still add the range constraint.
+                // Note that the other branch might also have a conflicting constraint,
+                // but then it is correct to return it.
                 log::trace!("Branching on {most_constrained_var} resulted in a conflict, we can reduce to a single branch.");
-                Ok(common_code.into_iter().chain(code).collect())
+                other
             }
+            // Any other error should be propagated.
             (Err(e), _) | (_, Err(e)) => Err(e),
             (Ok(first_code), Ok(second_code)) if first_code == second_code => {
                 log::trace!("Branching on {most_constrained_var} resulted in the same code, we can reduce to a single branch.");
-                Ok(common_code.into_iter().chain(first_code).collect())
+                Ok(first_code)
             }
-            (Ok(first_code), Ok(second_code)) => Ok(common_code
-                .into_iter()
-                .chain(std::iter::once(Effect::Branch(
-                    condition,
-                    first_code,
-                    second_code,
-                )))
-                .collect()),
-        }
+            (Ok(first_code), Ok(second_code)) => {
+                Ok(vec![Effect::Branch(condition, first_code, second_code)])
+            }
+        };
+        // Prepend the common code in the success case.
+        result.map(|code| common_code.into_iter().chain(code).collect())
     }
 
     fn process_until_no_progress<CanProcess: CanProcessCall<T> + Clone>(
         &self,
         can_process: CanProcess,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-    ) -> Result<(), EvalError<T>> {
+    ) -> Result<(), affine_symbolic_expression::Error> {
         loop {
             let mut progress = false;
             for (id, row_offset) in &self.identities {
@@ -333,13 +333,12 @@ fn is_machine_call<T>(identity: &Identity<T>) -> bool {
     }
 }
 
-pub struct Error<'a, T: FieldElement> {
-    /// Code generated so far
-    pub code: Vec<Effect<T, Variable>>,
+pub struct Error<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     pub reason: ErrorReason,
+    pub witgen: WitgenInference<'a, T, FixedEval>,
     /// Required variables that could not be determined
     pub missing_variables: Vec<Variable>,
-    /// Identities that could not be performed properly.
+    /// Identities that could not be processed completely.
     /// Note that we only force submachine calls to be complete.
     pub incomplete_identities: Vec<(&'a Identity<T>, i32)>,
 }
@@ -357,7 +356,7 @@ pub enum ErrorReason {
     MaxBranchDepthReached(usize),
 }
 
-impl<T: FieldElement> Display for Error<'_, T> {
+impl<T: FieldElement, FE: FixedEvaluator<T>> Display for Error<'_, T, FE> {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
         write!(
             f,
@@ -367,10 +366,10 @@ impl<T: FieldElement> Display for Error<'_, T> {
     }
 }
 
-impl<T: FieldElement> Error<'_, T> {
-    pub fn conflicting_constraints() -> Self {
+impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
+    pub fn conflicting_constraints(witgen: WitgenInference<'a, T, FE>) -> Self {
         Self {
-            code: vec![],
+            witgen,
             reason: ErrorReason::ConflictingConstraints,
             missing_variables: vec![],
             incomplete_identities: vec![],
@@ -416,10 +415,21 @@ impl<T: FieldElement> Error<'_, T> {
             )
             .unwrap();
         };
-        if self.code.is_empty() {
+        write!(
+            s,
+            "\nThe following branch decisions were taken:\n{}",
+            self.witgen
+                .branches_taken()
+                .iter()
+                .map(|(var, rc)| format!("    {var} = {rc}"))
+                .join("\n")
+        )
+        .unwrap();
+        let code = self.witgen.code();
+        if code.is_empty() {
             write!(s, "\nNo code generated so far.").unwrap();
         } else {
-            write!(s, "\nGenerated code so far:\n{}", format_code(&self.code)).unwrap();
+            write!(s, "\nGenerated code so far:\n{}", format_code(&code)).unwrap();
         };
         s
     }

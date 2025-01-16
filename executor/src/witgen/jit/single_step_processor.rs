@@ -174,8 +174,11 @@ mod test {
         assert_eq!(
             err.to_string(),
             "Unable to derive algorithm to compute required values: \
-            Maximum branch depth of 6 reached.\nThe following variables or values are still missing: M::Y[1]\n\
-            No code generated so far."
+            No variable available to branch on.\nThe following variables or values are still missing: M::Y[1]\n\
+            The following branch decisions were taken:\n\
+            \n\
+            Generated code so far:\n\
+            M::X[1] = M::X[0];"
         );
     }
 
