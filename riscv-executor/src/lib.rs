@@ -362,11 +362,7 @@ impl<F: FieldElement> Elem<F> {
     pub fn try_from_fe_as_bin(value: &F) -> Option<Self> {
         if let Some(v) = value.to_integer().try_into_u32() {
             Some(Self::Binary(v as i64))
-        } else if let Some(v) = (F::zero() - *value).to_integer().try_into_u32() {
-            Some(Self::Binary(-(v as i64)))
-        } else {
-            None
-        }
+        } else { (F::zero() - *value).to_integer().try_into_u32().map(|v| Self::Binary(-(v as i64))) }
     }
 
     pub fn from_u32_as_fe(value: u32) -> Self {
