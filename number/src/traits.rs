@@ -189,7 +189,8 @@ pub trait FieldElement:
         if self.is_in_lower_half() {
             self.to_arbitrary_integer().into()
         } else {
-            IBig::from(self.to_arbitrary_integer()) - IBig::from(Self::modulus().to_arbitrary_integer())
+            IBig::from(self.to_arbitrary_integer())
+                - IBig::from(Self::modulus().to_arbitrary_integer())
         }
     }
 

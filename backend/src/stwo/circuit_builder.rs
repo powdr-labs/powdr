@@ -6,7 +6,7 @@ use std::collections::HashSet;
 extern crate alloc;
 use alloc::collections::btree_map::BTreeMap;
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, Identity};
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use stwo_prover::constraint_framework::preprocessed_columns::PreprocessedColumn;
@@ -44,7 +44,7 @@ where
                 coset_index_to_circle_domain_index(i, slice.len().ilog2()),
                 slice.len().ilog2(),
             ),
-            v.try_into_i32().unwrap().into(),
+            v.to_integer().try_into_u32().unwrap().into(),
         );
     });
 
@@ -189,7 +189,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
         };
         let mut evaluator =
             ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {
-                E::F::from(M31::from(v.try_into_i32().unwrap()))
+                E::F::from(v.to_integer().try_into_u32().unwrap().into())
             });
 
         for id in &self.analyzed.identities {
