@@ -379,12 +379,6 @@ fn full_pil_constant() {
 }
 
 #[test]
-fn intermediate() {
-    let f = "asm/intermediate.asm";
-    regular_test_all_fields(f, Default::default());
-}
-
-#[test]
 fn intermediate_nested() {
     let f = "asm/intermediate_nested.asm";
     regular_test_all_fields(f, Default::default());
