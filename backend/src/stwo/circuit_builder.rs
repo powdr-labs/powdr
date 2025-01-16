@@ -1,11 +1,13 @@
+use itertools::Itertools;
 use core::unreachable;
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, TerminalAccess};
 use std::collections::HashSet;
 
 extern crate alloc;
-use alloc::collections::btree_map::BTreeMap;
+use alloc::collections::{btree_map::BTreeMap, btree_set::BTreeSet};
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, Identity};
+use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::FieldElement;
 
 use powdr_ast::analyzed::{PolyID, PolynomialType};
@@ -14,7 +16,9 @@ use stwo_prover::constraint_framework::{
     EvalAtRow, FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX,
 };
 use stwo_prover::core::backend::{Column, ColumnOps};
+use stwo_prover::core::channel::{Channel, MerkleChannel};
 use stwo_prover::core::fields::m31::{BaseField, M31};
+use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::fields::{ExtensionOf, FieldOps};
 use stwo_prover::core::poly::circle::{CircleDomain, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
@@ -50,25 +54,40 @@ where
 
     CircleEvaluation::new(domain, column)
 }
-
+//PowdrEval is created for each machine, therefore the fields are machine specific
 pub struct PowdrEval<T> {
     log_degree: u32,
     analyzed: Analyzed<T>,
     // the pre-processed are indexed in the whole proof, instead of in each component.
     // this offset represents the index of the first pre-processed column in this component
     preprocess_col_offset: usize,
-    witness_columns: BTreeMap<PolyID, usize>,
+    // for each witness column, the stage and index of this column in this stage BTreeMap<PolyID, (stage, stage_index)>
+    witness_columns: BTreeMap<PolyID, (usize, usize)>,
     constant_shifted: BTreeMap<PolyID, usize>,
     constant_columns: BTreeMap<PolyID, usize>,
+    //if PowdrEval continue this implementation: one PowdrEval for each machine, then the stages index may not needed,
+    //avoiding stage for now
+    // for each stage, the number of witness columns. There is always a least one stage, possibly empty
+    pub challenges_by_stage: Vec<Vec<u64>>,
 }
 
 impl<T: FieldElement> PowdrEval<T> {
     pub fn new(analyzed: Analyzed<T>, preprocess_col_offset: usize, log_degree: u32) -> Self {
-        let witness_columns: BTreeMap<PolyID, usize> = analyzed
+        let identities = analyzed.identities.clone();
+
+        let witness_columns = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
-            .flat_map(|(symbol, _)| symbol.array_elements())
-            .enumerate()
-            .map(|(index, (_, id))| (id, index))
+            .into_group_map_by(|(s, _)| s.stage.unwrap_or_default())
+            .into_iter()
+            .flat_map(|(stage, symbols)| {
+                symbols
+                    .into_iter()
+                    .flat_map(|(s, _)| s.array_elements())
+                    .enumerate()
+                    .map(move |(index_in_stage, (_, poly_id))| {
+                        (poly_id, (stage as usize, index_in_stage))
+                    })
+            })
             .collect();
 
         let constant_with_next_list = get_constant_with_next_list(&analyzed);
@@ -88,6 +107,22 @@ impl<T: FieldElement> PowdrEval<T> {
             .map(|(index, (_, id))| (id, index))
             .collect();
 
+        // we use a set to collect all used challenges
+        let mut challenges_by_stage = vec![BTreeSet::new(); analyzed.stage_count()];
+        for identity in &identities {
+            identity.pre_visit_expressions(&mut |expr| {
+                if let AlgebraicExpression::Challenge(challenge) = expr {
+                    challenges_by_stage[challenge.stage as usize].insert(challenge.id);
+                }
+            });
+        }
+
+        // finally, we convert the set to a vector
+        let challenges_by_stage = challenges_by_stage
+            .into_iter()
+            .map(|set| set.into_iter().collect())
+            .collect();
+
         Self {
             log_degree,
             analyzed,
@@ -95,6 +130,7 @@ impl<T: FieldElement> PowdrEval<T> {
             witness_columns,
             constant_shifted,
             constant_columns,
+            challenges_by_stage,
         }
     }
 }
@@ -103,7 +139,8 @@ struct Data<'a, F> {
     witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
     constant_shifted_eval: &'a BTreeMap<PolyID, F>,
     constant_eval: &'a BTreeMap<PolyID, F>,
-    challenges: &'a BTreeMap<String, F>,
+    //vector is for different stages
+    //challenges: &'a [BTreeMap<&'a u64, SecureField>],
 }
 
 impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
@@ -126,7 +163,10 @@ impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
     }
 
     fn get_challenge(&self, _challenge: &Challenge) -> F {
-        unimplemented!("challenges are not supported in stwo yet")
+        unimplemented!("Challenges are not supported in stwo yet")
+        // self.challenges[challenge.stage as usize][&challenge.id]
+        //     .clone()
+        //     .into()
     }
 }
 
@@ -187,6 +227,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             witness_eval: &witness_eval,
             constant_shifted_eval: &constant_shifted_eval,
             constant_eval: &constant_eval,
+            //challenges: &BTreeMap::new(),
         };
         let mut evaluator =
             ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {

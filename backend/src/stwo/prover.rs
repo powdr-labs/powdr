@@ -4,9 +4,11 @@ use powdr_ast::analyzed::{Analyzed, DegreeRange};
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_number::FieldElement;
+use powdr_executor::witgen::WitgenCallback;
+
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::iter::repeat;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -18,6 +20,7 @@ use crate::stwo::circuit_builder::{
 use crate::stwo::proof::{
     Proof, SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
 };
+use crate::stwo::stage_prover::PowdrCircuit;
 
 use stwo_prover::constraint_framework::{
     TraceLocationAllocator, ORIGINAL_TRACE_IDX, PREPROCESSED_TRACE_IDX,
@@ -27,7 +30,7 @@ use stwo_prover::core::air::{Component, ComponentProver};
 use stwo_prover::core::backend::{Backend, BackendForChannel};
 use stwo_prover::core::channel::{Channel, MerkleChannel};
 use stwo_prover::core::fields::m31::{BaseField, M31};
-use stwo_prover::core::fields::qm31::SecureField;
+use stwo_prover::core::fields::qm31::{SecureField, QM31};
 use stwo_prover::core::fri::FriConfig;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
@@ -211,7 +214,7 @@ where
         self.proving_key = proving_key;
     }
 
-    pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
+    pub fn prove(&self, witness: &[(String, Vec<F>)],witgen_callback: WitgenCallback<F>) -> Result<Vec<u8>, String> {
         let config = get_config();
         let domain_degree_range = DegreeRange {
             min: self
@@ -239,6 +242,7 @@ where
                 )
             })
             .collect();
+        let circuit = PowdrCircuit::new(&self.split).with_witgen_callback(witgen_callback);
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
         //Each column size in machines needs its own component, the components from different machines are stored in this vector
@@ -249,6 +253,8 @@ where
         let mut machine_log_sizes = BTreeMap::new();
 
         let mut constant_cols = Vec::new();
+
+        let challenge_channel = &mut <MC as MerkleChannel>::C::default();
 
         let witness_by_machine: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = self
             .split
@@ -283,13 +289,23 @@ where
                         constant_cols.extend(constant_trace)
                     }
 
+                    let mut powdr_eval = PowdrEval::new(
+                        (*pil).clone(),
+                        constant_cols_offset_acc,
+                        machine_length.ilog2(),
+                    );
+
+                    let challenge = challenge_channel.draw_felt();
+
+                    let challenges_by_stage = powdr_eval
+                        .challenges_by_stage
+                        .iter()
+                        .flat_map(|(stage)| stage.iter().map(move |&index| (index, challenge)))
+                        .collect::<BTreeMap<_, _>>();
+
                     let component = PowdrComponent::new(
                         tree_span_provider,
-                        PowdrEval::new(
-                            (*pil).clone(),
-                            constant_cols_offset_acc,
-                            machine_length.ilog2(),
-                        ),
+                        powdr_eval,
                         (SecureField::zero(), None),
                     );
                     components.push(component);

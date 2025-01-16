@@ -19,6 +19,7 @@ use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 mod circuit_builder;
 mod proof;
 mod prover;
+mod stage_prover;
 
 struct RestrictedFactory;
 
@@ -84,7 +85,7 @@ where
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-        Ok(StwoProver::prove(self, witness)?)
+        Ok(StwoProver::prove(self, witness,witgen_callback)?)
     }
     fn export_proving_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
         self.export_proving_key(output)
