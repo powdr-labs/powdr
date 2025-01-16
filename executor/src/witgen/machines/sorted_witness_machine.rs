@@ -13,10 +13,7 @@ use crate::witgen::rows::RowPair;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause, QueryCallback};
 use itertools::Itertools;
 use num_traits::One;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, LookupIdentity, PhantomLookupIdentity,
-    PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 
 /// A machine that can support a lookup in a set of columns that are sorted
@@ -115,13 +112,18 @@ fn check_identity<T: FieldElement>(
     degree: DegreeType,
 ) -> Option<PolyID> {
     // Looking for a lookup
-    let (left, right) = match id {
-        Identity::Lookup(LookupIdentity { left, right, .. })
-        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => (left, right),
+    let send = match id {
+        Identity::BusInteraction(bus_interaction) if bus_interaction.is_send() => bus_interaction,
         _ => return None,
     };
+    let receive = send.try_match_static(&fixed_data.bus_receives)?;
+    if !receive.is_unconstrained_receive() {
+        return None;
+    }
 
     // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
+    let left = &send.selected_tuple;
+    let right = &receive.selected_tuple;
     if !right.selector.is_one() || left.expressions.len() != 1 {
         return None;
     }

@@ -1,10 +1,7 @@
 use std::{collections::HashMap, sync::Mutex};
 
 use lazy_static::lazy_static;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, PolynomialIdentity,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, PolynomialIdentity};
 use powdr_number::FieldElement;
 
 use crate::witgen::data_structures::mutable_state::MutableState;
@@ -40,11 +37,17 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
     ) -> EvalResult<'a, T> {
         let result = match identity {
             Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
-            Identity::Lookup(LookupIdentity { left, id, .. })
-            | Identity::Permutation(PermutationIdentity { left, id, .. })
-            | Identity::PhantomLookup(PhantomLookupIdentity { left, id, .. })
-            | Identity::PhantomPermutation(PhantomPermutationIdentity { left, id, .. }) => {
-                self.process_lookup_or_permutation(*id, left, rows)
+            Identity::BusInteraction(bus_interaction) => {
+                if bus_interaction.is_send() {
+                    self.process_lookup_or_permutation(
+                        bus_interaction.id,
+                        &bus_interaction.selected_tuple,
+                        rows,
+                    )
+                } else {
+                    // Nothing to do for receives.
+                    Ok(EvalValue::complete(vec![]))
+                }
             }
             Identity::Connect(..) => {
                 // TODO this is not the right cause.
@@ -53,8 +56,6 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
                 //     "Identity of kind {kind:?} is not supported by the identity processor."
                 // )
             }
-            // TODO(bus_interaction)
-            Identity::PhantomBusInteraction(..) => Ok(EvalValue::complete(Vec::new())),
         };
         report_identity_solving(identity, &result);
         result

@@ -1,6 +1,6 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use powdr_ast::analyzed::{DegreeRange, LookupIdentity, PhantomLookupIdentity};
+use powdr_ast::analyzed::DegreeRange;
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;
@@ -357,14 +357,13 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
         let mut outer_assignments = vec![];
 
         // The PC lookup fills most of the columns and enables hints thus it should be run first.
-        // We find it as largest plookup identity.
+        // We find it as largest bus send.
         let pc_lookup_index = identities
             .iter_mut()
             .enumerate()
             .filter_map(|(index, (ident, _))| match ident {
-                Identity::Lookup(LookupIdentity { left, .. })
-                | Identity::PhantomLookup(PhantomLookupIdentity { left, .. }) => {
-                    Some((index, left))
+                Identity::BusInteraction(bus_interaction) if bus_interaction.is_send() => {
+                    Some((index, &bus_interaction.selected_tuple))
                 }
                 _ => None,
             })
@@ -457,13 +456,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
             return Ok(None);
         }
 
-        let is_machine_call = matches!(
-            identity,
-            Identity::Lookup(..)
-                | Identity::Permutation(..)
-                | Identity::PhantomLookup(..)
-                | Identity::PhantomPermutation(..)
-        );
+        let is_machine_call = matches!(identity, Identity::BusInteraction(bi) if bi.is_send());
         if is_machine_call && unknown_strategy == UnknownStrategy::Zero {
             // The fact that we got to the point where we assume 0 for unknown cells, but this identity
             // is still not complete, means that either the inputs or the machine is under-constrained.

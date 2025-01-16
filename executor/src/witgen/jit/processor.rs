@@ -293,18 +293,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
     }
 }
 
-fn is_machine_call<T>(identity: &Identity<T>) -> bool {
+fn is_machine_call<T: FieldElement>(identity: &Identity<T>) -> bool {
     match identity {
-        Identity::Lookup(_)
-        | Identity::Permutation(_)
-        | Identity::PhantomLookup(_)
-        | Identity::PhantomPermutation(_) => true,
-        // TODO(bus_interaction): Bus interactions are currently ignored,
-        // so processing them does not succeed. We currently assume that for
-        // every bus interaction, there is an equivalent (phantom) lookup or
-        // permutation constraint.
-        // Returning false here to give JITing a chance to succeed.
-        Identity::PhantomBusInteraction(_) => false,
+        Identity::BusInteraction(bus_interaction) => bus_interaction.is_send(),
         Identity::Polynomial(_) | Identity::Connect(_) => false,
     }
 }

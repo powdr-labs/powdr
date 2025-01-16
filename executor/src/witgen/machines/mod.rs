@@ -367,12 +367,10 @@ impl<'a, T: FieldElement> Connection<'a, T> {
                     receive
                         .multiplicity
                         .as_ref()
-                        .map(|multiplicity| match multiplicity {
-                            AlgebraicExpression::Reference(reference) => reference.poly_id,
-                            _ => unimplemented!(
-                                "Only simple references are supported, got: {}",
-                                multiplicity
-                            ),
+                        .and_then(|multiplicity| match multiplicity {
+                            AlgebraicExpression::Reference(reference) => Some(reference.poly_id),
+                            // For receives of permutations, we would have complex expressions here.
+                            _ => None,
                         });
                 Some(Connection {
                     id: send.id,

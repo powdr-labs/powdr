@@ -7,8 +7,7 @@ use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, LookupIdentity,
-    PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolynomialIdentity,
+    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolynomialIdentity,
     PolynomialType,
 };
 use powdr_number::FieldElement;
@@ -162,18 +161,19 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                 self.process_equality_on_row(expression, row_offset, T::from(0).into())
             }
-            Identity::Lookup(LookupIdentity { id, left, .. })
-            | Identity::Permutation(PermutationIdentity { id, left, .. })
-            | Identity::PhantomPermutation(PhantomPermutationIdentity { id, left, .. })
-            | Identity::PhantomLookup(PhantomLookupIdentity { id, left, .. }) => self.process_call(
-                can_process,
-                *id,
-                &left.selector,
-                &left.expressions,
-                row_offset,
-            ),
-            // TODO(bus_interaction)
-            Identity::PhantomBusInteraction(_) => ProcessResult::empty(),
+            Identity::BusInteraction(bus_interaction) => {
+                if bus_interaction.is_send() {
+                    self.process_call(
+                        can_process,
+                        bus_interaction.id,
+                        &bus_interaction.selected_tuple.selector,
+                        &bus_interaction.selected_tuple.expressions,
+                        row_offset,
+                    )
+                } else {
+                    ProcessResult::empty()
+                }
+            }
             Identity::Connect(_) => ProcessResult::empty(),
         };
         self.ingest_effects(result, Some((id.id(), row_offset)))
