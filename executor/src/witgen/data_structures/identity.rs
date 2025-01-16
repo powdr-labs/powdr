@@ -8,6 +8,7 @@ use powdr_ast::{
     },
     parsed::visitor::Children,
 };
+use powdr_number::FieldElement;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 enum InteractionType {
@@ -23,6 +24,48 @@ pub struct BusInteractionIdentity<T> {
     pub tuple: ExpressionList<T>,
     pub latch: AlgebraicExpression<T>,
     interaction_type: InteractionType,
+}
+
+impl<T: FieldElement> BusInteractionIdentity<T> {
+    pub fn try_match_static<'a>(
+        &self,
+        all_bus_interactions: &'a [BusInteractionIdentity<T>],
+    ) -> Option<&'a BusInteractionIdentity<T>> {
+        assert_eq!(self.interaction_type, InteractionType::Send);
+        let id = self.interaction_id()?;
+
+        let mut matching_receive = None;
+        for other in all_bus_interactions {
+            if other.interaction_id() == Some(id) {
+                match matching_receive {
+                    None => {
+                        matching_receive = Some(other);
+                    }
+                    // Multiple matches
+                    Some(_) => {
+                        return None;
+                    }
+                }
+            }
+        }
+
+        matching_receive
+    }
+
+    fn interaction_id(&self) -> Option<T> {
+        match &self.tuple.0[0] {
+            AlgebraicExpression::Number(id) => Some(*id),
+            _ => None,
+        }
+    }
+
+    pub fn is_send(&self) -> bool {
+        self.interaction_type == InteractionType::Send
+    }
+
+    pub fn is_receive(&self) -> bool {
+        self.interaction_type == InteractionType::Receive
+    }
 }
 
 impl<T> Children<AlgebraicExpression<T>> for BusInteractionIdentity<T> {
