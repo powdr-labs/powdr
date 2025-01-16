@@ -360,10 +360,13 @@ impl<F: FieldElement> Elem<F> {
     /// Try to interpret the value of a field as a binary, if it can be represented either as a
     /// u32 or a i32.
     pub fn try_from_fe_as_bin(value: &F) -> Option<Self> {
-        i32::try_from(value.to_signed_integer())
-            .ok()
+        let integer = value.to_signed_integer();
+
+        u32::try_from(&integer)
             .map(From::from)
+            .or_else(|_| i32::try_from(integer).map(From::from))
             .map(Self::Binary)
+            .ok()
     }
 
     pub fn from_u32_as_fe(value: u32) -> Self {
