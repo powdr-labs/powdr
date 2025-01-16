@@ -5,10 +5,10 @@ use std::{
 };
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{Identity, PolyID, PolynomialType};
+use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
-use crate::witgen::FixedData;
+use crate::witgen::{data_structures::identity::Identity, FixedData};
 
 use super::{
     effect::{format_code, Effect},

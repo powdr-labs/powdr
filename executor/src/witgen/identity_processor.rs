@@ -8,11 +8,9 @@ use powdr_ast::analyzed::{
 use powdr_number::FieldElement;
 
 use crate::witgen::data_structures::mutable_state::MutableState;
-use crate::{
-    witgen::{global_constraints::CombinedRangeConstraintSet, EvalError},
-    Identity,
-};
+use crate::witgen::{global_constraints::CombinedRangeConstraintSet, EvalError};
 
+use super::data_structures::identity::Identity;
 use super::{
     affine_expression::AlgebraicVariable, processor::OuterQuery, rows::RowPair, EvalResult,
     EvalValue, IncompleteCause, QueryCallback,

@@ -443,6 +443,7 @@ mod test {
     use super::EffectsInterpreter;
     use crate::witgen::data_structures::{
         finalizable_data::{CompactData, CompactDataRef},
+        identity::convert,
         mutable_state::MutableState,
     };
     use crate::witgen::global_constraints;
@@ -468,8 +469,9 @@ mod test {
         let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(&pil);
 
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
+        let identities = convert(&analyzed.identities);
         let (fixed_data, retained_identities) =
-            global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
+            global_constraints::set_global_constraints(fixed_data, &identities);
         let machines = MachineExtractor::new(&fixed_data).split_out_machines(retained_identities);
         let [KnownMachine::BlockMachine(machine)] = machines
             .iter()

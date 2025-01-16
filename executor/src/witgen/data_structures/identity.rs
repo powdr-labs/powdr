@@ -9,7 +9,7 @@ use powdr_ast::{
     parsed::visitor::Children,
 };
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct BusInteractionIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
@@ -47,7 +47,7 @@ impl<T: fmt::Display + fmt::Debug> fmt::Display for BusInteractionIdentity<T> {
     }
 }
 
-#[derive(Clone, derive_more::Display)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, derive_more::Display)]
 pub enum Identity<T> {
     Polynomial(PolynomialIdentity<T>),
     Connect(ConnectIdentity<T>),
@@ -68,6 +68,20 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
             Identity::Polynomial(i) => i.children(),
             Identity::Connect(i) => i.children(),
             Identity::BusInteraction(i) => i.children(),
+        }
+    }
+}
+
+impl<T> Identity<T> {
+    pub fn contains_next_ref(&self) -> bool {
+        self.children().any(|e| e.contains_next_ref())
+    }
+
+    pub fn id(&self) -> u64 {
+        match self {
+            Identity::Polynomial(i) => i.id,
+            Identity::Connect(i) => i.id,
+            Identity::BusInteraction(i) => i.id,
         }
     }
 }

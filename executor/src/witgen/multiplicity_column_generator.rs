@@ -8,9 +8,12 @@ use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, OwnedTermi
 use powdr_number::FieldElement;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::witgen::machines::{
-    profiling::{record_end, record_start},
-    Connection,
+use crate::witgen::{
+    data_structures::identity::convert,
+    machines::{
+        profiling::{record_end, record_start},
+        Connection,
+    },
 };
 
 use super::FixedData;
@@ -41,10 +44,8 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
         // Several range constraints might point to the same target
         let mut multiplicity_columns = BTreeMap::new();
 
-        let phantom_lookups = self
-            .fixed
-            .analyzed
-            .identities
+        let identities = convert(&self.fixed.analyzed.identities);
+        let phantom_lookups = identities
             .iter()
             .filter_map(|identity| match identity {
                 // TODO(bus_interaction)

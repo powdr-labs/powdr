@@ -7,15 +7,17 @@ use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity,
+    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, LookupIdentity,
     PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolynomialIdentity,
     PolynomialType,
 };
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    data_structures::mutable_state::MutableState, global_constraints::RangeConstraintSet,
-    range_constraints::RangeConstraint, FixedData, QueryCallback,
+    data_structures::{identity::Identity, mutable_state::MutableState},
+    global_constraints::RangeConstraintSet,
+    range_constraints::RangeConstraint,
+    FixedData, QueryCallback,
 };
 
 use super::{
@@ -576,6 +578,7 @@ mod test {
     use test_log::test;
 
     use crate::witgen::{
+        data_structures::identity::convert,
         global_constraints,
         jit::{effect::format_code, test_util::read_pil, variable::Cell},
         machines::{Connection, FixedLookup, KnownMachine},
@@ -598,8 +601,9 @@ mod test {
     fn solve_on_rows(input: &str, rows: &[i32], known_cells: Vec<(&str, i32)>) -> String {
         let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(input);
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
+        let identities = convert(&analyzed.identities);
         let (fixed_data, retained_identities) =
-            global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
+            global_constraints::set_global_constraints(fixed_data, &identities);
 
         let fixed_lookup_connections = retained_identities
             .iter()
