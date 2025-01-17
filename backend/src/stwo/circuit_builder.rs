@@ -1,4 +1,5 @@
 use itertools::Itertools;
+use num_traits::Zero;
 use core::unreachable;
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, TerminalAccess};
@@ -65,7 +66,7 @@ pub struct PowdrEval<T> {
     witness_columns: BTreeMap<PolyID, (usize, usize)>,
     constant_shifted: BTreeMap<PolyID, usize>,
     constant_columns: BTreeMap<PolyID, usize>,
-    //if PowdrEval continue this implementation: one PowdrEval for each machine, then the stages index may not needed,
+    //if PowdrEval continue this implementation: one PowdrEval for each machine,for each stage, then the stages index may not needed,
     //avoiding stage for now
     // for each stage, the number of witness columns. There is always a least one stage, possibly empty
     pub challenges_by_stage: Vec<Vec<u64>>,
@@ -140,7 +141,7 @@ struct Data<'a, F> {
     constant_shifted_eval: &'a BTreeMap<PolyID, F>,
     constant_eval: &'a BTreeMap<PolyID, F>,
     //vector is for different stages
-    //challenges: &'a [BTreeMap<&'a u64, SecureField>],
+    challenges: &'a [BTreeMap<&'a u64, F>],
 }
 
 impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
@@ -162,11 +163,10 @@ impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
         unimplemented!("Public references are not supported in stwo yet")
     }
 
-    fn get_challenge(&self, _challenge: &Challenge) -> F {
-        unimplemented!("Challenges are not supported in stwo yet")
-        // self.challenges[challenge.stage as usize][&challenge.id]
-        //     .clone()
-        //     .into()
+    fn get_challenge(&self, challenge: &Challenge) -> F {
+        self.challenges[challenge.stage as usize][&challenge.id]
+            .clone()
+            .into()
     }
 }
 
@@ -227,7 +227,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             witness_eval: &witness_eval,
             constant_shifted_eval: &constant_shifted_eval,
             constant_eval: &constant_eval,
-            //challenges: &BTreeMap::new(),
+            challenges: &[BTreeMap::new(); 1],
         };
         let mut evaluator =
             ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {

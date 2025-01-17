@@ -3,8 +3,8 @@ use num_traits::Zero;
 use powdr_ast::analyzed::{Analyzed, DegreeRange};
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
-use powdr_number::FieldElement;
 use powdr_executor::witgen::WitgenCallback;
+use powdr_number::FieldElement;
 
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
@@ -214,7 +214,11 @@ where
         self.proving_key = proving_key;
     }
 
-    pub fn prove(&self, witness: &[(String, Vec<F>)],witgen_callback: WitgenCallback<F>) -> Result<Vec<u8>, String> {
+    pub fn prove(
+        &self,
+        witness: &[(String, Vec<F>)],
+        witgen_callback: WitgenCallback<F>,
+    ) -> Result<Vec<u8>, String> {
         let config = get_config();
         let domain_degree_range = DegreeRange {
             min: self
@@ -244,9 +248,7 @@ where
             .collect();
         let circuit = PowdrCircuit::new(&self.split).with_witgen_callback(witgen_callback);
 
-        let tree_span_provider = &mut TraceLocationAllocator::default();
-        //Each column size in machines needs its own component, the components from different machines are stored in this vector
-        let mut components = Vec::new();
+        // below is stage0
 
         //The preprocessed columns needs to be indexed in the whole execution instead of each machine, so we need to keep track of the offset
         let mut constant_cols_offset_acc = 0;
@@ -254,8 +256,7 @@ where
 
         let mut constant_cols = Vec::new();
 
-        let challenge_channel = &mut <MC as MerkleChannel>::C::default();
-
+        //witness trace, constant trace for stage 0 generation
         let witness_by_machine: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = self
             .split
             .iter()
@@ -288,32 +289,7 @@ where
                     {
                         constant_cols.extend(constant_trace)
                     }
-
-                    let mut powdr_eval = PowdrEval::new(
-                        (*pil).clone(),
-                        constant_cols_offset_acc,
-                        machine_length.ilog2(),
-                    );
-
-                    let challenge = challenge_channel.draw_felt();
-
-                    let challenges_by_stage = powdr_eval
-                        .challenges_by_stage
-                        .iter()
-                        .flat_map(|(stage)| stage.iter().map(move |&index| (index, challenge)))
-                        .collect::<BTreeMap<_, _>>();
-
-                    let component = PowdrComponent::new(
-                        tree_span_provider,
-                        powdr_eval,
-                        (SecureField::zero(), None),
-                    );
-                    components.push(component);
-
                     machine_log_sizes.insert(machine.clone(), machine_length.ilog2());
-
-                    constant_cols_offset_acc +=
-                        pil.constant_count() + get_constant_with_next_list(pil).len();
 
                     Some(
                         witness_by_machine
@@ -333,11 +309,14 @@ where
             .flatten()
             .collect();
 
+        //witness and constant trace updated for stage0, commit to them
         let twiddles_max_degree = B::precompute_twiddles(
             CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
                 .circle_domain()
                 .half_coset,
         );
+
+        let challenge_channel = &mut <MC as MerkleChannel>::C::default();
 
         let prover_channel = &mut <MC as MerkleChannel>::C::default();
         let mut commitment_scheme =
@@ -352,6 +331,78 @@ where
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(witness_by_machine);
         tree_builder.commit(prover_channel);
+
+        // after commit to the constant, witness traces, we need to drawn a challenges, along with creating the components for each machine
+
+        let tree_span_provider = &mut TraceLocationAllocator::default();
+        //Each column size in machines needs its own component, the components from different machines are stored in this vector
+        let mut components = Vec::new();
+
+        self.split.iter().zip_eq(machine_log_sizes.iter()).for_each(
+            |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
+                assert_eq!(machine_name, proof_machine_name);
+                let mut powdr_eval = PowdrEval::new(
+                    (*pil).clone(),
+                    constant_cols_offset_acc,
+                    machine_log_size,
+                );
+                
+                //Draw challenges for stage
+                let challenge = challenge_channel.draw_base_felt();
+
+
+                println!("challenges by stage from powdr_eval: {:?}", powdr_eval.challenges_by_stage);
+
+                let challenges_by_stage = powdr_eval
+                    .challenges_by_stage
+                    .iter()
+                    .flat_map(|(stage)| stage.iter().map(move |&index| (index, challenge)))
+                    .collect::<BTreeMap<_, _>>();
+
+
+                let component = PowdrComponent::new(
+                    tree_span_provider,
+                    powdr_eval,
+                    (SecureField::zero(), None),
+                );
+                components.push(component);
+
+                constant_cols_offset_acc +=
+                    pil.constant_count() + get_constant_with_next_list(pil).len();
+            },
+        );
+
+        // self
+        // .split
+        // .iter()
+        // .filter_map(|(machine, pil)| {
+        //         let mut powdr_eval = PowdrEval::new(
+        //             (*pil).clone(),
+        //             constant_cols_offset_acc,
+        //             machine_length.ilog2(),
+        //         );
+
+        //         let challenge = challenge_channel.draw_felt();
+
+        //         let challenges_by_stage = powdr_eval
+        //             .challenges_by_stage
+        //             .iter()
+        //             .flat_map(|(stage)| stage.iter().map(move |&index| (index, challenge)))
+        //             .collect::<BTreeMap<_, _>>();
+
+        //         let component = PowdrComponent::new(
+        //             tree_span_provider,
+        //             powdr_eval,
+        //             (SecureField::zero(), None),
+        //         );
+        //         components.push(component);
+
+        //         constant_cols_offset_acc +=
+        //             pil.constant_count() + get_constant_with_next_list(pil).len();
+
+        //         )
+        //     }
+        // )
 
         let mut components_slice: Vec<&dyn ComponentProver<B>> = components
             .iter_mut()

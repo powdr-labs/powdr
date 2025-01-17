@@ -20,6 +20,7 @@ mod circuit_builder;
 mod proof;
 mod prover;
 mod stage_prover;
+mod traits;
 
 struct RestrictedFactory;
 
@@ -85,7 +86,7 @@ where
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-        Ok(StwoProver::prove(self, witness,witgen_callback)?)
+        Ok(StwoProver::prove(self, witness, witgen_callback)?)
     }
     fn export_proving_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
         self.export_proving_key(output)
