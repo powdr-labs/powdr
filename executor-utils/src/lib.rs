@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -41,6 +42,9 @@ impl<T: FieldElement> WitgenCallback<T> {
 #[derive(Serialize, Deserialize)]
 pub struct VariablySizedColumn<F> {
     column_by_size: BTreeMap<DegreeType, Vec<F>>,
+    /// If this is Some(x), then all sizes of this column have this value
+    /// in all rows except the first and the last.
+    constant_inner_value: Option<F>,
 }
 
 #[derive(Debug)]
@@ -66,23 +70,46 @@ impl<F> VariablySizedColumn<F> {
             .get(&size)
             .map(|column| column.as_slice())
     }
+
+    /// If this returns Some(x), then all sizes of this column have this value
+    /// in all rows except the first and the last.
+    pub fn has_constant_inner_value(&self) -> &Option<F> {
+        &self.constant_inner_value
+    }
 }
 
-impl<F> From<Vec<F>> for VariablySizedColumn<F> {
+impl<F: PartialEq + Copy> From<Vec<F>> for VariablySizedColumn<F> {
     fn from(column: Vec<F>) -> Self {
+        let constant_inner_value = constant_inner_value(&column);
         VariablySizedColumn {
             column_by_size: [(column.len() as DegreeType, column)].into_iter().collect(),
+            constant_inner_value,
         }
     }
 }
 
-impl<F> From<Vec<Vec<F>>> for VariablySizedColumn<F> {
+impl<F: PartialEq + Copy> From<Vec<Vec<F>>> for VariablySizedColumn<F> {
     fn from(columns: Vec<Vec<F>>) -> Self {
+        let constant_inner_values = columns
+            .iter()
+            .map(|v| constant_inner_value(v))
+            .collect::<Option<Vec<_>>>();
+        let constant_inner_value =
+            constant_inner_values.and_then(|v| v.iter().all_equal_value().ok().cloned());
         VariablySizedColumn {
             column_by_size: columns
                 .into_iter()
                 .map(|column| (column.len() as DegreeType, column))
                 .collect(),
+            constant_inner_value,
         }
     }
+}
+
+fn constant_inner_value<F: PartialEq + Copy>(column: &[F]) -> Option<F> {
+    column[1..column.len() - 1]
+        .iter()
+        .all_equal_value()
+        .ok()
+        .cloned()
 }

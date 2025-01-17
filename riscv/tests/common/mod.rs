@@ -35,7 +35,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
     // TODO remove the guard once the executor is implemented for BB
     if T::known_field().unwrap() == KnownField::GoldilocksField {
         let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
-        powdr_riscv_executor::execute_fast(
+        powdr_riscv_executor::execute(
             &analyzed,
             Default::default(),
             pipeline.data_callback().unwrap(),
@@ -63,7 +63,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
         let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
         let pil = pipeline.compute_optimized_pil().unwrap();
         let fixed = pipeline.compute_fixed_cols().unwrap().clone();
-        let execution = powdr_riscv_executor::execute(
+        let execution = powdr_riscv_executor::execute_with_witness(
             &analyzed,
             &pil,
             fixed,

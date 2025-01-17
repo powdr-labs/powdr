@@ -3,6 +3,7 @@
 
 mod add_sub;
 mod arith;
+mod arith256;
 mod binary;
 mod memory;
 mod pointer_arith;

@@ -171,7 +171,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         can_process: CanProcess,
         id: &'a Identity<T>,
         row_offset: i32,
-    ) -> Result<bool, Error> {
+    ) -> Result<Vec<Variable>, Error> {
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => self
                 .process_equality_on_row(
@@ -339,7 +339,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    fn process_assignments(&mut self) -> Result<(), Error> {
+    fn process_assignments(&mut self) -> Result<Vec<Variable>, Error> {
+        let mut updated_variables = vec![];
         loop {
             let mut progress = false;
             // We need to take them out because ingest_effects needs a &mut self.
@@ -350,7 +351,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     assignment.row_offset,
                     &assignment.rhs,
                 )?;
-                progress |= self.ingest_effects(r, None);
+                let updated_vars = self.ingest_effects(r, None);
+                progress |= !updated_vars.is_empty();
+                updated_variables.extend(updated_vars);
             }
             assert!(self.assignments.is_empty());
             self.assignments = assignments;
@@ -358,7 +361,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 break;
             }
         }
-        Ok(())
+        Ok(updated_variables)
     }
 
     /// Analyze the effects and update the internal state.
@@ -369,23 +372,26 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         &mut self,
         process_result: ProcessResult<T, Variable>,
         identity_id: Option<(u64, i32)>,
-    ) -> bool {
-        let mut progress = false;
+    ) -> Vec<Variable> {
+        let mut updated_variables = vec![];
         for e in process_result.effects {
             match &e {
                 Effect::Assignment(variable, assignment) => {
                     // If the variable was determined to be a constant, we add this
                     // as a range constraint, so we can use it in future evaluations.
-                    progress |=
-                        self.add_range_constraint(variable.clone(), assignment.range_constraint());
+                    if self.add_range_constraint(variable.clone(), assignment.range_constraint()) {
+                        updated_variables.push(variable.clone());
+                    }
                     if self.known_variables.insert(variable.clone()) {
                         log::trace!("{variable} := {assignment}");
-                        progress = true;
+                        updated_variables.push(variable.clone());
                         self.code.push(e);
                     }
                 }
                 Effect::RangeConstraint(variable, rc) => {
-                    progress |= self.add_range_constraint(variable.clone(), rc.clone());
+                    if self.add_range_constraint(variable.clone(), rc.clone()) {
+                        updated_variables.push(variable.clone());
+                    }
                 }
                 Effect::MachineCall(_, _, vars) => {
                     // If the machine call is already complete, it means that we should
@@ -396,10 +402,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                         assert!(process_result.complete);
                         for v in vars {
                             // Inputs are already known, but it does not hurt to add all of them.
-                            self.known_variables.insert(v.clone());
+                            if self.known_variables.insert(v.clone()) {
+                                updated_variables.push(v.clone());
+                            }
                         }
-                        progress = true;
-
                         self.code.push(e);
                     }
                 }
@@ -414,10 +420,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 self.complete_identities.insert(identity_id);
             }
         }
-        if progress {
-            self.process_assignments().unwrap();
+        if !updated_variables.is_empty() {
+            // TODO we could have an occurrence map for the assignments as well.
+            updated_variables.extend(self.process_assignments().unwrap());
         }
-        progress
+        updated_variables
     }
 
     /// Adds a range constraint to the set of derived range constraints. Returns true if progress was made.
@@ -684,7 +691,10 @@ mod test {
             counter += 1;
             for row in rows {
                 for id in retained_identities.iter() {
-                    progress |= witgen.process_identity(&mutable_state, id, *row).unwrap();
+                    progress |= !witgen
+                        .process_identity(&mutable_state, id, *row)
+                        .unwrap()
+                        .is_empty();
                 }
             }
             if !progress {

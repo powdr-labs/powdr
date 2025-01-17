@@ -33,6 +33,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         remove_constant_witness_columns(&mut pil_file);
         remove_constant_intermediate_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
+        remove_equal_constrained_witness_columns(&mut pil_file);
         remove_trivial_identities(&mut pil_file);
         remove_duplicate_identities(&mut pil_file);
 
@@ -132,7 +133,7 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
             Box::new(value.iter().flat_map(|v| {
                 v.all_children().flat_map(|e| {
                     if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
-                        Some(poly_id_to_definition_name[poly_id].into())
+                        Some(poly_id_to_definition_name[poly_id].0.into())
                     } else {
                         None
                     }
@@ -167,33 +168,37 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     pil_file.remove_trait_impls(&impls_to_remove);
 }
 
-/// Builds a lookup-table that can be used to turn array elements
-/// (in form of their poly ids) into the names of the arrays.
+/// Builds a lookup-table that can be used to turn all poly ids into the names of the symbols that define them.
+/// For array elements, this contains the array name and the index of the element in the array.
 fn build_poly_id_to_definition_name_lookup(
     pil_file: &Analyzed<impl FieldElement>,
-) -> BTreeMap<PolyID, &String> {
-    let mut poly_id_to_definition_name = BTreeMap::new();
-    #[allow(clippy::iter_over_hash_type)]
-    for (name, (symbol, _)) in &pil_file.definitions {
-        if matches!(symbol.kind, SymbolKind::Poly(_)) {
-            symbol.array_elements().for_each(|(_, id)| {
-                poly_id_to_definition_name.insert(id, name);
-            });
-        }
-    }
-    #[allow(clippy::iter_over_hash_type)]
-    for (name, (symbol, _)) in &pil_file.intermediate_columns {
-        symbol.array_elements().for_each(|(_, id)| {
-            poly_id_to_definition_name.insert(id, name);
-        });
-    }
-    poly_id_to_definition_name
+) -> BTreeMap<PolyID, (&String, Option<usize>)> {
+    pil_file
+        .definitions
+        .iter()
+        .map(|(name, (symbol, _))| (name, symbol))
+        .chain(
+            pil_file
+                .intermediate_columns
+                .iter()
+                .map(|(name, (symbol, _))| (name, symbol)),
+        )
+        .filter(|(_, symbol)| matches!(symbol.kind, SymbolKind::Poly(_)))
+        .flat_map(|(name, symbol)| {
+            symbol
+                .array_elements()
+                .enumerate()
+                .map(move |(idx, (_, id))| {
+                    let array_pos = symbol.is_array().then_some(idx);
+                    (id, (name, array_pos))
+                })
+        })
+        .collect()
 }
-
 /// Collect all names that are referenced in identities and public declarations.
 fn collect_required_symbols<'a, T: FieldElement>(
     pil_file: &'a Analyzed<T>,
-    poly_id_to_definition_name: &BTreeMap<PolyID, &'a String>,
+    poly_id_to_definition_name: &BTreeMap<PolyID, (&'a String, Option<usize>)>,
 ) -> HashSet<SymbolReference<'a>> {
     let mut required_names: HashSet<SymbolReference<'a>> = Default::default();
     required_names.extend(
@@ -212,7 +217,7 @@ fn collect_required_symbols<'a, T: FieldElement>(
     for id in &pil_file.identities {
         id.pre_visit_expressions(&mut |e: &AlgebraicExpression<T>| {
             if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
-                required_names.insert(poly_id_to_definition_name[poly_id].into());
+                required_names.insert(poly_id_to_definition_name[poly_id].0.into());
             }
         });
     }
@@ -615,23 +620,31 @@ fn constrained_to_constant<T: FieldElement>(
     None
 }
 
-/// Removes identities that evaluate to zero and lookups with empty columns.
+/// Removes identities that evaluate to zero (including constraints of the form "X = X") and lookups with empty columns.
 fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let to_remove = pil_file
         .identities
         .iter()
         .enumerate()
         .filter_map(|(index, identity)| match identity {
-            Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                if let AlgebraicExpression::Number(n) = expression {
-                    if *n == 0.into() {
-                        return Some(index);
-                    }
-                    // Otherwise the constraint is not satisfiable,
-                    // but better to get the error elsewhere.
+            Identity::Polynomial(PolynomialIdentity { expression, .. }) => match expression {
+                AlgebraicExpression::Number(n) => {
+                    // Return None for non-satisfiable constraints - better to get the error elsewhere
+                    (*n == 0.into()).then_some(index)
                 }
-                None
-            }
+                AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                    left,
+                    op: AlgebraicBinaryOperator::Sub,
+                    right,
+                }) => match (left.as_ref(), right.as_ref()) {
+                    (
+                        AlgebraicExpression::Reference(left),
+                        AlgebraicExpression::Reference(right),
+                    ) => (left == right).then_some(index),
+                    _ => None,
+                },
+                _ => None,
+            },
             Identity::Lookup(LookupIdentity { left, right, .. })
             | Identity::Permutation(PermutationIdentity { left, right, .. })
             | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
@@ -769,4 +782,110 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         })
         .collect();
     pil_file.remove_identities(&to_remove);
+}
+
+/// Identifies witness columns that are directly constrained to be equal to other witness columns
+/// through polynomial identities of the form "x = y" and returns a tuple ((name, id), (name, id))
+/// for each pair of identified columns
+fn equal_constrained<T: FieldElement>(
+    expression: &AlgebraicExpression<T>,
+    poly_id_to_array_elem: &BTreeMap<PolyID, (&String, Option<usize>)>,
+) -> Option<((String, PolyID), (String, PolyID))> {
+    match expression {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Sub,
+            right,
+        }) => match (left.as_ref(), right.as_ref()) {
+            (AlgebraicExpression::Reference(l), AlgebraicExpression::Reference(r)) => {
+                let is_valid = |x: &AlgebraicReference, left: bool| {
+                    x.is_witness()
+                        && if left {
+                            // We don't allow the left-hand side to be an array element
+                            // to preserve array integrity (e.g. `x = y` is valid, but `x[0] = y` is not)
+                            poly_id_to_array_elem.get(&x.poly_id).unwrap().1.is_none()
+                        } else {
+                            true
+                        }
+                };
+
+                if is_valid(l, true) && is_valid(r, false) && r.next == l.next {
+                    Some(if l.poly_id > r.poly_id {
+                        ((l.name.clone(), l.poly_id), (r.name.clone(), r.poly_id))
+                    } else {
+                        ((r.name.clone(), r.poly_id), (l.name.clone(), l.poly_id))
+                    })
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    let poly_id_to_array_elem = build_poly_id_to_definition_name_lookup(pil_file);
+    let mut substitutions: BTreeMap<(String, PolyID), (String, PolyID)> = pil_file
+        .identities
+        .iter()
+        .filter_map(|id| {
+            if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
+                equal_constrained(expression, &poly_id_to_array_elem)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    resolve_transitive_substitutions(&mut substitutions);
+
+    let (subs_by_id, subs_by_name): (HashMap<_, _>, HashMap<_, _>) = substitutions
+        .iter()
+        .map(|(k, v)| ((k.1, v), (&k.0, v)))
+        .unzip();
+
+    pil_file.post_visit_expressions_in_identities_mut(&mut |e: &mut AlgebraicExpression<_>| {
+        if let AlgebraicExpression::Reference(ref mut reference) = e {
+            if let Some((replacement_name, replacement_id)) = subs_by_id.get(&reference.poly_id) {
+                reference.poly_id = *replacement_id;
+                reference.name = replacement_name.clone();
+            }
+        }
+    });
+
+    pil_file.post_visit_expressions_mut(&mut |e: &mut Expression| {
+        if let Expression::Reference(_, Reference::Poly(reference)) = e {
+            if let Some((replacement_name, _)) = subs_by_name.get(&reference.name) {
+                reference.name = replacement_name.clone();
+            }
+        }
+    });
+}
+
+fn resolve_transitive_substitutions(subs: &mut BTreeMap<(String, PolyID), (String, PolyID)>) {
+    let mut changed = true;
+    while changed {
+        changed = false;
+        let keys: Vec<_> = subs
+            .keys()
+            .map(|(name, id)| (name.to_string(), *id))
+            .collect();
+
+        for key in keys {
+            let Some(target_key) = subs.get(&key) else {
+                continue;
+            };
+
+            let Some(new_target) = subs.get(target_key) else {
+                continue;
+            };
+
+            if subs.get(&key).unwrap() != new_target {
+                subs.insert(key, new_target.clone());
+                changed = true;
+            }
+        }
+    }
 }

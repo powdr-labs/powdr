@@ -35,7 +35,7 @@ impl<'a, F: FieldElement> Machine<'a, F> {
             .unwrap();
 
         if size == 0 {
-            // Empty machines are removed always valid.
+            // Empty machines are always valid.
             return None;
         }
 
