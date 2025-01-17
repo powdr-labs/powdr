@@ -1187,6 +1187,12 @@ pub struct AlgebraicReferenceThin {
     pub next: bool,
 }
 
+impl From<&AlgebraicReference> for AlgebraicReferenceThin {
+    fn from(value: &AlgebraicReference) -> Self {
+        value.to_thin()
+    }
+}
+
 #[derive(Debug, Clone, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AlgebraicReference {
     /// Name of the polynomial - just for informational purposes.
