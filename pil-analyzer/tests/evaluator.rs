@@ -21,7 +21,6 @@ fn parse_and_evaluate_symbol(input: &str, symbol: &str) -> String {
         symbol,
         &mut Definitions {
             definitions: &analyzed.definitions,
-            solved_impls: &analyzed.solved_impls,
         },
     )
     .unwrap()
@@ -32,7 +31,6 @@ pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
     let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
     let mut symbols = evaluator::Definitions {
         definitions: &analyzed.definitions,
-        solved_impls: &analyzed.solved_impls,
     };
     let function = symbols.lookup(function, &None).unwrap();
     let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)

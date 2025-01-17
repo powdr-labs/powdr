@@ -11,7 +11,7 @@ use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
         AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge, Expression,
-        FunctionValueDefinition, Reference, SolvedTraitImpls, Symbol, SymbolKind, TypedExpression,
+        FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
     },
     parsed::{
         display::quote,
@@ -29,15 +29,8 @@ use powdr_parser_util::SourceRef;
 pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    solved_impls: &'a SolvedTraitImpls,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
-    evaluate(
-        expr,
-        &mut Definitions {
-            definitions,
-            solved_impls,
-        },
-    )
+    evaluate(expr, &mut Definitions { definitions })
 }
 
 /// Evaluates an expression given a symbol lookup implementation
@@ -529,7 +522,6 @@ impl<T> Closure<'_, T> {
 
 pub struct Definitions<'a> {
     pub definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    pub solved_impls: &'a SolvedTraitImpls,
 }
 
 impl<'a> Definitions<'a> {
@@ -537,7 +529,6 @@ impl<'a> Definitions<'a> {
     /// of SymbolLookup for the recursive call.
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        solved_impls: &'a SolvedTraitImpls,
         name: &str,
         type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
@@ -594,15 +585,16 @@ impl<'a> Definitions<'a> {
                         .into()
                     }
                 }
-                Some(FunctionValueDefinition::TraitFunction(_, _)) => {
-                    let type_args = type_args.as_ref().unwrap();
-                    let Expression::LambdaExpression(_, lambda) =
-                        solved_impls.resolve_trait_function(&name, type_args)
-                    else {
+                Some(FunctionValueDefinition::TraitFunction(trait_def, _)) => {
+                    let type_args = type_args.as_ref().unwrap().as_slice();
+                    let data = trait_def.implementations.get(type_args).unwrap();
+
+                    let Expression::LambdaExpression(_, ref lambda) = *data.function else {
                         unreachable!()
                     };
+
                     let closure = Closure {
-                        lambda,
+                        lambda: lambda,
                         environment: vec![],
                         type_args: HashMap::new(),
                     };
@@ -622,7 +614,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
         name: &str,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Self::lookup_with_symbols(self.definitions, self.solved_impls, name, type_args, self)
+        Self::lookup_with_symbols(self.definitions, name, type_args, self)
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {

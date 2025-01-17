@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 
-use powdr_ast::analyzed::{DegreeRange, TypedExpression};
+use powdr_ast::analyzed::{DegreeRange, TraitDefinition, TypedExpression};
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_ast::parsed::types::TupleType;
 use powdr_ast::parsed::{
@@ -672,11 +672,18 @@ where
                 ty: self.type_processor(&type_vars).process_type(f.ty),
             })
             .collect();
+
         let trait_decl = TraitDeclaration {
             name: self.driver.resolve_decl(&trait_decl.name),
             type_vars: trait_decl.type_vars,
             functions,
         };
+
+        // Create the trait definition
+        let trait_def = Arc::new(TraitDefinition {
+            declaration: trait_decl.clone(),
+            implementations: Default::default(),
+        });
 
         let inner_items = trait_decl
             .functions
@@ -688,19 +695,18 @@ where
                         .relative_to(&Default::default())
                         .to_string(),
                     FunctionValueDefinition::TraitFunction(
-                        Arc::new(trait_decl.clone()),
+                        Arc::clone(&trait_def),
                         function.clone(),
                     ),
                 )
             })
             .collect();
+
         let trait_functions = self.process_inner_definitions(source, inner_items);
 
         iter::once(PILItem::Definition(
             symbol,
-            Some(FunctionValueDefinition::TraitDeclaration(
-                trait_decl.clone(),
-            )),
+            Some(FunctionValueDefinition::TraitDeclaration(trait_def)),
         ))
         .chain(trait_functions)
         .collect()

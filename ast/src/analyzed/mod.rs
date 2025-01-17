@@ -7,7 +7,7 @@ use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::iter::{self, empty, once};
 use std::ops::{self, ControlFlow};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock, Weak};
 
 use itertools::Itertools;
 use num_traits::One;
@@ -21,8 +21,8 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, SourceReference,
-    TraitDeclaration, TraitImplementation, TypeDeclaration,
+    self, ArrayExpression, EnumDeclaration, EnumVariant, LambdaExpression, NamedType,
+    SourceReference, TraitDeclaration, TraitImplementation, TypeDeclaration,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
@@ -41,7 +41,7 @@ pub enum StatementIdentifier {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    pub solved_impls: SolvedTraitImpls,
+    //pub solved_impls: SolvedTraitImpls,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<T>>,
@@ -341,7 +341,7 @@ impl<T> Analyzed<T> {
             .filter(|(i, _)| !to_remove.contains(i))
             .map(|(_, impl_)| impl_)
             .collect();
-        self.solved_impls.remove_trait_impls(&to_remove_vec);
+        //self.solved_impls.remove_trait_impls(&to_remove_vec); todo: remove from funcvaldef
     }
 
     pub fn post_visit_expressions_in_identities_mut<F>(&mut self, f: &mut F)
@@ -525,6 +525,7 @@ pub fn type_from_definition(
             }
             FunctionValueDefinition::TraitFunction(trait_decl, trait_func) => {
                 let vars = trait_decl
+                    .declaration
                     .type_vars
                     .iter()
                     .map(|var| {
@@ -560,88 +561,88 @@ pub fn type_from_definition(
 
 /// Data structure to help with finding the correct implementation of a trait function
 /// given a list of type arguments.
-#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SolvedTraitImpls {
-    impls: BTreeMap<String, HashMap<Vec<Type>, ImplData>>,
-}
+// #[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema)]
+// pub struct SolvedTraitImpls {
+//     impls: BTreeMap<String, HashMap<Vec<Type>, ImplData>>,
+// }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-struct ImplData {
-    index: usize,
-    function: Arc<Expression>,
-}
+// #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+// struct ImplData {
+//     index: usize,
+//     function: Arc<Expression>,
+// }
 
-impl SolvedTraitImpls {
-    /// Returns an index into the list of trait implementations such that the corresponding
-    /// trait implementation contains the matching function for a given trait function name
-    /// and type arguments. It returns an index into the list provided by `Analyzed`.
-    pub fn resolve_trait_impl_index(&self, trait_function_name: &str, type_args: &[Type]) -> usize {
-        self.impls[trait_function_name][type_args].index
-    }
+// impl SolvedTraitImpls {
+//     /// Returns an index into the list of trait implementations such that the corresponding
+//     /// trait implementation contains the matching function for a given trait function name
+//     /// and type arguments. It returns an index into the list provided by `Analyzed`.
+//     pub fn resolve_trait_impl_index(&self, trait_function_name: &str, type_args: &[Type]) -> usize {
+//         self.impls[trait_function_name][type_args].index
+//     }
 
-    /// Returns the correct trait impl function for a given trait function name and type arguments,
-    /// if it is stored here, otherwise returns None.
-    pub fn try_resolve_trait_function(
-        &self,
-        trait_function_name: &str,
-        type_args: &[Type],
-    ) -> Option<&Expression> {
-        self.impls
-            .get(trait_function_name)
-            .and_then(|map| map.get(type_args))
-            .map(|impl_data| impl_data.function.as_ref())
-    }
+//     /// Returns the correct trait impl function for a given trait function name and type arguments,
+//     /// if it is stored here, otherwise returns None.
+//     pub fn try_resolve_trait_function(
+//         &self,
+//         trait_function_name: &str,
+//         type_args: &[Type],
+//     ) -> Option<&Expression> {
+//         self.impls
+//             .get(trait_function_name)
+//             .and_then(|map| map.get(type_args))
+//             .map(|impl_data| impl_data.function.as_ref())
+//     }
 
-    /// Returns the correct trait impl function for a given trait function name and type arguments.
-    /// It returns just the function of the trait impl.
-    pub fn resolve_trait_function(
-        &self,
-        trait_function_name: &str,
-        type_args: &[Type],
-    ) -> &Expression {
-        self.try_resolve_trait_function(trait_function_name, type_args)
-            .unwrap()
-    }
+//     /// Returns the correct trait impl function for a given trait function name and type arguments.
+//     /// It returns just the function of the trait impl.
+//     pub fn resolve_trait_function(
+//         &self,
+//         trait_function_name: &str,
+//         type_args: &[Type],
+//     ) -> &Expression {
+//         self.try_resolve_trait_function(trait_function_name, type_args)
+//             .unwrap()
+//     }
 
-    pub fn insert(
-        &mut self,
-        trait_function_name: String,
-        type_args: Vec<Type>,
-        index: usize,
-        function: Arc<Expression>,
-    ) {
-        let existing = self
-            .impls
-            .entry(trait_function_name)
-            .or_default()
-            .insert(type_args, ImplData { index, function });
-        assert!(
-            existing.is_none(),
-            "Duplicate trait impl for the same type arguments."
-        );
-    }
+//     pub fn insert(
+//         &mut self,
+//         trait_function_name: String,
+//         type_args: Vec<Type>,
+//         index: usize,
+//         function: Arc<Expression>,
+//     ) {
+//         let existing = self
+//             .impls
+//             .entry(trait_function_name)
+//             .or_default()
+//             .insert(type_args, ImplData { index, function });
+//         assert!(
+//             existing.is_none(),
+//             "Duplicate trait impl for the same type arguments."
+//         );
+//     }
 
-    /// Update the data structure after a certain set of trait impls have been removed.
-    /// This just updates the `index` fields.
-    /// Assumes that `to_remove` is sorted.
-    pub fn remove_trait_impls(&mut self, to_remove: &[usize]) {
-        for map in self.impls.values_mut() {
-            *map = map
-                .drain()
-                .filter_map(|(type_args, mut impl_data)| {
-                    match to_remove.binary_search(&impl_data.index) {
-                        Ok(_) => None,
-                        Err(index) => {
-                            // `index` is the number of removed elements before this one.
-                            impl_data.index -= index;
-                            Some((type_args, impl_data))
-                        }
-                    }
-                })
-                .collect();
-        }
-    }
-}
+//     /// Update the data structure after a certain set of trait impls have been removed.
+//     /// This just updates the `index` fields.
+//     /// Assumes that `to_remove` is sorted.
+//     pub fn remove_trait_impls(&mut self, to_remove: &[usize]) {
+//         for map in self.impls.values_mut() {
+//             *map = map
+//                 .drain()
+//                 .filter_map(|(type_args, mut impl_data)| {
+//                     match to_remove.binary_search(&impl_data.index) {
+//                         Ok(_) => None,
+//                         Err(index) => {
+//                             // `index` is the number of removed elements before this one.
+//                             impl_data.index -= index;
+//                             Some((type_args, impl_data))
+//                         }
+//                     }
+//                 })
+//                 .collect();
+//         }
+//     }
+// }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Serialize, Deserialize, JsonSchema, Copy)]
 pub struct DegreeRange {
@@ -755,14 +756,32 @@ pub enum SymbolKind {
     Other(),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Eq, PartialEq, Hash)]
 pub enum FunctionValueDefinition {
     Array(ArrayExpression<Reference>),
     Expression(TypedExpression),
     TypeDeclaration(TypeDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
-    TraitDeclaration(TraitDeclaration),
-    TraitFunction(Arc<TraitDeclaration>, NamedType),
+    TraitDeclaration(Arc<TraitDefinition>),
+    TraitFunction(Arc<TraitDefinition>, NamedType),
+}
+
+#[derive(Debug, Serialize, Deserialize, JsonSchema, Eq, PartialEq)]
+pub struct TraitDefinition {
+    pub declaration: TraitDeclaration,
+    pub implementations: HashMap<Vec<Type>, ImplData>,
+}
+
+impl Hash for TraitDefinition {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.declaration.hash(state);
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+pub struct ImplData {
+    pub index: usize,
+    pub function: Arc<Expression>,
 }
 
 impl Children<Expression> for FunctionValueDefinition {
@@ -776,7 +795,9 @@ impl Children<Expression> for FunctionValueDefinition {
                 type_declaration.children()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
-            FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
+            FunctionValueDefinition::TraitDeclaration(trait_decl) => {
+                trait_decl.declaration.children()
+            }
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children(),
         }
     }
@@ -791,7 +812,10 @@ impl Children<Expression> for FunctionValueDefinition {
                 type_declaration.children_mut()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
-            FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
+            FunctionValueDefinition::TraitDeclaration(trait_decl) => Arc::get_mut(trait_decl)
+                .expect("Should have exclusive access to TraitDeclaration")
+                .declaration
+                .children_mut(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
         }
     }

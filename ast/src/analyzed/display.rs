@@ -130,7 +130,9 @@ impl<T: Display> Display for Analyzed<T> {
                                     )) => {
                                         writeln_indented(
                                             f,
-                                            trait_declaration.to_string_with_name(&name),
+                                            trait_declaration
+                                                .declaration
+                                                .to_string_with_name(&name),
                                         )?;
                                     }
                                     _ => {

@@ -13,7 +13,7 @@ use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, ConnectIdentity, DegreeRange, Expression,
     ExpressionList, FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity,
     PhantomBusInteractionIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolyID,
-    PolynomialIdentity, PolynomialType, PublicDeclaration, SelectedExpressions, SolvedTraitImpls,
+    PolynomialIdentity, PolynomialType, PublicDeclaration, SelectedExpressions,
     StatementIdentifier, Symbol, SymbolKind,
 };
 use powdr_ast::parsed::{
@@ -35,14 +35,13 @@ use crate::{
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    solved_impls: SolvedTraitImpls,
     public_declarations: HashMap<String, PublicDeclaration>,
     proof_items: &[Expression],
     trait_impls: Vec<TraitImplementation<Expression>>,
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
-    let mut condenser = Condenser::new(&definitions, &solved_impls);
+    let mut condenser = Condenser::new(&definitions);
 
     let mut condensed_identities = vec![];
     let mut prover_functions = vec![];
@@ -186,7 +185,6 @@ pub fn condense<T: FieldElement>(
 
     Analyzed {
         definitions,
-        solved_impls,
         public_declarations,
         intermediate_columns,
         identities: condensed_identities,
@@ -203,8 +201,6 @@ pub struct Condenser<'a, T> {
     degree: Option<DegreeRange>,
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    /// Pointers to expressions for all referenced trait implementations and the concrete types.
-    solved_impls: &'a SolvedTraitImpls,
     /// Evaluation cache.
     symbol_values: SymbolCache<'a, T>,
     /// Mapping from polynomial ID to name (does not contain array elements),
@@ -231,10 +227,7 @@ pub struct Condenser<'a, T> {
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
-    pub fn new(
-        symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        solved_impls: &'a SolvedTraitImpls,
-    ) -> Self {
+    pub fn new(symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
         let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         let poly_id_to_name = symbols
             .iter()
@@ -247,7 +240,6 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         Self {
             degree: None,
             symbols,
-            solved_impls,
             symbol_values: Default::default(),
             poly_id_to_name,
             namespace: Default::default(),
@@ -368,13 +360,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         {
             return Ok(v.clone());
         }
-        let value = Definitions::lookup_with_symbols(
-            self.symbols,
-            self.solved_impls,
-            name,
-            type_args,
-            self,
-        )?;
+        let value = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
         self.symbol_values
             .entry(name.to_string())
             .or_default()
@@ -386,7 +372,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
         Definitions {
             definitions: self.symbols,
-            solved_impls: self.solved_impls,
         }
         .lookup_public_reference(name)
     }

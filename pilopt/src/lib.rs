@@ -106,7 +106,7 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
             let set_hint = (sym.kind == SymbolKind::Poly(PolynomialType::Committed)
                 && value.is_some())
             .then_some(SymbolReference::from("std::prelude::set_hint"));
-            if let Some(FunctionValueDefinition::TraitFunction(..)) = value {
+            if let Some(FunctionValueDefinition::TraitFunction(impl_map, _)) = value {
                 let type_args = n.type_args.unwrap();
                 // If this is not concrete at some point in the future,
                 // we need to substitute type variables while traversing the dependency graph.
@@ -114,9 +114,12 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
                 // This works well because we do not have bounds for user-defined traits yet
                 // and also no generic trait impls.
                 assert!(type_args.iter().all(|t| t.is_concrete_type()));
-                let impl_index = pil_file
-                    .solved_impls
-                    .resolve_trait_impl_index(&n.name, type_args);
+                let impl_index = impl_map
+                    .implementations
+                    .get(type_args.as_slice())
+                    .map(|data| data.index)
+                    .unwrap();
+
                 impls_to_retain.insert(impl_index);
                 Box::new(pil_file.trait_impls[impl_index].symbols())
             } else {

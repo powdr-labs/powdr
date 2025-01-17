@@ -41,7 +41,6 @@ pub fn run_tests<F: FieldElement>(
 ) -> Result<usize, Vec<String>> {
     let mut symbols = evaluator::Definitions {
         definitions: &analyzed.definitions,
-        solved_impls: &analyzed.solved_impls,
     };
 
     let mut errors = vec![];

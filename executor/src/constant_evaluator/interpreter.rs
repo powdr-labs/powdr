@@ -4,7 +4,7 @@ use std::{
 };
 
 use powdr_ast::{
-    analyzed::{Analyzed, FunctionValueDefinition, SolvedTraitImpls, Symbol, TypedExpression},
+    analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
     parsed::{
         types::{ArrayType, Type},
         IndexAccess,
@@ -26,7 +26,6 @@ pub fn generate_values<T: FieldElement>(
 ) -> Vec<T> {
     let symbols = CachedSymbols {
         symbols: &analyzed.definitions,
-        solved_impls: &analyzed.solved_impls,
         cache: Arc::new(RwLock::new(Default::default())),
         degree,
     };
@@ -115,7 +114,6 @@ type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    solved_impls: &'a SolvedTraitImpls,
     cache: Arc<RwLock<SymbolCache<'a, T>>>,
     degree: DegreeType,
 }
@@ -135,13 +133,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
         {
             return Ok(v.clone());
         }
-        let result = Definitions::lookup_with_symbols(
-            self.symbols,
-            self.solved_impls,
-            name,
-            type_args,
-            self,
-        )?;
+        let result = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
         self.cache
             .write()
             .unwrap()

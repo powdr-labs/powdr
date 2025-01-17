@@ -7,11 +7,12 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::structural_checks::check_structs_fields;
+use crate::type_unifier::Unifier;
 use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::Type;
+use powdr_ast::parsed::types::{TupleType, Type};
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
@@ -20,14 +21,12 @@ use powdr_ast::parsed::{
 use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
-    type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition,
-    PolynomialType, PublicDeclaration, Reference, SolvedTraitImpls, StatementIdentifier, Symbol,
-    SymbolKind,
+    type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition, ImplData,
+    PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol, SymbolKind,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::Error;
 
-use crate::traits_resolver::TraitsResolver;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -55,8 +54,8 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Erro
     analyzer.side_effect_check()?;
     analyzer.validate_structs()?;
     analyzer.type_check()?;
-    let solved_impls = analyzer.resolve_trait_impls()?;
-    analyzer.condense(solved_impls)
+    analyzer.resolve_trait_impls()?;
+    analyzer.condense()
 }
 
 #[derive(Default)]
@@ -269,19 +268,21 @@ impl PILAnalyzer {
         // by the statement processor already).
         // For Arrays, we also collect the inner expressions and expect them to be field elements.
 
-        for trait_impl in self.trait_impls.iter_mut() {
+        for (index, trait_impl) in self.trait_impls.iter_mut().enumerate() {
             let (_, def) = self
                 .definitions
-                .get(&trait_impl.name.to_string())
+                .get_mut(&trait_impl.name.to_string())
                 .expect("Trait definition not found");
-            let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = def else {
+            let Some(FunctionValueDefinition::TraitDeclaration(trait_def)) = def else {
                 unreachable!();
             };
 
             let specialized_types: Vec<_> = trait_impl
                 .functions
                 .iter()
-                .map(|named_expr| trait_impl.type_of_function(trait_decl, &named_expr.name))
+                .map(|named_expr| {
+                    trait_impl.type_of_function(&trait_def.declaration, &named_expr.name)
+                })
                 .collect();
 
             for (named_expr, specialized_type) in
@@ -360,29 +361,57 @@ impl PILAnalyzer {
         Ok(())
     }
 
-    /// Creates and returns a map for every referenced trait function with concrete type to the
-    /// corresponding trait implementation function.
-    fn resolve_trait_impls(&mut self) -> Result<SolvedTraitImpls, Vec<Error>> {
-        let all_traits = self
+    // /// Creates and returns a map for every referenced trait function with concrete type to the
+    // /// corresponding trait implementation function.
+    fn resolve_trait_impls(&mut self) -> Result<(), Vec<Error>> {
+        let mut errors = vec![];
+
+        // Extract trait data
+        let all_traits: HashSet<String> = self
             .definitions
             .iter()
-            .filter_map(|(name, (_, value))| {
-                if let Some(FunctionValueDefinition::TraitDeclaration(..)) = value {
-                    Some(name.as_str())
+            .filter_map(|(name, (_, def))| {
+                if let Some(FunctionValueDefinition::TraitDeclaration(..)) = def {
+                    Some(name.clone())
                 } else {
                     None
                 }
             })
             .collect();
-        let mut trait_solver = TraitsResolver::new(all_traits, &self.trait_impls);
 
-        // TODO building this impl map should be different from checking that all trait references
-        // have an implementation.
-        // The reason is that for building the map, we need to unfold all generic functions,
-        // which could cause an exponential blow-up. Checking that an implementation exists
-        // could maybe already done at the type-checking level.
-        // If we do that earlier, then errors here should be panics.
-        // Also we should only build the impl map for code that is reachable from entry points.
+        // Process expressions and collect needed updates
+        let updates = self.collect_trait_updates(&all_traits, &mut errors);
+
+        // Apply updates to implementation maps
+        for (trait_name, type_args, impl_index, expr) in updates {
+            if let Some(FunctionValueDefinition::TraitDeclaration(trait_def)) = self
+                .definitions
+                .get_mut(&trait_name)
+                .and_then(|(_, def)| def.as_mut())
+            {
+                Arc::get_mut(trait_def).unwrap().implementations.insert(
+                    type_args,
+                    ImplData {
+                        index: impl_index,
+                        function: expr.clone(),
+                    },
+                );
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+    fn collect_trait_updates(
+        &self,
+        trait_data: &HashSet<String>,
+        errors: &mut Vec<Error>,
+    ) -> Vec<(String, Vec<Type>, usize, Arc<Expression>)> {
+        let mut updates = Vec::new();
+
         let definitions = self
             .definitions
             .values()
@@ -394,37 +423,72 @@ impl PILAnalyzer {
                 _ => None,
             })
             .flat_map(|d| d.children());
+
         let proof_items = self.proof_items.iter();
         let trait_impls = self.trait_impls.iter().flat_map(|i| i.children());
-        let mut errors = vec![];
+
         for expr in definitions
             .chain(proof_items)
             .chain(trait_impls)
             .flat_map(|i| i.all_children())
         {
             if let Expression::Reference(source_ref, Reference::Poly(reference)) = expr {
-                if reference.type_args.is_some() {
-                    if let Err(e) = trait_solver.resolve_trait_function_reference(reference) {
-                        errors.push(source_ref.with_error(e));
+                if let Some(type_args) = &reference.type_args {
+                    let Some((trait_decl_name, trait_fn_name)) = reference.name.rsplit_once("::")
+                    else {
+                        continue;
+                    };
+                    if trait_data.contains(trait_decl_name) {
+                        // Find matching implementation
+                        let matching_impl =
+                            self.trait_impls
+                                .iter()
+                                .enumerate()
+                                .find_map(|(index, impl_)| {
+                                    let tuple_args = Type::Tuple(TupleType {
+                                        items: type_args.clone(),
+                                    });
+
+                                    // let Expression::LambdaExpression(_, lambda) =
+                                    //     impl_.functions[0].body.as_ref()
+                                    // else {
+                                    //     panic!(
+                                    //         "Expected lambda expression for trait implementation"
+                                    //     )
+                                    // };
+
+                                    Unifier::default()
+                                        .unify_types(tuple_args, impl_.type_scheme.ty.clone())
+                                        .ok()
+                                        .map(|_| (index, impl_.functions[0].body.clone()))
+                                });
+
+                        match matching_impl {
+                            Some((index, expr)) => {
+                                updates.push((
+                                    trait_decl_name.to_string(),
+                                    type_args.clone(),
+                                    index,
+                                    expr,
+                                ));
+                            }
+                            None => {
+                                errors.push(source_ref.with_error(format!(
+                                    "No matching implementation found for trait {}",
+                                    reference.name
+                                )));
+                            }
+                        }
                     }
                 }
             }
         }
 
-        if !errors.is_empty() {
-            Err(errors)
-        } else {
-            Ok(trait_solver.solved_impls())
-        }
+        updates
     }
-
-    pub fn condense<T: FieldElement>(
-        self,
-        solved_impls: SolvedTraitImpls,
-    ) -> Result<Analyzed<T>, Vec<Error>> {
+    pub fn condense<T: FieldElement>(self) -> Result<Analyzed<T>, Vec<Error>> {
         Ok(condenser::condense(
             self.definitions,
-            solved_impls,
             self.public_declarations,
             &self.proof_items,
             self.trait_impls,
@@ -535,14 +599,10 @@ impl PILAnalyzer {
                 }
             };
             u64::try_from(
-                evaluator::evaluate_expression::<GoldilocksField>(
-                    &e,
-                    &self.definitions,
-                    &Default::default(),
-                )
-                .unwrap()
-                .try_to_integer()
-                .unwrap(),
+                evaluator::evaluate_expression::<GoldilocksField>(&e, &self.definitions)
+                    .unwrap()
+                    .try_to_integer()
+                    .unwrap(),
             )
             .unwrap()
         };

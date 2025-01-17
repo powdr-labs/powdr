@@ -189,7 +189,6 @@ impl<'a, T: FieldElement, QueryCallback: super::QueryCallback<T>> SymbolLookup<'
             }
             None => Definitions::lookup_with_symbols(
                 &self.fixed_data.analyzed.definitions,
-                &self.fixed_data.analyzed.solved_impls,
                 name,
                 type_args,
                 self,
