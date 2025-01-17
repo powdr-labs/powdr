@@ -14,8 +14,22 @@ use crate::witgen::{rows::Row, FixedData};
 use super::padded_bitvec::PaddedBitVec;
 
 pub struct ColumnLayout {
+    /// The ID of the first column used in the table.
     pub first_column_id: u64,
+    /// The length of a row in the table.
     pub column_count: usize,
+}
+
+impl ColumnLayout {
+    pub fn from_id_list<'a>(column_ids: impl Iterator<Item = &'a PolyID>) -> Self {
+        let col_id_range = column_ids.map(|id| id.id).minmax();
+        let (first_column_id, last_column_id) = col_id_range.into_option().unwrap();
+        let column_count = (last_column_id - first_column_id + 1) as usize;
+        Self {
+            first_column_id,
+            column_count,
+        }
+    }
 }
 
 /// Sequence of rows of field elements, stored in a compact form.
@@ -36,10 +50,11 @@ pub struct CompactData<T> {
 
 impl<T: FieldElement> CompactData<T> {
     /// Creates a new empty compact data storage.
-    pub fn new(column_ids: &[PolyID]) -> Self {
-        let col_id_range = column_ids.iter().map(|id| id.id).minmax();
-        let (first_column_id, last_column_id) = col_id_range.into_option().unwrap();
-        let column_count = (last_column_id - first_column_id + 1) as usize;
+    pub fn new<'a>(column_ids: impl Iterator<Item = &'a PolyID>) -> Self {
+        let ColumnLayout {
+            column_count,
+            first_column_id,
+        } = ColumnLayout::from_id_list(column_ids);
         Self {
             first_column_id,
             column_count,
@@ -207,7 +222,7 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
     ) -> Self {
         let column_ids = column_ids.iter().cloned().sorted().collect::<Vec<_>>();
         Self {
-            finalized_data: CompactData::new(&column_ids),
+            finalized_data: CompactData::new(column_ids.iter()),
             post_finalized_data: rows.collect_vec(),
             column_ids,
             fixed_data,

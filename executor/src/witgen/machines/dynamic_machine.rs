@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::jit::single_step_processor::SingleStepProcessor;
 use crate::witgen::machines::{Machine, MachineParts};
 use crate::witgen::processor::{OuterQuery, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
@@ -30,6 +31,7 @@ pub struct DynamicMachine<'a, T: FieldElement> {
     latch: Option<Expression<T>>,
     name: String,
     degree: DegreeType,
+    jit_processor: SingleStepProcessor<'a, T>,
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
@@ -53,11 +55,33 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
     /// Runs the machine without any arguments from the first row.
     fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
         assert!(self.data.is_empty());
-        let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self
-            .process(first_row, 0, mutable_state, None, true)
-            .updated_data
-            .block;
+        if self.jit_processor.try_compile(mutable_state) {
+            let [first_row, second_row] = self.compute_first_two_rows(mutable_state);
+            log::trace!(
+                "Running main machine from row 0 using JIT with the following initial values in the first two rows:\n{}\n{}",
+                first_row.render_values(false, &self.parts),
+                second_row.render_values(false, &self.parts)
+            );
+            self.data.push(first_row);
+            self.data.push(second_row);
+            self.data.finalize_all();
+            for row_index in 0.. {
+                let mut data_ref = self.data.append_new_finalized_rows(1);
+                data_ref.row_offset -= 1;
+                self.jit_processor.compute_next_row(mutable_state, data_ref);
+
+                // TODO termination condition?
+                if row_index > 10000 {
+                    break;
+                }
+            }
+        } else {
+            let first_row = self.compute_partial_first_row(mutable_state);
+            self.data = self
+                .process(first_row, 0, mutable_state, None, true)
+                .updated_data
+                .block;
+        }
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -130,6 +154,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         latch: Option<Expression<T>>,
     ) -> Self {
         let data = FinalizableData::new(&parts.witnesses, fixed_data);
+        let jit_processor = SingleStepProcessor::new(fixed_data, parts.clone(), data.layout());
 
         Self {
             degree: parts.common_degree_range().max,
@@ -139,6 +164,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
             data,
             publics: Default::default(),
             latch,
+            jit_processor,
         }
     }
 
@@ -209,6 +235,47 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         let mut block = processor.finish().block;
         assert!(block.len() == 2);
         block.pop().unwrap()
+    }
+
+    /// Runs the solver on the rows degree -1, 0 and 1 in order to fully compute the first two
+    /// rows from identities like `pc' = (1 - first_step') * <...>`.
+    fn compute_first_two_rows<Q: QueryCallback<T>>(
+        &self,
+        mutable_state: &MutableState<'a, T, Q>,
+    ) -> [Row<T>; 2] {
+        let data = FinalizableData::with_initial_rows_in_progress(
+            &self.parts.witnesses,
+            [
+                Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree)),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(1, self.degree)),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(2, self.degree)),
+            ]
+            .into_iter(),
+            self.fixed_data,
+        );
+
+        let mut processor = BlockProcessor::new(
+            RowIndex::from_i64(-1, self.degree),
+            // Shouldn't need any publics at this point
+            SolverState::without_publics(data),
+            mutable_state,
+            self.fixed_data,
+            &self.parts,
+            self.degree,
+        );
+        let mut sequence_iterator = ProcessingSequenceIterator::Default(
+            DefaultSequenceIterator::new(0, self.parts.identities.len(), None),
+        );
+        processor.solve(&mut sequence_iterator).unwrap();
+
+        // Ignore any updates to the publics at this point, as we'll re-visit the last row again.
+        let mut block = processor.finish().block;
+        assert!(block.len() == 4);
+        block.pop();
+        let second = block.pop().unwrap();
+        let first = block.pop().unwrap();
+        [first, second]
     }
 
     fn process<'c, Q: QueryCallback<T>>(
