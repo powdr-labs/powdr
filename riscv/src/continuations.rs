@@ -22,7 +22,7 @@ use memory_merkle_tree::MerkleTree;
 use rand::Rng;
 
 use crate::continuations::bootloader::{
-    bootloader_upper_bound, default_register_values, shutdown_routine_upper_bound,
+    bootloader_lower_bound, default_register_values, shutdown_routine_upper_bound,
     BOOTLOADER_INPUTS_PER_PAGE, DEFAULT_PC, MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET,
     WORDS_PER_PAGE,
 };
@@ -384,7 +384,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             // proven_trace + length is an upper bound for the last row index we'll reach in the next chunk.
             // In practice, we'll stop earlier, because the bootloader & shutdown routine need to run as well,
             // but we don't know for how long as that depends on the number of pages.
-            if access.row >= proven_trace + length {
+            let bootloader_rows = bootloader_lower_bound(accessed_pages.len() + 1);
+            if access.row >= proven_trace + length - bootloader_rows {
                 break;
             }
             accessed_addresses.insert(access.address);
@@ -397,14 +398,14 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             accessed_pages
         );
 
-        let bootloader_rows = bootloader_upper_bound(accessed_pages.len());
+        let bootloader_rows = bootloader_lower_bound(accessed_pages.len());
         log::info!("Estimating the bootloader to use {} rows.", bootloader_rows);
-        let shutdown_routine_rows = shutdown_routine_upper_bound(accessed_pages.len());
-        log::info!(
-            "Estimating the shutdown routine to use {} rows.",
-            shutdown_routine_rows
-        );
-        let num_rows = length - shutdown_routine_rows;
+        // let shutdown_routine_rows = shutdown_routine_upper_bound(accessed_pages.len());
+        // log::info!(
+        //     "Estimating the shutdown routine to use {} rows.",
+        //     shutdown_routine_rows
+        // );
+        let num_rows = length;
 
         // Build the bootloader inputs for the current chunk.
         // Note that while we do know the accessed pages, we don't yet know the hashes
@@ -556,9 +557,9 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         log::info!("Bootloader used {} rows.", start);
         log::info!(
             "  => {} / {} ({}%) of rows are used for the actual computation!",
-            length - start - shutdown_routine_rows,
+            length - start,
             length,
-            (length - start - shutdown_routine_rows) * 100 / length
+            (length - start) * 100 / length
         );
         for i in 0..(chunk_exec.trace_len - start) {
             for &reg in ["main::pc", "main::query_arg_1", "main::query_arg_2"].iter() {
