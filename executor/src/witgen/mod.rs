@@ -568,7 +568,7 @@ pub struct FixedColumn<'a, T> {
     values: &'a VariablySizedColumn<T>,
 }
 
-impl<'a, T> FixedColumn<'a, T> {
+impl<'a, T: Copy> FixedColumn<'a, T> {
     pub fn new(name: &'a str, values: &'a VariablySizedColumn<T>) -> FixedColumn<'a, T> {
         let name = name.to_string();
         FixedColumn { name, values }
@@ -588,6 +588,10 @@ impl<'a, T> FixedColumn<'a, T> {
     pub fn values_max_size(&self) -> &[T] {
         let max_size = self.values.available_sizes().into_iter().max().unwrap() as DegreeType;
         self.values(max_size)
+    }
+
+    pub fn has_constant_inner_value(&self) -> Option<T> {
+        *self.values.has_constant_inner_value()
     }
 }
 

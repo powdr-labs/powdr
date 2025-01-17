@@ -45,16 +45,32 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         let known_variables = all_witnesses.iter().map(|&id| self.cell(id, 0));
         // and we want to know the ones in the next row.
         let requested_known = all_witnesses.iter().map(|&id| self.cell(id, 1));
-        let identities = self.machine_parts.identities.iter().map(|&id| {
-            let row_offset = if id.contains_next_ref() { 0 } else { 1 };
-            (id, row_offset)
-        });
+        // Identities that span two rows are only processed on row 0,
+        // the others are processed on both rows.
+        let mut complete_identities = vec![];
+        let identities = self
+            .machine_parts
+            .identities
+            .iter()
+            .flat_map(|&id| {
+                if id.contains_next_ref() {
+                    vec![(id, 0)]
+                } else {
+                    // Process it on both rows, but mark it as complete on row 0,
+                    // so that we do not produce two submachine calls.
+                    complete_identities.push((id.id(), 0));
+                    vec![(id, 0), (id, 1)]
+                }
+            })
+            .collect_vec();
         let block_size = 1;
-        let witgen = WitgenInference::new(self.fixed_data, NoEval, known_variables);
+
+        let witgen =
+            WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
 
         Processor::new(
             self.fixed_data,
-            NoEval,
+            self,
             identities,
             block_size,
             false,
@@ -74,16 +90,11 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
     }
 }
 
-#[derive(Clone)]
-pub struct NoEval;
-
-impl<T: FieldElement> FixedEvaluator<T> for NoEval {
-    fn evaluate(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
-        // We can only return something here if the fixed column is constant
-        // in the region we are considering.
-        // This might be the case if we know we are not evaluating the first or the last
-        // row, but this is not yet implemented.
-        None
+/// Evaluator for fixed columns which are constant except for the first and last row.
+impl<T: FieldElement> FixedEvaluator<T> for &SingleStepProcessor<'_, T> {
+    fn evaluate(&self, var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
+        assert!(var.is_fixed());
+        self.fixed_data.fixed_cols[&var.poly_id].has_constant_inner_value()
     }
 }
 
@@ -141,6 +152,25 @@ mod test {
     #[test]
     fn fib() {
         let input = "namespace M(256); let X; let Y; X' = Y; Y' = X + Y;";
+        let code = generate_single_step(input, "M").unwrap();
+        assert_eq!(
+            format_code(&code),
+            "M::X[1] = M::Y[0];\nM::Y[1] = (M::X[0] + M::Y[0]);"
+        );
+    }
+
+    #[test]
+    fn fib_with_boundary_conditions() {
+        let input = "
+namespace M(256);
+    col fixed FIRST = [1] + [0]*;
+    col fixed LAST = [0]* + [1];
+    let X;
+    let Y;
+    FIRST * (X - 1) = 0;
+    FIRST * (Y - 1) = 0;
+    (X' - Y) * (1 - LAST) = 0;
+    (Y' - (X + Y)) * (1 - LAST) = 0;";
         let code = generate_single_step(input, "M").unwrap();
         assert_eq!(
             format_code(&code),

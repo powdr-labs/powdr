@@ -66,4 +66,28 @@ mod test {
     fn div_by_zero() {
         let _ = BabyBearField::from(1) / BabyBearField::from(0);
     }
+
+    #[test]
+    fn to_signed_integer() {
+        let values = [
+            i16::MIN as i64,
+            i16::MIN as i64 + 1,
+            i16::MIN as i64 + 4242,
+            -0x6faa21,
+            -3456,
+            -1,
+            0,
+            0x6faa21,
+            1,
+            3456,
+            i16::MAX as i64 - 4242,
+            i16::MAX as i64 - 1,
+            i16::MAX as i64,
+        ];
+        for &value in &values {
+            let field_value = BabyBearField::from(value);
+            let signed_integer_value = field_value.to_signed_integer();
+            assert_eq!(signed_integer_value, value.into());
+        }
+    }
 }

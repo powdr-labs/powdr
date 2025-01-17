@@ -320,7 +320,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // TODO: commit to the merkle_tree root in the verifier.
 
     log::info!("Initial execution...");
-    let full_exec = powdr_riscv_executor::execute::<F>(
+    let full_exec = powdr_riscv_executor::execute_with_trace::<F>(
         &asm,
         &pil,
         fixed.clone(),
@@ -428,7 +428,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         );
 
         log::info!("Simulating chunk execution...");
-        let chunk_exec = powdr_riscv_executor::execute::<F>(
+        let chunk_exec = powdr_riscv_executor::execute_with_trace::<F>(
             &asm,
             &pil,
             fixed.clone(),

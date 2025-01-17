@@ -23,7 +23,7 @@ use builder::TraceBuilder;
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{Analyzed, Identity},
+    analyzed::{AlgebraicExpression, Analyzed, Identity, LookupIdentity},
     asm_analysis::{AnalysisASMFile, CallableSymbol, FunctionStatement, LabelStatement, Machine},
     parsed::{
         asm::{parse_absolute_path, AssignmentRegister, DebugDirective},
@@ -360,11 +360,13 @@ impl<F: FieldElement> Elem<F> {
     /// Try to interpret the value of a field as a binary, if it can be represented either as a
     /// u32 or a i32.
     pub fn try_from_fe_as_bin(value: &F) -> Option<Self> {
-        if let Some(v) = value.to_integer().try_into_u32() {
-            Some(Self::Binary(v as i64))
-        } else {
-            value.try_into_i32().map(|v| Self::Binary(v as i64))
-        }
+        let integer = value.to_signed_integer();
+
+        u32::try_from(&integer)
+            .map(From::from)
+            .or_else(|_| i32::try_from(integer).map(From::from))
+            .map(Self::Binary)
+            .ok()
     }
 
     pub fn from_u32_as_fe(value: u32) -> Self {
@@ -724,7 +726,7 @@ mod builder {
             regs[pc_idx as usize] = PC_INITIAL_VAL.into();
 
             let submachines: HashMap<_, RefCell<Box<dyn Submachine<F>>>> =
-                if let ExecMode::Trace = mode {
+                if let ExecMode::Witness = mode {
                     [
                         (
                             MachineInstance::memory,
@@ -797,7 +799,7 @@ mod builder {
             lookup_args: &[F],
             extra: &[F],
         ) {
-            if let ExecMode::Trace = self.mode {
+            if let ExecMode::Witness = self.mode {
                 self.trace
                     .submachine_ops
                     .get_mut(m as usize)
@@ -814,7 +816,9 @@ mod builder {
             let cols_len = self.trace.known_cols.len() / KnownWitnessCol::count();
 
             // sanity check
-            assert!(self.trace.len <= cols_len);
+            if let ExecMode::Witness = self.mode {
+                assert!(self.trace.len <= cols_len);
+            }
 
             cols_len
         }
@@ -884,33 +888,38 @@ mod builder {
         /// raw set next value of register by register index instead of name
         fn set_reg_idx(&mut self, idx: u16, value: Elem<F>) {
             // Record register write in trace. Only for non-pc, non-assignment registers.
-            if let ExecMode::Trace = self.mode {
+            if let ExecMode::Trace | ExecMode::Witness = self.mode {
                 if idx != self.pc_idx {
                     self.trace.reg_writes[idx as usize] = Some(value.into_fe());
                 }
             }
-
             self.regs[idx as usize] = value;
         }
 
         pub fn set_col_idx(&mut self, col: KnownWitnessCol, idx: usize, value: Elem<F>) {
-            if let ExecMode::Trace = self.mode {
+            if let ExecMode::Witness = self.mode {
                 let idx = (KnownWitnessCol::count() * idx) + col as usize;
                 *self.trace.known_cols.get_mut(idx).unwrap() = value.into_fe();
             }
         }
 
         pub fn set_col(&mut self, col: KnownWitnessCol, value: Elem<F>) {
-            if let ExecMode::Trace = self.mode {
+            if let ExecMode::Witness = self.mode {
                 let idx = (self.trace.known_cols.len() - KnownWitnessCol::count()) + col as usize;
                 *self.trace.known_cols.get_mut(idx).unwrap() = value.into_fe();
             }
         }
 
+        pub fn col_is_defined(&self, name: &str) -> bool {
+            if let ExecMode::Trace | ExecMode::Witness = self.mode {
+                self.trace.all_cols.contains(&name.to_string())
+            } else {
+                false
+            }
+        }
+
         pub fn push_row(&mut self, pc: u32) {
-            if let ExecMode::Trace = self.mode {
-                let new_len = self.trace.known_cols.len() + KnownWitnessCol::count();
-                self.trace.known_cols.resize(new_len, F::zero());
+            if let ExecMode::Trace | ExecMode::Witness = self.mode {
                 self.trace.pc_trace.push(pc);
                 self.trace
                     .reg_trace
@@ -924,6 +933,10 @@ mod builder {
                             v.push(v.last().cloned().unwrap_or(F::zero()));
                         }
                     });
+            }
+            if let ExecMode::Witness = self.mode {
+                let new_len = self.trace.known_cols.len() + KnownWitnessCol::count();
+                self.trace.known_cols.resize(new_len, F::zero());
             }
         }
 
@@ -953,13 +966,15 @@ mod builder {
         }
 
         pub(crate) fn set_mem(&mut self, addr: u32, val: u32, step: u32, identity_id: u64) {
-            if let ExecMode::Trace = self.mode {
+            if let ExecMode::Witness = self.mode {
                 self.submachine_op(
                     MachineInstance::memory,
                     identity_id,
                     &[1.into(), addr.into(), step.into(), val.into()],
                     &[],
                 );
+            }
+            if let ExecMode::Trace | ExecMode::Witness = self.mode {
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Write,
@@ -972,13 +987,15 @@ mod builder {
 
         pub(crate) fn get_mem(&mut self, addr: u32, step: u32, identity_id: u64) -> u32 {
             let val = *self.mem.get(&addr).unwrap_or(&0);
-            if let ExecMode::Trace = self.mode {
+            if let ExecMode::Witness = self.mode {
                 self.submachine_op(
                     MachineInstance::memory,
                     identity_id,
                     &[0.into(), addr.into(), step.into(), val.into()],
                     &[],
                 );
+            }
+            if let ExecMode::Trace | ExecMode::Witness = self.mode {
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
                     kind: MemOperationKind::Read,
@@ -1024,34 +1041,43 @@ mod builder {
 
             let pil = opt_pil.unwrap();
 
-            let main_degree = {
-                let range = namespace_degree_range(pil, "main");
-                std::cmp::max(
-                    self.main_columns_len().next_power_of_two() as u32,
-                    range.min as u32,
-                )
-            };
-
             let start = Instant::now();
 
             // turn register write operations into witness columns
-            let main_regs = self.trace.generate_registers_trace();
+            let mut cols = self
+                .trace
+                .generate_registers_trace()
+                .into_iter()
+                .collect::<HashMap<_, _>>();
             log::debug!(
                 "Generating register traces took {}s",
                 start.elapsed().as_secs_f64(),
             );
 
-            // This hashmap will be added to until we get the full witness.
-            let mut cols = self.generate_main_columns();
+            let main_degree = {
+                let range = namespace_degree_range(pil, "main");
+                std::cmp::max(self.trace.len.next_power_of_two() as u32, range.min as u32)
+            };
+
+            // fill up reg trace to degree
+            cols.values_mut().for_each(|v| {
+                let last = *v.last().unwrap();
+                v.resize(main_degree as usize, last);
+            });
+
+            // trace mode doesn't generate a full witness
+            if let ExecMode::Trace = self.mode {
+                return Execution {
+                    trace_len: self.trace.len,
+                    memory: self.mem,
+                    memory_accesses: std::mem::take(&mut self.trace.mem_ops),
+                    trace: cols,
+                    register_memory: self.reg_mem.for_bootloader(),
+                };
+            }
 
             // add reg columns to trace
-            cols.extend(main_regs);
-
-            // sanity check that program columns and main trace have the same length
-            assert_eq!(
-                cols.values().next().unwrap().len(),
-                program_columns[0].1.len(),
-            );
+            cols.extend(self.generate_main_columns());
 
             // add program columns to main trace
             cols.extend(program_columns);
@@ -1307,7 +1333,7 @@ impl<F: FieldElement> Executor<'_, '_, F> {
     fn init(&mut self) {
         self.step = 4;
 
-        if let ExecMode::Trace = self.mode {
+        if let ExecMode::Witness = self.mode {
             for c in KnownFixedCol::all() {
                 self.cached_fixed_cols
                     .push(self.get_fixed(c.name()).unwrap().clone());
@@ -1384,30 +1410,33 @@ impl<F: FieldElement> Executor<'_, '_, F> {
     /// Gets the identity id for a link associated with a given instruction.
     /// idx is based on the order link appear in the assembly (assumed to be the same in the optimized pil).
     fn instr_link_id(&mut self, instr: Instruction, target: MachineInstance, idx: usize) -> u64 {
-        if let ExecMode::Fast = self.mode {
-            return 0; // we don't care about identity ids in fast mode
+        if let ExecMode::Witness = self.mode {
+            let entries = self
+                .pil_instruction_links
+                .get_mut(instr as usize * MachineInstance::count() + target as usize)
+                .unwrap()
+                .get_or_insert_with(|| {
+                    pil::find_instruction_links(&self.pil_links, instr.flag(), target.namespace())
+                });
+            entries.get(idx).unwrap().id()
+        } else {
+            // we don't care about identity ids in non witness mode
+            0
         }
-
-        let entries = self
-            .pil_instruction_links
-            .get_mut(instr as usize * MachineInstance::count() + target as usize)
-            .unwrap()
-            .get_or_insert_with(|| {
-                pil::find_instruction_links(&self.pil_links, instr.flag(), target.namespace())
-            });
-        entries.get(idx).unwrap().id()
     }
 
     /// Find the identity id of a link.
     fn link_id(&mut self, from: &'static str, target: &'static str, idx: usize) -> u64 {
-        if let ExecMode::Fast = self.mode {
-            return 0; // we don't care about identity ids in fast mode
+        if let ExecMode::Witness = self.mode {
+            let entries = self
+                .pil_other_links
+                .entry((from, target))
+                .or_insert_with(|| pil::find_links(&self.pil_links, from, target));
+            entries.get(idx).unwrap().id()
+        } else {
+            // we don't care about identity ids in fast mode
+            0
         }
-        let entries = self
-            .pil_other_links
-            .entry((from, target))
-            .or_insert_with(|| pil::find_links(&self.pil_links, from, target));
-        entries.get(idx).unwrap().id()
     }
 
     fn exec_instruction(&mut self, name: &str, args: &[Expression]) -> Option<Elem<F>> {
@@ -1420,7 +1449,7 @@ impl<F: FieldElement> Executor<'_, '_, F> {
 
         macro_rules! get_fixed {
             ($name:ident) => {
-                if let ExecMode::Trace = self.mode {
+                if let ExecMode::Witness = self.mode {
                     Elem::Field(
                         self.get_known_fixed(KnownFixedCol::$name, self.proc.get_pc().u() as usize),
                     )
@@ -1443,10 +1472,21 @@ impl<F: FieldElement> Executor<'_, '_, F> {
 
         self.proc.backup_reg_mem();
 
-        set_col!(X, get_fixed!(X_const));
-        set_col!(Y, get_fixed!(Y_const));
-        set_col!(Z, get_fixed!(Z_const));
-        set_col!(W, get_fixed!(W_const));
+        if self.proc.col_is_defined("main::X_const") {
+            set_col!(X, get_fixed!(X_const));
+        }
+
+        if self.proc.col_is_defined("main::Y_const") {
+            set_col!(Y, get_fixed!(Y_const));
+        }
+
+        if self.proc.col_is_defined("main::Z_const") {
+            set_col!(Z, get_fixed!(Z_const));
+        }
+
+        if self.proc.col_is_defined("main::W_const") {
+            set_col!(W, get_fixed!(W_const));
+        }
 
         let instr = Instruction::from_name(name).expect("unknown instruction");
 
@@ -2816,13 +2856,17 @@ pub struct Execution<F: FieldElement> {
 
 #[derive(Clone, Copy)]
 enum ExecMode {
+    /// Doesn't generate any execution information besides the length of the trace
     Fast,
+    /// Generate traces for memory and powdr asm registers
     Trace,
+    /// Generate the full witness
+    Witness,
 }
 
 /// Execute a Powdr/RISCV assembly program, without generating a witness.
 /// Returns the execution trace length.
-pub fn execute_fast<F: FieldElement>(
+pub fn execute<F: FieldElement>(
     asm: &AnalysisASMFile,
     initial_memory: MemoryState,
     prover_ctx: &Callback<F>,
@@ -2844,9 +2888,9 @@ pub fn execute_fast<F: FieldElement>(
     .trace_len
 }
 
-/// Execute and generate a valid witness for a Powdr/RISCV assembly program.
+/// Execute generating a witness for the PC and powdr asm registers.
 #[allow(clippy::too_many_arguments)]
-pub fn execute<F: FieldElement>(
+pub fn execute_with_trace<F: FieldElement>(
     asm: &AnalysisASMFile,
     opt_pil: &Analyzed<F>,
     fixed: FixedColumns<F>,
@@ -2867,6 +2911,33 @@ pub fn execute<F: FieldElement>(
         bootloader_inputs,
         max_steps_to_execute.unwrap_or(usize::MAX),
         ExecMode::Trace,
+        profiling,
+    )
+}
+
+/// Execute generating a full witness for the program
+#[allow(clippy::too_many_arguments)]
+pub fn execute_with_witness<F: FieldElement>(
+    asm: &AnalysisASMFile,
+    opt_pil: &Analyzed<F>,
+    fixed: FixedColumns<F>,
+    initial_memory: MemoryState,
+    prover_ctx: &Callback<F>,
+    bootloader_inputs: &[F],
+    max_steps_to_execute: Option<usize>,
+    profiling: Option<ProfilerOptions>,
+) -> Execution<F> {
+    log::info!("Executing (trace generation)...");
+
+    execute_inner(
+        asm,
+        Some(opt_pil),
+        Some(fixed),
+        initial_memory,
+        prover_ctx,
+        bootloader_inputs,
+        max_steps_to_execute.unwrap_or(usize::MAX),
+        ExecMode::Witness,
         profiling,
     )
 }
@@ -2904,23 +2975,36 @@ fn execute_inner<F: FieldElement>(
         .unwrap_or_default();
 
     // program columns to witness columns
-    let program_cols: HashMap<_, _> = if let Some(fixed) = &fixed {
-        fixed
-            .iter()
-            .filter_map(|(name, _col)| {
-                if !name.starts_with("main__rom::p_") {
-                    return None;
-                }
-                let wit_name = format!("main::{}", name.strip_prefix("main__rom::p_").unwrap());
-                if !witness_cols.contains(&wit_name) {
-                    return None;
-                }
-                Some((name.clone(), wit_name))
-            })
-            .collect()
-    } else {
-        Default::default()
-    };
+    let program_cols: HashMap<_, _> = opt_pil
+        .map(|pil| {
+            pil.identities
+                .iter()
+                .flat_map(|id| match id {
+                    Identity::Lookup(LookupIdentity { left, right, .. }) => left
+                        .expressions
+                        .iter()
+                        .zip(right.expressions.iter())
+                        .filter_map(|(l, r)| match (l, r) {
+                            (
+                                AlgebraicExpression::Reference(l),
+                                AlgebraicExpression::Reference(r),
+                            ) => {
+                                if r.name.starts_with("main__rom::p_")
+                                    && witness_cols.contains(&l.name)
+                                {
+                                    Some((r.name.clone(), l.name.clone()))
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        })
+                        .collect::<Vec<_>>(),
+                    _ => vec![],
+                })
+                .collect()
+        })
+        .unwrap_or_default();
 
     let proc = match TraceBuilder::<'_, F>::new(
         main_machine,
@@ -3111,7 +3195,7 @@ fn execute_inner<F: FieldElement>(
 
     log::debug!("Program execution took {}s", start.elapsed().as_secs_f64());
 
-    if let ExecMode::Trace = mode {
+    if let ExecMode::Trace | ExecMode::Witness = mode {
         let sink_id = e.sink_id();
 
         // reset
@@ -3138,12 +3222,14 @@ fn execute_inner<F: FieldElement>(
         e.proc
             .set_col(KnownWitnessCol::_operation_id, sink_id.into());
 
-        let start = Instant::now();
-        program_columns = e.generate_program_columns();
-        log::debug!(
-            "Generating program columns took {}s",
-            start.elapsed().as_secs_f64()
-        );
+        if let ExecMode::Witness = mode {
+            let start = Instant::now();
+            program_columns = e.generate_program_columns();
+            log::debug!(
+                "Generating program columns took {}s",
+                start.elapsed().as_secs_f64()
+            );
+        }
     }
 
     e.proc.finish(opt_pil, program_columns)
