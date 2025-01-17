@@ -200,9 +200,9 @@ impl Linker {
                     namespaced_reference(to_namespace.clone(), call_selectors);
                 let call_selector =
                     index_access(call_selector_array, Some(to.selector_idx.unwrap().into()));
-                latch.clone() * call_selector
+                latch * call_selector
             } else {
-                latch.clone()
+                latch
             };
 
             let rhs = selected(rhs_selector, rhs_list);
@@ -213,13 +213,12 @@ impl Linker {
                 to_namespace,
                 lhs,
                 rhs,
-                latch,
             );
         } else {
             let latch = namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap());
 
             // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
-            let rhs = selected(latch.clone(), rhs_list);
+            let rhs = selected(latch, rhs_list);
 
             self.insert_interaction(
                 InteractionType::Lookup,
@@ -227,7 +226,6 @@ impl Linker {
                 to_namespace,
                 lhs,
                 rhs,
-                latch,
             );
         };
     }
@@ -239,7 +237,6 @@ impl Linker {
         to_namespace: String,
         lhs: Expression,
         rhs: Expression,
-        latch: Expression,
     ) {
         // get a new unique interaction id
         let interaction_id = self.next_interaction_id();
@@ -278,7 +275,6 @@ impl Linker {
                             interaction_type,
                             namespaced_expression(from_namespace, lhs),
                             rhs,
-                            latch,
                             interaction_id,
                         ),
                     ));
@@ -327,7 +323,6 @@ fn receive(
     identity_type: InteractionType,
     lhs: Expression,
     rhs: Expression,
-    latch: Expression,
     interaction_id: u32,
 ) -> Expression {
     let (function, identity) = match identity_type {
@@ -349,7 +344,7 @@ fn receive(
         SourceRef::unknown(),
         FunctionCall {
             function: Box::new(Expression::Reference(SourceRef::unknown(), function)),
-            arguments: vec![interaction_id.into(), identity, latch],
+            arguments: vec![interaction_id.into(), identity],
         },
     )
 }

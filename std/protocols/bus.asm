@@ -130,5 +130,5 @@ let bus_send: expr, expr[], expr -> () = constr |id, tuple, multiplicity| {
 
 /// Convenience function for bus interaction to receive columns
 let bus_receive: expr, expr[], expr, expr -> () = constr |id, tuple, multiplicity, latch| {
-    bus_interaction(id, tuple, -1 * multiplicity, latch);
+    bus_interaction(id, tuple, -multiplicity, latch);
 };
