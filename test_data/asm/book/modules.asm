@@ -34,17 +34,20 @@ machine Main with degree: 8 {
     FolderSubmoduleOther d;
 
     reg pc[@pc];
+    reg X[<=];
+    reg Y[<=];
+    reg A;
 
-    instr nothing link => a.nothing();
-    instr also_nothing link => b.nothing();
-    instr still_nothing link => c.nothing();
-    instr nothing_again link => d.nothing();
+    instr identity X -> Y link => Y = a.identity(X);
+    instr also_identity X -> Y link => Y = a.identity(X);
+    instr still_identity X -> Y link => Y = a.identity(X);
+    instr identity_again X -> Y link => Y = a.identity(X);
 
     function main {
-        nothing;
-        also_nothing;
-        still_nothing;
-        nothing_again;
+        A <== identity(A);
+        A <== also_identity(A);
+        A <== still_identity(A);
+        A <== identity_again(A);
         return;
     }
 }
@@ -55,8 +58,11 @@ mod my_module {
         latch: latch,
         operation_id: operation_id
     {
-        operation nothing<0>;
+        operation identity<0> x -> y;
 
+        col witness x;
+        col witness y;
+        x = y;
         col fixed latch = [1]*;
         col fixed operation_id = [0]*;
     }
