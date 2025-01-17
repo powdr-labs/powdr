@@ -18,5 +18,5 @@ machine Main with degree: 8 {
     let ID = 123;
     let permutation_constraint = sel $ [x, y] is sub_sel $ [sub_x, sub_y];
     permutation_send(ID, permutation_constraint);
-    permutation_receive(ID, permutation_constraint, 1);
+    permutation_receive(ID, permutation_constraint);
 }
