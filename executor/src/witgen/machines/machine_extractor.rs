@@ -109,15 +109,12 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 assert!(fixed_lookup_connections
                     .insert(connection.id, *connection)
                     .is_none());
-                if let Some(multiplicity) = connection.multiplicity_column {
-                    remaining_witnesses.remove(&multiplicity);
-                }
                 continue;
             }
 
             // Extract all witness columns in the RHS of the lookup.
             let lookup_witnesses =
-                &self.refs_in_connection_rhs(connection) & (&remaining_witnesses);
+                &self.fixed.polynomial_references(connection.right) & (&remaining_witnesses);
             if lookup_witnesses.is_empty() {
                 // Skip connections to machines that were already created or point to FixedLookup.
                 continue;
@@ -152,7 +149,8 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 .iter()
                 .filter_map(|connection| {
                     // check if the identity connects to the current machine
-                    self.refs_in_connection_rhs(connection)
+                    self.fixed
+                        .polynomial_references(connection.right)
                         .intersection(&machine_witnesses)
                         .next()
                         .is_some()
@@ -283,7 +281,8 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                         // and vice-versa, but not across the "sides".
                         let in_lhs = &self.fixed.polynomial_references(left) & all_witnesses;
                         let in_rhs = &self
-                            .refs_in_connection_rhs(&Connection::try_from(*i).unwrap())
+                            .fixed
+                            .polynomial_references(Connection::try_from(*i).unwrap().right)
                             & all_witnesses;
                         if in_lhs.intersection(&witnesses).next().is_some() {
                             witnesses.extend(in_lhs);
@@ -304,15 +303,6 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         }
     }
 
-    /// Like refs_in_selected_expressions(connection.right), but also includes the multiplicity column.
-    fn refs_in_connection_rhs(&self, connection: &Connection<T>) -> HashSet<PolyID> {
-        self.fixed
-            .polynomial_references(connection.right)
-            .into_iter()
-            .chain(connection.multiplicity_column)
-            .collect()
-    }
-
     /// Extracts all references to names from the "left" side of an identity. This is the left selected expressions for connecting identities, and everything for other identities.
     fn refs_in_identity_left(&self, identity: &Identity<T>) -> HashSet<PolyID> {
         match identity {
@@ -324,12 +314,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             }
             Identity::Polynomial(i) => self.fixed.polynomial_references(i),
             Identity::Connect(i) => self.fixed.polynomial_references(i),
-            Identity::PhantomBusInteraction(i) => self
-                .fixed
-                .polynomial_references(&i.tuple)
-                .into_iter()
-                .chain(self.fixed.polynomial_references(&i.multiplicity))
-                .collect(),
+            Identity::PhantomBusInteraction(i) => self.fixed.polynomial_references(&i.tuple),
         }
     }
 }
