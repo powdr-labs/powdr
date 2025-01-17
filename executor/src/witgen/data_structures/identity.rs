@@ -1,4 +1,5 @@
 use core::fmt;
+use std::iter::once;
 
 use powdr_ast::{
     analyzed::{
@@ -75,10 +76,14 @@ impl<T> Children<AlgebraicExpression<T>> for BusInteractionIdentity<T> {
 
 impl<T: fmt::Display + fmt::Debug> fmt::Display for BusInteractionIdentity<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let multiplicity = match &self.multiplicity {
+            Some(m) => m.to_string(),
+            None => "None".to_string(),
+        };
         write!(
             f,
             "BusInteractionIdentity(id={}, multiplicity={:?}, tuple={})",
-            self.id, self.multiplicity, self.selected_tuple
+            self.id, multiplicity, self.selected_tuple
         )
     }
 }
@@ -123,7 +128,7 @@ impl<T> Identity<T> {
     }
 }
 
-pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>> {
+pub fn convert<T: FieldElement>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>> {
     let max_poly_id = identities
         .iter()
         .map(|i| match i {
@@ -161,6 +166,10 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                     }
                     _ => (false, identity.multiplicity.clone()),
                 };
+                match identity.tuple.0[0] {
+                    AlgebraicExpression::Number(_) => {}
+                    _ => panic!("Expected first tuple entry to be a static ID"),
+                };
                 let bus_interaction = BusInteractionIdentity {
                     id,
                     multiplicity: Some(multiplicity),
@@ -188,12 +197,12 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                     Identity::BusSend(BusInteractionIdentity {
                         id: id_left,
                         multiplicity: Some(left.selector.clone()),
-                        selected_tuple: left.clone(),
+                        selected_tuple: insert_id(&left, id_left),
                     }),
                     Identity::BusReceive(BusInteractionIdentity {
                         id: id_right,
                         multiplicity: Some(right.selector.clone()),
-                        selected_tuple: right.clone(),
+                        selected_tuple: insert_id(&right, id_left),
                     }),
                 ]
                 .into_iter()
@@ -206,12 +215,12 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                     Identity::BusSend(BusInteractionIdentity {
                         id: id_left,
                         multiplicity: None,
-                        selected_tuple: left.clone(),
+                        selected_tuple: insert_id(&left, id_left),
                     }),
                     Identity::BusReceive(BusInteractionIdentity {
                         id: id_right,
                         multiplicity: None,
-                        selected_tuple: right.clone(),
+                        selected_tuple: insert_id(&right, id_left),
                     }),
                 ]
                 .into_iter()
@@ -229,16 +238,28 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                     Identity::BusSend(BusInteractionIdentity {
                         id: id_left,
                         multiplicity: Some(multiplicity.clone()),
-                        selected_tuple: left.clone(),
+                        selected_tuple: insert_id(&left, id_left),
                     }),
                     Identity::BusReceive(BusInteractionIdentity {
                         id: id_right,
                         multiplicity: Some(multiplicity.clone()),
-                        selected_tuple: right.clone(),
+                        selected_tuple: insert_id(&right, id_left),
                     }),
                 ]
                 .into_iter()
             }
         })
         .collect()
+}
+
+fn insert_id<T: FieldElement>(
+    selected_expressions: &SelectedExpressions<T>,
+    id: u64,
+) -> SelectedExpressions<T> {
+    SelectedExpressions {
+        selector: selected_expressions.selector.clone(),
+        expressions: once(AlgebraicExpression::Number(id.into()))
+            .chain(selected_expressions.expressions.clone())
+            .collect(),
+    }
 }
