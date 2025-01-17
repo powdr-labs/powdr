@@ -22,8 +22,9 @@ use memory_merkle_tree::MerkleTree;
 use rand::Rng;
 
 use crate::continuations::bootloader::{
-    default_register_values, shutdown_routine_upper_bound, BOOTLOADER_INPUTS_PER_PAGE, DEFAULT_PC,
-    MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET, WORDS_PER_PAGE,
+    bootloader_upper_bound, default_register_values, shutdown_routine_upper_bound,
+    BOOTLOADER_INPUTS_PER_PAGE, DEFAULT_PC, MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET,
+    WORDS_PER_PAGE,
 };
 
 use crate::code_gen::Register;
@@ -396,6 +397,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             accessed_pages
         );
 
+        let bootloader_rows = bootloader_upper_bound(accessed_pages.len());
+        log::info!("Estimating the bootloader to use {} rows.", bootloader_rows);
         let shutdown_routine_rows = shutdown_routine_upper_bound(accessed_pages.len());
         log::info!(
             "Estimating the shutdown routine to use {} rows.",

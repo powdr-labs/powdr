@@ -35,6 +35,32 @@ pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 // Ensure we have enough addresses for the scratch space.
 const_assert!(PAGE_SIZE_BYTES > 384);
 
+/// Computes a lower bound of how long the bootloader will run, for a given number of pages.
+pub fn bootloader_upper_bound(num_pages: usize) -> usize {
+    let constant_overhead = 1 + // jump to bootloader
+        2 + // load number of pages
+        8 + // load mem hash
+        1 + // page idx = 0
+        1 + // jump if no pages
+        8 + // assert final merkle root
+        REGISTER_MEMORY_NAMES.len() + // load memory regs
+        REGISTER_NAMES.len() * 2; // load asm regs
+
+    let cost_per_page = 3 + // load page number and check != 0
+        24 + // zero out scratch space
+        1 + // set page offset
+        WORDS_PER_PAGE * 4 + WORDS_PER_PAGE/4 + // load page data and hash
+        1 + // set x9=0 (validation phase)
+        2 * N_LEAVES_LOG * (
+            32 + // most expensive side of the if
+            4 // set x4 + if + poseidon call
+        ) +
+        35 + // x9 == 0 + assert correct root
+        10; // update root
+
+    constant_overhead + num_pages * cost_per_page
+}
+
 /// Computes an upper bound of how long the shutdown routine will run, for a given number of pages.
 pub fn shutdown_routine_upper_bound(num_pages: usize) -> usize {
     // Regardless of the number of pages, we have to:
