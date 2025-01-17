@@ -63,7 +63,8 @@ fn try_as_number(e: &Expression) -> Option<&BigUint> {
     }
 }
 
-/// Returns the body of a lambda expression if it is a lambda expression with the given kind.
+/// Returns the body of a lambda expression if it is a lambda expression with the given kind
+/// (unless None is requested).
 /// Note that this ignores the parameters.
 fn try_as_lambda_expression(
     e: &Expression,
