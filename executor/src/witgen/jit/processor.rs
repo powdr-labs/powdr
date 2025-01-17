@@ -8,7 +8,7 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{Identity, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
-use crate::witgen::FixedData;
+use crate::witgen::{jit::debug_formatter::format_error_summary, FixedData};
 
 use super::{
     affine_symbolic_expression,
@@ -130,6 +130,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 .filter(|(id, row_offset)| !witgen.is_complete(id, *row_offset))
                 .map(|(id, row_offset)| (*id, *row_offset))
                 .collect_vec();
+            // TODO actually store it somewhere.
+            // TODO on the way "up" we should also include the branch variables.
+            println!(
+                "Error summary: {}",
+                format_error_summary(&self.identities, &witgen, self.fixed_evaluator.clone())
+            );
             return Err(Error {
                 reason,
                 witgen,
