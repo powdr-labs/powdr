@@ -1,11 +1,14 @@
 #![allow(dead_code)]
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashMap},
     fmt::{self, Display, Formatter, Write},
 };
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{Identity, PolyID, PolynomialType};
+use powdr_ast::{
+    analyzed::{AlgebraicExpression as Expression, Identity, PolyID, PolynomialType},
+    parsed::visitor::{AllChildren, Children},
+};
 use powdr_number::FieldElement;
 
 use crate::witgen::FixedData;
@@ -23,6 +26,8 @@ pub struct Processor<'a, T: FieldElement, FixedEval> {
     fixed_evaluator: FixedEval,
     /// List of identities and row offsets to process them on.
     identities: Vec<(&'a Identity<T>, i32)>,
+    /// Map from each variable to the identities it occurs in.
+    occurrences: HashMap<Variable, Vec<(&'a Identity<T>, i32)>>,
     /// The size of a block.
     block_size: usize,
     /// If the processor should check for correctly stackable block shapes.
@@ -44,10 +49,20 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         requested_known_vars: impl IntoIterator<Item = Variable>,
         max_branch_depth: usize,
     ) -> Self {
+        let identities = identities.into_iter().collect_vec();
+        let occurrences = identities
+            .iter()
+            .flat_map(|(id, row)| {
+                variables_in_identity(fixed_data, id, *row).map(move |var| (var, (*id, *row)))
+            })
+            .unique()
+            .into_grouping_map()
+            .collect();
         Self {
             fixed_data,
             fixed_evaluator,
-            identities: identities.into_iter().collect(),
+            identities,
+            occurrences,
             block_size,
             check_block_shape,
             requested_known_vars: requested_known_vars.into_iter().collect(),
@@ -165,13 +180,25 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         can_process: CanProcess,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
     ) {
-        loop {
-            let progress = self.identities.iter().any(|(id, row_offset)| {
-                witgen.process_identity(can_process.clone(), id, *row_offset)
-            });
-            if !progress {
-                break;
-            }
+        let mut identities_to_process: BTreeSet<_> = self
+            .identities
+            .iter()
+            .map(|(id, row)| IdentitySorter(id, *row))
+            .collect();
+        while let Some(IdentitySorter(identity, row_offset)) = identities_to_process.pop_first() {
+            let updated_vars = witgen.process_identity(can_process.clone(), identity, row_offset);
+            identities_to_process.extend(
+                updated_vars
+                    .iter()
+                    .flat_map(|v| {
+                        log::trace!("Variable updated: {v}");
+                        self.occurrences.get(v)
+                    })
+                    .flatten()
+                    // Filter out the one we just processed.
+                    .filter(|(id, row)| (*id, *row) != (identity, row_offset))
+                    .map(|(id, row_offset)| IdentitySorter(id, *row_offset)),
+            );
         }
     }
 
@@ -292,6 +319,78 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         }
     }
 }
+
+/// Returns all variables occurring in the identity.
+/// This also resolves intermediate polynomials.
+fn variables_in_identity<'a, T: FieldElement>(
+    fixed_data: &'a FixedData<'a, T>,
+    identity: &'a Identity<T>,
+    row_offset: i32,
+) -> impl Iterator<Item = Variable> + 'a {
+    identity
+        .children()
+        .flat_map(move |e| variables_in_expression(fixed_data, e, row_offset))
+}
+
+/// Returns all variables occurring in the expression.
+/// This also resolves intermediate polynomials.
+fn variables_in_expression<'a, T: FieldElement>(
+    fixed_data: &'a FixedData<'a, T>,
+    expression: &'a Expression<T>,
+    row_offset: i32,
+) -> impl Iterator<Item = Variable> + 'a {
+    expression
+        .all_children()
+        .flat_map(move |e| -> Box<dyn Iterator<Item = Variable> + 'a> {
+            match e {
+                Expression::Reference(r) => match r.poly_id.ptype {
+                    PolynomialType::Constant => Box::new(std::iter::empty()),
+                    PolynomialType::Committed => {
+                        Box::new(std::iter::once(Variable::from_reference(r, row_offset)))
+                    }
+                    PolynomialType::Intermediate => {
+                        let definition = &fixed_data.intermediate_definitions[&r.to_thin()];
+                        Box::new(variables_in_expression(fixed_data, definition, row_offset))
+                    }
+                },
+                Expression::PublicReference(_) | Expression::Challenge(_) => {
+                    // TODO we need to introduce a variable type for those.
+                    Box::new(std::iter::empty())
+                }
+                _ => Box::new(std::iter::empty()),
+            }
+        })
+}
+
+/// Sorts identities by row and then by ID.
+struct IdentitySorter<'a, T>(&'a Identity<T>, i32);
+
+impl<T> IdentitySorter<'_, T> {
+    fn key(&self) -> (i32, u64) {
+        let IdentitySorter(id, row) = self;
+        (*row, id.id())
+    }
+}
+
+impl<T> Ord for IdentitySorter<'_, T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.key().cmp(&other.key())
+    }
+}
+
+impl<T> PartialOrd for IdentitySorter<'_, T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T> PartialEq for IdentitySorter<'_, T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.key() == other.key()
+    }
+}
+
+impl<T> Eq for IdentitySorter<'_, T> {}
 
 fn is_machine_call<T>(identity: &Identity<T>) -> bool {
     match identity {
