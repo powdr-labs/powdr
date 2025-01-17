@@ -11,31 +11,23 @@ use powdr_ast::{
 use powdr_number::FieldElement;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-enum InteractionType {
-    Send,
-    Receive,
-}
-
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct BusInteractionIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
     pub multiplicity: Option<AlgebraicExpression<T>>,
     pub selected_tuple: SelectedExpressions<T>,
-    interaction_type: InteractionType,
 }
 
 impl<T: FieldElement> BusInteractionIdentity<T> {
     pub fn try_match_static<'a>(
         &self,
-        others: &'a [BusInteractionIdentity<T>],
+        receives: &'a [BusInteractionIdentity<T>],
     ) -> Option<&'a BusInteractionIdentity<T>> {
-        assert_eq!(self.interaction_type, InteractionType::Send);
         let id = self.interaction_id()?;
 
         let mut matching_receive = None;
-        for other in others {
-            if other.is_receive() && other.interaction_id() == Some(id) {
+        for other in receives {
+            if other.interaction_id() == Some(id) {
                 match matching_receive {
                     None => {
                         matching_receive = Some(other);
@@ -58,17 +50,9 @@ impl<T: FieldElement> BusInteractionIdentity<T> {
         }
     }
 
-    pub fn is_send(&self) -> bool {
-        self.interaction_type == InteractionType::Send
-    }
-
-    pub fn is_receive(&self) -> bool {
-        self.interaction_type == InteractionType::Receive
-    }
-
-    pub fn is_unconstrained_receive(&self) -> bool {
+    pub fn is_unconstrained(&self) -> bool {
         // TODO: This is a hack (but should work if it was originally a lookup / permutation)
-        self.is_receive() && (self.multiplicity.as_ref() == Some(&self.selected_tuple.selector))
+        self.multiplicity.as_ref() == Some(&self.selected_tuple.selector)
     }
 }
 
@@ -175,11 +159,6 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                     }
                     _ => false,
                 };
-                let interaction_type = if negative_multiplicity {
-                    InteractionType::Receive
-                } else {
-                    InteractionType::Send
-                };
                 let bus_interaction = BusInteractionIdentity {
                     id,
                     multiplicity: Some(identity.multiplicity.clone()),
@@ -187,7 +166,6 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                         selector: identity.latch.clone(),
                         expressions: identity.tuple.0.clone(),
                     },
-                    interaction_type,
                 };
                 let identity = match negative_multiplicity {
                     true => Identity::BusReceive(bus_interaction),
@@ -209,13 +187,11 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                         id: id_left,
                         multiplicity: Some(left.selector.clone()),
                         selected_tuple: left.clone(),
-                        interaction_type: InteractionType::Send,
                     }),
                     Identity::BusReceive(BusInteractionIdentity {
                         id: id_right,
                         multiplicity: Some(right.selector.clone()),
                         selected_tuple: right.clone(),
-                        interaction_type: InteractionType::Receive,
                     }),
                 ]
                 .into_iter()
@@ -229,13 +205,11 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                         id: id_left,
                         multiplicity: None,
                         selected_tuple: left.clone(),
-                        interaction_type: InteractionType::Send,
                     }),
                     Identity::BusReceive(BusInteractionIdentity {
                         id: id_right,
                         multiplicity: None,
                         selected_tuple: right.clone(),
-                        interaction_type: InteractionType::Receive,
                     }),
                 ]
                 .into_iter()
@@ -254,13 +228,11 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                         id: id_left,
                         multiplicity: Some(multiplicity.clone()),
                         selected_tuple: left.clone(),
-                        interaction_type: InteractionType::Send,
                     }),
                     Identity::BusReceive(BusInteractionIdentity {
                         id: id_right,
                         multiplicity: Some(multiplicity.clone()),
                         selected_tuple: right.clone(),
-                        interaction_type: InteractionType::Receive,
                     }),
                 ]
                 .into_iter()

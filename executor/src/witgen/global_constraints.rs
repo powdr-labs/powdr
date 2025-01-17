@@ -284,7 +284,7 @@ fn propagate_constraints<T: FieldElement>(
                     return false;
                 }
             };
-            if !receive.is_unconstrained_receive() {
+            if !receive.is_unconstrained() {
                 // TODO: We used to return false for permutations,
                 // but wouldn't we be able to do some of the stuff below?
                 return false;

@@ -117,7 +117,7 @@ fn check_identity<T: FieldElement>(
         _ => return None,
     };
     let receive = send.try_match_static(&fixed_data.bus_receives)?;
-    if !receive.is_unconstrained_receive() {
+    if !receive.is_unconstrained() {
         return None;
     }
 

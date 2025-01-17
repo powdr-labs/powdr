@@ -373,7 +373,7 @@ impl<'a, T: FieldElement> Connection<'a, T> {
                     id: send.id,
                     left: &send.selected_tuple,
                     right: &receive.selected_tuple,
-                    kind: if receive.is_unconstrained_receive() {
+                    kind: if receive.is_unconstrained() {
                         ConnectionKind::Lookup
                     } else {
                         ConnectionKind::Permutation
