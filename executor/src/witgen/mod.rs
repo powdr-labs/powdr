@@ -382,7 +382,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         let bus_receives = identities
             .iter()
             .filter_map(|identity| match identity {
-                Identity::BusInteraction(id) => id.is_receive().then_some(id.clone()),
+                Identity::BusReceive(id) => Some(id.clone()),
                 _ => None,
             })
             .collect::<Vec<_>>();

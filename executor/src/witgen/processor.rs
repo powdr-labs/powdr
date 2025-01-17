@@ -643,23 +643,21 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             ),
         };
 
-        if let Identity::BusInteraction(bus_interaction) = identity {
-            if bus_interaction.is_send() {
-                // JITed submachines would panic if passed a wrong input / output pair.
-                // Therefore, if any machine call is activated, we resort to the full
-                // solving routine.
-                // An exception to this is when the call is always active (e.g. the PC lookup).
-                // In that case, we know that the call has been active before with the
-                // same input / output pair, so we can be sure that it will succeed.
-                let selector = &bus_interaction.selected_tuple.selector;
-                if selector != &Expression::one() {
-                    let selector_value = row_pair
-                        .evaluate(selector)
-                        .unwrap()
-                        .constant_value()
-                        .unwrap();
-                    return selector_value.is_zero();
-                }
+        if let Identity::BusSend(bus_interaction) = identity {
+            // JITed submachines would panic if passed a wrong input / output pair.
+            // Therefore, if any machine call is activated, we resort to the full
+            // solving routine.
+            // An exception to this is when the call is always active (e.g. the PC lookup).
+            // In that case, we know that the call has been active before with the
+            // same input / output pair, so we can be sure that it will succeed.
+            let selector = &bus_interaction.selected_tuple.selector;
+            if selector != &Expression::one() {
+                let selector_value = row_pair
+                    .evaluate(selector)
+                    .unwrap()
+                    .constant_value()
+                    .unwrap();
+                return selector_value.is_zero();
             }
         }
 

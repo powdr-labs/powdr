@@ -37,18 +37,12 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
     ) -> EvalResult<'a, T> {
         let result = match identity {
             Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
-            Identity::BusInteraction(bus_interaction) => {
-                if bus_interaction.is_send() {
-                    self.process_lookup_or_permutation(
-                        bus_interaction.id,
-                        &bus_interaction.selected_tuple,
-                        rows,
-                    )
-                } else {
-                    // Nothing to do for receives.
-                    Ok(EvalValue::complete(vec![]))
-                }
-            }
+            Identity::BusSend(bus_interaction) => self.process_lookup_or_permutation(
+                bus_interaction.id,
+                &bus_interaction.selected_tuple,
+                rows,
+            ),
+            Identity::BusReceive(_) => Ok(EvalValue::complete(vec![])),
             Identity::Connect(..) => {
                 // TODO this is not the right cause.
                 Ok(EvalValue::incomplete(IncompleteCause::SolvingFailed))

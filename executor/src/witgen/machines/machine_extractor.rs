@@ -270,7 +270,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                             witnesses.extend(in_identity);
                         }
                     }
-                    Identity::BusInteraction(bus_interaction) => {
+                    Identity::BusSend(bus_interaction) | Identity::BusReceive(bus_interaction) => {
                         let in_interaction =
                             &self.fixed.polynomial_references(bus_interaction) & all_witnesses;
                         if in_interaction.intersection(&witnesses).next().is_some() {

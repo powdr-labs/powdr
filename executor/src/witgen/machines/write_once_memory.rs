@@ -52,7 +52,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             .identities
             .iter()
             // The only identity we'd expect is a bus receive.
-            .any(|id| !matches!(id, Identity::BusInteraction(bi) if bi.is_receive()))
+            .any(|id| !matches!(id, Identity::BusReceive(_)))
         {
             return None;
         }

@@ -355,10 +355,7 @@ impl<'a, T: FieldElement> Connection<'a, T> {
         bus_receives: &'a [BusInteractionIdentity<T>],
     ) -> Option<Self> {
         match identity {
-            Identity::BusInteraction(bus_interaction) => {
-                if bus_interaction.is_receive() {
-                    return None;
-                }
+            Identity::BusSend(bus_interaction) => {
                 let send = bus_interaction;
                 let receive = send
                     .try_match_static(bus_receives)

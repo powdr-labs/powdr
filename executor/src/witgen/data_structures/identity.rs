@@ -103,7 +103,8 @@ impl<T: fmt::Display + fmt::Debug> fmt::Display for BusInteractionIdentity<T> {
 pub enum Identity<T> {
     Polynomial(PolynomialIdentity<T>),
     Connect(ConnectIdentity<T>),
-    BusInteraction(BusInteractionIdentity<T>),
+    BusSend(BusInteractionIdentity<T>),
+    BusReceive(BusInteractionIdentity<T>),
 }
 
 impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
@@ -111,7 +112,7 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
         match self {
             Identity::Polynomial(i) => i.children_mut(),
             Identity::Connect(i) => i.children_mut(),
-            Identity::BusInteraction(i) => i.children_mut(),
+            Identity::BusSend(i) | Identity::BusReceive(i) => i.children_mut(),
         }
     }
 
@@ -119,7 +120,7 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
         match self {
             Identity::Polynomial(i) => i.children(),
             Identity::Connect(i) => i.children(),
-            Identity::BusInteraction(i) => i.children(),
+            Identity::BusSend(i) | Identity::BusReceive(i) => i.children(),
         }
     }
 }
@@ -133,7 +134,7 @@ impl<T> Identity<T> {
         match self {
             Identity::Polynomial(i) => i.id,
             Identity::Connect(i) => i.id,
-            Identity::BusInteraction(i) => i.id,
+            Identity::BusSend(i) | Identity::BusReceive(i) => i.id,
         }
     }
 }
@@ -179,7 +180,7 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                 } else {
                     InteractionType::Send
                 };
-                vec![Identity::BusInteraction(BusInteractionIdentity {
+                let bus_interaction = BusInteractionIdentity {
                     id,
                     multiplicity: Some(identity.multiplicity.clone()),
                     selected_tuple: SelectedExpressions {
@@ -187,8 +188,12 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                         expressions: identity.tuple.0.clone(),
                     },
                     interaction_type,
-                })]
-                .into_iter()
+                };
+                let identity = match negative_multiplicity {
+                    true => Identity::BusReceive(bus_interaction),
+                    false => Identity::BusSend(bus_interaction),
+                };
+                vec![identity].into_iter()
             }
             AnalyzedIdentity::Permutation(PermutationIdentity { left, right, .. })
             | AnalyzedIdentity::PhantomPermutation(PhantomPermutationIdentity {
@@ -200,13 +205,13 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                 let id_right = id_counter + 1;
                 id_counter += 2;
                 vec![
-                    Identity::BusInteraction(BusInteractionIdentity {
+                    Identity::BusSend(BusInteractionIdentity {
                         id: id_left,
                         multiplicity: Some(left.selector.clone()),
                         selected_tuple: left.clone(),
                         interaction_type: InteractionType::Send,
                     }),
-                    Identity::BusInteraction(BusInteractionIdentity {
+                    Identity::BusReceive(BusInteractionIdentity {
                         id: id_right,
                         multiplicity: Some(right.selector.clone()),
                         selected_tuple: right.clone(),
@@ -220,13 +225,13 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                 let id_right = id_counter + 1;
                 id_counter += 2;
                 vec![
-                    Identity::BusInteraction(BusInteractionIdentity {
+                    Identity::BusSend(BusInteractionIdentity {
                         id: id_left,
                         multiplicity: None,
                         selected_tuple: left.clone(),
                         interaction_type: InteractionType::Send,
                     }),
-                    Identity::BusInteraction(BusInteractionIdentity {
+                    Identity::BusReceive(BusInteractionIdentity {
                         id: id_right,
                         multiplicity: None,
                         selected_tuple: right.clone(),
@@ -245,13 +250,13 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
                 let id_right = id_counter + 1;
                 id_counter += 2;
                 vec![
-                    Identity::BusInteraction(BusInteractionIdentity {
+                    Identity::BusSend(BusInteractionIdentity {
                         id: id_left,
                         multiplicity: Some(multiplicity.clone()),
                         selected_tuple: left.clone(),
                         interaction_type: InteractionType::Send,
                     }),
-                    Identity::BusInteraction(BusInteractionIdentity {
+                    Identity::BusReceive(BusInteractionIdentity {
                         id: id_right,
                         multiplicity: Some(multiplicity.clone()),
                         selected_tuple: right.clone(),

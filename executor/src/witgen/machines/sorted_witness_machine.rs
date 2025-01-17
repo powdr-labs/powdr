@@ -113,7 +113,7 @@ fn check_identity<T: FieldElement>(
 ) -> Option<PolyID> {
     // Looking for a lookup
     let send = match id {
-        Identity::BusInteraction(bus_interaction) if bus_interaction.is_send() => bus_interaction,
+        Identity::BusSend(bus_interaction) => bus_interaction,
         _ => return None,
     };
     let receive = send.try_match_static(&fixed_data.bus_receives)?;

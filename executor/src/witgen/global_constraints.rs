@@ -147,15 +147,6 @@ pub fn set_global_constraints<T: FieldElement>(fixed_data: FixedData<T>) -> Fixe
         fixed_data.fixed_cols.len(),
     );
 
-    let bus_receives = fixed_data
-        .identities
-        .iter()
-        .filter_map(|identity| match identity {
-            Identity::BusInteraction(id) => id.is_receive().then_some(id.clone()),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
     let mut retained_identities = vec![];
     let mut removed_identities = vec![];
     let mut range_constraint_multiplicities = BTreeMap::new();
@@ -166,7 +157,7 @@ pub fn set_global_constraints<T: FieldElement>(fixed_data: FixedData<T>) -> Fixe
             &mut range_constraint_multiplicities,
             &identity,
             &full_span,
-            &bus_receives,
+            &fixed_data.bus_receives,
         );
 
         (if remove {
@@ -284,11 +275,8 @@ fn propagate_constraints<T: FieldElement>(
                 false
             }
         }
-        Identity::BusInteraction(bus_interaction) => {
-            if bus_interaction.is_receive() {
-                // Only do something for the send
-                return false;
-            }
+        Identity::BusReceive(..) => false,
+        Identity::BusSend(bus_interaction) => {
             let send = bus_interaction;
             let receive = match bus_interaction.try_match_static(bus_receives) {
                 Some(receive) => receive,
@@ -527,7 +515,7 @@ mod test {
         let bus_receives = identities
             .iter()
             .filter_map(|identity| match identity {
-                Identity::BusInteraction(id) => id.is_receive().then_some(id.clone()),
+                Identity::BusReceive(id) => Some(id.clone()),
                 _ => None,
             })
             .collect::<Vec<_>>();

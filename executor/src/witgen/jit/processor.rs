@@ -294,10 +294,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
 }
 
 fn is_machine_call<T: FieldElement>(identity: &Identity<T>) -> bool {
-    match identity {
-        Identity::BusInteraction(bus_interaction) => bus_interaction.is_send(),
-        Identity::Polynomial(_) | Identity::Connect(_) => false,
-    }
+    matches!(identity, Identity::BusSend(_))
 }
 
 pub struct Error<'a, T: FieldElement> {

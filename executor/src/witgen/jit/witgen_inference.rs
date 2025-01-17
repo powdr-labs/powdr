@@ -161,19 +161,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                 self.process_equality_on_row(expression, row_offset, T::from(0).into())
             }
-            Identity::BusInteraction(bus_interaction) => {
-                if bus_interaction.is_send() {
-                    self.process_call(
-                        can_process,
-                        bus_interaction.id,
-                        &bus_interaction.selected_tuple.selector,
-                        &bus_interaction.selected_tuple.expressions,
-                        row_offset,
-                    )
-                } else {
-                    ProcessResult::empty()
-                }
-            }
+            Identity::BusSend(bus_interaction) => self.process_call(
+                can_process,
+                bus_interaction.id,
+                &bus_interaction.selected_tuple.selector,
+                &bus_interaction.selected_tuple.expressions,
+                row_offset,
+            ),
+            Identity::BusReceive(_) => ProcessResult::empty(),
             Identity::Connect(_) => ProcessResult::empty(),
         };
         self.ingest_effects(result, Some((id.id(), row_offset)))
