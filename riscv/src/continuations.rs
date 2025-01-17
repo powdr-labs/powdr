@@ -332,6 +332,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         // we only know them after the full trace has been generated.
         &default_input(&[]),
         None,
+        false,
         profiler_opt,
     );
 
@@ -436,6 +437,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             pipeline.data_callback().unwrap(),
             &bootloader_inputs,
             Some(num_rows),
+            false,
             // profiling was done when full trace was generated
             None,
         );

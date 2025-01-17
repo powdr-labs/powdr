@@ -2898,6 +2898,7 @@ pub fn execute_with_trace<F: FieldElement>(
     prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     max_steps_to_execute: Option<usize>,
+    full_witness: bool,
     profiling: Option<ProfilerOptions>,
 ) -> Execution<F> {
     log::info!("Executing (trace generation)...");
@@ -2910,7 +2911,11 @@ pub fn execute_with_trace<F: FieldElement>(
         prover_ctx,
         bootloader_inputs,
         max_steps_to_execute.unwrap_or(usize::MAX),
-        ExecMode::Trace,
+        if full_witness {
+            ExecMode::Witness
+        } else {
+            ExecMode::Trace
+        },
         profiling,
     )
 }
