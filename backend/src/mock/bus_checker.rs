@@ -96,7 +96,7 @@ impl<'a, F: FieldElement> BusChecker<'a, F> {
         }
 
         impl<'a, F: Ord> TupleState<'a, F> {
-            fn update(&mut self, interaction: &'a BusInteraction<F>, count: i32) {
+            fn update(&mut self, interaction: &'a BusInteraction<F>, count: i64) {
                 let entry = match count.cmp(&0) {
                     Ordering::Equal => {
                         panic!("Performance bug: This case should be handled before!")
@@ -129,10 +129,12 @@ impl<'a, F: FieldElement> BusChecker<'a, F> {
                         .filter_map(move |bus_interaction| {
                             let identity = &bus_interaction.identity;
 
-                            let multiplicity = evaluator
-                                .evaluate(&identity.multiplicity)
-                                .try_into_i32()
-                                .unwrap();
+                            let multiplicity = i64::try_from(
+                                evaluator
+                                    .evaluate(&identity.multiplicity)
+                                    .to_signed_integer(),
+                            )
+                            .unwrap();
 
                             let tuple = identity
                                 .tuple
@@ -162,11 +164,11 @@ impl<'a, F: FieldElement> BusChecker<'a, F> {
                     let state = a.entry(tuple).or_default();
 
                     for (bus_interaction, count) in sends {
-                        state.update(bus_interaction, count as i32);
+                        state.update(bus_interaction, count as i64);
                     }
 
                     for (bus_interaction, count) in receives {
-                        state.update(bus_interaction, -(count as i32));
+                        state.update(bus_interaction, -(count as i64));
                     }
                 }
 
