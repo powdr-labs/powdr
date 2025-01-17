@@ -153,21 +153,23 @@ pub fn convert<T: Clone>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>>
             AnalyzedIdentity::PhantomBusInteraction(identity) => {
                 let id = id_counter;
                 id_counter += 1;
-                let negative_multiplicity = match &identity.multiplicity {
+                let (is_receive, multiplicity) = match &identity.multiplicity {
                     AlgebraicExpression::UnaryOperation(op) => {
-                        op.op == AlgebraicUnaryOperator::Minus
+                        // There is only one unary operation
+                        assert_eq!(op.op, AlgebraicUnaryOperator::Minus);
+                        (true, (*op.expr).clone())
                     }
-                    _ => false,
+                    _ => (false, identity.multiplicity.clone()),
                 };
                 let bus_interaction = BusInteractionIdentity {
                     id,
-                    multiplicity: Some(identity.multiplicity.clone()),
+                    multiplicity: Some(multiplicity),
                     selected_tuple: SelectedExpressions {
                         selector: identity.latch.clone(),
                         expressions: identity.tuple.0.clone(),
                     },
                 };
-                let identity = match negative_multiplicity {
+                let identity = match is_receive {
                     true => Identity::BusReceive(bus_interaction),
                     false => Identity::BusSend(bus_interaction),
                 };
