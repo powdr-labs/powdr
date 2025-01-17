@@ -79,15 +79,17 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         let mut machines: Vec<KnownMachine<T>> = vec![];
 
         let mut publics = PublicsTracker::default();
-        let range_constraint_multiplicities = self
+        // Note that we don't use the passed identities, because we want to
+        // include removed range constraints.
+        let multiplicity_columns = self
             .fixed
-            .global_range_constraints
-            .phantom_range_constraints
-            .values()
-            .map(|prc| prc.multiplicity_column)
+            .analyzed
+            .identities
+            .iter()
+            .filter_map(|identity| Connection::try_from(identity).ok()?.multiplicity_column)
             .collect::<HashSet<_>>();
         let mut remaining_witnesses = current_stage_witnesses
-            .difference(&range_constraint_multiplicities)
+            .difference(&multiplicity_columns)
             .cloned()
             .collect::<HashSet<_>>();
         let mut base_identities = identities.clone();
