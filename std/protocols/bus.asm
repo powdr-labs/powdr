@@ -125,7 +125,8 @@ let compute_next_z: expr, expr, expr[], expr, Ext<expr>, Ext<expr>, Ext<expr> ->
 
 /// Convenience function for bus interaction to send columns
 let bus_send: expr, expr[], expr -> () = constr |id, tuple, multiplicity| {
-    bus_interaction(id, tuple, multiplicity, 1);
+    // For bus sends, the multiplicity always equals the latch
+    bus_interaction(id, tuple, multiplicity, multiplicity);
 };
 
 /// Convenience function for bus interaction to receive columns
