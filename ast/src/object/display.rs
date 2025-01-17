@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter, Result};
 
 use crate::{asm_analysis::combine_flags, write_items_indented};
 
-use super::{Link, LinkFrom, LinkTo, Location, Machine, MachineInstanceGraph, Object, Operation};
+use super::{Link, LinkFrom, LinkTo, Location, MachineInstanceGraph, Object, Operation};
 
 impl Display for Location {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -59,16 +59,6 @@ impl Display for LinkFrom {
 impl Display for LinkTo {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} in {}", self.operation, self.machine)
-    }
-}
-
-impl Display for Machine {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "object at location \"{}\" with latch \"{:?}\" and operation_id \"{:?}\"",
-            self.location, self.latch, self.operation_id
-        )
     }
 }
 
