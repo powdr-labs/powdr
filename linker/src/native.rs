@@ -9,7 +9,7 @@ use powdr_ast::{
     },
 };
 use powdr_parser_util::SourceRef;
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, iter::once};
 
 use crate::{process_definitions, DegreeMode, LinkerBackend, MAIN_OPERATION_NAME};
 
@@ -52,32 +52,29 @@ impl Linker {
 
         for (location, object) in &graph.objects {
             let operation_id = object.operation_id.clone();
+            let main_operation_id = object
+                .operations
+                .get(MAIN_OPERATION_NAME)
+                .and_then(|operation| operation.id.as_ref());
 
             self.process_object(location.clone(), object.clone(), &graph.objects);
 
             if *location == Location::main() {
-                if let Some(main_operation) = graph
-                    .entry_points
-                    .iter()
-                    .find(|f| f.name == MAIN_OPERATION_NAME)
-                {
-                    let main_operation_id = main_operation.id.clone();
-                    match (operation_id, main_operation_id) {
-                        (Some(operation_id), Some(main_operation_id)) => {
-                            // call the main operation by initializing `operation_id` to that of the main operation
-                            let linker_first_step = "_linker_first_step";
-                            self.namespaces.get_mut(&location.to_string()).unwrap().1.extend([
-                                parse_pil_statement(&format!(
-                                    "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
-                                )),
-                                parse_pil_statement(&format!(
-                                    "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
-                                )),
-                            ]);
-                        }
-                        (None, None) => {}
-                        _ => unreachable!(),
+                match (operation_id, main_operation_id) {
+                    (Some(operation_id), Some(main_operation_id)) => {
+                        // call the main operation by initializing `operation_id` to that of the main operation
+                        let linker_first_step = "_linker_first_step";
+                        self.namespaces.get_mut(&location.to_string()).unwrap().1.extend([
+                            parse_pil_statement(&format!(
+                                "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
+                            )),
+                            parse_pil_statement(&format!(
+                                "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
+                            )),
+                        ]);
                     }
+                    (None, None) => {}
+                    _ => unreachable!(),
                 }
             }
         }
@@ -136,14 +133,15 @@ impl Linker {
 
         let to_namespace = to.machine.clone().to_string();
         let to_machine = &objects[&to.machine];
+        let operation = &to_machine.operations[&to.operation];
 
-        let op_id = to.operation.id.iter().cloned().map(|n| n.into());
+        let op_id = operation.id.clone().unwrap().into();
 
         // lhs is `flag { operation_id, inputs, outputs }`
         let lhs = selected(
             combine_flags(from.instr_flag, from.link_flag),
             ArrayLiteral {
-                items: op_id
+                items: once(op_id)
                     .chain(from.params.inputs)
                     .chain(from.params.outputs)
                     .collect(),
@@ -159,7 +157,7 @@ impl Linker {
 
         let rhs_list = ArrayLiteral {
             items: op_id
-                .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                .chain(operation.params.inputs_and_outputs().map(|i| {
                     index_access(
                         namespaced_reference(to_namespace.clone(), &i.name),
                         i.index.clone(),

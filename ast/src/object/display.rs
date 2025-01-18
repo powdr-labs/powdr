@@ -66,8 +66,7 @@ impl Display for Operation {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "operation \"{}\" with id {:?} with params {}",
-            self.name,
+            "operation with id {:?} with params {}",
             self.id.as_ref().map(|id| id.to_string()),
             self.params,
         )

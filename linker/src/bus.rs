@@ -31,9 +31,9 @@ impl LinkerBackend for Linker {
     }
 }
 
-fn interaction_id(machine: &str, operation: &Operation) -> u32 {
+fn interaction_id(machine: &str, operation: &String) -> u32 {
     let mut hasher = DefaultHasher::new();
-    format!("{}/{}", machine, operation.name).hash(&mut hasher);
+    format!("{machine}/{operation}").hash(&mut hasher);
     hasher.finish() as u32
 }
 
@@ -47,34 +47,28 @@ impl Linker {
     fn link_inner(mut self, graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
         let common_definitions = process_definitions(graph.statements);
 
-        for (location, object) in graph.objects {
+        for (location, object) in &graph.objects {
             let operation_id = object.operation_id.clone();
+            let main_operation_id = object.operations[MAIN_OPERATION_NAME].id.clone();
 
-            self.process_object(location.clone(), object);
+            self.process_object(location.clone(), object.clone(), &graph.objects);
 
-            if location == Location::main() {
-                if let Some(main_operation) = graph
-                    .entry_points
-                    .iter()
-                    .find(|f| f.name == MAIN_OPERATION_NAME)
-                {
-                    let main_operation_id = main_operation.id.clone();
-                    match (operation_id, main_operation_id) {
-                        (Some(operation_id), Some(main_operation_id)) => {
-                            // call the main operation by initializing `operation_id` to that of the main operation
-                            let linker_first_step = "_linker_first_step";
-                            self.namespaces.get_mut(&location.to_string()).unwrap().1.extend([
-                                parse_pil_statement(&format!(
-                                    "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
-                                )),
-                                parse_pil_statement(&format!(
-                                    "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
-                                )),
-                            ]);
-                        }
-                        (None, None) => {}
-                        _ => unreachable!(),
+            if *location == Location::main() {
+                match (operation_id, main_operation_id) {
+                    (Some(operation_id), Some(main_operation_id)) => {
+                        // call the main operation by initializing `operation_id` to that of the main operation
+                        let linker_first_step = "_linker_first_step";
+                        self.namespaces.get_mut(&location.to_string()).unwrap().1.extend([
+                            parse_pil_statement(&format!(
+                                "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
+                            )),
+                            parse_pil_statement(&format!(
+                                "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
+                            )),
+                        ]);
                     }
+                    (None, None) => {}
+                    _ => unreachable!(),
                 }
             }
         }
@@ -91,7 +85,12 @@ impl Linker {
         ))
     }
 
-    fn process_object(&mut self, location: Location, object: Object) {
+    fn process_object(
+        &mut self,
+        location: Location,
+        object: Object,
+        objects: &BTreeMap<Location, Object>,
+    ) {
         let namespace_degree = try_into_namespace_degree(object.degree)
             .unwrap_or_else(|| panic!("machine at {location} must have an explicit degree"));
 
@@ -109,12 +108,13 @@ impl Linker {
         pil.extend(object.pil);
         // process outgoing links
         for link in object.links {
-            self.process_link(link, namespace.clone());
+            self.process_link(link, namespace.clone(), objects);
         }
         // receive incoming links
         // TODO: are unused operations removed?
-        for operation in object.operations {
+        for (operation_name, operation) in object.operations {
             self.process_operation(
+                operation_name,
                 operation,
                 namespace.clone(),
                 object.latch.as_ref().unwrap(),
@@ -125,6 +125,7 @@ impl Linker {
 
     fn process_operation(
         &mut self,
+        operation_name: String,
         operation: Operation,
         namespace: String,
         latch: &str,
@@ -136,7 +137,7 @@ impl Linker {
 
         let interaction_ty = InteractionType::Lookup;
 
-        let interaction_id = interaction_id(&namespace, &operation);
+        let interaction_id = interaction_id(&namespace, &operation_name);
 
         self.namespaces
             .entry(namespace.clone())
@@ -164,18 +165,24 @@ impl Linker {
             ));
     }
 
-    fn process_link(&mut self, link: Link, from_namespace: String) {
+    fn process_link(
+        &mut self,
+        link: Link,
+        from_namespace: String,
+        objects: &BTreeMap<Location, Object>,
+    ) {
         let from = link.from;
         let to = link.to;
+        let operation = &objects[&to.machine].operations[&to.operation];
 
         let interaction_id = interaction_id(&to.machine.to_string(), &to.operation);
 
-        let op_id = to.operation.id.iter().cloned().map(|n| n.into());
+        let op_id = operation.id.clone().unwrap().into();
 
         // lhs is `flag { operation_id, inputs, outputs }`
         let selector = combine_flags(from.instr_flag, from.link_flag);
         let tuple = ArrayLiteral {
-            items: op_id
+            items: once(op_id)
                 .chain(from.params.inputs)
                 .chain(from.params.outputs)
                 .collect(),

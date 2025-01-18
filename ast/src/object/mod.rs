@@ -42,7 +42,6 @@ impl Location {
 #[derive(Clone)]
 pub struct MachineInstanceGraph {
     pub main: Location,
-    pub entry_points: Vec<Operation>,
     pub objects: BTreeMap<Location, Object>,
     /// List of module-level PIL statements (utility functions,
     /// data structures, etc) by module path
@@ -65,7 +64,7 @@ pub struct Object {
     /// the operation id for this machine
     pub operation_id: Option<String>,
     /// the operations for this machine
-    pub operations: Vec<Operation>,
+    pub operations: BTreeMap<String, Operation>,
 }
 
 #[derive(Clone, Debug)]
@@ -94,15 +93,13 @@ pub struct LinkTo {
     /// the machine we link to
     pub machine: Location,
     /// the operation we link to
-    pub operation: Operation,
+    pub operation: String,
     /// index into the permutation selector (None if lookup)
     pub selector_idx: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialOrd, Ord, Eq, PartialEq)]
 pub struct Operation {
-    /// the name of the operation
-    pub name: String,
     /// the value of the operation id of this machine which activates this operation
     pub id: Option<BigUint>,
     /// the parameters

@@ -21,7 +21,6 @@ use powdr_analysis::utils::parse_pil_statement;
 use powdr_number::BigUint;
 
 const MAIN_MACHINE: &str = "::Main";
-const MAIN_FUNCTION: &str = "main";
 
 pub fn compile(input: AnalysisASMFile) -> MachineInstanceGraph {
     let main_location = Location::main();
@@ -48,7 +47,6 @@ pub fn compile(input: AnalysisASMFile) -> MachineInstanceGraph {
             };
             return MachineInstanceGraph {
                 main: main_location.clone(),
-                entry_points: Default::default(),
                 objects: [(main_location, obj)].into(),
                 statements: module_level_pil_statements(input),
             };
@@ -172,20 +170,8 @@ pub fn compile(input: AnalysisASMFile) -> MachineInstanceGraph {
         }
     }
 
-    let main_ty = &input.get_machine(&main_ty).unwrap();
-
-    let entry_points = main_ty
-        .operations()
-        .map(|o| Operation {
-            name: MAIN_FUNCTION.to_string(),
-            id: o.id.id.clone(),
-            params: o.params.clone(),
-        })
-        .collect();
-
     MachineInstanceGraph {
         main: main_location,
-        entry_points,
         objects,
         statements: module_level_pil_statements(input),
     }
@@ -352,11 +338,13 @@ impl<'a> ASMPILConverter<'a> {
                 .map(|d| {
                     let operation_symbol: OperationSymbol = d.symbol.try_into().unwrap();
 
-                    Operation {
-                        name: d.name.to_string(),
-                        id: operation_symbol.id.id.clone(),
-                        params: operation_symbol.params.clone(),
-                    }
+                    (
+                        d.name.to_string(),
+                        Operation {
+                            id: operation_symbol.id.id.clone(),
+                            params: operation_symbol.params.clone(),
+                        },
+                    )
                 })
                 .collect(),
         }
@@ -424,11 +412,7 @@ impl<'a> ASMPILConverter<'a> {
                 .find(|o| o.name == callable)
                 .map(|d| LinkTo {
                     machine: instance.location.clone(),
-                    operation: Operation {
-                        name: d.name.to_string(),
-                        id: d.operation.id.id.clone(),
-                        params: d.operation.params.clone(),
-                    },
+                    operation: d.name.to_string(),
                     // this will be set later, after compatible links are merged
                     selector_idx: None,
                 })
@@ -454,7 +438,7 @@ impl<'a> ASMPILConverter<'a> {
         struct LinkInfo {
             from: Location,
             to: Location,
-            operation: Operation,
+            operation: String,
             is_permutation: bool,
         }
 
