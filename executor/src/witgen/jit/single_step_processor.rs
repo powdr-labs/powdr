@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, PolyID};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::FieldElement;
 
 use crate::witgen::{machines::MachineParts, FixedData};
@@ -9,6 +9,7 @@ use crate::witgen::{machines::MachineParts, FixedData};
 use super::{
     effect::Effect,
     processor::Processor,
+    prover_function_heuristics::decode_simple_prover_functions,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -65,8 +66,18 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             .collect_vec();
         let block_size = 1;
 
-        let witgen =
+        let mut witgen =
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
+
+        let prover_assignments = decode_simple_prover_functions(&self.machine_parts)
+            .into_iter()
+            .map(|(col_name, value)| (self.column(&col_name), value))
+            .collect_vec();
+
+        // TODO we should only do it if other methods fail, because it is "provide_if_unknown"
+        for (col, value) in &prover_assignments {
+            witgen.assign_constant(col, 1, *value);
+        }
 
         Processor::new(
             self.fixed_data,
@@ -86,6 +97,14 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             column_name: self.fixed_data.column_name(&id).to_string(),
             id: id.id,
             row_offset,
+        })
+    }
+
+    fn column(&self, name: &str) -> Expression<T> {
+        Expression::Reference(AlgebraicReference {
+            name: name.to_string(),
+            poly_id: self.fixed_data.try_column_by_name(name).unwrap(),
+            next: false,
         })
     }
 }
