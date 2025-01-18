@@ -159,36 +159,40 @@ impl BusLinker {
         latch: &str,
         operation_id: String,
     ) {
-        let interaction_ty = self.operation_mode[&(location.clone(), operation_name.clone())];
+        let interaction_ty = self
+            .operation_mode
+            .get(&(location.clone(), operation_name.clone()));
 
-        let interaction_id = interaction_id(location, &operation_name);
+        if let Some(interaction_ty) = interaction_ty {
+            let interaction_id = interaction_id(location, &operation_name);
 
-        let namespace = location.to_string();
+            let namespace = location.to_string();
 
-        self.namespaces
-            .entry(location.clone())
-            .or_default()
-            .1
-            .push(PilStatement::Expression(
-                SourceRef::unknown(),
-                receive(
-                    interaction_ty,
-                    namespaced_reference(namespace.clone(), latch),
-                    ArrayLiteral {
-                        items: once(namespaced_reference(namespace.clone(), operation_id))
-                            .chain(operation.params.inputs_and_outputs().map(|i| {
-                                index_access(
-                                    namespaced_reference(namespace.clone(), &i.name),
-                                    i.index.clone(),
-                                )
-                            }))
-                            .collect(),
-                    }
-                    .into(),
-                    namespaced_reference(namespace.clone(), latch),
-                    interaction_id,
-                ),
-            ));
+            self.namespaces
+                .entry(location.clone())
+                .or_default()
+                .1
+                .push(PilStatement::Expression(
+                    SourceRef::unknown(),
+                    receive(
+                        interaction_ty.clone(),
+                        namespaced_reference(namespace.clone(), latch),
+                        ArrayLiteral {
+                            items: once(namespaced_reference(namespace.clone(), operation_id))
+                                .chain(operation.params.inputs_and_outputs().map(|i| {
+                                    index_access(
+                                        namespaced_reference(namespace.clone(), &i.name),
+                                        i.index.clone(),
+                                    )
+                                }))
+                                .collect(),
+                        }
+                        .into(),
+                        namespaced_reference(namespace.clone(), latch),
+                        interaction_id,
+                    ),
+                ));
+        }
     }
 
     fn insert_interaction(
