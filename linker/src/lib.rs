@@ -41,22 +41,24 @@ pub trait LinkerBackend: Sized {
             linker.process_object(location, object.clone(), &graph.objects);
 
             if *location == Location::main() {
-                if let (Some(main_operation_id), Some(operation_id)) = (main_operation_id, operation_id) {
-                        // call the main operation by initializing `operation_id` to that of the main operation
-                        let linker_first_step = "_linker_first_step";
-                        linker.add_to_namespace_links(
-                            location,
-                            parse_pil_statement(&format!(
+                if let (Some(main_operation_id), Some(operation_id)) =
+                    (main_operation_id, operation_id)
+                {
+                    // call the main operation by initializing `operation_id` to that of the main operation
+                    let linker_first_step = "_linker_first_step";
+                    linker.add_to_namespace_links(
+                        location,
+                        parse_pil_statement(&format!(
                             "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
                         )),
-                        );
-                        linker.add_to_namespace_links(
-                            location,
-                            parse_pil_statement(&format!(
-                                "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
-                            )),
-                        );
-                    }
+                    );
+                    linker.add_to_namespace_links(
+                        location,
+                        parse_pil_statement(&format!(
+                            "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
+                        )),
+                    );
+                }
             }
         }
 
@@ -82,7 +84,7 @@ pub trait LinkerBackend: Sized {
     fn process_link(
         &mut self,
         link: Link,
-        from_namespace: String,
+        from_namespace: &Location,
         objects: &BTreeMap<Location, Object>,
     );
 }

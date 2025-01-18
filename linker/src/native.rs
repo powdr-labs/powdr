@@ -17,14 +17,14 @@ pub struct NativeLinker {
     degree_mode: DegreeMode,
     max_degree: Option<Number>,
     /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
-    namespaces: BTreeMap<String, (Vec<PilStatement>, Vec<PilStatement>)>,
+    namespaces: BTreeMap<Location, (Vec<PilStatement>, Vec<PilStatement>)>,
 }
 
 impl LinkerBackend for NativeLinker {
     fn process_link(
         &mut self,
         link: Link,
-        from_namespace: String,
+        from_namespace: &Location,
         objects: &BTreeMap<Location, Object>,
     ) {
         let from = link.from;
@@ -40,7 +40,8 @@ impl LinkerBackend for NativeLinker {
         let lhs = selected(
             combine_flags(from.instr_flag, from.link_flag),
             ArrayLiteral {
-                items: op_id.into_iter()
+                items: op_id
+                    .into_iter()
                     .chain(from.params.inputs)
                     .chain(from.params.outputs)
                     .collect(),
@@ -128,26 +129,24 @@ impl LinkerBackend for NativeLinker {
                 .unwrap_or_else(|| panic!("machine at {location} must have an explicit degree")),
         };
 
-        let namespace = location.to_string();
-
-        let (pil, _) = self.namespaces.entry(namespace.clone()).or_default();
+        let (pil, _) = self.namespaces.entry(location.clone()).or_default();
 
         // create a namespace for this object
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
-            SymbolPath::from_identifier(namespace.clone()),
+            SymbolPath::from_identifier(location.to_string()),
             Some(namespace_degree),
         ));
 
         pil.extend(object.pil);
         for link in object.links {
-            self.process_link(link, namespace.clone(), objects);
+            self.process_link(link, location, objects);
         }
     }
 
     fn add_to_namespace_links(&mut self, namespace: &Location, statement: PilStatement) {
         self.namespaces
-            .entry(namespace.to_string())
+            .entry(namespace.clone())
             .or_default()
             .1
             .push(statement);
@@ -165,12 +164,12 @@ impl NativeLinker {
     fn insert_interaction(
         &mut self,
         interaction_type: InteractionType,
-        from_namespace: String,
+        from_namespace: &Location,
         lhs: Expression,
         rhs: Expression,
     ) {
         self.namespaces
-            .entry(from_namespace)
+            .entry(from_namespace.clone())
             .or_default()
             .1
             .push(PilStatement::Expression(

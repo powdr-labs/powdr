@@ -3,11 +3,8 @@ use std::protocols::bus::bus_receive;
 use std::protocols::permutation::unpack_permutation_constraint;
 use std::constraints::to_phantom_permutation;
 
-/// Given an ID and permutation constraints, receives the (ID, permutation_constraint.rhs...) tuple from the bus
-/// with a prover-provided multiplicity if permutation_constraint.rhs_selector is 1.
-/// Also adds an annotation for witness generation.
-let permutation_receive: expr, Constr, expr -> () = constr |id, permutation_constraint, latch| {
-    let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
-    
-    bus_receive(id, rhs, rhs_selector, latch);
+/// Given an ID, selector, tuple and latch, receives (ID, ...tuple) tuple from the bus
+/// with multiplicity 1 if the selector is 1.
+let permutation_receive: expr, expr, expr[], expr -> () = constr |id, selector, tuple, latch| {
+    bus_receive(id, tuple, selector, latch);
 };

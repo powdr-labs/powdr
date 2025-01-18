@@ -21,14 +21,14 @@ impl LinkerBackend for BusLinker {
     fn process_link(
         &mut self,
         link: Link,
-        from_namespace: String,
+        from_namespace: &Location,
         objects: &BTreeMap<Location, Object>,
     ) {
         let from = link.from;
         let to = link.to;
         let operation = &objects[&to.machine].operations[&to.operation];
 
-        let interaction_id = interaction_id(&to.machine.to_string(), &to.operation);
+        let interaction_id = interaction_id(&to.machine, &to.operation);
 
         let op_id = operation.id.clone().unwrap().into();
 
@@ -54,21 +54,19 @@ impl LinkerBackend for BusLinker {
         let namespace_degree = try_into_namespace_degree(object.degree)
             .unwrap_or_else(|| panic!("machine at {location} must have an explicit degree"));
 
-        let namespace = location.to_string();
-
-        let (pil, _) = self.namespaces.entry(namespace.clone()).or_default();
+        let (pil, _) = self.namespaces.entry(location.clone()).or_default();
 
         // create a namespace for this object
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
-            SymbolPath::from_identifier(namespace.clone()),
+            SymbolPath::from_identifier(location.to_string()),
             Some(namespace_degree),
         ));
 
         pil.extend(object.pil);
         // process outgoing links
         for link in object.links {
-            self.process_link(link, namespace.clone(), objects);
+            self.process_link(link, location, objects);
         }
         // receive incoming links
         // TODO: are unused operations removed?
@@ -76,7 +74,7 @@ impl LinkerBackend for BusLinker {
             self.process_operation(
                 operation_name,
                 operation,
-                namespace.clone(),
+                location,
                 object.latch.as_ref().unwrap(),
                 object.operation_id.as_ref().unwrap().clone(),
             );
@@ -85,19 +83,50 @@ impl LinkerBackend for BusLinker {
 
     fn add_to_namespace_links(&mut self, namespace: &Location, statement: PilStatement) {
         self.namespaces
-            .entry(namespace.to_string())
+            .entry(namespace.clone())
             .or_default()
             .0
             .push(statement);
     }
 
-    fn try_new(_: &MachineInstanceGraph, degree_mode: DegreeMode) -> Result<Self, Vec<String>> {
+    fn try_new(graph: &MachineInstanceGraph, degree_mode: DegreeMode) -> Result<Self, Vec<String>> {
         match degree_mode {
             DegreeMode::Monolithic => {
                 Err(vec!["Monolithic degree mode is not supported".to_string()])
             }
-            DegreeMode::Vadcop => Ok(Self::default()),
-        }
+            DegreeMode::Vadcop => Ok(()),
+        }?;
+
+        let operation_mode = graph
+            .objects
+            .iter()
+            .flat_map(|(_, object)| {
+                object.links.iter().map(|link| {
+                    (
+                        (link.to.machine.clone(), link.to.operation.clone()),
+                        if link.is_permutation {
+                            InteractionType::Permutation
+                        } else {
+                            InteractionType::Lookup
+                        },
+                    )
+                })
+            })
+            .fold(BTreeMap::default(), |mut acc, (to, interaction_type)| {
+                let existing_value = acc.insert(to, interaction_type);
+                assert!(
+                    existing_value
+                        .map(|v| v == interaction_type)
+                        .unwrap_or(true),
+                    "All links to the same operation must have the same permutation mode"
+                );
+                acc
+            });
+
+        Ok(Self {
+            namespaces: BTreeMap::default(),
+            operation_mode,
+        })
     }
 
     fn into_pil(self) -> Vec<PilStatement> {
@@ -108,16 +137,17 @@ impl LinkerBackend for BusLinker {
     }
 }
 
-fn interaction_id(machine: &str, operation: &String) -> u32 {
+fn interaction_id(machine: &Location, operation: &String) -> u32 {
     let mut hasher = DefaultHasher::new();
     format!("{machine}/{operation}").hash(&mut hasher);
     hasher.finish() as u32
 }
 
-#[derive(Default)]
 pub struct BusLinker {
     /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
-    namespaces: BTreeMap<String, (Vec<PilStatement>, Vec<PilStatement>)>,
+    namespaces: BTreeMap<Location, (Vec<PilStatement>, Vec<PilStatement>)>,
+    /// for each operation, whether we are in permutation mode or not
+    operation_mode: BTreeMap<(Location, String), InteractionType>,
 }
 
 impl BusLinker {
@@ -125,20 +155,18 @@ impl BusLinker {
         &mut self,
         operation_name: String,
         operation: Operation,
-        namespace: String,
+        location: &Location,
         latch: &str,
         operation_id: String,
     ) {
-        // TODO: we need to know if the operation is accessed via lookup or permutation!
-        // we assume it's accessed via lookup for now, need to do a first pass on links and error out if mixed
-        // or is mixed somehow okay, by receiving both lookup and permutation?
+        let interaction_ty = self.operation_mode[&(location.clone(), operation_name.clone())];
 
-        let interaction_ty = InteractionType::Lookup;
+        let interaction_id = interaction_id(location, &operation_name);
 
-        let interaction_id = interaction_id(&namespace, &operation_name);
+        let namespace = location.to_string();
 
         self.namespaces
-            .entry(namespace.clone())
+            .entry(location.clone())
             .or_default()
             .1
             .push(PilStatement::Expression(
@@ -166,7 +194,7 @@ impl BusLinker {
     fn insert_interaction(
         &mut self,
         interaction_id: u32,
-        namespace: String,
+        namespace: &Location,
         selector: Expression,
         tuple: Expression,
     ) {
@@ -192,7 +220,7 @@ impl BusLinker {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 enum InteractionType {
     Lookup,
     #[allow(dead_code)]
