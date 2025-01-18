@@ -5,10 +5,10 @@ use std::{
 };
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{Identity, PolyID, PolynomialType};
+use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
-use crate::witgen::FixedData;
+use crate::witgen::{data_structures::identity::Identity, FixedData};
 
 use super::{
     effect::{format_code, Effect},
@@ -293,20 +293,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
     }
 }
 
-fn is_machine_call<T>(identity: &Identity<T>) -> bool {
-    match identity {
-        Identity::Lookup(_)
-        | Identity::Permutation(_)
-        | Identity::PhantomLookup(_)
-        | Identity::PhantomPermutation(_) => true,
-        // TODO(bus_interaction): Bus interactions are currently ignored,
-        // so processing them does not succeed. We currently assume that for
-        // every bus interaction, there is an equivalent (phantom) lookup or
-        // permutation constraint.
-        // Returning false here to give JITing a chance to succeed.
-        Identity::PhantomBusInteraction(_) => false,
-        Identity::Polynomial(_) | Identity::Connect(_) => false,
-    }
+fn is_machine_call<T: FieldElement>(identity: &Identity<T>) -> bool {
+    matches!(identity, Identity::BusSend(_))
 }
 
 pub struct Error<'a, T: FieldElement> {
