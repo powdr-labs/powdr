@@ -41,8 +41,7 @@ pub trait LinkerBackend: Sized {
             linker.process_object(location, object.clone(), &graph.objects);
 
             if *location == Location::main() {
-                match (operation_id, main_operation_id) {
-                    (Some(operation_id), Some(main_operation_id)) => {
+                if let (Some(main_operation_id), Some(operation_id)) = (main_operation_id, operation_id) {
                         // call the main operation by initializing `operation_id` to that of the main operation
                         let linker_first_step = "_linker_first_step";
                         linker.add_to_namespace_links(
@@ -58,9 +57,6 @@ pub trait LinkerBackend: Sized {
                             )),
                         );
                     }
-                    (None, None) => {}
-                    _ => unreachable!(),
-                }
             }
         }
 

@@ -30,6 +30,13 @@ impl Display for MachineInstanceGraph {
 impl Display for Object {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "// Degree {}", self.degree)?;
+        if !self.operations.is_empty() {
+            writeln!(f, "// Operations:")?;
+            for (name, operation) in &self.operations {
+                writeln!(f, "// {name}: {operation}")?;
+            }
+        }
+        writeln!(f, "// PIL:")?;
         for s in &self.pil {
             writeln!(f, "{s}")?;
         }

@@ -8,7 +8,7 @@ use powdr_ast::{
     },
 };
 use powdr_parser_util::SourceRef;
-use std::{collections::BTreeMap, iter::once};
+use std::collections::BTreeMap;
 
 use crate::{DegreeMode, LinkerBackend};
 
@@ -34,13 +34,13 @@ impl LinkerBackend for NativeLinker {
         let to_machine = &objects[&to.machine];
         let operation = &to_machine.operations[&to.operation];
 
-        let op_id = operation.id.clone().unwrap().into();
+        let op_id = operation.id.clone().map(|operation_id| operation_id.into());
 
         // lhs is `flag { operation_id, inputs, outputs }`
         let lhs = selected(
             combine_flags(from.instr_flag, from.link_flag),
             ArrayLiteral {
-                items: once(op_id)
+                items: op_id.into_iter()
                     .chain(from.params.inputs)
                     .chain(from.params.outputs)
                     .collect(),

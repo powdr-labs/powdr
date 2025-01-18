@@ -23,7 +23,7 @@ use powdr_number::BigUint;
 const MAIN_MACHINE: &str = "::Main";
 
 pub fn compile(input: AnalysisASMFile) -> MachineInstanceGraph {
-    let main_location = Location::main();
+    let main = Location::main();
 
     let non_std_non_rom_machines = input
         .machines()
@@ -46,8 +46,8 @@ pub fn compile(input: AnalysisASMFile) -> MachineInstanceGraph {
                 ..Default::default()
             };
             return MachineInstanceGraph {
-                main: main_location.clone(),
-                objects: [(main_location, obj)].into(),
+                main: main.clone(),
+                objects: [(main, obj)].into(),
                 statements: module_level_pil_statements(input),
             };
         }
@@ -63,7 +63,7 @@ pub fn compile(input: AnalysisASMFile) -> MachineInstanceGraph {
 
     // get a list of all machines to instantiate and their arguments. The order does not matter.
     let mut queue = vec![(
-        main_location.clone(),
+        main.clone(),
         Instance {
             machine_ty: main_ty.clone(),
             submachine_locations: vec![],
@@ -171,7 +171,7 @@ pub fn compile(input: AnalysisASMFile) -> MachineInstanceGraph {
     }
 
     MachineInstanceGraph {
-        main: main_location,
+        main,
         objects,
         statements: module_level_pil_statements(input),
     }

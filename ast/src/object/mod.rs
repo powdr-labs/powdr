@@ -48,7 +48,7 @@ pub struct MachineInstanceGraph {
     pub statements: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Debug)]
 pub struct Object {
     pub degree: MachineDegree,
     /// the pil identities for this machine
