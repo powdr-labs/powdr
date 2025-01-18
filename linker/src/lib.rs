@@ -200,9 +200,9 @@ impl Linker {
                     namespaced_reference(to_namespace.clone(), call_selectors);
                 let call_selector =
                     index_access(call_selector_array, Some(to.selector_idx.unwrap().into()));
-                latch * call_selector
+                latch.clone() * call_selector
             } else {
-                latch
+                latch.clone()
             };
 
             let rhs = selected(rhs_selector, rhs_list);
@@ -213,12 +213,13 @@ impl Linker {
                 to_namespace,
                 lhs,
                 rhs,
+                latch,
             );
         } else {
             let latch = namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap());
 
             // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
-            let rhs = selected(latch, rhs_list);
+            let rhs = selected(latch.clone(), rhs_list);
 
             self.insert_interaction(
                 InteractionType::Lookup,
@@ -226,6 +227,7 @@ impl Linker {
                 to_namespace,
                 lhs,
                 rhs,
+                latch,
             );
         };
     }
@@ -237,6 +239,7 @@ impl Linker {
         to_namespace: String,
         lhs: Expression,
         rhs: Expression,
+        latch: Expression,
     ) {
         // get a new unique interaction id
         let interaction_id = self.next_interaction_id();
@@ -275,6 +278,7 @@ impl Linker {
                             interaction_type,
                             namespaced_expression(from_namespace, lhs),
                             rhs,
+                            latch,
                             interaction_id,
                         ),
                     ));
@@ -323,20 +327,21 @@ fn receive(
     identity_type: InteractionType,
     lhs: Expression,
     rhs: Expression,
+    latch: Expression,
     interaction_id: u32,
 ) -> Expression {
-    let (function, identity) = match identity_type {
+    let (function, arguments) = match identity_type {
         InteractionType::Lookup => (
             SymbolPath::from_str("std::protocols::lookup_via_bus::lookup_receive")
                 .unwrap()
                 .into(),
-            lookup(lhs, rhs),
+            vec![interaction_id.into(), lookup(lhs, rhs), latch],
         ),
         InteractionType::Permutation => (
             SymbolPath::from_str("std::protocols::permutation_via_bus::permutation_receive")
                 .unwrap()
                 .into(),
-            permutation(lhs, rhs),
+            vec![interaction_id.into(), permutation(lhs, rhs)],
         ),
     };
 
@@ -344,7 +349,7 @@ fn receive(
         SourceRef::unknown(),
         FunctionCall {
             function: Box::new(Expression::Reference(SourceRef::unknown(), function)),
-            arguments: vec![interaction_id.into(), identity],
+            arguments,
         },
     )
 }
