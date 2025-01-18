@@ -8,87 +8,19 @@ use powdr_ast::{
     },
 };
 use powdr_parser_util::SourceRef;
-use std::{
-    collections::BTreeMap,
-    hash::{DefaultHasher, Hash, Hasher},
-    iter::once,
-    str::FromStr,
-};
+use sha2::{Digest, Sha256};
+use std::{collections::BTreeMap, iter::once, str::FromStr};
 
 use crate::{DegreeMode, LinkerBackend};
 
+pub struct BusLinker {
+    /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
+    namespaces: BTreeMap<Location, (Vec<PilStatement>, Vec<PilStatement>)>,
+    /// for each operation, whether we are in permutation mode or lookup mode
+    operation_mode: BTreeMap<(Location, String), InteractionType>,
+}
+
 impl LinkerBackend for BusLinker {
-    fn process_link(
-        &mut self,
-        link: Link,
-        from_namespace: &Location,
-        objects: &BTreeMap<Location, Object>,
-    ) {
-        let from = link.from;
-        let to = link.to;
-        let operation = &objects[&to.machine].operations[&to.operation];
-
-        let interaction_id = interaction_id(&to.machine, &to.operation);
-
-        let op_id = operation.id.clone().unwrap().into();
-
-        // lhs is `flag { operation_id, inputs, outputs }`
-        let selector = combine_flags(from.instr_flag, from.link_flag);
-        let tuple = ArrayLiteral {
-            items: once(op_id)
-                .chain(from.params.inputs)
-                .chain(from.params.outputs)
-                .collect(),
-        }
-        .into();
-
-        self.insert_interaction(interaction_id, from_namespace, selector, tuple);
-    }
-
-    fn process_object(
-        &mut self,
-        location: &Location,
-        object: Object,
-        objects: &BTreeMap<Location, Object>,
-    ) {
-        let namespace_degree = try_into_namespace_degree(object.degree)
-            .unwrap_or_else(|| panic!("machine at {location} must have an explicit degree"));
-
-        let (pil, _) = self.namespaces.entry(location.clone()).or_default();
-
-        // create a namespace for this object
-        pil.push(PilStatement::Namespace(
-            SourceRef::unknown(),
-            SymbolPath::from_identifier(location.to_string()),
-            Some(namespace_degree),
-        ));
-
-        pil.extend(object.pil);
-        // process outgoing links
-        for link in object.links {
-            self.process_link(link, location, objects);
-        }
-        // receive incoming links
-        // TODO: are unused operations removed?
-        for (operation_name, operation) in object.operations {
-            self.process_operation(
-                operation_name,
-                operation,
-                location,
-                object.latch.as_ref().unwrap(),
-                object.operation_id.as_ref().unwrap().clone(),
-            );
-        }
-    }
-
-    fn add_to_namespace_links(&mut self, namespace: &Location, statement: PilStatement) {
-        self.namespaces
-            .entry(namespace.clone())
-            .or_default()
-            .0
-            .push(statement);
-    }
-
     fn try_new(graph: &MachineInstanceGraph, degree_mode: DegreeMode) -> Result<Self, Vec<String>> {
         match degree_mode {
             DegreeMode::Monolithic => {
@@ -129,6 +61,77 @@ impl LinkerBackend for BusLinker {
         })
     }
 
+    fn process_link(
+        &mut self,
+        link: Link,
+        from_namespace: &Location,
+        objects: &BTreeMap<Location, Object>,
+    ) {
+        let from = link.from;
+        let to = link.to;
+
+        let operation = &objects[&to.machine].operations[&to.operation];
+
+        let interaction_id = interaction_id(&to.machine, &to.operation);
+
+        let op_id = operation.id.clone().unwrap().into();
+
+        // we send `flag $ { operation_id, inputs, outputs }`
+        let selector = combine_flags(from.instr_flag, from.link_flag);
+        let tuple = ArrayLiteral {
+            items: once(op_id)
+                .chain(from.params.inputs)
+                .chain(from.params.outputs)
+                .collect(),
+        }
+        .into();
+
+        self.insert_interaction(interaction_id, from_namespace, selector, tuple);
+    }
+
+    fn process_object(
+        &mut self,
+        location: &Location,
+        object: Object,
+        objects: &BTreeMap<Location, Object>,
+    ) {
+        let namespace_degree = try_into_namespace_degree(object.degree)
+            .unwrap_or_else(|| panic!("machine at {location} must have an explicit degree"));
+
+        let (pil, _) = self.namespaces.entry(location.clone()).or_default();
+
+        // create a namespace for this object
+        pil.push(PilStatement::Namespace(
+            SourceRef::unknown(),
+            SymbolPath::from_identifier(location.to_string()),
+            Some(namespace_degree),
+        ));
+
+        pil.extend(object.pil);
+        // process outgoing links
+        for link in object.links {
+            self.process_link(link, location, objects);
+        }
+        // receive incoming links
+        for (name, operation) in object.operations {
+            self.process_operation(
+                name,
+                operation,
+                location,
+                object.latch.as_ref().unwrap(),
+                object.operation_id.as_ref().unwrap().clone(),
+            );
+        }
+    }
+
+    fn add_to_namespace_links(&mut self, namespace: &Location, statement: PilStatement) {
+        self.namespaces
+            .entry(namespace.clone())
+            .or_default()
+            .1
+            .push(statement);
+    }
+
     fn into_pil(self) -> Vec<PilStatement> {
         self.namespaces
             .into_iter()
@@ -137,34 +140,29 @@ impl LinkerBackend for BusLinker {
     }
 }
 
+/// Compute a unique identifier for an interaction
 fn interaction_id(machine: &Location, operation: &String) -> u32 {
-    let mut hasher = DefaultHasher::new();
-    format!("{machine}/{operation}").hash(&mut hasher);
-    hasher.finish() as u32
-}
-
-pub struct BusLinker {
-    /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
-    namespaces: BTreeMap<Location, (Vec<PilStatement>, Vec<PilStatement>)>,
-    /// for each operation, whether we are in permutation mode or not
-    operation_mode: BTreeMap<(Location, String), InteractionType>,
+    let mut hasher = Sha256::default();
+    hasher.update(format!("{machine}/{operation}"));
+    let result = hasher.finalize();
+    let mut bytes = [0u8; 4];
+    bytes.copy_from_slice(&result[..4]);
+    u32::from_le_bytes(bytes)
 }
 
 impl BusLinker {
     fn process_operation(
         &mut self,
-        operation_name: String,
+        name: String,
         operation: Operation,
         location: &Location,
         latch: &str,
         operation_id: String,
     ) {
-        let interaction_ty = self
-            .operation_mode
-            .get(&(location.clone(), operation_name.clone()));
+        let interaction_ty = self.operation_mode.get(&(location.clone(), name.clone()));
 
         if let Some(interaction_ty) = interaction_ty {
-            let interaction_id = interaction_id(location, &operation_name);
+            let interaction_id = interaction_id(location, &name);
 
             let namespace = location.to_string();
 
@@ -317,7 +315,7 @@ mod test {
     pol commit pc_update;
     pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
-    std::protocols::bus::bus_send(2981556482, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1);
+    std::protocols::bus::bus_send(1816473376, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1);
 namespace main__rom(4);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
@@ -326,7 +324,7 @@ namespace main__rom(4);
     pol constant p_instr_return = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-    std::protocols::lookup_via_bus::lookup_receive(2981556482, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], main__rom::latch);
+    std::protocols::lookup_via_bus::lookup_receive(1816473376, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], main__rom::latch);
 "#;
 
         let file_name = "../test_data/asm/empty_vm.asm";

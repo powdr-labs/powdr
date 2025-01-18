@@ -14,7 +14,7 @@ pub mod native;
 
 const MAIN_OPERATION_NAME: &str = "main";
 
-/// Link the objects into a single PIL file, using the specified parameters
+/// Link the objects into a single PIL file, using the specified parameters.
 pub fn link(graph: MachineInstanceGraph, params: LinkerParams) -> Result<PILFile, Vec<String>> {
     match params.mode {
         LinkerMode::Native => native::NativeLinker::link(graph, params.degree_mode),
@@ -24,23 +24,26 @@ pub fn link(graph: MachineInstanceGraph, params: LinkerParams) -> Result<PILFile
 
 /// A trait for linker backends
 pub trait LinkerBackend: Sized {
+    /// Create a new linker instance from the given graph and degree mode.
+    /// This can fail, for example if the linker does not support the given degree mode.
     fn try_new(graph: &MachineInstanceGraph, degree_mode: DegreeMode) -> Result<Self, Vec<String>>;
 
+    /// Link the objects into a single PIL file.
     fn link(graph: MachineInstanceGraph, degree_mode: DegreeMode) -> Result<PILFile, Vec<String>> {
         let mut linker = Self::try_new(&graph, degree_mode)?;
 
         let common_definitions = process_definitions(graph.statements);
 
         for (location, object) in &graph.objects {
-            let operation_id = object.operation_id.clone();
-            let main_operation_id = object
-                .operations
-                .get(MAIN_OPERATION_NAME)
-                .and_then(|operation| operation.id.as_ref());
-
             linker.process_object(location, object.clone(), &graph.objects);
 
             if *location == Location::main() {
+                let operation_id = object.operation_id.clone();
+                let main_operation_id = object
+                    .operations
+                    .get(MAIN_OPERATION_NAME)
+                    .and_then(|operation| operation.id.as_ref());
+
                 if let (Some(main_operation_id), Some(operation_id)) =
                     (main_operation_id, operation_id)
                 {
@@ -70,6 +73,7 @@ pub trait LinkerBackend: Sized {
         ))
     }
 
+    /// Process an object.
     fn process_object(
         &mut self,
         location: &Location,
@@ -79,8 +83,10 @@ pub trait LinkerBackend: Sized {
 
     fn add_to_namespace_links(&mut self, namespace: &Location, statement: PilStatement);
 
+    /// Convert the linker's internal state into PIL statements.
     fn into_pil(self) -> Vec<PilStatement>;
 
+    /// Process a link between two machines.
     fn process_link(
         &mut self,
         link: Link,
