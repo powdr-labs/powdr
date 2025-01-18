@@ -1,17 +1,16 @@
-use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::{combine_flags, MachineDegree},
     object::{Link, Location, MachineInstanceGraph, Object},
     parsed::{
         asm::SymbolPath,
         build::{index_access, lookup, namespaced_reference, permutation, selected},
-        ArrayLiteral, Expression, NamespaceDegree, Number, PILFile, PilStatement,
+        ArrayLiteral, Expression, NamespaceDegree, Number, PilStatement,
     },
 };
 use powdr_parser_util::SourceRef;
 use std::{collections::BTreeMap, iter::once};
 
-use crate::{process_definitions, DegreeMode, LinkerBackend, MAIN_OPERATION_NAME};
+use crate::{DegreeMode, LinkerBackend};
 
 #[derive(Default)]
 pub struct Linker {
@@ -22,106 +21,6 @@ pub struct Linker {
 }
 
 impl LinkerBackend for Linker {
-    fn link(graph: MachineInstanceGraph, degree_mode: DegreeMode) -> Result<PILFile, Vec<String>> {
-        let linker = Self::new(degree_mode);
-        linker.link_inner(graph)
-    }
-}
-
-impl Linker {
-    pub fn new(degree_mode: DegreeMode) -> Self {
-        Self {
-            degree_mode,
-            ..Default::default()
-        }
-    }
-
-    fn link_inner(mut self, graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
-        self.max_degree = match self.degree_mode {
-            DegreeMode::Monolithic => Some(graph
-                .objects
-                .iter()
-                .filter_map(|(_, object)| object.degree.max.clone()).map(|e| match e {
-                    Expression::Number(_, n) => n,
-                    _ => unimplemented!("Only constant max degrees are supported when using monolithic degree mode"),
-                }).max().unwrap()),
-            DegreeMode::Vadcop => None,
-        };
-
-        let common_definitions = process_definitions(graph.statements);
-
-        for (location, object) in &graph.objects {
-            let operation_id = object.operation_id.clone();
-            let main_operation_id = object
-                .operations
-                .get(MAIN_OPERATION_NAME)
-                .and_then(|operation| operation.id.as_ref());
-
-            self.process_object(location.clone(), object.clone(), &graph.objects);
-
-            if *location == Location::main() {
-                match (operation_id, main_operation_id) {
-                    (Some(operation_id), Some(main_operation_id)) => {
-                        // call the main operation by initializing `operation_id` to that of the main operation
-                        let linker_first_step = "_linker_first_step";
-                        self.namespaces.get_mut(&location.to_string()).unwrap().1.extend([
-                            parse_pil_statement(&format!(
-                                "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
-                            )),
-                            parse_pil_statement(&format!(
-                                "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
-                            )),
-                        ]);
-                    }
-                    (None, None) => {}
-                    _ => unreachable!(),
-                }
-            }
-        }
-
-        Ok(PILFile(
-            common_definitions
-                .into_iter()
-                .chain(
-                    self.namespaces
-                        .into_iter()
-                        .flat_map(|(_, (statements, links))| statements.into_iter().chain(links)),
-                )
-                .collect(),
-        ))
-    }
-
-    fn process_object(
-        &mut self,
-        location: Location,
-        object: Object,
-        objects: &BTreeMap<Location, Object>,
-    ) {
-        let namespace_degree = match &self.degree_mode {
-            DegreeMode::Monolithic => {
-                Expression::Number(SourceRef::unknown(), self.max_degree.clone().unwrap()).into()
-            }
-            DegreeMode::Vadcop => try_into_namespace_degree(object.degree)
-                .unwrap_or_else(|| panic!("machine at {location} must have an explicit degree")),
-        };
-
-        let namespace = location.to_string();
-
-        let (pil, _) = self.namespaces.entry(namespace.clone()).or_default();
-
-        // create a namespace for this object
-        pil.push(PilStatement::Namespace(
-            SourceRef::unknown(),
-            SymbolPath::from_identifier(namespace.clone()),
-            Some(namespace_degree),
-        ));
-
-        pil.extend(object.pil);
-        for link in object.links {
-            self.process_link(link, namespace.clone(), objects);
-        }
-    }
-
     fn process_link(
         &mut self,
         link: Link,
@@ -196,6 +95,73 @@ impl Linker {
         };
     }
 
+    fn try_new(graph: &MachineInstanceGraph, degree_mode: DegreeMode) -> Result<Self, Vec<String>> {
+        let max_degree = match degree_mode {
+            DegreeMode::Monolithic => Some(graph
+                .objects
+                .iter()
+                .filter_map(|(_, object)| object.degree.max.clone()).map(|e| match e {
+                    Expression::Number(_, n) => n,
+                    _ => unimplemented!("Only constant max degrees are supported when using monolithic degree mode"),
+                }).max().unwrap()),
+            DegreeMode::Vadcop => None,
+        };
+
+        Ok(Self {
+            degree_mode,
+            max_degree,
+            namespaces: Default::default(),
+        })
+    }
+
+    fn process_object(
+        &mut self,
+        location: &Location,
+        object: Object,
+        objects: &BTreeMap<Location, Object>,
+    ) {
+        let namespace_degree = match &self.degree_mode {
+            DegreeMode::Monolithic => {
+                Expression::Number(SourceRef::unknown(), self.max_degree.clone().unwrap()).into()
+            }
+            DegreeMode::Vadcop => try_into_namespace_degree(object.degree)
+                .unwrap_or_else(|| panic!("machine at {location} must have an explicit degree")),
+        };
+
+        let namespace = location.to_string();
+
+        let (pil, _) = self.namespaces.entry(namespace.clone()).or_default();
+
+        // create a namespace for this object
+        pil.push(PilStatement::Namespace(
+            SourceRef::unknown(),
+            SymbolPath::from_identifier(namespace.clone()),
+            Some(namespace_degree),
+        ));
+
+        pil.extend(object.pil);
+        for link in object.links {
+            self.process_link(link, namespace.clone(), objects);
+        }
+    }
+
+    fn add_to_namespace_links(&mut self, namespace: &Location, statement: PilStatement) {
+        self.namespaces
+            .entry(namespace.to_string())
+            .or_default()
+            .1
+            .push(statement);
+    }
+
+    fn into_pil(self) -> Vec<PilStatement> {
+        self.namespaces
+            .into_iter()
+            .flat_map(|(_, (statements, links))| statements.into_iter().chain(links))
+            .collect()
+    }
+}
+
+impl Linker {
     fn insert_interaction(
         &mut self,
         interaction_type: InteractionType,

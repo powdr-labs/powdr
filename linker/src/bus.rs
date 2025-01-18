@@ -1,11 +1,10 @@
-use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::{combine_flags, MachineDegree},
     object::{Link, Location, MachineInstanceGraph, Object, Operation},
     parsed::{
         asm::SymbolPath,
         build::{index_access, namespaced_reference},
-        ArrayLiteral, Expression, FunctionCall, NamespaceDegree, PILFile, PilStatement,
+        ArrayLiteral, Expression, FunctionCall, NamespaceDegree, PilStatement,
     },
 };
 use powdr_parser_util::SourceRef;
@@ -16,78 +15,39 @@ use std::{
     str::FromStr,
 };
 
-use crate::{process_definitions, DegreeMode, LinkerBackend, MAIN_OPERATION_NAME};
+use crate::{DegreeMode, LinkerBackend};
 
 impl LinkerBackend for Linker {
-    fn link(graph: MachineInstanceGraph, degree_mode: DegreeMode) -> Result<PILFile, Vec<String>> {
-        let linker = match degree_mode {
-            DegreeMode::Monolithic => {
-                Err(vec!["Monolithic degree mode is not supported".to_string()])
-            }
-            DegreeMode::Vadcop => Ok(Self::default()),
-        }?;
+    fn process_link(
+        &mut self,
+        link: Link,
+        from_namespace: String,
+        objects: &BTreeMap<Location, Object>,
+    ) {
+        let from = link.from;
+        let to = link.to;
+        let operation = &objects[&to.machine].operations[&to.operation];
 
-        linker.link_inner(graph)
-    }
-}
+        let interaction_id = interaction_id(&to.machine.to_string(), &to.operation);
 
-fn interaction_id(machine: &str, operation: &String) -> u32 {
-    let mut hasher = DefaultHasher::new();
-    format!("{machine}/{operation}").hash(&mut hasher);
-    hasher.finish() as u32
-}
+        let op_id = operation.id.clone().unwrap().into();
 
-#[derive(Default)]
-pub struct Linker {
-    /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
-    namespaces: BTreeMap<String, (Vec<PilStatement>, Vec<PilStatement>)>,
-}
-
-impl Linker {
-    fn link_inner(mut self, graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
-        let common_definitions = process_definitions(graph.statements);
-
-        for (location, object) in &graph.objects {
-            let operation_id = object.operation_id.clone();
-            let main_operation_id = object.operations[MAIN_OPERATION_NAME].id.clone();
-
-            self.process_object(location.clone(), object.clone(), &graph.objects);
-
-            if *location == Location::main() {
-                match (operation_id, main_operation_id) {
-                    (Some(operation_id), Some(main_operation_id)) => {
-                        // call the main operation by initializing `operation_id` to that of the main operation
-                        let linker_first_step = "_linker_first_step";
-                        self.namespaces.get_mut(&location.to_string()).unwrap().1.extend([
-                            parse_pil_statement(&format!(
-                                "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
-                            )),
-                            parse_pil_statement(&format!(
-                                "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
-                            )),
-                        ]);
-                    }
-                    (None, None) => {}
-                    _ => unreachable!(),
-                }
-            }
-        }
-
-        Ok(PILFile(
-            common_definitions
-                .into_iter()
-                .chain(
-                    self.namespaces
-                        .into_iter()
-                        .flat_map(|(_, (statements, links))| statements.into_iter().chain(links)),
-                )
+        // lhs is `flag { operation_id, inputs, outputs }`
+        let selector = combine_flags(from.instr_flag, from.link_flag);
+        let tuple = ArrayLiteral {
+            items: once(op_id)
+                .chain(from.params.inputs)
+                .chain(from.params.outputs)
                 .collect(),
-        ))
+        }
+        .into();
+
+        self.insert_interaction(interaction_id, from_namespace, selector, tuple);
     }
 
     fn process_object(
         &mut self,
-        location: Location,
+        location: &Location,
         object: Object,
         objects: &BTreeMap<Location, Object>,
     ) {
@@ -123,6 +83,44 @@ impl Linker {
         }
     }
 
+    fn add_to_namespace_links(&mut self, namespace: &Location, statement: PilStatement) {
+        self.namespaces
+            .entry(namespace.to_string())
+            .or_default()
+            .0
+            .push(statement);
+    }
+
+    fn try_new(_: &MachineInstanceGraph, degree_mode: DegreeMode) -> Result<Self, Vec<String>> {
+        match degree_mode {
+            DegreeMode::Monolithic => {
+                Err(vec!["Monolithic degree mode is not supported".to_string()])
+            }
+            DegreeMode::Vadcop => Ok(Self::default()),
+        }
+    }
+
+    fn into_pil(self) -> Vec<PilStatement> {
+        self.namespaces
+            .into_iter()
+            .flat_map(|(_, (statements, links))| statements.into_iter().chain(links))
+            .collect()
+    }
+}
+
+fn interaction_id(machine: &str, operation: &String) -> u32 {
+    let mut hasher = DefaultHasher::new();
+    format!("{machine}/{operation}").hash(&mut hasher);
+    hasher.finish() as u32
+}
+
+#[derive(Default)]
+pub struct Linker {
+    /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
+    namespaces: BTreeMap<String, (Vec<PilStatement>, Vec<PilStatement>)>,
+}
+
+impl Linker {
     fn process_operation(
         &mut self,
         operation_name: String,
@@ -163,33 +161,6 @@ impl Linker {
                     interaction_id,
                 ),
             ));
-    }
-
-    fn process_link(
-        &mut self,
-        link: Link,
-        from_namespace: String,
-        objects: &BTreeMap<Location, Object>,
-    ) {
-        let from = link.from;
-        let to = link.to;
-        let operation = &objects[&to.machine].operations[&to.operation];
-
-        let interaction_id = interaction_id(&to.machine.to_string(), &to.operation);
-
-        let op_id = operation.id.clone().unwrap().into();
-
-        // lhs is `flag { operation_id, inputs, outputs }`
-        let selector = combine_flags(from.instr_flag, from.link_flag);
-        let tuple = ArrayLiteral {
-            items: once(op_id)
-                .chain(from.params.inputs)
-                .chain(from.params.outputs)
-                .collect(),
-        }
-        .into();
-
-        self.insert_interaction(interaction_id, from_namespace, selector, tuple);
     }
 
     fn insert_interaction(

@@ -1,5 +1,6 @@
+use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
-    object::MachineInstanceGraph,
+    object::{Link, Location, MachineInstanceGraph, Object},
     parsed::{asm::AbsoluteSymbolPath, PILFile, PilStatement},
 };
 use powdr_parser_util::SourceRef;
@@ -22,8 +23,72 @@ pub fn link(graph: MachineInstanceGraph, params: LinkerParams) -> Result<PILFile
 }
 
 /// A trait for linker backends
-pub trait LinkerBackend {
-    fn link(graph: MachineInstanceGraph, degree_mode: DegreeMode) -> Result<PILFile, Vec<String>>;
+pub trait LinkerBackend: Sized {
+    fn try_new(graph: &MachineInstanceGraph, degree_mode: DegreeMode) -> Result<Self, Vec<String>>;
+
+    fn link(graph: MachineInstanceGraph, degree_mode: DegreeMode) -> Result<PILFile, Vec<String>> {
+        let mut linker = Self::try_new(&graph, degree_mode)?;
+
+        let common_definitions = process_definitions(graph.statements);
+
+        for (location, object) in &graph.objects {
+            let operation_id = object.operation_id.clone();
+            let main_operation_id = object
+                .operations
+                .get(MAIN_OPERATION_NAME)
+                .and_then(|operation| operation.id.as_ref());
+
+            linker.process_object(location, object.clone(), &graph.objects);
+
+            if *location == Location::main() {
+                match (operation_id, main_operation_id) {
+                    (Some(operation_id), Some(main_operation_id)) => {
+                        // call the main operation by initializing `operation_id` to that of the main operation
+                        let linker_first_step = "_linker_first_step";
+                        linker.add_to_namespace_links(
+                            location,
+                            parse_pil_statement(&format!(
+                            "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
+                        )),
+                        );
+                        linker.add_to_namespace_links(
+                            location,
+                            parse_pil_statement(&format!(
+                                "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
+                            )),
+                        );
+                    }
+                    (None, None) => {}
+                    _ => unreachable!(),
+                }
+            }
+        }
+
+        Ok(PILFile(
+            common_definitions
+                .into_iter()
+                .chain(linker.into_pil())
+                .collect(),
+        ))
+    }
+
+    fn process_object(
+        &mut self,
+        location: &Location,
+        object: Object,
+        objects: &BTreeMap<Location, Object>,
+    );
+
+    fn add_to_namespace_links(&mut self, namespace: &Location, statement: PilStatement);
+
+    fn into_pil(self) -> Vec<PilStatement>;
+
+    fn process_link(
+        &mut self,
+        link: Link,
+        from_namespace: String,
+        objects: &BTreeMap<Location, Object>,
+    );
 }
 
 #[derive(Clone, Copy, Default)]
