@@ -13,14 +13,14 @@ use std::{collections::BTreeMap, iter::once};
 use crate::{DegreeMode, LinkerBackend};
 
 #[derive(Default)]
-pub struct Linker {
+pub struct NativeLinker {
     degree_mode: DegreeMode,
     max_degree: Option<Number>,
     /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
     namespaces: BTreeMap<String, (Vec<PilStatement>, Vec<PilStatement>)>,
 }
 
-impl LinkerBackend for Linker {
+impl LinkerBackend for NativeLinker {
     fn process_link(
         &mut self,
         link: Link,
@@ -161,7 +161,7 @@ impl LinkerBackend for Linker {
     }
 }
 
-impl Linker {
+impl NativeLinker {
     fn insert_interaction(
         &mut self,
         interaction_type: InteractionType,
@@ -211,11 +211,11 @@ mod test {
     use crate::LinkerBackend;
 
     fn link_vadcop(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
-        super::Linker::link(graph, super::DegreeMode::Vadcop)
+        super::NativeLinker::link(graph, super::DegreeMode::Vadcop)
     }
 
     fn link_monolithic(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
-        super::Linker::link(graph, super::DegreeMode::Monolithic)
+        super::NativeLinker::link(graph, super::DegreeMode::Monolithic)
     }
 
     fn parse_analyze_and_compile_file<T: FieldElement>(file: &str) -> MachineInstanceGraph {

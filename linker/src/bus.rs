@@ -17,7 +17,7 @@ use std::{
 
 use crate::{DegreeMode, LinkerBackend};
 
-impl LinkerBackend for Linker {
+impl LinkerBackend for BusLinker {
     fn process_link(
         &mut self,
         link: Link,
@@ -115,12 +115,12 @@ fn interaction_id(machine: &str, operation: &String) -> u32 {
 }
 
 #[derive(Default)]
-pub struct Linker {
+pub struct BusLinker {
     /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
     namespaces: BTreeMap<String, (Vec<PilStatement>, Vec<PilStatement>)>,
 }
 
-impl Linker {
+impl BusLinker {
     fn process_operation(
         &mut self,
         operation_name: String,
@@ -249,7 +249,7 @@ mod test {
 
     use crate::LinkerBackend;
 
-    use super::Linker;
+    use super::BusLinker;
 
     fn parse_analyze_and_compile_file<T: FieldElement>(file: &str) -> MachineInstanceGraph {
         let contents = fs::read_to_string(file).unwrap();
@@ -299,7 +299,7 @@ namespace main__rom(4);
 
         let file_name = "../test_data/asm/empty_vm.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = Linker::link(graph, crate::DegreeMode::Vadcop).unwrap();
+        let pil = BusLinker::link(graph, crate::DegreeMode::Vadcop).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 }

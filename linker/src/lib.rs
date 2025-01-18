@@ -17,8 +17,8 @@ const MAIN_OPERATION_NAME: &str = "main";
 /// Link the objects into a single PIL file, using the specified parameters
 pub fn link(graph: MachineInstanceGraph, params: LinkerParams) -> Result<PILFile, Vec<String>> {
     match params.mode {
-        LinkerMode::Native => native::Linker::link(graph, params.degree_mode),
-        LinkerMode::Bus => bus::Linker::link(graph, params.degree_mode),
+        LinkerMode::Native => native::NativeLinker::link(graph, params.degree_mode),
+        LinkerMode::Bus => bus::BusLinker::link(graph, params.degree_mode),
     }
 }
 
