@@ -21,7 +21,4 @@ let lookup_receive: expr, Constr, expr -> () = constr |id, lookup_constraint, la
     (1 - rhs_selector) * multiplicities = 0;
     
     bus_receive(id, rhs, multiplicities, latch);
-    
-    // Add an annotation for witness generation
-    to_phantom_lookup(lookup_constraint, multiplicities);
 };
