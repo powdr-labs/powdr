@@ -1,7 +1,6 @@
 use core::fmt;
-use std::{iter::once, ops::RangeFrom};
+use std::{collections::BTreeMap, iter::once, ops::RangeFrom};
 
-use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, AlgebraicUnaryOperator, ConnectIdentity, Identity as AnalyzedIdentity,
@@ -38,29 +37,24 @@ pub struct BusSend<T>(pub BusInteraction<T>);
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct BusReceive<T>(pub BusInteraction<T>);
 
-impl<T: FieldElement> BusInteraction<T> {
+impl<T: FieldElement> BusSend<T> {
+    /// Tries to find the matching receive, which should succeed iff. the send has
+    /// a static interaction ID.
+    pub fn try_match_static<'a>(
+        &self,
+        receives: &'a BTreeMap<T, BusReceive<T>>,
+    ) -> Option<&'a BusReceive<T>> {
+        Some(&receives[&self.interaction_id()?])
+    }
+
     /// Returns the first tuple entry if it is a number.
     /// We assume this to identify the connection, i.e., sends and receives
     /// can be matched by matching the interaction ID.
-    fn interaction_id(&self) -> Option<T> {
-        match &self.selected_tuple.expressions[0] {
+    pub fn interaction_id(&self) -> Option<T> {
+        match &self.0.selected_tuple.expressions[0] {
             AlgebraicExpression::Number(id) => Some(*id),
             _ => None,
         }
-    }
-}
-
-impl<T: FieldElement> BusSend<T> {
-    /// Tries to find the matching send, by linearly searching through all receives
-    /// and checking if there is exactly one match.
-    pub fn try_match_static<'a>(&self, receives: &'a [BusReceive<T>]) -> Option<&'a BusReceive<T>> {
-        let id = self.0.interaction_id()?;
-
-        receives
-            .iter()
-            .filter(|receive| receive.0.interaction_id() == Some(id))
-            .exactly_one()
-            .ok()
     }
 }
 
@@ -68,6 +62,16 @@ impl<T: FieldElement> BusReceive<T> {
     pub fn is_unconstrained(&self) -> bool {
         // TODO: This is a hack (but should work if it was originally a lookup / permutation)
         self.0.multiplicity.as_ref() != Some(&self.0.selected_tuple.selector)
+    }
+
+    /// Returns the first tuple entry if it is a number, otherwise panics.
+    /// We assume this to identify the connection, i.e., sends and receives
+    /// can be matched by matching the interaction ID.
+    pub fn interaction_id(&self) -> T {
+        match &self.0.selected_tuple.expressions[0] {
+            AlgebraicExpression::Number(id) => *id,
+            _ => panic!("Receives should always have a static interaction ID."),
+        }
     }
 }
 
@@ -299,10 +303,10 @@ namespace main(4);
         let receives = identities
             .iter()
             .filter_map(|id| match id {
-                Identity::BusReceive(r) => Some(r.clone()),
+                Identity::BusReceive(r) => Some((r.interaction_id(), r.clone())),
                 _ => None,
             })
-            .collect::<Vec<_>>();
+            .collect();
 
         match (&identities[0], &identities[1]) {
             (Identity::BusSend(send), Identity::BusReceive(receive)) => {

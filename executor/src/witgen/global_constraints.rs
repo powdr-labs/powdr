@@ -231,7 +231,7 @@ fn propagate_constraints<T: FieldElement>(
     known_constraints: &mut BTreeMap<PolyID, RangeConstraint<T>>,
     identity: &Identity<T>,
     full_span: &BTreeSet<PolyID>,
-    bus_receives: &[BusReceive<T>],
+    bus_receives: &BTreeMap<T, BusReceive<T>>,
 ) -> bool {
     match identity {
         Identity::Polynomial(identity) => {
@@ -473,15 +473,15 @@ mod test {
 
     fn identities_and_receives<T: FieldElement>(
         analyzed: &Analyzed<T>,
-    ) -> (Vec<Identity<T>>, Vec<BusReceive<T>>) {
+    ) -> (Vec<Identity<T>>, BTreeMap<T, BusReceive<T>>) {
         let identities = convert(&analyzed.identities);
         let bus_receives = identities
             .iter()
             .filter_map(|identity| match identity {
-                Identity::BusReceive(id) => Some(id.clone()),
+                Identity::BusReceive(id) => Some((id.interaction_id(), id.clone())),
                 _ => None,
             })
-            .collect::<Vec<_>>();
+            .collect();
         (identities, bus_receives)
     }
 

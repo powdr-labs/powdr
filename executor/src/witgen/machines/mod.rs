@@ -350,7 +350,10 @@ impl<T: Display> Display for Connection<'_, T> {
 
 impl<'a, T: FieldElement> Connection<'a, T> {
     /// Creates a connection if the identity is a bus send.
-    pub fn try_new(identity: &'a Identity<T>, bus_receives: &'a [BusReceive<T>]) -> Option<Self> {
+    pub fn try_new(
+        identity: &'a Identity<T>,
+        bus_receives: &'a BTreeMap<T, BusReceive<T>>,
+    ) -> Option<Self> {
         match identity {
             Identity::BusSend(bus_interaction) => {
                 let send = bus_interaction;

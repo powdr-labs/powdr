@@ -304,7 +304,7 @@ where
 pub struct FixedData<'a, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
     identities: Vec<Identity<T>>,
-    bus_receives: Vec<BusReceive<T>>,
+    bus_receives: BTreeMap<T, BusReceive<T>>,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
     witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
     column_by_name: HashMap<String, PolyID>,
@@ -381,10 +381,10 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         let bus_receives = identities
             .iter()
             .filter_map(|identity| match identity {
-                Identity::BusReceive(id) => Some(id.clone()),
+                Identity::BusReceive(id) => Some((id.interaction_id(), id.clone())),
                 _ => None,
             })
-            .collect::<Vec<_>>();
+            .collect();
 
         FixedData {
             analyzed,
