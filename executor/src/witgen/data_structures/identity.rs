@@ -19,7 +19,7 @@ pub struct BusInteraction<T> {
     /// The tuple sent to the bus, with a selector.
     /// The selector is an expression that might or might not reference
     /// the multiplicity column, but it should always evaluate to a
-    /// binary value.
+    /// binary value. If it is zero, the multiplicity must be zero as well.
     /// For example, it could also be binary fixed column, indicating
     /// where the multiplicity can be non-zero.
     pub selected_tuple: SelectedExpressions<T>,
@@ -27,6 +27,8 @@ pub struct BusInteraction<T> {
     /// None if this interaction comes from the RHS of a native lookup,
     /// as native lookup arguments don't require the multiplicity to be
     /// committed.
+    /// Note that this is the absolute multiplicity, i.e., for bus receives,
+    /// the negation has been removed.
     pub multiplicity: Option<AlgebraicExpression<T>>,
 }
 
