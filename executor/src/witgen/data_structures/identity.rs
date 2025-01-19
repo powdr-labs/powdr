@@ -325,8 +325,8 @@ namespace main(4);
     fn native_lookup() {
         assert_correct_bus_interaction_pair(
             "left_latch $ [a] in right_latch $ [b];",
-            "BusSend(tuple=main::left_latch $ [5, main::a], multiplicity=main::left_latch)",
-            "BusReceive(tuple=main::right_latch $ [5, main::b], multiplicity=None)",
+            "BusSend(tuple=main::left_latch $ [1, main::a], multiplicity=main::left_latch)",
+            "BusReceive(tuple=main::right_latch $ [1, main::b], multiplicity=None)",
             true,
         );
     }
@@ -335,8 +335,8 @@ namespace main(4);
     fn phantom_lookup() {
         assert_correct_bus_interaction_pair(
             "Constr::PhantomLookup((Option::Some(left_latch), Option::Some(right_latch)), [(a, b)], multiplicities);",
-            "BusSend(tuple=main::left_latch $ [5, main::a], multiplicity=main::left_latch)",
-            "BusReceive(tuple=main::right_latch $ [5, main::b], multiplicity=main::multiplicities)",
+            "BusSend(tuple=main::left_latch $ [1, main::a], multiplicity=main::left_latch)",
+            "BusReceive(tuple=main::right_latch $ [1, main::b], multiplicity=main::multiplicities)",
             true,
         );
     }
@@ -365,8 +365,8 @@ namespace main(4);
     fn native_permutation() {
         assert_correct_bus_interaction_pair(
             "left_latch $ [a] is (right_latch * right_selector) $ [b];",
-            "BusSend(tuple=main::left_latch $ [5, main::a], multiplicity=main::left_latch)",
-            "BusReceive(tuple=main::right_latch * main::right_selector $ [5, main::b], multiplicity=main::right_latch * main::right_selector)",
+            "BusSend(tuple=main::left_latch $ [1, main::a], multiplicity=main::left_latch)",
+            "BusReceive(tuple=main::right_latch * main::right_selector $ [1, main::b], multiplicity=main::right_latch * main::right_selector)",
             false,
         );
     }
@@ -375,8 +375,8 @@ namespace main(4);
     fn phantom_permutation() {
         assert_correct_bus_interaction_pair(
             "Constr::PhantomPermutation((Option::Some(left_latch), Option::Some(right_latch * right_selector)), [(a, b)]);",
-            "BusSend(tuple=main::left_latch $ [5, main::a], multiplicity=main::left_latch)",
-            "BusReceive(tuple=main::right_latch * main::right_selector $ [5, main::b], multiplicity=main::right_latch * main::right_selector)",
+            "BusSend(tuple=main::left_latch $ [1, main::a], multiplicity=main::left_latch)",
+            "BusReceive(tuple=main::right_latch * main::right_selector $ [1, main::b], multiplicity=main::right_latch * main::right_selector)",
             false,
         );
     }
