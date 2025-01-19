@@ -1,16 +1,19 @@
 use std::collections::{BTreeMap, HashMap};
 
 use powdr_ast::{
-    analyzed::{AlgebraicExpression, Identity, PolynomialType, SelectedExpressions},
+    analyzed::{AlgebraicExpression, PolynomialType, SelectedExpressions},
     parsed::visitor::AllChildren,
 };
 use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, OwnedTerminalValues};
 use powdr_number::FieldElement;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
-use crate::witgen::machines::{
-    profiling::{record_end, record_start},
-    Connection,
+use crate::witgen::{
+    data_structures::identity::convert,
+    machines::{
+        profiling::{record_end, record_start},
+        Connection,
+    },
 };
 
 use super::FixedData;
@@ -41,15 +44,16 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
         // Several range constraints might point to the same target
         let mut multiplicity_columns = BTreeMap::new();
 
-        let phantom_lookups = self
-            .fixed
-            .analyzed
-            .identities
+        let identities = convert(&self.fixed.analyzed.identities);
+        let phantom_lookups = identities
             .iter()
-            .filter_map(|identity| match identity {
-                // TODO(bus_interaction)
-                Identity::PhantomLookup(_) => Some(Connection::try_from(identity).unwrap()),
-                _ => None,
+            .filter_map(|identity| {
+                Connection::try_new(identity, &self.fixed.bus_receives).and_then(|connection| {
+                    connection
+                        .multiplicity_column
+                        .is_some()
+                        .then_some(connection)
+                })
             })
             .collect::<Vec<_>>();
 
