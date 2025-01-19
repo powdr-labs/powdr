@@ -79,17 +79,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         let mut machines: Vec<KnownMachine<T>> = vec![];
 
         let mut publics = PublicsTracker::default();
-        let range_constraint_multiplicities = self
-            .fixed
-            .global_range_constraints
-            .phantom_range_constraints
-            .values()
-            .map(|prc| prc.multiplicity_column)
-            .collect::<HashSet<_>>();
-        let mut remaining_witnesses = current_stage_witnesses
-            .difference(&range_constraint_multiplicities)
-            .cloned()
-            .collect::<HashSet<_>>();
+        let mut remaining_witnesses = current_stage_witnesses.clone();
         let mut base_identities = identities.clone();
         let mut extracted_prover_functions = HashSet::new();
         let mut id_counter = 0;
@@ -222,16 +212,32 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             .filter_map(|(i, &pf)| (!extracted_prover_functions.contains(&i)).then_some(pf))
             .collect::<Vec<_>>();
 
+        // In the remaining witness, we might still have some multiplicity columns
+        // of fixed lookups, because they are not referenced by any "normal"
+        // first-stage identities. As the main machine should not be on the
+        // receiving end of a lookup, we remove any multiplicity columns here.
+        // Note that we don't use the passed identities, because we want to
+        // include removed range constraints.
+        let multiplicity_columns = self
+            .fixed
+            .analyzed
+            .identities
+            .iter()
+            .filter_map(|identity| Connection::try_from(identity).ok()?.multiplicity_column)
+            .collect::<HashSet<_>>();
+        let main_witnesses = remaining_witnesses
+            .difference(&multiplicity_columns)
+            .cloned()
+            .collect::<HashSet<_>>();
+
         log::trace!(
             "\nThe base machine contains the following witnesses:\n{}\n identities:\n{}\n and prover functions:\n{}",
-            remaining_witnesses
+            main_witnesses
                 .iter()
                 .map(|s| self.fixed.column_name(s))
                 .sorted()
                 .format(", "),
-            base_identities
-                .iter()
-                .format("\n"),
+            base_identities.iter().format("\n"),
             base_prover_functions.iter().format("\n")
         );
 
@@ -239,7 +245,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             self.fixed,
             Default::default(),
             base_identities,
-            remaining_witnesses,
+            main_witnesses,
             base_prover_functions,
         );
 

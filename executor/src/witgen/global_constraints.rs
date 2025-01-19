@@ -18,7 +18,6 @@ use crate::Identity;
 use super::affine_expression::AlgebraicVariable;
 use super::evaluators::partial_expression_evaluator::PartialExpressionEvaluator;
 use super::evaluators::symbolic_evaluator::SymbolicEvaluator;
-use super::machines::Connection;
 use super::range_constraints::RangeConstraint;
 use super::util::try_to_simple_poly;
 use super::{Constraint, FixedData};
@@ -96,20 +95,10 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-/// The RHS of a range constraint of the form `[ w ] in [ RANGE ]`, including the multiplicity column.
-pub struct PhantomRangeConstraintTarget {
-    pub column: PolyID,
-    pub multiplicity_column: PolyID,
-}
-
 #[derive(Clone)]
 pub struct GlobalConstraints<T: FieldElement> {
     pub witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
     pub fixed_constraints: FixedColumnMap<Option<RangeConstraint<T>>>,
-    /// For range constraints which are enforced via phantom lookups, this maps the
-    /// constrained column to the target and multiplicity column.
-    pub phantom_range_constraints: BTreeMap<PolyID, PhantomRangeConstraintTarget>,
 }
 
 impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConstraints<T> {
@@ -153,12 +142,10 @@ pub fn set_global_constraints<'a, T: FieldElement>(
 
     let mut retained_identities = vec![];
     let mut removed_identities = vec![];
-    let mut range_constraint_multiplicities = BTreeMap::new();
     for identity in identities.into_iter() {
         let remove = propagate_constraints(
             &fixed_data.intermediate_definitions,
             &mut known_constraints,
-            &mut range_constraint_multiplicities,
             identity,
             &full_span,
         );
@@ -183,17 +170,6 @@ pub fn set_global_constraints<'a, T: FieldElement>(
         log::debug!("  {id}");
     }
 
-    if !range_constraint_multiplicities.is_empty() {
-        log::debug!("Recorded the following range constraint multiplicity columns:");
-    }
-    for (poly_id, target) in &range_constraint_multiplicities {
-        log::debug!(
-            "  {} -> {}",
-            fixed_data.column_name(poly_id),
-            fixed_data.column_name(&target.multiplicity_column)
-        );
-    }
-
     let mut witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>> =
         fixed_data.witness_map_with(None);
     for (poly_id, con) in known_constraints {
@@ -211,7 +187,6 @@ pub fn set_global_constraints<'a, T: FieldElement>(
     let global_constraints = GlobalConstraints {
         witness_constraints,
         fixed_constraints,
-        phantom_range_constraints: range_constraint_multiplicities,
     };
 
     (
@@ -260,7 +235,6 @@ fn add_constraint<T: FieldElement>(
 fn propagate_constraints<T: FieldElement>(
     intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     known_constraints: &mut BTreeMap<PolyID, RangeConstraint<T>>,
-    range_constraint_multiplicities: &mut BTreeMap<PolyID, PhantomRangeConstraintTarget>,
     identity: &Identity<T>,
     full_span: &BTreeSet<PolyID>,
 ) -> bool {
@@ -303,21 +277,14 @@ fn propagate_constraints<T: FieldElement>(
             // In that case, we can remove the lookup, because its only function is to enforce
             // the range constraint.
             if right.expressions.len() == 1 {
-                if let (Some(left_ref), Some(right_ref)) = (
+                if let (Some(_), Some(right_ref)) = (
+                    // The range constraint has been transferred from right to left
+                    // by the above code iff. both expressions can be converted to
+                    // simple polynomials.
                     try_to_simple_poly(&left.expressions[0]),
                     try_to_simple_poly(&right.expressions[0]),
                 ) {
                     if full_span.contains(&right_ref.poly_id) {
-                        let connection = Connection::try_from(identity).unwrap();
-                        if let Some(multiplicity) = connection.multiplicity_column {
-                            let target = PhantomRangeConstraintTarget {
-                                column: right_ref.poly_id,
-                                multiplicity_column: multiplicity,
-                            };
-                            assert!(range_constraint_multiplicities
-                                .insert(left_ref.poly_id, target)
-                                .is_none());
-                        }
                         return true;
                     }
                 }
@@ -557,12 +524,10 @@ namespace Global(2**20);
             .into_iter()
             .collect()
         );
-        let mut range_constraint_multiplicities = BTreeMap::new();
         for identity in &analyzed.identities {
             propagate_constraints(
                 &BTreeMap::new(),
                 &mut known_constraints,
-                &mut range_constraint_multiplicities,
                 identity,
                 &full_span,
             );
@@ -649,12 +614,10 @@ namespace Global(2**20);
             .into_iter()
             .collect()
         );
-        let mut range_constraint_multiplicities = BTreeMap::new();
         for identity in &analyzed.identities {
             propagate_constraints(
                 &BTreeMap::new(),
                 &mut known_constraints,
-                &mut range_constraint_multiplicities,
                 identity,
                 &full_span,
             );
@@ -680,33 +643,6 @@ namespace Global(2**20);
             .into_iter()
             .collect::<BTreeMap<_, _>>()
         );
-        assert_eq!(
-            range_constraint_multiplicities,
-            vec![
-                (
-                    // Global.B
-                    witness_poly_id(3),
-                    PhantomRangeConstraintTarget {
-                        // Global.BYTE
-                        column: constant_poly_id(0),
-                        // Global.byte_multiplicities
-                        multiplicity_column: witness_poly_id(0)
-                    }
-                ),
-                (
-                    // Global.D
-                    witness_poly_id(5),
-                    PhantomRangeConstraintTarget {
-                        // Global.BYTE
-                        column: constant_poly_id(0),
-                        // Global.byte_multiplicities
-                        multiplicity_column: witness_poly_id(0)
-                    }
-                ),
-            ]
-            .into_iter()
-            .collect::<BTreeMap<_, _>>()
-        )
     }
 
     #[test]
@@ -726,12 +662,10 @@ namespace Global(1024);
         let mut known_constraints = vec![(constant_poly_id(0), RangeConstraint::from_max_bit(7))]
             .into_iter()
             .collect();
-        let mut range_constraint_multiplicities = BTreeMap::new();
         assert_eq!(analyzed.identities.len(), 1);
         let removed = propagate_constraints(
             &BTreeMap::new(),
             &mut known_constraints,
-            &mut range_constraint_multiplicities,
             analyzed.identities.first().unwrap(),
             &Default::default(),
         );

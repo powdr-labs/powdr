@@ -379,7 +379,6 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         let global_range_constraints = GlobalConstraints {
             witness_constraints: WitnessColumnMap::new(None, witness_cols.len()),
             fixed_constraints: FixedColumnMap::new(None, fixed_cols.len()),
-            phantom_range_constraints: BTreeMap::new(),
         };
 
         FixedData {
