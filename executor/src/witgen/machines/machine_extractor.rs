@@ -79,19 +79,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         let mut machines: Vec<KnownMachine<T>> = vec![];
 
         let mut publics = PublicsTracker::default();
-        // Note that we don't use the passed identities, because we want to
-        // include removed range constraints.
-        let multiplicity_columns = self
-            .fixed
-            .analyzed
-            .identities
-            .iter()
-            .filter_map(|identity| Connection::try_from(identity).ok()?.multiplicity_column)
-            .collect::<HashSet<_>>();
-        let mut remaining_witnesses = current_stage_witnesses
-            .difference(&multiplicity_columns)
-            .cloned()
-            .collect::<HashSet<_>>();
+        let mut remaining_witnesses = current_stage_witnesses.clone();
         let mut base_identities = identities.clone();
         let mut extracted_prover_functions = HashSet::new();
         let mut id_counter = 0;
@@ -109,12 +97,15 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 assert!(fixed_lookup_connections
                     .insert(connection.id, *connection)
                     .is_none());
+                if let Some(multiplicity) = connection.multiplicity_column {
+                    remaining_witnesses.remove(&multiplicity);
+                }
                 continue;
             }
 
             // Extract all witness columns in the RHS of the lookup.
             let lookup_witnesses =
-                &self.fixed.polynomial_references(connection.right) & (&remaining_witnesses);
+                &self.refs_in_connection_rhs(connection) & (&remaining_witnesses);
             if lookup_witnesses.is_empty() {
                 // Skip connections to machines that were already created or point to FixedLookup.
                 continue;
@@ -149,8 +140,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 .iter()
                 .filter_map(|connection| {
                     // check if the identity connects to the current machine
-                    self.fixed
-                        .polynomial_references(connection.right)
+                    self.refs_in_connection_rhs(connection)
                         .intersection(&machine_witnesses)
                         .next()
                         .is_some()
@@ -222,16 +212,32 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             .filter_map(|(i, &pf)| (!extracted_prover_functions.contains(&i)).then_some(pf))
             .collect::<Vec<_>>();
 
+        // In the remaining witness, we might still have some multiplicity columns
+        // of fixed lookups, because they are not referenced by any "normal"
+        // first-stage identities. As the main machine should not be on the
+        // receiving end of a lookup, we remove any multiplicity columns here.
+        // Note that we don't use the passed identities, because we want to
+        // include removed range constraints.
+        let multiplicity_columns = self
+            .fixed
+            .analyzed
+            .identities
+            .iter()
+            .filter_map(|identity| Connection::try_from(identity).ok()?.multiplicity_column)
+            .collect::<HashSet<_>>();
+        let main_witnesses = remaining_witnesses
+            .difference(&multiplicity_columns)
+            .cloned()
+            .collect::<HashSet<_>>();
+
         log::trace!(
             "\nThe base machine contains the following witnesses:\n{}\n identities:\n{}\n and prover functions:\n{}",
-            remaining_witnesses
+            main_witnesses
                 .iter()
                 .map(|s| self.fixed.column_name(s))
                 .sorted()
                 .format(", "),
-            base_identities
-                .iter()
-                .format("\n"),
+            base_identities.iter().format("\n"),
             base_prover_functions.iter().format("\n")
         );
 
@@ -239,7 +245,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             self.fixed,
             Default::default(),
             base_identities,
-            remaining_witnesses,
+            main_witnesses,
             base_prover_functions,
         );
 
@@ -281,8 +287,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                         // and vice-versa, but not across the "sides".
                         let in_lhs = &self.fixed.polynomial_references(left) & all_witnesses;
                         let in_rhs = &self
-                            .fixed
-                            .polynomial_references(Connection::try_from(*i).unwrap().right)
+                            .refs_in_connection_rhs(&Connection::try_from(*i).unwrap())
                             & all_witnesses;
                         if in_lhs.intersection(&witnesses).next().is_some() {
                             witnesses.extend(in_lhs);
@@ -303,6 +308,15 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         }
     }
 
+    /// Like refs_in_selected_expressions(connection.right), but also includes the multiplicity column.
+    fn refs_in_connection_rhs(&self, connection: &Connection<T>) -> HashSet<PolyID> {
+        self.fixed
+            .polynomial_references(connection.right)
+            .into_iter()
+            .chain(connection.multiplicity_column)
+            .collect()
+    }
+
     /// Extracts all references to names from the "left" side of an identity. This is the left selected expressions for connecting identities, and everything for other identities.
     fn refs_in_identity_left(&self, identity: &Identity<T>) -> HashSet<PolyID> {
         match identity {
@@ -314,7 +328,12 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             }
             Identity::Polynomial(i) => self.fixed.polynomial_references(i),
             Identity::Connect(i) => self.fixed.polynomial_references(i),
-            Identity::PhantomBusInteraction(i) => self.fixed.polynomial_references(&i.tuple),
+            Identity::PhantomBusInteraction(i) => self
+                .fixed
+                .polynomial_references(&i.tuple)
+                .into_iter()
+                .chain(self.fixed.polynomial_references(&i.multiplicity))
+                .collect(),
         }
     }
 }
