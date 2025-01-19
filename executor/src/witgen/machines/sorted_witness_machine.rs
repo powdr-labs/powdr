@@ -4,19 +4,16 @@ use super::super::affine_expression::AffineExpression;
 use super::{Connection, EvalResult, FixedData, LookupCell};
 use super::{Machine, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
+use crate::witgen::data_structures::identity::Identity;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::evaluators::fixed_evaluator::FixedEvaluator;
 use crate::witgen::evaluators::partial_expression_evaluator::PartialExpressionEvaluator;
 use crate::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use crate::witgen::rows::RowPair;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause, QueryCallback};
-use crate::Identity;
 use itertools::Itertools;
 use num_traits::One;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, LookupIdentity, PhantomLookupIdentity,
-    PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 
 /// A machine that can support a lookup in a set of columns that are sorted
@@ -115,13 +112,18 @@ fn check_identity<T: FieldElement>(
     degree: DegreeType,
 ) -> Option<PolyID> {
     // Looking for a lookup
-    let (left, right) = match id {
-        Identity::Lookup(LookupIdentity { left, right, .. })
-        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => (left, right),
+    let send = match id {
+        Identity::BusSend(bus_interaction) => bus_interaction,
         _ => return None,
     };
+    let receive = send.try_match_static(&fixed_data.bus_receives)?;
+    if !receive.is_unconstrained() {
+        return None;
+    }
 
     // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
+    let left = &send.0.selected_tuple;
+    let right = &receive.0.selected_tuple;
     if !right.selector.is_one() || left.expressions.len() != 1 {
         return None;
     }

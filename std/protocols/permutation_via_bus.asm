@@ -19,7 +19,4 @@ let permutation_receive: expr, Constr -> () = constr |id, permutation_constraint
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
     
     bus_receive(id, rhs, rhs_selector, rhs_selector);
-    
-    // Add an annotation for witness generation
-    to_phantom_permutation(permutation_constraint);
 };

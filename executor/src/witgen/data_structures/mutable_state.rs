@@ -25,7 +25,7 @@ pub struct MutableState<'a, T: FieldElement, Q: QueryCallback<T>> {
 impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
     pub fn new(machines: impl Iterator<Item = KnownMachine<'a, T>>, query_callback: &'a Q) -> Self {
         let machines: Vec<_> = machines.map(RefCell::new).collect();
-        let identity_to_machine_index = machines
+        let identity_to_machine_index: BTreeMap<u64, usize> = machines
             .iter()
             .enumerate()
             .flat_map(|(index, m)| {
@@ -35,6 +35,7 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
                     .map(move |id| (id, index))
             })
             .collect();
+
         Self {
             machines,
             identity_to_machine_index,
