@@ -46,9 +46,12 @@ enum Constr {
     /// A "phantom" bus interaction, i.e., an annotation for witness generation.
     /// The actual constraint should be enforced via other constraints.
     /// Contains:
-    /// - An expression for the multiplicity.
+    /// - An expression for the multiplicity. Negative for bus receives.
     /// - The tuple added to the bus.
-    /// - An expression for the latch, a binary expression which indicates where the multiplicity can be non-zero.
+    /// - An expression for the latch. This should be exactly what the RHS selector
+    ///   would be in an equivalent lookup or permutation:
+    ///   - It should always evaluate to a binary value.
+    ///   - If it evaluates to zero, the multiplicity must be zero.
     /// WARNING: As of now, this annotation is largely ignored. When using the bus,
     /// make sure that you also add phantom lookup / permutation constraints.
     PhantomBusInteraction(expr, expr[], expr)
