@@ -176,13 +176,18 @@ fn convert_identity<T: FieldElement>(
 ) -> Vec<Identity<T>> {
     match identity {
         AnalyzedIdentity::Polynomial(identity) => {
-            vec![Identity::Polynomial(identity.clone())]
+            vec![Identity::Polynomial(PolynomialIdentity {
+                id: id_counter.next().unwrap(),
+                ..identity.clone()
+            })]
         }
         AnalyzedIdentity::Connect(identity) => {
-            vec![Identity::Connect(identity.clone())]
+            vec![Identity::Connect(ConnectIdentity {
+                id: id_counter.next().unwrap(),
+                ..identity.clone()
+            })]
         }
         AnalyzedIdentity::PhantomBusInteraction(identity) => {
-            let id = id_counter.next().unwrap();
             let (is_receive, multiplicity) = match &identity.multiplicity {
                 AlgebraicExpression::UnaryOperation(op) => {
                     // There is only one unary operation
@@ -196,7 +201,7 @@ fn convert_identity<T: FieldElement>(
                 _ => panic!("Expected first tuple entry to be a static ID"),
             };
             let bus_interaction = BusInteraction {
-                id,
+                id: id_counter.next().unwrap(),
                 multiplicity: Some(multiplicity),
                 selected_tuple: SelectedExpressions {
                     selector: identity.latch.clone(),
