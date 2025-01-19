@@ -170,8 +170,6 @@ pub fn convert<T: FieldElement>(identities: &[AnalyzedIdentity<T>]) -> Vec<Ident
     let max_id = identities.iter().map(|id| id.id()).max().unwrap_or(0);
     let mut id_counter = (max_id + 1)..;
 
-    println!("Start convert");
-
     identities
         .iter()
         .flat_map(|identity| convert_identity(&mut id_counter, identity))
@@ -250,7 +248,7 @@ fn bus_interaction_pair<T: FieldElement>(
 ) -> Vec<Identity<T>> {
     // +1 because we want to be sure it is non-zero
     let interaction_id = AlgebraicExpression::Number((id + 1).into());
-    let res = vec![
+    vec![
         Identity::BusSend(BusSend(BusInteraction {
             id,
             multiplicity: Some(left.selector.clone()),
@@ -263,13 +261,7 @@ fn bus_interaction_pair<T: FieldElement>(
             interaction_id,
             selected_tuple: right.clone(),
         })),
-    ];
-
-    for i in res.iter() {
-        println!("{i}")
-    }
-
-    res
+    ]
 }
 
 #[cfg(test)]

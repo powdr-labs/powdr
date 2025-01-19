@@ -36,12 +36,6 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
             })
             .collect();
 
-        println!("ID to machine:");
-        for (id, index) in &identity_to_machine_index {
-            let machine = machines[*index].borrow();
-            println!("{} -> {}", id, machine.name());
-        }
-
         Self {
             machines,
             identity_to_machine_index,
