@@ -167,7 +167,8 @@ impl<T> Identity<T> {
 /// are converted to either a bus send or bus receive, and permutations and lookups
 /// are converted to a pair of bus send and bus receive.
 pub fn convert<T: FieldElement>(identities: &[AnalyzedIdentity<T>]) -> Vec<Identity<T>> {
-    let mut id_counter = 1..;
+    let max_id = identities.iter().map(|id| id.id()).max().unwrap_or(0);
+    let mut id_counter = (max_id + 1)..;
 
     println!("Start convert");
 
@@ -183,16 +184,10 @@ fn convert_identity<T: FieldElement>(
 ) -> Vec<Identity<T>> {
     match identity {
         AnalyzedIdentity::Polynomial(identity) => {
-            vec![Identity::Polynomial(PolynomialIdentity {
-                id: id_counter.next().unwrap(),
-                ..identity.clone()
-            })]
+            vec![Identity::Polynomial(identity.clone())]
         }
         AnalyzedIdentity::Connect(identity) => {
-            vec![Identity::Connect(ConnectIdentity {
-                id: id_counter.next().unwrap(),
-                ..identity.clone()
-            })]
+            vec![Identity::Connect(identity.clone())]
         }
         AnalyzedIdentity::PhantomBusInteraction(identity) => {
             let (is_receive, multiplicity) = match &identity.multiplicity {
@@ -210,7 +205,7 @@ fn convert_identity<T: FieldElement>(
             };
             let expressions = identity.tuple.0.iter().skip(1).cloned().collect();
             let bus_interaction = BusInteraction {
-                id: id_counter.next().unwrap(),
+                id: identity.id,
                 interaction_id: identity.tuple.0[0].clone(),
                 multiplicity: Some(multiplicity),
                 selected_tuple: SelectedExpressions {
@@ -224,40 +219,46 @@ fn convert_identity<T: FieldElement>(
             };
             vec![identity]
         }
-        AnalyzedIdentity::Permutation(PermutationIdentity { left, right, .. })
+        AnalyzedIdentity::Permutation(PermutationIdentity {
+            id, left, right, ..
+        })
         | AnalyzedIdentity::PhantomPermutation(PhantomPermutationIdentity {
-            left, right, ..
-        }) => bus_interaction_pair(id_counter, left, right, Some(right.selector.clone())),
-        AnalyzedIdentity::Lookup(LookupIdentity { left, right, .. }) => {
-            bus_interaction_pair(id_counter, left, right, None)
-        }
+            id,
+            left,
+            right,
+            ..
+        }) => bus_interaction_pair(*id, id_counter, left, right, Some(right.selector.clone())),
+        AnalyzedIdentity::Lookup(LookupIdentity {
+            id, left, right, ..
+        }) => bus_interaction_pair(*id, id_counter, left, right, None),
         AnalyzedIdentity::PhantomLookup(PhantomLookupIdentity {
+            id,
             left,
             right,
             multiplicity,
             ..
-        }) => bus_interaction_pair(id_counter, left, right, Some(multiplicity.clone())),
+        }) => bus_interaction_pair(*id, id_counter, left, right, Some(multiplicity.clone())),
     }
 }
 
 fn bus_interaction_pair<T: FieldElement>(
+    id: u64,
     id_counter: &mut RangeFrom<u64>,
     left: &SelectedExpressions<T>,
     right: &SelectedExpressions<T>,
     rhs_multiplicity: Option<AlgebraicExpression<T>>,
 ) -> Vec<Identity<T>> {
-    let id_left = id_counter.next().unwrap();
-    let id_right = id_counter.next().unwrap();
-    let interaction_id = AlgebraicExpression::Number(id_left.into());
+    // +1 because we want to be sure it is non-zero
+    let interaction_id = AlgebraicExpression::Number((id + 1).into());
     let res = vec![
         Identity::BusSend(BusSend(BusInteraction {
-            id: id_left,
+            id,
             multiplicity: Some(left.selector.clone()),
             interaction_id: interaction_id.clone(),
             selected_tuple: left.clone(),
         })),
         Identity::BusReceive(BusReceive(BusInteraction {
-            id: id_right,
+            id: id_counter.next().unwrap(),
             multiplicity: rhs_multiplicity,
             interaction_id,
             selected_tuple: right.clone(),
