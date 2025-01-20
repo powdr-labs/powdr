@@ -113,7 +113,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     ) -> [String; 6] {
         let full = self.format_expression(e, row_offset, false);
         let simplified = self.format_expression(e, row_offset, true);
-        [full, simplified].concat().try_into().unwrap()
+        pad_left([full, simplified].concat().try_into().unwrap())
     }
 
     /// Returns three formatted strings of the same length.
@@ -318,8 +318,8 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     }
 }
 
-/// Pads the three strings with spaces to the left so that they have the same length.
-fn pad_left(s: [String; 3]) -> [String; 3] {
+/// Pads the strings with spaces to the left so that they have the same length.
+fn pad_left<const N: usize>(s: [String; N]) -> [String; N] {
     let len = s.iter().map(|s| s.len()).max().unwrap();
     s.iter()
         .map(|s| format!("{s:>len$}"))
