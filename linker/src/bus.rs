@@ -1,21 +1,34 @@
 use powdr_ast::{
-    asm_analysis::{combine_flags, MachineDegree},
+    asm_analysis::combine_flags,
     object::{Link, Location, MachineInstanceGraph, Object, Operation},
     parsed::{
         asm::SymbolPath,
         build::{index_access, namespaced_reference},
-        ArrayLiteral, Expression, FunctionCall, NamespaceDegree, PilStatement,
+        ArrayLiteral, Expression, FunctionCall, PilStatement,
     },
 };
 use powdr_parser_util::SourceRef;
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, iter::once, str::FromStr};
 
-use crate::{DegreeMode, LinkerBackend};
+use crate::{
+    call, try_into_namespace_degree, DegreeMode, InteractionType, LinkerBackend,
+    MAIN_OPERATION_NAME,
+};
+
+/// Compute a unique identifier for an interaction
+fn interaction_id(machine: &Location, operation: &str) -> u32 {
+    let mut hasher = Sha256::default();
+    hasher.update(format!("{machine}/{operation}"));
+    let result = hasher.finalize();
+    let mut bytes = [0u8; 4];
+    bytes.copy_from_slice(&result[..4]);
+    u32::from_le_bytes(bytes)
+}
 
 pub struct BusLinker {
-    /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
-    namespaces: BTreeMap<Location, (Vec<PilStatement>, Vec<PilStatement>)>,
+    /// the pil statements
+    pil: Vec<PilStatement>,
     /// for each operation, whether we are in permutation mode or lookup mode
     operation_mode: BTreeMap<(Location, String), InteractionType>,
 }
@@ -56,17 +69,12 @@ impl LinkerBackend for BusLinker {
             });
 
         Ok(Self {
-            namespaces: BTreeMap::default(),
+            pil: Default::default(),
             operation_mode,
         })
     }
 
-    fn process_link(
-        &mut self,
-        link: Link,
-        from_namespace: &Location,
-        objects: &BTreeMap<Location, Object>,
-    ) {
+    fn process_link(&mut self, link: Link, _: &Location, objects: &BTreeMap<Location, Object>) {
         let from = link.from;
         let to = link.to;
 
@@ -86,183 +94,138 @@ impl LinkerBackend for BusLinker {
         }
         .into();
 
-        self.insert_interaction(interaction_id, from_namespace, selector, tuple);
+        self.pil.push(PilStatement::Expression(
+            SourceRef::unknown(),
+            Expression::FunctionCall(
+                SourceRef::unknown(),
+                FunctionCall {
+                    function: Box::new(Expression::Reference(
+                        SourceRef::unknown(),
+                        SymbolPath::from_str("std::protocols::bus::bus_send")
+                            .unwrap()
+                            .into(),
+                    )),
+                    arguments: vec![interaction_id.into(), tuple, selector],
+                },
+            ),
+        ));
     }
 
-    fn process_object(
-        &mut self,
-        location: &Location,
-        object: Object,
-        objects: &BTreeMap<Location, Object>,
-    ) {
+    fn process_object(&mut self, location: &Location, objects: &BTreeMap<Location, Object>) {
+        let object = objects[location].clone();
+
         let namespace_degree = try_into_namespace_degree(object.degree)
             .unwrap_or_else(|| panic!("machine at {location} must have an explicit degree"));
-
-        let (pil, _) = self.namespaces.entry(location.clone()).or_default();
-
         // create a namespace for this object
-        pil.push(PilStatement::Namespace(
+        self.pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
             Some(namespace_degree),
         ));
 
-        pil.extend(object.pil);
+        self.pil.extend(object.pil);
         // process outgoing links
         for link in object.links {
             self.process_link(link, location, objects);
         }
         // receive incoming links
-        for (name, operation) in object.operations {
+        for (name, operation) in &object.operations {
             self.process_operation(
                 name,
                 operation,
                 location,
                 object.latch.as_ref().unwrap(),
-                object.operation_id.as_ref().unwrap().clone(),
+                object.operation_id.as_ref().unwrap(),
             );
         }
-    }
 
-    fn add_to_namespace_links(&mut self, namespace: &Location, statement: PilStatement) {
-        self.namespaces
-            .entry(namespace.clone())
-            .or_default()
-            .1
-            .push(statement);
+        // if this is the main object, call the main operation
+        if *location == Location::main() {
+            let operation_id = object.operation_id.clone();
+            let main_operation_id = object
+                .operations
+                .get(MAIN_OPERATION_NAME)
+                .and_then(|operation| operation.id.as_ref());
+
+            if let (Some(operation_id_name), Some(operation_id_value)) =
+                (operation_id, main_operation_id)
+            {
+                self.pil
+                    .extend(call(&operation_id_name, operation_id_value));
+            }
+        }
     }
 
     fn into_pil(self) -> Vec<PilStatement> {
-        self.namespaces
-            .into_iter()
-            .flat_map(|(_, (statements, links))| statements.into_iter().chain(links))
-            .collect()
+        self.pil
     }
-}
-
-/// Compute a unique identifier for an interaction
-fn interaction_id(machine: &Location, operation: &String) -> u32 {
-    let mut hasher = Sha256::default();
-    hasher.update(format!("{machine}/{operation}"));
-    let result = hasher.finalize();
-    let mut bytes = [0u8; 4];
-    bytes.copy_from_slice(&result[..4]);
-    u32::from_le_bytes(bytes)
 }
 
 impl BusLinker {
+    /// Process an operation, which means receive from the bus with the correct [InteractionType]
     fn process_operation(
         &mut self,
-        name: String,
-        operation: Operation,
+        operation_name: &str,
+        operation: &Operation,
         location: &Location,
         latch: &str,
-        operation_id: String,
+        operation_id: &str,
     ) {
-        let interaction_ty = self.operation_mode.get(&(location.clone(), name.clone()));
+        let interaction_ty = self
+            .operation_mode
+            .get(&(location.clone(), operation_name.to_string()));
 
+        // By construction, all operations *which are called* have an [InteractionType]. The others can be safely ignored.
         if let Some(interaction_ty) = interaction_ty {
-            let interaction_id = interaction_id(location, &name);
+            // compute the unique interaction id
+            let interaction_id = interaction_id(location, operation_name);
 
             let namespace = location.to_string();
 
-            self.namespaces
-                .entry(location.clone())
-                .or_default()
-                .1
-                .push(PilStatement::Expression(
-                    SourceRef::unknown(),
-                    receive(
-                        interaction_ty.clone(),
-                        namespaced_reference(namespace.clone(), latch),
-                        ArrayLiteral {
-                            items: once(namespaced_reference(namespace.clone(), operation_id))
-                                .chain(operation.params.inputs_and_outputs().map(|i| {
-                                    index_access(
-                                        namespaced_reference(namespace.clone(), &i.name),
-                                        i.index.clone(),
-                                    )
-                                }))
-                                .collect(),
-                        }
-                        .into(),
-                        namespaced_reference(namespace.clone(), latch),
-                        interaction_id,
-                    ),
-                ));
+            let tuple = ArrayLiteral {
+                items: once(namespaced_reference(namespace.clone(), operation_id))
+                    .chain(operation.params.inputs_and_outputs().map(|i| {
+                        index_access(
+                            namespaced_reference(namespace.clone(), &i.name),
+                            i.index.clone(),
+                        )
+                    }))
+                    .collect(),
+            }
+            .into();
+
+            let function = match interaction_ty {
+                InteractionType::Lookup => {
+                    SymbolPath::from_str("std::protocols::lookup_via_bus::lookup_receive")
+                }
+                InteractionType::Permutation => {
+                    SymbolPath::from_str("std::protocols::permutation_via_bus::permutation_receive")
+                }
+            }
+            .unwrap()
+            .into();
+
+            // receive from the bus
+            self.pil
+                .push(PilStatement::Expression(SourceRef::unknown(), {
+                    Expression::FunctionCall(
+                        SourceRef::unknown(),
+                        FunctionCall {
+                            function: Box::new(Expression::Reference(
+                                SourceRef::unknown(),
+                                function,
+                            )),
+                            arguments: vec![
+                                interaction_id.into(),
+                                namespaced_reference(namespace.clone(), latch),
+                                tuple,
+                                namespaced_reference(namespace.clone(), latch),
+                            ],
+                        },
+                    )
+                }));
         }
     }
-
-    fn insert_interaction(
-        &mut self,
-        interaction_id: u32,
-        namespace: &Location,
-        selector: Expression,
-        tuple: Expression,
-    ) {
-        self.namespaces
-            .entry(namespace.clone())
-            .or_default()
-            .1
-            .push(PilStatement::Expression(
-                SourceRef::unknown(),
-                Expression::FunctionCall(
-                    SourceRef::unknown(),
-                    FunctionCall {
-                        function: Box::new(Expression::Reference(
-                            SourceRef::unknown(),
-                            SymbolPath::from_str("std::protocols::bus::bus_send")
-                                .unwrap()
-                                .into(),
-                        )),
-                        arguments: vec![interaction_id.into(), tuple, selector],
-                    },
-                ),
-            ));
-    }
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum InteractionType {
-    Lookup,
-    #[allow(dead_code)]
-    Permutation,
-}
-
-fn receive(
-    identity_type: InteractionType,
-    selector: Expression,
-    tuple: Expression,
-    latch: Expression,
-    interaction_id: u32,
-) -> Expression {
-    let function = match identity_type {
-        InteractionType::Lookup => {
-            SymbolPath::from_str("std::protocols::lookup_via_bus::lookup_receive")
-                .unwrap()
-                .into()
-        }
-        InteractionType::Permutation => {
-            SymbolPath::from_str("std::protocols::permutation_via_bus::permutation_receive")
-                .unwrap()
-                .into()
-        }
-    };
-
-    Expression::FunctionCall(
-        SourceRef::unknown(),
-        FunctionCall {
-            function: Box::new(Expression::Reference(SourceRef::unknown(), function)),
-            arguments: vec![interaction_id.into(), selector, tuple, latch],
-        },
-    )
-}
-
-/// Convert a [MachineDegree] into a [NamespaceDegree]
-fn try_into_namespace_degree(d: MachineDegree) -> Option<NamespaceDegree> {
-    let min = d.min?;
-    let max = d.max?;
-    Some(NamespaceDegree { min, max })
 }
 
 #[cfg(test)]

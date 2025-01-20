@@ -1,7 +1,9 @@
+use ibig::UBig;
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
+    asm_analysis::MachineDegree,
     object::{Link, Location, MachineInstanceGraph, Object},
-    parsed::{asm::AbsoluteSymbolPath, PILFile, PilStatement},
+    parsed::{asm::AbsoluteSymbolPath, NamespaceDegree, PILFile, PilStatement},
 };
 use powdr_parser_util::SourceRef;
 use std::{collections::BTreeMap, iter::once};
@@ -13,6 +15,7 @@ pub mod bus;
 pub mod native;
 
 const MAIN_OPERATION_NAME: &str = "main";
+const LINKER_FIRST_STEP: &str = "linker_first_step";
 
 /// Link the objects into a single PIL file, using the specified parameters.
 pub fn link(graph: MachineInstanceGraph, params: LinkerParams) -> Result<PILFile, Vec<String>> {
@@ -23,7 +26,7 @@ pub fn link(graph: MachineInstanceGraph, params: LinkerParams) -> Result<PILFile
 }
 
 /// A trait for linker backends
-pub trait LinkerBackend: Sized {
+trait LinkerBackend: Sized {
     /// Create a new linker instance from the given graph and degree mode.
     /// This can fail, for example if the linker does not support the given degree mode.
     fn try_new(graph: &MachineInstanceGraph, degree_mode: DegreeMode) -> Result<Self, Vec<String>>;
@@ -34,35 +37,8 @@ pub trait LinkerBackend: Sized {
 
         let common_definitions = process_definitions(graph.statements);
 
-        for (location, object) in &graph.objects {
-            linker.process_object(location, object.clone(), &graph.objects);
-
-            if *location == Location::main() {
-                let operation_id = object.operation_id.clone();
-                let main_operation_id = object
-                    .operations
-                    .get(MAIN_OPERATION_NAME)
-                    .and_then(|operation| operation.id.as_ref());
-
-                if let (Some(main_operation_id), Some(operation_id)) =
-                    (main_operation_id, operation_id)
-                {
-                    // call the main operation by initializing `operation_id` to that of the main operation
-                    let linker_first_step = "_linker_first_step";
-                    linker.add_to_namespace_links(
-                        location,
-                        parse_pil_statement(&format!(
-                            "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
-                        )),
-                    );
-                    linker.add_to_namespace_links(
-                        location,
-                        parse_pil_statement(&format!(
-                            "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
-                        )),
-                    );
-                }
-            }
+        for location in graph.objects.keys() {
+            linker.process_object(location, &graph.objects);
         }
 
         Ok(PILFile(
@@ -73,26 +49,26 @@ pub trait LinkerBackend: Sized {
         ))
     }
 
-    /// Process an object.
-    fn process_object(
-        &mut self,
-        location: &Location,
-        object: Object,
-        objects: &BTreeMap<Location, Object>,
-    );
+    /// Process an object at a given location.
+    fn process_object(&mut self, location: &Location, objects: &BTreeMap<Location, Object>);
 
-    fn add_to_namespace_links(&mut self, namespace: &Location, statement: PilStatement);
+    /// Process a link between two machines, also passing the location at which the link is defined.
+    fn process_link(&mut self, link: Link, from: &Location, objects: &BTreeMap<Location, Object>);
 
     /// Convert the linker's internal state into PIL statements.
     fn into_pil(self) -> Vec<PilStatement>;
+}
 
-    /// Process a link between two machines.
-    fn process_link(
-        &mut self,
-        link: Link,
-        from_namespace: &Location,
-        objects: &BTreeMap<Location, Object>,
-    );
+fn call(operation_id_name: &str, operation_id_value: &UBig) -> Vec<PilStatement> {
+    // call the operation by initializing `operation_id` to that of the operation
+    vec![
+        parse_pil_statement(&format!(
+            "col fixed {LINKER_FIRST_STEP}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
+        )),
+        parse_pil_statement(&format!(
+            "{LINKER_FIRST_STEP} * ({operation_id_name} - {operation_id_value}) = 0;"
+        )),
+    ]
 }
 
 #[derive(Clone, Copy, Default)]
@@ -121,6 +97,12 @@ pub enum DegreeMode {
     Vadcop,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum InteractionType {
+    Lookup,
+    Permutation,
+}
+
 // Extract the utilities and sort them into namespaces where possible.
 fn process_definitions(
     mut definitions: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
@@ -143,4 +125,11 @@ fn process_definitions(
                 }),
         )
         .collect()
+}
+
+/// Convert a [MachineDegree] into a [NamespaceDegree]
+fn try_into_namespace_degree(d: MachineDegree) -> Option<NamespaceDegree> {
+    let min = d.min?;
+    let max = d.max?;
+    Some(NamespaceDegree { min, max })
 }

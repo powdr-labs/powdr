@@ -10,7 +10,7 @@ use powdr_ast::{
 use powdr_parser_util::SourceRef;
 use std::collections::BTreeMap;
 
-use crate::{DegreeMode, LinkerBackend};
+use crate::{call, DegreeMode, InteractionType, LinkerBackend, MAIN_OPERATION_NAME};
 
 #[derive(Default)]
 pub struct NativeLinker {
@@ -115,12 +115,9 @@ impl LinkerBackend for NativeLinker {
         })
     }
 
-    fn process_object(
-        &mut self,
-        location: &Location,
-        object: Object,
-        objects: &BTreeMap<Location, Object>,
-    ) {
+    fn process_object(&mut self, location: &Location, objects: &BTreeMap<Location, Object>) {
+        let object = objects[location].clone();
+
         let namespace_degree = match &self.degree_mode {
             DegreeMode::Monolithic => {
                 Expression::Number(SourceRef::unknown(), self.max_degree.clone().unwrap()).into()
@@ -142,14 +139,24 @@ impl LinkerBackend for NativeLinker {
         for link in object.links {
             self.process_link(link, location, objects);
         }
-    }
 
-    fn add_to_namespace_links(&mut self, namespace: &Location, statement: PilStatement) {
-        self.namespaces
-            .entry(namespace.clone())
-            .or_default()
-            .1
-            .push(statement);
+        if *location == Location::main() {
+            let operation_id = object.operation_id.clone();
+            let main_operation_id = object
+                .operations
+                .get(MAIN_OPERATION_NAME)
+                .and_then(|operation| operation.id.as_ref());
+
+            if let (Some(operation_id_name), Some(operation_id_value)) =
+                (operation_id, main_operation_id)
+            {
+                self.namespaces
+                    .entry(location.clone())
+                    .or_default()
+                    .1
+                    .extend(call(&operation_id_name, operation_id_value));
+            }
+        }
     }
 
     fn into_pil(self) -> Vec<PilStatement> {
@@ -180,12 +187,6 @@ impl NativeLinker {
                 },
             ));
     }
-}
-
-#[derive(Clone, Copy)]
-enum InteractionType {
-    Lookup,
-    Permutation,
 }
 
 /// Convert a [MachineDegree] into a [NamespaceDegree]
