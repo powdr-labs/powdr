@@ -141,9 +141,11 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 }
             })
             .collect_vec();
-        let block_size = 1;
+        // We use a block size of two since we need two completed submachine calls,
+        // and we start out with all submachine calls on the first row already completed.
+        let block_size = 2;
 
-        let mut witgen =
+        let witgen =
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
 
         // let prover_assignments = decode_simple_prover_functions(&self.machine_parts)
