@@ -1,3 +1,4 @@
+use indicatif::{ProgressBar, ProgressStyle};
 use powdr_ast::analyzed::AlgebraicExpression as Expression;
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap};
@@ -6,7 +7,7 @@ use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::jit::single_step_processor::SingleStepProcessor;
-use crate::witgen::machines::{Machine, MachineParts};
+use crate::witgen::machines::{compute_size_and_log, Machine, MachineParts};
 use crate::witgen::processor::{OuterQuery, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
@@ -65,15 +66,25 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
             self.data.push(first_row);
             self.data.push(second_row);
             self.data.finalize_all();
-            for row_index in 0.. {
+
+            let degree_range = self.parts.common_degree_range();
+
+            // TODO progress bar
+
+            // Start with 2 because we already computed two rows.
+            for row_index in 2.. {
+                if row_index >= self.degree + 1 {
+                    break;
+                }
+
+                if row_index % 100 == 0 {
+                    self.degree =
+                        compute_size_and_log(&self.name, row_index as usize, degree_range);
+                }
+
                 let mut data_ref = self.data.append_new_finalized_rows(1);
                 data_ref.row_offset -= 1;
                 self.jit_processor.compute_next_row(mutable_state, data_ref);
-
-                // TODO termination condition?
-                if row_index > 10000 {
-                    break;
-                }
             }
         } else {
             log::debug!("running main machine from row 0 with runtime constraint solver.");
@@ -328,7 +339,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         assert_eq!(self.data.len() as DegreeType, self.degree + 1);
 
         let mut first_row = self.data.get_in_progress_row(0);
-        let last_row = self.data.pop().unwrap();
+        let last_row = self.data.get_in_progress_row(self.degree as usize);
         if first_row.merge_with(&last_row).is_err() {
             log::error!("{}", first_row.render("First row", false, &self.parts));
             log::error!("{}", last_row.render("Last row", false, &self.parts));
