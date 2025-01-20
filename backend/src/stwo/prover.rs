@@ -37,6 +37,8 @@ use stwo_prover::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluati
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::ColumnVec;
 
+use super::traits::BaseFieldChallenger;
+
 const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
@@ -316,7 +318,8 @@ where
                 .half_coset,
         );
 
-        let challenge_channel = &mut <MC as MerkleChannel>::C::default();
+        //challenge should drawn from prover channel, but if not working, use this first
+        //let challenge_channel = &mut <MC as MerkleChannel>::C::default();
 
         let prover_channel = &mut <MC as MerkleChannel>::C::default();
         let mut commitment_scheme =
@@ -341,28 +344,15 @@ where
         self.split.iter().zip_eq(machine_log_sizes.iter()).for_each(
             |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
                 assert_eq!(machine_name, proof_machine_name);
-                let mut powdr_eval = PowdrEval::new(
-                    (*pil).clone(),
-                    constant_cols_offset_acc,
-                    machine_log_size,
-                );
-                
-                //Draw challenges for stage
-                let challenge = challenge_channel.draw_base_felt();
-
-
-                println!("challenges by stage from powdr_eval: {:?}", powdr_eval.challenges_by_stage);
-
-                let challenges_by_stage = powdr_eval
-                    .challenges_by_stage
-                    .iter()
-                    .flat_map(|(stage)| stage.iter().map(move |&index| (index, challenge)))
-                    .collect::<BTreeMap<_, _>>();
-
 
                 let component = PowdrComponent::new(
                     tree_span_provider,
-                    powdr_eval,
+                    PowdrEval::new::<MC>(
+                        (*pil).clone(),
+                        constant_cols_offset_acc,
+                        machine_log_size,
+                        prover_channel,
+                    ),
                     (SecureField::zero(), None),
                 );
                 components.push(component);
@@ -372,37 +362,7 @@ where
             },
         );
 
-        // self
-        // .split
-        // .iter()
-        // .filter_map(|(machine, pil)| {
-        //         let mut powdr_eval = PowdrEval::new(
-        //             (*pil).clone(),
-        //             constant_cols_offset_acc,
-        //             machine_length.ilog2(),
-        //         );
-
-        //         let challenge = challenge_channel.draw_felt();
-
-        //         let challenges_by_stage = powdr_eval
-        //             .challenges_by_stage
-        //             .iter()
-        //             .flat_map(|(stage)| stage.iter().map(move |&index| (index, challenge)))
-        //             .collect::<BTreeMap<_, _>>();
-
-        //         let component = PowdrComponent::new(
-        //             tree_span_provider,
-        //             powdr_eval,
-        //             (SecureField::zero(), None),
-        //         );
-        //         components.push(component);
-
-        //         constant_cols_offset_acc +=
-        //             pil.constant_count() + get_constant_with_next_list(pil).len();
-
-        //         )
-        //     }
-        // )
+        println!("component created");
 
         let mut components_slice: Vec<&dyn ComponentProver<B>> = components
             .iter_mut()
@@ -462,7 +422,12 @@ where
                     assert_eq!(machine_name, proof_machine_name);
                     let machine_component = PowdrComponent::new(
                         tree_span_provider,
-                        PowdrEval::new((*pil).clone(), constant_cols_offset_acc, machine_log_size),
+                        PowdrEval::new::<MC>(
+                            (*pil).clone(),
+                            constant_cols_offset_acc,
+                            machine_log_size,
+                            verifier_channel,
+                        ),
                         (SecureField::zero(), None),
                     );
 

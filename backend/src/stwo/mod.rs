@@ -3,6 +3,7 @@ use serde::Serialize;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
+use traits::BaseFieldChallenger;
 
 use crate::{
     field_filter::generalize_factory, Backend, BackendFactory, BackendOptions, Error, Proof,
