@@ -1690,7 +1690,6 @@ impl<F: FieldElement> Executor<'_, '_, F> {
             Instruction::jump_to_bootloader_input => {
                 let bootloader_input_idx = args[0].bin() as usize;
                 let addr = self.bootloader_inputs[bootloader_input_idx];
-                println!("jump_to_bootloader {addr}");
                 self.proc.set_pc(addr);
 
                 None

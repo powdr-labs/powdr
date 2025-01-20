@@ -36,7 +36,7 @@ pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 const_assert!(PAGE_SIZE_BYTES > 384);
 
 /// Computes a lower bound of how long the bootloader will run, for a given number of pages.
-pub fn bootloader_upper_bound(num_pages: usize) -> usize {
+pub fn bootloader_lower_bound(num_pages: usize) -> usize {
     let constant_overhead = 1 + // jump to bootloader
         2 + // load number of pages
         8 + // load mem hash
@@ -51,11 +51,16 @@ pub fn bootloader_upper_bound(num_pages: usize) -> usize {
         1 + // set page offset
         WORDS_PER_PAGE * 4 + WORDS_PER_PAGE/4 + // load page data and hash
         1 + // set x9=0 (validation phase)
-        2 * N_LEAVES_LOG * (
-            32 + // most expensive side of the if
+        N_LEAVES_LOG * (
+            17 + // ith bit != 1
             4 // set x4 + if + poseidon call
         ) +
-        35 + // x9 == 0 + assert correct root
+        // N_LEAVES_LOG * (
+        //     32 + // ith bit == 1
+        //     4 // set x4 + if + poseidon call
+        // ) +
+        36 + // x9 == 0
+        11 + // x9 == 1
         10; // update root
 
     constant_overhead + num_pages * cost_per_page
