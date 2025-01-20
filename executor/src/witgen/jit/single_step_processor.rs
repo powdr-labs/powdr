@@ -146,15 +146,15 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         let mut witgen =
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
 
-        let prover_assignments = decode_simple_prover_functions(&self.machine_parts)
-            .into_iter()
-            .map(|(col_name, value)| (self.column(&col_name), value))
-            .collect_vec();
+        // let prover_assignments = decode_simple_prover_functions(&self.machine_parts)
+        //     .into_iter()
+        //     .map(|(col_name, value)| (self.column(&col_name), value))
+        //     .collect_vec();
 
-        // TODO we should only do it if other methods fail, because it is "provide_if_unknown"
-        for (col, value) in &prover_assignments {
-            witgen.assign_constant(col, 1, *value);
-        }
+        // // TODO we should only do it if other methods fail, because it is "provide_if_unknown"
+        // for (col, value) in &prover_assignments {
+        //     witgen.assign_constant(col, 1, *value);
+        // }
 
         Processor::new(
             self.fixed_data,
