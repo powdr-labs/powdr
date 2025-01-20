@@ -23,7 +23,7 @@ machine Arith(byte: Byte, byte2: Byte2) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    require_field_bits(18, || "Arith equires a field that fits any 18-Bit value.");
+    require_field_bits(18, || "Arith requires a field that fits any 18-Bit value.");
 
     col witness is_division;
 
@@ -127,9 +127,16 @@ machine Arith(byte: Byte, byte2: Byte2) with
 
     // All input & output limbs are range-constrained to be bytes.
 
-    link => byte.check(sum(4, |i| x1[i] * CLK8[i]) + sum(4, |i| y1[i] * CLK8[4 + i]));
-    link => byte.check(sum(4, |i| x2[i] * CLK8[i]) + sum(4, |i| y2[i] * CLK8[4 + i]));
-    link => byte.check(sum(4, |i| y3[i] * CLK8[i]));
+    // sum0 (and the others) used to be inlined inside `byte2.check(...)`,
+    // but that causes an issue in the bus linker mode due to the expressions
+    // being copied syntactically before resolving the closures.
+    // Moving these expressions out of the link fixes it.
+    let sum0 = sum(4, |i| x1[i] * CLK8[i]) + sum(4, |i| y1[i] * CLK8[4 + i]);
+    link => byte.check(sum0);
+    let sum1 = sum(4, |i| x2[i] * CLK8[i]) + sum(4, |i| y2[i] * CLK8[4 + i]);
+    link => byte.check(sum1);
+    let sum2 = sum(4, |i| y3[i] * CLK8[i]);
+    link => byte.check(sum2);
 
     // Constrain x1 * y1 + x2 - y2 * 2**16 - y3 = 0
 
