@@ -57,7 +57,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
         assert!(self.data.is_empty());
         if self.jit_processor.try_compile(mutable_state) {
             let [first_row, second_row] = self.compute_first_two_rows(mutable_state);
-            log::trace!(
+            log::debug!(
                 "Running main machine from row 0 using JIT with the following initial values in the first two rows:\n{}\n{}",
                 first_row.render_values(false, &self.parts),
                 second_row.render_values(false, &self.parts)
@@ -76,6 +76,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
                 }
             }
         } else {
+            log::debug!("running main machine from row 0 with runtime constraint solver.");
             let first_row = self.compute_partial_first_row(mutable_state);
             self.data = self
                 .process(first_row, 0, mutable_state, None, true)

@@ -69,8 +69,8 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 false
             }
             Ok(code) => {
-                log::trace!("Generated code ({} steps)", code.len());
-                log::trace!("Compiling effects...");
+                log::debug!("Generated code ({} steps)", code.len());
+                log::debug!("Compiling effects...");
 
                 let known_inputs = self
                     .machine_parts
