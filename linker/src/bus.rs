@@ -194,16 +194,31 @@ impl BusLinker {
             }
             .into();
 
-            let function = match interaction_ty {
-                InteractionType::Lookup => {
+            let (function, arguments) = match interaction_ty {
+                InteractionType::Lookup => (
                     SymbolPath::from_str("std::protocols::lookup_via_bus::lookup_receive")
-                }
-                InteractionType::Permutation => {
-                    SymbolPath::from_str("std::protocols::permutation_via_bus::permutation_receive")
-                }
-            }
-            .unwrap()
-            .into();
+                        .unwrap()
+                        .into(),
+                    vec![
+                        interaction_id.into(),
+                        namespaced_reference(namespace.clone(), latch),
+                        tuple,
+                        namespaced_reference(namespace.clone(), latch),
+                    ],
+                ),
+                InteractionType::Permutation => (
+                    SymbolPath::from_str(
+                        "std::protocols::permutation_via_bus::permutation_receive",
+                    )
+                    .unwrap()
+                    .into(),
+                    vec![
+                        interaction_id.into(),
+                        unimplemented!("rhs_selector for permutation"),
+                        tuple,
+                    ],
+                ),
+            };
 
             // receive from the bus
             self.pil
@@ -215,12 +230,7 @@ impl BusLinker {
                                 SourceRef::unknown(),
                                 function,
                             )),
-                            arguments: vec![
-                                interaction_id.into(),
-                                namespaced_reference(namespace.clone(), latch),
-                                tuple,
-                                namespaced_reference(namespace.clone(), latch),
-                            ],
+                            arguments,
                         },
                     )
                 }));
