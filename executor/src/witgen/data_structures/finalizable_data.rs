@@ -13,19 +13,50 @@ use crate::witgen::{rows::Row, FixedData};
 
 use super::padded_bitvec::PaddedBitVec;
 
+#[derive(Debug, Clone)]
 pub struct ColumnLayout {
+    /// The ID of the first column used in the table.
     pub first_column_id: u64,
+    /// The length of a row in the table.
     pub column_count: usize,
+}
+
+impl ColumnLayout {
+    pub fn from_id_list<'a>(column_ids: impl Iterator<Item = &'a PolyID>) -> Self {
+        let col_id_range = column_ids.map(|id| id.id).minmax();
+        let (first_column_id, last_column_id) = col_id_range.into_option().unwrap();
+        let column_count = (last_column_id - first_column_id + 1) as usize;
+        Self {
+            first_column_id,
+            column_count,
+        }
+    }
+
+    pub fn to_relative_col(&self, absolute_col: u64) -> u64 {
+        absolute_col - self.first_column_id
+    }
+
+    pub fn to_absolute_col(&self, relative_col: u64) -> u64 {
+        relative_col + self.first_column_id
+    }
+
+    #[inline]
+    pub fn index(&self, row: usize, col: u64) -> usize {
+        let col = col - self.first_column_id;
+        row * self.column_count + col as usize
+    }
+
+    fn column_ids(&self) -> impl Iterator<Item = u64> {
+        self.first_column_id..(self.first_column_id + self.column_count as u64)
+    }
 }
 
 /// Sequence of rows of field elements, stored in a compact form.
 /// Optimized for contiguous column IDs, but works with any combination.
 #[derive(Clone)]
 pub struct CompactData<T> {
-    /// The ID of the first column used in the table.
-    first_column_id: u64,
-    /// The length of a row in the table.
-    column_count: usize,
+    /// The column layout.
+    layout: ColumnLayout,
     /// The cell values, stored in row-major order.
     data: Vec<T>,
     /// Bit vector of known cells, stored in row-major order.
@@ -36,23 +67,18 @@ pub struct CompactData<T> {
 
 impl<T: FieldElement> CompactData<T> {
     /// Creates a new empty compact data storage.
-    pub fn new(column_ids: &[PolyID]) -> Self {
-        let col_id_range = column_ids.iter().map(|id| id.id).minmax();
-        let (first_column_id, last_column_id) = col_id_range.into_option().unwrap();
-        let column_count = (last_column_id - first_column_id + 1) as usize;
+    pub fn new<'a>(column_ids: impl Iterator<Item = &'a PolyID>) -> Self {
+        let layout = ColumnLayout::from_id_list(column_ids);
+        let known_cells = PaddedBitVec::new(layout.column_count);
         Self {
-            first_column_id,
-            column_count,
+            layout,
             data: Vec::new(),
-            known_cells: PaddedBitVec::new(column_count),
+            known_cells,
         }
     }
 
     pub fn layout(&self) -> ColumnLayout {
-        ColumnLayout {
-            first_column_id: self.first_column_id,
-            column_count: self.column_count,
-        }
+        self.layout.clone()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -61,12 +87,12 @@ impl<T: FieldElement> CompactData<T> {
 
     /// Returns the number of stored rows.
     pub fn len(&self) -> usize {
-        self.data.len() / self.column_count
+        self.data.len() / self.layout.column_count
     }
 
     /// Truncates the data to `len` rows.
     pub fn truncate(&mut self, len: usize) {
-        self.data.truncate(len * self.column_count);
+        self.data.truncate(len * self.layout.column_count);
         self.known_cells.truncate_to_rows(len);
     }
 
@@ -77,7 +103,7 @@ impl<T: FieldElement> CompactData<T> {
 
     /// Appends a non-finalized row to the data, turning it into a finalized row.
     pub fn push(&mut self, row: Row<T>) {
-        self.data.reserve(self.column_count);
+        self.data.reserve(self.layout.column_count);
         self.known_cells.reserve_rows(1);
         for col_id in self.column_ids() {
             if let Some(v) = row.value(&col_id) {
@@ -92,7 +118,7 @@ impl<T: FieldElement> CompactData<T> {
 
     /// Sets an entire row at the given index
     pub fn set_row(&mut self, row: usize, new_row: Row<T>) {
-        let idx = row * self.column_count;
+        let idx = row * self.layout.column_count;
         for (i, col_id) in self.column_ids().enumerate() {
             if let Some(v) = new_row.value(&col_id) {
                 self.data[idx + i] = v;
@@ -104,19 +130,20 @@ impl<T: FieldElement> CompactData<T> {
     }
 
     pub fn append_new_rows(&mut self, count: usize) {
-        self.data
-            .resize(self.data.len() + count * self.column_count, T::zero());
+        self.data.resize(
+            self.data.len() + count * self.layout.column_count,
+            T::zero(),
+        );
         self.known_cells.append_empty_rows(count);
     }
 
     #[inline]
     fn index(&self, row: usize, col: u64) -> usize {
-        let col = col - self.first_column_id;
-        row * self.column_count + col as usize
+        self.layout.index(row, col)
     }
 
     fn column_ids(&self) -> impl Iterator<Item = PolyID> {
-        (self.first_column_id..(self.first_column_id + self.column_count as u64)).map(|id| PolyID {
+        self.layout.column_ids().map(|id| PolyID {
             id,
             ptype: PolynomialType::Committed,
         })
@@ -126,21 +153,21 @@ impl<T: FieldElement> CompactData<T> {
     pub fn set(&mut self, row: usize, col: u64, value: T) {
         let idx = self.index(row, col);
         self.data[idx] = value;
-        let relative_col = col - self.first_column_id;
+        let relative_col = self.layout.to_relative_col(col);
         self.known_cells.set(row, relative_col, true);
     }
 
     pub fn get(&self, row: usize, col: u64) -> (T, bool) {
         let idx = self.index(row, col);
-        let relative_col = col - self.first_column_id;
+        let relative_col = self.layout.to_relative_col(col);
         (self.data[idx], self.known_cells.get(row, relative_col))
     }
 
     pub fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (u64, &T)> {
-        (0..self.column_count)
+        (0..self.layout.column_count)
             .filter(move |i| self.known_cells.get(row, *i as u64))
             .map(move |i| {
-                let col = self.first_column_id + i as u64;
+                let col = self.layout.to_absolute_col(i as u64);
                 let idx = self.index(row, col);
                 (col, &self.data[idx])
             })
@@ -207,7 +234,7 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
     ) -> Self {
         let column_ids = column_ids.iter().cloned().sorted().collect::<Vec<_>>();
         Self {
-            finalized_data: CompactData::new(&column_ids),
+            finalized_data: CompactData::new(column_ids.iter()),
             post_finalized_data: rows.collect_vec(),
             column_ids,
             fixed_data,
