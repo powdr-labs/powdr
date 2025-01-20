@@ -168,7 +168,15 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
         .generate_code(can_process, witgen)
-        .map_err(|e| e.to_string())
+        .map_err(|e| {
+            let err_str = e.to_string();
+            log::trace!("\nCode generation faild for main machine:\n  {err_str}");
+            let shortened_error = err_str
+                .lines()
+                .take(10)
+                .format("\n  ");
+            format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
+        })
     }
 
     fn cell(&self, id: PolyID, row_offset: i32) -> Variable {
