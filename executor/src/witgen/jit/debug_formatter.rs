@@ -1,7 +1,8 @@
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, PolynomialIdentity, PolynomialType,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity, PermutationIdentity,
+    PhantomLookupIdentity, PhantomPermutationIdentity, PolynomialIdentity, PolynomialType,
 };
 use powdr_number::FieldElement;
 
@@ -41,7 +42,8 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
             // TODO group by row
             .map(|(id, row)| {
                 format!(
-                    "--------------[ identity on row {row}: ]--------------\n{}",
+                    "--------------[ identity {} on row {row}: ]--------------\n{}",
+                    id.id(),
                     self.formt_identity(id, *row)
                 )
             })
@@ -52,16 +54,24 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     /// about the sub-expressions as possible.
     fn formt_identity(&self, identity: &Identity<T>, row_offset: i32) -> String {
         match identity {
-            Identity::Lookup(_)
-            | Identity::Permutation(_)
-            | Identity::PhantomPermutation(_)
-            | Identity::PhantomLookup(_)
-            | Identity::Connect(_)
-            | Identity::PhantomBusInteraction(_) => {
-                // TODO format the elements of the identity.
-                // but we should only look ot the LHS.
-                format!("{identity}")
+            Identity::Lookup(LookupIdentity { left, .. })
+            | Identity::Permutation(PermutationIdentity { left, .. })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { left, .. })
+            | Identity::PhantomLookup(PhantomLookupIdentity { left, .. }) => {
+                let sel = self.format_expression_full_and_simplified(&left.selector, row_offset);
+                let exprs = left
+                    .expressions
+                    .iter()
+                    .map(|e| self.format_expression_full_and_simplified(e, row_offset))
+                    .collect_vec();
+                sel.into_iter()
+                    .zip(exprs)
+                    .map(|(sel, exprs)| format!("{sel} $ [ {} ]", exprs.iter().format(", ")))
+                    .format("\n")
+                    .to_string()
             }
+            // TODO(bus_interaction)
+            Identity::PhantomBusInteraction(_) | Identity::Connect(_) => format!("{identity}"),
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                 if let Expression::BinaryOperation(AlgebraicBinaryOperation {
                     left,
@@ -87,17 +97,23 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
         right: &Expression<T>,
         row: i32,
     ) -> String {
-        let left_full = self.format_expression(left, row, false);
-        let right_full = self.format_expression(right, row, false);
-        let left_simplified = self.format_expression(left, row, true);
-        let right_simplified = self.format_expression(right, row, true);
-        left_full
-            .into_iter()
-            .zip(right_full)
-            .chain(left_simplified.into_iter().zip(right_simplified))
+        let left = self.format_expression_full_and_simplified(left, row);
+        let right = self.format_expression_full_and_simplified(right, row);
+        left.into_iter()
+            .zip(right)
             .map(|(l, r)| format!("{l} = {r}"))
             .format("\n")
             .to_string()
+    }
+
+    fn format_expression_full_and_simplified(
+        &self,
+        e: &Expression<T>,
+        row_offset: i32,
+    ) -> [String; 6] {
+        let full = self.format_expression(e, row_offset, false);
+        let simplified = self.format_expression(e, row_offset, true);
+        [full, simplified].concat().try_into().unwrap()
     }
 
     /// Returns three formatted strings of the same length.
