@@ -206,10 +206,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             identities_to_process.extend(
                 updated_vars
                     .iter()
-                    .flat_map(|v| {
-                        log::trace!("Variable updated: {v}");
-                        self.occurrences.get(v)
-                    })
+                    .flat_map(|v| self.occurrences.get(v))
                     .flatten()
                     // Filter out the one we just processed.
                     .filter(|(id, row)| (*id, *row) != (identity, row_offset))

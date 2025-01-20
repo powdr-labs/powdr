@@ -390,6 +390,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 }
                 Effect::RangeConstraint(variable, rc) => {
                     if self.add_range_constraint(variable.clone(), rc.clone()) {
+                        log::trace!("{variable}: {rc}");
                         updated_variables.push(variable.clone());
                     }
                 }
