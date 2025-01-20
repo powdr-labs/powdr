@@ -204,8 +204,11 @@ namespace M(256);
         assert_eq!(
             err.to_string(),
             "Unable to derive algorithm to compute required values: \
-            Maximum branch depth of 6 reached.\nThe following variables or values are still missing: M::Y[1]\n\
-            No code generated so far."
+            No variable available to branch on.\nThe following variables or values are still missing: M::Y[1]\n\
+            The following branch decisions were taken:\n\
+            \n\
+            Generated code so far:\n\
+            M::X[1] = M::X[0];"
         );
     }
 
@@ -229,28 +232,24 @@ namespace M(256);
         instr_add * (A' - (A + B)) + instr_mul * (A' - A * B) + (1 - instr_add - instr_mul) * (A' - A) = 0;
         B' = B;
         ";
+
         let code = generate_single_step(input, "Main").unwrap();
         assert_eq!(
             format_code(&code),
             "\
 VM::pc[1] = (VM::pc[0] + 1);
+call_var(1, 0, 0) = VM::pc[0];
+call_var(1, 0, 1) = VM::instr_add[0];
+call_var(1, 0, 2) = VM::instr_mul[0];
 VM::B[1] = VM::B[0];
 call_var(1, 1, 0) = VM::pc[1];
 machine_call(1, [Known(call_var(1, 1, 0)), Unknown(call_var(1, 1, 1)), Unknown(call_var(1, 1, 2))]);
 VM::instr_add[1] = call_var(1, 1, 1);
 VM::instr_mul[1] = call_var(1, 1, 2);
 if (VM::instr_add[0] == 1) {
-    if (VM::instr_mul[0] == 1) {
-        VM::A[1] = -((-(VM::A[0] + VM::B[0]) + -(VM::A[0] * VM::B[0])) + VM::A[0]);
-    } else {
-        VM::A[1] = (VM::A[0] + VM::B[0]);
-    }
+    VM::A[1] = (VM::A[0] + VM::B[0]);
 } else {
-    if (VM::instr_mul[0] == 1) {
-        VM::A[1] = (VM::A[0] * VM::B[0]);
-    } else {
-        VM::A[1] = VM::A[0];
-    }
+    VM::A[1] = (VM::A[0] * VM::B[0]);
 }"
         );
     }
@@ -267,7 +266,7 @@ if (VM::instr_add[0] == 1) {
         col fixed INSTR_ADD = [0, 1] + [0]*;
         col fixed INSTR_MUL = [1, 0] + [1]*;
 
-        pc' = pc + 1;
+        pc' = pc;
         instr_add = 0;
         [ pc, instr_add, instr_mul ] in [ LINE, INSTR_ADD, INSTR_MUL ];
 
@@ -281,7 +280,10 @@ if (VM::instr_add[0] == 1) {
         assert_eq!(
             format_code(&code),
             "\
-VM::pc[1] = (VM::pc[0] + 1);
+VM::pc[1] = VM::pc[0];
+call_var(2, 0, 0) = VM::pc[0];
+call_var(2, 0, 1) = 0;
+call_var(2, 0, 2) = VM::instr_mul[0];
 VM::instr_add[1] = 0;
 call_var(2, 1, 0) = VM::pc[1];
 call_var(2, 1, 1) = 0;
