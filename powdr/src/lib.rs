@@ -312,7 +312,7 @@ fn run_internal(
     let asm = pipeline.compute_analyzed_asm().unwrap().clone();
     let initial_memory = riscv::continuations::load_initial_memory(&asm, pipeline.initial_memory());
 
-    let trace_len = riscv_executor::execute_fast(
+    let trace_len = riscv_executor::execute(
         &asm,
         initial_memory,
         pipeline.data_callback().unwrap(),

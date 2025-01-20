@@ -1003,7 +1003,9 @@ impl<T> Children<AlgebraicExpression<T>> for ExpressionList<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema, Hash)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct PhantomBusInteractionIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
@@ -1183,6 +1185,12 @@ pub enum Reference {
 pub struct AlgebraicReferenceThin {
     pub poly_id: PolyID,
     pub next: bool,
+}
+
+impl From<&AlgebraicReference> for AlgebraicReferenceThin {
+    fn from(value: &AlgebraicReference) -> Self {
+        value.to_thin()
+    }
 }
 
 #[derive(Debug, Clone, Eq, Serialize, Deserialize, JsonSchema)]

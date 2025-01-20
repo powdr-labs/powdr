@@ -347,7 +347,7 @@ fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable>) -> St
         SymbolicExpression::BitOperation(left, op, right, _) => {
             let left = format_expression(left);
             match op {
-                BitOperator::And => format!("({left} & {right})"),
+                BitOperator::And => format!("({left} & {right:#x})"),
             }
         }
     }
@@ -765,7 +765,7 @@ extern \"C\" fn witgen(
         let effects = vec![assignment(&x, symbol(&a) & large_num)];
         let known_inputs = vec![a.clone()];
         let code = witgen_code(&known_inputs, &effects);
-        assert!(code.contains(&format!("let c_x_1_0 = (c_a_0_0 & {large_num});")));
+        assert!(code.contains(&format!("let c_x_1_0 = (c_a_0_0 & {large_num:#x});")));
     }
 
     extern "C" fn mock_call_machine(

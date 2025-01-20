@@ -171,7 +171,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         can_process: CanProcess,
         id: &'a Identity<T>,
         row_offset: i32,
-    ) -> Result<bool, Error> {
+    ) -> Result<Vec<Variable>, Error> {
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => self
                 .process_equality_on_row(
@@ -339,7 +339,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    fn process_assignments(&mut self) -> Result<(), Error> {
+    fn process_assignments(&mut self) -> Result<Vec<Variable>, Error> {
+        let mut updated_variables = vec![];
         loop {
             let mut progress = false;
             // We need to take them out because ingest_effects needs a &mut self.
@@ -350,7 +351,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     assignment.row_offset,
                     &assignment.rhs,
                 )?;
-                progress |= self.ingest_effects(r, None);
+                let updated_vars = self.ingest_effects(r, None);
+                progress |= !updated_vars.is_empty();
+                updated_variables.extend(updated_vars);
             }
             assert!(self.assignments.is_empty());
             self.assignments = assignments;
@@ -358,34 +361,37 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 break;
             }
         }
-        Ok(())
+        Ok(updated_variables)
     }
 
     /// Analyze the effects and update the internal state.
     /// If the effect is the result of a machine call, `identity_id` must be given
     /// to avoid two calls to the same sub-machine on the same row.
-    /// Returns true if there was progress.
+    /// Returns the variables that have been updated.
     fn ingest_effects(
         &mut self,
         process_result: ProcessResult<T, Variable>,
         identity_id: Option<(u64, i32)>,
-    ) -> bool {
-        let mut progress = false;
+    ) -> Vec<Variable> {
+        let mut updated_variables = vec![];
         for e in process_result.effects {
             match &e {
                 Effect::Assignment(variable, assignment) => {
                     // If the variable was determined to be a constant, we add this
                     // as a range constraint, so we can use it in future evaluations.
-                    progress |=
-                        self.add_range_constraint(variable.clone(), assignment.range_constraint());
+                    if self.add_range_constraint(variable.clone(), assignment.range_constraint()) {
+                        updated_variables.push(variable.clone());
+                    }
                     if self.known_variables.insert(variable.clone()) {
                         log::trace!("{variable} := {assignment}");
-                        progress = true;
+                        updated_variables.push(variable.clone());
                         self.code.push(e);
                     }
                 }
                 Effect::RangeConstraint(variable, rc) => {
-                    progress |= self.add_range_constraint(variable.clone(), rc.clone());
+                    if self.add_range_constraint(variable.clone(), rc.clone()) {
+                        updated_variables.push(variable.clone());
+                    }
                 }
                 Effect::MachineCall(_, _, vars) => {
                     // If the machine call is already complete, it means that we should
@@ -396,10 +402,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                         assert!(process_result.complete);
                         for v in vars {
                             // Inputs are already known, but it does not hurt to add all of them.
-                            self.known_variables.insert(v.clone());
+                            if self.known_variables.insert(v.clone()) {
+                                updated_variables.push(v.clone());
+                            }
                         }
-                        progress = true;
-
                         self.code.push(e);
                     }
                 }
@@ -414,10 +420,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 self.complete_identities.insert(identity_id);
             }
         }
-        if progress {
-            self.process_assignments().unwrap();
+        if !updated_variables.is_empty() {
+            // TODO we could have an occurrence map for the assignments as well.
+            updated_variables.extend(self.process_assignments().unwrap());
         }
-        progress
+        updated_variables
     }
 
     /// Adds a range constraint to the set of derived range constraints. Returns true if progress was made.
@@ -684,7 +691,10 @@ mod test {
             counter += 1;
             for row in rows {
                 for id in retained_identities.iter() {
-                    progress |= witgen.process_identity(&mutable_state, id, *row).unwrap();
+                    progress |= !witgen
+                        .process_identity(&mutable_state, id, *row)
+                        .unwrap()
+                        .is_empty();
                 }
             }
             if !progress {
@@ -780,28 +790,28 @@ namespace Xor(256 * 256);
         assert_eq!(
             code,
             "\
-Xor::A_byte[6] = ((Xor::A[7] & 4278190080) // 16777216);
-Xor::A[6] = (Xor::A[7] & 16777215);
-assert (Xor::A[7] & 18446744069414584320) == 0;
-Xor::C_byte[6] = ((Xor::C[7] & 4278190080) // 16777216);
-Xor::C[6] = (Xor::C[7] & 16777215);
-assert (Xor::C[7] & 18446744069414584320) == 0;
-Xor::A_byte[5] = ((Xor::A[6] & 16711680) // 65536);
-Xor::A[5] = (Xor::A[6] & 65535);
-assert (Xor::A[6] & 18446744073692774400) == 0;
-Xor::C_byte[5] = ((Xor::C[6] & 16711680) // 65536);
-Xor::C[5] = (Xor::C[6] & 65535);
-assert (Xor::C[6] & 18446744073692774400) == 0;
+Xor::A_byte[6] = ((Xor::A[7] & 0xff000000) // 16777216);
+Xor::A[6] = (Xor::A[7] & 0xffffff);
+assert (Xor::A[7] & 0xffffffff00000000) == 0;
+Xor::C_byte[6] = ((Xor::C[7] & 0xff000000) // 16777216);
+Xor::C[6] = (Xor::C[7] & 0xffffff);
+assert (Xor::C[7] & 0xffffffff00000000) == 0;
+Xor::A_byte[5] = ((Xor::A[6] & 0xff0000) // 65536);
+Xor::A[5] = (Xor::A[6] & 0xffff);
+assert (Xor::A[6] & 0xffffffffff000000) == 0;
+Xor::C_byte[5] = ((Xor::C[6] & 0xff0000) // 65536);
+Xor::C[5] = (Xor::C[6] & 0xffff);
+assert (Xor::C[6] & 0xffffffffff000000) == 0;
 call_var(0, 6, 0) = Xor::A_byte[6];
 call_var(0, 6, 2) = Xor::C_byte[6];
 machine_call(0, [Known(call_var(0, 6, 0)), Unknown(call_var(0, 6, 1)), Known(call_var(0, 6, 2))]);
 Xor::B_byte[6] = call_var(0, 6, 1);
-Xor::A_byte[4] = ((Xor::A[5] & 65280) // 256);
-Xor::A[4] = (Xor::A[5] & 255);
-assert (Xor::A[5] & 18446744073709486080) == 0;
-Xor::C_byte[4] = ((Xor::C[5] & 65280) // 256);
-Xor::C[4] = (Xor::C[5] & 255);
-assert (Xor::C[5] & 18446744073709486080) == 0;
+Xor::A_byte[4] = ((Xor::A[5] & 0xff00) // 256);
+Xor::A[4] = (Xor::A[5] & 0xff);
+assert (Xor::A[5] & 0xffffffffffff0000) == 0;
+Xor::C_byte[4] = ((Xor::C[5] & 0xff00) // 256);
+Xor::C[4] = (Xor::C[5] & 0xff);
+assert (Xor::C[5] & 0xffffffffffff0000) == 0;
 call_var(0, 5, 0) = Xor::A_byte[5];
 call_var(0, 5, 2) = Xor::C_byte[5];
 machine_call(0, [Known(call_var(0, 5, 0)), Unknown(call_var(0, 5, 1)), Known(call_var(0, 5, 2))]);

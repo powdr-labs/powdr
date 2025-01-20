@@ -742,7 +742,7 @@ fn profiler_sanity_check() {
         flamegraph: true,
         callgrind: true,
     };
-    powdr_riscv_executor::execute_fast(
+    powdr_riscv_executor::execute(
         &analyzed,
         Default::default(),
         pipeline.data_callback().unwrap(),

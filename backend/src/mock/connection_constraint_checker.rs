@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::fmt;
+
 use std::iter::once;
-use std::ops::ControlFlow;
 
 use derive_more::{Display, From};
 use powdr_ast::analyzed::AlgebraicExpression;
@@ -11,16 +11,13 @@ use powdr_ast::analyzed::{
     Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
     PhantomPermutationIdentity, SelectedExpressions,
 };
-use powdr_ast::parsed::visitor::ExpressionVisitable;
-use powdr_ast::parsed::visitor::VisitOrder;
-use powdr_backend_utils::referenced_namespaces_algebraic_expression;
 use powdr_executor_utils::expression_evaluator::ExpressionEvaluator;
 use powdr_executor_utils::expression_evaluator::TerminalAccess;
 use powdr_number::FieldElement;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 
-use super::machine::Machine;
+use super::{localize, machine::Machine, unique_referenced_namespaces};
 
 #[derive(PartialEq, Eq, Debug)]
 pub enum ConnectionKind {
@@ -115,49 +112,6 @@ impl<F: FieldElement> Connection<F> {
     }
 }
 
-/// Translates PolyIDs pointing to columns in the global PIL to PolyIDs pointing to columns in the local PIL.
-fn localize<F: FieldElement, E: ExpressionVisitable<AlgebraicExpression<F>>>(
-    mut e: E,
-    global_pil: &Analyzed<F>,
-    local_pil: &Analyzed<F>,
-) -> E {
-    // Build a map (local ID) -> (global ID).
-    let name_to_id_local = local_pil.name_to_poly_id();
-    let id_map = global_pil
-        .name_to_poly_id()
-        .into_iter()
-        .filter_map(|(name, source_id)| {
-            name_to_id_local
-                .get(&name)
-                .map(|target_id| (source_id, *target_id))
-        })
-        .collect::<BTreeMap<_, _>>();
-
-    // Translate all polynomial references.
-    e.visit_expressions_mut(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(reference) = expr {
-                reference.poly_id = id_map[&reference.poly_id];
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-
-    e
-}
-
-fn unique_referenced_namespaces<F: FieldElement>(
-    selected_expressions: &SelectedExpressions<F>,
-) -> Option<String> {
-    let all_namespaces = referenced_namespaces_algebraic_expression(selected_expressions);
-    assert!(
-        all_namespaces.len() <= 1,
-        "Expected at most one namespace, got: {all_namespaces:?}",
-    );
-    all_namespaces.into_iter().next()
-}
-
 /// A connection between two machines.
 impl<F: FieldElement> Connection<F> {
     /// The calling machine. None if there are no column references on the LHS.
@@ -171,16 +125,16 @@ impl<F: FieldElement> Connection<F> {
     }
 }
 
-pub struct ConnectionConstraintChecker<'a, F: FieldElement> {
+pub struct ConnectionConstraintChecker<'a, F> {
     connections: &'a [Connection<F>],
-    machines: BTreeMap<String, Machine<'a, F>>,
+    machines: &'a BTreeMap<String, Machine<'a, F>>,
 }
 
 impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
     /// Creates a new connection constraint checker.
     pub fn new(
         connections: &'a [Connection<F>],
-        machines: BTreeMap<String, Machine<'a, F>>,
+        machines: &'a BTreeMap<String, Machine<'a, F>>,
     ) -> Self {
         Self {
             connections,
@@ -329,11 +283,11 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                             let absolute_multiplicity = multiplicity
                                 .as_ref()
                                 .map(|multiplicity| {
-                                    evaluator
-                                        .evaluate(multiplicity)
-                                        .try_into_i32()
-                                        .unwrap()
-                                        .unsigned_abs() as usize
+                                    i64::try_from(
+                                        evaluator.evaluate(multiplicity).to_signed_integer(),
+                                    )
+                                    .unwrap()
+                                    .unsigned_abs() as usize
                                 })
                                 .unwrap_or(1);
                             (Tuple { values, row }, absolute_multiplicity)
