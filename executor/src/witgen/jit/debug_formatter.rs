@@ -41,7 +41,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
             // TODO group by row
             .map(|(id, row)| {
                 format!(
-                    "--------------[ identity on row on row {row}: ]--------------\n{}",
+                    "--------------[ identity on row {row}: ]--------------\n{}",
                     self.formt_identity(id, *row)
                 )
             })
