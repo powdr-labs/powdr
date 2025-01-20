@@ -330,18 +330,18 @@ fn receive(
     latch: Expression,
     interaction_id: u32,
 ) -> Expression {
-    let (function, identity) = match identity_type {
+    let (function, arguments) = match identity_type {
         InteractionType::Lookup => (
             SymbolPath::from_str("std::protocols::lookup_via_bus::lookup_receive")
                 .unwrap()
                 .into(),
-            lookup(lhs, rhs),
+            vec![interaction_id.into(), lookup(lhs, rhs), latch],
         ),
         InteractionType::Permutation => (
             SymbolPath::from_str("std::protocols::permutation_via_bus::permutation_receive")
                 .unwrap()
                 .into(),
-            permutation(lhs, rhs),
+            vec![interaction_id.into(), permutation(lhs, rhs)],
         ),
     };
 
@@ -349,7 +349,7 @@ fn receive(
         SourceRef::unknown(),
         FunctionCall {
             function: Box::new(Expression::Reference(SourceRef::unknown(), function)),
-            arguments: vec![interaction_id.into(), identity, latch],
+            arguments,
         },
     )
 }
