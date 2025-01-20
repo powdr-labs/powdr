@@ -388,6 +388,10 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     pub fn set_inputs_if_unset(&mut self, row_index: usize) -> bool {
         let mut input_updates = EvalValue::complete(vec![]);
         for (poly_id, value) in self.inputs.iter() {
+            println!(
+                "Checking if value is known: {}",
+                self.fixed_data.column_name(poly_id)
+            );
             if !self.data[row_index].value_is_known(poly_id) {
                 input_updates.combine(EvalValue::complete(vec![(
                     AlgebraicVariable::Column(&self.fixed_data.witness_cols[poly_id].poly),

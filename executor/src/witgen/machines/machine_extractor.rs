@@ -92,8 +92,10 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         let mut fixed_lookup_connections = BTreeMap::new();
 
         for connection in &all_connections {
+            log::info!("Processing connection:\n{connection}");
             // If the RHS only consists of fixed columns, record the connection and continue.
             if FixedLookup::is_responsible(connection) {
+                log::info!(" => Fixed lookup");
                 assert!(fixed_lookup_connections
                     .insert(connection.id, *connection)
                     .is_none());
