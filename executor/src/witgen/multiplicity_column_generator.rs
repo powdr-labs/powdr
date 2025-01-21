@@ -182,7 +182,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             // But in practice, either the machine has a (smaller) witness column, or
             // it's a fixed lookup, so there is only one size.
             .min()
-            .unwrap();
+            .unwrap_or_else(|| panic!("No column references found: {selected_expressions}"));
 
         let tuples = (0..machine_size)
             .into_par_iter()
