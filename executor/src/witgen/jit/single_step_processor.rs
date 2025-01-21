@@ -380,4 +380,35 @@ machine_call(2, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(cal
 VM::instr_mul[1] = 1;"
         );
     }
+
+    #[test]
+    fn no_progress_with_call() {
+        // This mainly tests the error debug formatter.
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            col witness is_arith;
+            a = 2;
+            is_arith $ [a, b, c] is [Arith::X, Arith::Y, Arith::Z];
+        namespace Arith(256);
+            col witness X, Y, Z;
+            Z = X + Y;
+        ";
+        match generate_single_step(input, "Main") {
+            Ok(_) => panic!("Expected error"),
+            Err(e) => {
+                let expected = "\
+Main::is_arith $ [ Main::a, Main::b, Main::c ]
+     ???              2       ???      ???    
+                                              
+Main::is_arith     Main::a  Main::b  Main::c  
+     ???              2       ???      ???    
+                                          ";
+                assert!(
+                    e.contains(expected),
+                    "Error did not contain expected substring. Error:\n{e}\nExpected substring:\n{expected}"
+                );
+            }
+        }
+    }
 }
