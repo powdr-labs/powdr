@@ -39,6 +39,8 @@ impl<F: FieldElement> BackendFactory<F> for RestrictedFactory {
             return Err(Error::BackendError("Proving key unused".to_string()));
         }
 
+        assert!(pil.stage_count() <= 2, "stwo supports max 2 stages");
+
         let mut stwo: Box<StwoProver<F, SimdBackend, Blake2sMerkleChannel, Blake2sChannel>> =
             Box::new(StwoProver::new(pil, fixed)?);
 

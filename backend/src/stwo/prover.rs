@@ -250,8 +250,6 @@ where
             })
             .collect();
 
-        //The preprocessed columns needs to be indexed in the whole execution instead of each machine, so we need to keep track of the offset
-        let mut constant_cols_offset_acc = 0;
         let mut machine_log_sizes = BTreeMap::new();
 
         let mut constant_cols = Vec::new();
@@ -297,11 +295,6 @@ where
                         "All witness columns in a single machine must have the same length"
                     );
 
-                    println!(
-                        "witness_by_machine without witgncall back: {:?}",
-                        witness_by_machine
-                    );
-
                     if let Some(constant_trace) = self
                         .proving_key
                         .preprocessed
@@ -318,9 +311,6 @@ where
                     }
 
                     machine_log_sizes.insert(machine.clone(), machine_length.ilog2());
-
-                    constant_cols_offset_acc +=
-                        pil.constant_count() + get_constant_with_next_list(pil).len();
 
                     Some(
                         witness_by_machine
@@ -340,9 +330,10 @@ where
             .flatten()
             .collect();
         //TODO: commit witness and constant columns of stage 0 to get sound challenges for stage 1. This is not implemented yet
-        //get challenges
+        //To commit, stwo needs traces already evaluated in circle domain, so witness_cols_circle_domain_eval and constant_cols should be available til this point
+
+        //Get challenges for stage 1, based on stage 0 traces
         let identities = self.analyzed.identities.clone();
-        // we use a set to collect all used challenges
         let mut challenges_by_stage = vec![BTreeSet::new(); self.analyzed.stage_count()];
         for identity in &identities {
             identity.pre_visit_expressions(&mut |expr| {
@@ -352,18 +343,29 @@ where
             });
         }
 
-        // finally, we convert the set to a vector
+        // convert the set to a vector
         let challenges_by_stage: Vec<Vec<u64>> = challenges_by_stage
             .into_iter()
             .map(|set| set.into_iter().collect())
             .collect();
         println!("challenge by stage is {:?}", challenges_by_stage);
 
+        let challenge_channel = &mut <MC as MerkleChannel>::C::default();
+        let challenge_single_value = challenge_channel.draw_random_bytes();
+        println!("challenge_single_vale is {:?}", challenge_single_value);
+
+        //challenge_single_value is a vector more than 4  bytes, we know F is mersenne31, it needs 4 bytes to transfer to u32 and then to F\
+        //can just make F to be fixed, Mersene31?
         let stage0_challenges = challenges_by_stage[0]
             .iter()
-            .map(|&index| (index, F::from(42)))
+            .map(|&index| {
+                (
+                    index,
+                    F::from_bytes_le(challenge_single_value.get(0..4).unwrap()),
+                )
+            })
             .collect::<BTreeMap<_, _>>();
-
+        println!("stage0_challenges after draw: {:?}", stage0_challenges);
 
         witness_by_machine = witness_by_machine
             .iter()
@@ -377,8 +379,10 @@ where
                 (machine_name.clone(), new_witness)
             })
             .collect();
-        println!("witness_by_machine with witgncall back: {:?}", witness_by_machine);
-        
+        println!(
+            "witness_by_machine with witgncall back: {:?}",
+            witness_by_machine
+        );
 
         let witness_cols_circle_domain_eval_stage1: ColumnVec<
             CircleEvaluation<B, BaseField, BitReversedOrder>,
@@ -420,6 +424,8 @@ where
         //Each column size in machines needs its own component, the components from different machines are stored in this vector
         let mut components = Vec::new();
 
+        //build circuit. The circuit include constraints of all the machines in both stage 0 and stage 1
+        let mut constant_cols_offset_acc = 0;
         self.split.iter().zip_eq(machine_log_sizes.iter()).for_each(
             |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
                 assert_eq!(machine_name, proof_machine_name);
@@ -430,6 +436,7 @@ where
                         (*pil).clone(),
                         constant_cols_offset_acc,
                         machine_log_size,
+                        stage0_challenges.clone(),
                     ),
                     (SecureField::zero(), None),
                 );
@@ -492,6 +499,43 @@ where
         let mut constant_col_log_sizes = vec![];
         let mut witness_col_log_sizes = vec![];
 
+        //challenge_channel is used to draw random bytes for challenges, it should be drawn based on the commitment of witness and constant columns of stage 0, now it is created for testing
+        //TODO: implement this part
+        //Get challenges for stage 1, based on stage 0 traces
+        let identities = self.analyzed.identities.clone();
+        let mut challenges_by_stage = vec![BTreeSet::new(); self.analyzed.stage_count()];
+        for identity in &identities {
+            identity.pre_visit_expressions(&mut |expr| {
+                if let AlgebraicExpression::Challenge(challenge) = expr {
+                    challenges_by_stage[challenge.stage as usize].insert(challenge.id);
+                }
+            });
+        }
+
+        // convert the set to a vector
+        let challenges_by_stage: Vec<Vec<u64>> = challenges_by_stage
+            .into_iter()
+            .map(|set| set.into_iter().collect())
+            .collect();
+        println!("challenge by stage is {:?}", challenges_by_stage);
+
+        let challenge_channel = &mut <MC as MerkleChannel>::C::default();
+        let challenge_single_value = challenge_channel.draw_random_bytes();
+        println!("challenge_single_vale is {:?}", challenge_single_value);
+
+        //challenge_single_value is a vector more than 4  bytes, we know F is mersenne31, it needs 4 bytes to transfer to u32 and then to F\
+        //can just make F to be fixed, Mersene31?
+        let stage0_challenges = challenges_by_stage[0]
+            .iter()
+            .map(|&index| {
+                (
+                    index,
+                    F::from_bytes_le(challenge_single_value.get(0..4).unwrap()),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+        println!("stage0_challenges after draw: {:?}", stage0_challenges);
+
         let mut components = self
             .split
             .iter()
@@ -507,6 +551,7 @@ where
                             (*pil).clone(),
                             constant_cols_offset_acc,
                             machine_log_size,
+                            stage0_challenges.clone(),
                         ),
                         (SecureField::zero(), None),
                     );

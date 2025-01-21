@@ -66,15 +66,19 @@ pub struct PowdrEval<T> {
     constant_columns: BTreeMap<PolyID, usize>,
     //TODO: check if the below asumption and only get one BTreeMap not an array of BTreeMap is okay
     //assuming there are only 2 stages, challenges are only created after stage 0
-    pub stage0_challenges: BTreeMap<u64, BaseField>,
+    pub challenges: BTreeMap<u64, T>,
 }
 
 impl<T: FieldElement> PowdrEval<T> {
-    pub fn new<MC>(analyzed: Analyzed<T>, preprocess_col_offset: usize, log_degree: u32) -> Self
+    pub fn new<MC>(
+        analyzed: Analyzed<T>,
+        preprocess_col_offset: usize,
+        log_degree: u32,
+        challenges: BTreeMap<u64, T>,
+    ) -> Self
     where
         MC: MerkleChannel,
     {
-        let identities = analyzed.identities.clone();
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())
@@ -99,43 +103,6 @@ impl<T: FieldElement> PowdrEval<T> {
             .map(|(index, (_, id))| (id, index))
             .collect();
 
-        // we use a set to collect all used challenges
-        let mut challenges_by_stage = vec![BTreeSet::new(); analyzed.stage_count()];
-        //TODO: add an assert to check here, there is only stage 0 and stage 1, no more
-        for identity in &identities {
-            identity.pre_visit_expressions(&mut |expr| {
-                if let AlgebraicExpression::Challenge(challenge) = expr {
-                    challenges_by_stage[challenge.stage as usize].insert(challenge.id);
-                }
-            });
-        }
-
-        // finally, we convert the set to a vector
-        let challenges_by_stage: Vec<Vec<u64>> = challenges_by_stage
-            .into_iter()
-            .map(|set| set.into_iter().collect())
-            .collect();
-        println!("challenge by stage is {:?}", challenges_by_stage);
-
-        //Draw challenges for stage, use push to create vector because prover_channel.draw_felt() cannot be in the closure
-        let mut challenges: Vec<BaseField> = Vec::new();
-        //TODO: challenge should be based on the stage traces, but now it is deterministic for testing, need to change
-        let challenge_channel = &mut <MC as MerkleChannel>::C::default();
-
-        for _ in 0..challenges_by_stage[0].len() {
-            challenges.push(M31::from_u32_unchecked(42)) //challenges.push(challenge_channel.draw_felt().to_m31_array()[0]);
-        }
-        //TODO: it only get the first challenge because the error FnMut, need to fix
-        //let challenge_values = challenges[0];
-
-        //TODO: challenges updated here, but not complete yet, it only get the first challenge.
-        let stage0_challenges = challenges_by_stage[0]
-            .iter()
-            .map(|&index| (index, M31::from_u32_unchecked(42)))
-            .collect::<BTreeMap<_, _>>();
-
-        println!("stage0_challenges in PowdrEval is {:?}", stage0_challenges);
-
         Self {
             log_degree,
             analyzed,
@@ -143,7 +110,7 @@ impl<T: FieldElement> PowdrEval<T> {
             witness_columns,
             constant_shifted,
             constant_columns,
-            stage0_challenges,
+            challenges,
         }
     }
 }
@@ -233,30 +200,19 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                 )
             })
             .collect();
-
-        println!(
-            "stage0_challenges in evaluate function is {:?}",
-            self.stage0_challenges
-        );
-
-        let challenges_by_stage = self
-            .stage0_challenges
+        let challenges = self
+            .challenges
             .clone()
             .into_iter()
-            .map(|(key, value)| (key, <E as EvalAtRow>::F::from(value.try_into().unwrap())))
-            .collect::<BTreeMap<_, _>>();
-
-        println!(
-            "challenges_by_stage in Terminal access is {:?}",
-            challenges_by_stage
-        );
+            .map(|(k, v)| (k, E::F::from(v.to_integer().try_into_u32().unwrap().into())))
+            .collect();
 
         let intermediate_definitions = self.analyzed.intermediate_definitions();
         let data = Data {
             witness_eval: &witness_eval,
             constant_shifted_eval: &constant_shifted_eval,
             constant_eval: &constant_eval,
-            challenges: &challenges_by_stage,
+            challenges: &challenges,
         };
         let mut evaluator =
             ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {
