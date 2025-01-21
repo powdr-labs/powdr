@@ -2,6 +2,8 @@ use powdr_number::FieldElement;
 use powdr_number::FieldSize;
 use powdr_number::LargeInt;
 
+use std::collections::BTreeSet;
+
 use super::memory_merkle_tree::MerkleTree;
 
 use powdr_number::KnownField;
@@ -82,6 +84,53 @@ pub fn bootloader_lower_bound(num_pages: usize) -> usize {
         1; // jump
 
     constant_overhead + num_pages * cost_per_page
+}
+
+pub fn bootloader_exact(accessed_pages: &BTreeSet<u32>) -> usize {
+    let constant_overhead = 1 + // jump to bootloader
+        2 + // load number of pages
+        8 + // load mem hash
+        1 + // page idx = 0
+        1 + // jump if no pages
+        8 + // assert final merkle root
+        REGISTER_MEMORY_NAMES.len() + // load memory regs
+        REGISTER_NAMES.len() * 2 +  // load asm regs
+        1; // jump_to_bootloader input
+
+    let cost_per_page_fixed = 3 + // load page number and check != 0
+        24 + // zero out scratch space
+        1 + // set page offset
+        WORDS_PER_PAGE * 4 + WORDS_PER_PAGE/4 + // load page data and poseidon hash
+        1 + // set x9=0 (validation phase)
+     // VALIDATION PHASE
+        1 + // branch_if_diff_nonzero
+        16 + // assert root
+        1 + // jump
+        1 + // set phase to update
+        16 + // load claimed updated page
+        1 + // jump
+    // UPDATE PHASE
+        1 + // branch_if_diff_nonzero
+        8 + // mload
+        1 + // affine
+        1; // jump
+
+    let cost_ith_zero = 17 + // 8 load_input + mstore and 1 jump
+            3; // set x4 + if + poseidon call
+    let cost_ith_one = 32 + 3; // set x4 + if + poseidon call
+
+    let mut cost = constant_overhead + accessed_pages.len() * cost_per_page_fixed;
+    for page in accessed_pages {
+        for i in 0..N_LEAVES_LOG {
+            if page & (1 << i) == 0 {
+                cost += cost_ith_zero * 2; // times 2 because there are 2 phases
+            } else {
+                cost += cost_ith_one * 2;
+            }
+        }
+    }
+
+    cost
 }
 
 /// Computes an upper bound of how long the shutdown routine will run, for a given number of pages.

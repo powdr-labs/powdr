@@ -22,7 +22,7 @@ use memory_merkle_tree::MerkleTree;
 use rand::Rng;
 
 use crate::continuations::bootloader::{
-    bootloader_lower_bound, default_register_values, BOOTLOADER_INPUTS_PER_PAGE, DEFAULT_PC,
+    bootloader_exact, default_register_values, BOOTLOADER_INPUTS_PER_PAGE, DEFAULT_PC,
     MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET, WORDS_PER_PAGE,
 };
 
@@ -419,94 +419,94 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         // now we loop, trying to figure out how many pages to fit in the chunk
         let mut accessed_pages;
         let mut accessed_addresses;
-        let mut dropped_pages = 0;
         let mut bootloader_inputs;
-        let mut chunk_exec;
-        let start;
-        loop {
-            accessed_pages = BTreeSet::new();
-            accessed_addresses = BTreeSet::new();
-            for access in &full_exec.memory_accesses[start_idx..] {
-                // (under)estimate the number of rows used by the bootloader given the number of accessed pages.
-                // We use dropped_pages to enforce that less pages are put in the chunk.
-                let bootloader_rows =
-                    bootloader_lower_bound(accessed_pages.len() + 1 + dropped_pages);
-                if access.row >= proven_trace + length - bootloader_rows {
-                    break;
-                }
-                accessed_addresses.insert(access.address);
-                accessed_pages.insert(access.address >> PAGE_SIZE_BYTES_LOG);
-            }
 
-            let bootloader_rows = bootloader_lower_bound(accessed_pages.len());
-            log::info!(
-                "Chunk start row: {}  chunk end row: {}",
-                proven_trace,
-                proven_trace + length - bootloader_rows,
-            );
-            assert!(
-                has_all_needed_pages(
-                    &full_exec,
-                    &accessed_pages,
-                    proven_trace,
-                    length - bootloader_rows,
-                ),
-                "Could not fit all needed pages in the chunk. Can't run the program with continuations until the shutdown routine is supported."
-            );
+        //////////////////////////////////////////
 
-            // Build the bootloader inputs for the current chunk.
-            // Note that while we do know the accessed pages, we don't yet know the hashes
-            // of those pages at the end of the execution, because that will depend on how
-            // long the bootloader runs.
-            // Similarly, we don't yet know the final register values.
-            // So, we do a bit of a hack: For now, we'll just pretend that the state does not change, i.e.:
-            // - The final register values are equal to the initial register values.
-            // - The updated page hashes are equal to the current page hashes.
-            // - The updated root hash is equal to the current root hash.
-            // After simulating the chunk execution, we'll replace those values with the actual values.
-            bootloader_inputs = bootloader::create_input(
-                register_values.clone(),
-                &merkle_tree,
-                accessed_pages.iter().cloned(),
-            );
-
-            // execute the chunk
-            log::info!("Simulating chunk execution...");
-            chunk_exec = powdr_riscv_executor::execute_with_trace::<F>(
-                &asm,
-                &pil,
-                fixed.clone(),
-                MemoryState::new(),
-                pipeline.data_callback().unwrap(),
-                &bootloader_inputs,
-                Some(length),
-                // profiling was done when full trace was generated
-                None,
-            );
-
-            // if we find the PC, we know there was actual computation in the chunk
-            let bootloader_pc = bootloader_inputs[PC_INDEX];
-            log::info!("Looking for pc = {}...", bootloader_pc);
-            if let Some((pc_row, _)) = chunk_exec.trace["main::pc"]
-                .iter()
-                .enumerate()
-                .find(|(_, &pc)| pc == bootloader_pc)
-            {
-                start = pc_row;
-                log::info!("Bootloader used {} rows.", start);
-                log::info!(
-                    "  => {} / {} ({}%) of rows are used for the actual computation!",
-                    length - start,
-                    length,
-                    (length - start) * 100 / length
-                );
-
+        accessed_pages = BTreeSet::new();
+        accessed_addresses = BTreeSet::new();
+        let mut valid = false;
+        for access in &full_exec.memory_accesses[start_idx..] {
+            let mut accessed_pages_new = accessed_pages.clone();
+            accessed_pages_new.insert(access.address >> PAGE_SIZE_BYTES_LOG);
+            let bootloader_rows = bootloader_exact(&accessed_pages_new);
+            if access.row >= proven_trace + length - bootloader_rows {
                 break;
             }
-
-            log::info!("Could not find the pc, trying again with one less page...");
-            dropped_pages += 1;
+            accessed_addresses.insert(access.address);
+            accessed_pages.insert(access.address >> PAGE_SIZE_BYTES_LOG);
+            // if we have all needed pages for the chunk, we're done
+            if has_all_needed_pages(
+                &full_exec,
+                &accessed_pages,
+                proven_trace,
+                length - bootloader_rows,
+            ) {
+                valid = true;
+                break;
+            }
         }
+
+        if !valid {
+            log::info!("Could not fit all needed pages in the chunk. Can't run the program with continuations until the shutdown routine is supported.");
+            panic!();
+        }
+
+        let bootloader_rows = bootloader_exact(&accessed_pages);
+        log::info!(
+            "Chunk start row: {}  chunk end row: {}",
+            proven_trace,
+            proven_trace + length - bootloader_rows,
+        );
+
+        // Build the bootloader inputs for the current chunk.
+        // Note that while we do know the accessed pages, we don't yet know the hashes
+        // of those pages at the end of the execution, because that will depend on how
+        // long the bootloader runs.
+        // Similarly, we don't yet know the final register values.
+        // So, we do a bit of a hack: For now, we'll just pretend that the state does not change, i.e.:
+        // - The final register values are equal to the initial register values.
+        // - The updated page hashes are equal to the current page hashes.
+        // - The updated root hash is equal to the current root hash.
+        // After simulating the chunk execution, we'll replace those values with the actual values.
+        bootloader_inputs = bootloader::create_input(
+            register_values.clone(),
+            &merkle_tree,
+            accessed_pages.iter().cloned(),
+        );
+
+        // execute the chunk
+        log::info!("Simulating chunk execution...");
+        let chunk_exec = powdr_riscv_executor::execute_with_trace::<F>(
+            &asm,
+            &pil,
+            fixed.clone(),
+            MemoryState::new(),
+            pipeline.data_callback().unwrap(),
+            &bootloader_inputs,
+            Some(length),
+            // profiling was done when full trace was generated
+            None,
+        );
+
+        // if we find the PC, we know there was actual computation in the chunk
+        let bootloader_pc = bootloader_inputs[PC_INDEX];
+        log::info!("Looking for pc = {}...", bootloader_pc);
+        let (start, _) = chunk_exec.trace["main::pc"]
+            .iter()
+            .enumerate()
+            .find(|(_, &pc)| pc == bootloader_pc)
+            .unwrap();
+
+        log::info!("Bootloader used {} rows.", start);
+        log::info!(
+            "  => {} / {} ({}%) of rows are used for the actual computation!",
+            length - start,
+            length,
+            (length - start) * 100 / length
+        );
+
+        //////////////////////////////////////////
 
         log::info!(
             "{} unique memory accesses over {} accessed pages: {:?}",
@@ -515,7 +515,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             accessed_pages
         );
 
-        let bootloader_rows = bootloader_lower_bound(accessed_pages.len());
+        let bootloader_rows = bootloader_exact(&accessed_pages);
         log::info!(
             "Estimating the bootloader to use around {} rows.",
             bootloader_rows,
