@@ -429,7 +429,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             for access in &full_exec.memory_accesses[start_idx..] {
                 // (under)estimate the number of rows used by the bootloader given the number of accessed pages.
                 // We use dropped_pages to enforce that less pages are put in the chunk.
-                let bootloader_rows = bootloader_lower_bound(accessed_pages.len() + dropped_pages);
+                let bootloader_rows =
+                    bootloader_lower_bound(accessed_pages.len() + 1 + dropped_pages);
                 if access.row >= proven_trace + length - bootloader_rows {
                     break;
                 }
@@ -517,7 +518,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         let bootloader_rows = bootloader_lower_bound(accessed_pages.len());
         log::info!(
             "Estimating the bootloader to use around {} rows.",
-            bootloader_rows
+            bootloader_rows,
         );
 
         log::info!("Bootloader inputs length: {}", bootloader_inputs.len());
@@ -623,6 +624,9 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         let actual_num_rows = chunk_exec.trace_len;
         bootloader_inputs_and_num_rows.push((bootloader_inputs, actual_num_rows as u64));
 
+        let avg_rows_per_chunk = (proven_trace + length - start) / (chunk_index + 1);
+        let avg_computation_ratio = avg_rows_per_chunk * 100 / length;
+
         log::info!("Chunk trace length: {}", chunk_exec.trace_len);
         log::info!("Validating chunk...");
         log::info!("Bootloader used {} rows.", start);
@@ -632,6 +636,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             length,
             (length - start) * 100 / length
         );
+        log::info!("  => Average computation ratio: {}%", avg_computation_ratio);
         for i in 0..(chunk_exec.trace_len - start) {
             for &reg in ["main::pc", "main::query_arg_1", "main::query_arg_2"].iter() {
                 let chunk_i = i + start;
@@ -667,6 +672,13 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         let new_rows = length - start - 1;
         proven_trace += new_rows;
         log::info!("Proved {} rows.", new_rows);
+
+        let remaining_rows = full_trace_length - proven_trace;
+        let remaining_chunks = remaining_rows / avg_rows_per_chunk;
+        log::info!(
+            "  => Estimating more {} chunks at the current ratio",
+            remaining_chunks
+        );
 
         chunk_index += 1;
     }
