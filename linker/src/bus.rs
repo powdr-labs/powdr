@@ -1,3 +1,4 @@
+use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::combine_flags,
     object::{Link, LinkTo, Location, MachineInstanceGraph, Object, Operation},
@@ -124,18 +125,31 @@ impl LinkerBackend for BusLinker {
         ));
 
         self.pil.extend(object.pil);
+
+        if let Some(call_selectors) = &object.call_selectors {
+            let count = object.operations.len();
+            self.pil.extend([
+                parse_pil_statement(&format!("col witness {call_selectors}[{count}];")),
+                parse_pil_statement(&format!(
+                    "std::array::map({call_selectors}, std::utils::force_bool);"
+                )),
+            ])
+        }
+
         // process outgoing links
         for link in object.links {
             self.process_link(link, location, objects);
         }
         // receive incoming links
-        for (name, operation) in &object.operations {
+        for (operation_index, (name, operation)) in object.operations.iter().enumerate() {
             self.process_operation(
                 name,
                 operation,
                 location,
                 object.latch.as_ref().unwrap(),
                 object.operation_id.as_ref().unwrap(),
+                operation_index,
+                object.call_selectors.clone(),
             );
         }
 
@@ -170,6 +184,8 @@ impl BusLinker {
         location: &Location,
         latch: &str,
         operation_id: &str,
+        operation_index: usize,
+        call_selectors: Option<String>,
     ) {
         let link_to = LinkTo {
             machine: location.clone(),
@@ -197,16 +213,14 @@ impl BusLinker {
             }
             .into();
 
+            let latch = namespaced_reference(namespace.clone(), latch);
+
             let (function, arguments) = match interaction_ty {
                 InteractionType::Lookup => (
                     SymbolPath::from_str("std::protocols::lookup_via_bus::lookup_receive")
                         .unwrap()
                         .into(),
-                    vec![
-                        interaction_id.into(),
-                        namespaced_reference(namespace.clone(), latch),
-                        tuple,
-                    ],
+                    vec![interaction_id.into(), latch, tuple],
                 ),
                 InteractionType::Permutation => (
                     SymbolPath::from_str(
@@ -214,11 +228,17 @@ impl BusLinker {
                     )
                     .unwrap()
                     .into(),
-                    vec![
-                        interaction_id.into(),
-                        unimplemented!("rhs_selector for permutation"),
-                        tuple,
-                    ],
+                    {
+                        let call_selectors =
+                            call_selectors.expect("permutation should have selector");
+                        let call_selector_array =
+                            namespaced_reference(location.to_string(), call_selectors);
+                        let call_selector =
+                            index_access(call_selector_array, Some(operation_index.into()));
+                        let rhs_selector = latch * call_selector;
+
+                        vec![interaction_id.into(), rhs_selector, tuple]
+                    },
                 ),
             };
 
