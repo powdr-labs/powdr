@@ -3,6 +3,7 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Identity, LookupIdentity, PermutationIdentity,
     PhantomLookupIdentity, PhantomPermutationIdentity, PolynomialIdentity, PolynomialType,
+    SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
@@ -58,17 +59,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
             | Identity::Permutation(PermutationIdentity { left, .. })
             | Identity::PhantomPermutation(PhantomPermutationIdentity { left, .. })
             | Identity::PhantomLookup(PhantomLookupIdentity { left, .. }) => {
-                let sel = self.format_expression_full_and_simplified(&left.selector, row_offset);
-                let exprs = left
-                    .expressions
-                    .iter()
-                    .map(|e| self.format_expression_full_and_simplified(e, row_offset))
-                    .collect_vec();
-                sel.into_iter()
-                    .zip(exprs)
-                    .map(|(sel, exprs)| format!("{sel} $ [ {} ]", exprs.iter().format(", ")))
-                    .format("\n")
-                    .to_string()
+                self.format_connection(left, row_offset)
             }
             // TODO(bus_interaction)
             Identity::PhantomBusInteraction(_) | Identity::Connect(_) => format!("{identity}"),
@@ -89,6 +80,38 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
                 }
             }
         }
+    }
+
+    fn format_connection(&self, left: &SelectedExpressions<T>, row_offset: i32) -> String {
+        let sel = self.format_expression_full_and_simplified(&left.selector, row_offset);
+        let exprs = left
+            .expressions
+            .iter()
+            .map(|e| self.format_expression_full_and_simplified(e, row_offset))
+            .reduce(|a, b| {
+                let lines = a.into_iter().zip(b).enumerate();
+                lines
+                    .map(|(i, (a, b))| {
+                        let comma = if i == 0 { "," } else { " " };
+                        format!("{a}{comma} {b}")
+                    })
+                    .collect_vec()
+                    .try_into()
+                    .unwrap()
+            })
+            .unwrap();
+        sel.into_iter()
+            .zip(exprs)
+            .enumerate()
+            .map(|(i, (sel, exprs))| {
+                if i == 0 {
+                    format!("{sel} $ [ {exprs} ]")
+                } else {
+                    format!("{sel}     {exprs}  ")
+                }
+            })
+            .format("\n")
+            .to_string()
     }
 
     fn format_polynomial_identity(
@@ -113,7 +136,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     ) -> [String; 6] {
         let full = self.format_expression(e, row_offset, false);
         let simplified = self.format_expression(e, row_offset, true);
-        pad_left([full, simplified].concat().try_into().unwrap())
+        pad_center([full, simplified].concat().try_into().unwrap())
     }
 
     /// Returns three formatted strings of the same length.
@@ -142,7 +165,11 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
                         let variable = Variable::from_reference(r, row_offset);
                         let value = self.witgen.value(&variable).to_string();
                         let rc = self.witgen.range_constraint(&variable);
-                        let rc = if rc == RangeConstraint::default() {
+                        let rc = if rc == RangeConstraint::default()
+                            || rc.try_to_single_value().is_some()
+                        {
+                            // Empty string also for single value, since it is already
+                            // printed in the "value" line.
                             String::new()
                         } else {
                             rc.to_string()
@@ -172,7 +199,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
                 self.format_unary_operation(op, row_offset, simplified)
             }
         };
-        pad_left([name, value, rc])
+        pad_center([name, value, rc])
     }
 
     fn format_binary_operation(
@@ -318,11 +345,11 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     }
 }
 
-/// Pads the strings with spaces to the left so that they have the same length.
-fn pad_left<const N: usize>(s: [String; N]) -> [String; N] {
+/// Pads the strings with spaces to the left and right so that they have the same length.
+fn pad_center<const N: usize>(s: [String; N]) -> [String; N] {
     let len = s.iter().map(|s| s.len()).max().unwrap();
     s.iter()
-        .map(|s| format!("{s:>len$}"))
+        .map(|s| format!("{s:^len$}"))
         .collect_vec()
         .try_into()
         .unwrap()
