@@ -44,24 +44,42 @@ pub fn bootloader_lower_bound(num_pages: usize) -> usize {
         1 + // jump if no pages
         8 + // assert final merkle root
         REGISTER_MEMORY_NAMES.len() + // load memory regs
-        REGISTER_NAMES.len() * 2; // load asm regs
+        REGISTER_NAMES.len() * 2 +  // load asm regs
+        1; // jump_to_bootloader input
 
     let cost_per_page = 3 + // load page number and check != 0
         24 + // zero out scratch space
         1 + // set page offset
-        WORDS_PER_PAGE * 4 + WORDS_PER_PAGE/4 + // load page data and hash
+        WORDS_PER_PAGE * 4 + WORDS_PER_PAGE/4 + // load page data and poseidon hash
         1 + // set x9=0 (validation phase)
-        N_LEAVES_LOG * (
-            17 + // ith bit != 1
+     // VALIDATION PHASE
+        N_LEAVES_LOG * ( // ith bit == 0
+            17 + // 8 load_input + mstore and 1 jump
             4 // set x4 + if + poseidon call
         ) +
         // N_LEAVES_LOG * (
         //     32 + // ith bit == 1
         //     4 // set x4 + if + poseidon call
         // ) +
-        36 + // x9 == 0
-        11 + // x9 == 1
-        10; // update root
+        1 + // branch_if_diff_nonzero
+        16 + // assert root
+        1 + // jump
+        1 + // set phase to update
+        16 + // load claimed updated page
+        1 + // jump
+    // UPDATE PHASE
+        N_LEAVES_LOG * ( // ith bit == 0
+            17 + // 8 load_input + mstore and 1 jump
+            4 // set x4 + if + poseidon call
+        ) +
+        // N_LEAVES_LOG * (
+        //     32 + // ith bit == 1
+        //     4 // set x4 + if + poseidon call
+        // ) +
+        1 + // branch_if_diff_nonzero
+        8 + // mload
+        1 + // affine
+        1; // jump
 
     constant_overhead + num_pages * cost_per_page
 }
