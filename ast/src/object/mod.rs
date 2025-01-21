@@ -94,8 +94,6 @@ pub struct LinkTo {
     pub machine: Location,
     /// the operation we link to
     pub operation: String,
-    /// index into the permutation selector (None if lookup)
-    pub selector_idx: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialOrd, Ord, Eq, PartialEq)]

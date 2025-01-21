@@ -1,6 +1,6 @@
 use powdr_ast::{
     asm_analysis::combine_flags,
-    object::{Link, Location, MachineInstanceGraph, Object, Operation},
+    object::{Link, LinkTo, Location, MachineInstanceGraph, Object, Operation},
     parsed::{
         asm::SymbolPath,
         build::{index_access, namespaced_reference},
@@ -17,9 +17,9 @@ use crate::{
 };
 
 /// Compute a unique identifier for an interaction
-fn interaction_id(machine: &Location, operation: &str) -> u32 {
+fn interaction_id(link_to: &LinkTo) -> u32 {
     let mut hasher = Sha256::default();
-    hasher.update(format!("{machine}/{operation}"));
+    hasher.update(format!("{}/{}", link_to.machine, link_to.operation));
     let result = hasher.finalize();
     let mut bytes = [0u8; 4];
     bytes.copy_from_slice(&result[..4]);
@@ -30,7 +30,7 @@ pub struct BusLinker {
     /// the pil statements
     pil: Vec<PilStatement>,
     /// for each operation, whether we are in permutation mode or lookup mode
-    operation_mode: BTreeMap<(Location, String), InteractionType>,
+    operation_mode: BTreeMap<LinkTo, InteractionType>,
 }
 
 impl LinkerBackend for BusLinker {
@@ -48,7 +48,7 @@ impl LinkerBackend for BusLinker {
             .flat_map(|(_, object)| {
                 object.links.iter().map(|link| {
                     (
-                        (link.to.machine.clone(), link.to.operation.clone()),
+                        link.to.clone(),
                         if link.is_permutation {
                             InteractionType::Permutation
                         } else {
@@ -80,7 +80,7 @@ impl LinkerBackend for BusLinker {
 
         let operation = &objects[&to.machine].operations[&to.operation];
 
-        let interaction_id = interaction_id(&to.machine, &to.operation);
+        let interaction_id = interaction_id(&to);
 
         let op_id = operation.id.clone().unwrap().into();
 
@@ -171,14 +171,17 @@ impl BusLinker {
         latch: &str,
         operation_id: &str,
     ) {
-        let interaction_ty = self
-            .operation_mode
-            .get(&(location.clone(), operation_name.to_string()));
+        let link_to = LinkTo {
+            machine: location.clone(),
+            operation: operation_name.to_string(),
+        };
+
+        let interaction_ty = self.operation_mode.get(&link_to);
 
         // By construction, all operations *which are called* have an [InteractionType]. The others can be safely ignored.
         if let Some(interaction_ty) = interaction_ty {
             // compute the unique interaction id
-            let interaction_id = interaction_id(location, operation_name);
+            let interaction_id = interaction_id(&link_to);
 
             let namespace = location.to_string();
 
@@ -203,7 +206,6 @@ impl BusLinker {
                         interaction_id.into(),
                         namespaced_reference(namespace.clone(), latch),
                         tuple,
-                        namespaced_reference(namespace.clone(), latch),
                     ],
                 ),
                 InteractionType::Permutation => (

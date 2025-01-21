@@ -1,6 +1,7 @@
+use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::{combine_flags, MachineDegree},
-    object::{Link, Location, MachineInstanceGraph, Object},
+    object::{Link, LinkTo, Location, MachineInstanceGraph, Object},
     parsed::{
         asm::SymbolPath,
         build::{index_access, lookup, namespaced_reference, permutation, selected},
@@ -16,7 +17,11 @@ use crate::{call, DegreeMode, InteractionType, LinkerBackend, MAIN_OPERATION_NAM
 pub struct NativeLinker {
     degree_mode: DegreeMode,
     max_degree: Option<Number>,
-    /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
+    /// for each machine instance, the size of the selector array, based on the number of permutation links pointing to it
+    selector_array_size_by_instance: BTreeMap<Location, usize>,
+    /// for each link destination, the index in the selector array that the link points to
+    selector_array_index_by_destination: BTreeMap<LinkTo, usize>,
+    /// for each machine instance, the statements resulting from processing the links separately, because we need to make sure they do not come first.
     namespaces: BTreeMap<Location, (Vec<PilStatement>, Vec<PilStatement>)>,
 }
 
@@ -75,11 +80,13 @@ impl LinkerBackend for NativeLinker {
             let rhs_selector = if let Some(call_selectors) = to_machine.clone().call_selectors {
                 let call_selector_array =
                     namespaced_reference(to_namespace.clone(), call_selectors);
-                let call_selector =
-                    index_access(call_selector_array, Some(to.selector_idx.unwrap().into()));
+                let call_selector = index_access(
+                    call_selector_array,
+                    Some(self.selector_array_index_by_destination[&to].into()),
+                );
                 latch.clone() * call_selector
             } else {
-                latch.clone()
+                unreachable!()
             };
 
             let rhs = selected(rhs_selector, rhs_list);
@@ -108,10 +115,39 @@ impl LinkerBackend for NativeLinker {
             DegreeMode::Vadcop => None,
         };
 
+        // generate the maps of selector array sizes and indices
+        let (selector_array_index_by_destination, selector_array_size_by_instance) = graph
+            .objects
+            .values()
+            .flat_map(|object| {
+                object
+                    .links
+                    .iter()
+                    .filter_map(|link| link.is_permutation.then_some(&link.to))
+            })
+            .fold(
+                (BTreeMap::new(), BTreeMap::<_, usize>::new()),
+                |(mut indices, mut sizes), to| {
+                    // get the current size of the array
+                    let size = sizes.entry(to.machine.clone()).or_default();
+                    // that is the index of the next selector
+                    let index = *size;
+                    // increment the size of the array
+                    *size += 1;
+                    // store the index
+                    let already_assigned = indices.insert(to.clone(), index);
+                    assert!(already_assigned.is_none());
+                    // return the updated maps
+                    (indices, sizes)
+                },
+            );
+
         Ok(Self {
             degree_mode,
             max_degree,
             namespaces: Default::default(),
+            selector_array_size_by_instance,
+            selector_array_index_by_destination,
         })
     }
 
@@ -136,6 +172,17 @@ impl LinkerBackend for NativeLinker {
         ));
 
         pil.extend(object.pil);
+
+        if let Some(call_selectors) = &object.call_selectors {
+            let count = self.selector_array_size_by_instance[location];
+            pil.extend([
+                parse_pil_statement(&format!("col witness {call_selectors}[{count}];")),
+                parse_pil_statement(&format!(
+                    "std::array::map({call_selectors}, std::utils::force_bool);"
+                )),
+            ])
+        }
+
         for link in object.links {
             self.process_link(link, location, objects);
         }

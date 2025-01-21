@@ -15,7 +15,7 @@ pub mod bus;
 pub mod native;
 
 const MAIN_OPERATION_NAME: &str = "main";
-const LINKER_FIRST_STEP: &str = "linker_first_step";
+const LINKER_FIRST_STEP: &str = "_linker_first_step";
 
 /// Link the objects into a single PIL file, using the specified parameters.
 pub fn link(graph: MachineInstanceGraph, params: LinkerParams) -> Result<PILFile, Vec<String>> {
