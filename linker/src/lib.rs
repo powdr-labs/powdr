@@ -53,7 +53,7 @@ trait LinkerBackend: Sized {
     fn process_object(&mut self, location: &Location, objects: &BTreeMap<Location, Object>);
 
     /// Process a link between two machines, also passing the location at which the link is defined.
-    fn process_link(&mut self, link: Link, from: &Location, objects: &BTreeMap<Location, Object>);
+    fn process_link(&mut self, link: &Link, from: &Location, objects: &BTreeMap<Location, Object>);
 
     /// Convert the linker's internal state into PIL statements.
     fn into_pil(self) -> Vec<PilStatement>;

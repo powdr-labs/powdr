@@ -75,22 +75,22 @@ impl LinkerBackend for BusLinker {
         })
     }
 
-    fn process_link(&mut self, link: Link, _: &Location, objects: &BTreeMap<Location, Object>) {
-        let from = link.from;
-        let to = link.to;
+    fn process_link(&mut self, link: &Link, _: &Location, objects: &BTreeMap<Location, Object>) {
+        let from = &link.from;
+        let to = &link.to;
 
         let operation = &objects[&to.machine].operations[&to.operation];
 
-        let interaction_id = interaction_id(&to);
+        let interaction_id = interaction_id(to);
 
         let op_id = operation.id.clone().unwrap().into();
 
         // we send `flag $ { operation_id, inputs, outputs }`
-        let selector = combine_flags(from.instr_flag, from.link_flag);
+        let selector = combine_flags(from.instr_flag.clone(), from.link_flag.clone());
         let tuple = ArrayLiteral {
             items: once(op_id)
-                .chain(from.params.inputs)
-                .chain(from.params.outputs)
+                .chain(from.params.inputs.clone())
+                .chain(from.params.outputs.clone())
                 .collect(),
         }
         .into();
@@ -113,9 +113,9 @@ impl LinkerBackend for BusLinker {
     }
 
     fn process_object(&mut self, location: &Location, objects: &BTreeMap<Location, Object>) {
-        let object = objects[location].clone();
+        let object = &objects[location];
 
-        let namespace_degree = try_into_namespace_degree(object.degree)
+        let namespace_degree = try_into_namespace_degree(object.degree.clone())
             .unwrap_or_else(|| panic!("machine at {location} must have an explicit degree"));
         // create a namespace for this object
         self.pil.push(PilStatement::Namespace(
@@ -124,9 +124,11 @@ impl LinkerBackend for BusLinker {
             Some(namespace_degree),
         ));
 
-        self.pil.extend(object.pil);
+        self.pil.extend(object.pil.clone());
 
         if let Some(call_selectors) = &object.call_selectors {
+            // TODO: this is not optimal in the case where some operations are called via lookups or not called at all, but it will do for now.
+            // If we used separate selector columns instead of an array, the optimizer could remove the unused ones better
             let count = object.operations.len();
             self.pil.extend([
                 parse_pil_statement(&format!("col witness {call_selectors}[{count}];")),
@@ -137,20 +139,12 @@ impl LinkerBackend for BusLinker {
         }
 
         // process outgoing links
-        for link in object.links {
+        for link in &object.links {
             self.process_link(link, location, objects);
         }
         // receive incoming links
         for (operation_index, (name, operation)) in object.operations.iter().enumerate() {
-            self.process_operation(
-                name,
-                operation,
-                location,
-                object.latch.as_ref().unwrap(),
-                object.operation_id.as_ref().unwrap(),
-                operation_index,
-                object.call_selectors.clone(),
-            );
+            self.process_operation(name, operation, operation_index, location, object);
         }
 
         // if this is the main object, call the main operation
@@ -181,11 +175,9 @@ impl BusLinker {
         &mut self,
         operation_name: &str,
         operation: &Operation,
-        location: &Location,
-        latch: &str,
-        operation_id: &str,
         operation_index: usize,
-        call_selectors: Option<String>,
+        location: &Location,
+        object: &Object,
     ) {
         let link_to = LinkTo {
             machine: location.clone(),
@@ -202,18 +194,21 @@ impl BusLinker {
             let namespace = location.to_string();
 
             let tuple = ArrayLiteral {
-                items: once(namespaced_reference(namespace.clone(), operation_id))
-                    .chain(operation.params.inputs_and_outputs().map(|i| {
-                        index_access(
-                            namespaced_reference(namespace.clone(), &i.name),
-                            i.index.clone(),
-                        )
-                    }))
-                    .collect(),
+                items: once(namespaced_reference(
+                    namespace.clone(),
+                    object.operation_id.as_ref().unwrap(),
+                ))
+                .chain(operation.params.inputs_and_outputs().map(|i| {
+                    index_access(
+                        namespaced_reference(namespace.clone(), &i.name),
+                        i.index.clone(),
+                    )
+                }))
+                .collect(),
             }
             .into();
 
-            let latch = namespaced_reference(namespace.clone(), latch);
+            let latch = namespaced_reference(namespace.clone(), object.latch.clone().unwrap());
 
             let (function, arguments) = match interaction_ty {
                 InteractionType::Lookup => (
@@ -229,10 +224,13 @@ impl BusLinker {
                     .unwrap()
                     .into(),
                     {
-                        let call_selectors =
-                            call_selectors.expect("permutation should have selector");
-                        let call_selector_array =
-                            namespaced_reference(location.to_string(), call_selectors);
+                        let call_selector_array = namespaced_reference(
+                            location.to_string(),
+                            object
+                                .call_selectors
+                                .as_ref()
+                                .expect("object accessed via permutation must have call selectors"),
+                        );
                         let call_selector =
                             index_access(call_selector_array, Some(operation_index.into()));
                         let rhs_selector = latch * call_selector;

@@ -28,12 +28,12 @@ pub struct NativeLinker {
 impl LinkerBackend for NativeLinker {
     fn process_link(
         &mut self,
-        link: Link,
+        link: &Link,
         from_namespace: &Location,
         objects: &BTreeMap<Location, Object>,
     ) {
-        let from = link.from;
-        let to = link.to;
+        let from = &link.from;
+        let to = &link.to;
 
         let to_namespace = to.machine.clone().to_string();
         let to_machine = &objects[&to.machine];
@@ -43,12 +43,12 @@ impl LinkerBackend for NativeLinker {
 
         // lhs is `flag { operation_id, inputs, outputs }`
         let lhs = selected(
-            combine_flags(from.instr_flag, from.link_flag),
+            combine_flags(from.instr_flag.clone(), from.link_flag.clone()),
             ArrayLiteral {
                 items: op_id
                     .into_iter()
-                    .chain(from.params.inputs)
-                    .chain(from.params.outputs)
+                    .chain(from.params.inputs.clone())
+                    .chain(from.params.outputs.clone())
                     .collect(),
             }
             .into(),
@@ -82,7 +82,7 @@ impl LinkerBackend for NativeLinker {
                     namespaced_reference(to_namespace.clone(), call_selectors);
                 let call_selector = index_access(
                     call_selector_array,
-                    Some(self.selector_array_index_by_destination[&to].into()),
+                    Some(self.selector_array_index_by_destination[to].into()),
                 );
                 latch.clone() * call_selector
             } else {
@@ -183,7 +183,7 @@ impl LinkerBackend for NativeLinker {
             ])
         }
 
-        for link in object.links {
+        for link in &object.links {
             self.process_link(link, location, objects);
         }
 
