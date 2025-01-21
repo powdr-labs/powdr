@@ -16,6 +16,8 @@ pub enum Variable {
     /// An input or output value of a machine call on a certain
     /// identity on a certain row offset.
     MachineCallParam(MachineCallVariable),
+    /// A fixed column cell.
+    FixedColumn(Cell),
 }
 
 impl Display for Variable {
@@ -30,6 +32,7 @@ impl Display for Variable {
                     ret.identity_id, ret.row_offset, ret.index
                 )
             }
+            Variable::FixedColumn(cell) => write!(f, "{cell}"),
         }
     }
 }
@@ -37,20 +40,28 @@ impl Display for Variable {
 impl Variable {
     /// Create a variable from an algebraic reference.
     pub fn from_reference(r: &AlgebraicReference, row_offset: i32) -> Self {
-        assert!(r.is_witness());
-        Self::Cell(Cell {
+        let cell = Cell {
             column_name: r.name.clone(),
             id: r.poly_id.id,
             row_offset: r.next as i32 + row_offset,
-        })
+        };
+        match r.poly_id.ptype {
+            PolynomialType::Committed => Self::Cell(cell),
+            PolynomialType::Constant => Self::FixedColumn(cell),
+            _ => panic!(),
+        }
     }
 
-    /// If this variable corresponds to a witness cell, return the corresponding polynomial ID.
-    pub fn try_to_witness_poly_id(&self) -> Option<powdr_ast::analyzed::PolyID> {
+    /// If this variable corresponds to a fixed or witness cell, return the corresponding polynomial ID.
+    pub fn try_to_poly_id(&self) -> Option<powdr_ast::analyzed::PolyID> {
         match self {
             Variable::Cell(cell) => Some(PolyID {
                 id: cell.id,
                 ptype: PolynomialType::Committed,
+            }),
+            Variable::FixedColumn(cell) => Some(PolyID {
+                id: cell.id,
+                ptype: PolynomialType::Constant,
             }),
             Variable::Param(_) | Variable::MachineCallParam(_) => None,
         }
@@ -64,7 +75,8 @@ pub struct MachineCallVariable {
     pub index: usize,
 }
 
-/// The identifier of a witness cell in the trace table.
+/// The identifier of a witness cell in the trace table
+/// or a fixed column cell.
 /// The `row_offset` is relative to a certain "zero row" defined
 /// by the component that uses this data structure.
 #[derive(Debug, Clone, Eq)]

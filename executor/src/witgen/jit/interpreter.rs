@@ -69,7 +69,8 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                 let idx = var_mapper.map_var(var);
                 InterpreterAction::ReadParam(idx, *i)
             }
-            Variable::MachineCallParam(_) => unreachable!(),
+            // TODO maybe load it to avoid multiple access?
+            Variable::FixedColumn(_) | Variable::MachineCallParam(_) => unreachable!(),
         }));
     }
 
@@ -136,6 +137,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                         let idx = var_mapper.get_var(var).unwrap();
                         actions.push(InterpreterAction::WriteParam(idx, *i));
                     }
+                    Variable::FixedColumn(_) => panic!("Should not write to fixed column."),
                     Variable::MachineCallParam(_) => {
                         // This is just an internal variable.
                     }
