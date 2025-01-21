@@ -1,4 +1,3 @@
-use indicatif::{ProgressBar, ProgressStyle};
 use powdr_ast::analyzed::AlgebraicExpression as Expression;
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap};
@@ -73,7 +72,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
 
             // Start with 2 because we already computed two rows.
             for row_index in 2.. {
-                if row_index >= self.degree + 1 {
+                if row_index > self.degree {
                     break;
                 }
 

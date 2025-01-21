@@ -23,6 +23,7 @@ struct CacheKey {
 }
 
 pub struct FunctionCache<'a, T: FieldElement> {
+    fixed_data: &'a FixedData<'a, T>,
     /// The processor that generates the JIT code
     processor: BlockMachineProcessor<'a, T>,
     /// The cache of JIT functions. If the entry is None, we attempted to generate the function
@@ -47,6 +48,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             BlockMachineProcessor::new(fixed_data, parts.clone(), block_size, latch_row);
 
         FunctionCache {
+            fixed_data,
             processor,
             column_layout: metadata,
             witgen_functions: HashMap::new(),
@@ -167,7 +169,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .expect("Need to call compile_cached() first!")
             .as_ref()
             .expect("compile_cached() returned false!");
-        f.call(mutable_state, &mut values, data);
+        f.call(self.fixed_data, mutable_state, &mut values, data);
 
         Ok(true)
     }

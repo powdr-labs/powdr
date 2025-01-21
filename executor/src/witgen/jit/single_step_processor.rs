@@ -1,5 +1,7 @@
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, PolyID, PolynomialType,
+};
 use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
@@ -16,7 +18,6 @@ use super::{
     compiler::WitgenFunction,
     effect::Effect,
     processor::Processor,
-    prover_function_heuristics::decode_simple_prover_functions,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -105,7 +106,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         let Some(Some(f)) = self.single_step_function.as_ref() else {
             panic!("try_compile must be called first")
         };
-        f.call(mutable_state, &mut [], data);
+        f.call(self.fixed_data, mutable_state, &mut [], data);
     }
 
     fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
@@ -198,9 +199,12 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
 
 /// Evaluator for fixed columns which are constant except for the first and last row.
 impl<T: FieldElement> FixedEvaluator<T> for &SingleStepProcessor<'_, T> {
-    fn evaluate(&self, var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
-        assert!(var.is_fixed());
-        self.fixed_data.fixed_cols[&var.poly_id].has_constant_inner_value()
+    fn evaluate(&self, fixed_cell: &Cell) -> Option<T> {
+        let poly_id = PolyID {
+            id: fixed_cell.id,
+            ptype: PolynomialType::Constant,
+        };
+        self.fixed_data.fixed_cols[&poly_id].has_constant_inner_value()
     }
 }
 
@@ -379,6 +383,18 @@ call_var(2, 1, 2) = 1;
 machine_call(2, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(call_var(2, 1, 2))]);
 VM::instr_mul[1] = 1;"
         );
+    }
+
+    #[test]
+    fn nonconstant_fixed_columns() {
+        let input = "
+    namespace VM(256);
+        let STEP: col = |i| i;
+        let w;
+        w = STEP;
+        ";
+        let code = generate_single_step(input, "Main").unwrap();
+        assert_eq!(format_code(&code), "VM::w[1] = VM::STEP[1];");
     }
 
     #[test]

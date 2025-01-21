@@ -7,7 +7,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::range_constraints::RangeConstraint;
+use crate::witgen::{jit::variable::Cell, range_constraints::RangeConstraint};
 
 use super::{
     variable::Variable,
@@ -156,7 +156,11 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
                 let (value, range_constraint) = match r.poly_id.ptype {
                     PolynomialType::Constant => (
                         self.fixed_evaluator
-                            .evaluate(r, row_offset)
+                            .evaluate(&Cell {
+                                column_name: r.name.clone(),
+                                id: r.poly_id.id,
+                                row_offset: r.next as i32 + row_offset,
+                            })
                             .map(|v| v.to_string())
                             .unwrap_or("???".to_string()),
                         String::new(),
@@ -296,7 +300,11 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
         match e {
             Expression::Reference(r) => {
                 match r.poly_id.ptype {
-                    PolynomialType::Constant => self.fixed_evaluator.evaluate(r, row_offset),
+                    PolynomialType::Constant => self.fixed_evaluator.evaluate(&Cell {
+                        column_name: r.name.clone(),
+                        id: r.poly_id.id,
+                        row_offset: r.next as i32 + row_offset,
+                    }),
                     PolynomialType::Committed => {
                         let variable = Variable::from_reference(r, row_offset);
                         match self.witgen.value(&variable) {

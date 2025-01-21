@@ -21,7 +21,7 @@ use crate::witgen::{
 use super::{
     affine_symbolic_expression::{AffineSymbolicExpression, Error, ProcessResult},
     effect::{BranchCondition, Effect},
-    variable::{MachineCallVariable, Variable},
+    variable::{Cell, MachineCallVariable, Variable},
 };
 
 /// This component can generate code that solves identities.
@@ -108,7 +108,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 
     pub fn is_known(&self, variable: &Variable) -> bool {
-        self.known_variables.contains(variable)
+        if let Variable::FixedColumn(_) = variable {
+            true
+        } else {
+            self.known_variables.contains(variable)
+        }
     }
 
     pub fn is_complete(&self, identity: &Identity<T>, row_offset: i32) -> bool {
@@ -134,7 +138,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     pub fn branch_on(mut self, variable: &Variable) -> BranchResult<'a, T, FixedEval> {
         // The variable needs to be known, we need to have a range constraint but
         // it cannot be a single value.
-        assert!(self.known_variables.contains(variable));
+        assert!(self.is_known(variable));
         let rc = self.range_constraint(variable);
         assert!(rc.try_to_single_value().is_none());
 
@@ -391,7 +395,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     if self.add_range_constraint(variable.clone(), assignment.range_constraint()) {
                         updated_variables.push(variable.clone());
                     }
-                    if self.known_variables.insert(variable.clone()) {
+                    if self.record_known(variable.clone()) {
                         log::trace!("{variable} := {assignment}");
                         updated_variables.push(variable.clone());
                         self.code.push(e);
@@ -412,7 +416,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                         assert!(process_result.complete);
                         for v in vars {
                             // Inputs are already known, but it does not hurt to add all of them.
-                            if self.known_variables.insert(v.clone()) {
+                            if self.record_known(v.clone()) {
                                 updated_variables.push(v.clone());
                             }
                         }
@@ -444,10 +448,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         if rc == old_rc {
             return false;
         }
-        if !self.known_variables.contains(&variable) {
-            if let Some(v) = rc.try_to_single_value() {
-                // Special case: Variable is fixed to a constant by range constraints only.
-                self.known_variables.insert(variable.clone());
+        if let Some(v) = rc.try_to_single_value() {
+            // Special case: Variable is fixed to a constant by range constraints only.
+            if self.record_known(variable.clone()) {
                 self.code
                     .push(Effect::Assignment(variable.clone(), v.into()));
             }
@@ -456,11 +459,27 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         true
     }
 
+    /// Record a variable as known. Return true if it was not known before.
+    fn record_known(&mut self, variable: Variable) -> bool {
+        // We do not record fixed columns as known.
+        if matches!(variable, Variable::FixedColumn(_)) {
+            false
+        } else {
+            self.known_variables.insert(variable)
+        }
+    }
+
     /// Returns the current best-known range constraint on the given variable
     /// combining global range constraints and newly derived local range constraints.
+    /// For fixed columns, it also invokes the fixed evaluator.
     pub fn range_constraint(&self, variable: &Variable) -> RangeConstraint<T> {
+        if let Variable::FixedColumn(fixed_cell) = variable {
+            if let Some(v) = self.fixed_evaluator.evaluate(fixed_cell) {
+                return RangeConstraint::from_value(v);
+            }
+        }
         variable
-            .try_to_witness_poly_id()
+            .try_to_poly_id()
             .and_then(|poly_id| {
                 self.fixed_data
                     .global_range_constraints
@@ -518,14 +537,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
     ) -> Option<AffineSymbolicExpression<T, Variable>> {
         Some(match expr {
             Expression::Reference(r) => match r.poly_id.ptype {
-                PolynomialType::Constant => self
-                    .witgen_inference
-                    .fixed_evaluator
-                    .evaluate(r, offset)?
-                    .into(),
-                PolynomialType::Committed => {
-                    let variable = Variable::from_reference(r, offset);
-                    self.evaluate_variable(variable)
+                PolynomialType::Constant | PolynomialType::Committed => {
+                    self.evaluate_variable(Variable::from_reference(r, offset))
                 }
                 PolynomialType::Intermediate => {
                     let definition =
@@ -608,7 +621,12 @@ enum VariableOrValue<T, V> {
 }
 
 pub trait FixedEvaluator<T: FieldElement>: Clone {
-    fn evaluate(&self, _var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
+    /// Evaluate a fixed column cell and returns its value if it is
+    /// compile-time constant, otherwise return None.
+    /// If this function returns `None`, the value of the fixed column will
+    /// be treated as symbolically known but not compile-time constant
+    /// (i.e. it depends on the row).
+    fn evaluate(&self, _fixed_cell: &Cell) -> Option<T> {
         None
     }
 }
@@ -640,6 +658,7 @@ impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'
 
 #[cfg(test)]
 mod test {
+    use powdr_ast::analyzed::PolyID;
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
@@ -656,10 +675,13 @@ mod test {
     #[derive(Clone)]
     pub struct FixedEvaluatorForFixedData<'a, T: FieldElement>(pub &'a FixedData<'a, T>);
     impl<T: FieldElement> FixedEvaluator<T> for FixedEvaluatorForFixedData<'_, T> {
-        fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
-            assert!(var.is_fixed());
-            let values = self.0.fixed_cols[&var.poly_id].values_max_size();
-            let row = (row_offset + var.next as i32 + values.len() as i32) as usize % values.len();
+        fn evaluate(&self, fixed_cell: &Cell) -> Option<T> {
+            let poly_id = PolyID {
+                id: fixed_cell.id,
+                ptype: PolynomialType::Constant,
+            };
+            let values = self.0.fixed_cols[&poly_id].values_max_size();
+            let row = (fixed_cell.row_offset + values.len() as i32) as usize % values.len();
             Some(values[row])
         }
     }
