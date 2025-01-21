@@ -7,7 +7,9 @@ use super::variable::{Cell, Variable};
 use crate::witgen::data_structures::finalizable_data::CompactDataRef;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::LookupCell;
-use crate::witgen::QueryCallback;
+use crate::witgen::{FixedData, QueryCallback};
+use itertools::Itertools;
+use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use std::collections::{BTreeSet, HashMap};
@@ -23,6 +25,7 @@ pub struct EffectsInterpreter<T: FieldElement> {
 enum InterpreterAction<T: FieldElement> {
     ReadCell(usize, Cell),
     ReadParam(usize, usize),
+    ReadFixedColumn(usize, Cell),
     AssignExpression(usize, RPNExpression<T, usize>),
     WriteCell(usize, Cell),
     WriteParam(usize, usize),
@@ -43,6 +46,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         let mut actions = vec![];
         let mut var_mapper = VariableMapper::new();
 
+        Self::load_fixed_column_values(&mut var_mapper, &mut actions, effects);
         Self::load_known_inputs(&mut var_mapper, &mut actions, known_inputs);
         Self::process_effects(&mut var_mapper, &mut actions, effects);
         Self::write_data(&mut var_mapper, &mut actions, effects);
@@ -53,6 +57,27 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         };
         assert!(ret.is_valid());
         ret
+    }
+
+    fn load_fixed_column_values(
+        var_mapper: &mut VariableMapper,
+        actions: &mut Vec<InterpreterAction<T>>,
+        effects: &[Effect<T, Variable>],
+    ) {
+        actions.extend(
+            effects
+                .iter()
+                .flat_map(|e| e.referenced_variables())
+                .filter_map(|v| match v {
+                    Variable::FixedColumn(c) => Some((v, c)),
+                    _ => None,
+                })
+                .unique()
+                .map(|(var, cell)| {
+                    let idx = var_mapper.map_var(var);
+                    InterpreterAction::ReadFixedColumn(idx, cell.clone())
+                }),
+        )
     }
 
     fn load_known_inputs(
@@ -69,7 +94,6 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                 let idx = var_mapper.map_var(var);
                 InterpreterAction::ReadParam(idx, *i)
             }
-            // TODO maybe load it to avoid multiple access?
             Variable::FixedColumn(_) | Variable::MachineCallParam(_) => unreachable!(),
         }));
     }
@@ -166,12 +190,14 @@ impl<T: FieldElement> EffectsInterpreter<T> {
     /// Execute the machine effects for the given the parameters
     pub fn call<Q: QueryCallback<T>>(
         &self,
+        fixed_data: &FixedData<'_, T>,
         mutable_state: &MutableState<'_, T, Q>,
         params: &mut [LookupCell<T>],
         data: CompactDataRef<'_, T>,
     ) {
         let mut vars = vec![T::zero(); self.var_count];
 
+        let row_offset: i64 = data.row_offset.try_into().unwrap();
         let mut eval_stack = vec![];
         for action in &self.actions {
             match action {
@@ -180,19 +206,25 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     vars[*idx] = val;
                 }
                 InterpreterAction::ReadCell(idx, c) => {
-                    let row_offset: i32 = data.row_offset.try_into().unwrap();
                     vars[*idx] = data
                         .data
-                        .get((row_offset + c.row_offset).try_into().unwrap(), c.id)
+                        .get((row_offset + c.row_offset as i64).try_into().unwrap(), c.id)
                         .0;
+                }
+                InterpreterAction::ReadFixedColumn(idx, c) => {
+                    let poly_id = PolyID {
+                        id: c.id,
+                        ptype: PolynomialType::Constant,
+                    };
+                    vars[*idx] = fixed_data.fixed_cols[&poly_id].values_max_size()
+                        [usize::try_from(row_offset + c.row_offset as i64).unwrap()];
                 }
                 InterpreterAction::ReadParam(idx, i) => {
                     vars[*idx] = get_param(params, *i);
                 }
                 InterpreterAction::WriteCell(idx, c) => {
-                    let row_offset: i32 = data.row_offset.try_into().unwrap();
                     data.data.set(
-                        (row_offset + c.row_offset).try_into().unwrap(),
+                        (row_offset + c.row_offset as i64).try_into().unwrap(),
                         c.id,
                         vars[*idx],
                     );
@@ -306,6 +338,7 @@ impl VariableMapper {
         self.count
     }
 
+    /// Returns the index of the variable, allocates it if it does not exist.
     pub fn map_var(&mut self, var: &Variable) -> usize {
         let idx = *self.var_idx.entry(var.clone()).or_insert_with(|| {
             self.count += 1;
@@ -526,7 +559,7 @@ mod test {
         let mut data = CompactData::new(poly_ids.iter());
         data.append_new_rows(31);
         let data_ref = CompactDataRef::new(&mut data, 0);
-        interpreter.call(&mutable_state, &mut param_lookups, data_ref);
+        interpreter.call(&fixed_data, &mutable_state, &mut param_lookups, data_ref);
 
         assert_eq!(
             &params,
