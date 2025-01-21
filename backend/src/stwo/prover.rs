@@ -1,12 +1,18 @@
 use itertools::Itertools;
 use num_traits::Zero;
+use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Challenge, Identity};
 use powdr_ast::analyzed::{Analyzed, DegreeRange};
+use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
+use powdr_executor::witgen::WitgenCallback;
+
 use powdr_number::FieldElement;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
-use std::collections::BTreeMap;
+
+extern crate alloc;
+use alloc::collections::{btree_map::BTreeMap, btree_set::BTreeSet};
 use std::iter::repeat;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -211,7 +217,11 @@ where
         self.proving_key = proving_key;
     }
 
-    pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
+    pub fn prove(
+        &self,
+        witness: &[(String, Vec<F>)],
+        witgen_callback: WitgenCallback<F>,
+    ) -> Result<Vec<u8>, String> {
         let config = get_config();
         let domain_degree_range = DegreeRange {
             min: self
@@ -240,17 +250,36 @@ where
             })
             .collect();
 
-        let tree_span_provider = &mut TraceLocationAllocator::default();
-        //Each column size in machines needs its own component, the components from different machines are stored in this vector
-        let mut components = Vec::new();
-
         //The preprocessed columns needs to be indexed in the whole execution instead of each machine, so we need to keep track of the offset
         let mut constant_cols_offset_acc = 0;
         let mut machine_log_sizes = BTreeMap::new();
 
         let mut constant_cols = Vec::new();
 
-        let witness_by_machine: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = self
+        //Generate witness for stage 0
+        //TODO: witness generation for stage 0 is computed several times, need to be optimized
+        let mut witness_by_machine = self
+            .split
+            .iter()
+            .filter_map(|(machine, pil)| {
+                let witness_columns = machine_witness_columns(witness, pil, machine);
+                if witness_columns[0].1.is_empty() {
+                    // Empty machines can be removed entirely.
+                    None
+                } else {
+                    Some((
+                        machine.clone(),
+                        machine_witness_columns(witness, pil, machine),
+                    ))
+                }
+            })
+            .collect::<BTreeMap<_, _>>();
+        print!("witness_by_machine in stage 0: {:?}", witness_by_machine);
+
+        //get constant and witness columns in circle domain for stage 0
+        let witness_cols_circle_domain_eval: ColumnVec<
+            CircleEvaluation<B, BaseField, BitReversedOrder>,
+        > = self
             .split
             .iter()
             .filter_map(|(machine, pil)| {
@@ -268,6 +297,11 @@ where
                         "All witness columns in a single machine must have the same length"
                     );
 
+                    println!(
+                        "witness_by_machine without witgncall back: {:?}",
+                        witness_by_machine
+                    );
+
                     if let Some(constant_trace) = self
                         .proving_key
                         .preprocessed
@@ -282,17 +316,6 @@ where
                     {
                         constant_cols.extend(constant_trace)
                     }
-
-                    let component = PowdrComponent::new(
-                        tree_span_provider,
-                        PowdrEval::new(
-                            (*pil).clone(),
-                            constant_cols_offset_acc,
-                            machine_length.ilog2(),
-                        ),
-                        (SecureField::zero(), None),
-                    );
-                    components.push(component);
 
                     machine_log_sizes.insert(machine.clone(), machine_length.ilog2());
 
@@ -316,6 +339,62 @@ where
             })
             .flatten()
             .collect();
+        //TODO: commit witness and constant columns of stage 0 to get sound challenges for stage 1. This is not implemented yet
+        //get challenges
+        let identities = self.analyzed.identities.clone();
+        // we use a set to collect all used challenges
+        let mut challenges_by_stage = vec![BTreeSet::new(); self.analyzed.stage_count()];
+        for identity in &identities {
+            identity.pre_visit_expressions(&mut |expr| {
+                if let AlgebraicExpression::Challenge(challenge) = expr {
+                    challenges_by_stage[challenge.stage as usize].insert(challenge.id);
+                }
+            });
+        }
+
+        // finally, we convert the set to a vector
+        let challenges_by_stage: Vec<Vec<u64>> = challenges_by_stage
+            .into_iter()
+            .map(|set| set.into_iter().collect())
+            .collect();
+        println!("challenge by stage is {:?}", challenges_by_stage);
+
+        let stage0_challenges = challenges_by_stage[0]
+            .iter()
+            .map(|&index| (index, F::from(42)))
+            .collect::<BTreeMap<_, _>>();
+
+
+        witness_by_machine = witness_by_machine
+            .iter()
+            .map(|(machine_name, machine_witness)| {
+                let new_witness = witgen_callback.next_stage_witness(
+                    &self.split[machine_name],
+                    machine_witness,
+                    stage0_challenges.clone(),
+                    1,
+                );
+                (machine_name.clone(), new_witness)
+            })
+            .collect();
+        println!("witness_by_machine with witgncall back: {:?}", witness_by_machine);
+        
+
+        let witness_cols_circle_domain_eval_stage1: ColumnVec<
+            CircleEvaluation<B, BaseField, BitReversedOrder>,
+        > = witness_by_machine
+            .into_iter()
+            .flat_map(|(_name, witness_cols)| {
+                witness_cols.into_iter().map(|(_name, vec)| {
+                    gen_stwo_circle_column::<F, B, M31>(
+                        *domain_map
+                            .get(&(vec.len().ilog2() as usize))
+                            .expect("Domain not found for given size"),
+                        &vec,
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
 
         let twiddles_max_degree = B::precompute_twiddles(
             CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
@@ -334,15 +413,42 @@ where
         tree_builder.commit(prover_channel);
 
         let mut tree_builder = commitment_scheme.tree_builder();
-        tree_builder.extend_evals(witness_by_machine);
+        tree_builder.extend_evals(witness_cols_circle_domain_eval_stage1);
         tree_builder.commit(prover_channel);
 
+        let tree_span_provider = &mut TraceLocationAllocator::default();
+        //Each column size in machines needs its own component, the components from different machines are stored in this vector
+        let mut components = Vec::new();
+
+        self.split.iter().zip_eq(machine_log_sizes.iter()).for_each(
+            |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
+                assert_eq!(machine_name, proof_machine_name);
+
+                let component = PowdrComponent::new(
+                    tree_span_provider,
+                    PowdrEval::new::<MC>(
+                        (*pil).clone(),
+                        constant_cols_offset_acc,
+                        machine_log_size,
+                    ),
+                    (SecureField::zero(), None),
+                );
+
+                components.push(component);
+
+                constant_cols_offset_acc +=
+                    pil.constant_count() + get_constant_with_next_list(pil).len();
+            },
+        );
+
+        println!("commitments done");
         let mut components_slice: Vec<&dyn ComponentProver<B>> = components
             .iter_mut()
             .map(|component| component as &dyn ComponentProver<B>)
             .collect();
 
         let components_slice = components_slice.as_mut_slice();
+        println!("start proving");
 
         let proof_result = stwo_prover::core::prover::prove::<B, MC>(
             components_slice,
@@ -393,11 +499,19 @@ where
             .map(
                 |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
                     assert_eq!(machine_name, proof_machine_name);
+
+                    println!("start building component for machine: {}", machine_name);
                     let machine_component = PowdrComponent::new(
                         tree_span_provider,
-                        PowdrEval::new((*pil).clone(), constant_cols_offset_acc, machine_log_size),
+                        PowdrEval::new::<MC>(
+                            (*pil).clone(),
+                            constant_cols_offset_acc,
+                            machine_log_size,
+                        ),
                         (SecureField::zero(), None),
                     );
+
+                    println!("machine name: {}, its component is done", machine_name);
 
                     constant_cols_offset_acc += pil.constant_count();
 
@@ -409,15 +523,23 @@ where
                     );
                     witness_col_log_sizes
                         .extend(repeat(machine_log_size).take(pil.commitment_count()));
+                    println!(
+                        "constant_cols_offset_acc: {}, updated",
+                        constant_cols_offset_acc
+                    );
                     machine_component
                 },
             )
             .collect::<Vec<_>>();
 
+        println!("components created");
+
         let mut components_slice: Vec<&dyn Component> = components
             .iter_mut()
             .map(|component| component as &dyn Component)
             .collect();
+
+        println!("components_slice created");
 
         let components_slice = components_slice.as_mut_slice();
 

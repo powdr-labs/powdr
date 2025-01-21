@@ -84,7 +84,7 @@ where
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-        Ok(StwoProver::prove(self, witness)?)
+        Ok(StwoProver::prove(self, witness, witgen_callback)?)
     }
     fn export_proving_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
         self.export_proving_key(output)
