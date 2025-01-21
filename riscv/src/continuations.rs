@@ -409,51 +409,48 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             start_idx -= 1;
         }
 
-        // We need to find how many pages we can fit in the chunk such that we
-        // can still advance the computation. We don't know the exact cost of
-        // the bootloader, so we underestimate it a bit to possibly fit *more*
-        // pages than actually possible. Then, we execute and see if the chunk
-        // made progress. If not, we put one less page in the chunk and try
-        // again, repeating as needed.
+        // We need to find how many (and which) memory pages we need to add to
+        // the chunk. Since we don't have a shutdown routine, we can't stop the
+        // computation arbitrarily, so we must fit the bootloader and program
+        // rows to the exact size of the chunk.
 
-        // now we loop, trying to figure out how many pages to fit in the chunk
+        // We do it roughly as follows:
+        // - for each memory access in the chunk:
+        //   - add the page, if not enough space for the bootloader: PANIC
+        //   - if the current pages fulfill the chunk: OK, DONE else: continue
+
         let mut accessed_pages;
         let mut accessed_addresses;
         let mut bootloader_inputs;
+        let mut bootloader_rows = 0;
 
         //////////////////////////////////////////
 
         accessed_pages = BTreeSet::new();
         accessed_addresses = BTreeSet::new();
-        let mut valid = false;
         for access in &full_exec.memory_accesses[start_idx..] {
-            let mut accessed_pages_new = accessed_pages.clone();
-            accessed_pages_new.insert(access.address >> PAGE_SIZE_BYTES_LOG);
-            let bootloader_rows = bootloader_exact(&accessed_pages_new);
             if access.row >= proven_trace + length - bootloader_rows {
+                // no more memory accesses in the chunk
                 break;
             }
             accessed_addresses.insert(access.address);
             if accessed_pages.insert(access.address >> PAGE_SIZE_BYTES_LOG) {
-                // if we have all needed pages for the chunk, we're done
+                bootloader_rows = bootloader_exact(&accessed_pages);
+                // if we need to add a memory page and there's no more space, panic
+                if bootloader_rows >= length {
+                    panic!("Could not fit all needed pages in the chunk (bootloader would need {} rows). Can't run the program with continuations until the shutdown routine is supported.", bootloader_rows);
+                }
                 if has_all_needed_pages(
                     &full_exec,
                     &accessed_pages,
                     proven_trace,
                     length - bootloader_rows,
                 ) {
-                    valid = true;
                     break;
                 }
             }
         }
 
-        if !valid {
-            log::info!("Could not fit all needed pages in the chunk. Can't run the program with continuations until the shutdown routine is supported.");
-            panic!();
-        }
-
-        let bootloader_rows = bootloader_exact(&accessed_pages);
         log::info!(
             "Chunk start row: {}  chunk end row: {}",
             proven_trace,
@@ -518,7 +515,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
         let bootloader_rows = bootloader_exact(&accessed_pages);
         log::info!(
-            "Estimating the bootloader to use around {} rows.",
+            "Estimating the bootloader to use exactly {} rows.",
             bootloader_rows,
         );
 
