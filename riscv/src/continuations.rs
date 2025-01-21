@@ -434,16 +434,17 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                 break;
             }
             accessed_addresses.insert(access.address);
-            accessed_pages.insert(access.address >> PAGE_SIZE_BYTES_LOG);
-            // if we have all needed pages for the chunk, we're done
-            if has_all_needed_pages(
-                &full_exec,
-                &accessed_pages,
-                proven_trace,
-                length - bootloader_rows,
-            ) {
-                valid = true;
-                break;
+            if accessed_pages.insert(access.address >> PAGE_SIZE_BYTES_LOG) {
+                // if we have all needed pages for the chunk, we're done
+                if has_all_needed_pages(
+                    &full_exec,
+                    &accessed_pages,
+                    proven_trace,
+                    length - bootloader_rows,
+                ) {
+                    valid = true;
+                    break;
+                }
             }
         }
 
