@@ -256,7 +256,12 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             );
         }
 
-        let mut columns = MultiplicityColumnGenerator::new(&fixed).generate(columns, publics);
+        let mut columns = if self.stage == 0 {
+            // Multiplicities should be computed in the first stage
+            MultiplicityColumnGenerator::new(&fixed).generate(columns, publics)
+        } else {
+            columns
+        };
 
         record_end(OUTER_CODE_NAME);
         reset_and_print_profile_summary();
@@ -377,7 +382,21 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             fixed_constraints: FixedColumnMap::new(None, fixed_cols.len()),
         };
 
-        let identities = convert(&analyzed.identities);
+        let mut identities = convert(&analyzed.identities);
+        if stage > 0 {
+            // Unfortunately, with the composite backend, we won't have the matching
+            // receives in other machines, which can lead to panics. Machine calls
+            // should not be executed in the second stage anyway.
+            // TODO: Probably we can remove this once we handle "dynamic" busses, because
+            // we need to deal with the case that sends can't be matched statically anyway.
+            identities = identities
+                .into_iter()
+                .filter(|identity| match identity {
+                    Identity::BusSend(_) | Identity::BusReceive(_) => false,
+                    _ => true,
+                })
+                .collect();
+        }
         let bus_receives = identities
             .iter()
             .filter_map(|identity| match identity {
