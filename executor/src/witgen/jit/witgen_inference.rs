@@ -621,8 +621,8 @@ enum VariableOrValue<T, V> {
 }
 
 pub trait FixedEvaluator<T: FieldElement>: Clone {
-    /// Evaluate a fixed column cell if that cell has a constant value,
-    /// otherwise return None.
+    /// Evaluate a fixed column cell and returns its value if it is
+    /// compile-time constant, otherwise return None.
     /// If this function returns `None`, the value of the fixed column will
     /// be treated as symbolically known but not compile-time constant
     /// (i.e. it depends on the row).
