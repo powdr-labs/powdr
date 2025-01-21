@@ -41,7 +41,14 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        if parts.identities.len() != 1 {
+        let mut identities_without_receives = parts
+            .identities
+            .iter()
+            .filter(|i| !matches!(i, Identity::BusReceive(_)));
+        let identity = identities_without_receives.next()?;
+
+        if identities_without_receives.next().is_some() {
+            // Expecting exactly one identity
             return None;
         }
         if parts.connections.is_empty() {
@@ -50,7 +57,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
 
         let degree = parts.common_degree_range().max;
 
-        check_identity(fixed_data, parts.identities.first().unwrap(), degree).and_then(|key_col| {
+        check_identity(fixed_data, identity, degree).and_then(|key_col| {
             let witness_positions = parts
                 .witnesses
                 .iter()
