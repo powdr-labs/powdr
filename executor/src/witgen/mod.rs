@@ -389,13 +389,9 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             // should not be executed in the second stage anyway.
             // TODO: Probably we can remove this once we handle "dynamic" busses, because
             // we need to deal with the case that sends can't be matched statically anyway.
-            identities = identities
-                .into_iter()
-                .filter(|identity| match identity {
-                    Identity::BusSend(_) | Identity::BusReceive(_) => false,
-                    _ => true,
-                })
-                .collect();
+            identities.retain(|identity| {
+                !matches!(identity, Identity::BusSend(_) | Identity::BusReceive(_))
+            });
         }
         let bus_receives = identities
             .iter()
