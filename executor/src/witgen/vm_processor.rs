@@ -362,9 +362,11 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
             .iter_mut()
             .enumerate()
             .filter_map(|(index, (ident, _))| match ident {
-                Identity::BusSend(bus_interaction) => {
-                    Some((index, &bus_interaction.0.selected_tuple))
-                }
+                Identity::BusSend(send) => send
+                    .try_match_static(&self.fixed_data.bus_receives)
+                    .unwrap()
+                    .is_unconstrained()
+                    .then_some((index, &send.0.selected_tuple)),
                 _ => None,
             })
             .max_by_key(|(_, left)| left.expressions.len())
