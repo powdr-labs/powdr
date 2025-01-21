@@ -81,51 +81,6 @@ impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
     pub fn is_complete(&self) -> bool {
         self.left.iter().all(|l| l.is_constant())
     }
-
-    /// Helper functon to convert an `OuterQuery` into a list of `LookupCell`s
-    /// to be used by `Machine::process_lookup_direct`.
-    pub fn prepare_for_direct_lookup<'c>(
-        &self,
-        input_output_data: &'c mut [T],
-    ) -> Vec<LookupCell<'c, T>> {
-        self.left
-            .iter()
-            .zip_eq(input_output_data.iter_mut())
-            .map(|(l, d)| {
-                if let Some(value) = l.constant_value() {
-                    *d = value;
-                    LookupCell::Input(d)
-                } else {
-                    LookupCell::Output(d)
-                }
-            })
-            .collect::<Vec<_>>()
-    }
-
-    /// Helper function to turn the result of a direct lookup into an `EvalResult`,
-    /// as used by `Machine::process_plookup`.
-    ///
-    /// Note that this function assumes that the lookup was successful and complete.
-    pub fn direct_lookup_to_eval_result(&self, input_output_data: Vec<T>) -> EvalResult<'a, T> {
-        let mut result = EvalValue::complete(vec![]);
-        for (l, v) in self.left.iter().zip(input_output_data) {
-            if !l.is_constant() {
-                let evaluated = l.clone() - v.into();
-                match evaluated.solve() {
-                    Ok(constraints) => {
-                        result.combine(constraints);
-                    }
-                    Err(_) => {
-                        // Fail the whole lookup
-                        return Err(EvalError::ConstraintUnsatisfiable(format!(
-                            "Constraint is invalid ({l} != {v}).",
-                        )));
-                    }
-                }
-            }
-        }
-        Ok(result)
-    }
 }
 
 pub struct IdentityResult {
