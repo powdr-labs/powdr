@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
-use itertools::Itertools;
 use num_traits::One;
-use powdr_ast::analyzed::PolynomialType;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, PolyID, PolynomialType,
+};
 
 use powdr_number::{DegreeType, FieldElement};
 
@@ -12,7 +12,8 @@ use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 use crate::Identity;
 
-use super::machines::{Connection, LookupCell, MachineParts};
+use super::machines::{Connection, MachineParts};
+use super::FixedData;
 use super::{
     affine_expression::AffineExpression,
     data_structures::{
@@ -23,7 +24,6 @@ use super::{
     rows::{Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
     Constraints, EvalError, EvalValue, IncompleteCause, QueryCallback,
 };
-use super::{EvalResult, FixedData};
 
 pub type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
 
