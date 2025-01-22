@@ -31,9 +31,9 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         }
     }
 
-    pub fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
+    pub fn generate_code(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
         let all_witnesses = self
             .machine_parts

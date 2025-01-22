@@ -14,6 +14,7 @@ use super::{
     block_machine_processor::BlockMachineProcessor,
     compiler::{compile_effects, WitgenFunction},
     variable::Variable,
+    witgen_inference::CanProcessCall,
 };
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -58,9 +59,9 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
 
     /// Compiles the JIT function for the given identity and known arguments.
     /// Returns true if the function was successfully compiled.
-    pub fn compile_cached<Q: QueryCallback<T>>(
+    pub fn compile_cached(
         &mut self,
-        mutable_state: &MutableState<'a, T, Q>,
+        can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_args: &BitVec,
     ) -> &Option<WitgenFunction<T>> {
@@ -68,15 +69,11 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             identity_id,
             known_args: known_args.clone(),
         };
-        self.ensure_cache(mutable_state, &cache_key);
+        self.ensure_cache(can_process, &cache_key);
         self.witgen_functions.get(&cache_key).unwrap()
     }
 
-    fn ensure_cache<Q: QueryCallback<T>>(
-        &mut self,
-        mutable_state: &MutableState<'a, T, Q>,
-        cache_key: &CacheKey,
-    ) {
+    fn ensure_cache(&mut self, can_process: impl CanProcessCall<T>, cache_key: &CacheKey) {
         if self.witgen_functions.contains_key(cache_key) {
             return;
         }
@@ -84,16 +81,16 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         let f = match T::known_field() {
             // Currently, we only support the Goldilocks fields
             Some(KnownField::GoldilocksField) => {
-                self.compile_witgen_function(mutable_state, cache_key)
+                self.compile_witgen_function(can_process, cache_key)
             }
             _ => None,
         };
         assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none())
     }
 
-    fn compile_witgen_function<Q: QueryCallback<T>>(
+    fn compile_witgen_function(
         &self,
-        mutable_state: &MutableState<'a, T, Q>,
+        can_process: impl CanProcessCall<T>,
         cache_key: &CacheKey,
     ) -> Option<WitgenFunction<T>> {
         log::debug!(
@@ -104,7 +101,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         );
 
         self.processor
-            .generate_code(mutable_state, cache_key.identity_id, &cache_key.known_args)
+            .generate_code(can_process, cache_key.identity_id, &cache_key.known_args)
             .map_err(|e| {
                 // These errors can be pretty verbose and are quite common currently.
                 let e = e.to_string().lines().take(5).join("\n");
