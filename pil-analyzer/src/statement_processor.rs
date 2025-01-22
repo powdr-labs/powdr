@@ -130,7 +130,7 @@ where
                 panic!("Namespaces must be handled outside the statement processor.")
             }
             PilStatement::PolynomialDefinition(source, name, value) => {
-                let (name, ty) = self.name_and_type_from_polynomial_name(name, Type::Inter);
+                let (name, ty) = self.name_and_type_from_polynomial_name(name, Type::Inter)?;
                 self.handle_symbol_definition(
                     source,
                     name,
@@ -163,7 +163,7 @@ where
             ) => {
                 assert!(polynomials.len() == 1);
                 let (name, ty) =
-                    self.name_and_type_from_polynomial_name(polynomials.pop().unwrap(), Type::Col);
+                    self.name_and_type_from_polynomial_name(polynomials.pop().unwrap(), Type::Col)?;
 
                 self.handle_symbol_definition(
                     source,
@@ -225,15 +225,18 @@ where
         &mut self,
         PolynomialName { name, array_size }: PolynomialName,
         base_type: Type,
-    ) -> (String, Option<TypeScheme>) {
+    ) -> Result<(String, Option<TypeScheme>), Error> {
         let ty = Some(match array_size {
             None => base_type.into(),
             Some(len) => {
+                let source_ref = len.source_reference().clone();
                 let len = self
                     .expression_processor(&Default::default())
                     .process_expression(len)
-                    // TODO propagate this error up
-                    .expect("Failed to process length expression");
+                    .map_err(|err| {
+                        source_ref
+                            .with_error(format!("Failed to process length expression: {}", err))
+                    })?;
                 let length = untyped_evaluator::evaluate_expression_to_int(self.driver, len)
                     .map(|length| {
                         length
@@ -251,7 +254,7 @@ where
                 .into()
             }
         });
-        (name, ty)
+        Ok((name, ty))
     }
 
     fn handle_generic_definition(
@@ -360,7 +363,7 @@ where
         let result = polynomials
             .into_iter()
             .map(|poly_name| {
-                let (name, ty) = self.name_and_type_from_polynomial_name(poly_name, Type::Col);
+                let (name, ty) = self.name_and_type_from_polynomial_name(poly_name, Type::Col)?;
                 self.handle_symbol_definition(
                     source.clone(),
                     name,
@@ -462,8 +465,7 @@ where
         let value = FunctionValueDefinition::Expression(TypedExpression {
             e: self
                 .expression_processor(&type_vars)
-                .process_expression(expr)
-                .expect("Failed to process expression"),
+                .process_expression(expr)?,
             type_scheme,
         });
 
@@ -478,8 +480,7 @@ where
     ) -> Result<Vec<PILItem>, Error> {
         let expression = self
             .expression_processor(&Default::default())
-            .process_array_expression(value)
-            .expect("Failed to process array expression");
+            .process_array_expression(value)?;
         assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
         let value = FunctionValueDefinition::Array(expression);
 
