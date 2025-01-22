@@ -52,13 +52,14 @@ enum PolyRefOrConstant<T> {
     Constant(T),
 }
 
-impl<T: Clone> From<&AlgebraicExpression<T>> for PolyRefOrConstant<T> {
-    fn from(e: &AlgebraicExpression<T>) -> Self {
+impl<T: Clone> TryFrom<&AlgebraicExpression<T>> for PolyRefOrConstant<T> {
+    type Error = ();
+    fn try_from(e: &AlgebraicExpression<T>) -> Result<Self, Self::Error> {
         try_to_simple_poly(e)
-            .map(|reference| PolyRefOrConstant::Poly(reference.poly_id))
+            .map(|reference| Ok(PolyRefOrConstant::Poly(reference.poly_id)))
             .unwrap_or_else(|| match e {
-                AlgebraicExpression::Number(c) => PolyRefOrConstant::Constant(c.clone()),
-                _ => unreachable!(),
+                AlgebraicExpression::Number(c) => Ok(PolyRefOrConstant::Constant(c.clone())),
+                _ => Err(()),
             })
     }
 }
@@ -76,7 +77,7 @@ fn create_index<T: FieldElement>(
     let right = right
         .expressions
         .iter()
-        .map(PolyRefOrConstant::from)
+        .map(|e| PolyRefOrConstant::try_from(e).unwrap())
         .collect::<Vec<_>>();
 
     let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
@@ -204,16 +205,13 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
     pub fn is_responsible(connection: &Connection<T>) -> bool {
         connection.is_lookup()
             && connection.right.selector.is_one()
-            && connection.right.expressions.iter().all(|e| {
-                try_to_simple_poly(e)
-                    .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
-                    .unwrap_or_else(|| match e {
-                        // For native lookups, we do remove constants, but this
-                        // might not be the case for bus interactions.
-                        AlgebraicExpression::Number(_) => true,
-                        _ => false,
-                    })
-            })
+            && connection
+                .right
+                .expressions
+                .iter()
+                // For native lookups, we do remove constants, but this
+                // might not be the case for bus interactions.
+                .all(|e| PolyRefOrConstant::try_from(e).is_ok())
             && !connection.right.expressions.is_empty()
     }
 
