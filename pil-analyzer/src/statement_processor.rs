@@ -234,8 +234,7 @@ where
                     .expression_processor(&Default::default())
                     .process_expression(len)
                     .map_err(|err| {
-                        source_ref
-                            .with_error(format!("Failed to process length expression: {}", err))
+                        source_ref.with_error(format!("Failed to process length expression: {err}"))
                     })?;
                 let length = untyped_evaluator::evaluate_expression_to_int(self.driver, len)
                     .map(|length| {
