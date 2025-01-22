@@ -409,25 +409,21 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             start_idx -= 1;
         }
 
-        // We need to find how many (and which) memory pages we need to add to
-        // the chunk. Since we don't have a shutdown routine, we can't stop the
+        // We need to find how many (and which) memory pages are used in the
+        // chunk. Also, since we don't have a shutdown routine, we can't stop the
         // computation arbitrarily, so we must fit the bootloader and program
         // rows to the exact size of the chunk.
 
         // We do it roughly as follows:
         // - for each memory access in the chunk:
         //   - add the page, if not enough space for the bootloader: PANIC
-        //   - if the current pages fulfill the chunk: OK, DONE else: continue
+        //   - if the current pages fulfill the chunk: DONE else: continue
 
-        let mut accessed_pages;
-        let mut accessed_addresses;
         let mut bootloader_inputs;
         let mut bootloader_rows = 0;
+        let mut accessed_pages = BTreeSet::new();
+        let mut accessed_addresses = BTreeSet::new();
 
-        //////////////////////////////////////////
-
-        accessed_pages = BTreeSet::new();
-        accessed_addresses = BTreeSet::new();
         for access in &full_exec.memory_accesses[start_idx..] {
             if access.row >= proven_trace + length - bootloader_rows {
                 // no more memory accesses in the chunk
@@ -503,8 +499,6 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             length,
             (length - start) * 100 / length
         );
-
-        //////////////////////////////////////////
 
         log::info!(
             "{} unique memory accesses over {} accessed pages: {:?}",
