@@ -338,11 +338,12 @@ where
             });
         }
 
+        //challenge_channel is used to draw random bytes for challenges
         let challenge_channel = &mut <MC as MerkleChannel>::C::default();
         let challenge_single_value = challenge_channel.draw_random_bytes();
 
-        //challenge_single_value is a vector more than 4  bytes, we know F is mersenne31, it needs 4 bytes to transfer to u32 and then to F\
-        //can just make F to be fixed, Mersene31?
+        //challenge_single_value is a vector more than 4  bytes, we know F is mersenne31, it needs 4 bytes to transfer to u32 and then to F
+        //TODO: make the challenge sound
         let stage0_challenges = challenges_stage0
             .iter()
             .map(|&index| {
@@ -353,7 +354,7 @@ where
             })
             .collect::<BTreeMap<_, _>>();
 
-        //build witness columns for stage 1
+        //build witness columns for stage 1 using the callback function, with the generated challenges
         if self.analyzed.stage_count() > 1 {
             let witness_by_machine_stage1: BTreeMap<String, Vec<(String, Vec<F>)>> =
                 witness_by_machine
@@ -488,9 +489,7 @@ where
         let mut constant_col_log_sizes = vec![];
         let mut witness_col_log_sizes = vec![];
 
-        //challenge_channel is used to draw random bytes for challenges, it should be drawn based on the commitment of witness and constant columns of stage 0, now it is created for testing
-        //TODO: implement this part
-        //Get challenges for stage 1, based on stage 0 traces
+        //TODO: make the challenge sound, now the challenge is built the same way in prover.
         let identities = self.analyzed.identities.clone();
         let mut challenges_stage0 = BTreeSet::new();
         for identity in &identities {
@@ -503,9 +502,6 @@ where
 
         let challenge_channel = &mut <MC as MerkleChannel>::C::default();
         let challenge_single_value = challenge_channel.draw_random_bytes();
-
-        //challenge_single_value is a vector more than 4  bytes, we know F is mersenne31, it needs 4 bytes to transfer to u32 and then to F\
-        //can just make F to be fixed, Mersene31?
         let stage0_challenges = challenges_stage0
             .iter()
             .map(|&index| {
