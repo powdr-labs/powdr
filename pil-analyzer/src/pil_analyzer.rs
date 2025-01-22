@@ -14,8 +14,8 @@ use powdr_ast::parsed::asm::{
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
-    TraitImplementation, TypedExpression,
+    self, Expression as ParsedExpression, FunctionKind, LambdaExpression, PILFile, PilStatement,
+    SourceReference, SymbolCategory, TraitImplementation, TypedExpression,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
@@ -526,43 +526,49 @@ impl PILAnalyzer {
                         }
                     }
                 }
+                Ok(())
             }
         }
+    }
+    fn handle_namespace(
+        &mut self,
+        name: SymbolPath,
+        degree: Option<parsed::NamespaceDegree>,
+    ) -> Result<(), Error> {
+        let evaluate_degree_bound = |e: ParsedExpression| -> Result<u64, Error> {
+            let source = e.source_reference().clone();
+            let e = ExpressionProcessor::new(self.driver(), &Default::default())
+                .process_expression(e)
+                .map_err(|err| {
+                    source.with_error(format!("Failed to evaluate degree bound: {}", err))
+                })?;
+
+            let value = evaluator::evaluate_expression::<GoldilocksField>(
+                &e,
+                &self.definitions,
+                &Default::default(),
+            )
+            .unwrap()
+            .try_to_integer()
+            .map_err(|err| source.with_error(err.to_string()))?;
+
+            u64::try_from(value)
+                .map_err(|_| source.with_error("Degree bound too large".to_string()))
+        };
+
+        self.polynomial_degree = degree
+            .map(|degree| -> Result<_, Error> {
+                Ok(DegreeRange {
+                    min: evaluate_degree_bound(degree.min)?,
+                    max: evaluate_degree_bound(degree.max)?,
+                })
+            })
+            .transpose()?;
+
+        self.current_namespace = AbsoluteSymbolPath::default().join(name);
 
         Ok(())
     }
-
-    fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::NamespaceDegree>) {
-        let evaluate_degree_bound = |e| {
-            let e = match ExpressionProcessor::new(self.driver(), &Default::default())
-                .process_expression(e)
-            {
-                Ok(e) => e,
-                Err(e) => {
-                    // TODO propagate this error up
-                    panic!("Failed to evaluate degree bound: {e}");
-                }
-            };
-            u64::try_from(
-                evaluator::evaluate_expression::<GoldilocksField>(
-                    &e,
-                    &self.definitions,
-                    &Default::default(),
-                )
-                .unwrap()
-                .try_to_integer()
-                .unwrap(),
-            )
-            .unwrap()
-        };
-
-        self.polynomial_degree = degree.map(|degree| DegreeRange {
-            min: evaluate_degree_bound(degree.min),
-            max: evaluate_degree_bound(degree.max),
-        });
-        self.current_namespace = AbsoluteSymbolPath::default().join(name);
-    }
-
     fn driver(&self) -> Driver {
         Driver(self)
     }
