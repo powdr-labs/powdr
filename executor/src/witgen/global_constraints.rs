@@ -249,10 +249,10 @@ fn propagate_constraints<T: FieldElement>(
                 false
             }
         }
+        // Bus receives are handled when they are matched with a send.
         Identity::BusReceive(..) => false,
-        Identity::BusSend(bus_interaction) => {
-            let send = bus_interaction;
-            let receive = bus_interaction.try_match_static(bus_receives).unwrap();
+        Identity::BusSend(send) => {
+            let receive = send.try_match_static(bus_receives).unwrap();
             if !receive.is_unconstrained() {
                 return false;
             }
