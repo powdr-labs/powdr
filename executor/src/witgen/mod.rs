@@ -12,7 +12,6 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
-use powdr_executor_utils::HasMultipleSizesError;
 use powdr_number::{DegreeType, FieldElement, KnownField};
 use std::iter::once;
 
@@ -583,10 +582,6 @@ impl<'a, T: Copy> FixedColumn<'a, T> {
                 self.values.available_sizes()
             )
         })
-    }
-
-    pub fn get_unique_size(&self) -> Result<usize, HasMultipleSizesError> {
-        Ok(self.values.get_uniquely_sized()?.len())
     }
 
     pub fn values_max_size(&self) -> &[T] {

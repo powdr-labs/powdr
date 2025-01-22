@@ -47,21 +47,21 @@ impl<T> IndexValue<T> {
 }
 
 #[derive(Debug, Clone)]
-enum PolyRefOrConstant<T> {
-    Poly(PolyID),
+enum FixedColOrConstant<T, C> {
+    FixedCol(C),
     Constant(T),
 }
 
-impl<T: Clone> TryFrom<&AlgebraicExpression<T>> for PolyRefOrConstant<T> {
+impl<T: Clone> TryFrom<&AlgebraicExpression<T>> for FixedColOrConstant<T, PolyID> {
     type Error = ();
     fn try_from(e: &AlgebraicExpression<T>) -> Result<Self, Self::Error> {
         try_to_simple_poly(e)
             .and_then(|reference| {
                 (reference.poly_id.ptype == PolynomialType::Constant)
-                    .then_some(Ok(PolyRefOrConstant::Poly(reference.poly_id)))
+                    .then_some(Ok(FixedColOrConstant::FixedCol(reference.poly_id)))
             })
             .unwrap_or_else(|| match e {
-                AlgebraicExpression::Number(c) => Ok(PolyRefOrConstant::Constant(c.clone())),
+                AlgebraicExpression::Number(c) => Ok(FixedColOrConstant::Constant(c.clone())),
                 _ => Err(()),
             })
     }
@@ -80,7 +80,7 @@ fn create_index<T: FieldElement>(
     let right = right
         .expressions
         .iter()
-        .map(|e| PolyRefOrConstant::try_from(e).unwrap())
+        .map(|e| FixedColOrConstant::try_from(e).unwrap())
         .collect::<Vec<_>>();
 
     let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
@@ -96,9 +96,9 @@ fn create_index<T: FieldElement>(
         });
 
     // create index for this lookup
-    let variable_name = |v: &PolyRefOrConstant<T>| match v {
-        PolyRefOrConstant::Poly(poly_id) => fixed_data.column_name(poly_id).to_string(),
-        PolyRefOrConstant::Constant(c) => c.to_string(),
+    let variable_name = |v: &FixedColOrConstant<T, PolyID>| match v {
+        FixedColOrConstant::FixedCol(poly_id) => fixed_data.column_name(poly_id).to_string(),
+        FixedColOrConstant::Constant(c) => c.to_string(),
     };
     log::trace!(
         "Generating index for lookup in columns (in: {}, out: {})",
@@ -108,44 +108,37 @@ fn create_index<T: FieldElement>(
 
     let start = std::time::Instant::now();
 
-    let degree = right
-        .iter()
-        .filter_map(|p| match p {
-            PolyRefOrConstant::Poly(poly_id) => {
-                Some(fixed_data.fixed_cols[poly_id].get_unique_size().unwrap())
-            }
-            PolyRefOrConstant::Constant(_) => None,
-        })
-        .unique()
-        .exactly_one()
-        .expect("all columns in a given lookup are expected to have the same degree");
-
-    let materialized_constant_columns = right
-        .iter()
-        .filter_map(|e| match e {
-            PolyRefOrConstant::Constant(c) => Some(*c),
-            _ => None,
-        })
-        .unique()
-        .map(|c| (c, vec![c; degree]))
-        .collect::<BTreeMap<_, _>>();
-
     // get all values for the columns to be indexed
     let input_column_values = input_fixed_columns
-        .iter()
+        .into_iter()
         .map(|id| match id {
-            PolyRefOrConstant::Poly(poly_id) => fixed_data.fixed_cols[poly_id].values_max_size(),
-            PolyRefOrConstant::Constant(c) => &materialized_constant_columns[c],
+            FixedColOrConstant::FixedCol(poly_id) => {
+                FixedColOrConstant::FixedCol(fixed_data.fixed_cols[&poly_id].values_max_size())
+            }
+            FixedColOrConstant::Constant(c) => FixedColOrConstant::Constant(c),
         })
         .collect::<Vec<_>>();
 
     let output_column_values = output_fixed_columns
-        .iter()
+        .into_iter()
         .map(|id| match id {
-            PolyRefOrConstant::Poly(poly_id) => fixed_data.fixed_cols[poly_id].values_max_size(),
-            PolyRefOrConstant::Constant(c) => &materialized_constant_columns[c],
+            FixedColOrConstant::FixedCol(poly_id) => {
+                FixedColOrConstant::FixedCol(fixed_data.fixed_cols[&poly_id].values_max_size())
+            }
+            FixedColOrConstant::Constant(c) => FixedColOrConstant::Constant(c),
         })
         .collect::<Vec<_>>();
+
+    let degree = input_column_values
+        .iter()
+        .chain(output_column_values.iter())
+        .filter_map(|p| match p {
+            FixedColOrConstant::FixedCol(values) => Some(values.len()),
+            FixedColOrConstant::Constant(_) => None,
+        })
+        .unique()
+        .exactly_one()
+        .expect("all columns in a given lookup are expected to have the same degree");
 
     let index: HashMap<Vec<T>, IndexValue<T>> = (0..degree)
         .fold(
@@ -156,12 +149,18 @@ fn create_index<T: FieldElement>(
             |(mut acc, mut set), row| {
                 let input: Vec<_> = input_column_values
                     .iter()
-                    .map(|column| column[row])
+                    .map(|column| match column {
+                        FixedColOrConstant::FixedCol(values) => values[row],
+                        FixedColOrConstant::Constant(c) => *c,
+                    })
                     .collect();
 
                 let output: Vec<_> = output_column_values
                     .iter()
-                    .map(|column| column[row])
+                    .map(|column| match column {
+                        FixedColOrConstant::FixedCol(values) => values[row],
+                        FixedColOrConstant::Constant(c) => *c,
+                    })
                     .collect();
 
                 let input_output = (input, output);
@@ -214,7 +213,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 .iter()
                 // For native lookups, we do remove constants in the PIL
                 // optimizer, but this might not be the case for bus interactions.
-                .all(|e| PolyRefOrConstant::try_from(e).is_ok())
+                .all(|e| FixedColOrConstant::try_from(e).is_ok())
             && !connection.right.expressions.is_empty()
     }
 
