@@ -60,8 +60,7 @@ pub struct PowdrEval<T> {
     witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
     constant_columns: BTreeMap<PolyID, usize>,
-    //TODO: check if the below asumption and only get one BTreeMap not an array of BTreeMap is okay
-    //assuming there are only 2 stages, challenges are only created after stage 0
+    //stwo supports maximum 2 stages, challenges are only created for stage 0
     pub challenges: BTreeMap<u64, T>,
 }
 
@@ -112,7 +111,7 @@ struct Data<'a, F> {
     witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
     constant_shifted_eval: &'a BTreeMap<PolyID, F>,
     constant_eval: &'a BTreeMap<PolyID, F>,
-    //Assuming only stage 0 need challenges, so this is not an array
+    //challenges for stage 0
     challenges: &'a BTreeMap<u64, F>,
 }
 

@@ -249,7 +249,8 @@ where
             })
             .collect();
 
-        //Generate witness for stage 0, combined with building constant columns in circle domain
+        //Generate witness for stage 0,build constant columns in circle domain at the same time
+        let mut machine_log_sizes: BTreeMap<String, u32> = BTreeMap::new();
         let mut constant_cols = Vec::new();
         let witness_by_machine = self
             .split
@@ -258,6 +259,7 @@ where
                 let witness_columns = machine_witness_columns(witness, pil, machine);
                 if witness_columns[0].1.is_empty() {
                     // Empty machines can be removed entirely.
+                    // TODO: Verification  should be able to handle this case
                     None
                 } else {
                     let witness_by_machine = machine_witness_columns(witness, pil, machine);
@@ -283,15 +285,18 @@ where
                     {
                         constant_cols.extend(constant_trace)
                     }
+                    machine_log_sizes.insert(machine.clone(), machine_length.ilog2());
                     Some((machine.clone(), witness_by_machine))
                 }
             })
             .collect::<BTreeMap<_, _>>();
 
-        //Get witness columns in circle domain for stage 0
+        //remember the witness cols that is already transfered to circle domain, so that we don't need to transfer it again in stage 1
         let mut witness_col_circle_domain_index = BTreeMap::new();
         let mut index_acc = 0;
-        let witness_cols_circle_domain_eval_stage0: ColumnVec<
+
+        //Get witness columns in circle domain for stage 0
+        let mut witness_cols_circle_domain_eval: ColumnVec<
             CircleEvaluation<B, BaseField, BitReversedOrder>,
         > = witness_by_machine
             .clone()
@@ -348,41 +353,42 @@ where
             .collect::<BTreeMap<_, _>>();
 
         //build witness columns for stage 1
-        let mut machine_log_sizes = BTreeMap::new();
-        let witness_by_machine_stage1: BTreeMap<String, Vec<(String, Vec<F>)>> = witness_by_machine
-            .iter()
-            .map(|(machine_name, machine_witness)| {
-                let new_witness = witgen_callback.next_stage_witness(
-                    &self.split[machine_name],
-                    machine_witness,
-                    stage0_challenges.clone(),
-                    1,
-                );
-                machine_log_sizes.insert(machine_name.clone(), new_witness[0].1.len().ilog2());
-                (machine_name.clone(), new_witness)
-            })
-            .collect();
+        if self.analyzed.stage_count() > 1 {
+            let witness_by_machine_stage1: BTreeMap<String, Vec<(String, Vec<F>)>> =
+                witness_by_machine
+                    .iter()
+                    .map(|(machine_name, machine_witness)| {
+                        let new_witness = witgen_callback.next_stage_witness(
+                            &self.split[machine_name],
+                            machine_witness,
+                            stage0_challenges.clone(),
+                            1,
+                        );
+                        machine_log_sizes
+                            .insert(machine_name.clone(), new_witness[0].1.len().ilog2());
+                        (machine_name.clone(), new_witness)
+                    })
+                    .collect();
 
-        let witness_cols_circle_domain_eval_stage1: ColumnVec<
-            CircleEvaluation<B, BaseField, BitReversedOrder>,
-        > = witness_by_machine_stage1
-            .into_iter()
-            .flat_map(|(_machine_name, witness_cols)| {
-                witness_cols.into_iter().map(|(witness_name, vec)| {
-                    //no need to transfer the witness columns to circle domain if it is already calculated in stage 0
-                    if let Some(index) = witness_col_circle_domain_index.get(&witness_name) {
-                        witness_cols_circle_domain_eval_stage0[*index].clone()
-                    } else {
-                        gen_stwo_circle_column::<F, B, M31>(
-                            *domain_map
-                                .get(&(vec.len().ilog2() as usize))
-                                .expect("Domain not found for given size"),
-                            &vec,
-                        )
-                    }
+            witness_cols_circle_domain_eval = witness_by_machine_stage1
+                .into_iter()
+                .flat_map(|(_machine_name, witness_cols)| {
+                    witness_cols.into_iter().map(|(witness_name, vec)| {
+                        //no need to transfer the witness columns to circle domain if it is already calculated in stage 0
+                        if let Some(index) = witness_col_circle_domain_index.get(&witness_name) {
+                            witness_cols_circle_domain_eval[*index].clone()
+                        } else {
+                            gen_stwo_circle_column::<F, B, M31>(
+                                *domain_map
+                                    .get(&(vec.len().ilog2() as usize))
+                                    .expect("Domain not found for given size"),
+                                &vec,
+                            )
+                        }
+                    })
                 })
-            })
-            .collect::<Vec<_>>();
+                .collect::<Vec<_>>();
+        }
 
         let twiddles_max_degree = B::precompute_twiddles(
             CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
@@ -401,7 +407,7 @@ where
         tree_builder.commit(prover_channel);
 
         let mut tree_builder = commitment_scheme.tree_builder();
-        tree_builder.extend_evals(witness_cols_circle_domain_eval_stage1);
+        tree_builder.extend_evals(witness_cols_circle_domain_eval);
         tree_builder.commit(prover_channel);
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
