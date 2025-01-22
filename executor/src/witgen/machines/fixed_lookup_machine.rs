@@ -57,7 +57,8 @@ impl<T: Clone> TryFrom<&AlgebraicExpression<T>> for FixedColOrConstant<T, PolyID
     fn try_from(e: &AlgebraicExpression<T>) -> Result<Self, Self::Error> {
         try_to_simple_poly(e)
             .and_then(|reference| {
-                (reference.poly_id.ptype == PolynomialType::Constant)
+                reference
+                    .is_fixed()
                     .then_some(Ok(FixedColOrConstant::FixedCol(reference.poly_id)))
             })
             .unwrap_or_else(|| match e {
@@ -279,9 +280,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 .constraints
                 .into_iter()
                 .filter(|(poly, _)| match poly {
-                    AlgebraicVariable::Column(poly) => {
-                        poly.poly_id.ptype == PolynomialType::Committed
-                    }
+                    AlgebraicVariable::Column(poly) => poly.is_fixed(),
                     _ => unimplemented!(),
                 })
                 .collect(),
