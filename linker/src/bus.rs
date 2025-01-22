@@ -10,7 +10,7 @@ use powdr_ast::{
 };
 use powdr_parser_util::SourceRef;
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, iter::once, str::FromStr};
+use std::{collections::BTreeMap, str::FromStr};
 
 use crate::{
     call, try_into_namespace_degree, DegreeMode, InteractionType, LinkerBackend,
@@ -83,12 +83,13 @@ impl LinkerBackend for BusLinker {
 
         let interaction_id = interaction_id(to);
 
-        let op_id = operation.id.clone().unwrap().into();
+        let op_id = operation.id.clone().map(|operation_id| operation_id.into());
 
         // we send `flag $ { operation_id, inputs, outputs }`
         let selector = combine_flags(from.instr_flag.clone(), from.link_flag.clone());
         let tuple = ArrayLiteral {
-            items: once(op_id)
+            items: op_id
+                .into_iter()
                 .chain(from.params.inputs.clone())
                 .chain(from.params.outputs.clone())
                 .collect(),
@@ -193,18 +194,21 @@ impl BusLinker {
 
             let namespace = location.to_string();
 
+            let op_id = object
+                .operation_id
+                .clone()
+                .map(|oid| namespaced_reference(namespace.clone(), oid))
+                .into_iter();
+
             let tuple = ArrayLiteral {
-                items: once(namespaced_reference(
-                    namespace.clone(),
-                    object.operation_id.as_ref().unwrap(),
-                ))
-                .chain(operation.params.inputs_and_outputs().map(|i| {
-                    index_access(
-                        namespaced_reference(namespace.clone(), &i.name),
-                        i.index.clone(),
-                    )
-                }))
-                .collect(),
+                items: op_id
+                    .chain(operation.params.inputs_and_outputs().map(|i| {
+                        index_access(
+                            namespaced_reference(namespace.clone(), &i.name),
+                            i.index.clone(),
+                        )
+                    }))
+                    .collect(),
             }
             .into();
 
@@ -308,6 +312,8 @@ mod test {
     pol commit pc_update;
     pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
+    pol commit call_selectors[0];
+    std::array::map(call_selectors, std::utils::force_bool);
     std::protocols::bus::bus_send(1816473376, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1);
 namespace main__rom(4);
     pol constant p_line = [0, 1, 2] + [2]*;
@@ -317,7 +323,7 @@ namespace main__rom(4);
     pol constant p_instr_return = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-    std::protocols::lookup_via_bus::lookup_receive(1816473376, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], main__rom::latch);
+    std::protocols::lookup_via_bus::lookup_receive(1816473376, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return]);
 "#;
 
         let file_name = "../test_data/asm/empty_vm.asm";

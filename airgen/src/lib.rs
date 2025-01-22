@@ -279,7 +279,6 @@ impl<'a> ASMPILConverter<'a> {
             links,
             latch: input.latch,
             call_selectors: input.call_selectors,
-            has_pc: input.pc.is_some(),
             operation_id: input.operation_id,
             operations: input
                 .callable

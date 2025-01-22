@@ -12,7 +12,7 @@ use crate::{
 
 mod display;
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Location {
     limbs: Vec<String>,
 }
@@ -59,9 +59,8 @@ pub struct Object {
     pub latch: Option<String>,
     /// call selector array
     pub call_selectors: Option<String>,
-    /// true if this machine has a PC
-    pub has_pc: bool,
     /// the operation id for this machine
+    /// TODO: This could be made non optional for simplicity: in the case where we have a single operation, it could be optimized away
     pub operation_id: Option<String>,
     /// the operations for this machine
     pub operations: BTreeMap<String, Operation>,
@@ -88,7 +87,7 @@ pub struct LinkFrom {
     pub params: CallableParams,
 }
 
-#[derive(Clone, Debug, PartialOrd, Ord, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialOrd, Ord, Eq, PartialEq, Hash)]
 pub struct LinkTo {
     /// the machine we link to
     pub machine: Location,

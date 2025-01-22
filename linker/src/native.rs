@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::{combine_flags, MachineDegree},
@@ -26,6 +27,56 @@ pub struct NativeLinker {
 }
 
 impl LinkerBackend for NativeLinker {
+    fn try_new(graph: &MachineInstanceGraph, degree_mode: DegreeMode) -> Result<Self, Vec<String>> {
+        let max_degree = match degree_mode {
+            DegreeMode::Monolithic => Some(graph
+                .objects
+                .iter()
+                .filter_map(|(_, object)| object.degree.max.clone()).map(|e| match e {
+                    Expression::Number(_, n) => n,
+                    _ => unimplemented!("Only constant max degrees are supported when using monolithic degree mode"),
+                }).max().unwrap()),
+            DegreeMode::Vadcop => None,
+        };
+
+        // generate the maps of selector array sizes and indices
+        let (selector_array_index_by_destination, selector_array_size_by_instance) = graph
+            .objects
+            .values()
+            // go through all operations which are accessed via permutation
+            .flat_map(|object| {
+                object
+                    .links
+                    .iter()
+                    .filter_map(|link| link.is_permutation.then_some(&link.to))
+            })
+            // remove duplicates
+            .unique()
+            .fold(
+                (BTreeMap::new(), BTreeMap::new()),
+                |(mut indices, mut sizes), to| {
+                    // get the current size of the array
+                    let size = sizes.entry(to.machine.clone()).or_default();
+                    // that is the index of the next selector
+                    let index = *size;
+                    // increment the size of the array
+                    *size += 1;
+                    // store the index
+                    assert!(indices.insert(to.clone(), index).is_none());
+                    // return the updated maps
+                    (indices, sizes)
+                },
+            );
+
+        Ok(Self {
+            degree_mode,
+            max_degree,
+            namespaces: Default::default(),
+            selector_array_size_by_instance,
+            selector_array_index_by_destination,
+        })
+    }
+
     fn process_link(
         &mut self,
         link: &Link,
@@ -77,17 +128,15 @@ impl LinkerBackend for NativeLinker {
 
             let latch =
                 namespaced_reference(to_namespace.clone(), to_machine.latch.clone().unwrap());
-            let rhs_selector = if let Some(call_selectors) = to_machine.clone().call_selectors {
-                let call_selector_array =
-                    namespaced_reference(to_namespace.clone(), call_selectors);
-                let call_selector = index_access(
-                    call_selector_array,
-                    Some(self.selector_array_index_by_destination[to].into()),
-                );
-                latch.clone() * call_selector
-            } else {
-                unreachable!()
-            };
+            let call_selector_array = namespaced_reference(
+                to_namespace.clone(),
+                to_machine.call_selectors.clone().unwrap(),
+            );
+            let call_selector = index_access(
+                call_selector_array,
+                Some(self.selector_array_index_by_destination[to].into()),
+            );
+            let rhs_selector = latch.clone() * call_selector;
 
             let rhs = selected(rhs_selector, rhs_list);
 
@@ -101,54 +150,6 @@ impl LinkerBackend for NativeLinker {
 
             self.insert_interaction(InteractionType::Lookup, from_namespace, lhs, rhs);
         };
-    }
-
-    fn try_new(graph: &MachineInstanceGraph, degree_mode: DegreeMode) -> Result<Self, Vec<String>> {
-        let max_degree = match degree_mode {
-            DegreeMode::Monolithic => Some(graph
-                .objects
-                .iter()
-                .filter_map(|(_, object)| object.degree.max.clone()).map(|e| match e {
-                    Expression::Number(_, n) => n,
-                    _ => unimplemented!("Only constant max degrees are supported when using monolithic degree mode"),
-                }).max().unwrap()),
-            DegreeMode::Vadcop => None,
-        };
-
-        // generate the maps of selector array sizes and indices
-        let (selector_array_index_by_destination, selector_array_size_by_instance) = graph
-            .objects
-            .values()
-            .flat_map(|object| {
-                object
-                    .links
-                    .iter()
-                    .filter_map(|link| link.is_permutation.then_some(&link.to))
-            })
-            .fold(
-                (BTreeMap::new(), BTreeMap::<_, usize>::new()),
-                |(mut indices, mut sizes), to| {
-                    // get the current size of the array
-                    let size = sizes.entry(to.machine.clone()).or_default();
-                    // that is the index of the next selector
-                    let index = *size;
-                    // increment the size of the array
-                    *size += 1;
-                    // store the index
-                    let already_assigned = indices.insert(to.clone(), index);
-                    assert!(already_assigned.is_none());
-                    // return the updated maps
-                    (indices, sizes)
-                },
-            );
-
-        Ok(Self {
-            degree_mode,
-            max_degree,
-            namespaces: Default::default(),
-            selector_array_size_by_instance,
-            selector_array_index_by_destination,
-        })
     }
 
     fn process_object(&mut self, location: &Location, objects: &BTreeMap<Location, Object>) {
@@ -173,14 +174,18 @@ impl LinkerBackend for NativeLinker {
 
         pil.extend(object.pil);
 
+        // declare call selectors if they are present
         if let Some(call_selectors) = &object.call_selectors {
-            let count = self.selector_array_size_by_instance[location];
-            pil.extend([
-                parse_pil_statement(&format!("col witness {call_selectors}[{count}];")),
-                parse_pil_statement(&format!(
-                    "std::array::map({call_selectors}, std::utils::force_bool);"
-                )),
-            ])
+            // only do it if the machine is actually accessed via permutations.
+            // TODO: This is a bit hacky, it would be better to always create them and let the optimizer remove them if they are not used.
+            if let Some(count) = self.selector_array_size_by_instance.get(location) {
+                pil.extend([
+                    parse_pil_statement(&format!("col witness {call_selectors}[{count}];")),
+                    parse_pil_statement(&format!(
+                        "std::array::map({call_selectors}, std::utils::force_bool);"
+                    )),
+                ])
+            }
         }
 
         for link in &object.links {
