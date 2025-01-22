@@ -672,9 +672,9 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         log::info!("Proved {} rows.", new_rows);
 
         let remaining_rows = full_trace_length - proven_trace;
-        let remaining_chunks = remaining_rows / avg_rows_per_chunk;
+        let remaining_chunks = (remaining_rows as f32 / avg_rows_per_chunk as f32).ceil() as usize;
         log::info!(
-            "  => Estimating more {} chunks at the current ratio",
+            "  => Estimating {} more chunks at the current ratio",
             remaining_chunks
         );
 
