@@ -45,9 +45,22 @@ impl<T> IndexValue<T> {
         self.0.as_ref().map(|(row, values)| (*row, values))
     }
 }
+
+#[derive(Debug, Clone)]
 enum PolyRefOrConstant<T> {
     Poly(PolyID),
     Constant(T),
+}
+
+impl<T: Clone> From<&AlgebraicExpression<T>> for PolyRefOrConstant<T> {
+    fn from(e: &AlgebraicExpression<T>) -> Self {
+        try_to_simple_poly(e)
+            .map(|reference| PolyRefOrConstant::Poly(reference.poly_id))
+            .unwrap_or_else(|| match e {
+                AlgebraicExpression::Number(c) => PolyRefOrConstant::Constant(c.clone()),
+                _ => unreachable!(),
+            })
+    }
 }
 
 /// Create an index for a set of columns to be queried, if does not exist already
@@ -60,17 +73,15 @@ fn create_index<T: FieldElement>(
     let right = connections[&application.identity_id].right;
     assert!(right.selector.is_one());
 
-    let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
+    let right = right
         .expressions
         .iter()
-        .map(|e| {
-            try_to_simple_poly(e)
-                .map(|reference| PolyRefOrConstant::Poly(reference.poly_id))
-                .unwrap_or_else(|| match e {
-                    AlgebraicExpression::Number(c) => PolyRefOrConstant::Constant(*c),
-                    _ => unreachable!(),
-                })
-        })
+        .map(PolyRefOrConstant::from)
+        .collect::<Vec<_>>();
+
+    let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
+        .iter()
+        .cloned()
         .zip(&application.inputs)
         .partition_map(|(poly_id, is_input)| {
             if is_input {
@@ -94,22 +105,25 @@ fn create_index<T: FieldElement>(
     let start = std::time::Instant::now();
 
     let degree = right
-        .expressions
         .iter()
-        .filter_map(try_to_simple_poly)
-        .map(|p| fixed_data.fixed_cols[&p.poly_id].values_max_size().len())
+        .filter_map(|p| match p {
+            PolyRefOrConstant::Poly(poly_id) => {
+                Some(fixed_data.fixed_cols[&poly_id].get_unique_size().unwrap())
+            }
+            PolyRefOrConstant::Constant(_) => None,
+        })
         .unique()
         .exactly_one()
         .expect("all columns in a given lookup are expected to have the same degree");
 
     let materialized_constant_columns = right
-        .expressions
         .iter()
-        .filter(|e| try_to_simple_poly(e).is_none())
-        .map(|e| match e {
-            AlgebraicExpression::Number(c) => (*c, vec![*c; degree]),
-            _ => unreachable!(),
+        .filter_map(|e| match e {
+            PolyRefOrConstant::Constant(c) => Some(*c),
+            _ => None,
         })
+        .unique()
+        .map(|c| (c, vec![c; degree]))
         .collect::<BTreeMap<_, _>>();
 
     // get all values for the columns to be indexed
