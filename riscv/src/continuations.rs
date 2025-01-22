@@ -285,6 +285,23 @@ pub struct DryRunResult<F: FieldElement> {
     pub trace_len: usize,
 }
 
+fn find_chunk_first_memory_access<F: FieldElement>(
+    full_exec: &powdr_riscv_executor::Execution<F>,
+    chunk_start_row: usize,
+) -> usize {
+    let mut start_idx = full_exec
+        .memory_accesses
+        .binary_search_by_key(&chunk_start_row, |a| a.row)
+        .unwrap_or_else(|v| v);
+    // We may have multiple memory accesses in the same row and binary
+    // search may return any match in case of multiple: ensure idx points to
+    // first match
+    while start_idx > 0 && full_exec.memory_accesses[start_idx - 1].row == chunk_start_row {
+        start_idx -= 1;
+    }
+    start_idx
+}
+
 /// Check that all memory accesses in the given execution chunk are present in the pages loaded in by the bootloader.
 fn has_all_needed_pages<F: FieldElement>(
     // all memory accesses in the full trace
@@ -296,15 +313,7 @@ fn has_all_needed_pages<F: FieldElement>(
     // number of rows estimated to run in the chunk
     chunk_exec_len: usize,
 ) -> bool {
-    // get accessed pages in the trace estimated to run (note that we overestimate how much we can run)
-    let mut start_idx = full_exec
-        .memory_accesses
-        .binary_search_by_key(&chunk_start_row, |a| a.row)
-        .unwrap_or_else(|v| v);
-    // ensure we point to the first element in case of multiple matches
-    while start_idx > 0 && full_exec.memory_accesses[start_idx - 1].row == chunk_start_row {
-        start_idx -= 1;
-    }
+    let start_idx = find_chunk_first_memory_access(full_exec, chunk_start_row);
 
     // check that every accessed page is present in the bootloader input
     for access in &full_exec.memory_accesses[start_idx..] {
@@ -398,16 +407,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         log::info!("\nRunning chunk {} for {} steps...", chunk_index, length);
 
         log::info!("Building bootloader inputs for chunk {}...", chunk_index);
-        let mut start_idx = full_exec
-            .memory_accesses
-            .binary_search_by_key(&proven_trace, |a| a.row)
-            .unwrap_or_else(|v| v);
-        // We may have multiple memory accesses in the same row and binary
-        // search may return any match in case of multiple: ensure idx points to
-        // first match
-        while start_idx > 0 && full_exec.memory_accesses[start_idx - 1].row == proven_trace {
-            start_idx -= 1;
-        }
+
+        let start_idx = find_chunk_first_memory_access(&full_exec, proven_trace);
 
         // We need to find how many (and which) memory pages are used in the
         // chunk. Also, since we don't have a shutdown routine, we can't stop the
