@@ -18,6 +18,9 @@ powdr-pilopt.workspace = true
 powdr-pipeline.workspace = true
 powdr-riscv.workspace = true
 powdr-riscv-executor.workspace = true
+powdr-parser-util.workspace = true
+powdr-analysis.workspace = true
+powdr-importer.workspace = true
 
 log = "0.4.17"
 
