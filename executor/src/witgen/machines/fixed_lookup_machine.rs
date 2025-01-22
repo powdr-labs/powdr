@@ -77,16 +77,11 @@ fn create_index<T: FieldElement>(
     let right = connections[&application.identity_id].right;
     assert!(right.selector.is_one());
 
-    let right = right
+    let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
         .expressions
         .iter()
         .map(|e| FixedColOrConstant::try_from(e).unwrap())
-        .collect::<Vec<_>>();
-
-    let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
-        .iter()
-        .cloned()
-        .zip(&application.inputs)
+        .zip_eq(&application.inputs)
         .partition_map(|(poly_id, is_input)| {
             if is_input {
                 Either::Left(poly_id)
