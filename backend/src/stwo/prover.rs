@@ -1,7 +1,6 @@
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Challenge, Identity};
-use powdr_ast::analyzed::{Analyzed, DegreeRange};
+use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, DegreeRange};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
@@ -16,7 +15,7 @@ use alloc::collections::{btree_map::BTreeMap, btree_set::BTreeSet};
 use std::iter::repeat;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use std::{clone, fmt, io};
+use std::{fmt, io};
 
 use crate::stwo::circuit_builder::{
     gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
@@ -252,7 +251,7 @@ where
 
         //Generate witness for stage 0, combined with building constant columns in circle domain
         let mut constant_cols = Vec::new();
-        let mut witness_by_machine = self
+        let witness_by_machine = self
             .split
             .iter()
             .filter_map(|(machine, pil)| {
@@ -417,7 +416,7 @@ where
 
                 let component = PowdrComponent::new(
                     tree_span_provider,
-                    PowdrEval::new::<MC>(
+                    PowdrEval::new(
                         (*pil).clone(),
                         constant_cols_offset_acc,
                         machine_log_size,
@@ -520,7 +519,7 @@ where
 
                     let machine_component = PowdrComponent::new(
                         tree_span_provider,
-                        PowdrEval::new::<MC>(
+                        PowdrEval::new(
                             (*pil).clone(),
                             constant_cols_offset_acc,
                             machine_log_size,

@@ -1,14 +1,11 @@
 use core::unreachable;
-use itertools::Itertools;
-use num_traits::Zero;
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, TerminalAccess};
 use std::collections::HashSet;
 
 extern crate alloc;
-use alloc::collections::{btree_map::BTreeMap, btree_set::BTreeSet};
+use alloc::collections::btree_map::BTreeMap;
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, Identity};
-use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{FieldElement, LargeInt};
 
 use powdr_ast::analyzed::{PolyID, PolynomialType};
@@ -17,7 +14,6 @@ use stwo_prover::constraint_framework::{
     EvalAtRow, FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX,
 };
 use stwo_prover::core::backend::{Column, ColumnOps};
-use stwo_prover::core::channel::{Channel, MerkleChannel};
 use stwo_prover::core::fields::m31::{BaseField, M31};
 use stwo_prover::core::fields::{ExtensionOf, FieldOps};
 use stwo_prover::core::poly::circle::{CircleDomain, CircleEvaluation};
@@ -70,15 +66,12 @@ pub struct PowdrEval<T> {
 }
 
 impl<T: FieldElement> PowdrEval<T> {
-    pub fn new<MC>(
+    pub fn new(
         analyzed: Analyzed<T>,
         preprocess_col_offset: usize,
         log_degree: u32,
         challenges: BTreeMap<u64, T>,
-    ) -> Self
-    where
-        MC: MerkleChannel,
-    {
+    ) -> Self {
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())
@@ -143,7 +136,7 @@ impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
     }
 
     fn get_challenge(&self, challenge: &Challenge) -> F {
-        self.challenges[&challenge.id].clone().into()
+        self.challenges[&challenge.id].clone()
     }
 }
 
