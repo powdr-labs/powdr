@@ -280,7 +280,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 .constraints
                 .into_iter()
                 .filter(|(poly, _)| match poly {
-                    AlgebraicVariable::Column(poly) => poly.is_fixed(),
+                    AlgebraicVariable::Column(poly) => poly.is_witness(),
                     _ => unimplemented!(),
                 })
                 .collect(),
