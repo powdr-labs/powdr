@@ -238,26 +238,17 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         rows: &RowPair<'_, 'a, T>,
         outer_query: OuterQuery<'a, '_, T>,
     ) -> EvalResult<'a, T> {
-        let identity = self.connections[&identity_id];
-        let right = identity.right;
+        let right = self.connections[&identity_id].right;
 
-        // get the values of the fixed columns
-        // TODO: What about the assignments?
-        // TODO: Avoid creating vector.
-        let column_elements = right
-            .expressions
-            .iter()
-            .zip_eq(outer_query.left.iter())
-            .filter_map(|(right, left)| try_to_simple_poly(right).map(|right| (left, right)))
-            .collect::<Vec<_>>();
-
-        if column_elements.len() == 1 && !column_elements[0].0.is_constant() {
-            // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
-            return self.process_range_check(
-                rows,
-                outer_query.left.first().unwrap(),
-                AlgebraicVariable::Column(column_elements[0].1),
-            );
+        if outer_query.left.len() == 1 && !outer_query.left.first().unwrap().is_constant() {
+            if let Some(column_reference) = try_to_simple_poly(&right.expressions[0]) {
+                // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
+                return self.process_range_check(
+                    rows,
+                    outer_query.left.first().unwrap(),
+                    AlgebraicVariable::Column(column_reference),
+                );
+            }
         }
 
         // Split the left-hand-side into known input values and unknown output expressions.
