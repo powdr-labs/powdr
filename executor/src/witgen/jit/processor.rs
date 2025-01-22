@@ -67,18 +67,18 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         }
     }
 
-    pub fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
+    pub fn generate_code(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
         witgen: WitgenInference<'a, T, FixedEval>,
     ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T, FixedEval>> {
         let branch_depth = 0;
         self.generate_code_for_branch(can_process, witgen, branch_depth)
     }
 
-    fn generate_code_for_branch<CanProcess: CanProcessCall<T> + Clone>(
+    fn generate_code_for_branch(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
         mut witgen: WitgenInference<'a, T, FixedEval>,
         branch_depth: usize,
     ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T, FixedEval>> {
@@ -190,9 +190,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         result.map(|code| common_code.into_iter().chain(code).collect())
     }
 
-    fn process_until_no_progress<CanProcess: CanProcessCall<T> + Clone>(
+    fn process_until_no_progress(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
     ) -> Result<(), affine_symbolic_expression::Error> {
         let mut identities_to_process: BTreeSet<_> = self
