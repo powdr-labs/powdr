@@ -144,7 +144,7 @@ impl<T: FieldElement, V: Display> Display for SymbolicExpression<T, V> {
             }
             SymbolicExpression::UnaryOperation(op, expr, _) => write!(f, "{op}{expr}"),
             SymbolicExpression::BitOperation(expr, op, n, _) => {
-                write!(f, "({expr} {op} {n})")
+                write!(f, "({expr} {op} {n:#x})")
             }
         }
     }

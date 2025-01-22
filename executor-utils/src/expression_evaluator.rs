@@ -1,6 +1,7 @@
 use core::ops::{Add, Mul, Sub};
 use itertools::Itertools;
 use std::collections::BTreeMap;
+use std::ops::Neg;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
@@ -147,7 +148,7 @@ where
 impl<'a, T, Expr, TA> ExpressionEvaluator<'a, T, Expr, TA>
 where
     TA: TerminalAccess<Expr>,
-    Expr: Clone + Add<Output = Expr> + Sub<Output = Expr> + Mul<Output = Expr>,
+    Expr: Clone + Add<Output = Expr> + Sub<Output = Expr> + Mul<Output = Expr> + Neg<Output = Expr>,
     T: FieldElement,
 {
     /// Create a new expression evaluator with custom expression converters.
@@ -199,7 +200,7 @@ where
                 },
             },
             Expression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => match op {
-                AlgebraicUnaryOperator::Minus => self.evaluate(expr),
+                AlgebraicUnaryOperator::Minus => -self.evaluate(expr),
             },
             Expression::Challenge(challenge) => self.terminal_access.get_challenge(challenge),
         }

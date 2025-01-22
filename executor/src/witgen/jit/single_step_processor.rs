@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, PolyID};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::FieldElement;
 
 use crate::witgen::{machines::MachineParts, FixedData};
@@ -9,6 +9,7 @@ use crate::witgen::{machines::MachineParts, FixedData};
 use super::{
     effect::Effect,
     processor::Processor,
+    prover_function_heuristics::decode_simple_prover_functions,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -65,8 +66,18 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             .collect_vec();
         let block_size = 1;
 
-        let witgen =
+        let mut witgen =
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
+
+        let prover_assignments = decode_simple_prover_functions(&self.machine_parts)
+            .into_iter()
+            .map(|(col_name, value)| (self.column(&col_name), value))
+            .collect_vec();
+
+        // TODO we should only do it if other methods fail, because it is "provide_if_unknown"
+        for (col, value) in &prover_assignments {
+            witgen.assign_constant(col, 1, *value);
+        }
 
         Processor::new(
             self.fixed_data,
@@ -86,6 +97,14 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             column_name: self.fixed_data.column_name(&id).to_string(),
             id: id.id,
             row_offset,
+        })
+    }
+
+    fn column(&self, name: &str) -> Expression<T> {
+        Expression::Reference(AlgebraicReference {
+            name: name.to_string(),
+            poly_id: self.fixed_data.try_column_by_name(name).unwrap(),
+            next: false,
         })
     }
 }
@@ -185,8 +204,11 @@ namespace M(256);
         assert_eq!(
             err.to_string(),
             "Unable to derive algorithm to compute required values: \
-            Maximum branch depth of 6 reached.\nThe following variables or values are still missing: M::Y[1]\n\
-            No code generated so far."
+            No variable available to branch on.\nThe following variables or values are still missing: M::Y[1]\n\
+            The following branch decisions were taken:\n\
+            \n\
+            Generated code so far:\n\
+            M::X[1] = M::X[0];"
         );
     }
 
@@ -210,28 +232,24 @@ namespace M(256);
         instr_add * (A' - (A + B)) + instr_mul * (A' - A * B) + (1 - instr_add - instr_mul) * (A' - A) = 0;
         B' = B;
         ";
+
         let code = generate_single_step(input, "Main").unwrap();
         assert_eq!(
             format_code(&code),
             "\
 VM::pc[1] = (VM::pc[0] + 1);
+call_var(1, 0, 0) = VM::pc[0];
+call_var(1, 0, 1) = VM::instr_add[0];
+call_var(1, 0, 2) = VM::instr_mul[0];
+VM::B[1] = VM::B[0];
 call_var(1, 1, 0) = VM::pc[1];
 machine_call(1, [Known(call_var(1, 1, 0)), Unknown(call_var(1, 1, 1)), Unknown(call_var(1, 1, 2))]);
 VM::instr_add[1] = call_var(1, 1, 1);
 VM::instr_mul[1] = call_var(1, 1, 2);
-VM::B[1] = VM::B[0];
 if (VM::instr_add[0] == 1) {
-    if (VM::instr_mul[0] == 1) {
-        VM::A[1] = -((-(VM::A[0] + VM::B[0]) + -(VM::A[0] * VM::B[0])) + VM::A[0]);
-    } else {
-        VM::A[1] = (VM::A[0] + VM::B[0]);
-    }
+    VM::A[1] = (VM::A[0] + VM::B[0]);
 } else {
-    if (VM::instr_mul[0] == 1) {
-        VM::A[1] = (VM::A[0] * VM::B[0]);
-    } else {
-        VM::A[1] = VM::A[0];
-    }
+    VM::A[1] = (VM::A[0] * VM::B[0]);
 }"
         );
     }
@@ -248,7 +266,7 @@ if (VM::instr_add[0] == 1) {
         col fixed INSTR_ADD = [0, 1] + [0]*;
         col fixed INSTR_MUL = [1, 0] + [1]*;
 
-        pc' = pc + 1;
+        pc' = pc;
         instr_add = 0;
         [ pc, instr_add, instr_mul ] in [ LINE, INSTR_ADD, INSTR_MUL ];
 
@@ -262,7 +280,10 @@ if (VM::instr_add[0] == 1) {
         assert_eq!(
             format_code(&code),
             "\
-VM::pc[1] = (VM::pc[0] + 1);
+VM::pc[1] = VM::pc[0];
+call_var(2, 0, 0) = VM::pc[0];
+call_var(2, 0, 1) = 0;
+call_var(2, 0, 2) = VM::instr_mul[0];
 VM::instr_add[1] = 0;
 call_var(2, 1, 0) = VM::pc[1];
 call_var(2, 1, 1) = 0;

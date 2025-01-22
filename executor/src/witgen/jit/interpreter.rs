@@ -521,7 +521,7 @@ mod test {
             .flat_map(|p| p.0.array_elements().map(|e| e.1))
             .collect_vec();
 
-        let mut data = CompactData::new(&poly_ids);
+        let mut data = CompactData::new(poly_ids.iter());
         data.append_new_rows(31);
         let data_ref = CompactDataRef::new(&mut data, 0);
         interpreter.call(&mutable_state, &mut param_lookups, data_ref);
