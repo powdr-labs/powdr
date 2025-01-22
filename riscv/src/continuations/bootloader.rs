@@ -37,72 +37,23 @@ pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 // Ensure we have enough addresses for the scratch space.
 const_assert!(PAGE_SIZE_BYTES > 384);
 
-/// Computes a lower bound of how long the bootloader will run, for a given number of pages.
-pub fn bootloader_lower_bound(num_pages: usize) -> usize {
-    let constant_overhead = 1 + // jump to bootloader
-        2 + // load number of pages
-        8 + // load mem hash
-        1 + // page idx = 0
-        1 + // jump if no pages
-        8 + // assert final merkle root
-        REGISTER_MEMORY_NAMES.len() + // load memory regs
-        REGISTER_NAMES.len() * 2 +  // load asm regs
-        1; // jump_to_bootloader input
-
-    let cost_per_page = 3 + // load page number and check != 0
-        24 + // zero out scratch space
-        1 + // set page offset
-        WORDS_PER_PAGE * 4 + WORDS_PER_PAGE/4 + // load page data and poseidon hash
-        1 + // set x9=0 (validation phase)
-     // VALIDATION PHASE
-        N_LEAVES_LOG * ( // ith bit == 0
-            17 + // 8 load_input + mstore and 1 jump
-            4 // set x4 + if + poseidon call
-        ) +
-        // N_LEAVES_LOG * (
-        //     32 + // ith bit == 1
-        //     4 // set x4 + if + poseidon call
-        // ) +
-        1 + // branch_if_diff_nonzero
-        16 + // assert root
-        1 + // jump
-        1 + // set phase to update
-        16 + // load claimed updated page
-        1 + // jump
-    // UPDATE PHASE
-        N_LEAVES_LOG * ( // ith bit == 0
-            17 + // 8 load_input + mstore and 1 jump
-            4 // set x4 + if + poseidon call
-        ) +
-        // N_LEAVES_LOG * (
-        //     32 + // ith bit == 1
-        //     4 // set x4 + if + poseidon call
-        // ) +
-        1 + // branch_if_diff_nonzero
-        8 + // mload
-        1 + // affine
-        1; // jump
-
-    constant_overhead + num_pages * cost_per_page
-}
-
 pub fn bootloader_exact(accessed_pages: &BTreeSet<u32>) -> usize {
-    let constant_overhead = 1 + // jump to bootloader
+    let constant_overhead = 1 + // jump bootloader_init
         2 + // load number of pages
-        8 + // load mem hash
+        8 + // init memory hash
         1 + // page idx = 0
-        1 + // jump if no pages
+        1 + // branch_if_diff_equal if no pages
         8 + // assert final merkle root
         REGISTER_MEMORY_NAMES.len() + // load memory regs
         REGISTER_NAMES.len() * 2 +  // load asm regs
-        1; // jump_to_bootloader input
+        1; // jump_to_bootloader_input
 
     let cost_per_page_fixed = 3 + // load page number and check != 0
         24 + // zero out scratch space
         1 + // set page offset
-        WORDS_PER_PAGE * 4 + WORDS_PER_PAGE/4 + // load page data and poseidon hash
+        WORDS_PER_PAGE * 4 + WORDS_PER_PAGE/4 + // load page data + poseidon hash every 4 words
         1 + // set x9=0 (validation phase)
-     // VALIDATION PHASE
+    // VALIDATION PHASE
         1 + // branch_if_diff_nonzero
         16 + // assert root
         1 + // jump
@@ -111,21 +62,22 @@ pub fn bootloader_exact(accessed_pages: &BTreeSet<u32>) -> usize {
         1 + // jump
     // UPDATE PHASE
         1 + // branch_if_diff_nonzero
-        8 + // mload
+        8 + // mloads
         1 + // affine
         1; // jump
 
-    let cost_ith_zero = 17 + // 8 load_input + mstore and 1 jump
-            3; // set x4 + if + poseidon call
-    let cost_ith_one = 32 + 3; // set x4 + if + poseidon call
+    let cost_ith_bit_zero = 17 + // 8 load_bootloader_input/mstore + 1 jump
+        3; // set x4 + if + poseidon call
+    let cost_ith_bit_one = 32 + // 8 mload/mstore + 8 load_bootloader_input/mstore
+        3; // set x4 + if + poseidon call
 
     let mut cost = constant_overhead + accessed_pages.len() * cost_per_page_fixed;
     for page in accessed_pages {
         for i in 0..N_LEAVES_LOG {
             if page & (1 << i) == 0 {
-                cost += cost_ith_zero * 2; // times 2 because there are 2 phases
+                cost += cost_ith_bit_zero * 2; // times 2 because there are 2 phases
             } else {
-                cost += cost_ith_one * 2;
+                cost += cost_ith_bit_one * 2;
             }
         }
     }
