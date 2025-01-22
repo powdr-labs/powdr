@@ -22,7 +22,7 @@ use memory_merkle_tree::MerkleTree;
 use rand::Rng;
 
 use crate::continuations::bootloader::{
-    bootloader_exact, default_register_values, BOOTLOADER_INPUTS_PER_PAGE, DEFAULT_PC,
+    bootloader_size, default_register_values, BOOTLOADER_INPUTS_PER_PAGE, DEFAULT_PC,
     MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET, WORDS_PER_PAGE,
 };
 
@@ -432,7 +432,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             }
             accessed_addresses.insert(access.address);
             if accessed_pages.insert(access.address >> PAGE_SIZE_BYTES_LOG) {
-                bootloader_rows = bootloader_exact(&accessed_pages);
+                bootloader_rows = bootloader_size(&accessed_pages);
                 // if we need to add a memory page and there's no more space, panic
                 if bootloader_rows >= length {
                     panic!("Could not fit all needed pages in the chunk (bootloader would need {bootloader_rows} rows). Try increasing the chunk size.");
@@ -493,6 +493,12 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             .find(|(_, &pc)| pc == bootloader_pc)
             .unwrap();
 
+        assert_eq!(
+            start,
+            bootloader_size(&accessed_pages),
+            "estimation of number of rows used by the bootloader was incorrect"
+        );
+
         log::info!("Bootloader used {} rows.", start);
         log::info!(
             "  => {} / {} ({}%) of rows are used for the actual computation!",
@@ -506,12 +512,6 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             accessed_addresses.len(),
             accessed_pages.len(),
             accessed_pages
-        );
-
-        let bootloader_rows = bootloader_exact(&accessed_pages);
-        log::info!(
-            "Estimating the bootloader to use exactly {} rows.",
-            bootloader_rows,
         );
 
         log::info!("Bootloader inputs length: {}", bootloader_inputs.len());

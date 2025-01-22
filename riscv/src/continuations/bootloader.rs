@@ -37,7 +37,8 @@ pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 // Ensure we have enough addresses for the scratch space.
 const_assert!(PAGE_SIZE_BYTES > 384);
 
-pub fn bootloader_exact(accessed_pages: &BTreeSet<u32>) -> usize {
+/// Computes the size of the bootloader given the number of input pages.
+pub fn bootloader_size(accessed_pages: &BTreeSet<u32>) -> usize {
     let constant_overhead = 1 + // jump bootloader_init
         2 + // load number of pages
         8 + // init memory hash
