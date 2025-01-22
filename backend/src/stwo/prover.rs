@@ -16,7 +16,7 @@ use alloc::collections::{btree_map::BTreeMap, btree_set::BTreeSet};
 use std::iter::repeat;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use std::{fmt, io};
+use std::{clone, fmt, io};
 
 use crate::stwo::circuit_builder::{
     gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
@@ -250,8 +250,8 @@ where
             })
             .collect();
 
-        //Generate witness for stage 0
-        //TODO: witness generation for stage 0 is computed several times, need to be optimized
+        //Generate witness for stage 0, combined with building constant columns in circle domain
+        let mut constant_cols = Vec::new();
         let mut witness_by_machine = self
             .split
             .iter()
@@ -259,28 +259,6 @@ where
                 let witness_columns = machine_witness_columns(witness, pil, machine);
                 if witness_columns[0].1.is_empty() {
                     // Empty machines can be removed entirely.
-                    None
-                } else {
-                    Some((
-                        machine.clone(),
-                        machine_witness_columns(witness, pil, machine),
-                    ))
-                }
-            })
-            .collect::<BTreeMap<_, _>>();
-
-        let mut constant_cols = Vec::new();
-
-        //get constant and witness columns in circle domain for stage 0
-        let witness_cols_circle_domain_eval: ColumnVec<
-            CircleEvaluation<B, BaseField, BitReversedOrder>,
-        > = self
-            .split
-            .iter()
-            .filter_map(|(machine, pil)| {
-                let witness_columns = machine_witness_columns(witness, pil, machine);
-                if witness_columns[0].1.is_empty() {
-                    //TODO: Empty machines can be removed entirely, but in verification it is not removed, need to be handled
                     None
                 } else {
                     let witness_by_machine = machine_witness_columns(witness, pil, machine);
@@ -306,50 +284,61 @@ where
                     {
                         constant_cols.extend(constant_trace)
                     }
-
-                    Some(
-                        witness_by_machine
-                            .into_iter()
-                            .map(|(_name, vec)| {
-                                gen_stwo_circle_column::<F, B, M31>(
-                                    *domain_map
-                                        .get(&(machine_length.ilog2() as usize))
-                                        .expect("Domain not found for given size"),
-                                    &vec,
-                                )
-                            })
-                            .collect::<Vec<_>>(),
-                    )
+                    Some((machine.clone(), witness_by_machine))
                 }
             })
-            .flatten()
+            .collect::<BTreeMap<_, _>>();
+
+        //Get witness columns in circle domain for stage 0
+        let mut witness_col_circle_domain_index = BTreeMap::new();
+        let mut index_acc = 0;
+        let witness_cols_circle_domain_eval_stage0: ColumnVec<
+            CircleEvaluation<B, BaseField, BitReversedOrder>,
+        > = witness_by_machine
+            .clone()
+            .into_iter()
+            .flat_map(|(_name, witness_cols)| {
+                let witness_cols_in_circle_domain = witness_cols
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, (name, vec))| {
+                        witness_col_circle_domain_index.insert(name.clone(), index + index_acc);
+                        gen_stwo_circle_column::<F, B, M31>(
+                            *domain_map
+                                .get(&(vec.len().ilog2() as usize))
+                                .expect("Domain not found for given size"),
+                            &vec,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+
+                index_acc += witness_cols_in_circle_domain.len();
+
+                witness_cols_in_circle_domain
+            })
             .collect();
+
         //TODO: commit witness and constant columns of stage 0 to get sound challenges for stage 1. This is not implemented yet
-        //To commit, stwo needs traces already evaluated in circle domain, so witness_cols_circle_domain_eval and constant_cols should be available til this point
+        //To commit, stwo needs witness and constant columns already evaluated in circle domain, so witness_cols_circle_domain_eval_stage0 and constant_cols should be available til this point
 
         //Get challenges for stage 1, based on stage 0 traces
+        //Stwo supports maximum 2 stages, challenges are only created for stage 0
         let identities = self.analyzed.identities.clone();
-        let mut challenges_by_stage = vec![BTreeSet::new(); self.analyzed.stage_count()];
+        let mut challenges_stage0 = BTreeSet::new();
         for identity in &identities {
             identity.pre_visit_expressions(&mut |expr| {
                 if let AlgebraicExpression::Challenge(challenge) = expr {
-                    challenges_by_stage[challenge.stage as usize].insert(challenge.id);
+                    challenges_stage0.insert(challenge.id);
                 }
             });
         }
-
-        // convert the set to a vector
-        let challenges_by_stage: Vec<Vec<u64>> = challenges_by_stage
-            .into_iter()
-            .map(|set| set.into_iter().collect())
-            .collect();
 
         let challenge_channel = &mut <MC as MerkleChannel>::C::default();
         let challenge_single_value = challenge_channel.draw_random_bytes();
 
         //challenge_single_value is a vector more than 4  bytes, we know F is mersenne31, it needs 4 bytes to transfer to u32 and then to F\
         //can just make F to be fixed, Mersene31?
-        let stage0_challenges = challenges_by_stage[0]
+        let stage0_challenges = challenges_stage0
             .iter()
             .map(|&index| {
                 (
@@ -359,8 +348,9 @@ where
             })
             .collect::<BTreeMap<_, _>>();
 
+        //build witness columns for stage 1
         let mut machine_log_sizes = BTreeMap::new();
-        witness_by_machine = witness_by_machine
+        let witness_by_machine_stage1: BTreeMap<String, Vec<(String, Vec<F>)>> = witness_by_machine
             .iter()
             .map(|(machine_name, machine_witness)| {
                 let new_witness = witgen_callback.next_stage_witness(
@@ -376,16 +366,21 @@ where
 
         let witness_cols_circle_domain_eval_stage1: ColumnVec<
             CircleEvaluation<B, BaseField, BitReversedOrder>,
-        > = witness_by_machine
+        > = witness_by_machine_stage1
             .into_iter()
-            .flat_map(|(_name, witness_cols)| {
-                witness_cols.into_iter().map(|(_name, vec)| {
-                    gen_stwo_circle_column::<F, B, M31>(
-                        *domain_map
-                            .get(&(vec.len().ilog2() as usize))
-                            .expect("Domain not found for given size"),
-                        &vec,
-                    )
+            .flat_map(|(_machine_name, witness_cols)| {
+                witness_cols.into_iter().map(|(witness_name, vec)| {
+                    //no need to transfer the witness columns to circle domain if it is already calculated in stage 0
+                    if let Some(index) = witness_col_circle_domain_index.get(&witness_name) {
+                        witness_cols_circle_domain_eval_stage0[*index].clone()
+                    } else {
+                        gen_stwo_circle_column::<F, B, M31>(
+                            *domain_map
+                                .get(&(vec.len().ilog2() as usize))
+                                .expect("Domain not found for given size"),
+                            &vec,
+                        )
+                    }
                 })
             })
             .collect::<Vec<_>>();
@@ -438,14 +433,12 @@ where
             },
         );
 
-        println!("commitments done");
         let mut components_slice: Vec<&dyn ComponentProver<B>> = components
             .iter_mut()
             .map(|component| component as &dyn ComponentProver<B>)
             .collect();
 
         let components_slice = components_slice.as_mut_slice();
-        println!("start proving");
 
         let proof_result = stwo_prover::core::prover::prove::<B, MC>(
             components_slice,
@@ -493,29 +486,21 @@ where
         //TODO: implement this part
         //Get challenges for stage 1, based on stage 0 traces
         let identities = self.analyzed.identities.clone();
-        let mut challenges_by_stage = vec![BTreeSet::new(); self.analyzed.stage_count()];
+        let mut challenges_stage0 = BTreeSet::new();
         for identity in &identities {
             identity.pre_visit_expressions(&mut |expr| {
                 if let AlgebraicExpression::Challenge(challenge) = expr {
-                    challenges_by_stage[challenge.stage as usize].insert(challenge.id);
+                    challenges_stage0.insert(challenge.id);
                 }
             });
         }
 
-        // convert the set to a vector
-        let challenges_by_stage: Vec<Vec<u64>> = challenges_by_stage
-            .into_iter()
-            .map(|set| set.into_iter().collect())
-            .collect();
-        println!("challenge by stage is {:?}", challenges_by_stage);
-
         let challenge_channel = &mut <MC as MerkleChannel>::C::default();
         let challenge_single_value = challenge_channel.draw_random_bytes();
-        println!("challenge_single_vale is {:?}", challenge_single_value);
 
         //challenge_single_value is a vector more than 4  bytes, we know F is mersenne31, it needs 4 bytes to transfer to u32 and then to F\
         //can just make F to be fixed, Mersene31?
-        let stage0_challenges = challenges_by_stage[0]
+        let stage0_challenges = challenges_stage0
             .iter()
             .map(|&index| {
                 (
@@ -524,7 +509,6 @@ where
                 )
             })
             .collect::<BTreeMap<_, _>>();
-        println!("stage0_challenges after draw: {:?}", stage0_challenges);
 
         let mut components = self
             .split
@@ -534,7 +518,6 @@ where
                 |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
                     assert_eq!(machine_name, proof_machine_name);
 
-                    println!("start building component for machine: {}", machine_name);
                     let machine_component = PowdrComponent::new(
                         tree_span_provider,
                         PowdrEval::new::<MC>(
@@ -546,8 +529,6 @@ where
                         (SecureField::zero(), None),
                     );
 
-                    println!("machine name: {}, its component is done", machine_name);
-
                     constant_cols_offset_acc += pil.constant_count();
 
                     constant_cols_offset_acc += get_constant_with_next_list(pil).len();
@@ -558,23 +539,16 @@ where
                     );
                     witness_col_log_sizes
                         .extend(repeat(machine_log_size).take(pil.commitment_count()));
-                    println!(
-                        "constant_cols_offset_acc: {}, updated",
-                        constant_cols_offset_acc
-                    );
+
                     machine_component
                 },
             )
             .collect::<Vec<_>>();
 
-        println!("components created");
-
         let mut components_slice: Vec<&dyn Component> = components
             .iter_mut()
             .map(|component| component as &dyn Component)
             .collect();
-
-        println!("components_slice created");
 
         let components_slice = components_slice.as_mut_slice();
 
