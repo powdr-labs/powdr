@@ -288,13 +288,22 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         row_offset: i32,
     ) -> ProcessResult<T, Variable> {
         // We need to know the selector.
-        if self
+        let Some(selector) = self
             .evaluate(selector, row_offset)
-            .and_then(|s| s.try_to_known().map(|k| k.is_known_one()))
-            != Some(true)
-        {
+            .and_then(|s| s.try_to_known().map(|k| k.try_to_number()))
+            .flatten()
+        else {
             return ProcessResult::empty();
+        };
+        if selector == 0.into() {
+            return ProcessResult {
+                effects: vec![],
+                complete: true,
+            };
+        } else {
+            assert_eq!(selector, 1.into(), "Selector is non-binary");
         }
+
         let evaluated = arguments
             .iter()
             .map(|a| self.evaluate(a, row_offset))

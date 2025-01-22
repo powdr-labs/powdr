@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
-use itertools::Itertools;
 use num_traits::One;
-use powdr_ast::analyzed::PolynomialType;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, PolyID, PolynomialType,
+};
 
 use powdr_number::{DegreeType, FieldElement};
 
@@ -12,7 +12,8 @@ use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 use crate::Identity;
 
-use super::machines::{Connection, LookupCell, MachineParts};
+use super::machines::{Connection, MachineParts};
+use super::FixedData;
 use super::{
     affine_expression::AffineExpression,
     data_structures::{
@@ -23,7 +24,6 @@ use super::{
     rows::{Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
     Constraints, EvalError, EvalValue, IncompleteCause, QueryCallback,
 };
-use super::{EvalResult, FixedData};
 
 pub type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
 
@@ -80,51 +80,6 @@ impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
 
     pub fn is_complete(&self) -> bool {
         self.left.iter().all(|l| l.is_constant())
-    }
-
-    /// Helper functon to convert an `OuterQuery` into a list of `LookupCell`s
-    /// to be used by `Machine::process_lookup_direct`.
-    pub fn prepare_for_direct_lookup<'c>(
-        &self,
-        input_output_data: &'c mut [T],
-    ) -> Vec<LookupCell<'c, T>> {
-        self.left
-            .iter()
-            .zip_eq(input_output_data.iter_mut())
-            .map(|(l, d)| {
-                if let Some(value) = l.constant_value() {
-                    *d = value;
-                    LookupCell::Input(d)
-                } else {
-                    LookupCell::Output(d)
-                }
-            })
-            .collect::<Vec<_>>()
-    }
-
-    /// Helper function to turn the result of a direct lookup into an `EvalResult`,
-    /// as used by `Machine::process_plookup`.
-    ///
-    /// Note that this function assumes that the lookup was successful and complete.
-    pub fn direct_lookup_to_eval_result(&self, input_output_data: Vec<T>) -> EvalResult<'a, T> {
-        let mut result = EvalValue::complete(vec![]);
-        for (l, v) in self.left.iter().zip(input_output_data) {
-            if !l.is_constant() {
-                let evaluated = l.clone() - v.into();
-                match evaluated.solve() {
-                    Ok(constraints) => {
-                        result.combine(constraints);
-                    }
-                    Err(_) => {
-                        // Fail the whole lookup
-                        return Err(EvalError::ConstraintUnsatisfiable(format!(
-                            "Constraint is invalid ({l} != {v}).",
-                        )));
-                    }
-                }
-            }
-        }
-        Ok(result)
     }
 }
 

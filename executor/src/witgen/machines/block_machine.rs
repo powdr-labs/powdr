@@ -9,6 +9,7 @@ use super::{
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::analysis::detect_connection_type_and_block_size;
 use crate::witgen::block_processor::BlockProcessor;
+use crate::witgen::data_structures::caller_data::CallerData;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::jit::function_cache::FunctionCache;
@@ -468,8 +469,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identity_id: u64,
         outer_query: OuterQuery<'a, 'b, T>,
     ) -> EvalResult<'a, T> {
-        let mut input_output_data = vec![T::zero(); outer_query.left.len()];
-        let values = outer_query.prepare_for_direct_lookup(&mut input_output_data);
+        let mut values = CallerData::from(&outer_query);
 
         assert!(
             (self.rows() + self.block_size as DegreeType) <= self.degree,
@@ -478,14 +478,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         self.data.finalize_all();
         let data = self.data.append_new_finalized_rows(self.block_size);
 
-        let success =
-            self.function_cache
-                .process_lookup_direct(mutable_state, identity_id, values, data)?;
+        let success = self.function_cache.process_lookup_direct(
+            mutable_state,
+            identity_id,
+            &mut values.as_lookup_cells(),
+            data,
+        )?;
         assert!(success);
 
-        Ok(outer_query
-            .direct_lookup_to_eval_result(input_output_data)?
-            .report_side_effect())
+        values.into()
     }
 
     fn process<'b, Q: QueryCallback<T>>(

@@ -148,7 +148,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         &self,
         mutable_state: &MutableState<'a, T, Q>,
         connection_id: u64,
-        mut values: Vec<LookupCell<'c, T>>,
+        values: &mut [LookupCell<'c, T>],
         data: CompactDataRef<'d, T>,
     ) -> Result<bool, EvalError<T>> {
         let known_args = values
@@ -167,7 +167,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .expect("Need to call compile_cached() first!")
             .as_ref()
             .expect("compile_cached() returned false!");
-        f.call(mutable_state, &mut values, data);
+        f.call(mutable_state, values, data);
 
         Ok(true)
     }
