@@ -209,8 +209,8 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 .right
                 .expressions
                 .iter()
-                // For native lookups, we do remove constants, but this
-                // might not be the case for bus interactions.
+                // For native lookups, we do remove constants in the PIL
+                // optimizer, but this might not be the case for bus interactions.
                 .all(|e| PolyRefOrConstant::try_from(e).is_ok())
             && !connection.right.expressions.is_empty()
     }
