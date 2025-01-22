@@ -438,7 +438,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                 bootloader_rows = bootloader_exact(&accessed_pages);
                 // if we need to add a memory page and there's no more space, panic
                 if bootloader_rows >= length {
-                    panic!("Could not fit all needed pages in the chunk (bootloader would need {} rows). Can't run the program with continuations until the shutdown routine is supported.", bootloader_rows);
+                    panic!("Could not fit all needed pages in the chunk (bootloader would need {bootloader_rows} rows). Try increasing the chunk size.");
                 }
                 if has_all_needed_pages(
                     &full_exec,
