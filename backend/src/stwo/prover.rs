@@ -322,11 +322,12 @@ where
             })
             .collect();
 
-        //TODO: commit witness and constant columns of stage 0 to get sound challenges for stage 1. This is not implemented yet
-        //To commit, stwo needs witness and constant columns already evaluated in circle domain, so witness_cols_circle_domain_eval_stage0 and constant_cols should be available til this point
+        // TODO: Commit witness and constant columns of stage 0 to generate sound challenges for stage 1. This is not implemented yet.
+        // To commit, Stwo requires the witness and constant columns to be already evaluated in the circle domain,
+        // so `witness_cols_circle_domain_eval` and `constant_cols` should be available at this point.
 
-        //Get challenges for stage 1, based on stage 0 traces
-        //Stwo supports maximum 2 stages, challenges are only created for stage 0
+        // Generate challenges for stage 1 based on stage 0 traces.
+        // Stwo supports a maximum of 2 stages, and challenges are created only for stage 0.
         let identities = self.analyzed.identities.clone();
         let mut challenges_stage0 = BTreeSet::new();
         for identity in &identities {
@@ -544,7 +545,6 @@ where
                     );
                     witness_col_log_sizes
                         .extend(repeat(machine_log_size).take(pil.commitment_count()));
-
                     machine_component
                 },
             )
