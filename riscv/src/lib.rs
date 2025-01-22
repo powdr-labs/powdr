@@ -367,7 +367,7 @@ fn build_cargo_command(
 
     let mut args: Vec<&OsStr> = as_ref![
         OsStr;
-        "+nightly-2024-12-17",
+        "+nightly-2024-09-21",
         "build",
         "--release",
         "--target-dir",
