@@ -396,7 +396,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         let bus_receives = identities
             .iter()
             .filter_map(|identity| match identity {
-                Identity::BusReceive(id) => Some((id.interaction_id(), id.clone())),
+                Identity::BusReceive(id) => Some((id.interaction_id, id.clone())),
                 _ => None,
             })
             .collect();

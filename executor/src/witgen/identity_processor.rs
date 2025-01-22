@@ -38,8 +38,8 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
         let result = match identity {
             Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
             Identity::BusSend(bus_interaction) => self.process_lookup_or_permutation(
-                bus_interaction.0.id,
-                &bus_interaction.0.selected_tuple,
+                bus_interaction.id,
+                &bus_interaction.selected_tuple,
                 rows,
             ),
             Identity::BusReceive(_) => Ok(EvalValue::complete(vec![])),

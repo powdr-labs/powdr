@@ -220,7 +220,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             .iter()
             .filter_map(|identity| match identity {
                 Identity::BusReceive(bus_receive) => {
-                    bus_receive.0.multiplicity.as_ref().and_then(|m| match m {
+                    bus_receive.multiplicity.as_ref().and_then(|m| match m {
                         Expression::Reference(reference) => Some(reference.poly_id),
                         _ => None,
                     })

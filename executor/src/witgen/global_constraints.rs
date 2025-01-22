@@ -256,9 +256,7 @@ fn propagate_constraints<T: FieldElement>(
             if !receive.is_unconstrained() {
                 return false;
             }
-            if !send.0.selected_tuple.selector.is_one()
-                || !receive.0.selected_tuple.selector.is_one()
-            {
+            if !send.selected_tuple.selector.is_one() || !receive.selected_tuple.selector.is_one() {
                 return false;
             }
 
@@ -266,11 +264,10 @@ fn propagate_constraints<T: FieldElement>(
             // transfer constraints from the right to the left side.
             // A special case of this would be [ x ] in [ RANGE ], where RANGE is in the full span.
             for (left, right) in send
-                .0
                 .selected_tuple
                 .expressions
                 .iter()
-                .zip(receive.0.selected_tuple.expressions.iter())
+                .zip(receive.selected_tuple.expressions.iter())
             {
                 if let (Some(left), Some(right)) =
                     (try_to_simple_poly(left), try_to_simple_poly(right))
@@ -284,13 +281,13 @@ fn propagate_constraints<T: FieldElement>(
             // Detect [ x ] in [ RANGE ], where RANGE is in the full span.
             // In that case, we can remove the lookup, because its only function is to enforce
             // the range constraint.
-            if receive.0.selected_tuple.expressions.len() == 1 {
+            if receive.selected_tuple.expressions.len() == 1 {
                 if let (Some(_), Some(right_ref)) = (
                     // The range constraint has been transferred from right to left
                     // by the above code iff. both expressions can be converted to
                     // simple polynomials.
-                    try_to_simple_poly(&send.0.selected_tuple.expressions[0]),
-                    try_to_simple_poly(&receive.0.selected_tuple.expressions[0]),
+                    try_to_simple_poly(&send.selected_tuple.expressions[0]),
+                    try_to_simple_poly(&receive.selected_tuple.expressions[0]),
                 ) {
                     if full_span.contains(&right_ref.poly_id) {
                         return true;
@@ -478,7 +475,7 @@ mod test {
         let bus_receives = identities
             .iter()
             .filter_map(|identity| match identity {
-                Identity::BusReceive(id) => Some((id.interaction_id(), id.clone())),
+                Identity::BusReceive(id) => Some((id.interaction_id, id.clone())),
                 _ => None,
             })
             .collect();

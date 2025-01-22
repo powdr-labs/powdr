@@ -605,7 +605,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             // An exception to this is when the call is always active (e.g. the PC lookup).
             // In that case, we know that the call has been active before with the
             // same input / output pair, so we can be sure that it will succeed.
-            let selector = &bus_interaction.0.selected_tuple.selector;
+            let selector = &bus_interaction.selected_tuple.selector;
             if selector != &Expression::one() {
                 let selector_value = row_pair
                     .evaluate(selector)

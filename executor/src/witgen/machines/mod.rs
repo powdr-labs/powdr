@@ -362,7 +362,6 @@ impl<'a, T: FieldElement> Connection<'a, T> {
                     .expect("No matching receive!");
                 let multiplicity_column = if receive.is_unconstrained() {
                     receive
-                        .0
                         .multiplicity
                         .as_ref()
                         .and_then(|multiplicity| match multiplicity {
@@ -375,9 +374,9 @@ impl<'a, T: FieldElement> Connection<'a, T> {
                     None
                 };
                 Some(Connection {
-                    id: send.0.id,
-                    left: &send.0.selected_tuple,
-                    right: &receive.0.selected_tuple,
+                    id: send.id,
+                    left: &send.selected_tuple,
+                    right: &receive.selected_tuple,
                     kind: if receive.is_unconstrained() {
                         ConnectionKind::Lookup
                     } else {
