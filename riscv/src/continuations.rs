@@ -22,7 +22,7 @@ use memory_merkle_tree::MerkleTree;
 use rand::Rng;
 
 use crate::continuations::bootloader::{
-    default_register_values, shutdown_routine_upper_bound, BOOTLOADER_INPUTS_PER_PAGE, DEFAULT_PC,
+    bootloader_size, default_register_values, BOOTLOADER_INPUTS_PER_PAGE, DEFAULT_PC,
     MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET, WORDS_PER_PAGE,
 };
 
@@ -285,6 +285,48 @@ pub struct DryRunResult<F: FieldElement> {
     pub trace_len: usize,
 }
 
+fn find_chunk_first_memory_access<F: FieldElement>(
+    full_exec: &powdr_riscv_executor::Execution<F>,
+    chunk_start_row: usize,
+) -> usize {
+    let mut start_idx = full_exec
+        .memory_accesses
+        .binary_search_by_key(&chunk_start_row, |a| a.row)
+        .unwrap_or_else(|v| v);
+    // We may have multiple memory accesses in the same row and binary
+    // search may return any match in case of multiple: ensure idx points to
+    // first match
+    while start_idx > 0 && full_exec.memory_accesses[start_idx - 1].row == chunk_start_row {
+        start_idx -= 1;
+    }
+    start_idx
+}
+
+/// Check that all memory accesses in the given execution chunk are present in the pages loaded in by the bootloader.
+fn has_all_needed_pages<F: FieldElement>(
+    // all memory accesses in the full trace
+    full_exec: &powdr_riscv_executor::Execution<F>,
+    // pages given to the bootloader
+    bootloader_pages: &BTreeSet<u32>,
+    // first row executed in the chunk
+    chunk_start_row: usize,
+    // number of rows estimated to run in the chunk
+    chunk_exec_len: usize,
+) -> bool {
+    let start_idx = find_chunk_first_memory_access(full_exec, chunk_start_row);
+
+    // check that every accessed page is present in the bootloader input
+    for access in &full_exec.memory_accesses[start_idx..] {
+        if access.row >= chunk_start_row + chunk_exec_len {
+            break;
+        }
+        if !bootloader_pages.contains(&(access.address >> PAGE_SIZE_BYTES_LOG)) {
+            return false;
+        }
+    }
+    true
+}
+
 /// Runs the entire execution using the RISC-V executor. For each chunk, it collects:
 /// - The inputs to the bootloader, needed to restore the correct state.
 /// - The number of rows after which the prover should jump to the shutdown routine.
@@ -365,43 +407,52 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         log::info!("\nRunning chunk {} for {} steps...", chunk_index, length);
 
         log::info!("Building bootloader inputs for chunk {}...", chunk_index);
+
+        let start_idx = find_chunk_first_memory_access(&full_exec, proven_trace);
+
+        // We need to find how many (and which) memory pages are used in the
+        // chunk. Also, since we don't have a shutdown routine, we can't stop the
+        // computation arbitrarily, so we must fit the bootloader and program
+        // rows to the exact size of the chunk.
+
+        // We do it roughly as follows:
+        // - for each memory access in the chunk:
+        //   - add the page, if not enough space for the bootloader: PANIC
+        //   - if the current pages fulfill the chunk: DONE else: continue
+
+        let mut bootloader_inputs;
+        let mut bootloader_rows = 0;
         let mut accessed_pages = BTreeSet::new();
         let mut accessed_addresses = BTreeSet::new();
 
-        let mut start_idx = full_exec
-            .memory_accesses
-            .binary_search_by_key(&proven_trace, |a| a.row)
-            .unwrap_or_else(|v| v);
-        // We may have multiple memory accesses in the same row and binary
-        // search may return any match in case of multiple: ensure idx points to
-        // first match
-        while start_idx > 0 && full_exec.memory_accesses[start_idx - 1].row == proven_trace {
-            start_idx -= 1;
-        }
-
         for access in &full_exec.memory_accesses[start_idx..] {
-            // proven_trace + length is an upper bound for the last row index we'll reach in the next chunk.
-            // In practice, we'll stop earlier, because the bootloader & shutdown routine need to run as well,
-            // but we don't know for how long as that depends on the number of pages.
-            if access.row >= proven_trace + length {
+            if access.row >= proven_trace + length - bootloader_rows {
+                // no more memory accesses in the chunk
                 break;
             }
             accessed_addresses.insert(access.address);
-            accessed_pages.insert(access.address >> PAGE_SIZE_BYTES_LOG);
+            if accessed_pages.insert(access.address >> PAGE_SIZE_BYTES_LOG) {
+                bootloader_rows = bootloader_size(&accessed_pages);
+                // if we need to add a memory page and there's no more space, panic
+                if bootloader_rows >= length {
+                    panic!("Could not fit all needed pages in the chunk (bootloader would need {bootloader_rows} rows). Try increasing the chunk size.");
+                }
+                if has_all_needed_pages(
+                    &full_exec,
+                    &accessed_pages,
+                    proven_trace,
+                    length - bootloader_rows,
+                ) {
+                    break;
+                }
+            }
         }
-        log::info!(
-            "{} unique memory accesses over {} accessed pages: {:?}",
-            accessed_addresses.len(),
-            accessed_pages.len(),
-            accessed_pages
-        );
 
-        let shutdown_routine_rows = shutdown_routine_upper_bound(accessed_pages.len());
         log::info!(
-            "Estimating the shutdown routine to use {} rows.",
-            shutdown_routine_rows
+            "Chunk start row: {}  chunk end row: {}",
+            proven_trace,
+            proven_trace + length - bootloader_rows,
         );
-        let num_rows = length - shutdown_routine_rows;
 
         // Build the bootloader inputs for the current chunk.
         // Note that while we do know the accessed pages, we don't yet know the hashes
@@ -413,20 +464,13 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         // - The updated page hashes are equal to the current page hashes.
         // - The updated root hash is equal to the current root hash.
         // After simulating the chunk execution, we'll replace those values with the actual values.
-        let mut bootloader_inputs = bootloader::create_input(
-            register_values,
+        bootloader_inputs = bootloader::create_input(
+            register_values.clone(),
             &merkle_tree,
             accessed_pages.iter().cloned(),
         );
 
-        log::info!("Bootloader inputs length: {}", bootloader_inputs.len());
-        log::info!(
-            "Initial memory root hash: {}",
-            render_memory_hash(
-                &bootloader_inputs[MEMORY_HASH_START_INDEX..MEMORY_HASH_START_INDEX + 8]
-            )
-        );
-
+        // execute the chunk
         log::info!("Simulating chunk execution...");
         let chunk_exec = powdr_riscv_executor::execute_with_trace::<F>(
             &asm,
@@ -435,10 +479,42 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             MemoryState::new(),
             pipeline.data_callback().unwrap(),
             &bootloader_inputs,
-            Some(num_rows),
+            Some(length),
             // profiling was done when full trace was generated
             None,
         );
+
+        // if we find the PC, we know there was actual computation in the chunk
+        let bootloader_pc = bootloader_inputs[PC_INDEX];
+        log::info!("Looking for pc = {}...", bootloader_pc);
+        let (start, _) = chunk_exec.trace["main::pc"]
+            .iter()
+            .enumerate()
+            .find(|(_, &pc)| pc == bootloader_pc)
+            .unwrap();
+
+        assert_eq!(
+            start,
+            bootloader_size(&accessed_pages),
+            "estimation of number of rows used by the bootloader was incorrect"
+        );
+
+        log::info!("Bootloader used {} rows.", start);
+        log::info!(
+            "  => {} / {} ({}%) of rows are used for the actual computation!",
+            length - start,
+            length,
+            (length - start) * 100 / length
+        );
+
+        log::info!(
+            "{} unique memory accesses over {} accessed pages: {:?}",
+            accessed_addresses.len(),
+            accessed_pages.len(),
+            accessed_pages
+        );
+
+        log::info!("Bootloader inputs length: {}", bootloader_inputs.len());
 
         let mut memory_updates_by_page =
             merkle_tree.organize_updates_by_page(chunk_exec.memory.into_iter());
@@ -539,24 +615,21 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         );
 
         let actual_num_rows = chunk_exec.trace_len;
-        let bootloader_pc = bootloader_inputs[PC_INDEX];
         bootloader_inputs_and_num_rows.push((bootloader_inputs, actual_num_rows as u64));
+
+        let avg_rows_per_chunk = (proven_trace + length - start) / (chunk_index + 1);
+        let avg_computation_ratio = avg_rows_per_chunk * 100 / length;
 
         log::info!("Chunk trace length: {}", chunk_exec.trace_len);
         log::info!("Validating chunk...");
-        log::info!("Looking for pc = {}...", bootloader_pc);
-        let (start, _) = chunk_exec.trace["main::pc"]
-            .iter()
-            .enumerate()
-            .find(|(_, &pc)| pc == bootloader_pc)
-            .unwrap();
         log::info!("Bootloader used {} rows.", start);
         log::info!(
             "  => {} / {} ({}%) of rows are used for the actual computation!",
-            length - start - shutdown_routine_rows,
+            length - start,
             length,
-            (length - start - shutdown_routine_rows) * 100 / length
+            (length - start) * 100 / length
         );
+        log::info!("  => Average computation ratio: {}%", avg_computation_ratio);
         for i in 0..(chunk_exec.trace_len - start) {
             for &reg in ["main::pc", "main::query_arg_1", "main::query_arg_2"].iter() {
                 let chunk_i = i + start;
@@ -582,16 +655,23 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             }
         }
 
-        if chunk_exec.trace_len < num_rows {
+        if chunk_exec.trace_len < length {
             log::info!("Done!");
             break;
         }
-        assert_eq!(chunk_exec.trace_len, num_rows);
+        assert_eq!(chunk_exec.trace_len, length);
 
         // Minus one, because the last row will have to be repeated in the next chunk.
-        let new_rows = num_rows - start - 1;
+        let new_rows = length - start - 1;
         proven_trace += new_rows;
         log::info!("Proved {} rows.", new_rows);
+
+        let remaining_rows = full_trace_length - proven_trace;
+        let remaining_chunks = (remaining_rows as f32 / avg_rows_per_chunk as f32).ceil() as usize;
+        log::info!(
+            "  => Estimating {} more chunks at the current ratio",
+            remaining_chunks
+        );
 
         chunk_index += 1;
     }
