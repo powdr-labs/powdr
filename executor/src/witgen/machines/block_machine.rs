@@ -199,7 +199,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 .process_lookup_direct(mutable_state, identity_id, values, data)?;
         assert!(success);
         self.block_count_jit += 1;
-        return Ok(true);
+        Ok(true)
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
