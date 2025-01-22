@@ -233,8 +233,8 @@ impl BusLinker {
                             object
                                 .call_selectors
                                 .as_ref()
-                                .expect("object accessed via permutation must have call selectors"),
-                        );
+                                .unwrap_or_else(|| panic!("{location} has incoming permutations but doesn't declare call_selectors")),
+                            );
                         let call_selector =
                             index_access(call_selector_array, Some(operation_index.into()));
                         let rhs_selector = latch * call_selector;

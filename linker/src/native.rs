@@ -130,7 +130,7 @@ impl LinkerBackend for NativeLinker {
                 namespaced_reference(to_namespace.clone(), to_machine.latch.clone().unwrap());
             let call_selector_array = namespaced_reference(
                 to_namespace.clone(),
-                to_machine.call_selectors.clone().unwrap(),
+                to_machine.call_selectors.clone().unwrap_or_else(|| panic!("{to_namespace} has incoming permutations but doesn't declare call_selectors")),
             );
             let call_selector = index_access(
                 call_selector_array,
