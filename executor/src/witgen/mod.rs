@@ -586,7 +586,7 @@ impl<'a, T: Copy> FixedColumn<'a, T> {
     }
 
     pub fn get_unique_size(&self) -> Result<usize, HasMultipleSizesError> {
-        Ok(self.values.get_uniquely_sized()?.len() as usize)
+        Ok(self.values.get_uniquely_sized()?.len())
     }
 
     pub fn values_max_size(&self) -> &[T] {

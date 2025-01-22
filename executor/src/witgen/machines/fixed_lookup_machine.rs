@@ -56,7 +56,10 @@ impl<T: Clone> TryFrom<&AlgebraicExpression<T>> for PolyRefOrConstant<T> {
     type Error = ();
     fn try_from(e: &AlgebraicExpression<T>) -> Result<Self, Self::Error> {
         try_to_simple_poly(e)
-            .map(|reference| Ok(PolyRefOrConstant::Poly(reference.poly_id)))
+            .and_then(|reference| {
+                (reference.poly_id.ptype == PolynomialType::Constant)
+                    .then_some(Ok(PolyRefOrConstant::Poly(reference.poly_id)))
+            })
             .unwrap_or_else(|| match e {
                 AlgebraicExpression::Number(c) => Ok(PolyRefOrConstant::Constant(c.clone())),
                 _ => Err(()),
@@ -109,7 +112,7 @@ fn create_index<T: FieldElement>(
         .iter()
         .filter_map(|p| match p {
             PolyRefOrConstant::Poly(poly_id) => {
-                Some(fixed_data.fixed_cols[&poly_id].get_unique_size().unwrap())
+                Some(fixed_data.fixed_cols[poly_id].get_unique_size().unwrap())
             }
             PolyRefOrConstant::Constant(_) => None,
         })
