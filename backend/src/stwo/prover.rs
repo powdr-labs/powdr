@@ -250,10 +250,6 @@ where
             })
             .collect();
 
-        let mut machine_log_sizes = BTreeMap::new();
-
-        let mut constant_cols = Vec::new();
-
         //Generate witness for stage 0
         //TODO: witness generation for stage 0 is computed several times, need to be optimized
         let mut witness_by_machine = self
@@ -272,7 +268,8 @@ where
                 }
             })
             .collect::<BTreeMap<_, _>>();
-        print!("witness_by_machine in stage 0: {:?}", witness_by_machine);
+
+        let mut constant_cols = Vec::new();
 
         //get constant and witness columns in circle domain for stage 0
         let witness_cols_circle_domain_eval: ColumnVec<
@@ -310,8 +307,6 @@ where
                         constant_cols.extend(constant_trace)
                     }
 
-                    machine_log_sizes.insert(machine.clone(), machine_length.ilog2());
-
                     Some(
                         witness_by_machine
                             .into_iter()
@@ -348,11 +343,9 @@ where
             .into_iter()
             .map(|set| set.into_iter().collect())
             .collect();
-        println!("challenge by stage is {:?}", challenges_by_stage);
 
         let challenge_channel = &mut <MC as MerkleChannel>::C::default();
         let challenge_single_value = challenge_channel.draw_random_bytes();
-        println!("challenge_single_vale is {:?}", challenge_single_value);
 
         //challenge_single_value is a vector more than 4  bytes, we know F is mersenne31, it needs 4 bytes to transfer to u32 and then to F\
         //can just make F to be fixed, Mersene31?
@@ -365,8 +358,8 @@ where
                 )
             })
             .collect::<BTreeMap<_, _>>();
-        println!("stage0_challenges after draw: {:?}", stage0_challenges);
 
+        let mut machine_log_sizes = BTreeMap::new();
         witness_by_machine = witness_by_machine
             .iter()
             .map(|(machine_name, machine_witness)| {
@@ -376,13 +369,10 @@ where
                     stage0_challenges.clone(),
                     1,
                 );
+                machine_log_sizes.insert(machine_name.clone(), new_witness[0].1.len().ilog2());
                 (machine_name.clone(), new_witness)
             })
             .collect();
-        println!(
-            "witness_by_machine with witgncall back: {:?}",
-            witness_by_machine
-        );
 
         let witness_cols_circle_domain_eval_stage1: ColumnVec<
             CircleEvaluation<B, BaseField, BitReversedOrder>,

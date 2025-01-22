@@ -143,7 +143,6 @@ impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
     }
 
     fn get_challenge(&self, challenge: &Challenge) -> F {
-        println!("challenge id is {:?}", &challenge.id);
         self.challenges[&challenge.id].clone().into()
     }
 }
@@ -171,7 +170,6 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                 )
             })
             .collect();
-        println!("witness_eval in evaluate function is {:?}", witness_eval);
 
         let constant_eval: BTreeMap<_, _> = self
             .constant_columns
@@ -219,14 +217,10 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                 E::F::from(v.to_integer().try_into_u32().unwrap().into())
             });
 
-        println!("evaluator created in evaluation function of PowdrEval");
-
         for id in &self.analyzed.identities {
             match id {
                 Identity::Polynomial(identity) => {
                     let expr = evaluator.evaluate(&identity.expression);
-                    println!("identity expression is {:?}", identity.expression);
-                    println!("expr is {:?}", expr);
                     eval.add_constraint(expr);
                 }
                 Identity::Connect(..) => {
@@ -243,7 +237,6 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                 | Identity::PhantomBusInteraction(..) => {}
             }
         }
-        println!("evaluation function of PowdrEval is done");
         eval
     }
 }
