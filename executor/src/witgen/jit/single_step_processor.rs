@@ -313,8 +313,8 @@ VM::instr_mul[1] = 1;"
 Main::is_arith $ [ Main::a, Main::b, Main::c ]
      ???              2       ???      ???    
                                               
-Main::is_arith     Main::a  Main::b  Main::c  
-     ???              2       ???      ???    
+Main::is_arith        2     Main::b  Main::c  
+     ???                      ???      ???    
                                           ";
                 assert!(
                     e.contains(expected),
