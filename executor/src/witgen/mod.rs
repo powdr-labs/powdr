@@ -308,6 +308,8 @@ where
 /// (i.e., a call to [WitnessGenerator::generate]).
 pub struct FixedData<'a, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
+    /// The identities to be processed, not including those that are fully
+    /// represented by the global range constraints (e.g. [X] in [BYTE]).
     identities: Vec<Identity<T>>,
     bus_receives: BTreeMap<T, BusReceive<T>>,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
