@@ -152,7 +152,7 @@ impl PILAnalyzer {
         for PILFile(file) in files {
             self.current_namespace = Default::default();
             for statement in file {
-                self.handle_statement(statement);
+                self.handle_statement(statement).map_err(|e| vec![e])?;
             }
         }
         Ok(())
@@ -472,7 +472,7 @@ impl PILAnalyzer {
         }
     }
 
-    fn handle_statement(&mut self, statement: PilStatement) {
+    fn handle_statement(&mut self, statement: PilStatement) -> Result<(), Error> {
         match statement {
             PilStatement::Include(_, _) => unreachable!(),
             PilStatement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
@@ -481,7 +481,7 @@ impl PILAnalyzer {
                 let mut counters = self.symbol_counters.take().unwrap();
                 let items =
                     StatementProcessor::new(self.driver(), &mut counters, self.polynomial_degree)
-                        .handle_statement(statement);
+                        .handle_statement(statement)?;
                 self.symbol_counters = Some(counters);
                 for item in items {
                     match item {
@@ -521,6 +521,8 @@ impl PILAnalyzer {
                 }
             }
         }
+
+        Ok(())
     }
 
     fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::NamespaceDegree>) {

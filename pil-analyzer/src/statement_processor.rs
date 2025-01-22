@@ -14,10 +14,10 @@ use powdr_ast::parsed::{
     PilStatement, PolynomialName, TraitDeclaration,
 };
 use powdr_ast::parsed::{
-    ArrayExpression, NamedExpression, StructDeclaration, SymbolCategory, TraitImplementation,
-    TypeDeclaration,
+    ArrayExpression, NamedExpression, SourceReference, StructDeclaration, SymbolCategory,
+    TraitImplementation, TypeDeclaration,
 };
-use powdr_parser_util::SourceRef;
+use powdr_parser_util::{Error, SourceRef};
 use std::str::FromStr;
 
 use powdr_ast::analyzed::{
@@ -121,7 +121,7 @@ where
         }
     }
 
-    pub fn handle_statement(&mut self, statement: PilStatement) -> Vec<PILItem> {
+    pub fn handle_statement(&mut self, statement: PilStatement) -> Result<Vec<PILItem>, Error> {
         match statement {
             PilStatement::Include(_, _) => {
                 panic!("Includes must be handled outside the statement processor.")
@@ -197,15 +197,16 @@ where
                 Some(FunctionDefinition::TraitDeclaration(trait_decl.clone())),
             ),
             PilStatement::TraitImplementation(_, trait_impl) => {
-                let trait_impl = self.process_trait_implementation(trait_impl);
-                vec![PILItem::TraitImplementation(trait_impl)]
+                let trait_impl = self.process_trait_implementation(trait_impl)?;
+                Ok(vec![PILItem::TraitImplementation(trait_impl)])
             }
-            PilStatement::Expression(_, expr) => vec![PILItem::ProofItem(
-                self.expression_processor(&Default::default())
-                    .process_expression(expr)
-                    // TODO propagate this error up
-                    .expect("Expression processing failed"),
-            )],
+            PilStatement::Expression(_, expr) => {
+                let new_expr = self
+                    .expression_processor(&Default::default())
+                    .process_expression(expr)?;
+
+                Ok(vec![PILItem::ProofItem(new_expr)])
+            }
             PilStatement::StructDeclaration(source, struct_declaration) => self
                 .handle_symbol_definition(
                     source,
@@ -259,7 +260,7 @@ where
         name: String,
         type_scheme: Option<TypeScheme<parsed::Expression>>,
         value: Option<parsed::Expression>,
-    ) -> Vec<PILItem> {
+    ) -> Result<Vec<PILItem>, Error> {
         let type_scheme = type_scheme.map(|ts| {
             let vars = ts.vars;
             let duplicates = vars.vars().duplicates().collect::<Vec<_>>();
@@ -355,10 +356,10 @@ where
         source: SourceRef,
         stage: Option<u32>,
         polynomials: Vec<PolynomialName>,
-    ) -> Vec<PILItem> {
-        polynomials
+    ) -> Result<Vec<PILItem>, Error> {
+        let result = polynomials
             .into_iter()
-            .flat_map(|poly_name| {
+            .map(|poly_name| {
                 let (name, ty) = self.name_and_type_from_polynomial_name(poly_name, Type::Col);
                 self.handle_symbol_definition(
                     source.clone(),
@@ -369,7 +370,12 @@ where
                     None,
                 )
             })
-            .collect()
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        Ok(result)
     }
 
     fn handle_symbol_definition(
@@ -380,7 +386,7 @@ where
         stage: Option<u32>,
         type_scheme: Option<TypeScheme>,
         value: Option<FunctionDefinition>,
-    ) -> Vec<PILItem> {
+    ) -> Result<Vec<PILItem>, Error> {
         let length = type_scheme.as_ref().and_then(|t| {
             if symbol_kind == SymbolKind::Other() {
                 None
@@ -424,7 +430,7 @@ where
             Some(FunctionDefinition::Array(value)) => {
                 self.process_array_symbol(symbol, type_scheme, value)
             }
-            None => vec![PILItem::Definition(symbol, None)],
+            None => Ok(vec![PILItem::Definition(symbol, None)]),
         }
     }
 
@@ -434,7 +440,7 @@ where
         symbol: Symbol,
         type_scheme: Option<TypeScheme>,
         expr: parsed::Expression,
-    ) -> Vec<PILItem> {
+    ) -> Result<Vec<PILItem>, Error> {
         if symbol_kind == SymbolKind::Poly(PolynomialType::Committed) {
             // The only allowed value for a witness column is a query function.
             assert!(matches!(
@@ -461,7 +467,7 @@ where
             type_scheme,
         });
 
-        vec![PILItem::Definition(symbol, Some(value))]
+        Ok(vec![PILItem::Definition(symbol, Some(value))])
     }
 
     fn process_array_symbol(
@@ -469,7 +475,7 @@ where
         symbol: Symbol,
         type_scheme: Option<TypeScheme>,
         value: ArrayExpression,
-    ) -> Vec<PILItem> {
+    ) -> Result<Vec<PILItem>, Error> {
         let expression = self
             .expression_processor(&Default::default())
             .process_array_expression(value)
@@ -477,7 +483,7 @@ where
         assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
         let value = FunctionValueDefinition::Array(expression);
 
-        vec![PILItem::Definition(symbol, Some(value))]
+        Ok(vec![PILItem::Definition(symbol, Some(value))])
     }
 
     /// Given a list of (absolute_name, value) pairs, create PIL items for each of them.
@@ -510,7 +516,7 @@ where
         poly: parsed::NamespacedPolynomialReference,
         array_index: Option<parsed::Expression>,
         index: parsed::Expression,
-    ) -> Vec<PILItem> {
+    ) -> Result<Vec<PILItem>, Error> {
         let id = self.counters.dispense_public_id();
         let name = self.driver.resolve_decl(&name);
         let polynomial = self
@@ -519,23 +525,27 @@ where
             .expect("Failed to process polynomial reference");
         let type_vars = Default::default();
         let mut expression_processor = self.expression_processor(&type_vars);
-        let array_index = array_index.map(|i| {
-            let i = expression_processor
-                .process_expression(i)
-                // TODO propagate this error up
-                .expect("Failed to process array index expression");
-            let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
-                .unwrap()
-                .try_into()
-                .unwrap();
-            assert!(index <= usize::MAX as u64);
-            index as usize
-        });
-
-        let index = expression_processor
-            .process_expression(index) // TODO propagate this error up
-            .expect("Failed to process index");
-        vec![PILItem::PublicDeclaration(PublicDeclaration {
+        let array_index = array_index
+            .map(|i| {
+                let source_ref = i.source_reference().clone();
+                let i = match expression_processor.process_expression(i) {
+                    Ok(expr) => expr,
+                    Err(err) => {
+                        return Err(
+                            source_ref.with_error(format!("Failed to process array index: {err}"))
+                        );
+                    }
+                };
+                let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
+                    .unwrap()
+                    .try_into()
+                    .unwrap();
+                assert!(index <= usize::MAX as u64);
+                Ok(index as usize)
+            })
+            .transpose()?;
+        let index = expression_processor.process_expression(index)?;
+        Ok(vec![PILItem::PublicDeclaration(PublicDeclaration {
             id,
             source,
             name: name.to_string(),
@@ -545,7 +555,7 @@ where
                 .unwrap()
                 .try_into()
                 .unwrap(),
-        })]
+        })])
     }
 
     fn expression_processor<'b>(
@@ -565,7 +575,7 @@ where
         name: String,
         symbol: Symbol,
         enum_decl: EnumDeclaration<parsed::Expression>,
-    ) -> Vec<PILItem> {
+    ) -> Result<Vec<PILItem>, Error> {
         let type_vars = enum_decl.type_vars.vars().collect();
         let variants = enum_decl
             .variants
@@ -596,14 +606,14 @@ where
             .collect();
         let var_items = self.process_inner_definitions(source, inner_items);
 
-        iter::once(PILItem::Definition(
+        Ok(iter::once(PILItem::Definition(
             symbol,
             Some(FunctionValueDefinition::TypeDeclaration(
                 TypeDeclaration::Enum(enum_decl.clone()),
             )),
         ))
         .chain(var_items)
-        .collect()
+        .collect())
     }
 
     fn process_enum_variant(
@@ -625,7 +635,7 @@ where
         &mut self,
         symbol: Symbol,
         struct_decl: StructDeclaration<parsed::Expression>,
-    ) -> Vec<PILItem> {
+    ) -> Result<Vec<PILItem>, Error> {
         let StructDeclaration {
             name,
             type_vars,
@@ -647,13 +657,13 @@ where
             fields,
         };
 
-        iter::once(PILItem::Definition(
+        Ok(iter::once(PILItem::Definition(
             symbol,
             Some(FunctionValueDefinition::TypeDeclaration(
                 TypeDeclaration::Struct(struct_decl),
             )),
         ))
-        .collect()
+        .collect())
     }
 
     fn process_trait_declaration(
@@ -662,7 +672,7 @@ where
         name: String,
         symbol: Symbol,
         trait_decl: TraitDeclaration<parsed::Expression>,
-    ) -> Vec<PILItem> {
+    ) -> Result<Vec<PILItem>, Error> {
         let type_vars = trait_decl.type_vars.iter().collect();
         let functions = trait_decl
             .functions
@@ -696,20 +706,20 @@ where
             .collect();
         let trait_functions = self.process_inner_definitions(source, inner_items);
 
-        iter::once(PILItem::Definition(
+        Ok(iter::once(PILItem::Definition(
             symbol,
             Some(FunctionValueDefinition::TraitDeclaration(
                 trait_decl.clone(),
             )),
         ))
         .chain(trait_functions)
-        .collect()
+        .collect())
     }
 
     fn process_trait_implementation(
         &self,
         trait_impl: parsed::TraitImplementation<parsed::Expression>,
-    ) -> TraitImplementation<Expression> {
+    ) -> Result<TraitImplementation<Expression>, Error> {
         let type_vars: HashSet<_> = trait_impl.type_scheme.vars.vars().collect();
         if !type_vars.is_empty() {
             unimplemented!("Generic impls are not supported yet.");
@@ -717,15 +727,17 @@ where
         let functions = trait_impl
             .functions
             .into_iter()
-            .map(|named| NamedExpression {
-                name: named.name,
-                body: Arc::new(
-                    self.expression_processor(&type_vars)
-                        .process_expression(Arc::try_unwrap(named.body).unwrap())
-                        .expect("Failed to process expression inside trait"),
-                ),
+            .map(|named| {
+                let processed_expr = self
+                    .expression_processor(&type_vars)
+                    .process_expression(Arc::try_unwrap(named.body).unwrap())?;
+
+                Ok(NamedExpression {
+                    name: named.name,
+                    body: Arc::new(processed_expr),
+                })
             })
-            .collect();
+            .collect::<Result<Vec<NamedExpression<Arc<Expression>>>, Error>>()?;
 
         let Type::Tuple(TupleType { items }) = trait_impl.type_scheme.ty.clone() else {
             panic!("Type from trait scheme is not a tuple.")
@@ -743,11 +755,15 @@ where
             &self
                 .driver
                 .resolve_ref(&trait_impl.name, SymbolCategory::TraitDeclaration)
-                .expect("TODO: Handle this up in the code"),
+                .map_err(|err| {
+                    trait_impl
+                        .source_ref
+                        .with_error(format!("Cannot resolve trait {}: {}", trait_impl.name, err))
+                })?,
         )
         .unwrap();
 
-        TraitImplementation {
+        Ok(TraitImplementation {
             name,
             source_ref: trait_impl.source_ref,
             type_scheme: TypeScheme {
@@ -757,6 +773,6 @@ where
                 }),
             },
             functions,
-        }
+        })
     }
 }
