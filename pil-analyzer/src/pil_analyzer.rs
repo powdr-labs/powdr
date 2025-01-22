@@ -149,13 +149,20 @@ impl PILAnalyzer {
             files = once(core).chain(files).collect();
         }
 
+        let mut errors = Vec::new();
         for PILFile(file) in files {
             self.current_namespace = Default::default();
             for statement in file {
-                self.handle_statement(statement).map_err(|e| vec![e])?;
+                if let Err(e) = self.handle_statement(statement) {
+                    errors.push(e);
+                }
             }
         }
-        Ok(())
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
     }
 
     /// Adds core types if they are not present in the input.
