@@ -340,7 +340,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         assert_eq!(self.data.len() as DegreeType, self.degree + 1);
 
         let mut first_row = self.data.get_in_progress_row(0);
-        let last_row = self.data.get_in_progress_row(self.degree as usize);
+        let last_row = self.data.get_in_progress_row(self.data.len() - 1);
         if first_row.merge_with(&last_row).is_err() {
             log::error!("{}", first_row.render("First row", false, &self.parts));
             log::error!("{}", last_row.render("Last row", false, &self.parts));
@@ -349,6 +349,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
                 self.name()
             );
         }
+        self.data.truncate(self.data.len() - 1);
         self.data.set(0, first_row);
     }
 
