@@ -100,45 +100,47 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             cache_key.known_args
         );
 
-        self.processor
+        let code = self
+            .processor
             .generate_code(can_process, cache_key.identity_id, &cache_key.known_args)
             .map_err(|e| {
                 // These errors can be pretty verbose and are quite common currently.
-                let e = e.to_string().lines().take(5).join("\n");
-                log::debug!("=> Error generating JIT code: {e}\n...");
-                e
+                log::debug!(
+                    "=> Error generating JIT code: {}\n...",
+                    e.to_string().lines().take(5).join("\n")
+                );
             })
-            .ok()
-            .map(|code| {
-                log::debug!("=> Success!");
-                let is_in_bounds = code
-                    .iter()
-                    .flat_map(|effect| effect.referenced_variables())
-                    .filter_map(|var| match var {
-                        Variable::Cell(cell) => Some(cell.row_offset),
-                        _ => None,
-                    })
-                    .all(|row_offset| row_offset >= -1 && row_offset < self.block_size as i32);
-                assert!(is_in_bounds, "Expected JITed code to only reference cells in the block + the last row of the previous block.");
+            .ok()?;
 
-                log::trace!("Generated code ({} steps)", code.len());
-                let known_inputs = cache_key
-                    .known_args
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(i, b)| if b { Some(Variable::Param(i)) } else { None })
-                    .collect::<Vec<_>>();
-
-                log::trace!("Compiling effects...");
-
-                compile_effects(
-                    self.column_layout.first_column_id,
-                    self.column_layout.column_count,
-                    &known_inputs,
-                    &code,
-                )
-                .unwrap()
+        log::debug!("=> Success!");
+        let is_in_bounds = code
+            .iter()
+            .flat_map(|effect| effect.referenced_variables())
+            .filter_map(|var| match var {
+                Variable::Cell(cell) => Some(cell.row_offset),
+                _ => None,
             })
+            .all(|row_offset| row_offset >= -1 && row_offset < self.block_size as i32);
+        assert!(is_in_bounds, "Expected JITed code to only reference cells in the block + the last row of the previous block.");
+
+        log::trace!("Generated code ({} steps)", code.len());
+        let known_inputs = cache_key
+            .known_args
+            .iter()
+            .enumerate()
+            .filter_map(|(i, b)| if b { Some(Variable::Param(i)) } else { None })
+            .collect::<Vec<_>>();
+
+        log::trace!("Compiling effects...");
+        let effects = compile_effects(
+            self.column_layout.first_column_id,
+            self.column_layout.column_count,
+            &known_inputs,
+            &code,
+        )
+        .unwrap();
+        log::trace!("Compilation done.");
+        Some(effects)
     }
 
     pub fn process_lookup_direct<'c, 'd, Q: QueryCallback<T>>(
