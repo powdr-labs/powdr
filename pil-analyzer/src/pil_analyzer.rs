@@ -49,6 +49,18 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Result<Analyzed<T>, Ve
     analyze(vec![pil_file])
 }
 
+pub fn create_analyzer_str(contents: &str) -> Result<PILAnalyzer, Vec<Error>> {
+    let pil_file = powdr_parser::parse(Some("input"), contents).map_err(|e| vec![e])?;
+    let mut analyzer = PILAnalyzer::new();
+    analyzer.process(vec![pil_file])?;
+    analyzer.side_effect_check()?;
+    analyzer.validate_structs()?;
+    analyzer.type_check()?;
+    analyzer.resolve_trait_impls()?;
+
+    Ok(analyzer)
+}
+
 fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Error>> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files)?;
