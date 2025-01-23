@@ -249,7 +249,7 @@ fn propagate_constraints<T: FieldElement>(
                 false
             }
         }
-        // Bus receives are handled when they are matched with a send.
+        // Cannot derive a range constraint from a receive.
         Identity::BusReceive(..) => false,
         Identity::BusSend(send) => {
             let receive = send.try_match_static(bus_receives).unwrap();
