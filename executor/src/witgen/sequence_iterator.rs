@@ -54,6 +54,8 @@ impl DefaultSequenceIterator {
     /// Otherwise, starts with identity 0 and moves to the next row if no progress was made.
     fn update_state(&mut self) {
         if !self.is_done() && (!self.has_more_actions() || self.progress_in_current_round) {
+            // Starting a new round if we made any progress ensures that identities are
+            // processed in source order if possible.
             self.start_next_round();
         }
 
@@ -111,6 +113,12 @@ impl DefaultSequenceIterator {
         Some(self.current_step())
     }
 
+    /// Computes the current step from the current action index and row delta.
+    /// The actions are:
+    /// - The outer query (if on the outer query row)
+    /// - Processing the prover queries
+    /// - Processing the internal identities, in the order there are given
+    ///   (which should typically correspond to source order).
     fn current_step(&self) -> SequenceStep {
         assert!(self.cur_action_index != -1);
 
