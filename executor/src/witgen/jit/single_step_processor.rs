@@ -33,9 +33,9 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         }
     }
 
-    pub fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
+    pub fn generate_code(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
         let all_witnesses = self
             .machine_parts
@@ -308,5 +308,36 @@ VM::instr_mul[1] = 1;"
         ";
         let code = generate_single_step(input, "Main").unwrap();
         assert_eq!(format_code(&code), "VM::w[1] = VM::STEP[1];");
+    }
+
+    #[test]
+    fn no_progress_with_call() {
+        // This mainly tests the error debug formatter.
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            col witness is_arith;
+            a = 2;
+            is_arith $ [a, b, c] is [Arith::X, Arith::Y, Arith::Z];
+        namespace Arith(256);
+            col witness X, Y, Z;
+            Z = X + Y;
+        ";
+        match generate_single_step(input, "Main") {
+            Ok(_) => panic!("Expected error"),
+            Err(e) => {
+                let expected = "\
+Main::is_arith $ [ Main::a, Main::b, Main::c ]
+     ???              2       ???      ???    
+                                              
+Main::is_arith        2     Main::b  Main::c  
+     ???                      ???      ???    
+                                          ";
+                assert!(
+                    e.contains(expected),
+                    "Error did not contain expected substring. Error:\n{e}\nExpected substring:\n{expected}"
+                );
+            }
+        }
     }
 }

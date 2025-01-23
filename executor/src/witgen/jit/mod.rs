@@ -1,6 +1,7 @@
 pub(crate) mod affine_symbolic_expression;
 mod block_machine_processor;
 mod compiler;
+mod debug_formatter;
 mod effect;
 pub(crate) mod function_cache;
 mod interpreter;

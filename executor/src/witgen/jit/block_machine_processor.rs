@@ -41,9 +41,9 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
     /// Generates the JIT code for a given combination of connection and known arguments.
     /// Fails if it cannot solve for the outputs, or if any sub-machine calls cannot be completed.
-    pub fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
+    pub fn generate_code(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_args: &BitVec,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
@@ -97,7 +97,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string_with_variable_formatter(|var| match var {
-                Variable::Param(i) => format!("{}", &connection.right.expressions[*i]),
+                Variable::Param(i) => format!("{} (connection param)", &connection.right.expressions[*i]),
                 _ => var.to_string(),
             });
             log::trace!("\nCode generation failed for connection:\n  {connection}");
