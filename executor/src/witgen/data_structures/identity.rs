@@ -208,8 +208,7 @@ pub fn convert_identities<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<Identi
         .collect::<Vec<_>>();
     assert!(
         receive_interaction_ids.iter().unique().count() == receive_interaction_ids.len(),
-        "Expected interaction IDs of bus receives to be unique, but got: {:?}",
-        receive_interaction_ids
+        "Expected interaction IDs of bus receives to be unique, but got: {receive_interaction_ids:?}"
     );
 
     identities
