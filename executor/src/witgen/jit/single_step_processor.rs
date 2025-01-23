@@ -291,12 +291,13 @@ namespace M(256);
         let err = generate_single_step(input, "M").err().unwrap();
         assert_eq!(
             err.to_string(),
-            "Unable to derive algorithm to compute required values: \
-            No variable available to branch on.\nThe following variables or values are still missing: M::Y[1]\n\
-            The following branch decisions were taken:\n\
-            \n\
-            Generated code so far:\n\
-            M::X[1] = M::X[0];"
+            "Code generation failed: Unable to derive algorithm to compute required values: No variable available to branch on.
+  The following variables or values are still missing: M::Y[1]
+  The following branch decisions were taken:
+  
+  Generated code so far:
+  M::X[1] = M::X[0];
+Run with RUST_LOG=trace to see the code generated so far."
         );
     }
 
@@ -410,12 +411,11 @@ VM::instr_mul[1] = 1;"
             Ok(_) => panic!("Expected error"),
             Err(e) => {
                 let expected = "\
-Main::is_arith $ [ Main::a, Main::b, Main::c ]
-     ???              2       ???      ???    
-                                              
-Main::is_arith        2     Main::b  Main::c  
-     ???                      ???      ???    
-                                          ";
+  Main::is_arith $ [ Main::a, Main::b, Main::c ]
+       ???              2       ???      ???    
+                                                
+  Main::is_arith        2     Main::b  Main::c  
+       ???                      ???      ???";
                 assert!(
                     e.contains(expected),
                     "Error did not contain expected substring. Error:\n{e}\nExpected substring:\n{expected}"
