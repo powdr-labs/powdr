@@ -2,14 +2,14 @@ use std::collections::HashSet;
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_ast::analyzed::AlgebraicReference;
+use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::{jit::processor::Processor, machines::MachineParts, FixedData};
 
 use super::{
     effect::Effect,
-    variable::Variable,
+    variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
 
@@ -41,9 +41,9 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
     /// Generates the JIT code for a given combination of connection and known arguments.
     /// Fails if it cannot solve for the outputs, or if any sub-machine calls cannot be completed.
-    pub fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
+    pub fn generate_code(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_args: &BitVec,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
@@ -89,15 +89,15 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             self.fixed_data,
             self,
             identities,
-            self.block_size,
-            true,
             requested_known,
             BLOCK_MACHINE_MAX_BRANCH_DEPTH,
         )
+        .with_block_shape_check()
+        .with_block_size(self.block_size)
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string_with_variable_formatter(|var| match var {
-                Variable::Param(i) => format!("{}", &connection.right.expressions[*i]),
+                Variable::Param(i) => format!("{} (connection param)", &connection.right.expressions[*i]),
                 _ => var.to_string(),
             });
             log::trace!("\nCode generation failed for connection:\n  {connection}");
@@ -123,17 +123,19 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 }
 
 impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
-    fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
-        assert!(var.is_fixed());
-        let values = self.fixed_data.fixed_cols[&var.poly_id].values_max_size();
+    fn evaluate(&self, fixed_cell: &Cell) -> Option<T> {
+        let poly_id = PolyID {
+            id: fixed_cell.id,
+            ptype: PolynomialType::Constant,
+        };
+        let values = self.fixed_data.fixed_cols[&poly_id].values_max_size();
 
         // By assumption of the block machine, all fixed columns are cyclic with a period of <block_size>.
         // An exception might be the first and last row.
-        assert!(row_offset >= -1);
+        assert!(fixed_cell.row_offset >= -1);
         assert!(self.block_size >= 1);
-        // The current row is guaranteed to be at least 1.
-        let current_row = (2 * self.block_size as i32 + row_offset) as usize;
-        let row = current_row + var.next as usize;
+        // The row is guaranteed to be at least 1.
+        let row = (2 * self.block_size as i32 + fixed_cell.row_offset) as usize;
 
         assert!(values.len() >= self.block_size * 4);
 

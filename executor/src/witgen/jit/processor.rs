@@ -14,7 +14,7 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::FixedData;
+use crate::witgen::{jit::debug_formatter::format_identities, FixedData};
 
 use super::{
     affine_symbolic_expression,
@@ -48,8 +48,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         fixed_data: &'a FixedData<'a, T>,
         fixed_evaluator: FixedEval,
         identities: impl IntoIterator<Item = (&'a Identity<T>, i32)>,
-        block_size: usize,
-        check_block_shape: bool,
         requested_known_vars: impl IntoIterator<Item = Variable>,
         max_branch_depth: usize,
     ) -> Self {
@@ -60,25 +58,38 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             fixed_evaluator,
             identities,
             occurrences,
-            block_size,
-            check_block_shape,
+            block_size: 1,
+            check_block_shape: false,
             requested_known_vars: requested_known_vars.into_iter().collect(),
             max_branch_depth,
         }
     }
 
-    pub fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
-        &self,
-        can_process: CanProcess,
+    /// Sets the block size.
+    pub fn with_block_size(mut self, block_size: usize) -> Self {
+        self.block_size = block_size;
+        self
+    }
+
+    /// Activates the check to see if the code for two subsequently generated
+    /// blocks conflicts.
+    pub fn with_block_shape_check(mut self) -> Self {
+        self.check_block_shape = true;
+        self
+    }
+
+    pub fn generate_code(
+        self,
+        can_process: impl CanProcessCall<T>,
         witgen: WitgenInference<'a, T, FixedEval>,
     ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T, FixedEval>> {
         let branch_depth = 0;
         self.generate_code_for_branch(can_process, witgen, branch_depth)
     }
 
-    fn generate_code_for_branch<CanProcess: CanProcessCall<T> + Clone>(
+    fn generate_code_for_branch(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
         mut witgen: WitgenInference<'a, T, FixedEval>,
         branch_depth: usize,
     ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T, FixedEval>> {
@@ -86,7 +97,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             .process_until_no_progress(can_process.clone(), &mut witgen)
             .is_err()
         {
-            return Err(Error::conflicting_constraints(witgen));
+            return Err(Error::conflicting_constraints(
+                witgen,
+                self.fixed_evaluator.clone(),
+            ));
         }
 
         if self.check_block_shape {
@@ -144,6 +158,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             return Err(Error {
                 reason,
                 witgen,
+                fixed_evaluator: self.fixed_evaluator.clone(),
                 missing_variables,
                 incomplete_identities,
             });
@@ -190,9 +205,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         result.map(|code| common_code.into_iter().chain(code).collect())
     }
 
-    fn process_until_no_progress<CanProcess: CanProcessCall<T> + Clone>(
+    fn process_until_no_progress(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
     ) -> Result<(), affine_symbolic_expression::Error> {
         let mut identities_to_process: BTreeSet<_> = self
@@ -278,7 +293,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             .known_variables()
             .iter()
             .filter_map(|var| match var {
-                Variable::Cell(cell) => Some(cell.id),
+                Variable::WitnessCell(cell) => Some(cell.id),
                 _ => None,
             })
             .collect();
@@ -287,7 +302,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 .known_variables()
                 .iter()
                 .filter_map(|var| match var {
-                    Variable::Cell(cell) if cell.id == column_id => Some(cell.row_offset),
+                    Variable::WitnessCell(cell) if cell.id == column_id => Some(cell.row_offset),
                     _ => None,
                 })
                 .collect::<BTreeSet<_>>();
@@ -301,7 +316,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 _ => false,
             };
             let cell_var = |row_offset| {
-                Variable::Cell(Cell {
+                Variable::WitnessCell(Cell {
                     // Column name does not matter.
                     column_name: "".to_string(),
                     id: column_id,
@@ -334,7 +349,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
     }
 }
 
-/// Computes a map from each variable to the identitie-row-offset pairs it occurs in.
+/// Computes a map from each variable to the identity-row-offset pairs it occurs in.
 fn compute_occurrences_map<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
     identities: &[(&'a Identity<T>, i32)],
@@ -475,6 +490,7 @@ fn is_machine_call<T>(identity: &Identity<T>) -> bool {
 pub struct Error<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     pub reason: ErrorReason,
     pub witgen: WitgenInference<'a, T, FixedEval>,
+    pub fixed_evaluator: FixedEval,
     /// Required variables that could not be determined
     pub missing_variables: Vec<Variable>,
     /// Identities that could not be processed completely.
@@ -506,9 +522,13 @@ impl<T: FieldElement, FE: FixedEvaluator<T>> Display for Error<'_, T, FE> {
 }
 
 impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
-    pub fn conflicting_constraints(witgen: WitgenInference<'a, T, FE>) -> Self {
+    pub fn conflicting_constraints(
+        witgen: WitgenInference<'a, T, FE>,
+        fixed_evaluator: FE,
+    ) -> Self {
         Self {
             witgen,
+            fixed_evaluator,
             reason: ErrorReason::ConflictingConstraints,
             missing_variables: vec![],
             incomplete_identities: vec![],
@@ -547,10 +567,7 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
             write!(
                 s,
                 "\nThe following identities have not been fully processed:\n{}",
-                self.incomplete_identities
-                    .iter()
-                    .map(|(id, row_offset)| format!("    {id} at row {row_offset}"))
-                    .join("\n")
+                format_identities(&self.incomplete_identities, &self.witgen,)
             )
             .unwrap();
         };
