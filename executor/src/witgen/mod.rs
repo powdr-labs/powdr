@@ -439,9 +439,9 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     pub fn with_global_range_constraints(
-        self,
+        mut self,
         global_range_constraints: GlobalConstraints<T>,
-        retained_identities: Vec<Identity<T>>,
+        retained_identities: BTreeSet<u64>,
     ) -> Self {
         assert!(
             self.global_range_constraints
@@ -451,12 +451,8 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 .all(|c| c.is_none()),
             "range constraints already set"
         );
-
-        Self {
-            global_range_constraints,
-            identities: retained_identities,
-            ..self
-        }
+        self.global_range_constraints = global_range_constraints;
+        self.filter_identities(|_, identity| retained_identities.contains(&identity.id()))
     }
 
     fn all_poly_symbols(&self) -> impl Iterator<Item = &Symbol> {

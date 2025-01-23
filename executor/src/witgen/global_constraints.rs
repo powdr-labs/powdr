@@ -115,7 +115,8 @@ impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConst
 /// Determines global constraints on witness and fixed columns.
 /// Removes identities that only serve to create range constraints from
 /// the identities vector and returns the remaining identities.
-/// Returns fixed data with the global constraints & the retained identities.
+/// Returns the updated fixed data, with the global constraints & the
+/// retained identities.
 /// TODO at some point, we should check that they still hold.
 pub fn set_global_constraints<T: FieldElement>(fixed_data: FixedData<T>) -> FixedData<T> {
     let mut known_constraints = BTreeMap::new();
@@ -138,11 +139,11 @@ pub fn set_global_constraints<T: FieldElement>(fixed_data: FixedData<T>) -> Fixe
 
     let mut retained_identities = vec![];
     let mut removed_identities = vec![];
-    for identity in fixed_data.identities.clone().into_iter() {
+    for identity in fixed_data.identities.iter() {
         let remove = propagate_constraints(
             &fixed_data.intermediate_definitions,
             &mut known_constraints,
-            &identity,
+            identity,
             &full_span,
             &fixed_data.bus_receives,
         );
@@ -186,7 +187,11 @@ pub fn set_global_constraints<T: FieldElement>(fixed_data: FixedData<T>) -> Fixe
         fixed_constraints,
     };
 
-    fixed_data.with_global_range_constraints(global_constraints, retained_identities)
+    let retained_identity_ids = retained_identities
+        .iter()
+        .map(|identity| identity.id())
+        .collect();
+    fixed_data.with_global_range_constraints(global_constraints, retained_identity_ids)
 }
 
 /// Analyzes a fixed column and checks if its values correspond exactly
@@ -279,8 +284,8 @@ fn propagate_constraints<T: FieldElement>(
             }
 
             // Detect [ x ] in [ RANGE ], where RANGE is in the full span.
-            // In that case, we can remove the lookup, because its only function is to enforce
-            // the range constraint.
+            // In that case, we can remove the bus interaction pair,
+            // because its only function is to enforce the range constraint.
             if receive.selected_tuple.expressions.len() == 1 {
                 if let (Some(_), Some(right_ref)) = (
                     // The range constraint has been transferred from right to left
