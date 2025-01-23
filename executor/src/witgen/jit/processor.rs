@@ -88,7 +88,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         self
     }
 
-
     /// Sets the block size.
     pub fn with_block_size(mut self, block_size: usize) -> Self {
         self.block_size = block_size;
