@@ -8,8 +8,8 @@ use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
 /// A variable that can be used in the inference engine.
 pub enum Variable {
-    /// A witness cell in the current block machine.
-    Cell(Cell),
+    /// A witness cell in the current machine.
+    WitnessCell(Cell),
     /// A parameter (input or output) of the machine.
     #[allow(dead_code)]
     Param(usize),
@@ -17,13 +17,13 @@ pub enum Variable {
     /// identity on a certain row offset.
     MachineCallParam(MachineCallVariable),
     /// A fixed column cell.
-    FixedColumn(Cell),
+    FixedCell(Cell),
 }
 
 impl Display for Variable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Variable::Cell(cell) => write!(f, "{cell}"),
+            Variable::WitnessCell(cell) => write!(f, "{cell}"),
             Variable::Param(i) => write!(f, "params[{i}]"),
             Variable::MachineCallParam(ret) => {
                 write!(
@@ -32,7 +32,7 @@ impl Display for Variable {
                     ret.identity_id, ret.row_offset, ret.index
                 )
             }
-            Variable::FixedColumn(cell) => write!(f, "{cell}"),
+            Variable::FixedCell(cell) => write!(f, "{cell}"),
         }
     }
 }
@@ -46,8 +46,8 @@ impl Variable {
             row_offset: r.next as i32 + row_offset,
         };
         match r.poly_id.ptype {
-            PolynomialType::Committed => Self::Cell(cell),
-            PolynomialType::Constant => Self::FixedColumn(cell),
+            PolynomialType::Committed => Self::WitnessCell(cell),
+            PolynomialType::Constant => Self::FixedCell(cell),
             _ => panic!(),
         }
     }
@@ -55,11 +55,11 @@ impl Variable {
     /// If this variable corresponds to a fixed or witness cell, return the corresponding polynomial ID.
     pub fn try_to_poly_id(&self) -> Option<powdr_ast::analyzed::PolyID> {
         match self {
-            Variable::Cell(cell) => Some(PolyID {
+            Variable::WitnessCell(cell) => Some(PolyID {
                 id: cell.id,
                 ptype: PolynomialType::Committed,
             }),
-            Variable::FixedColumn(cell) => Some(PolyID {
+            Variable::FixedCell(cell) => Some(PolyID {
                 id: cell.id,
                 ptype: PolynomialType::Constant,
             }),

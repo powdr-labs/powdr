@@ -54,6 +54,8 @@ impl<T: FieldElement> WitgenFunction<T> {
             call_machine: call_machine::<T, Q>,
             fixed_data: fixed_data as *const _ as *const c_void,
             get_fixed_value: get_fixed_value::<T>,
+            fixed_data: fixed_data as *const _ as *const c_void,
+            get_fixed_value: get_fixed_value::<T>,
         });
     }
 }
@@ -68,7 +70,6 @@ extern "C" fn get_fixed_value<T: FieldElement>(
         id: column,
         ptype: PolynomialType::Constant,
     };
-    // TODO which size?
     fixed_data.fixed_cols[&poly_id].values_max_size()[row as usize]
 }
 
@@ -171,11 +172,11 @@ fn witgen_code<T: FieldElement>(
         .map(|v| {
             let var_name = variable_to_string(v);
             let value = match v {
-                Variable::Cell(c) => {
+                Variable::WitnessCell(c) => {
                     format!("get(data, row_offset, {}, {})", c.row_offset, c.id)
                 }
                 Variable::Param(i) => format!("get_param(params, {i})"),
-                Variable::FixedColumn(_) => panic!("Fixed columns should not be known inputs."),
+                Variable::FixedCell(_) => panic!("Fixed columns should not be known inputs."),
                 Variable::MachineCallParam(_) => {
                     unreachable!("Machine call variables should not be pre-known.")
                 }
@@ -190,7 +191,7 @@ fn witgen_code<T: FieldElement>(
         .iter()
         .flat_map(|e| e.referenced_variables())
         .filter_map(|v| match v {
-            Variable::FixedColumn(c) => Some((v, c)),
+            Variable::FixedCell(c) => Some((v, c)),
             _ => None,
         })
         .unique()
@@ -215,12 +216,12 @@ fn witgen_code<T: FieldElement>(
         .filter_map(|var| {
             let value = variable_to_string(var);
             match var {
-                Variable::Cell(cell) => Some(format!(
+                Variable::WitnessCell(cell) => Some(format!(
                     "    set(data, row_offset, {}, {}, {value});",
                     cell.row_offset, cell.id,
                 )),
                 Variable::Param(i) => Some(format!("    set_param(params, {i}, {value});")),
-                Variable::FixedColumn(_) => panic!("Fixed columns should not be written to."),
+                Variable::FixedCell(_) => panic!("Fixed columns should not be written to."),
                 Variable::MachineCallParam(_) => {
                     // This is just an internal variable.
                     None
@@ -233,8 +234,8 @@ fn witgen_code<T: FieldElement>(
     let store_known = vars_known
         .iter()
         .filter_map(|var| match var {
-            Variable::Cell(cell) => Some(cell),
-            Variable::Param(_) | Variable::FixedColumn(_) | Variable::MachineCallParam(_) => None,
+            Variable::WitnessCell(cell) => Some(cell),
+            Variable::Param(_) | Variable::FixedCell(_) | Variable::MachineCallParam(_) => None,
         })
         .map(|cell| {
             format!(
@@ -423,14 +424,14 @@ fn format_condition<T: FieldElement>(condition: &BranchCondition<T, Variable>) -
 /// Returns the name of a local (stack) variable for the given expression variable.
 fn variable_to_string(v: &Variable) -> String {
     match v {
-        Variable::Cell(cell) => format!(
+        Variable::WitnessCell(cell) => format!(
             "c_{}_{}_{}",
             escape_column_name(&cell.column_name),
             cell.id,
             format_row_offset(cell.row_offset)
         ),
         Variable::Param(i) => format!("p_{i}"),
-        Variable::FixedColumn(cell) => {
+        Variable::FixedCell(cell) => {
             format!(
                 "f_{}_{}_{}",
                 escape_column_name(&cell.column_name),
@@ -552,7 +553,7 @@ mod tests {
     // }
 
     fn cell(column_name: &str, id: u64, row_offset: i32) -> Variable {
-        Variable::Cell(Cell {
+        Variable::WitnessCell(Cell {
             column_name: column_name.to_string(),
             row_offset,
             id,
@@ -857,7 +858,7 @@ extern \"C\" fn witgen(
     #[test]
     fn fixed_column_access() {
         let a = cell("a", 0, 0);
-        let x = Variable::FixedColumn(Cell {
+        let x = Variable::FixedCell(Cell {
             column_name: "X".to_string(),
             id: 15,
             row_offset: 6,

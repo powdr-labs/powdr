@@ -2,7 +2,7 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, PolyID, PolynomialType,
 };
-use powdr_number::{FieldElement, KnownField};
+use powdr_number::FieldElement;
 
 use crate::witgen::{
     data_structures::{
@@ -161,8 +161,6 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             self.fixed_data,
             self,
             identities,
-            block_size,
-            false,
             requested_known,
             SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
@@ -179,7 +177,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
     }
 
     fn cell(&self, id: PolyID, row_offset: i32) -> Variable {
-        Variable::Cell(Cell {
+        Variable::WitnessCell(Cell {
             column_name: self.fixed_data.column_name(&id).to_string(),
             id: id.id,
             row_offset,
@@ -382,6 +380,7 @@ machine_call(2, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(cal
 VM::instr_mul[1] = 1;"
         );
     }
+
     #[test]
     fn nonconstant_fixed_columns() {
         let input = "

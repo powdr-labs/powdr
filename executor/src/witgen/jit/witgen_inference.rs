@@ -108,7 +108,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 
     pub fn is_known(&self, variable: &Variable) -> bool {
-        if let Variable::FixedColumn(_) = variable {
+        if let Variable::FixedCell(_) = variable {
             true
         } else {
             self.known_variables.contains(variable)
@@ -237,42 +237,30 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         offset: i32,
         rhs: &VariableOrValue<T, Variable>,
     ) -> Result<ProcessResult<T, Variable>, Error> {
-        // First we try to find a new assignment to a variable in the equality.
+        // Try to find a new assignment to a variable in the equality.
+        let mut result = self.process_equality_on_row_using_evaluator(lhs, offset, rhs, false)?;
+        // Try to propagate range constraints.
+        let result_concrete =
+            self.process_equality_on_row_using_evaluator(lhs, offset, rhs, true)?;
 
-        let evaluator = Evaluator::new(self);
-        let Some(lhs_evaluated) = evaluator.evaluate(lhs, offset) else {
-            return Ok(ProcessResult::empty());
-        };
-
-        let rhs_evaluated = match rhs {
-            VariableOrValue::Variable(v) => evaluator.evaluate_variable(v.clone()),
-            VariableOrValue::Value(v) => (*v).into(),
-        };
-
-        let result = (lhs_evaluated - rhs_evaluated).solve()?;
-        if result.complete && result.effects.is_empty() {
-            // A complete result without effects means that there were no unknowns
-            // in the constraint.
-            // We try again, but this time we treat all non-concrete variables
-            // as unknown and in that way try to find new concrete values for
-            // already known variables.
-            let result = self.process_equality_on_row_concrete(lhs, offset, rhs)?;
-            if !result.effects.is_empty() {
-                return Ok(result);
-            }
-        }
+        // We only use the effects of the second evaluation,
+        // its `complete` flag is ignored.
+        result.effects.extend(result_concrete.effects);
         Ok(result)
     }
 
-    /// Process an equality but only consider concrete variables as known
-    /// and thus propagate range constraints across the equality.
-    fn process_equality_on_row_concrete(
+    fn process_equality_on_row_using_evaluator(
         &self,
         lhs: &Expression<T>,
         offset: i32,
         rhs: &VariableOrValue<T, Variable>,
+        only_concrete_known: bool,
     ) -> Result<ProcessResult<T, Variable>, Error> {
-        let evaluator = Evaluator::new(self).only_concrete_known();
+        let evaluator = if only_concrete_known {
+            Evaluator::new(self).only_concrete_known()
+        } else {
+            Evaluator::new(self)
+        };
         let Some(lhs_evaluated) = evaluator.evaluate(lhs, offset) else {
             return Ok(ProcessResult::empty());
         };
@@ -462,7 +450,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Record a variable as known. Return true if it was not known before.
     fn record_known(&mut self, variable: Variable) -> bool {
         // We do not record fixed columns as known.
-        if matches!(variable, Variable::FixedColumn(_)) {
+        if matches!(variable, Variable::FixedCell(_)) {
             false
         } else {
             self.known_variables.insert(variable)
@@ -473,7 +461,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// combining global range constraints and newly derived local range constraints.
     /// For fixed columns, it also invokes the fixed evaluator.
     pub fn range_constraint(&self, variable: &Variable) -> RangeConstraint<T> {
-        if let Variable::FixedColumn(fixed_cell) = variable {
+        if let Variable::FixedCell(fixed_cell) = variable {
             if let Some(v) = self.fixed_evaluator.evaluate(fixed_cell) {
                 return RangeConstraint::from_value(v);
             }
@@ -708,7 +696,7 @@ mod test {
 
         let known_cells = known_cells.iter().map(|(name, row_offset)| {
             let id = fixed_data.try_column_by_name(name).unwrap().id;
-            Variable::Cell(Cell {
+            Variable::WitnessCell(Cell {
                 column_name: name.to_string(),
                 id,
                 row_offset: *row_offset,

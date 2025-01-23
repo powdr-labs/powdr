@@ -151,7 +151,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
         let [name, value, rc] = match e {
             Expression::Reference(r) => {
                 let (value, range_constraint) = match r.poly_id.ptype {
-                    PolynomialType::Constant | PolynomialType::Committed => {
+                    PolynomialType::Committed | PolynomialType::Constant => {
                         let variable = Variable::from_reference(r, row_offset);
                         let value = self.witgen.value(&variable).to_string();
                         let rc = self.witgen.range_constraint(&variable);
