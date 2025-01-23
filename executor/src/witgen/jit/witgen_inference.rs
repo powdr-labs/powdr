@@ -233,42 +233,30 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         offset: i32,
         rhs: &VariableOrValue<T, Variable>,
     ) -> Result<ProcessResult<T, Variable>, Error> {
-        // First we try to find a new assignment to a variable in the equality.
+        // Try to find a new assignment to a variable in the equality.
+        let mut result = self.process_equality_on_row_using_evaluator(lhs, offset, rhs, false)?;
+        // Try to propagate range constraints.
+        let result_concrete =
+            self.process_equality_on_row_using_evaluator(lhs, offset, rhs, true)?;
 
-        let evaluator = Evaluator::new(self);
-        let Some(lhs_evaluated) = evaluator.evaluate(lhs, offset) else {
-            return Ok(ProcessResult::empty());
-        };
-
-        let rhs_evaluated = match rhs {
-            VariableOrValue::Variable(v) => evaluator.evaluate_variable(v.clone()),
-            VariableOrValue::Value(v) => (*v).into(),
-        };
-
-        let result = (lhs_evaluated - rhs_evaluated).solve()?;
-        if result.complete && result.effects.is_empty() {
-            // A complete result without effects means that there were no unknowns
-            // in the constraint.
-            // We try again, but this time we treat all non-concrete variables
-            // as unknown and in that way try to find new concrete values for
-            // already known variables.
-            let result = self.process_equality_on_row_concrete(lhs, offset, rhs)?;
-            if !result.effects.is_empty() {
-                return Ok(result);
-            }
-        }
+        // We only use the effects of the second evaluation,
+        // its `complete` flag is ignored.
+        result.effects.extend(result_concrete.effects);
         Ok(result)
     }
 
-    /// Process an equality but only consider concrete variables as known
-    /// and thus propagate range constraints across the equality.
-    fn process_equality_on_row_concrete(
+    fn process_equality_on_row_using_evaluator(
         &self,
         lhs: &Expression<T>,
         offset: i32,
         rhs: &VariableOrValue<T, Variable>,
+        only_concrete_known: bool,
     ) -> Result<ProcessResult<T, Variable>, Error> {
-        let evaluator = Evaluator::new(self).only_concrete_known();
+        let evaluator = if only_concrete_known {
+            Evaluator::new(self).only_concrete_known()
+        } else {
+            Evaluator::new(self)
+        };
         let Some(lhs_evaluated) = evaluator.evaluate(lhs, offset) else {
             return Ok(ProcessResult::empty());
         };
