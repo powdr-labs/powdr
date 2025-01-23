@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_ast::analyzed::AlgebraicExpression as Expression;
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap};
@@ -56,37 +57,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
     fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
         assert!(self.data.is_empty());
         if self.jit_processor.try_compile(mutable_state) {
-            let [first_row, second_row] = self.compute_first_two_rows(mutable_state);
-            log::debug!(
-                "Running main machine from row 0 using JIT with the following initial values in the first two rows:\n{}\n{}",
-                first_row.render_values(false, &self.parts),
-                second_row.render_values(false, &self.parts)
-            );
-            self.data.push(first_row);
-            self.data.push(second_row);
-            self.data.finalize_all();
-
-            let degree_range = self.parts.common_degree_range();
-
-            // TODO progress bar
-
-            // Start with 2 because we already computed two rows.
-            for row_index in 2.. {
-                if row_index > self.degree {
-                    break;
-                }
-
-                // TODO do loop check and modify degree.
-
-                if row_index % 100 == 0 {
-                    self.degree =
-                        compute_size_and_log(&self.name, row_index as usize, degree_range);
-                }
-
-                let mut data_ref = self.data.append_new_finalized_rows(1);
-                data_ref.row_offset -= 1;
-                self.jit_processor.compute_next_row(mutable_state, data_ref);
-            }
+            self.process_via_jit(mutable_state);
         } else {
             log::debug!("running main machine from row 0 with runtime constraint solver.");
             let first_row = self.compute_partial_first_row(mutable_state);
@@ -250,47 +221,6 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         block.pop().unwrap()
     }
 
-    /// Runs the solver on the rows degree -1, 0 and 1 in order to fully compute the first two
-    /// rows from identities like `pc' = (1 - first_step') * <...>`.
-    fn compute_first_two_rows<Q: QueryCallback<T>>(
-        &self,
-        mutable_state: &MutableState<'a, T, Q>,
-    ) -> [Row<T>; 2] {
-        let data = FinalizableData::with_initial_rows_in_progress(
-            &self.parts.witnesses,
-            [
-                Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree)),
-                Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
-                Row::fresh(self.fixed_data, RowIndex::from_i64(1, self.degree)),
-                Row::fresh(self.fixed_data, RowIndex::from_i64(2, self.degree)),
-            ]
-            .into_iter(),
-            self.fixed_data,
-        );
-
-        let mut processor = BlockProcessor::new(
-            RowIndex::from_i64(-1, self.degree),
-            // Shouldn't need any publics at this point
-            SolverState::without_publics(data),
-            mutable_state,
-            self.fixed_data,
-            &self.parts,
-            self.degree,
-        );
-        let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(0, self.parts.identities.len(), None),
-        );
-        processor.solve(&mut sequence_iterator).unwrap();
-
-        // Ignore any updates to the publics at this point, as we'll re-visit the last row again.
-        let mut block = processor.finish().block;
-        assert!(block.len() == 4);
-        block.pop();
-        let second = block.pop().unwrap();
-        let first = block.pop().unwrap();
-        [first, second]
-    }
-
     fn process<'c, Q: QueryCallback<T>>(
         &mut self,
         first_row: Row<T>,
@@ -332,6 +262,134 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
             eval_value,
             updated_data,
         }
+    }
+
+    /// Process the full VM using JIT-compiled code.
+    fn process_via_jit<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
+        let [first_row, second_row] = self.compute_first_two_rows(mutable_state);
+        log::debug!(
+            "Running main machine from row 0 using JIT with the following initial values in the first two rows:\n{}\n------\n{}",
+            first_row.render_values(false, &self.parts),
+            second_row.render_values(false, &self.parts)
+        );
+        self.data.push(first_row);
+        self.data.push(second_row);
+        self.data.finalize_all();
+
+        let degree_range = self.parts.common_degree_range();
+
+        // TODO progress bar
+
+        // Start with 2 because we already computed two rows.
+        for row_index in 2.. {
+            // call equivalent of maybe_log_performance
+
+            if row_index % 100 == 99 {
+                // TODO we are only looking for loop with period 1 - is that enough?
+                let row1 = self.data.get_in_progress_row(row_index as usize - 2);
+                let row2 = self.data.get_in_progress_row(row_index as usize - 1);
+                if row1 == row2 {
+                    log::info!("Found loop with period 1 starting at row {row_index}");
+                }
+
+                // TODO check if we abort early enough.
+                // I think this might not always be compatible with the abort condition below.
+                self.degree = compute_size_and_log(&self.name, row_index as usize, degree_range);
+            }
+
+            // We cannot use the JIT to compute the last row, because the fixed columns
+            // might be different on that row.
+            if row_index >= self.degree - 1 {
+                break;
+            }
+
+            let mut data_ref = self.data.append_new_finalized_rows(1);
+            data_ref.row_offset -= 1;
+            self.jit_processor.compute_next_row(mutable_state, data_ref);
+        }
+        self.compute_last_row(mutable_state);
+    }
+
+    /// Runs the solver on the rows degree -1, 0 and 1 in order to fully compute the first two
+    /// rows from identities like `pc' = (1 - first_step') * <...>`.
+    fn compute_first_two_rows<Q: QueryCallback<T>>(
+        &self,
+        mutable_state: &MutableState<'a, T, Q>,
+    ) -> [Row<T>; 2] {
+        let data = FinalizableData::with_initial_rows_in_progress(
+            &self.parts.witnesses,
+            [
+                Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree)),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(1, self.degree)),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(2, self.degree)),
+            ]
+            .into_iter(),
+            self.fixed_data,
+        );
+
+        let mut processor = BlockProcessor::new(
+            RowIndex::from_i64(-1, self.degree),
+            // Shouldn't need any publics at this point
+            SolverState::without_publics(data),
+            mutable_state,
+            self.fixed_data,
+            &self.parts,
+            self.degree,
+        );
+        let mut sequence_iterator = ProcessingSequenceIterator::Default(
+            DefaultSequenceIterator::new(2, self.parts.identities.len(), None),
+        );
+        processor.solve(&mut sequence_iterator).unwrap();
+
+        // Ignore any updates to the publics at this point, as we'll re-visit the last row again.
+        let mut block = processor.finish().block;
+        assert!(block.len() == 4);
+        block.pop();
+        let second = block.pop().unwrap();
+        let first = block.pop().unwrap();
+        [first, second]
+    }
+
+    /// Computes the last row of the VM using runtime solving. This is used by the JIT
+    /// because the last row is different.
+    fn compute_last_row<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
+        assert_eq!(self.data.len() as DegreeType, self.degree - 1);
+
+        // TODO combine with compute_first_two_rows
+        let data = FinalizableData::with_initial_rows_in_progress(
+            &self.parts.witnesses,
+            [
+                self.data.get_in_progress_row(self.data.len() - 2),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree)),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(1, self.degree)),
+            ]
+            .into_iter(),
+            self.fixed_data,
+        );
+
+        let mut processor = BlockProcessor::new(
+            RowIndex::from_i64(-2, self.degree),
+            // Shouldn't need any publics at this point
+            SolverState::without_publics(data),
+            mutable_state,
+            self.fixed_data,
+            &self.parts,
+            self.degree,
+        );
+        let mut sequence_iterator = ProcessingSequenceIterator::Default(
+            DefaultSequenceIterator::new(2, self.parts.identities.len(), None),
+        );
+        processor.solve(&mut sequence_iterator).unwrap();
+
+        // Ignore any updates to the publics at this point, as we'll re-visit the last row again.
+        let mut block = processor.finish().block;
+        assert!(block.len() == 4);
+        block.pop();
+        let overflow = block.pop().unwrap();
+        self.data.push(block.pop().unwrap());
+        self.data.push(overflow);
     }
 
     /// At the end of the solving algorithm, we'll have computed the first row twice
