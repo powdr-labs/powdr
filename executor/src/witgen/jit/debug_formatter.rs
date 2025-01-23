@@ -18,18 +18,11 @@ use super::{
 pub fn format_identities<T: FieldElement, FixedEval: FixedEvaluator<T>>(
     identities: &[(&Identity<T>, i32)],
     witgen: &WitgenInference<'_, T, FixedEval>,
-    fixed_evaluator: FixedEval,
 ) -> String {
-    DebugFormatter {
-        fixed_evaluator,
-        identities,
-        witgen,
-    }
-    .format_identities()
+    DebugFormatter { identities, witgen }.format_identities()
 }
 
 struct DebugFormatter<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
-    fixed_evaluator: FixedEval,
     identities: &'a [(&'a Identity<T>, i32)],
     witgen: &'a WitgenInference<'a, T, FixedEval>,
 }
@@ -158,14 +151,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
         let [name, value, rc] = match e {
             Expression::Reference(r) => {
                 let (value, range_constraint) = match r.poly_id.ptype {
-                    PolynomialType::Constant => (
-                        self.fixed_evaluator
-                            .evaluate(r, row_offset)
-                            .map(|v| v.to_string())
-                            .unwrap_or("???".to_string()),
-                        String::new(),
-                    ),
-                    PolynomialType::Committed => {
+                    PolynomialType::Committed | PolynomialType::Constant => {
                         let variable = Variable::from_reference(r, row_offset);
                         let value = self.witgen.value(&variable).to_string();
                         let rc = self.witgen.range_constraint(&variable);
@@ -310,8 +296,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
         match e {
             Expression::Reference(r) => {
                 match r.poly_id.ptype {
-                    PolynomialType::Constant => self.fixed_evaluator.evaluate(r, row_offset),
-                    PolynomialType::Committed => {
+                    PolynomialType::Constant | PolynomialType::Committed => {
                         let variable = Variable::from_reference(r, row_offset);
                         match self.witgen.value(&variable) {
                             Value::Concrete(v) => Some(v),

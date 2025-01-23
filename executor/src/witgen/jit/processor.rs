@@ -293,7 +293,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             .known_variables()
             .iter()
             .filter_map(|var| match var {
-                Variable::Cell(cell) => Some(cell.id),
+                Variable::WitnessCell(cell) => Some(cell.id),
                 _ => None,
             })
             .collect();
@@ -302,7 +302,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 .known_variables()
                 .iter()
                 .filter_map(|var| match var {
-                    Variable::Cell(cell) if cell.id == column_id => Some(cell.row_offset),
+                    Variable::WitnessCell(cell) if cell.id == column_id => Some(cell.row_offset),
                     _ => None,
                 })
                 .collect::<BTreeSet<_>>();
@@ -316,7 +316,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 _ => false,
             };
             let cell_var = |row_offset| {
-                Variable::Cell(Cell {
+                Variable::WitnessCell(Cell {
                     // Column name does not matter.
                     column_name: "".to_string(),
                     id: column_id,
@@ -567,11 +567,7 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
             write!(
                 s,
                 "\nThe following identities have not been fully processed:\n{}",
-                format_identities(
-                    &self.incomplete_identities,
-                    &self.witgen,
-                    self.fixed_evaluator.clone()
-                )
+                format_identities(&self.incomplete_identities, &self.witgen,)
             )
             .unwrap();
         };
