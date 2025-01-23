@@ -258,10 +258,7 @@ fn propagate_constraints<T: FieldElement>(
         Identity::BusReceive(..) => false,
         Identity::BusSend(send) => {
             let receive = send.try_match_static(bus_receives).unwrap();
-            if !receive.is_unconstrained() {
-                return false;
-            }
-            if !send.selected_tuple.selector.is_one() || !receive.selected_tuple.selector.is_one() {
+            if !send.selected_tuple.selector.is_one() {
                 return false;
             }
 
@@ -286,7 +283,10 @@ fn propagate_constraints<T: FieldElement>(
             // Detect [ x ] in [ RANGE ], where RANGE is in the full span.
             // In that case, we can remove the bus interaction pair,
             // because its only function is to enforce the range constraint.
-            if receive.selected_tuple.expressions.len() == 1 {
+            if receive.selected_tuple.expressions.len() == 1
+                && receive.is_unconstrained()
+                && receive.selected_tuple.selector.is_one()
+            {
                 if let (Some(_), Some(right_ref)) = (
                     // The range constraint has been transferred from right to left
                     // by the above code iff. both expressions can be converted to
