@@ -66,10 +66,11 @@ impl<T: FieldElement> BusSend<T> {
 }
 
 impl<T: FieldElement> BusReceive<T> {
-    /// Returns whether the receive has an unconstrained multiplicity.
-    /// If it does not, this typically means that the multiplicity is binary constraint.
-    /// Unconstrained receives are equivalent to the RHS of a lookup;
-    /// binary-constrained receives are equivalent to the RHS of a permutation.
+    /// Returns true if the multiplicity of the receive can be an arbitrary value.
+    /// This means that an arbitrary number of rows on the sending side with
+    /// the same values can match a single row on the receiving end.
+    /// Unconstrained receives are equivalent to the RHS of a lookup,
+    /// while 0-1-constrained receives are equivalent to the RHS of a permutation.
     pub fn is_unconstrained(&self) -> bool {
         // TODO: This always works in practice, but we should properly check the
         // range constraints on the multiplicity column.
