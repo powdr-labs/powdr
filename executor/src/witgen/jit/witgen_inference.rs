@@ -170,9 +170,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Process an identity on a certain row.
     /// Returns Ok(true) if there was progress and Ok(false) if there was no progress.
     /// If this returns an error, it means we have conflicting constraints.
-    pub fn process_identity<CanProcess: CanProcessCall<T>>(
+    pub fn process_identity(
         &mut self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
         id: &'a Identity<T>,
         row_offset: i32,
     ) -> Result<Vec<Variable>, Error> {
@@ -283,9 +283,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         (lhs_evaluated - rhs_evaluated).solve()
     }
 
-    fn process_call<CanProcess: CanProcessCall<T>>(
+    fn process_call(
         &mut self,
-        can_process_call: CanProcess,
+        can_process_call: impl CanProcessCall<T>,
         lookup_id: u64,
         selector: &Expression<T>,
         arguments: &'a [Expression<T>],
@@ -631,7 +631,7 @@ pub trait FixedEvaluator<T: FieldElement>: Clone {
     }
 }
 
-pub trait CanProcessCall<T: FieldElement> {
+pub trait CanProcessCall<T: FieldElement>: Clone {
     /// Returns Some(..) if a call to the machine that handles the given identity
     /// can always be processed with the given known inputs and range constraints
     /// on the parameters.

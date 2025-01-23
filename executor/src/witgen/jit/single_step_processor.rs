@@ -18,6 +18,7 @@ use super::{
     compiler::WitgenFunction,
     effect::Effect,
     processor::Processor,
+    prover_function_heuristics::decode_simple_prover_functions,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -47,10 +48,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         }
     }
 
-    pub fn try_compile<CanProcess: CanProcessCall<T> + Clone>(
-        &mut self,
-        can_process: CanProcess,
-    ) -> bool {
+    pub fn try_compile(&mut self, can_process: impl CanProcessCall<T>) -> bool {
         if !matches!(T::known_field(), Some(KnownField::GoldilocksField)) {
             // Currently, we only support the Goldilocks fields
             // We could run the interpreter on other fields, though.
@@ -109,9 +107,9 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         f.call(self.fixed_data, mutable_state, &mut [], data);
     }
 
-    fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
+    fn generate_code(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
         let all_witnesses = self
             .machine_parts
@@ -146,18 +144,18 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         // and we start out with all submachine calls on the first row already completed.
         let block_size = 2;
 
-        let witgen =
+        let mut witgen =
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
 
-        // let prover_assignments = decode_simple_prover_functions(&self.machine_parts)
-        //     .into_iter()
-        //     .map(|(col_name, value)| (self.column(&col_name), value))
-        //     .collect_vec();
+        let prover_assignments = decode_simple_prover_functions(&self.machine_parts)
+            .into_iter()
+            .map(|(col_name, value)| (self.column(&col_name), value))
+            .collect_vec();
 
-        // // TODO we should only do it if other methods fail, because it is "provide_if_unknown"
-        // for (col, value) in &prover_assignments {
-        //     witgen.assign_constant(col, 1, *value);
-        // }
+        // TODO we should only do it if other methods fail, because it is "provide_if_unknown"
+        for (col, value) in &prover_assignments {
+            witgen.assign_constant(col, 1, *value);
+        }
 
         Processor::new(
             self.fixed_data,
@@ -384,7 +382,6 @@ machine_call(2, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(cal
 VM::instr_mul[1] = 1;"
         );
     }
-
     #[test]
     fn nonconstant_fixed_columns() {
         let input = "
@@ -417,8 +414,8 @@ VM::instr_mul[1] = 1;"
 Main::is_arith $ [ Main::a, Main::b, Main::c ]
      ???              2       ???      ???    
                                               
-Main::is_arith     Main::a  Main::b  Main::c  
-     ???              2       ???      ???    
+Main::is_arith        2     Main::b  Main::c  
+     ???                      ???      ???    
                                           ";
                 assert!(
                     e.contains(expected),

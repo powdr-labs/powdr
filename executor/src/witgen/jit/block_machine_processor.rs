@@ -41,9 +41,9 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
     /// Generates the JIT code for a given combination of connection and known arguments.
     /// Fails if it cannot solve for the outputs, or if any sub-machine calls cannot be completed.
-    pub fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
+    pub fn generate_code(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_args: &BitVec,
     ) -> Result<Vec<Effect<T, Variable>>, String> {

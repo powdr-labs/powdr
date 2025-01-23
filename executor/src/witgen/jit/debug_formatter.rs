@@ -7,7 +7,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::{jit::variable::Cell, range_constraints::RangeConstraint};
+use crate::witgen::range_constraints::RangeConstraint;
 
 use super::{
     variable::Variable,
@@ -18,18 +18,11 @@ use super::{
 pub fn format_identities<T: FieldElement, FixedEval: FixedEvaluator<T>>(
     identities: &[(&Identity<T>, i32)],
     witgen: &WitgenInference<'_, T, FixedEval>,
-    fixed_evaluator: FixedEval,
 ) -> String {
-    DebugFormatter {
-        fixed_evaluator,
-        identities,
-        witgen,
-    }
-    .format_identities()
+    DebugFormatter { identities, witgen }.format_identities()
 }
 
 struct DebugFormatter<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
-    fixed_evaluator: FixedEval,
     identities: &'a [(&'a Identity<T>, i32)],
     witgen: &'a WitgenInference<'a, T, FixedEval>,
 }
@@ -40,12 +33,11 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
             .iter()
             .filter(|(id, row)| !self.witgen.is_complete(id, *row))
             .sorted_by_key(|(id, row)| (row, id.id()))
-            // TODO group by row
             .map(|(id, row)| {
                 format!(
                     "--------------[ identity {} on row {row}: ]--------------\n{}",
                     id.id(),
-                    self.formt_identity(id, *row)
+                    self.format_identity(id, *row)
                 )
             })
             .join("\n")
@@ -53,7 +45,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
 
     /// Formats the identity in a human-readable way to contain as much information
     /// about the sub-expressions as possible.
-    fn formt_identity(&self, identity: &Identity<T>, row_offset: i32) -> String {
+    fn format_identity(&self, identity: &Identity<T>, row_offset: i32) -> String {
         match identity {
             Identity::Lookup(LookupIdentity { left, .. })
             | Identity::Permutation(PermutationIdentity { left, .. })
@@ -151,21 +143,15 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
         row_offset: i32,
         simplified: bool,
     ) -> [String; 3] {
+        if simplified {
+            if let Some(e) = self.try_to_known(e, row_offset) {
+                return pad_center([format!("{e}"), String::new(), String::new()]);
+            }
+        }
         let [name, value, rc] = match e {
             Expression::Reference(r) => {
                 let (value, range_constraint) = match r.poly_id.ptype {
-                    PolynomialType::Constant => (
-                        self.fixed_evaluator
-                            .evaluate(&Cell {
-                                column_name: r.name.clone(),
-                                id: r.poly_id.id,
-                                row_offset: r.next as i32 + row_offset,
-                            })
-                            .map(|v| v.to_string())
-                            .unwrap_or("???".to_string()),
-                        String::new(),
-                    ),
-                    PolynomialType::Committed => {
+                    PolynomialType::Constant | PolynomialType::Committed => {
                         let variable = Variable::from_reference(r, row_offset);
                         let value = self.witgen.value(&variable).to_string();
                         let rc = self.witgen.range_constraint(&variable);
@@ -259,7 +245,14 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
             }
             AlgebraicBinaryOperator::Sub => {
                 if left.map(|v| v == 0.into()).unwrap_or(false) {
-                    Some(self.format_expression(&op.right, row_offset, true))
+                    Some(
+                        self.format_expression(&op.right, row_offset, true)
+                            .into_iter()
+                            .map(|s| format!("-{s}"))
+                            .collect_vec()
+                            .try_into()
+                            .unwrap(),
+                    )
                 } else if right.map(|v| v == 0.into()).unwrap_or(false) {
                     Some(self.format_expression(&op.left, row_offset, true))
                 } else {
@@ -267,6 +260,9 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
                 }
             }
             AlgebraicBinaryOperator::Mul => {
+                // We do not need to consider multiplication by zero, because
+                // this case should have been formatted as zero already higher
+                // up in the call chain due to the calls to `try_to_known`.
                 if left.map(|v| v == 1.into()).unwrap_or(false) {
                     Some(self.format_expression(&op.right, row_offset, true))
                 } else if right.map(|v| v == 1.into()).unwrap_or(false) {
@@ -300,12 +296,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
         match e {
             Expression::Reference(r) => {
                 match r.poly_id.ptype {
-                    PolynomialType::Constant => self.fixed_evaluator.evaluate(&Cell {
-                        column_name: r.name.clone(),
-                        id: r.poly_id.id,
-                        row_offset: r.next as i32 + row_offset,
-                    }),
-                    PolynomialType::Committed => {
+                    PolynomialType::Constant | PolynomialType::Committed => {
                         let variable = Variable::from_reference(r, row_offset);
                         match self.witgen.value(&variable) {
                             Value::Concrete(v) => Some(v),

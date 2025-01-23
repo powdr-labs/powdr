@@ -67,18 +67,18 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         }
     }
 
-    pub fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
+    pub fn generate_code(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
         witgen: WitgenInference<'a, T, FixedEval>,
     ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T, FixedEval>> {
         let branch_depth = 0;
         self.generate_code_for_branch(can_process, witgen, branch_depth)
     }
 
-    fn generate_code_for_branch<CanProcess: CanProcessCall<T> + Clone>(
+    fn generate_code_for_branch(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
         mut witgen: WitgenInference<'a, T, FixedEval>,
         branch_depth: usize,
     ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T, FixedEval>> {
@@ -194,9 +194,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         result.map(|code| common_code.into_iter().chain(code).collect())
     }
 
-    fn process_until_no_progress<CanProcess: CanProcessCall<T> + Clone>(
+    fn process_until_no_progress(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
     ) -> Result<(), affine_symbolic_expression::Error> {
         let mut identities_to_process: BTreeSet<_> = self
@@ -338,7 +338,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
     }
 }
 
-/// Computes a map from each variable to the identitie-row-offset pairs it occurs in.
+/// Computes a map from each variable to the identity-row-offset pairs it occurs in.
 fn compute_occurrences_map<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
     identities: &[(&'a Identity<T>, i32)],
@@ -556,11 +556,7 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
             write!(
                 s,
                 "\nThe following identities have not been fully processed:\n{}",
-                format_identities(
-                    &self.incomplete_identities,
-                    &self.witgen,
-                    self.fixed_evaluator.clone()
-                )
+                format_identities(&self.incomplete_identities, &self.witgen,)
             )
             .unwrap();
         };
