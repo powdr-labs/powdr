@@ -92,7 +92,7 @@ impl<T: FieldElement> RangeConstraint<T> {
         let in_range = if self.min <= self.max {
             self.min <= v && v <= self.max
         } else {
-            v <= self.min || self.max <= v
+            self.min <= v || v <= self.max
         };
         let in_mask = v.to_integer() & self.mask == v.to_integer();
         in_range && in_mask
@@ -614,6 +614,23 @@ mod test {
             let a = (10.into(), 20.into());
             assert_eq!(commutativity_test(a, (F::from(-50), 90.into())), Some(a));
         }
+    }
+
+    #[test]
+    fn allows_value() {
+        type F = GoldilocksField;
+        let a = RangeConstraint::<F>::from_range(20.into(), 10.into());
+        assert!(a.allows_value(5.into()));
+        assert!(a.allows_value(10.into()));
+        assert!(!a.allows_value(15.into()));
+        assert!(a.allows_value(20.into()));
+        assert!(a.allows_value(25.into()));
+        let b = RangeConstraint::<F>::from_range(10.into(), 20.into());
+        assert!(!b.allows_value(5.into()));
+        assert!(b.allows_value(10.into()));
+        assert!(b.allows_value(15.into()));
+        assert!(b.allows_value(20.into()));
+        assert!(!b.allows_value(25.into()));
     }
 
     #[test]

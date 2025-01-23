@@ -48,8 +48,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         fixed_data: &'a FixedData<'a, T>,
         fixed_evaluator: FixedEval,
         identities: impl IntoIterator<Item = (&'a Identity<T>, i32)>,
-        block_size: usize,
-        check_block_shape: bool,
         requested_known_vars: impl IntoIterator<Item = Variable>,
         max_branch_depth: usize,
     ) -> Self {
@@ -60,15 +58,28 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             fixed_evaluator,
             identities,
             occurrences,
-            block_size,
-            check_block_shape,
+            block_size: 1,
+            check_block_shape: false,
             requested_known_vars: requested_known_vars.into_iter().collect(),
             max_branch_depth,
         }
     }
 
+    /// Sets the block size.
+    pub fn with_block_size(mut self, block_size: usize) -> Self {
+        self.block_size = block_size;
+        self
+    }
+
+    /// Activates the check to see if the code for two subsequently generated
+    /// blocks conflicts.
+    pub fn with_block_shape_check(mut self) -> Self {
+        self.check_block_shape = true;
+        self
+    }
+
     pub fn generate_code(
-        &self,
+        self,
         can_process: impl CanProcessCall<T>,
         witgen: WitgenInference<'a, T, FixedEval>,
     ) -> Result<Vec<Effect<T, Variable>>, Error<'a, T, FixedEval>> {

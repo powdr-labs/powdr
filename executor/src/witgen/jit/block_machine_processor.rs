@@ -89,11 +89,11 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             self.fixed_data,
             self,
             identities,
-            self.block_size,
-            true,
             requested_known,
             BLOCK_MACHINE_MAX_BRANCH_DEPTH,
         )
+        .with_block_shape_check()
+        .with_block_size(self.block_size)
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string_with_variable_formatter(|var| match var {

@@ -66,7 +66,6 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 }
             })
             .collect_vec();
-        let block_size = 1;
 
         let mut witgen =
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
@@ -85,8 +84,6 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             self.fixed_data,
             self,
             identities,
-            block_size,
-            false,
             requested_known,
             SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
