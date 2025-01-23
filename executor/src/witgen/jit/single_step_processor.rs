@@ -86,6 +86,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                     )
                     .unwrap(),
                 ));
+                log::trace!("Compilation done.");
                 true
             }
         }
