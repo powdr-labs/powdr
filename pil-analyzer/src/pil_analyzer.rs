@@ -369,7 +369,7 @@ impl PILAnalyzer {
 
     /// Creates and returns a map for every referenced trait function with concrete type to the
     /// corresponding trait implementation function.
-    fn resolve_trait_impls(&mut self) -> Result<SolvedTraitImpls, Vec<Error>> {
+    pub fn resolve_trait_impls(&mut self) -> Result<SolvedTraitImpls, Vec<Error>> {
         let all_traits = self
             .definitions
             .iter()
