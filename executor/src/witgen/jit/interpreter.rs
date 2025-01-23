@@ -443,7 +443,6 @@ mod test {
     use super::EffectsInterpreter;
     use crate::witgen::data_structures::{
         finalizable_data::{CompactData, CompactDataRef},
-        identity::convert,
         mutable_state::MutableState,
     };
     use crate::witgen::global_constraints;

@@ -9,7 +9,7 @@ use powdr_number::FieldElement;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::witgen::{
-    data_structures::identity::convert,
+    data_structures::identity::convert_identities,
     machines::{
         profiling::{record_end, record_start},
         Connection,
@@ -44,7 +44,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
         // Several range constraints might point to the same target
         let mut multiplicity_columns = BTreeMap::new();
 
-        let identities = convert(&self.fixed.analyzed.identities);
+        let identities = convert_identities(self.fixed.analyzed);
         let phantom_lookups = identities
             .iter()
             .filter_map(|identity| {

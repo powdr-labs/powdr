@@ -10,7 +10,7 @@ use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
 use super::Machine;
-use crate::witgen::data_structures::identity::convert;
+use crate::witgen::data_structures::identity::convert_identities;
 use crate::witgen::data_structures::identity::Identity;
 use crate::witgen::machines::dynamic_machine::DynamicMachine;
 use crate::witgen::machines::second_stage_machine::SecondStageMachine;
@@ -216,7 +216,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         // receiving end of a lookup, we remove any multiplicity columns here.
         // Note that we don't use the passed identities, because we want to
         // include removed range constraints.
-        let multiplicity_columns = convert(&self.fixed.analyzed.identities)
+        let multiplicity_columns = convert_identities(self.fixed.analyzed)
             .iter()
             .filter_map(|identity| match identity {
                 Identity::BusReceive(bus_receive) => {

@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use bus_accumulator::generate_bus_accumulator_columns;
-use data_structures::identity::{convert, BusReceive, Identity};
+use data_structures::identity::{convert_identities, BusReceive, Identity};
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
 use multiplicity_column_generator::MultiplicityColumnGenerator;
@@ -384,7 +384,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             fixed_constraints: FixedColumnMap::new(None, fixed_cols.len()),
         };
 
-        let mut identities = convert(&analyzed.identities);
+        let mut identities = convert_identities(analyzed);
         if stage > 0 {
             // Unfortunately, with the composite backend, we won't have the matching
             // receives in other machines, which can lead to panics. Machine calls
