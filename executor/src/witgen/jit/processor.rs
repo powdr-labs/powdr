@@ -338,7 +338,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
     }
 }
 
-/// Computes a map from each variable to the identitie-row-offset pairs it occurs in.
+/// Computes a map from each variable to the identity-row-offset pairs it occurs in.
 fn compute_occurrences_map<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
     identities: &[(&'a Identity<T>, i32)],
