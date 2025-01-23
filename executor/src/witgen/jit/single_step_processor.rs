@@ -2,7 +2,7 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, PolyID, PolynomialType,
 };
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::{
@@ -140,9 +140,6 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 }
             })
             .collect_vec();
-        // We use a block size of two since we need two completed submachine calls,
-        // and we start out with all submachine calls on the first row already completed.
-        let block_size = 2;
 
         let mut witgen =
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
@@ -164,6 +161,9 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             requested_known,
             SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
+        // We use a block size of two since we need two completed submachine calls,
+        // and we start out with all submachine calls on the first row already completed.
+        .with_block_size(2)
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string();

@@ -54,8 +54,6 @@ impl<T: FieldElement> WitgenFunction<T> {
             call_machine: call_machine::<T, Q>,
             fixed_data: fixed_data as *const _ as *const c_void,
             get_fixed_value: get_fixed_value::<T>,
-            fixed_data: fixed_data as *const _ as *const c_void,
-            get_fixed_value: get_fixed_value::<T>,
         });
     }
 }
