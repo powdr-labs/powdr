@@ -17,10 +17,7 @@ use powdr_number::FieldElement;
 use crate::witgen::{data_structures::identity::Identity, FixedData};
 
 use super::{
-    affine_symbolic_expression,
-    effect::{format_code, Effect},
-    variable::{Cell, Variable},
-    witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, Value, WitgenInference},
+    affine_symbolic_expression, debug_formatter::format_identities, effect::{format_code, Effect}, variable::{Cell, Variable}, witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, Value, WitgenInference}
 };
 
 /// A generic processor for generating JIT code.
