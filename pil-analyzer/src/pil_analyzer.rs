@@ -60,7 +60,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Erro
 }
 
 #[derive(Default)]
-pub struct PILAnalyzer {
+struct PILAnalyzer {
     /// Known symbols by name and category, determined in the first step.
     known_symbols: HashMap<String, SymbolCategory>,
     current_namespace: AbsoluteSymbolPath,
@@ -369,7 +369,7 @@ impl PILAnalyzer {
 
     /// Creates and returns a map for every referenced trait function with concrete type to the
     /// corresponding trait implementation function.
-    pub fn resolve_trait_impls(&mut self) -> Result<SolvedTraitImpls, Vec<Error>> {
+    fn resolve_trait_impls(&mut self) -> Result<SolvedTraitImpls, Vec<Error>> {
         let all_traits = self
             .definitions
             .iter()
