@@ -32,8 +32,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         Self { fixed }
     }
 
-    /// Finds machines in the witness columns and identities and returns a list of machines and the identities
-    /// that are not "internal" to the machines.
+    /// Finds machines in the witness columns and identities and returns a list of machines.
     /// The first returned machine is the "main machine", i.e. a machine that has no incoming connections.
     pub fn split_out_machines(&self) -> Vec<KnownMachine<'a, T>> {
         // Ignore prover functions that reference columns of later stages.
