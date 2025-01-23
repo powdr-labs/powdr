@@ -26,6 +26,7 @@ struct CacheKey {
 }
 
 pub struct FunctionCache<'a, T: FieldElement> {
+    fixed_data: &'a FixedData<'a, T>,
     /// The processor that generates the JIT code
     processor: BlockMachineProcessor<'a, T>,
     /// The cache of JIT functions and the returned range constraints.
@@ -55,6 +56,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             BlockMachineProcessor::new(fixed_data, parts.clone(), block_size, latch_row);
 
         FunctionCache {
+            fixed_data,
             processor,
             column_layout: metadata,
             witgen_functions: HashMap::new(),
@@ -127,7 +129,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .iter()
             .flat_map(|effect| effect.referenced_variables())
             .filter_map(|var| match var {
-                Variable::Cell(cell) => Some(cell.row_offset),
+                Variable::WitnessCell(cell) => Some(cell.row_offset),
                 _ => None,
             })
             .all(|row_offset| row_offset >= -1 && row_offset < self.block_size as i32);
@@ -180,7 +182,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .as_ref()
             .expect("compile_cached() returned false!")
             .function
-            .call(mutable_state, values, data);
+            .call(self.fixed_data, mutable_state, values, data);
 
         Ok(true)
     }
