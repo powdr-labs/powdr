@@ -214,7 +214,10 @@ pub fn convert_identities<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<Identi
     identities
 }
 
-fn convert_identity<T: FieldElement>(
+/// Like [convert_identities], but only converts a single identity.
+/// The caller is responsible for providing an ID counter that does not
+/// collide with IDs from existing identities.
+pub fn convert_identity<T: FieldElement>(
     id_counter: &mut RangeFrom<u64>,
     identity: &AnalyzedIdentity<T>,
 ) -> Vec<Identity<T>> {

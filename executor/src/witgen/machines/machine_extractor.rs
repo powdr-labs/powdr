@@ -10,7 +10,7 @@ use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
 use super::Machine;
-use crate::witgen::data_structures::identity::convert_identities;
+use crate::witgen::data_structures::identity::convert_identity;
 use crate::witgen::data_structures::identity::Identity;
 use crate::witgen::machines::dynamic_machine::DynamicMachine;
 use crate::witgen::machines::second_stage_machine::SecondStageMachine;
@@ -18,7 +18,8 @@ use crate::witgen::machines::Connection;
 use crate::witgen::machines::{write_once_memory::WriteOnceMemory, MachineParts};
 
 use powdr_ast::analyzed::{
-    self, AlgebraicExpression as Expression, PolyID, PolynomialReference, Reference,
+    self, AlgebraicExpression as Expression, Identity as AnalyzedIdentity, PolyID,
+    PolynomialReference, Reference,
 };
 use powdr_ast::parsed::{self, visitor::AllChildren};
 use powdr_number::FieldElement;
@@ -215,8 +216,16 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         // receiving end of a lookup, we remove any multiplicity columns here.
         // Note that we don't use the passed identities, because we want to
         // include removed range constraints.
-        let multiplicity_columns = convert_identities(self.fixed.analyzed)
+        let mut dummy_id_counter = 1..;
+        let multiplicity_columns = self
+            .fixed
+            .analyzed
+            .identities
             .iter()
+            // We're only interested in bus receives, and polynomial identities
+            // for sure don't translate to bus receives, so we can filter them out.
+            .filter(|identity| !matches!(identity, AnalyzedIdentity::Polynomial(_)))
+            .flat_map(|identity| convert_identity(&mut dummy_id_counter, identity))
             .filter_map(|identity| match identity {
                 Identity::BusReceive(bus_receive) => {
                     bus_receive.multiplicity.as_ref().and_then(|m| match m {
