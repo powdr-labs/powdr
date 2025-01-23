@@ -270,10 +270,8 @@ params[2] = Add::c[0];"
         let result = generate_for_block_machine(&input, "main_binary", 3, 1).unwrap();
         let [op_rc, a_rc, b_rc, c_rc] = &result.range_constraints.try_into().unwrap();
         assert_eq!(op_rc, &RangeConstraint::from_range(0.into(), 2.into()));
-        // TODO why are they not constrained to four bytes?
-        // Will be fixed in the next PR.
-        assert_eq!(a_rc, &RangeConstraint::default());
-        assert_eq!(b_rc, &RangeConstraint::default());
+        assert_eq!(a_rc, &RangeConstraint::from_mask(0xffffffffu64));
+        assert_eq!(b_rc, &RangeConstraint::from_mask(0xffffffffu64));
         assert_eq!(c_rc, &RangeConstraint::from_mask(0xffffffffu64));
         assert_eq!(
             format_code(&result.code),
