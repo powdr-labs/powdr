@@ -69,7 +69,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                 .iter()
                 .flat_map(|e| e.referenced_variables())
                 .filter_map(|v| match v {
-                    Variable::FixedColumn(c) => Some((v, c)),
+                    Variable::FixedCell(c) => Some((v, c)),
                     _ => None,
                 })
                 .unique()
@@ -86,7 +86,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         known_inputs: &[Variable],
     ) {
         actions.extend(known_inputs.iter().map(|var| match var {
-            Variable::Cell(c) => {
+            Variable::WitnessCell(c) => {
                 let idx = var_mapper.map_var(var);
                 InterpreterAction::ReadCell(idx, c.clone())
             }
@@ -94,7 +94,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                 let idx = var_mapper.map_var(var);
                 InterpreterAction::ReadParam(idx, *i)
             }
-            Variable::FixedColumn(_) | Variable::MachineCallParam(_) => unreachable!(),
+            Variable::FixedCell(_) | Variable::MachineCallParam(_) => unreachable!(),
         }));
     }
 
@@ -153,7 +153,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
             .flat_map(Effect::written_vars)
             .for_each(|(var, _mutable)| {
                 match var {
-                    Variable::Cell(cell) => {
+                    Variable::WitnessCell(cell) => {
                         let idx = var_mapper.get_var(var).unwrap();
                         actions.push(InterpreterAction::WriteCell(idx, cell.clone()));
                     }
@@ -161,7 +161,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                         let idx = var_mapper.get_var(var).unwrap();
                         actions.push(InterpreterAction::WriteParam(idx, *i));
                     }
-                    Variable::FixedColumn(_) => panic!("Should not write to fixed column."),
+                    Variable::FixedCell(_) => panic!("Should not write to fixed column."),
                     Variable::MachineCallParam(_) => {
                         // This is just an internal variable.
                     }

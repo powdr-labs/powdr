@@ -95,7 +95,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
     }
 
     fn cell(&self, id: PolyID, row_offset: i32) -> Variable {
-        Variable::Cell(Cell {
+        Variable::WitnessCell(Cell {
             column_name: self.fixed_data.column_name(&id).to_string(),
             id: id.id,
             row_offset,

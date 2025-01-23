@@ -108,7 +108,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 
     pub fn is_known(&self, variable: &Variable) -> bool {
-        if let Variable::FixedColumn(_) = variable {
+        if let Variable::FixedCell(_) = variable {
             true
         } else {
             self.known_variables.contains(variable)
@@ -462,7 +462,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Record a variable as known. Return true if it was not known before.
     fn record_known(&mut self, variable: Variable) -> bool {
         // We do not record fixed columns as known.
-        if matches!(variable, Variable::FixedColumn(_)) {
+        if matches!(variable, Variable::FixedCell(_)) {
             false
         } else {
             self.known_variables.insert(variable)
@@ -473,7 +473,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// combining global range constraints and newly derived local range constraints.
     /// For fixed columns, it also invokes the fixed evaluator.
     pub fn range_constraint(&self, variable: &Variable) -> RangeConstraint<T> {
-        if let Variable::FixedColumn(fixed_cell) = variable {
+        if let Variable::FixedCell(fixed_cell) = variable {
             if let Some(v) = self.fixed_evaluator.evaluate(fixed_cell) {
                 return RangeConstraint::from_value(v);
             }
@@ -708,7 +708,7 @@ mod test {
 
         let known_cells = known_cells.iter().map(|(name, row_offset)| {
             let id = fixed_data.try_column_by_name(name).unwrap().id;
-            Variable::Cell(Cell {
+            Variable::WitnessCell(Cell {
                 column_name: name.to_string(),
                 id,
                 row_offset: *row_offset,

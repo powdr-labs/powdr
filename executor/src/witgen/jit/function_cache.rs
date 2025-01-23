@@ -120,7 +120,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
                     .iter()
                     .flat_map(|effect| effect.referenced_variables())
                     .filter_map(|var| match var {
-                        Variable::Cell(cell) => Some(cell.row_offset),
+                        Variable::WitnessCell(cell) => Some(cell.row_offset),
                         _ => None,
                     })
                     .all(|row_offset| row_offset >= -1 && row_offset < self.block_size as i32);
