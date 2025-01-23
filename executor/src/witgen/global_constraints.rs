@@ -477,7 +477,7 @@ mod test {
     fn identities_and_receives<T: FieldElement>(
         analyzed: &Analyzed<T>,
     ) -> (Vec<Identity<T>>, BTreeMap<T, BusReceive<T>>) {
-        let identities = convert_identities(&analyzed);
+        let identities = convert_identities(analyzed);
         let bus_receives = identities
             .iter()
             .filter_map(|identity| match identity {
