@@ -291,7 +291,7 @@ where
             })
             .collect::<BTreeMap<_, _>>();
 
-        //remember the witness cols that is already transfered to circle domain, so that we don't need to transfer it again in stage 1
+        // remember the witness cols that is already transferred to circle domain, so that we don't need to transfer it again in stage 1
         let mut witness_col_circle_domain_index = BTreeMap::new();
         let mut index_acc = 0;
 
