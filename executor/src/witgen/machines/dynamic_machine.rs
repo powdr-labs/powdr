@@ -76,6 +76,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
                     break;
                 }
 
+                // TODO do loop check and modify degree.
+
                 if row_index % 100 == 0 {
                     self.degree =
                         compute_size_and_log(&self.name, row_index as usize, degree_range);
