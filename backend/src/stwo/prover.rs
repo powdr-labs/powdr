@@ -1,11 +1,11 @@
 use itertools::Itertools;
 use num_traits::Zero;
 use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, DegreeRange};
+use powdr_ast::parsed::visitor::AllChildren;
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
-
 
 use powdr_number::{FieldElement, Mersenne31Field};
 use serde::de::DeserializeOwned;
@@ -86,9 +86,10 @@ where
         analyzed: Arc<Analyzed<Mersenne31Field>>,
         fixed: Arc<Vec<(String, VariablySizedColumn<Mersenne31Field>)>>,
     ) -> Result<Self, io::Error> {
-        let split: BTreeMap<String, Analyzed<Mersenne31Field>> = powdr_backend_utils::split_pil(&analyzed)
-            .into_iter()
-            .collect();
+        let split: BTreeMap<String, Analyzed<Mersenne31Field>> =
+            powdr_backend_utils::split_pil(&analyzed)
+                .into_iter()
+                .collect();
 
         Ok(Self {
             analyzed,
@@ -298,7 +299,7 @@ where
 
         //Get witness columns in circle domain for stage 0
         let mut witness_cols_circle_domain_eval: ColumnVec<
-            CircleEvaluation<B, BaseField, BitReversedOrder>,
+            Option<CircleEvaluation<B, BaseField, BitReversedOrder>>,
         > = witness_by_machine
             .clone()
             .into_iter()
@@ -308,12 +309,12 @@ where
                     .enumerate()
                     .map(|(index, (name, vec))| {
                         witness_col_circle_domain_index.insert(name.clone(), index + index_acc);
-                        gen_stwo_circle_column::<B, M31>(
+                        Some(gen_stwo_circle_column::<B, M31>(
                             *domain_map
                                 .get(&(vec.len().ilog2() as usize))
                                 .expect("Domain not found for given size"),
                             &vec,
-                        )
+                        ))
                     })
                     .collect::<Vec<_>>();
 
@@ -374,24 +375,24 @@ where
                     })
                     .collect();
 
-            witness_cols_circle_domain_eval = witness_by_machine_stage1
-                .into_iter()
-                .flat_map(|(_machine_name, witness_cols)| {
-                    witness_cols.into_iter().map(|(witness_name, vec)| {
-                        //no need to transfer the witness columns to circle domain if it is already calculated in stage 0
-                        if let Some(index) = witness_col_circle_domain_index.get(&witness_name) {
-                            witness_cols_circle_domain_eval[*index].clone()
-                        } else {
-                            gen_stwo_circle_column::<B, M31>(
-                                *domain_map
-                                    .get(&(vec.len().ilog2() as usize))
-                                    .expect("Domain not found for given size"),
-                                &vec,
-                            )
-                        }
-                    })
-                })
-                .collect::<Vec<_>>();
+            let mut results = Vec::new();
+
+            for (_machine_name, witness_cols) in witness_by_machine_stage1 {
+                for (witness_name, vec) in witness_cols {
+                    if let Some(index) = witness_col_circle_domain_index.get(&witness_name) {
+                        results.push(witness_cols_circle_domain_eval[*index].take());
+                    } else {
+                        results.push(Some(gen_stwo_circle_column::<B, M31>(
+                            *domain_map
+                                .get(&(vec.len().ilog2() as usize))
+                                .expect("Domain not found for given size"),
+                            &vec,
+                        )));
+                    }
+                }
+            }
+
+            witness_cols_circle_domain_eval = results;
         }
 
         let twiddles_max_degree = B::precompute_twiddles(
@@ -411,7 +412,12 @@ where
         tree_builder.commit(prover_channel);
 
         let mut tree_builder = commitment_scheme.tree_builder();
-        tree_builder.extend_evals(witness_cols_circle_domain_eval);
+        tree_builder.extend_evals(
+            witness_cols_circle_domain_eval
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>(),
+        );
         tree_builder.commit(prover_channel);
 
         let tree_span_provider = &mut TraceLocationAllocator::default();

@@ -10,16 +10,16 @@ use crate::{
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{FieldElement, Mersenne31Field};
+use powdr_number::Mersenne31Field;
 use prover::StwoProver;
 use stwo_prover::core::backend::{simd::SimdBackend, BackendForChannel};
 use stwo_prover::core::channel::{Blake2sChannel, Channel, MerkleChannel};
 use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 
 mod circuit_builder;
+mod params;
 mod proof;
 mod prover;
-mod params;
 
 struct RestrictedFactory;
 
