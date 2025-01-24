@@ -76,32 +76,27 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         }
 
         // Compute the identity-row-pairs we consider.
-        let identities = if self
+        let have_next_ref = self
             .machine_parts
             .identities
             .iter()
-            .all(|id| !id.contains_next_ref())
-        {
-            // No identity contains a next reference - this should be a simple one-row machine.
-            assert_eq!(self.block_size, 1);
-            self.machine_parts
-                .identities
-                .iter()
-                .map(move |&id| (id, 0))
-                .collect_vec()
+            .any(|id| id.contains_next_ref());
+        let start_row = if !have_next_ref {
+            // No identity contains a next reference - we do not need to consider row -1,
+            // and the block has to be rectangular-shaped.
+            0
         } else {
             // A machine that might have a non-rectangular shape.
             // We iterate over all rows of the block +/- one row.
-            let row_range = -1..self.block_size as i32;
-            row_range
-                .flat_map(move |row| {
-                    self.machine_parts
-                        .identities
-                        .iter()
-                        .map(move |&id| (id, row))
-                })
-                .collect_vec()
+            -1
         };
+        let identities = (start_row..self.block_size as i32).flat_map(move |row| {
+            self.machine_parts
+                .identities
+                .iter()
+                .map(move |&id| (id, row))
+        });
+
         let requested_known = known_args
             .iter()
             .enumerate()
