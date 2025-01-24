@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{collections::BTreeMap, ops::RangeFrom};
+use std::{cmp::max, collections::BTreeMap, ops::RangeFrom};
 
 use itertools::Itertools;
 use powdr_ast::{
@@ -192,15 +192,7 @@ impl<T> Identity<T> {
 /// Because this function allocates new identities, we receive a reference to [Analyzed],
 /// so we can be sure we operate on all identities.
 pub fn convert_identities<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<Identity<T>> {
-    // (Phantom) lookups / permutations are converted to a pair of bus send and bus receive,
-    // so we need to allocate new IDs for the new receives,
-    let max_id = analyzed
-        .identities
-        .iter()
-        .map(|id| id.id())
-        .max()
-        .unwrap_or(0);
-    let mut id_counter = (max_id + 1)..;
+    let mut id_counter = id_counter(&analyzed.identities);
 
     let identities = analyzed
         .identities
@@ -224,10 +216,30 @@ pub fn convert_identities<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<Identi
     identities
 }
 
+fn id_counter<T: FieldElement>(identities: &[AnalyzedIdentity<T>]) -> RangeFrom<u64> {
+    // We need to allocate new identity and bus IDs. Make sure it doesn't collide.
+    let max_identity_id = identities.iter().map(|id| id.id()).max().unwrap_or(0);
+    let max_bus_id = identities
+        .iter()
+        .filter_map(|id| match id {
+            AnalyzedIdentity::PhantomBusInteraction(bus_interaction) => {
+                match bus_interaction.payload.0[0] {
+                    AlgebraicExpression::Number(id) => Some(id),
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .max()
+        .unwrap_or(T::zero())
+        .to_degree();
+    (max(max_identity_id, max_bus_id) + 1)..
+}
+
 /// Like [convert_identities], but only converts a single identity.
 /// The caller is responsible for providing an ID counter that does not
 /// collide with IDs from existing identities.
-pub fn convert_identity<T: FieldElement>(
+fn convert_identity<T: FieldElement>(
     id_counter: &mut RangeFrom<u64>,
     identity: &AnalyzedIdentity<T>,
 ) -> Vec<Identity<T>> {
@@ -314,7 +326,7 @@ fn bus_interaction_pair<T: FieldElement>(
     right: &SelectedExpressions<T>,
     rhs_multiplicity: Option<AlgebraicExpression<T>>,
 ) -> Vec<Identity<T>> {
-    let bus_id: T = id.into();
+    let bus_id: T = id_counter.next().unwrap().into();
     vec![
         Identity::BusSend(BusSend {
             identity_id: id,
