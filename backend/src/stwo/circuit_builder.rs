@@ -7,6 +7,7 @@ extern crate alloc;
 use alloc::collections::btree_map::BTreeMap;
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, Identity};
 use powdr_number::{FieldElement, LargeInt};
+use powdr_number::Mersenne31Field;
 
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use stwo_prover::constraint_framework::preprocessed_columns::PreprocessedColumn;
@@ -20,14 +21,15 @@ use stwo_prover::core::poly::circle::{CircleDomain, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 
-pub type PowdrComponent<'a, F> = FrameworkComponent<PowdrEval<F>>;
+use crate::stwo::params::FieldElementMap;
 
-pub fn gen_stwo_circle_column<T, B, F>(
+pub type PowdrComponent<'a> = FrameworkComponent<PowdrEval>;
+
+pub fn gen_stwo_circle_column<B, F>(
     domain: CircleDomain,
-    slice: &[T],
+    slice: &[Mersenne31Field],
 ) -> CircleEvaluation<B, BaseField, BitReversedOrder>
 where
-    T: FieldElement,
     B: FieldOps<M31> + ColumnOps<F>,
 
     F: ExtensionOf<BaseField>,
@@ -51,9 +53,9 @@ where
     CircleEvaluation::new(domain, column)
 }
 
-pub struct PowdrEval<T> {
+pub struct PowdrEval {
     log_degree: u32,
-    analyzed: Analyzed<T>,
+    analyzed: Analyzed<Mersenne31Field>,
     // the pre-processed are indexed in the whole proof, instead of in each component.
     // this offset represents the index of the first pre-processed column in this component
     preprocess_col_offset: usize,
@@ -61,15 +63,15 @@ pub struct PowdrEval<T> {
     constant_shifted: BTreeMap<PolyID, usize>,
     constant_columns: BTreeMap<PolyID, usize>,
     // stwo supports maximum 2 stages, challenges are only created for stage 0
-    pub challenges: BTreeMap<u64, T>,
+    pub challenges: BTreeMap<u64, Mersenne31Field>,
 }
 
-impl<T: FieldElement> PowdrEval<T> {
+impl PowdrEval {
     pub fn new(
-        analyzed: Analyzed<T>,
+        analyzed: Analyzed<Mersenne31Field>,
         preprocess_col_offset: usize,
         log_degree: u32,
-        challenges: BTreeMap<u64, T>,
+        challenges: BTreeMap<u64, Mersenne31Field>,
     ) -> Self {
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
@@ -139,7 +141,7 @@ impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
     }
 }
 
-impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
+impl FrameworkEval for PowdrEval {
     fn log_size(&self) -> u32 {
         self.log_degree
     }
@@ -192,9 +194,8 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             .collect();
         let challenges = self
             .challenges
-            .clone()
-            .into_iter()
-            .map(|(k, v)| (k, E::F::from(v.to_integer().try_into_u32().unwrap().into())))
+            .iter()
+            .map(|(k, v)| (*k, FieldElementMap::<E>::into_stwo_eval_field(*v)))
             .collect();
 
         let intermediate_definitions = self.analyzed.intermediate_definitions();
@@ -234,7 +235,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
 }
 
 // This function creates a list of the names of the constant polynomials that have next references constraint
-pub fn get_constant_with_next_list<T: FieldElement>(analyzed: &Analyzed<T>) -> HashSet<&String> {
+pub fn get_constant_with_next_list(analyzed: &Analyzed<Mersenne31Field>) -> HashSet<&String> {
     let mut constant_with_next_list: HashSet<&String> = HashSet::new();
     analyzed.all_children().for_each(|e| {
         if let AlgebraicExpression::Reference(AlgebraicReference {

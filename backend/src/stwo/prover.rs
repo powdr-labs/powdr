@@ -6,7 +6,8 @@ use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
 
-use powdr_number::FieldElement;
+
+use powdr_number::{FieldElement, Mersenne31Field};
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 
@@ -58,12 +59,12 @@ impl fmt::Display for KeyExportError {
     }
 }
 
-pub struct StwoProver<T, B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Channel> {
-    pub analyzed: Arc<Analyzed<T>>,
+pub struct StwoProver<B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Channel> {
+    pub analyzed: Arc<Analyzed<Mersenne31Field>>,
     /// The split analyzed PIL
-    split: BTreeMap<String, Analyzed<T>>,
+    split: BTreeMap<String, Analyzed<Mersenne31Field>>,
     /// The value of the fixed columns
-    pub fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
+    pub fixed: Arc<Vec<(String, VariablySizedColumn<Mersenne31Field>)>>,
 
     /// Proving key
     proving_key: StarkProvingKey<B>,
@@ -73,19 +74,19 @@ pub struct StwoProver<T, B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: 
     _merkle_channel_marker: PhantomData<MC>,
 }
 
-impl<'a, F: FieldElement, B, MC, C> StwoProver<F, B, MC, C>
+impl<'a, B, MC, C> StwoProver<B, MC, C>
 where
     B: Backend + Send + BackendForChannel<MC>,
     MC: MerkleChannel + Send,
     C: Channel + Send,
     MC::H: DeserializeOwned + Serialize,
-    PowdrComponent<'a, F>: ComponentProver<B>,
+    PowdrComponent<'a>: ComponentProver<B>,
 {
     pub fn new(
-        analyzed: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
+        analyzed: Arc<Analyzed<Mersenne31Field>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<Mersenne31Field>)>>,
     ) -> Result<Self, io::Error> {
-        let split: BTreeMap<String, Analyzed<F>> = powdr_backend_utils::split_pil(&analyzed)
+        let split: BTreeMap<String, Analyzed<Mersenne31Field>> = powdr_backend_utils::split_pil(&analyzed)
             .into_iter()
             .collect();
 
@@ -170,7 +171,7 @@ where
                                 > = fixed_columns
                                     .iter()
                                     .map(|(_, vec)| {
-                                        gen_stwo_circle_column::<F, B, M31>(
+                                        gen_stwo_circle_column::<B, M31>(
                                             *domain_map.get(&(vec.len().ilog2() as usize)).unwrap(),
                                             vec,
                                         )
@@ -187,7 +188,7 @@ where
                                     .map(|(_, values)| {
                                         let mut rotated_values = values.to_vec();
                                         rotated_values.rotate_left(1);
-                                        gen_stwo_circle_column::<F, B, M31>(
+                                        gen_stwo_circle_column::<B, M31>(
                                             *domain_map
                                                 .get(&(values.len().ilog2() as usize))
                                                 .unwrap(),
@@ -218,8 +219,8 @@ where
 
     pub fn prove(
         &self,
-        witness: &[(String, Vec<F>)],
-        witgen_callback: WitgenCallback<F>,
+        witness: &[(String, Vec<Mersenne31Field>)],
+        witgen_callback: WitgenCallback<Mersenne31Field>,
     ) -> Result<Vec<u8>, String> {
         let config = get_config();
         let domain_degree_range = DegreeRange {
@@ -307,7 +308,7 @@ where
                     .enumerate()
                     .map(|(index, (name, vec))| {
                         witness_col_circle_domain_index.insert(name.clone(), index + index_acc);
-                        gen_stwo_circle_column::<F, B, M31>(
+                        gen_stwo_circle_column::<B, M31>(
                             *domain_map
                                 .get(&(vec.len().ilog2() as usize))
                                 .expect("Domain not found for given size"),
@@ -349,14 +350,14 @@ where
             .map(|&index| {
                 (
                     index,
-                    F::from_bytes_le(challenge_single_value.get(0..4).unwrap()),
+                    Mersenne31Field::from_bytes_le(challenge_single_value.get(0..4).unwrap()),
                 )
             })
             .collect::<BTreeMap<_, _>>();
 
         //build witness columns for stage 1 using the callback function, with the generated challenges
         if self.analyzed.stage_count() > 1 {
-            let witness_by_machine_stage1: BTreeMap<String, Vec<(String, Vec<F>)>> =
+            let witness_by_machine_stage1: BTreeMap<String, Vec<(String, Vec<Mersenne31Field>)>> =
                 witness_by_machine
                     .iter()
                     .map(|(machine_name, machine_witness)| {
@@ -380,7 +381,7 @@ where
                         if let Some(index) = witness_col_circle_domain_index.get(&witness_name) {
                             witness_cols_circle_domain_eval[*index].clone()
                         } else {
-                            gen_stwo_circle_column::<F, B, M31>(
+                            gen_stwo_circle_column::<B, M31>(
                                 *domain_map
                                     .get(&(vec.len().ilog2() as usize))
                                     .expect("Domain not found for given size"),
@@ -465,7 +466,7 @@ where
         Ok(bincode::serialize(&proof).unwrap())
     }
 
-    pub fn verify(&self, proof: &[u8], _instances: &[F]) -> Result<(), String> {
+    pub fn verify(&self, proof: &[u8], _instances: &[Mersenne31Field]) -> Result<(), String> {
         assert!(
             _instances.is_empty(),
             "Expected _instances slice to be empty, but it has {} elements.",
@@ -507,7 +508,7 @@ where
             .map(|&index| {
                 (
                     index,
-                    F::from_bytes_le(challenge_single_value.get(0..4).unwrap()),
+                    Mersenne31Field::from_bytes_le(challenge_single_value.get(0..4).unwrap()),
                 )
             })
             .collect::<BTreeMap<_, _>>();
