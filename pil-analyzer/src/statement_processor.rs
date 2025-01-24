@@ -14,8 +14,8 @@ use powdr_ast::parsed::{
     PilStatement, PolynomialName, TraitDeclaration,
 };
 use powdr_ast::parsed::{
-    ArrayExpression, NamedExpression, SourceReference, StructDeclaration, SymbolCategory,
-    TraitImplementation, TypeDeclaration,
+    ArrayExpression, NamedExpression, StructDeclaration, SymbolCategory, TraitImplementation,
+    TypeDeclaration,
 };
 use powdr_parser_util::{Error, SourceRef};
 use std::str::FromStr;
@@ -229,12 +229,14 @@ where
         let ty = Some(match array_size {
             None => base_type.into(),
             Some(len) => {
-                let source_ref = len.source_reference().clone();
                 let len = self
                     .expression_processor(&Default::default())
                     .process_expression(len)
                     .map_err(|err| {
-                        source_ref.with_error(format!("Failed to process length expression: {err}"))
+                        err.source_ref().with_error(format!(
+                            "Failed to process length expression: {}",
+                            err.message()
+                        ))
                     })?;
                 let length = untyped_evaluator::evaluate_expression_to_int(self.driver, len)
                     .map(|length| {
@@ -527,13 +529,13 @@ where
         let mut expression_processor = self.expression_processor(&type_vars);
         let array_index = array_index
             .map(|i| {
-                let source_ref = i.source_reference().clone();
                 let i = match expression_processor.process_expression(i) {
                     Ok(expr) => expr,
                     Err(err) => {
-                        return Err(
-                            source_ref.with_error(format!("Failed to process array index: {err}"))
-                        );
+                        return Err(err.source_ref().with_error(format!(
+                            "Failed to process array index: {}",
+                            err.message()
+                        )));
                     }
                 };
                 let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
@@ -758,7 +760,7 @@ where
                 .map_err(|err| {
                     trait_impl
                         .source_ref
-                        .with_error(format!("Cannot resolve trait {}: {}", trait_impl.name, err))
+                        .with_error(format!("Cannot find trait {}: {}", trait_impl.name, err))
                 })?,
         )
         .unwrap();
