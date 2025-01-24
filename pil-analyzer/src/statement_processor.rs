@@ -524,7 +524,7 @@ where
         let polynomial = self
             .expression_processor(&Default::default())
             .process_namespaced_polynomial_reference(poly)
-            .expect("Failed to process polynomial reference");
+            .map_err(|err| source.with_error(err))?;
         let type_vars = Default::default();
         let mut expression_processor = self.expression_processor(&type_vars);
         let array_index = array_index
