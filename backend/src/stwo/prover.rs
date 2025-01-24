@@ -329,15 +329,16 @@ where
 
         // Generate challenges for stage 1 based on stage 0 traces.
         // Stwo supports a maximum of 2 stages, and challenges are created only for stage 0.
-        let identities = self.analyzed.identities.clone();
-        let mut challenges_stage0 = BTreeSet::new();
-        for identity in &identities {
-            identity.pre_visit_expressions(&mut |expr| {
-                if let AlgebraicExpression::Challenge(challenge) = expr {
-                    challenges_stage0.insert(challenge.id);
-                }
-            });
-        }
+        let identities = &self.analyzed.identities;
+        let challenges_stage0 = identities
+            .iter()
+            .flat_map(|identity| {
+                identity.all_children().filter_map(|expr| match expr {
+                    AlgebraicExpression::Challenge(challenge) => Some(challenge.id),
+                    _ => None,
+                })
+            })
+            .collect::<BTreeSet<_>>();
 
         //challenge_channel is used to draw random bytes for challenges
         let challenge_channel = &mut <MC as MerkleChannel>::C::default();
