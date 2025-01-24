@@ -834,7 +834,7 @@ impl AnalysisASMFile {
 
     pub fn get_machine(&self, ty: &AbsoluteSymbolPath) -> Option<&Machine> {
         let mut path = ty.clone();
-        let name = path.pop().unwrap();
+        let name = path.pop()?;
         self.modules.get(&path)?.machines.get(&name)
     }
 }
