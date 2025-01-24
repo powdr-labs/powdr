@@ -182,9 +182,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 )?,
             Identity::BusSend(bus_interaction) => self.process_call(
                 can_process,
-                bus_interaction.id,
-                &bus_interaction.selected_tuple.selector,
-                &bus_interaction.selected_tuple.expressions,
+                bus_interaction.identity_id,
+                &bus_interaction.selected_payload.selector,
+                &bus_interaction.selected_payload.expressions,
                 row_offset,
             ),
             Identity::BusReceive(_) => ProcessResult::empty(),

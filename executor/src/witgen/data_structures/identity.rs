@@ -15,28 +15,30 @@ use powdr_number::FieldElement;
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct BusSend<T> {
-    /// The ID is globally unique among identities.
-    pub id: u64,
-    /// The ID of the bus interaction, used to find a matching receive.
-    pub interaction_id: AlgebraicExpression<T>,
-    /// The tuple sent to the bus, with a selector.
-    pub selected_tuple: SelectedExpressions<T>,
+    /// The identity ID is globally unique among identities.
+    pub identity_id: u64,
+    /// The ID of the bus this send sends to.
+    pub bus_id: AlgebraicExpression<T>,
+    /// The payload sent to the bus, with a selector.
+    pub selected_payload: SelectedExpressions<T>,
 }
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct BusReceive<T> {
-    /// The ID is globally unique among identities.
-    pub id: u64,
-    /// The ID of the bus interaction, to be matched with a send.
-    pub interaction_id: T,
-    /// The tuple received from the bus, with a selector.
+    /// The identity ID is globally unique among identities.
+    pub identity_id: u64,
+    /// The ID of the bus this receive listens on.
+    /// There should be exactly one receive for each bus, but there can be
+    /// multiple sends.
+    pub bus_id: T,
+    /// The payload received from the bus, with a selector.
     /// The selector is an expression that might or might not reference
     /// the multiplicity column, but it should always evaluate to a
     /// binary value. If it is zero, the multiplicity must be zero as well.
     /// For example, it could also be a binary fixed column, indicating
     /// where the multiplicity can be non-zero.
-    pub selected_tuple: SelectedExpressions<T>,
-    /// The multiplicity with which the tuple is received from the bus.
+    pub selected_payload: SelectedExpressions<T>,
+    /// The multiplicity with which the payload is received from the bus.
     /// None if this interaction comes from the RHS of a native lookup,
     /// as native lookup arguments don't require the multiplicity to be
     /// committed.
@@ -46,19 +48,26 @@ pub struct BusReceive<T> {
 }
 
 impl<T: FieldElement> BusSend<T> {
-    /// Tries to find the matching receive, which should succeed iff. the send has
-    /// a static interaction ID.
+    /// Tries to find a matching receive by matching the bus ID
+    /// if it is statically known. Receives are uniquely identified by
+    /// the bus ID. Returns None if the sender's bus ID is not statically known
+    /// and panics if there is no matching receive.
     pub fn try_match_static<'a>(
         &self,
         receives: &'a BTreeMap<T, BusReceive<T>>,
     ) -> Option<&'a BusReceive<T>> {
-        Some(&receives[&self.interaction_id()?])
+        let bus_id = self.bus_id()?;
+        Some(
+            receives
+                .get(&bus_id)
+                .unwrap_or_else(|| panic!("No matching receive found for bus ID {bus_id}.")),
+        )
     }
 
-    /// Returns the interaction ID if it is a number.
-    /// Sends and receives can be matched by matching the interaction ID.
-    pub fn interaction_id(&self) -> Option<T> {
-        match &self.interaction_id {
+    /// Returns the bus ID if it is a static number.
+    /// Sends and receives can be matched by matching the bus ID.
+    pub fn bus_id(&self) -> Option<T> {
+        match &self.bus_id {
             AlgebraicExpression::Number(id) => Some(*id),
             _ => None,
         }
@@ -74,30 +83,30 @@ impl<T: FieldElement> BusReceive<T> {
     pub fn is_unconstrained(&self) -> bool {
         // TODO: This always works in practice, but we should properly check the
         // range constraints on the multiplicity column.
-        self.multiplicity.as_ref() != Some(&self.selected_tuple.selector)
+        self.multiplicity.as_ref() != Some(&self.selected_payload.selector)
     }
 }
 
 impl<T> Children<AlgebraicExpression<T>> for BusSend<T> {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
-        self.selected_tuple.children_mut()
+        self.selected_payload.children_mut()
     }
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
-        self.selected_tuple.children()
+        self.selected_payload.children()
     }
 }
 
 impl<T> Children<AlgebraicExpression<T>> for BusReceive<T> {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
         Box::new(
-            self.selected_tuple
+            self.selected_payload
                 .children_mut()
                 .chain(self.multiplicity.iter_mut()),
         )
     }
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(
-            self.selected_tuple
+            self.selected_payload
                 .children()
                 .chain(self.multiplicity.iter()),
         )
@@ -108,8 +117,8 @@ impl<T: fmt::Display> fmt::Display for BusSend<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "Send(tuple={}, interaction_id={})",
-            self.selected_tuple, self.interaction_id
+            "Send(payload={}, bus_id={}, identity_id={})",
+            self.selected_payload, self.bus_id, self.identity_id
         )
     }
 }
@@ -122,8 +131,8 @@ impl<T: fmt::Display> fmt::Display for BusReceive<T> {
             .map_or("None".to_string(), ToString::to_string);
         write!(
             f,
-            "Receive(tuple={}, multiplicity={}, interaction_id={})",
-            self.selected_tuple, multiplicity, self.interaction_id
+            "Receive(payload={}, multiplicity={}, bus_id={}, identity_id={})",
+            self.selected_payload, multiplicity, self.bus_id, self.identity_id
         )
     }
 }
@@ -170,8 +179,8 @@ impl<T> Identity<T> {
         match self {
             Identity::Polynomial(i) => i.id,
             Identity::Connect(i) => i.id,
-            Identity::BusSend(i) => i.id,
-            Identity::BusReceive(i) => i.id,
+            Identity::BusSend(i) => i.identity_id,
+            Identity::BusReceive(i) => i.identity_id,
         }
     }
 }
@@ -200,16 +209,16 @@ pub fn convert_identities<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<Identi
         .collect::<Vec<_>>();
 
     // We'd expect the interaction to uniquely identify a bus receive.
-    let receive_interaction_ids = identities
+    let receive_bus_ids = identities
         .iter()
         .filter_map(|id| match id {
-            Identity::BusReceive(r) => Some(r.interaction_id),
+            Identity::BusReceive(r) => Some(r.bus_id),
             _ => None,
         })
         .collect::<Vec<_>>();
     assert!(
-        receive_interaction_ids.iter().unique().count() == receive_interaction_ids.len(),
-        "Expected interaction IDs of bus receives to be unique, but got: {receive_interaction_ids:?}"
+        receive_bus_ids.iter().unique().count() == receive_bus_ids.len(),
+        "Expected bus IDs of receives to be unique, but got: {receive_bus_ids:?}"
     );
 
     identities
@@ -268,32 +277,32 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
         },
         _ => (false, bus_interaction.multiplicity.clone()),
     };
-    // By convention, we assume that the first tuple entry is the interaction ID.
+    // By convention, we assume that the first payload entry is the bus ID.
     // TODO: Instead, we should have a separate field in the phantom bus interaction type.
-    let interaction_id = match bus_interaction.tuple.0[0] {
+    let bus_id = match bus_interaction.payload.0[0] {
         AlgebraicExpression::Number(id) => id,
         // TODO: Relax this for sends when implementing dynamic sends
-        _ => panic!("Expected first tuple entry to be a static ID"),
+        _ => panic!("Expected first payload entry to be a static ID"),
     };
-    // Remove the interaction ID from the list of expressions.
-    let expressions = bus_interaction.tuple.0.iter().skip(1).cloned().collect();
-    let selected_tuple = SelectedExpressions {
+    // Remove the bus ID from the list of expressions.
+    let expressions = bus_interaction.payload.0.iter().skip(1).cloned().collect();
+    let selected_payload = SelectedExpressions {
         selector: bus_interaction.latch.clone(),
         expressions,
     };
     match is_receive {
         true => Identity::BusReceive(BusReceive {
-            id: bus_interaction.id,
-            interaction_id,
+            identity_id: bus_interaction.id,
+            bus_id,
             multiplicity: Some(multiplicity),
-            selected_tuple,
+            selected_payload,
         }),
         false => {
             assert_eq!(multiplicity, bus_interaction.latch);
             Identity::BusSend(BusSend {
-                id: bus_interaction.id,
-                interaction_id: AlgebraicExpression::Number(interaction_id),
-                selected_tuple,
+                identity_id: bus_interaction.id,
+                bus_id: AlgebraicExpression::Number(bus_id),
+                selected_payload,
             })
         }
     }
@@ -307,36 +316,35 @@ fn bus_interaction_pair<T: FieldElement>(
     rhs_multiplicity: Option<AlgebraicExpression<T>>,
 ) -> Vec<Identity<T>> {
     // +1 because we want to be sure it is non-zero
-    let interaction_id: T = (id + 1).into();
+    let bus_id: T = (id + 1).into();
     vec![
         Identity::BusSend(BusSend {
-            id,
-            interaction_id: AlgebraicExpression::Number(interaction_id),
-            selected_tuple: left.clone(),
+            identity_id: id,
+            bus_id: AlgebraicExpression::Number(bus_id),
+            selected_payload: left.clone(),
         }),
         Identity::BusReceive(BusReceive {
-            id: id_counter.next().unwrap(),
+            identity_id: id_counter.next().unwrap(),
             multiplicity: rhs_multiplicity,
-            interaction_id,
-            selected_tuple: right.clone(),
+            bus_id,
+            selected_payload: right.clone(),
         }),
     ]
 }
 
 #[cfg(test)]
 mod test {
+    use std::collections::VecDeque;
+
     use powdr_number::GoldilocksField;
 
     use crate::witgen::data_structures::identity::Identity;
 
-    use super::convert_identities;
+    use super::{convert_identities, BusReceive, BusSend};
 
-    fn assert_correct_bus_interaction_pair(
+    fn get_generated_bus_interaction_pair(
         constraint: &str,
-        expected_send: &str,
-        expected_receive: &str,
-        expected_is_receive_unconstrained: bool,
-    ) {
+    ) -> (BusSend<GoldilocksField>, BusReceive<GoldilocksField>) {
         let pil_source = format!(
             r"
 namespace main(4);
@@ -354,24 +362,24 @@ namespace main(4);
 "
         );
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(&pil_source).unwrap();
-        let identities = convert_identities(&analyzed);
+        let mut identities = convert_identities(&analyzed)
+            .into_iter()
+            .collect::<VecDeque<_>>();
         let receives = identities
             .iter()
             .filter_map(|id| match id {
-                Identity::BusReceive(r) => Some((r.interaction_id, r.clone())),
+                Identity::BusReceive(r) => Some((r.bus_id, r.clone())),
                 _ => None,
             })
             .collect();
 
-        match (&identities[0], &identities[1]) {
+        match (
+            identities.pop_front().unwrap(),
+            identities.pop_front().unwrap(),
+        ) {
             (Identity::BusSend(send), Identity::BusReceive(receive)) => {
-                assert_eq!(&send.to_string(), expected_send);
-                assert_eq!(&receive.to_string(), expected_receive);
-                assert_eq!(send.try_match_static(&receives).unwrap(), receive);
-                assert_eq!(
-                    receive.is_unconstrained(),
-                    expected_is_receive_unconstrained
-                )
+                assert_eq!(send.try_match_static(&receives).unwrap(), &receive);
+                (send, receive)
             }
             _ => panic!(
                 "Expected one receive and one send, but got:\n{}\n{}",
@@ -382,81 +390,119 @@ namespace main(4);
 
     #[test]
     fn native_lookup() {
-        assert_correct_bus_interaction_pair(
-            "left_latch $ [a] in right_latch $ [b];",
-            "Send(tuple=main::left_latch $ [main::a], interaction_id=1)",
-            "Receive(tuple=main::right_latch $ [main::b], multiplicity=None, interaction_id=1)",
-            true,
+        let (send, receive) =
+            get_generated_bus_interaction_pair("left_latch $ [a] in right_latch $ [b];");
+        assert_eq!(
+            send.selected_payload.to_string(),
+            "main::left_latch $ [main::a]"
         );
+        assert_eq!(
+            receive.selected_payload.to_string(),
+            "main::right_latch $ [main::b]"
+        );
+        assert!(receive.is_unconstrained());
     }
 
     #[test]
     fn phantom_lookup() {
-        assert_correct_bus_interaction_pair(
+        let (send, receive) = get_generated_bus_interaction_pair(
             "Constr::PhantomLookup((Option::Some(left_latch), Option::Some(right_latch)), [(a, b)], multiplicities);",
-            "Send(tuple=main::left_latch $ [main::a], interaction_id=1)",
-            "Receive(tuple=main::right_latch $ [main::b], multiplicity=main::multiplicities, interaction_id=1)",
-            true,
         );
+        assert_eq!(
+            send.selected_payload.to_string(),
+            "main::left_latch $ [main::a]"
+        );
+        assert_eq!(
+            receive.selected_payload.to_string(),
+            "main::right_latch $ [main::b]"
+        );
+        assert_eq!(
+            receive.multiplicity.as_ref().unwrap().to_string(),
+            "main::multiplicities"
+        );
+        assert!(receive.is_unconstrained());
     }
 
     #[test]
     fn lookup_bus_interactions() {
-        // This is what would currently be generated by the following asm program:
-        // use std::protocols::lookup_via_bus::lookup_send;
-        // use std::protocols::lookup_via_bus::lookup_receive;
-        // machine Main with degree: 2048 {
-        //     col fixed right_latch = [0, 1]*;
-        //     col witness left_latch, a, b, multiplicity;
-        //     lookup_send(42, left_latch $ [a] in right_latch $ [b]);
-        //     lookup_receive(42, left_latch $ [a] in right_latch $ [b], right_latch);
-        // }
-        assert_correct_bus_interaction_pair(
+        // Phantom bus interactions, as generated by
+        // std::protocols::lookup_via_bus::lookup_send and
+        // std::protocols::lookup_via_bus::lookup_receive.
+        let (send, receive) = get_generated_bus_interaction_pair(
             r"Constr::PhantomBusInteraction(main::left_latch, [42, main::a], main::left_latch);
               Constr::PhantomBusInteraction(-main::multiplicities, [42, main::b], main::right_latch);",
-            "Send(tuple=main::left_latch $ [main::a], interaction_id=42)",
-            "Receive(tuple=main::right_latch $ [main::b], multiplicity=main::multiplicities, interaction_id=42)",
-            true,
         );
+        assert_eq!(
+            send.selected_payload.to_string(),
+            "main::left_latch $ [main::a]"
+        );
+        assert_eq!(
+            receive.selected_payload.to_string(),
+            "main::right_latch $ [main::b]"
+        );
+        assert_eq!(send.bus_id.to_string(), "42");
+        assert_eq!(receive.bus_id, 42.into());
+        assert_eq!(
+            receive.multiplicity.as_ref().unwrap().to_string(),
+            "main::multiplicities"
+        );
+        assert!(receive.is_unconstrained());
     }
 
     #[test]
     fn native_permutation() {
-        assert_correct_bus_interaction_pair(
+        let (send, receive) = get_generated_bus_interaction_pair(
             "left_latch $ [a] is (right_latch * right_selector) $ [b];",
-            "Send(tuple=main::left_latch $ [main::a], interaction_id=1)",
-            "Receive(tuple=main::right_latch * main::right_selector $ [main::b], multiplicity=main::right_latch * main::right_selector, interaction_id=1)",
-            false,
         );
+        assert_eq!(
+            send.selected_payload.to_string(),
+            "main::left_latch $ [main::a]"
+        );
+        assert_eq!(
+            receive.selected_payload.to_string(),
+            "main::right_latch * main::right_selector $ [main::b]"
+        );
+        assert!(!receive.is_unconstrained());
     }
 
     #[test]
     fn phantom_permutation() {
-        assert_correct_bus_interaction_pair(
-            "Constr::PhantomPermutation((Option::Some(left_latch), Option::Some(right_latch * right_selector)), [(a, b)]);",
-            "Send(tuple=main::left_latch $ [main::a], interaction_id=1)",
-            "Receive(tuple=main::right_latch * main::right_selector $ [main::b], multiplicity=main::right_latch * main::right_selector, interaction_id=1)",
-            false,
+        let (send, receive) = get_generated_bus_interaction_pair(
+            "Constr::PhantomPermutation((Option::Some(left_latch), Option::Some(right_latch * right_selector)), [(a, b)]);");
+        assert_eq!(
+            send.selected_payload.to_string(),
+            "main::left_latch $ [main::a]"
         );
+        assert_eq!(
+            receive.selected_payload.to_string(),
+            "main::right_latch * main::right_selector $ [main::b]"
+        );
+        assert!(!receive.is_unconstrained());
     }
 
     #[test]
     fn permutation_bus_interactions() {
-        // This is what would currently be generated by the following asm program:
-        // use std::protocols::permutation_via_bus::permutation_send;
-        // use std::protocols::permutation_via_bus::permutation_receive;
-        // machine Main with degree: 2048 {
-        //     col fixed right_latch = [0, 1]*;
-        //     col witness left_latch, a, b, multiplicity;
-        //     permutation_send(42, (left_latch * left_selector) $ [a] is right_latch $ [b]);
-        //     permutation_receive(42, (left_latch * left_selector) $ [a] is right_latch $ [b]);
-        // }
-        assert_correct_bus_interaction_pair(
+        // Phantom bus interactions, as generated by
+        // std::protocols::permutation_via_bus::permutation_send and
+        // std::protocols::permutation_via_bus::permutation_receive.
+        let (send, receive) = get_generated_bus_interaction_pair(
             r"Constr::PhantomBusInteraction(main::left_latch, [42, main::a], main::left_latch);
               Constr::PhantomBusInteraction(-(main::right_latch * main::right_selector), [42, main::b], main::right_latch * main::right_selector);",
-            "Send(tuple=main::left_latch $ [main::a], interaction_id=42)",
-            "Receive(tuple=main::right_latch * main::right_selector $ [main::b], multiplicity=main::right_latch * main::right_selector, interaction_id=42)",
-            false,
         );
+        assert_eq!(
+            send.selected_payload.to_string(),
+            "main::left_latch $ [main::a]"
+        );
+        assert_eq!(
+            receive.selected_payload.to_string(),
+            "main::right_latch * main::right_selector $ [main::b]"
+        );
+        assert_eq!(send.bus_id.to_string(), "42");
+        assert_eq!(receive.bus_id, 42.into());
+        assert_eq!(
+            receive.multiplicity.as_ref().unwrap().to_string(),
+            "main::right_latch * main::right_selector"
+        );
+        assert!(!receive.is_unconstrained());
     }
 }

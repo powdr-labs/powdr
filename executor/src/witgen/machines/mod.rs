@@ -374,9 +374,9 @@ impl<'a, T: FieldElement> Connection<'a, T> {
                     None
                 };
                 Some(Connection {
-                    id: send.id,
-                    left: &send.selected_tuple,
-                    right: &receive.selected_tuple,
+                    id: send.identity_id,
+                    left: &send.selected_payload,
+                    right: &receive.selected_payload,
                     kind: if receive.is_unconstrained() {
                         ConnectionKind::Lookup
                     } else {

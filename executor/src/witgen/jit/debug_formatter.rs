@@ -56,9 +56,10 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     /// about the sub-expressions as possible.
     fn format_identity(&self, identity: &Identity<T>, row_offset: i32) -> String {
         match identity {
-            Identity::BusSend(BusSend { selected_tuple, .. }) => {
-                self.format_connection(selected_tuple, row_offset)
-            }
+            Identity::BusSend(BusSend {
+                selected_payload: selected_tuple,
+                ..
+            }) => self.format_connection(selected_tuple, row_offset),
             Identity::BusReceive(_) | Identity::Connect(_) => {
                 format!("{identity}")
             }

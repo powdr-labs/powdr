@@ -129,8 +129,8 @@ fn check_identity<T: FieldElement>(
     }
 
     // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
-    let left = &send.selected_tuple;
-    let right = &receive.selected_tuple;
+    let left = &send.selected_payload;
+    let right = &receive.selected_payload;
     if !right.selector.is_one() || left.expressions.len() != 1 {
         return None;
     }

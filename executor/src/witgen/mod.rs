@@ -398,7 +398,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         let bus_receives = identities
             .iter()
             .filter_map(|identity| match identity {
-                Identity::BusReceive(id) => Some((id.interaction_id, id.clone())),
+                Identity::BusReceive(id) => Some((id.bus_id, id.clone())),
                 _ => None,
             })
             .collect();
@@ -422,6 +422,9 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         }
     }
 
+    /// Allows the caller to filter out identities based on some criteria.
+    /// The callback has access the fixed data and the identity.
+    /// Consumes fixed data and returns a new instance.
     pub fn filter_identities(self, f: impl Fn(&FixedData<T>, &Identity<T>) -> bool) -> Self {
         let keep = self
             .identities
@@ -439,9 +442,8 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     pub fn with_global_range_constraints(
-        mut self,
+        self,
         global_range_constraints: GlobalConstraints<T>,
-        retained_identities: BTreeSet<u64>,
     ) -> Self {
         assert!(
             self.global_range_constraints
@@ -451,8 +453,11 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 .all(|c| c.is_none()),
             "range constraints already set"
         );
-        self.global_range_constraints = global_range_constraints;
-        self.filter_identities(|_, identity| retained_identities.contains(&identity.id()))
+
+        Self {
+            global_range_constraints,
+            ..self
+        }
     }
 
     fn all_poly_symbols(&self) -> impl Iterator<Item = &Symbol> {
