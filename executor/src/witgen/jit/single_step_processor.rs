@@ -93,7 +93,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
 
     /// Computes the next row from the previous row.
     /// Due to fixed columns being evaluated, the caller must ensure that
-    /// neither the alerady known nor the to be computed row are the first or last row.
+    /// neither the already known nor the to be computed row are the first or last row.
     /// This means that the two first rows must be fully computed.
     pub fn compute_next_row<'d, Q: QueryCallback<T>>(
         &self,
