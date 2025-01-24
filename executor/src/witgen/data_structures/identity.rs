@@ -80,7 +80,7 @@ impl<T: FieldElement> BusReceive<T> {
     /// the same values can match a single row on the receiving end.
     /// Unconstrained receives are equivalent to the RHS of a lookup,
     /// while 0-1-constrained receives are equivalent to the RHS of a permutation.
-    pub fn is_unconstrained(&self) -> bool {
+    pub fn has_arbitrary_multiplicity(&self) -> bool {
         // TODO: This always works in practice, but we should properly check the
         // range constraints on the multiplicity column.
         self.multiplicity.as_ref() != Some(&self.selected_payload.selector)
@@ -410,7 +410,7 @@ namespace main(4);
             receive.selected_payload.to_string(),
             "main::right_latch $ [main::b]"
         );
-        assert!(receive.is_unconstrained());
+        assert!(receive.has_arbitrary_multiplicity());
     }
 
     #[test]
@@ -430,7 +430,7 @@ namespace main(4);
             receive.multiplicity.as_ref().unwrap().to_string(),
             "main::multiplicities"
         );
-        assert!(receive.is_unconstrained());
+        assert!(receive.has_arbitrary_multiplicity());
     }
 
     #[test]
@@ -456,7 +456,7 @@ namespace main(4);
             receive.multiplicity.as_ref().unwrap().to_string(),
             "main::multiplicities"
         );
-        assert!(receive.is_unconstrained());
+        assert!(receive.has_arbitrary_multiplicity());
     }
 
     #[test]
@@ -472,7 +472,7 @@ namespace main(4);
             receive.selected_payload.to_string(),
             "main::right_latch * main::right_selector $ [main::b]"
         );
-        assert!(!receive.is_unconstrained());
+        assert!(!receive.has_arbitrary_multiplicity());
     }
 
     #[test]
@@ -487,7 +487,7 @@ namespace main(4);
             receive.selected_payload.to_string(),
             "main::right_latch * main::right_selector $ [main::b]"
         );
-        assert!(!receive.is_unconstrained());
+        assert!(!receive.has_arbitrary_multiplicity());
     }
 
     #[test]
@@ -513,6 +513,6 @@ namespace main(4);
             receive.multiplicity.as_ref().unwrap().to_string(),
             "main::right_latch * main::right_selector"
         );
-        assert!(!receive.is_unconstrained());
+        assert!(!receive.has_arbitrary_multiplicity());
     }
 }

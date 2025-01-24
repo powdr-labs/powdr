@@ -365,7 +365,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
                 Identity::BusSend(send) => send
                     .try_match_static(&self.fixed_data.bus_receives)
                     .unwrap()
-                    .is_unconstrained()
+                    .has_arbitrary_multiplicity()
                     .then_some((index, &send.selected_payload)),
                 _ => None,
             })

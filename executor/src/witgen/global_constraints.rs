@@ -287,7 +287,7 @@ fn propagate_constraints<T: FieldElement>(
             // In that case, we can remove the bus interaction pair,
             // because its only function is to enforce the range constraint.
             if receive.selected_payload.expressions.len() == 1
-                && receive.is_unconstrained()
+                && receive.has_arbitrary_multiplicity()
                 && receive.selected_payload.selector.is_one()
             {
                 if let (Some(_), Some(right_ref)) = (

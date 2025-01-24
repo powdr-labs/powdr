@@ -360,7 +360,7 @@ impl<'a, T: FieldElement> Connection<'a, T> {
                 let receive = send
                     .try_match_static(bus_receives)
                     .expect("No matching receive!");
-                let multiplicity_column = if receive.is_unconstrained() {
+                let multiplicity_column = if receive.has_arbitrary_multiplicity() {
                     receive
                         .multiplicity
                         .as_ref()
@@ -377,7 +377,7 @@ impl<'a, T: FieldElement> Connection<'a, T> {
                     id: send.identity_id,
                     left: &send.selected_payload,
                     right: &receive.selected_payload,
-                    kind: if receive.is_unconstrained() {
+                    kind: if receive.has_arbitrary_multiplicity() {
                         ConnectionKind::Lookup
                     } else {
                         ConnectionKind::Permutation
