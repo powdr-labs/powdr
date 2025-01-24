@@ -526,14 +526,9 @@ where
         let mut expression_processor = self.expression_processor(&type_vars);
         let array_index = array_index
             .map(|i| {
-                let i = match expression_processor.process_expression(i) {
-                    Ok(expr) => expr,
-                    Err(err) => {
-                        return Err(
-                            err.extend_message(|m| format!("Failed to process array index: {m}"))
-                        );
-                    }
-                };
+                let i = expression_processor.process_expression(i).map_err(|err| {
+                    err.extend_message(|m| format!("Failed to process array index: {m}"))
+                })?;
                 let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
                     .unwrap()
                     .try_into()
