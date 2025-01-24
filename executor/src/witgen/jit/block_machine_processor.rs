@@ -75,12 +75,33 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
         }
 
-        let identities = self.row_range().flat_map(move |row| {
+        // Compute the identity-row-pairs we consider.
+        let identities = if self
+            .machine_parts
+            .identities
+            .iter()
+            .all(|id| !id.contains_next_ref())
+        {
+            // No identity contains a next reference - this should be a simple one-row machine.
+            assert_eq!(self.block_size, 1);
             self.machine_parts
                 .identities
                 .iter()
-                .map(move |&id| (id, row))
-        });
+                .map(move |&id| (id, 0))
+                .collect_vec()
+        } else {
+            // A machine that might have a non-rectangular shape.
+            // We iterate over all rows of the block +/- one row.
+            let row_range = -1..self.block_size as i32;
+            row_range
+                .flat_map(move |row| {
+                    self.machine_parts
+                        .identities
+                        .iter()
+                        .map(move |&id| (id, row))
+                })
+                .collect_vec()
+        };
         let requested_known = known_args
             .iter()
             .enumerate()
@@ -114,11 +135,6 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .format("\n  ");
             format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
         })
-    }
-
-    fn row_range(&self) -> std::ops::Range<i32> {
-        // We iterate over all rows of the block +/- one row, so that we can also solve for non-rectangular blocks.
-        -1..self.block_size as i32
     }
 }
 
