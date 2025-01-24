@@ -290,21 +290,20 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
         selector: bus_interaction.latch.clone(),
         expressions,
     };
-    match is_receive {
-        true => Identity::BusReceive(BusReceive {
+    if is_receive {
+        Identity::BusReceive(BusReceive {
             identity_id: bus_interaction.id,
             bus_id,
             multiplicity: Some(multiplicity),
             selected_payload,
-        }),
-        false => {
-            assert_eq!(multiplicity, bus_interaction.latch);
-            Identity::BusSend(BusSend {
-                identity_id: bus_interaction.id,
-                bus_id: AlgebraicExpression::Number(bus_id),
-                selected_payload,
-            })
-        }
+        })
+    } else {
+        assert_eq!(multiplicity, bus_interaction.latch);
+        Identity::BusSend(BusSend {
+            identity_id: bus_interaction.id,
+            bus_id: AlgebraicExpression::Number(bus_id),
+            selected_payload,
+        })
     }
 }
 
@@ -315,8 +314,7 @@ fn bus_interaction_pair<T: FieldElement>(
     right: &SelectedExpressions<T>,
     rhs_multiplicity: Option<AlgebraicExpression<T>>,
 ) -> Vec<Identity<T>> {
-    // +1 because we want to be sure it is non-zero
-    let bus_id: T = (id + 1).into();
+    let bus_id: T = id.into();
     vec![
         Identity::BusSend(BusSend {
             identity_id: id,
