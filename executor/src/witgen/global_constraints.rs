@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::marker::PhantomData;
 
 use num_traits::Zero;
@@ -98,8 +98,6 @@ where
 pub struct GlobalConstraints<T: FieldElement> {
     pub witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
     pub fixed_constraints: FixedColumnMap<Option<RangeConstraint<T>>>,
-    /// The multiplicity columns of removed lookups
-    pub range_constraint_multiplicity_columns: HashSet<PolyID>,
 }
 
 impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConstraints<T> {
@@ -182,23 +180,9 @@ pub fn set_global_constraints<T: FieldElement>(fixed_data: FixedData<T>) -> Fixe
         }
     }
 
-    let range_constraint_multiplicity_columns = removed_identities
-        .iter()
-        .filter_map(|identity| match identity {
-            Identity::BusReceive(bus_receive) => {
-                bus_receive.multiplicity.as_ref().map(|m| match m {
-                    Expression::Reference(reference) => reference.poly_id,
-                    _ => panic!("Expected a direct column reference, got {m}"),
-                })
-            }
-            _ => None,
-        })
-        .collect::<HashSet<_>>();
-
     let global_constraints = GlobalConstraints {
         witness_constraints,
         fixed_constraints,
-        range_constraint_multiplicity_columns,
     };
 
     // Can't have references to fixed_data in the call to filter_identities.
@@ -271,7 +255,9 @@ fn propagate_constraints<T: FieldElement>(
                 false
             }
         }
-        // Cannot derive a range constraint from a receive.
+        // A bus receive might be part of a range constraint, which is handled in the
+        // bus send case. Even then, it is *not* removed, because it might *also* be
+        // part of a conditional range constraint.
         Identity::BusReceive(..) => false,
         Identity::BusSend(send) => {
             let receive = send.try_match_static(bus_receives).unwrap();

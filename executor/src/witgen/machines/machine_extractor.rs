@@ -225,13 +225,6 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 }
                 _ => None,
             })
-            .chain(
-                self.fixed
-                    .global_range_constraints
-                    .range_constraint_multiplicity_columns
-                    .iter()
-                    .cloned(),
-            )
             .collect::<HashSet<_>>();
         let main_witnesses = remaining_witnesses
             .difference(&multiplicity_columns)
