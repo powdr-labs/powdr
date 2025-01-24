@@ -172,7 +172,7 @@ pub enum KnownMachine<'a, T: FieldElement> {
 }
 
 /// A macro to dispatch a method call to the correct variant of [KnownMachine].
-macro_rules! for_all_variants {
+macro_rules! match_variant {
     ($s:ident, $i:ident => $e:expr) => {
         match $s {
             KnownMachine::SecondStageMachine($i) => $e,
@@ -189,7 +189,7 @@ macro_rules! for_all_variants {
 
 impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
-        for_all_variants!(self, m => m.run(mutable_state));
+        match_variant!(self, m => m.run(mutable_state));
     }
 
     fn can_process_call_fully(
@@ -198,7 +198,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         known_arguments: &BitVec,
         range_constraints: &[RangeConstraint<T>],
     ) -> Option<Vec<RangeConstraint<T>>> {
-        for_all_variants!(
+        match_variant!(
             self,
             m => m.can_process_call_fully(identity_id, known_arguments, range_constraints)
         )
@@ -210,7 +210,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        for_all_variants!(self, m => m.process_plookup(mutable_state, identity_id, caller_rows))
+        match_variant!(self, m => m.process_plookup(mutable_state, identity_id, caller_rows))
     }
 
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
@@ -219,22 +219,22 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         identity_id: u64,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
-        for_all_variants!(self, m => m.process_lookup_direct(mutable_state, identity_id, values))
+        match_variant!(self, m => m.process_lookup_direct(mutable_state, identity_id, values))
     }
 
     fn name(&self) -> &str {
-        for_all_variants!(self, m => m.name())
+        match_variant!(self, m => m.name())
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
-        for_all_variants!(self, m => m.take_witness_col_values(mutable_state))
+        match_variant!(self, m => m.take_witness_col_values(mutable_state))
     }
 
     fn identity_ids(&self) -> Vec<u64> {
-        for_all_variants!(self, m => m.identity_ids())
+        match_variant!(self, m => m.identity_ids())
     }
 }
 
