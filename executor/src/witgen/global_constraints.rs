@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::marker::PhantomData;
 
 use num_traits::Zero;
@@ -98,6 +98,8 @@ where
 pub struct GlobalConstraints<T: FieldElement> {
     pub witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
     pub fixed_constraints: FixedColumnMap<Option<RangeConstraint<T>>>,
+    /// The multiplicity columns of removed lookups
+    pub range_constraint_multiplicity_columns: HashSet<PolyID>,
 }
 
 impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConstraints<T> {
@@ -162,7 +164,7 @@ pub fn set_global_constraints<T: FieldElement>(fixed_data: FixedData<T>) -> Fixe
     }
 
     log::debug!("Determined the following identities to be purely bit/range constraints:");
-    for id in removed_identities {
+    for id in &removed_identities {
         log::debug!("  {id}");
     }
 
@@ -180,9 +182,23 @@ pub fn set_global_constraints<T: FieldElement>(fixed_data: FixedData<T>) -> Fixe
         }
     }
 
+    let range_constraint_multiplicity_columns = removed_identities
+        .iter()
+        .filter_map(|identity| match identity {
+            Identity::BusReceive(bus_receive) => {
+                bus_receive.multiplicity.as_ref().map(|m| match m {
+                    Expression::Reference(reference) => reference.poly_id,
+                    _ => panic!("Expected a direct column reference, got {m}"),
+                })
+            }
+            _ => None,
+        })
+        .collect::<HashSet<_>>();
+
     let global_constraints = GlobalConstraints {
         witness_constraints,
         fixed_constraints,
+        range_constraint_multiplicity_columns,
     };
 
     // Can't have references to fixed_data in the call to filter_identities.
