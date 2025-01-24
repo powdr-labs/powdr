@@ -197,7 +197,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             Identity::PhantomBusInteraction(_) => ProcessResult::empty(),
             Identity::Connect(_) => ProcessResult::empty(),
         };
-        Ok(self.ingest_effects(result, Some((id.id(), row_offset))))
+        self.ingest_effects(result, Some((id.id(), row_offset)))
     }
 
     /// Process the constraint that the expression evaluated at the given offset equals the given value.
@@ -352,7 +352,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     assignment.row_offset,
                     &assignment.rhs,
                 )?;
-                let updated_vars = self.ingest_effects(r, None);
+                let updated_vars = self.ingest_effects(r, None)?;
                 progress |= !updated_vars.is_empty();
                 updated_variables.extend(updated_vars);
             }
@@ -373,7 +373,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         &mut self,
         process_result: ProcessResult<T, Variable>,
         identity_id: Option<(u64, i32)>,
-    ) -> Vec<Variable> {
+    ) -> Result<Vec<Variable>, Error> {
         let mut updated_variables = vec![];
         for e in process_result.effects {
             match &e {
@@ -424,9 +424,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
         if !updated_variables.is_empty() {
             // TODO we could have an occurrence map for the assignments as well.
-            updated_variables.extend(self.process_assignments().unwrap());
+            updated_variables.extend(self.process_assignments()?);
         }
-        updated_variables
+        Ok(updated_variables)
     }
 
     /// Adds a range constraint to the set of derived range constraints. Returns true if progress was made.
