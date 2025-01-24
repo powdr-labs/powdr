@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use powdr_ast::analyzed::AlgebraicExpression as Expression;
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap};
@@ -180,43 +179,11 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         &self,
         mutable_state: &MutableState<'a, T, Q>,
     ) -> Row<T> {
-        // Use `BlockProcessor` + `DefaultSequenceIterator` using a "block size" of 0. Because `BlockProcessor`
-        // expects `data` to include the row before and after the block, this means we'll run the
-        // solver on exactly one row pair.
-        // Note that using `BlockProcessor` instead of `VmProcessor` is more convenient here because
-        // it does not assert that the row is "complete" afterwards (i.e., that all identities
-        // are satisfied assuming 0 for unknown values).
-        let data = FinalizableData::with_initial_rows_in_progress(
-            &self.parts.witnesses,
-            [
-                Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree)),
-                Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
-            ]
-            .into_iter(),
-            self.fixed_data,
-        );
-
-        // We're only interested in the first row anyway, so identities without a next reference
+        // We're only interested in the first row, so identities without a next reference
         // are irrelevant.
         // Also, they can lead to problems in the case where some witness columns are provided
         // externally, e.g. if the last row happens to call into a stateful machine like memory.
-        let next_parts = self.parts.restricted_to_identities_with_next_references();
-        let mut processor = BlockProcessor::new(
-            RowIndex::from_i64(-1, self.degree),
-            // Shouldn't need any publics at this point
-            SolverState::without_publics(data),
-            mutable_state,
-            self.fixed_data,
-            &next_parts,
-            self.degree,
-        );
-        let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(0, next_parts.identities.len(), None),
-        );
-        processor.solve(&mut sequence_iterator).unwrap();
-
-        // Ignore any updates to the publics at this point, as we'll re-visit the last row again.
-        let mut block = processor.finish().block;
+        let mut block = self.compute_row_block(mutable_state, -1, vec![None, None], true);
         assert!(block.len() == 2);
         block.pop().unwrap()
     }
@@ -316,34 +283,17 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         &self,
         mutable_state: &MutableState<'a, T, Q>,
     ) -> [Row<T>; 2] {
-        let data = FinalizableData::with_initial_rows_in_progress(
-            &self.parts.witnesses,
-            [
-                Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree)),
-                Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
-                Row::fresh(self.fixed_data, RowIndex::from_i64(1, self.degree)),
-                Row::fresh(self.fixed_data, RowIndex::from_i64(2, self.degree)),
-            ]
-            .into_iter(),
-            self.fixed_data,
-        );
-
-        let mut processor = BlockProcessor::new(
-            RowIndex::from_i64(-1, self.degree),
-            // Shouldn't need any publics at this point
-            SolverState::without_publics(data),
+        let mut block = self.compute_row_block(
             mutable_state,
-            self.fixed_data,
-            &self.parts,
-            self.degree,
+            -1,
+            vec![
+                Some(self.data.get_in_progress_row(self.degree as usize - 2)),
+                None,
+                None,
+                None,
+            ],
+            false,
         );
-        let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(2, self.parts.identities.len(), None),
-        );
-        processor.solve(&mut sequence_iterator).unwrap();
-
-        // Ignore any updates to the publics at this point, as we'll re-visit the last row again.
-        let mut block = processor.finish().block;
         assert!(block.len() == 4);
         block.pop();
         let second = block.pop().unwrap();
@@ -356,40 +306,76 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
     fn compute_last_row<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
         assert_eq!(self.data.len() as DegreeType, self.degree - 1);
 
-        // TODO combine with compute_first_two_rows
-        let data = FinalizableData::with_initial_rows_in_progress(
-            &self.parts.witnesses,
-            [
-                self.data.get_in_progress_row(self.degree as usize - 2),
-                Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree)),
-                Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
-                Row::fresh(self.fixed_data, RowIndex::from_i64(1, self.degree)),
-            ]
-            .into_iter(),
-            self.fixed_data,
-        );
-
-        let mut processor = BlockProcessor::new(
-            RowIndex::from_i64(-2, self.degree),
-            // Shouldn't need any publics at this point
-            SolverState::without_publics(data),
+        let mut block = self.compute_row_block(
             mutable_state,
-            self.fixed_data,
-            &self.parts,
-            self.degree,
+            -2,
+            vec![
+                Some(self.data.get_in_progress_row(self.degree as usize - 2)),
+                None,
+                None,
+                None,
+            ],
+            false,
         );
-        let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(2, self.parts.identities.len(), None),
-        );
-        processor.solve(&mut sequence_iterator).unwrap();
 
-        // Ignore any updates to the publics at this point, as we'll re-visit the last row again.
-        let mut block = processor.finish().block;
         assert!(block.len() == 4);
         block.pop();
         let overflow = block.pop().unwrap();
         self.data.push(block.pop().unwrap());
         self.data.push(overflow);
+    }
+
+    /// Computes a specific block of rows using runtime solving.
+    /// Some preliminary data can be provided in `rows`.
+    /// If `only_identities_with_next` is true, only identities with a next reference are considered.
+    fn compute_row_block<Q: QueryCallback<T>>(
+        &self,
+        mutable_state: &MutableState<'a, T, Q>,
+        first_row: i64,
+        rows: Vec<Option<Row<T>>>,
+        only_identities_with_next: bool,
+    ) -> FinalizableData<'a, T> {
+        assert!(rows.len() >= 2);
+        let block_size = rows.len() - 2;
+        let rows = rows.into_iter().enumerate().map(|(i, r)| match r {
+            Some(r) => r,
+            None => Row::fresh(
+                self.fixed_data,
+                RowIndex::from_i64(first_row + i as i64, self.degree),
+            ),
+        });
+        let data = FinalizableData::with_initial_rows_in_progress(
+            &self.parts.witnesses,
+            rows,
+            self.fixed_data,
+        );
+
+        let parts = if only_identities_with_next {
+            &self.parts.restricted_to_identities_with_next_references()
+        } else {
+            &self.parts
+        };
+
+        // Use `BlockProcessor` + `DefaultSequenceIterator`.
+        // Note that using `BlockProcessor` instead of `VmProcessor` is more convenient here because
+        // it does not assert that the row is "complete" afterwards (i.e., that all identities
+        // are satisfied assuming 0 for unknown values).
+        let mut processor = BlockProcessor::new(
+            RowIndex::from_i64(first_row, self.degree),
+            // Shouldn't need any publics at this point
+            SolverState::without_publics(data),
+            mutable_state,
+            self.fixed_data,
+            parts,
+            self.degree,
+        );
+        let mut sequence_iterator = ProcessingSequenceIterator::Default(
+            DefaultSequenceIterator::new(block_size, self.parts.identities.len(), None),
+        );
+        processor.solve(&mut sequence_iterator).unwrap();
+
+        // Ignore any updates to the publics at this point, as we'll re-visit the last row again.
+        processor.finish().block
     }
 
     /// At the end of the solving algorithm, we'll have computed the first row twice

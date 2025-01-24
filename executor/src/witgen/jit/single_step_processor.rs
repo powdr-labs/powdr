@@ -18,7 +18,6 @@ use super::{
     compiler::WitgenFunction,
     effect::Effect,
     processor::Processor,
-    prover_function_heuristics::decode_simple_prover_functions,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -142,7 +141,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             })
             .collect_vec();
 
-        let mut witgen =
+        let witgen =
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
 
         // let prover_assignments = decode_simple_prover_functions(&self.machine_parts)
@@ -185,6 +184,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         })
     }
 
+    #[allow(unused)]
     fn column(&self, name: &str) -> Expression<T> {
         Expression::Reference(AlgebraicReference {
             name: name.to_string(),
