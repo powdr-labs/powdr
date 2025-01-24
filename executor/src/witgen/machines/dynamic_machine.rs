@@ -233,7 +233,12 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
 
     /// Process the full VM using JIT-compiled code.
     fn process_via_jit<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
-        let [first_row, second_row] = self.compute_first_two_rows(mutable_state);
+        let [_, first_row, second_row, _] = self
+            .compute_row_block(mutable_state, -1, vec![None, None, None, None], false)
+            .into_rows_in_progress()
+            .try_into()
+            .unwrap();
+
         log::debug!(
             "Running main machine from row 0 using JIT with the following initial values in the first two rows:\n{}\n------\n{}",
             first_row.render_values(false, &self.parts),
@@ -274,54 +279,22 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
             data_ref.row_offset -= 1;
             self.jit_processor.compute_next_row(mutable_state, data_ref);
         }
-        self.compute_last_row(mutable_state);
-    }
 
-    /// Runs the solver on the rows degree -1, 0 and 1 in order to fully compute the first two
-    /// rows from identities like `pc' = (1 - first_step') * <...>`.
-    fn compute_first_two_rows<Q: QueryCallback<T>>(
-        &self,
-        mutable_state: &MutableState<'a, T, Q>,
-    ) -> [Row<T>; 2] {
-        let mut block = self.compute_row_block(
-            mutable_state,
-            -1,
-            vec![
-                Some(self.data.get_in_progress_row(self.degree as usize - 2)),
-                None,
-                None,
-                None,
-            ],
-            false,
-        );
-        assert!(block.len() == 4);
-        block.pop();
-        let second = block.pop().unwrap();
-        let first = block.pop().unwrap();
-        [first, second]
-    }
-
-    /// Computes the last row and the row after the last of the VM using runtime solving. This is used by the JIT
-    /// because the last row is different.
-    fn compute_last_row<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
+        // Compute the last row using runtime solving.
         assert_eq!(self.data.len() as DegreeType, self.degree - 1);
+        let last_jit_row = self.data.get_in_progress_row(self.degree as usize - 2);
+        let [_, last_row, overflow, _] = self
+            .compute_row_block(
+                mutable_state,
+                -2,
+                vec![Some(last_jit_row), None, None, None],
+                false,
+            )
+            .into_rows_in_progress()
+            .try_into()
+            .unwrap();
 
-        let mut block = self.compute_row_block(
-            mutable_state,
-            -2,
-            vec![
-                Some(self.data.get_in_progress_row(self.degree as usize - 2)),
-                None,
-                None,
-                None,
-            ],
-            false,
-        );
-
-        assert!(block.len() == 4);
-        block.pop();
-        let overflow = block.pop().unwrap();
-        self.data.push(block.pop().unwrap());
+        self.data.push(last_row);
         self.data.push(overflow);
     }
 
