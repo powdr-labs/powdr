@@ -233,10 +233,7 @@ where
                     .expression_processor(&Default::default())
                     .process_expression(len)
                     .map_err(|err| {
-                        err.source_ref().with_error(format!(
-                            "Failed to process length expression: {}",
-                            err.message()
-                        ))
+                        err.with_message_prefix("Failed to process length expression: ")
                     })?;
                 let length = untyped_evaluator::evaluate_expression_to_int(self.driver, len)
                     .map(|length| {
@@ -532,10 +529,7 @@ where
                 let i = match expression_processor.process_expression(i) {
                     Ok(expr) => expr,
                     Err(err) => {
-                        return Err(err.source_ref().with_error(format!(
-                            "Failed to process array index: {}",
-                            err.message()
-                        )));
+                        return Err(err.with_message_prefix("Failed to process array index: "));
                     }
                 };
                 let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)

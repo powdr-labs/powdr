@@ -112,6 +112,11 @@ impl Error {
     pub fn source_ref(&self) -> &SourceRef {
         &self.source_ref
     }
+
+    pub fn with_message_prefix(&self, prefix: &str) -> Error {
+        self.source_ref()
+            .with_error(format!("{}: {}", prefix, self.message()))
+    }
 }
 
 pub fn handle_parse_error(
