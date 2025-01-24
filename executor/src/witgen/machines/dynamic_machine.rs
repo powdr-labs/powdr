@@ -325,7 +325,8 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         self.data.push(overflow);
     }
 
-    /// Computes a specific block of rows using runtime solving.
+    /// Solves a block of `rows.len()` rows using runtime block machine processor with
+    /// a block size set to `rows.len() - 2`.
     /// Some preliminary data can be provided in `rows`.
     /// If `only_identities_with_next` is true, only identities with a next reference are considered.
     fn compute_row_block<Q: QueryCallback<T>>(
@@ -370,7 +371,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
             self.degree,
         );
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(block_size, self.parts.identities.len(), None),
+            DefaultSequenceIterator::new(block_size, parts.identities.len(), None),
         );
         processor.solve(&mut sequence_iterator).unwrap();
 
