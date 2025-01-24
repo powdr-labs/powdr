@@ -540,7 +540,7 @@ impl PILAnalyzer {
             let e = ExpressionProcessor::new(self.driver(), &Default::default())
                 .process_expression(e)
                 .map_err(|err| {
-                    source.with_error(format!("Failed to evaluate degree bound: {err}"))
+                    err.extend_message(|m| format!("Failed to evaluate degree bound: {m}"))
                 })?;
 
             let value = evaluator::evaluate_expression::<GoldilocksField>(
