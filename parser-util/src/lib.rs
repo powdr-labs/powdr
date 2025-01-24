@@ -113,9 +113,11 @@ impl Error {
         &self.source_ref
     }
 
-    pub fn with_message_prefix(&self, prefix: &str) -> Error {
-        self.source_ref()
-            .with_error(format!("{}: {}", prefix, self.message()))
+    pub fn extend_message<F>(&self, f: F) -> Error
+    where
+        F: FnOnce(&str) -> String,
+    {
+        self.source_ref().with_error(f(self.message()))
     }
 }
 
