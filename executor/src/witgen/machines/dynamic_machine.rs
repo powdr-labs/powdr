@@ -351,7 +351,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         [first, second]
     }
 
-    /// Computes the last row of the VM using runtime solving. This is used by the JIT
+    /// Computes the last row and the row after the last of the VM using runtime solving. This is used by the JIT
     /// because the last row is different.
     fn compute_last_row<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
         assert_eq!(self.data.len() as DegreeType, self.degree - 1);
@@ -360,7 +360,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.parts.witnesses,
             [
-                self.data.get_in_progress_row(self.data.len() - 2),
+                self.data.get_in_progress_row(self.degree as usize - 2),
                 Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree)),
                 Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
                 Row::fresh(self.fixed_data, RowIndex::from_i64(1, self.degree)),
