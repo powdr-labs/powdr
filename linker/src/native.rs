@@ -1,8 +1,7 @@
-use itertools::Itertools;
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::{combine_flags, MachineDegree},
-    object::{Link, LinkTo, Location, MachineInstanceGraph, Object},
+    object::{Link, LinkFrom, Location, MachineInstanceGraph, Object},
     parsed::{
         asm::SymbolPath,
         build::{index_access, lookup, namespaced_reference, permutation, selected},
@@ -20,9 +19,10 @@ pub struct NativeLinker {
     max_degree: Option<Number>,
     /// for each machine instance, the size of the selector array, based on the number of permutation links pointing to it
     selector_array_size_by_instance: BTreeMap<Location, usize>,
-    /// for each link destination, the index in the selector array that the link points to
-    selector_array_index_by_destination: BTreeMap<LinkTo, usize>,
-    /// for each machine instance, the statements resulting from processing the links separately, because we need to make sure they do not come first.
+    /// for each link origin, the index in the selector array that the link points to
+    selector_array_index_by_call: BTreeMap<(Location, LinkFrom), usize>,
+    /// for each machine instance, the statements resulting from processing the instance
+    /// We store the statements resulting from processing the links separately, because we need to make sure they do not come first.
     namespaces: BTreeMap<Location, (Vec<PilStatement>, Vec<PilStatement>)>,
 }
 
@@ -40,29 +40,29 @@ impl LinkerBackend for NativeLinker {
         };
 
         // generate the maps of selector array sizes and indices
-        let (selector_array_index_by_destination, selector_array_size_by_instance) = graph
+        let (selector_array_index_by_call, selector_array_size_by_instance) = graph
             .objects
-            .values()
-            // go through all operations which are accessed via permutation
-            .flat_map(|object| {
-                object
-                    .links
-                    .iter()
-                    .filter_map(|link| link.is_permutation.then_some(&link.to))
+            .iter()
+            // go through all permutation calls
+            .flat_map(|(location, object)| {
+                object.links.iter().filter_map(|link| {
+                    link.is_permutation
+                        .then_some((location.clone(), link.clone()))
+                })
             })
-            // remove duplicates
-            .unique()
             .fold(
                 (BTreeMap::new(), BTreeMap::new()),
-                |(mut indices, mut sizes), to| {
+                |(mut indices, mut sizes), (location, link)| {
                     // get the current size of the array
-                    let size = sizes.entry(to.machine.clone()).or_default();
+                    let size = sizes.entry(link.to.machine.clone()).or_default();
                     // that is the index of the next selector
                     let index = *size;
                     // increment the size of the array
                     *size += 1;
                     // store the index
-                    assert!(indices.insert(to.clone(), index).is_none());
+                    assert!(indices
+                        .insert((location.clone(), link.from), index)
+                        .is_none());
                     // return the updated maps
                     (indices, sizes)
                 },
@@ -73,7 +73,7 @@ impl LinkerBackend for NativeLinker {
             max_degree,
             namespaces: Default::default(),
             selector_array_size_by_instance,
-            selector_array_index_by_destination,
+            selector_array_index_by_call,
         })
     }
 
@@ -134,7 +134,10 @@ impl LinkerBackend for NativeLinker {
             );
             let call_selector = index_access(
                 call_selector_array,
-                Some(self.selector_array_index_by_destination[to].into()),
+                Some(
+                    self.selector_array_index_by_call[&(from_namespace.clone(), link.from.clone())]
+                        .into(),
+                ),
             );
             let rhs_selector = latch.clone() * call_selector;
 
@@ -176,16 +179,19 @@ impl LinkerBackend for NativeLinker {
 
         // declare call selectors if they are present
         if let Some(call_selectors) = &object.call_selectors {
-            // only do it if the machine is actually accessed via permutations.
-            // TODO: This is a bit hacky, it would be better to always create them and let the optimizer remove them if they are not used.
-            if let Some(count) = self.selector_array_size_by_instance.get(location) {
-                pil.extend([
-                    parse_pil_statement(&format!("col witness {call_selectors}[{count}];")),
-                    parse_pil_statement(&format!(
-                        "std::array::map({call_selectors}, std::utils::force_bool);"
-                    )),
-                ])
-            }
+            // declare the call selectors array with a length equal to the number of incoming permutation links
+            let count = self
+                .selector_array_size_by_instance
+                .get(location)
+                .cloned()
+                .unwrap_or_default();
+
+            pil.extend([
+                parse_pil_statement(&format!("col witness {call_selectors}[{count}];")),
+                parse_pil_statement(&format!(
+                    "std::array::map({call_selectors}, std::utils::force_bool);"
+                )),
+            ])
         }
 
         for link in &object.links {
@@ -313,6 +319,8 @@ mod test {
     pol commit pc_update;
     pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
+    pol commit call_selectors[0];
+    std::array::map(call_selectors, std::utils::force_bool);
     1 $ [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return];
 namespace main__rom(8);
     pol constant p_line = [0, 1, 2] + [2]*;
@@ -383,6 +391,8 @@ namespace main__rom(8);
     pc' = (1 - first_step') * pc_update;
     pol commit X_free_value;
     pol commit Y_free_value;
+    pol commit call_selectors[0];
+    std::array::map(call_selectors, std::utils::force_bool);
     1 $ [0, pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_reg_write_X_A, main__rom::p_reg_write_Y_A, main__rom::p_instr_identity, main__rom::p_instr_one, main__rom::p_instr_nothing, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return, main__rom::p_X_const, main__rom::p_X_read_free, main__rom::p_read_X_A, main__rom::p_read_X_pc, main__rom::p_Y_const, main__rom::p_Y_read_free, main__rom::p_read_Y_A, main__rom::p_read_Y_pc];
     instr_identity $ [2, X, Y] in main_sub::instr_return $ [main_sub::_operation_id, main_sub::_input_0, main_sub::_output_0];
     instr_nothing $ [3] in main_sub::instr_return $ [main_sub::_operation_id];
@@ -434,6 +444,8 @@ namespace main_sub(16);
     pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
     pol commit _output_0_free_value;
+    pol commit call_selectors[0];
+    std::array::map(call_selectors, std::utils::force_bool);
     1 $ [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0] in main_sub__rom::latch $ [main_sub__rom::operation_id, main_sub__rom::p_line, main_sub__rom::p_instr__jump_to_operation, main_sub__rom::p_instr__reset, main_sub__rom::p_instr__loop, main_sub__rom::p_instr_return, main_sub__rom::p__output_0_const, main_sub__rom::p__output_0_read_free, main_sub__rom::p_read__output_0_pc, main_sub__rom::p_read__output_0__input_0];
 namespace main_sub__rom(16);
     pol constant p_line = [0, 1, 2, 3, 4, 5] + [5]*;
@@ -505,6 +517,8 @@ namespace main_sub__rom(16);
         7 => std::prelude::Query::Input(0, 1),
         _ => std::prelude::Query::None,
     });
+    pol commit call_selectors[0];
+    std::array::map(call_selectors, std::utils::force_bool);
     1 $ [0, pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_reg_write_X_A, main__rom::p_reg_write_X_CNT, main__rom::p_instr_jmpz, main__rom::p_instr_jmpz_param_l, main__rom::p_instr_jmp, main__rom::p_instr_jmp_param_l, main__rom::p_instr_dec_CNT, main__rom::p_instr_assert_zero, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return, main__rom::p_X_const, main__rom::p_X_read_free, main__rom::p_read_X_A, main__rom::p_read_X_CNT, main__rom::p_read_X_pc];
     pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
     _linker_first_step * (_operation_id - 2) = 0;
@@ -575,6 +589,8 @@ machine Machine with min_degree: 32, max_degree: 64 {
     pol commit pc_update;
     pc_update = instr_adjust_fp * instr_adjust_fp_param_t + instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr_adjust_fp + instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
+    pol commit call_selectors[0];
+    std::array::map(call_selectors, std::utils::force_bool);
     1 $ [0, pc, instr_inc_fp, instr_inc_fp_param_amount, instr_adjust_fp, instr_adjust_fp_param_amount, instr_adjust_fp_param_t, instr__jump_to_operation, instr__reset, instr__loop, instr_return] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_instr_inc_fp, main__rom::p_instr_inc_fp_param_amount, main__rom::p_instr_adjust_fp, main__rom::p_instr_adjust_fp_param_amount, main__rom::p_instr_adjust_fp_param_t, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return];
     pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
     _linker_first_step * (_operation_id - 2) = 0;
@@ -671,6 +687,8 @@ machine Main with min_degree: 32, max_degree: 64 {
     pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
     pol commit X_free_value;
+    pol commit call_selectors[0];
+    std::array::map(call_selectors, std::utils::force_bool);
     instr_add5_into_A $ [0, X, A'] in main_vm::latch $ [main_vm::operation_id, main_vm::x, main_vm::y];
     1 $ [0, pc, reg_write_X_A, instr_add5_into_A, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_reg_write_X_A, main__rom::p_instr_add5_into_A, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return, main__rom::p_X_const, main__rom::p_X_read_free, main__rom::p_read_X_A, main__rom::p_read_X_pc];
     pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
@@ -755,6 +773,8 @@ namespace main_vm(64..128);
     pol commit X_free_value;
     pol commit Y_free_value;
     pol commit Z_free_value;
+    pol commit call_selectors[0];
+    std::array::map(call_selectors, std::utils::force_bool);
     1 $ [0, pc, reg_write_X_A, reg_write_Y_A, reg_write_Z_A, reg_write_X_B, reg_write_Y_B, reg_write_Z_B, instr_or, instr_assert_eq, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_B, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_B, read_Y_pc, Z_const, Z_read_free, read_Z_A, read_Z_B, read_Z_pc] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_reg_write_X_A, main__rom::p_reg_write_Y_A, main__rom::p_reg_write_Z_A, main__rom::p_reg_write_X_B, main__rom::p_reg_write_Y_B, main__rom::p_reg_write_Z_B, main__rom::p_instr_or, main__rom::p_instr_assert_eq, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return, main__rom::p_X_const, main__rom::p_X_read_free, main__rom::p_read_X_A, main__rom::p_read_X_B, main__rom::p_read_X_pc, main__rom::p_Y_const, main__rom::p_Y_read_free, main__rom::p_read_Y_A, main__rom::p_read_Y_B, main__rom::p_read_Y_pc, main__rom::p_Z_const, main__rom::p_Z_read_free, main__rom::p_read_Z_A, main__rom::p_read_Z_B, main__rom::p_read_Z_pc];
     instr_or $ [0, X, Y, Z] is main_bin::latch * main_bin::sel[0] $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];
     pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
@@ -904,6 +924,8 @@ namespace main_bin_o(256);
     pol commit Y_free_value;
     pol commit Z_free_value;
     pol commit W_free_value;
+    pol commit call_selectors[0];
+    std::array::map(call_selectors, std::utils::force_bool);
     instr_add_to_A $ [0, X, Y, A'] in main_submachine::latch $ [main_submachine::operation_id, main_submachine::x, main_submachine::y, main_submachine::z];
     instr_add_BC_to_A $ [0, B, C, A'] in main_submachine::latch $ [main_submachine::operation_id, main_submachine::x, main_submachine::y, main_submachine::z];
     1 $ [0, pc, reg_write_X_A, reg_write_Y_A, reg_write_Z_A, reg_write_W_A, reg_write_X_B, reg_write_Y_B, reg_write_Z_B, reg_write_W_B, reg_write_X_C, reg_write_Y_C, reg_write_Z_C, reg_write_W_C, instr_add, instr_sub_with_add, instr_addAB, instr_add3, instr_add_to_A, instr_add_BC_to_A, instr_sub, instr_add_with_sub, instr_assert_eq, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_B, read_X_C, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_B, read_Y_C, read_Y_pc, Z_const, Z_read_free, read_Z_A, read_Z_B, read_Z_C, read_Z_pc, W_const, W_read_free, read_W_A, read_W_B, read_W_C, read_W_pc] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_reg_write_X_A, main__rom::p_reg_write_Y_A, main__rom::p_reg_write_Z_A, main__rom::p_reg_write_W_A, main__rom::p_reg_write_X_B, main__rom::p_reg_write_Y_B, main__rom::p_reg_write_Z_B, main__rom::p_reg_write_W_B, main__rom::p_reg_write_X_C, main__rom::p_reg_write_Y_C, main__rom::p_reg_write_Z_C, main__rom::p_reg_write_W_C, main__rom::p_instr_add, main__rom::p_instr_sub_with_add, main__rom::p_instr_addAB, main__rom::p_instr_add3, main__rom::p_instr_add_to_A, main__rom::p_instr_add_BC_to_A, main__rom::p_instr_sub, main__rom::p_instr_add_with_sub, main__rom::p_instr_assert_eq, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return, main__rom::p_X_const, main__rom::p_X_read_free, main__rom::p_read_X_A, main__rom::p_read_X_B, main__rom::p_read_X_C, main__rom::p_read_X_pc, main__rom::p_Y_const, main__rom::p_Y_read_free, main__rom::p_read_Y_A, main__rom::p_read_Y_B, main__rom::p_read_Y_C, main__rom::p_read_Y_pc, main__rom::p_Z_const, main__rom::p_Z_read_free, main__rom::p_read_Z_A, main__rom::p_read_Z_B, main__rom::p_read_Z_C, main__rom::p_read_Z_pc, main__rom::p_W_const, main__rom::p_W_read_free, main__rom::p_read_W_A, main__rom::p_read_W_B, main__rom::p_read_W_C, main__rom::p_read_W_pc];

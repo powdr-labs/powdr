@@ -77,7 +77,7 @@ pub struct Link {
     pub is_permutation: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LinkFrom {
     /// the instruction flag, if this is an instruction link
     pub instr_flag: Option<Expression>,
