@@ -2,12 +2,11 @@ use itertools::Itertools;
 use num_traits::Zero;
 use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, DegreeRange};
 use powdr_ast::parsed::visitor::AllChildren;
-use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
 
-use powdr_number::{FieldElement, Mersenne31Field};
+use powdr_number::Mersenne31Field;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 
@@ -29,6 +28,7 @@ use stwo_prover::constraint_framework::{
     TraceLocationAllocator, ORIGINAL_TRACE_IDX, PREPROCESSED_TRACE_IDX,
 };
 
+use crate::stwo::params::BaseFieldElementMap;
 use stwo_prover::core::air::{Component, ComponentProver};
 use stwo_prover::core::backend::{Backend, BackendForChannel};
 use stwo_prover::core::channel::{Channel, MerkleChannel};
@@ -330,32 +330,8 @@ where
 
         // Generate challenges for stage 1 based on stage 0 traces.
         // Stwo supports a maximum of 2 stages, and challenges are created only for stage 0.
-        let identities = &self.analyzed.identities;
-        let challenges_stage0 = identities
-            .iter()
-            .flat_map(|identity| {
-                identity.all_children().filter_map(|expr| match expr {
-                    AlgebraicExpression::Challenge(challenge) => Some(challenge.id),
-                    _ => None,
-                })
-            })
-            .collect::<BTreeSet<_>>();
 
-        //challenge_channel is used to draw random bytes for challenges
-        let challenge_channel = &mut <MC as MerkleChannel>::C::default();
-        let challenge_single_value = challenge_channel.draw_random_bytes();
-
-        //challenge_single_value is a vector more than 4  bytes, we know F is mersenne31, it needs 4 bytes to transfer to u32 and then to F
-        //TODO: make the challenge sound
-        let stage0_challenges = challenges_stage0
-            .iter()
-            .map(|&index| {
-                (
-                    index,
-                    Mersenne31Field::from_bytes_le(challenge_single_value.get(0..4).unwrap()),
-                )
-            })
-            .collect::<BTreeMap<_, _>>();
+        let stage0_challenges = get_dummy_challenges::<MC>(&self.analyzed);
 
         //build witness columns for stage 1 using the callback function, with the generated challenges
         if self.analyzed.stage_count() > 1 {
@@ -498,27 +474,7 @@ where
         let mut witness_col_log_sizes = vec![];
 
         //TODO: make the challenge sound, now the challenge is built the same way in prover.
-        let identities = self.analyzed.identities.clone();
-        let mut challenges_stage0 = BTreeSet::new();
-        for identity in &identities {
-            identity.pre_visit_expressions(&mut |expr| {
-                if let AlgebraicExpression::Challenge(challenge) = expr {
-                    challenges_stage0.insert(challenge.id);
-                }
-            });
-        }
-
-        let challenge_channel = &mut <MC as MerkleChannel>::C::default();
-        let challenge_single_value = challenge_channel.draw_random_bytes();
-        let stage0_challenges = challenges_stage0
-            .iter()
-            .map(|&index| {
-                (
-                    index,
-                    Mersenne31Field::from_bytes_le(challenge_single_value.get(0..4).unwrap()),
-                )
-            })
-            .collect::<BTreeMap<_, _>>();
+        let stage0_challenges = get_dummy_challenges::<MC>(&self.analyzed);
 
         let mut components = self
             .split
@@ -592,4 +548,44 @@ fn get_config() -> PcsConfig {
             FRI_NUM_QUERIES,
         ),
     }
+}
+
+fn get_dummy_challenges<MC: MerkleChannel>(
+    analyzed: &Analyzed<Mersenne31Field>,
+) -> BTreeMap<u64, Mersenne31Field> {
+    let identities = &analyzed.identities;
+    let challenges_stage0 = identities
+        .iter()
+        .flat_map(|identity| {
+            identity.all_children().filter_map(|expr| match expr {
+                AlgebraicExpression::Challenge(challenge) => Some(challenge.id),
+                _ => None,
+            })
+        })
+        .collect::<BTreeSet<_>>();
+    let number_of_m31_challenges = challenges_stage0.len();
+    let number_of_qm31_challenges = ((number_of_m31_challenges + 4) & !3) >> 2;
+    let mut draw_challenges = Vec::new();
+
+    //challenge_channel is used to draw random bytes for challenges
+    let challenge_channel = &mut <MC as MerkleChannel>::C::default();
+
+    (0..number_of_qm31_challenges).for_each(|_| {
+        let qm31_challenge = challenge_channel.draw_felt();
+        draw_challenges.extend([
+            qm31_challenge.0 .0,
+            qm31_challenge.0 .1,
+            qm31_challenge.1 .0,
+            qm31_challenge.1 .1,
+        ]);
+    });
+
+    challenges_stage0
+        .into_iter()
+        .zip(
+            draw_challenges
+                .iter()
+                .map(|&challenge| Mersenne31Field::from_stwo_m31(challenge)),
+        )
+        .collect::<BTreeMap<_, _>>()
 }
