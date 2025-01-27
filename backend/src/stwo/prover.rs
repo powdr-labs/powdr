@@ -252,7 +252,7 @@ where
             })
             .collect();
 
-        //Generate witness for stage 0,build constant columns in circle domain at the same time
+        // Generate witness for stage 0, build constant columns in circle domain at the same time
         let mut machine_log_sizes: BTreeMap<String, u32> = BTreeMap::new();
         let mut constant_cols = Vec::new();
         let mut witness_by_machine = self
