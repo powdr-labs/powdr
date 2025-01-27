@@ -202,25 +202,33 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 
     /// Returns the list of all unknown variables that occur in the given identity
     /// when it is evaluated at the given row offset, applying simplifications like multiplication by zero etc.
-    /// If None is returned, the set of unknown varialbes cannot be determined.
-    pub fn unknown_variables_in_simplified_identity(
+    /// If None is returned, the set of unknown variables cannot be determined.
+    pub fn unknown_constrained_variables(
         &self,
         id: &'a Identity<T>,
         row_offset: i32,
     ) -> Vec<Variable> {
-        // TODO If we use this to determine the unconstrained variables, we should also look at the assignments.
+        // TODO If we use this to determine the unconstrained variables, we might also have to look at the assignments.
+
+        // A complete identity does not contain unknown variables.
+        if self.is_complete(id, row_offset) {
+            return vec![];
+        }
+
+        // Continue from here: If this there are no unknown constrained variables, the process is finished.
+        // Otherwise, we can try setting them to zero one after the other (note that the order might matter).
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                self.unknown_variables_in_simplfied_expression(expression, row_offset)
+                self.unknown_constrained_variables_in_expression(expression, row_offset)
             }
             Identity::Lookup(LookupIdentity { id, left, .. })
             | Identity::Permutation(PermutationIdentity { id, left, .. })
             | Identity::PhantomPermutation(PhantomPermutationIdentity { id, left, .. })
             | Identity::PhantomLookup(PhantomLookupIdentity { id, left, .. }) => {
-                self.unknown_variables_in_simplfied_expression(left.selector, row_offset)
+                self.unknown_constrained_variables_in_expression(left.selector, row_offset)
                     .into_iter()
                     .chain(left.expressions.iter().flat_map(|e| {
-                        self.unknown_variables_in_simplfied_expression(e, row_offset)
+                        self.unknown_constrained_variables_in_expression(e, row_offset)
                     }))
                     .collect()
             }
@@ -522,7 +530,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         Evaluator::new(self).evaluate(expr, offset)
     }
 
-    fn unknown_variables_in_simplfied_expression(
+    fn unknown_constrained_variables_in_expression(
         &self,
         expr: &Expression<T>,
         row_offset: i32,
@@ -542,12 +550,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             Expression::Number(_) => vec![],
             Expression::BinaryOperation(op) => {
                 // TOOD perform simplifications.
-                let left = self.unknown_variables_in_simplfied_expression(&op.left, row_offset);
-                let right = self.unknown_variables_in_simplfied_expression(&op.right, row_offset);
+                let left = self.unknown_constrained_variables_in_expression(&op.left, row_offset);
+                let right = self.unknown_constrained_variables_in_expression(&op.right, row_offset);
                 left.into_iter().chain(right).collect()
             }
             Expression::UnaryOperation(op) => {
-                self.unknown_variables_in_simplfied_expression(&op.expr, row_offset)
+                self.unknown_constrained_variables_in_expression(&op.expr, row_offset)
             }
         }
     }
