@@ -40,7 +40,7 @@ pub struct FunctionCache<'a, T: FieldElement> {
 
 pub struct CacheEntry<T: FieldElement> {
     pub function: WitgenFunction<T>,
-    pub _range_constraints: Vec<RangeConstraint<T>>,
+    pub range_constraints: Vec<RangeConstraint<T>>,
 }
 
 impl<'a, T: FieldElement> FunctionCache<'a, T> {
@@ -164,7 +164,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
 
         Some(CacheEntry {
             function,
-            _range_constraints: range_constraints,
+            range_constraints,
         })
     }
 
