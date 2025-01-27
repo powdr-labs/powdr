@@ -254,11 +254,17 @@ params[2] = Add::c[0];"
             col witness sel, a, b, c;
             a + b = 0;
         ";
-        let err_str = generate_for_block_machine(input, "Unconstrained", 2, 1)
-            .err()
-            .unwrap();
-        assert!(err_str
-            .contains("The following variables or values are still missing: Unconstrained::c"));
+        let code = generate_for_block_machine(input, "Unconstrained", 2, 1)
+            .unwrap()
+            .code;
+        assert_eq!(
+            format_code(&code),
+            "Unconstrained::sel[0] = 1;
+Unconstrained::a[0] = params[0];
+Unconstrained::b[0] = params[1];
+params[2] = 0;
+Unconstrained::c[0] = 0;"
+        );
     }
 
     #[test]
