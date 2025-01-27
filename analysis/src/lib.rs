@@ -1,7 +1,7 @@
 pub mod machine_check;
 mod vm;
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::ops::ControlFlow;
 
 use powdr_ast::asm_analysis::InstructionDefinitionStatement;
@@ -37,14 +37,15 @@ pub fn convert_asm_to_pil<T: FieldElement>(
 
 pub fn check(file: ASMProgram) -> Result<AnalysisASMFile, Vec<String>> {
     log::debug!("Run machine check analysis step");
-    let file = machine_check::check(file)?;
+    let mut file = machine_check::check(file)?;
+    annotate_basic_blocks(&mut file);
 
     Ok(file)
 }
 
 pub fn analyze_precompiles(
     analyzed_asm: AnalysisASMFile,
-    selected: &HashSet<String>,
+    selected: &BTreeSet<String>,
 ) -> AnalysisASMFile {
     let main_machine_path = parse_absolute_path(MAIN_MACHINE_STR);
     if analyzed_asm
@@ -141,11 +142,12 @@ pub fn simplify_autoprecompile_blocks(
                             instruction,
                             inputs: _,
                         }) if instruction.starts_with("branch")
-                            || instruction.starts_with("jump") =>
+                            || instruction.starts_with("jump")
+                            || instruction.starts_with("skip") =>
                         {
                             break
                         }
-                        FunctionStatement::Return(_) => break,
+                        FunctionStatement::Return(_) | FunctionStatement::Assignment(_) => break,
                         _ => {
                             block_statements.push(program[j].clone());
                             j += 1;
@@ -190,7 +192,7 @@ pub fn simplify_autoprecompile_blocks(
 pub fn transform_autoprecompile_blocks(
     //program: &mut Vec<FunctionStatement>,
     program: &mut FunctionStatements,
-    selected: &HashSet<String>,
+    selected: &BTreeSet<String>,
 ) -> Vec<(String, Vec<FunctionStatement>)> {
     let mut blocks = Vec::new();
     let mut i = 0;
@@ -212,11 +214,12 @@ pub fn transform_autoprecompile_blocks(
                             instruction,
                             inputs: _,
                         }) if instruction.starts_with("branch")
-                            || instruction.starts_with("jump") =>
+                            || instruction.starts_with("jump")
+                            || instruction.starts_with("skip") =>
                         {
                             break
                         }
-                        FunctionStatement::Return(_) => break,
+                        FunctionStatement::Return(_) | FunctionStatement::Assignment(_) => break,
                         _ => {
                             block_statements.push(program[j].clone());
                             j += 1;
@@ -260,7 +263,7 @@ pub fn transform_autoprecompile_blocks(
 
 pub fn generate_precompile(
     statements: &Vec<FunctionStatement>,
-    instruction_map: &HashMap<String, Instruction>,
+    instruction_map: &BTreeMap<String, Instruction>,
     degree: MachineDegree,
     wits: &[&PilStatement],
     identities: &[&PilStatement],
@@ -384,7 +387,7 @@ pub fn generate_precompile(
                         .collect::<Vec<_>>();
 
                     // Create initial substitution map
-                    let sub_map: HashMap<String, Expression> =
+                    let sub_map: BTreeMap<String, Expression> =
                         instr_inputs.into_iter().zip(inputs.clone()).collect();
 
                     // STEP_0 = step;
@@ -643,7 +646,7 @@ pub fn generate_precompile(
     }
 }
 
-fn substitute(expr: &mut Expression, sub: &HashMap<String, Expression>) {
+fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
     expr.visit_expressions_mut(
         &mut |expr| {
             if let Expression::Reference(_, ref mut r) = expr {
@@ -727,7 +730,7 @@ fn optimize_precompiles(mut analyzed_asm: AnalysisASMFile) -> AnalysisASMFile {
         .filter(|stmt| matches!(stmt, PilStatement::Expression(_, _)))
         .collect::<Vec<_>>();
 
-    let name_to_instr: HashMap<String, Instruction> = machine
+    let name_to_instr: BTreeMap<String, Instruction> = machine
         .instructions
         .iter()
         .map(|instr| (instr.name.clone(), instr.instruction.clone()))
@@ -838,7 +841,7 @@ fn optimize_precompiles(mut analyzed_asm: AnalysisASMFile) -> AnalysisASMFile {
 
 fn create_precompiles(
     mut analyzed_asm: AnalysisASMFile,
-    selected: &HashSet<String>,
+    selected: &BTreeSet<String>,
 ) -> AnalysisASMFile {
     let machine = analyzed_asm
         .get_machine_mut(&parse_absolute_path("::Main"))
@@ -871,7 +874,7 @@ fn create_precompiles(
         .filter(|stmt| matches!(stmt, PilStatement::Expression(_, _)))
         .collect::<Vec<_>>();
 
-    let name_to_instr: HashMap<String, Instruction> = machine
+    let name_to_instr: BTreeMap<String, Instruction> = machine
         .instructions
         .iter()
         .map(|instr| (instr.name.clone(), instr.instruction.clone()))
@@ -995,7 +998,7 @@ fn create_precompiles(
 }
 
 fn optimize_precompile(mut machine: Machine) -> Machine {
-    let mut scc: HashSet<String> = HashSet::new();
+    let mut scc: BTreeSet<String> = BTreeSet::new();
 
     // We use operation inputs/outputs as scc sources
     for callable in machine.callable.0.values() {
@@ -1039,7 +1042,7 @@ fn optimize_precompile(mut machine: Machine) -> Machine {
         // add all others.
         for link in &machine.links {
             //println!("Checking link {}", link);
-            let mut local: HashSet<String> = HashSet::new();
+            let mut local: BTreeSet<String> = BTreeSet::new();
             local.extend(collect_columns(&link.link_flag));
             if let Some(ref flag) = &link.instr_flag {
                 local.extend(collect_columns(flag));
@@ -1058,7 +1061,7 @@ fn optimize_precompile(mut machine: Machine) -> Machine {
         // For a given identity, if one col is part of the SCC,
         // add all others.
         for stmt in &machine.pil {
-            let mut local: HashSet<String> = HashSet::new();
+            let mut local: BTreeSet<String> = BTreeSet::new();
             if let PilStatement::Expression(_, ref expr) = stmt {
                 local.extend(collect_columns(expr));
             }
@@ -1078,7 +1081,7 @@ fn optimize_precompile(mut machine: Machine) -> Machine {
 
     // Remove all links that are not part of the SCC
     machine.links.retain(|link| {
-        let mut local: HashSet<String> = HashSet::new();
+        let mut local: BTreeSet<String> = BTreeSet::new();
         local.extend(collect_columns(&link.link_flag));
         if let Some(ref flag) = &link.instr_flag {
             local.extend(collect_columns(flag));
@@ -1102,7 +1105,7 @@ fn optimize_precompile(mut machine: Machine) -> Machine {
     println!("Optimized machine: before mloads\n{machine}");
 
     // Optimize mloads.
-    let mut mem: HashMap<u64, Expression> = HashMap::new();
+    let mut mem: BTreeMap<u64, Expression> = BTreeMap::new();
     machine.links.retain(|link| {
         let callable = &link.to.callable;
         if link.to.instance != "regs" || (callable != "mload" && callable != "mstore") {
@@ -1159,7 +1162,7 @@ fn optimize_precompile(mut machine: Machine) -> Machine {
     });
 
     // Optimize mstores.
-    let mut last_store: HashMap<u64, usize> = HashMap::new();
+    let mut last_store: BTreeMap<u64, usize> = BTreeMap::new();
     for (i, link) in machine.links.iter().enumerate() {
         let callable = &link.to.callable;
         if link.to.instance != "regs" || callable != "mstore" {
@@ -1235,44 +1238,114 @@ pub fn collect_basic_blocks(
     let program = &main_function.body.statements.inner;
 
     let mut blocks = Vec::new();
-    let mut ghost_labels = 0;
-    let mut curr_label = format!("ghost_label_{ghost_labels}");
+    //let ghost_labels = 0;
+    //let mut curr_label = format!("ghost_label_{ghost_labels}");
+    //let mut curr_label = "block_init".to_string();
+    let mut curr_label: Option<String> = None;
     let mut block_statements = Vec::new();
 
     for op in program {
         match &op {
             FunctionStatement::Label(LabelStatement { source: _, name }) => {
-                blocks.push((curr_label.clone(), block_statements.clone()));
+                if let Some(label) = curr_label {
+                    assert!(!blocks.iter().any(|(l, _)| l == &label));
+                    blocks.push((label.clone(), block_statements.clone()));
+                }
                 block_statements.clear();
-                curr_label = name.clone();
+                curr_label = Some(name.clone());
             }
             FunctionStatement::Instruction(InstructionStatement {
                 source: _,
                 instruction,
                 inputs: _,
-            }) if instruction.starts_with("branch") || instruction.starts_with("jump") => {
-                blocks.push((curr_label.clone(), block_statements.clone()));
+            }) if instruction.starts_with("branch")
+                || instruction.starts_with("jump")
+                || instruction.starts_with("skip") =>
+            {
+                if let Some(label) = curr_label {
+                    assert!(!blocks.iter().any(|(l, _)| l == &label));
+                    blocks.push((label.clone(), block_statements.clone()));
+                }
                 block_statements.clear();
-                ghost_labels += 1;
-                curr_label = format!("ghost_label_{ghost_labels}");
+                curr_label = None;
+                //assert!(!blocks.iter().any(|(label, _)| label == &curr_label));
+                //blocks.push((curr_label.clone(), block_statements.clone()));
+                //block_statements.clear();
+                //ghost_labels += 1;
+                //curr_label = format!("ghost_label_{ghost_labels}");
             }
             FunctionStatement::Instruction(InstructionStatement {
                 source: _,
                 instruction: _,
                 inputs: _,
-            })
-            | FunctionStatement::Assignment(_) => {
+            }) => {
                 block_statements.push(op.clone());
             }
-            FunctionStatement::Return(_) => {
-                blocks.push((curr_label.clone(), block_statements.clone()));
+            FunctionStatement::Return(_) | FunctionStatement::Assignment(_) => {
+                if let Some(label) = curr_label {
+                    assert!(!blocks.iter().any(|(l, _)| l == &label));
+                    blocks.push((label.clone(), block_statements.clone()));
+                }
                 block_statements.clear();
-                ghost_labels += 1;
-                curr_label = format!("ghost_label_{ghost_labels}");
+                curr_label = None;
+                //blocks.push((curr_label.clone(), block_statements.clone()));
+                //block_statements.clear();
+                //ghost_labels += 1;
+                //curr_label = format!("ghost_label_{ghost_labels}");
             }
             _ => {}
         }
     }
 
     blocks
+}
+
+pub fn annotate_basic_blocks(analyzed_asm: &mut AnalysisASMFile) {
+    let machine = analyzed_asm
+        .get_machine_mut(&parse_absolute_path("::Main"))
+        .unwrap();
+    let CallableSymbol::Function(ref mut main_function) =
+        &mut machine.callable.0.get_mut("main").unwrap()
+    else {
+        panic!("main function missing")
+    };
+
+    let program = &mut main_function.body.statements.inner;
+
+    let mut ghost_labels = 0;
+
+    let mut i = 0;
+    while i < program.len() {
+        match &program[i] {
+            FunctionStatement::Instruction(InstructionStatement {
+                source,
+                instruction,
+                inputs: _,
+            }) if instruction.starts_with("branch")
+                || instruction.starts_with("jump")
+                || instruction.starts_with("skip") =>
+            {
+                let curr_label = format!("ghost_label_{ghost_labels}");
+                let new_label = FunctionStatement::Label(LabelStatement {
+                    source: source.clone(),
+                    name: curr_label.clone(),
+                });
+                program.insert(i + 1, new_label);
+                ghost_labels += 1;
+                i += 1;
+            }
+            FunctionStatement::Return(_) | FunctionStatement::Assignment(_) => {
+                let curr_label = format!("ghost_label_{ghost_labels}");
+                let new_label = FunctionStatement::Label(LabelStatement {
+                    source: Default::default(),
+                    name: curr_label.clone(),
+                });
+                program.insert(i + 1, new_label);
+                ghost_labels += 1;
+                i += 1;
+            }
+            _ => {}
+        }
+        i += 1;
+    }
 }

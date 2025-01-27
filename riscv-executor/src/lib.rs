@@ -2167,14 +2167,42 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                 None
             }
             Instruction::mul => {
-                let read_reg1 = args[0].u();
-                let read_reg2 = args[1].u();
+                let aaa = args[0].bin();
+                let read_reg1: u32 = match aaa.try_into() {
+                    Ok(v) => v,
+                    Err(_) => panic!("noooooooooooooo 111111111"),
+                };
+                let aaa = args[1].bin();
+                let read_reg2: u32 = match aaa.try_into() {
+                    Ok(v) => v,
+                    Err(_) => panic!("noooooooooooooo 222222222"),
+                };
                 let lid = self.instr_link_id(instr, MachineInstance::regs, 0);
                 let val1 = self.reg_read(0, read_reg1, lid);
                 let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
                 let val2 = self.reg_read(1, read_reg2, lid);
-                let write_reg1 = args[2].u();
-                let write_reg2 = args[3].u();
+                let aaa = args[2].bin();
+                let write_reg1: u32 = match aaa.try_into() {
+                    Ok(v) => v,
+                    Err(_) => panic!("noooooooooooooo 333333333333"),
+                };
+                let aaa = args[3].bin();
+                let write_reg2: u32 = match aaa.try_into() {
+                    Ok(v) => v,
+                    Err(_) => panic!("noooooooooooooo 44444444444444"),
+                };
+
+                let aaa = val1.bin();
+                let val1_u32: u32 = match aaa.try_into() {
+                    Ok(v) => v,
+                    Err(_) => panic!("noooooooooooooo 5555555555555 {aaa:?}"),
+                };
+
+                let aaa = val2.bin();
+                let val2_u32: u32 = match aaa.try_into() {
+                    Ok(v) => v,
+                    Err(_) => panic!("noooooooooooooo 6666666666666 {aaa:?}"),
+                };
 
                 let r = val1.u() as u64 * val2.u() as u64;
                 let lo = r as u32;
@@ -2873,8 +2901,8 @@ pub fn execute<F: FieldElement>(
     prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     profiling: Option<ProfilerOptions>,
-    precompile_blocks: HashMap<String, Vec<FunctionStatement>>,
-) -> (usize, HashMap<String, u64>) {
+    precompile_blocks: BTreeMap<String, Vec<FunctionStatement>>,
+) -> (usize, BTreeMap<String, u64>) {
     log::info!("Executing...");
     let res = execute_inner(
         asm,
@@ -2902,7 +2930,7 @@ pub fn execute_with_trace<F: FieldElement>(
     bootloader_inputs: &[F],
     max_steps_to_execute: Option<usize>,
     profiling: Option<ProfilerOptions>,
-) -> (Execution<F>, HashMap<String, u64>) {
+) -> (Execution<F>, BTreeMap<String, u64>) {
     log::info!("Executing (trace generation)...");
 
     execute_inner(
@@ -2930,7 +2958,7 @@ pub fn execute_with_witness<F: FieldElement>(
     bootloader_inputs: &[F],
     max_steps_to_execute: Option<usize>,
     profiling: Option<ProfilerOptions>,
-) -> (Execution<F>, HashMap<String, u64>) {
+) -> (Execution<F>, BTreeMap<String, u64>) {
     log::info!("Executing (trace generation)...");
 
     execute_inner(
@@ -2958,12 +2986,13 @@ fn execute_inner<F: FieldElement>(
     max_steps_to_execute: usize,
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
-    precompile_blocks: HashMap<String, Vec<FunctionStatement>>,
-) -> (Execution<F>, HashMap<String, u64>) {
+    precompile_blocks: BTreeMap<String, Vec<FunctionStatement>>,
+) -> (Execution<F>, BTreeMap<String, u64>) {
     let start = Instant::now();
     let main_machine = get_main_machine(asm);
 
-    let mut label_freq: HashMap<String, u64> = Default::default();
+    let mut label_freq: BTreeMap<String, u64> = Default::default();
+    let mut instr_freq: BTreeMap<String, u64> = Default::default();
 
     let PreprocessedMain {
         statements,
@@ -3060,6 +3089,10 @@ fn execute_inner<F: FieldElement>(
     e.proc.push_row(PC_INITIAL_VAL as u32);
     let mut last = Instant::now();
     let mut count = 0;
+    let mut label_count = 0;
+    let mut ass_count = 0;
+    let mut debug_count = 0;
+    let mut precompile_calls = 0;
     loop {
         let stm = statements[curr_pc as usize];
 
@@ -3074,12 +3107,14 @@ fn execute_inner<F: FieldElement>(
             if elapsed.as_secs_f64() > 1.0 {
                 last = now;
                 log::debug!("instructions/s: {}", count as f64 / elapsed.as_secs_f64(),);
-                count = 0;
+                //count = 0;
             }
         }
 
         match stm {
             FunctionStatement::Assignment(a) => {
+                ass_count += 1;
+
                 let pc = e.proc.get_pc().u();
                 e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
                 if let Some(p) = &mut profiler {
@@ -3136,19 +3171,21 @@ fn execute_inner<F: FieldElement>(
             FunctionStatement::Instruction(i)
                 if precompile_blocks.contains_key(&i.instruction.to_string()) =>
             {
+                precompile_calls += 1;
                 let name = i.instruction.to_string();
                 let pc = e.proc.get_pc();
 
+                //println!("Executing precompile {}", i.instruction.to_string());
                 for stmt in precompile_blocks.get(&name).unwrap() {
                     match stmt {
                         FunctionStatement::Instruction(i) => {
                             e.exec_instruction(&i.instruction, &i.inputs);
                         }
-                        _ => unreachable!(),
+                        a => unreachable!("{a:?}"),
                     }
                 }
 
-                e.proc.set_pc((pc.u() + 1).into());
+                e.proc.set_pc(pc.add(&Elem::Binary(1)));
             }
             FunctionStatement::Instruction(i) => {
                 e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
@@ -3156,6 +3193,12 @@ fn execute_inner<F: FieldElement>(
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
                 }
+
+                let name = i.instruction.to_string();
+                instr_freq
+                    .entry(name.clone())
+                    .and_modify(|e| *e += 1)
+                    .or_insert(1);
 
                 if ["jump", "jump_dyn"].contains(&i.instruction.as_str()) {
                     let pc_before = e.proc.get_pc().u();
@@ -3189,7 +3232,10 @@ fn execute_inner<F: FieldElement>(
                 break;
             }
             FunctionStatement::DebugDirective(dd) => {
+                debug_count += 1;
+
                 e.step -= 4;
+                count -= 1;
                 match &dd.directive {
                     DebugDirective::Loc(file, line, column) => {
                         let (dir, file) = debug_files[file - 1];
@@ -3202,6 +3248,10 @@ fn execute_inner<F: FieldElement>(
                 };
             }
             FunctionStatement::Label(LabelStatement { source: _, name }) => {
+                label_count += 1;
+
+                e.step -= 4;
+                count -= 1;
                 label_freq
                     .entry(name.clone())
                     .and_modify(|e| *e += 1)
@@ -3215,6 +3265,12 @@ fn execute_inner<F: FieldElement>(
             None => break,
         };
     }
+    println!("Finish executor loop with true instruction count = {count}");
+
+    let total_freq = instr_freq.values().sum::<u64>();
+    println!("Instr freq:\n{instr_freq:?}");
+    println!("Total freq: {total_freq}");
+    println!("Precompile count = {precompile_calls}, ass count = {ass_count}, label_count = {label_count}, debug count = {debug_count}");
 
     if let Some(mut p) = profiler {
         p.finish();

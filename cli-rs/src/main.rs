@@ -15,7 +15,7 @@ use powdr::riscv_executor::{write_executor_csv, ProfilerOptions};
 use powdr::Pipeline;
 
 use itertools::Itertools;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsStr;
 use std::time::Instant;
 use std::{
@@ -458,6 +458,8 @@ fn autoprecompiles<F: FieldElement>(
     println!("Trace length: {trace_len}");
 
     let blocks = powdr_analysis::collect_basic_blocks(&checked_asm);
+    //println!("Basic blocks:\n{blocks:?}");
+
     let blocks = blocks
         .into_iter()
         .map(|(name, b)| {
@@ -474,25 +476,44 @@ fn autoprecompiles<F: FieldElement>(
         );
     }
 
-    let dont_eq = vec!["__data_init", "main", "halt"];
-    let dont_contain = vec!["powdr_riscv_runtime", "page_ok"];
-    let selected: HashSet<String> = blocks
+    let total_cost = blocks.iter().map(|(_, _, _, cost)| cost).sum::<u64>();
+
+    //let dont_eq = vec!["__data_init", "main", "halt"];
+    let dont_eq: Vec<&str> = vec![];
+    //let dont_contain = vec!["powdr_riscv_runtime", "page_ok"];
+    let dont_contain: Vec<&str> = vec![];
+    let selected: BTreeSet<String> = blocks
         .iter()
         .skip(0)
-        .filter(|(name, _, _, _)| {
-            !dont_eq.contains(&name.as_str()) && !dont_contain.iter().any(|s| name.contains(s))
+        .filter(|(name, block, _, cost)| {
+            !dont_eq.contains(&name.as_str())
+                && !dont_contain.iter().any(|s| name.contains(s))
+                && block.len() > 1
+                && *cost > 2
         })
-        .take(10)
+        //.take(5)
         .map(|block| block.0.clone())
         .into_iter()
         .collect();
     let auto_asm = powdr_analysis::analyze_precompiles(checked_asm.clone(), &selected);
 
-    println!("New auto_asm:\n{auto_asm}");
-
     println!("Selected blocks: {selected:?}");
+    println!("Selected {} blocks", selected.len());
 
-    let selected_blocks: HashMap<_, _> = blocks
+    //println!("New auto_asm:\n{auto_asm}");
+    let cost_unopt = blocks
+        .iter()
+        .filter(|(name, _, _, _)| !selected.contains(name))
+        .map(|(name, _, _, cost)| {
+            println!("Did not select block {name} with cost {cost}");
+            cost
+        })
+        .sum::<u64>();
+
+    println!("Total cost = {total_cost}");
+    println!("Total cost unopt = {cost_unopt}");
+
+    let selected_blocks: BTreeMap<_, _> = blocks
         .into_iter()
         .filter(|(name, _, _, _)| selected.contains(name))
         .map(|(name, block, _, _)| (name, block))
