@@ -254,7 +254,7 @@ where
         //Generate witness for stage 0,build constant columns in circle domain at the same time
         let mut machine_log_sizes: BTreeMap<String, u32> = BTreeMap::new();
         let mut constant_cols = Vec::new();
-        let witness_by_machine = self
+        let mut witness_by_machine = self
             .split
             .iter()
             .filter_map(|(machine, pil)| {
@@ -333,27 +333,31 @@ where
 
         let stage0_challenges = get_dummy_challenges::<MC>(&self.analyzed);
 
-        //build witness columns for stage 1 using the callback function, with the generated challenges
         if self.analyzed.stage_count() > 1 {
-            let witness_by_machine_stage1: BTreeMap<String, Vec<(String, Vec<Mersenne31Field>)>> =
-                witness_by_machine
-                    .iter()
-                    .map(|(machine_name, machine_witness)| {
-                        let new_witness = witgen_callback.next_stage_witness(
-                            &self.split[machine_name],
-                            machine_witness,
-                            stage0_challenges.clone(),
-                            1,
-                        );
-                        machine_log_sizes
-                            .insert(machine_name.clone(), new_witness[0].1.len().ilog2());
-                        (machine_name.clone(), new_witness)
-                    })
-                    .collect();
+            //build witness columns for stage 1 using the callback function, with the generated challenges
+            witness_by_machine
+                .iter_mut()
+                .for_each(|(machine_name, machine_witness)| {
+                    let new_witness = witgen_callback.next_stage_witness(
+                        &self.split[machine_name],
+                        machine_witness,
+                        stage0_challenges.clone(),
+                        1,
+                    );
+                    new_witness.iter().for_each(|(witness_name, witness)| {
+                        if !machine_witness
+                            .iter_mut()
+                            .any(|(name, _)| name == witness_name)
+                        {
+                            machine_witness.push((witness_name.clone(), witness.clone()));
+                        }
+                    });
+                    machine_log_sizes.insert(machine_name.clone(), new_witness[0].1.len().ilog2());
+                });
 
             let mut results = Vec::new();
 
-            for (_machine_name, witness_cols) in witness_by_machine_stage1 {
+            for (_machine_name, witness_cols) in witness_by_machine {
                 for (witness_name, vec) in witness_cols {
                     if let Some(index) = witness_col_circle_domain_index.get(&witness_name) {
                         results.push(witness_cols_circle_domain_eval[*index].take());
@@ -563,22 +567,22 @@ fn get_dummy_challenges<MC: MerkleChannel>(
             })
         })
         .collect::<BTreeSet<_>>();
-    let number_of_m31_challenges = challenges_stage0.len();
-    let number_of_qm31_challenges = ((number_of_m31_challenges + 4) & !3) >> 2;
-    let mut draw_challenges = Vec::new();
 
-    //challenge_channel is used to draw random bytes for challenges
+    let number_of_qm31_challenges = ((challenges_stage0.len() + 4) & !3) >> 2;
+
     let challenge_channel = &mut <MC as MerkleChannel>::C::default();
 
-    (0..number_of_qm31_challenges).for_each(|_| {
-        let qm31_challenge = challenge_channel.draw_felt();
-        draw_challenges.extend([
-            qm31_challenge.0 .0,
-            qm31_challenge.0 .1,
-            qm31_challenge.1 .0,
-            qm31_challenge.1 .1,
-        ]);
-    });
+    let draw_challenges: Vec<_> = (0..number_of_qm31_challenges)
+        .flat_map(|_| {
+            let qm31_challenge = challenge_channel.draw_felt();
+            [
+                qm31_challenge.0 .0,
+                qm31_challenge.0 .1,
+                qm31_challenge.1 .0,
+                qm31_challenge.1 .1,
+            ]
+        })
+        .collect();
 
     challenges_stage0
         .into_iter()
