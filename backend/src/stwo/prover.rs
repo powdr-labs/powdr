@@ -413,7 +413,7 @@ where
         // Each column size in machines needs its own component, the components from different machines are stored in this vector
         let mut components = Vec::new();
 
-        // build circuit. The circuit include constraints of all the machines in both stage 0 and stage 1
+        // Build the circuit. The circuit includes constraints of all the machines in both stage 0 and stage 1
         let mut constant_cols_offset_acc = 0;
         self.split.iter().zip_eq(machine_log_sizes.iter()).for_each(
             |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
