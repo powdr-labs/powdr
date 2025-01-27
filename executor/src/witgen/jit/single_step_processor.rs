@@ -1,7 +1,9 @@
 #![allow(dead_code)]
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, PolyID, PolynomialType,
+};
 use powdr_number::FieldElement;
 
 use crate::witgen::{machines::MachineParts, FixedData};
@@ -64,7 +66,6 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 }
             })
             .collect_vec();
-        let block_size = 1;
 
         let mut witgen =
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
@@ -83,17 +84,16 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             self.fixed_data,
             self,
             identities,
-            block_size,
-            false,
             requested_known,
             SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
         .generate_code(can_process, witgen)
         .map_err(|e| e.to_string())
+        .map(|r| r.code)
     }
 
     fn cell(&self, id: PolyID, row_offset: i32) -> Variable {
-        Variable::Cell(Cell {
+        Variable::WitnessCell(Cell {
             column_name: self.fixed_data.column_name(&id).to_string(),
             id: id.id,
             row_offset,
@@ -111,9 +111,12 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
 
 /// Evaluator for fixed columns which are constant except for the first and last row.
 impl<T: FieldElement> FixedEvaluator<T> for &SingleStepProcessor<'_, T> {
-    fn evaluate(&self, var: &AlgebraicReference, _row_offset: i32) -> Option<T> {
-        assert!(var.is_fixed());
-        self.fixed_data.fixed_cols[&var.poly_id].has_constant_inner_value()
+    fn evaluate(&self, fixed_cell: &Cell) -> Option<T> {
+        let poly_id = PolyID {
+            id: fixed_cell.id,
+            ptype: PolynomialType::Constant,
+        };
+        self.fixed_data.fixed_cols[&poly_id].has_constant_inner_value()
     }
 }
 
@@ -290,6 +293,18 @@ call_var(2, 1, 2) = 1;
 machine_call(2, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(call_var(2, 1, 2))]);
 VM::instr_mul[1] = 1;"
         );
+    }
+
+    #[test]
+    fn nonconstant_fixed_columns() {
+        let input = "
+    namespace VM(256);
+        let STEP: col = |i| i;
+        let w;
+        w = STEP;
+        ";
+        let code = generate_single_step(input, "Main").unwrap();
+        assert_eq!(format_code(&code), "VM::w[1] = VM::STEP[1];");
     }
 
     #[test]

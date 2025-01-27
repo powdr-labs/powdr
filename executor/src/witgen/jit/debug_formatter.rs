@@ -1,8 +1,7 @@
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolynomialIdentity, PolynomialType,
-    SelectedExpressions,
+    AlgebraicUnaryOperation, PolynomialIdentity, PolynomialType, SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
@@ -13,25 +12,18 @@ use crate::witgen::{
 
 use super::{
     variable::Variable,
-    witgen_inference::{FixedEvaluator, Value, WitgenInference},
+    witgen_inference::{FixedEvaluator, WitgenInference},
 };
 
 /// Returns a human-readable summary of the identities.
 pub fn format_identities<T: FieldElement, FixedEval: FixedEvaluator<T>>(
     identities: &[(&Identity<T>, i32)],
     witgen: &WitgenInference<'_, T, FixedEval>,
-    fixed_evaluator: FixedEval,
 ) -> String {
-    DebugFormatter {
-        fixed_evaluator,
-        identities,
-        witgen,
-    }
-    .format_identities()
+    DebugFormatter { identities, witgen }.format_identities()
 }
 
 struct DebugFormatter<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
-    fixed_evaluator: FixedEval,
     identities: &'a [(&'a Identity<T>, i32)],
     witgen: &'a WitgenInference<'a, T, FixedEval>,
 }
@@ -159,14 +151,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
         let [name, value, rc] = match e {
             Expression::Reference(r) => {
                 let (value, range_constraint) = match r.poly_id.ptype {
-                    PolynomialType::Constant => (
-                        self.fixed_evaluator
-                            .evaluate(r, row_offset)
-                            .map(|v| v.to_string())
-                            .unwrap_or("???".to_string()),
-                        String::new(),
-                    ),
-                    PolynomialType::Committed => {
+                    PolynomialType::Committed | PolynomialType::Constant => {
                         let variable = Variable::from_reference(r, row_offset);
                         let value = self.witgen.value(&variable).to_string();
                         let rc = self.witgen.range_constraint(&variable);
@@ -308,55 +293,8 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     }
 
     fn try_to_known(&self, e: &Expression<T>, row_offset: i32) -> Option<T> {
-        match e {
-            Expression::Reference(r) => {
-                match r.poly_id.ptype {
-                    PolynomialType::Constant => self.fixed_evaluator.evaluate(r, row_offset),
-                    PolynomialType::Committed => {
-                        let variable = Variable::from_reference(r, row_offset);
-                        match self.witgen.value(&variable) {
-                            Value::Concrete(v) => Some(v),
-                            _ => None,
-                        }
-                    }
-                    PolynomialType::Intermediate => {
-                        // TODO
-                        None
-                    }
-                }
-            }
-            Expression::PublicReference(_) => {
-                // TODO we need to introduce a variable type for those.
-                None
-            }
-            Expression::Challenge(_) => {
-                // TODO we need to introduce a variable type for those.
-                None
-            }
-            Expression::Number(n) => Some(*n),
-            Expression::BinaryOperation(op) => {
-                let left = self.try_to_known(&op.left, row_offset);
-                let right = self.try_to_known(&op.right, row_offset);
-                match op.op {
-                    AlgebraicBinaryOperator::Add => Some(left? + right?),
-                    AlgebraicBinaryOperator::Sub => Some(left? - right?),
-                    AlgebraicBinaryOperator::Mul => match (left, right) {
-                        (Some(a), _) | (_, Some(a)) if a == 0.into() => Some(0.into()),
-                        (Some(a), b) | (b, Some(a)) if a == 1.into() => b,
-                        (Some(a), b) | (b, Some(a)) if a == (-1).into() => b.map(|b| -b),
-                        (Some(l), Some(r)) => Some(l * r),
-                        _ => None,
-                    },
-                    AlgebraicBinaryOperator::Pow => Some(left?.pow(right?.to_integer())),
-                }
-            }
-            Expression::UnaryOperation(op) => {
-                let inner = self.try_to_known(&op.expr, row_offset);
-                match op.op {
-                    AlgebraicUnaryOperator::Minus => inner.map(|i| -i),
-                }
-            }
-        }
+        let v = self.witgen.evaluate(e, row_offset)?;
+        v.try_to_known()?.try_to_number()
     }
 }
 

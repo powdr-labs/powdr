@@ -26,15 +26,10 @@ pub struct DefaultSequenceIterator {
     /// [process identity 1, ..., process identity <identities_count>, process queries, process outer query (if on outer_query_row)]
     /// Can be -1 to indicate that the round has just started.
     cur_action_index: i32,
-    /// The number of rounds for the current row delta.
-    /// If this number gets too large, we will assume that we're in an infinite loop and exit.
-    current_round_count: usize,
 
     /// The steps on which we made progress.
     progress_steps: Vec<SequenceStep>,
 }
-
-const MAX_ROUNDS_PER_ROW_DELTA: usize = 100;
 
 impl DefaultSequenceIterator {
     pub fn new(block_size: usize, identities_count: usize, outer_query_row: Option<i64>) -> Self {
@@ -50,7 +45,6 @@ impl DefaultSequenceIterator {
             progress_in_current_round: false,
             cur_row_delta_index: 0,
             cur_action_index: -1,
-            current_round_count: 0,
             progress_steps: vec![],
         }
     }
@@ -59,7 +53,9 @@ impl DefaultSequenceIterator {
     /// If we're not at the last identity in the current row, just moves to the next.
     /// Otherwise, starts with identity 0 and moves to the next row if no progress was made.
     fn update_state(&mut self) {
-        while !self.is_done() && !self.has_more_actions() {
+        if !self.is_done() && (!self.has_more_actions() || self.progress_in_current_round) {
+            // Starting a new round if we made any progress ensures that identities are
+            // processed in source order if possible.
             self.start_next_round();
         }
 
@@ -86,18 +82,9 @@ impl DefaultSequenceIterator {
     }
 
     fn start_next_round(&mut self) {
-        if self.current_round_count > MAX_ROUNDS_PER_ROW_DELTA {
-            panic!("In witness generation for block machine, we have been stuck in the same row for {MAX_ROUNDS_PER_ROW_DELTA} rounds. \
-                    This is a bug in the witness generation algorithm.");
-        }
-
         if !self.progress_in_current_round {
             // Move to next row delta
             self.cur_row_delta_index += 1;
-            self.current_round_count = 0;
-        } else {
-            // Stay and current row delta
-            self.current_round_count += 1;
         }
         // Reset action index and progress flag
         self.cur_action_index = -1;
@@ -126,16 +113,33 @@ impl DefaultSequenceIterator {
         Some(self.current_step())
     }
 
+    /// Computes the current step from the current action index and row delta.
+    /// The actions are:
+    /// - The outer query (if on the outer query row)
+    /// - Processing the prover queries
+    /// - Processing the internal identities, in the order there are given
+    ///   (which should typically correspond to source order).
     fn current_step(&self) -> SequenceStep {
         assert!(self.cur_action_index != -1);
+
+        let row_delta = self.row_deltas[self.cur_row_delta_index];
+        let is_on_row_with_outer_query = self.outer_query_row == Some(row_delta);
+
+        let cur_action_index = if is_on_row_with_outer_query {
+            self.cur_action_index as usize
+        } else {
+            // Skip the outer query action
+            self.cur_action_index as usize + 1
+        };
+
         SequenceStep {
             row_delta: self.row_deltas[self.cur_row_delta_index],
-            action: match self.cur_action_index.cmp(&(self.identities_count as i32)) {
-                std::cmp::Ordering::Less => {
-                    Action::InternalIdentity(self.cur_action_index as usize)
-                }
-                std::cmp::Ordering::Equal => Action::ProverQueries,
-                std::cmp::Ordering::Greater => Action::OuterQuery,
+            action: if cur_action_index == 0 {
+                Action::OuterQuery
+            } else if cur_action_index == 1 {
+                Action::ProverQueries
+            } else {
+                Action::InternalIdentity(cur_action_index - 2)
             },
         }
     }
@@ -143,9 +147,9 @@ impl DefaultSequenceIterator {
 
 #[derive(Clone, Copy, Debug)]
 pub enum Action {
-    InternalIdentity(usize),
     OuterQuery,
     ProverQueries,
+    InternalIdentity(usize),
 }
 
 #[derive(PartialOrd, Ord, PartialEq, Eq, Debug)]

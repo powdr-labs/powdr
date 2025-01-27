@@ -69,6 +69,7 @@ pub struct DoubleSortedWitnesses32<'a, T: FieldElement> {
     has_bootloader_write_column: bool,
     /// All selector IDs that are used on the right-hand side connecting identities.
     selector_ids: BTreeMap<u64, PolyID>,
+    latest_step: BTreeMap<T, T>,
 }
 
 struct Operation<T> {
@@ -181,6 +182,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
             data: Default::default(),
             is_initialized: Default::default(),
             selector_ids,
+            latest_step: Default::default(),
         })
     }
 }
@@ -499,6 +501,17 @@ impl<T: FieldElement> DoubleSortedWitnesses32<'_, T> {
                 )
                 .is_none()
         };
+
+        let latest_step = self.latest_step.entry(*addr).or_insert_with(T::zero);
+
+        if step < latest_step {
+            panic!(
+                "Expected the step for addr {addr} to be at least equal to the previous step, but {step} < {latest_step}!\nFrom identity: {}",
+                self.parts.connections[&identity_id]
+            );
+        }
+        self.latest_step.insert(*addr, *step);
+
         assert!(
             added_memory_access,
             "Already had a memory access for address 0x{addr:x} and time step {step}!"
