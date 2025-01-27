@@ -585,7 +585,7 @@ fn get_dummy_challenges<MC: MerkleChannel>(
         .flat_map(|_| {
             let qm31_challenge = challenge_channel.draw_felt();
             [
-                qm31_challenge.0 .0,
+                qm31_challenge.0.0,
                 qm31_challenge.0 .1,
                 qm31_challenge.1 .0,
                 qm31_challenge.1 .1,
