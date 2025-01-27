@@ -302,19 +302,20 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             return true;
         }
 
-        // Some variables are missing. Check if they are irrelevant.
+        // Some variables are missing. Check if they are unconstrained.
         let incomplete_poly_identities = self
             .identities
             .iter()
             .filter(|(id, row)| !witgen.is_complete(id, *row))
             .filter_map(|(id, row)| match id {
-                // We already know that all machine calls are completed.
+                // We already know that all machine calls are completed,
+                // so only consider polynomial identities.
                 Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                     Some((expression, row))
                 }
                 _ => None,
             });
-        // If all incomplete identities only contain known variables, we are done.
+        // If all incomplete identities only evaluate to known variables, we are done.
         for (e, row) in incomplete_poly_identities {
             let Some(e) = witgen.evaluate(e, *row) else {
                 return false;
