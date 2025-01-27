@@ -369,12 +369,24 @@ params[3] = main_binary::C[3];"
         ";
         let code = generate_for_block_machine(input, "Arith", 3, 1);
         assert_eq!(
-            format_code(&code.unwrap()),
-            "Add::sel[0] = 1;
-Add::a[0] = params[0];
-Add::b[0] = params[1];
-Add::c[0] = (Add::a[0] + Add::b[0]);
-params[2] = Add::c[0];"
+            format_code(&code.unwrap().code),
+            "Arith::is_add[0] = (params[0] & 0x1);
+Arith::is_mul[0] = ((params[0] & 0x2) // 2);
+assert (params[0] & 0xfffffffffffffffc) == 0;
+Arith::X[0] = params[1];
+Arith::Y[0] = params[2];
+if (Arith::is_add[0] == 1) {
+    Arith::Z[0] = (Arith::X[0] + Arith::Y[0]);
+    params[3] = Arith::Z[0];
+} else {
+    if (Arith::is_mul[0] == 1) {
+        Arith::Z[0] = (Arith::X[0] * Arith::Y[0]);
+        params[3] = Arith::Z[0];
+    } else {
+        params[3] = 0;
+        Arith::Z[0] = 0;
+    }
+}"
         );
     }
 }
