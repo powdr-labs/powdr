@@ -21,6 +21,7 @@ use crate::witgen::{
 use super::{
     affine_symbolic_expression::{AffineSymbolicExpression, Error, ProcessResult},
     effect::{BranchCondition, Effect},
+    symbolic_expression::SymbolicExpression,
     variable::{Cell, MachineCallVariable, Variable},
 };
 
@@ -484,7 +485,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .unwrap_or_default()
     }
 
-    fn evaluate(
+    pub fn evaluate(
         &self,
         expr: &Expression<T>,
         offset: i32,
@@ -566,21 +567,28 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
         op: &AlgebraicBinaryOperation<T>,
         offset: i32,
     ) -> Option<AffineSymbolicExpression<T, Variable>> {
-        let left = self.evaluate(&op.left, offset)?;
-        let right = self.evaluate(&op.right, offset)?;
+        let left = self.evaluate(&op.left, offset);
+        let right = self.evaluate(&op.right, offset);
         match op.op {
-            AlgebraicBinaryOperator::Add => Some(&left + &right),
-            AlgebraicBinaryOperator::Sub => Some(&left - &right),
-            AlgebraicBinaryOperator::Mul => left.try_mul(&right),
+            AlgebraicBinaryOperator::Add => Some(&left? + &right?),
+            AlgebraicBinaryOperator::Sub => Some(&left? - &right?),
+            AlgebraicBinaryOperator::Mul => {
+                if is_known_zero(&left) || is_known_zero(&right) {
+                    Some(SymbolicExpression::from(T::from(0)).into())
+                } else {
+                    left?.try_mul(&right?)
+                }
+            }
             AlgebraicBinaryOperator::Pow => {
-                let result = left
+                let result = left?
                     .try_to_known()?
                     .try_to_number()?
-                    .pow(right.try_to_known()?.try_to_number()?.to_integer());
+                    .pow(right?.try_to_known()?.try_to_number()?.to_integer());
                 Some(AffineSymbolicExpression::from(result))
             }
         }
     }
+
     fn evaluate_unary_operation(
         &self,
         op: &AlgebraicUnaryOperation<T>,
@@ -591,6 +599,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
             AlgebraicUnaryOperator::Minus => Some(-&expr),
         }
     }
+}
+
+fn is_known_zero<T: FieldElement>(x: &Option<AffineSymbolicExpression<T, Variable>>) -> bool {
+    x.as_ref()
+        .and_then(|x| x.try_to_known().map(|x| x.is_known_zero()))
+        .unwrap_or(false)
 }
 
 /// An equality constraint between an algebraic expression evaluated
