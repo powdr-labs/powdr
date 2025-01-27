@@ -346,8 +346,8 @@ where
                         1,
                     );
 
-                    let keys_in_stage0_machine: HashSet<String> =
-                        HashSet::from_iter(machine_witness.iter().map(|(name, _)| name.clone()));
+                    let keys_in_stage0_machine: HashSet<_> =
+                        HashSet::from_iter(machine_witness.iter().map(|(name, _)| name));
 
                     let new_witness_in_stage1 = new_witness
                         .iter()
