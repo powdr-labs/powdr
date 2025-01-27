@@ -174,6 +174,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 .format("\n  ");
             format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
         })
+        .map(|r| r.code)
     }
 
     fn cell(&self, id: PolyID, row_offset: i32) -> Variable {
