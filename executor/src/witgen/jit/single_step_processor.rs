@@ -202,16 +202,23 @@ namespace M(256);
 
     #[test]
     fn no_progress() {
-        let input = "namespace M(256); let X; let Y; X' = X;";
+        let input = "namespace M(256); let X; let Y; X' = X * X';";
         let err = generate_single_step(input, "M").err().unwrap();
         assert_eq!(
             err.to_string(),
             "Unable to derive algorithm to compute required values: \
-            No variable available to branch on.\nThe following variables or values are still missing: M::Y[1]\n\
+            No variable available to branch on.\nThe following variables or values are still missing: M::X[1], M::Y[1]\n\
+            The following identities have not been fully processed:\n\
+--------------[ identity 0 on row 0: ]--------------
+M::X' = ( M::X   * M::X')
+ ???  =  <known>    ???  
+      =                  
+M::X' = ( M::X   * M::X')
+ ???  =  <known>    ???  
+      =                  \n\
             The following branch decisions were taken:\n\
             \n\
-            Generated code so far:\n\
-            M::X[1] = M::X[0];"
+            No code generated so far."
         );
     }
 
@@ -321,8 +328,20 @@ VM::instr_mul[1] = 1;"
             col witness X, Y, Z;
             Z = X + Y;
         ";
+
+        // TODO: This currently succeeds with the following code:
+        // Main::a[1] = 2;
+        // Main::b[1] = 0;
+        // Main::c[1] = 0;
+        // Main::is_arith[1] = 0;
+
+        // But it does not do the call, which should be required!
+        // It should not set `is_arith` to zero - or should it?
+
         match generate_single_step(input, "Main") {
-            Ok(_) => panic!("Expected error"),
+            Ok(r) => {
+                panic!("Expected error, got code:\n{}", format_code(&r));
+            }
             Err(e) => {
                 let expected = "\
 Main::is_arith $ [ Main::a, Main::b, Main::c ]
