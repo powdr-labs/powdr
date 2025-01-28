@@ -2,7 +2,9 @@ use powdr_number::{FieldElement, LargeInt, Mersenne31Field};
 use stwo_prover::core::fields::m31::M31;
 
 pub trait BaseFieldElementMap: FieldElement {
-    fn into_stwo_m31(self) -> M31;
+    type StwoField;
+
+    fn into_stwo_field(self) -> Self::StwoField;
 
     fn from_stwo_m31(stwo_m31: M31) -> Self;
 }
