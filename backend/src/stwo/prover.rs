@@ -405,7 +405,6 @@ where
             witness_cols_circle_domain_eval
                 .into_iter()
                 .flatten()
-                .collect::<Vec<_>>(),
         );
         tree_builder.commit(prover_channel);
 
