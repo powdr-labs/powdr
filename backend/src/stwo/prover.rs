@@ -571,29 +571,25 @@ fn get_dummy_challenges<MC: MerkleChannel>(
             })
         })
         .collect::<BTreeSet<_>>();
-    // Stwo provides a function to draw challenges from the secure field `QM31`,
-    // which consists of 4 `M31` elements. We calculate the total number of challenges
-    // needed in the `M31` field, round it up to the next multiple of 4,
-    // and then compute the number of draws required from the `QM31` field.
-    let number_of_qm31_challenges = ((challenges_stage0.len() + 4) & !3) >> 2;
 
     let challenge_channel = &mut <MC as MerkleChannel>::C::default();
 
-    let draw_challenges: Vec<_> = (0..number_of_qm31_challenges)
-        .flat_map(|_| {
-            let qm31_challenge = challenge_channel.draw_felt();
-            [
-                qm31_challenge.0 .0,
-                qm31_challenge.0 .1,
-                qm31_challenge.1 .0,
-                qm31_challenge.1 .1,
-            ]
-        })
-        .collect();
+    // Stwo provides a function to draw challenges from the secure field `QM31`,
+    // which consists of 4 `M31` elements.
+    let draw_challenges = std::iter::repeat_with(|| {
+        let qm31_challenge = challenge_channel.draw_felt();
+        [
+            qm31_challenge.0 .0,
+            qm31_challenge.0 .1,
+            qm31_challenge.1 .0,
+            qm31_challenge.1 .1,
+        ]
+    })
+    .flatten();
 
     challenges_stage0
         .into_iter()
-        .zip(draw_challenges.iter().map(from_stwo_field))
+        .zip(draw_challenges.map(|challenge| from_stwo_field(&challenge)))
         .collect::<BTreeMap<_, _>>()
 }
 
