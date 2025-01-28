@@ -308,7 +308,7 @@ where
                 let witness_cols_in_circle_domain = witness_cols
                     .into_iter()
                     .enumerate()
-                    .map(|(index, (name, vec))| {
+                    .map(|(index, (name, rows))| {
                         witness_col_circle_domain_index.insert(name.clone(), index + index_acc);
                         Some(gen_stwo_circle_column::<_, M31>(
                             *domain_map
