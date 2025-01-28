@@ -155,8 +155,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             common_code,
             condition: BranchCondition {
                 variable: variable.clone(),
-                first_branch: high_condition,
-                second_branch: low_condition,
+                condition: high_condition,
             },
             branches: [self, low_branch],
         }

@@ -109,8 +109,7 @@ impl<T: FieldElement, V> Assertion<T, V> {
 #[derive(Clone, PartialEq, Eq)]
 pub struct BranchCondition<T: FieldElement, V> {
     pub variable: V,
-    pub first_branch: RangeConstraint<T>,
-    pub second_branch: RangeConstraint<T>,
+    pub condition: RangeConstraint<T>,
 }
 
 /// Helper function to render a list of effects. Used for informational purposes only.
@@ -158,7 +157,7 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
 
 fn format_condition<T: FieldElement>(condition: &BranchCondition<T, Variable>) -> String {
     let var = &condition.variable;
-    let (min, max) = condition.first_branch.range();
+    let (min, max) = condition.condition.range();
     match min.cmp(&max) {
         Ordering::Equal => format!("{var} == {min}"),
         Ordering::Less => format!("{min} <= {var} && {var} <= {max}"),
