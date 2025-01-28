@@ -75,7 +75,7 @@ pub struct StwoProver<B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Cha
     _merkle_channel_marker: PhantomData<MC>,
 }
 
-impl<'a, B, MC, C> StwoProver<B, MC, C>
+impl<B, MC, C> StwoProver<B, MC, C>
 where
     B: Backend + Send + BackendForChannel<MC>,
     MC: MerkleChannel + Send,
@@ -600,7 +600,7 @@ fn get_dummy_challenges<MC: MerkleChannel>(
         .zip(
             draw_challenges
                 .iter()
-                .map(|&challenge| Mersenne31Field::from_stwo_m31(challenge)),
+                .map(|&challenge| Mersenne31Field::from_stwo_field(challenge)),
         )
         .collect::<BTreeMap<_, _>>()
 }

@@ -22,7 +22,7 @@ use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_i
 
 use crate::stwo::params::BaseFieldElementMap;
 
-pub type PowdrComponent= FrameworkComponent<PowdrEval>;
+pub type PowdrComponent = FrameworkComponent<PowdrEval>;
 
 pub fn gen_stwo_circle_column<B, F>(
     domain: CircleDomain,
@@ -45,7 +45,7 @@ where
                 coset_index_to_circle_domain_index(i, slice.len().ilog2()),
                 slice.len().ilog2(),
             ),
-            v.into_stwo_m31(),
+            v.into_stwo_field(),
         );
     });
 
@@ -194,7 +194,7 @@ impl FrameworkEval for PowdrEval {
         let challenges = self
             .challenges
             .iter()
-            .map(|(k, v)| (*k, E::F::from(v.into_stwo_m31())))
+            .map(|(k, v)| (*k, E::F::from(v.into_stwo_field())))
             .collect();
 
         let intermediate_definitions = self.analyzed.intermediate_definitions();
@@ -206,7 +206,7 @@ impl FrameworkEval for PowdrEval {
         };
         let mut evaluator =
             ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {
-                E::F::from(v.into_stwo_m31())
+                E::F::from(v.into_stwo_field())
             });
 
         for id in &self.analyzed.identities {
