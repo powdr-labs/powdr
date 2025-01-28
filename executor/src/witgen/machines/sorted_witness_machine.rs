@@ -41,13 +41,10 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        let mut identities_without_receives = parts
-            .identities
-            .iter()
-            .filter(|i| !matches!(i, Identity::BusReceive(_)));
-        let identity = identities_without_receives.next()?;
+        let mut identities_iter = parts.identities.iter();
+        let identity = identities_iter.next()?;
 
-        if identities_without_receives.next().is_some() {
+        if identities_iter.next().is_some() {
             // Expecting exactly one identity
             return None;
         }

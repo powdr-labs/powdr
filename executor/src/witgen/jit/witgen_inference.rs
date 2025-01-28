@@ -191,7 +191,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 &bus_interaction.selected_payload.expressions,
                 row_offset,
             ),
-            Identity::BusReceive(_) => ProcessResult::empty(),
             Identity::Connect(_) => ProcessResult::empty(),
         };
         self.ingest_effects(result, Some((id.id(), row_offset)))

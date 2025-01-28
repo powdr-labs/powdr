@@ -1,7 +1,7 @@
 use core::fmt;
 use std::{cmp::max, collections::BTreeMap, ops::RangeFrom};
 
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, AlgebraicUnaryOperator, Analyzed, ConnectIdentity,
@@ -151,7 +151,6 @@ pub enum Identity<T> {
     Polynomial(PolynomialIdentity<T>),
     Connect(ConnectIdentity<T>),
     BusSend(BusSend<T>),
-    BusReceive(BusReceive<T>),
 }
 
 impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
@@ -160,7 +159,6 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
             Identity::Polynomial(i) => i.children_mut(),
             Identity::Connect(i) => i.children_mut(),
             Identity::BusSend(i) => i.children_mut(),
-            Identity::BusReceive(i) => i.children_mut(),
         }
     }
 
@@ -169,7 +167,6 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
             Identity::Polynomial(i) => i.children(),
             Identity::Connect(i) => i.children(),
             Identity::BusSend(i) => i.children(),
-            Identity::BusReceive(i) => i.children(),
         }
     }
 }
@@ -185,9 +182,13 @@ impl<T> Identity<T> {
             Identity::Polynomial(i) => i.id,
             Identity::Connect(i) => i.id,
             Identity::BusSend(i) => i.identity_id,
-            Identity::BusReceive(i) => i.identity_id,
         }
     }
+}
+
+enum IdentityOrReceive<T> {
+    Identity(Identity<T>),
+    Receive(BusReceive<T>),
 }
 
 /// Converts a list of [powdr_ast::analyzed::Identity] into a list of [Identity].
@@ -196,29 +197,29 @@ impl<T> Identity<T> {
 /// are converted to a pair of bus send and bus receive.
 /// Because this function allocates new identities, we receive a reference to [Analyzed],
 /// so we can be sure we operate on all identities.
-pub fn convert_identities<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<Identity<T>> {
+pub fn convert_identities<T: FieldElement>(
+    analyzed: &Analyzed<T>,
+) -> (Vec<Identity<T>>, BTreeMap<T, BusReceive<T>>) {
     let mut id_counter = id_counter(&analyzed.identities);
 
-    let identities = analyzed
+    let (identities, receives): (Vec<_>, Vec<_>) = analyzed
         .identities
         .iter()
         .flat_map(|identity| convert_identity(&mut id_counter, identity))
-        .collect::<Vec<_>>();
+        .partition_map(|id| match id {
+            IdentityOrReceive::Identity(identity) => Either::Left(identity),
+            IdentityOrReceive::Receive(bus_receive) => Either::Right(bus_receive),
+        });
 
     // We'd expect the interaction to uniquely identify a bus receive.
-    let receive_bus_ids = identities
-        .iter()
-        .filter_map(|id| match id {
-            Identity::BusReceive(r) => Some(r.bus_id),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
+    let receive_bus_ids = receives.iter().map(|id| id.bus_id).collect::<Vec<_>>();
     assert!(
         receive_bus_ids.iter().unique().count() == receive_bus_ids.len(),
         "Expected bus IDs of receives to be unique, but got: {receive_bus_ids:?}"
     );
 
-    identities
+    let receives = receives.into_iter().map(|r| (r.bus_id, r)).collect();
+    (identities, receives)
 }
 
 fn id_counter<T: FieldElement>(identities: &[AnalyzedIdentity<T>]) -> RangeFrom<u64> {
@@ -247,13 +248,17 @@ fn id_counter<T: FieldElement>(identities: &[AnalyzedIdentity<T>]) -> RangeFrom<
 fn convert_identity<T: FieldElement>(
     id_counter: &mut RangeFrom<u64>,
     identity: &AnalyzedIdentity<T>,
-) -> Vec<Identity<T>> {
+) -> Vec<IdentityOrReceive<T>> {
     match identity {
         AnalyzedIdentity::Polynomial(identity) => {
-            vec![Identity::Polynomial(identity.clone())]
+            vec![IdentityOrReceive::Identity(Identity::Polynomial(
+                identity.clone(),
+            ))]
         }
         AnalyzedIdentity::Connect(identity) => {
-            vec![Identity::Connect(identity.clone())]
+            vec![IdentityOrReceive::Identity(Identity::Connect(
+                identity.clone(),
+            ))]
         }
         AnalyzedIdentity::PhantomBusInteraction(bus_interaction) => {
             vec![convert_phantom_bus_interaction(bus_interaction)]
@@ -284,7 +289,7 @@ fn convert_identity<T: FieldElement>(
 
 fn convert_phantom_bus_interaction<T: FieldElement>(
     bus_interaction: &PhantomBusInteractionIdentity<T>,
-) -> Identity<T> {
+) -> IdentityOrReceive<T> {
     // Detect receives by having a unary minus in the multiplicity
     // TODO: We should instead analyze the range constraints of the
     // multiplicity expression.
@@ -308,7 +313,7 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
         expressions,
     };
     if is_receive {
-        Identity::BusReceive(BusReceive {
+        IdentityOrReceive::Receive(BusReceive {
             identity_id: bus_interaction.id,
             bus_id,
             multiplicity: Some(multiplicity),
@@ -316,11 +321,11 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
         })
     } else {
         assert_eq!(multiplicity, bus_interaction.latch);
-        Identity::BusSend(BusSend {
+        IdentityOrReceive::Identity(Identity::BusSend(BusSend {
             identity_id: bus_interaction.id,
             bus_id: AlgebraicExpression::Number(bus_id),
             selected_payload,
-        })
+        }))
     }
 }
 
@@ -330,15 +335,15 @@ fn bus_interaction_pair<T: FieldElement>(
     left: &SelectedExpressions<T>,
     right: &SelectedExpressions<T>,
     rhs_multiplicity: Option<AlgebraicExpression<T>>,
-) -> Vec<Identity<T>> {
+) -> Vec<IdentityOrReceive<T>> {
     let bus_id: T = id_counter.next().unwrap().into();
     vec![
-        Identity::BusSend(BusSend {
+        IdentityOrReceive::Identity(Identity::BusSend(BusSend {
             identity_id: id,
             bus_id: AlgebraicExpression::Number(bus_id),
             selected_payload: left.clone(),
-        }),
-        Identity::BusReceive(BusReceive {
+        })),
+        IdentityOrReceive::Receive(BusReceive {
             identity_id: id_counter.next().unwrap(),
             multiplicity: rhs_multiplicity,
             bus_id,
@@ -349,8 +354,6 @@ fn bus_interaction_pair<T: FieldElement>(
 
 #[cfg(test)]
 mod test {
-    use std::collections::VecDeque;
-
     use powdr_number::GoldilocksField;
 
     use crate::witgen::data_structures::identity::Identity;
@@ -377,30 +380,14 @@ namespace main(4);
 "
         );
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(&pil_source).unwrap();
-        let mut identities = convert_identities(&analyzed)
-            .into_iter()
-            .collect::<VecDeque<_>>();
-        let receives = identities
-            .iter()
-            .filter_map(|id| match id {
-                Identity::BusReceive(r) => Some((r.bus_id, r.clone())),
-                _ => None,
-            })
-            .collect();
+        let (identities, receives) = convert_identities(&analyzed);
 
-        match (
-            identities.pop_front().unwrap(),
-            identities.pop_front().unwrap(),
-        ) {
-            (Identity::BusSend(send), Identity::BusReceive(receive)) => {
-                assert_eq!(send.try_match_static(&receives).unwrap(), &receive);
-                (send, receive)
-            }
-            _ => panic!(
-                "Expected one receive and one send, but got:\n{}\n{}",
-                identities[0], identities[1]
-            ),
-        }
+        let send = match &identities[0] {
+            Identity::BusSend(send) => send,
+            _ => panic!("Expected a send, but got:\n{}", identities[0]),
+        };
+        let receive = send.try_match_static(&receives).unwrap();
+        (send.clone(), receive.clone())
     }
 
     #[test]
