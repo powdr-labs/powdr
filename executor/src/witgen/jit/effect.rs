@@ -206,8 +206,7 @@ mod test {
             Effect::Branch(
                 BranchCondition {
                     variable: var(0),
-                    first_branch: RangeConstraint::from_range(T::from(1), T::from(2)),
-                    second_branch: RangeConstraint::from_range(T::from(3), T::from(4)),
+                    condition: RangeConstraint::from_range(T::from(1), T::from(2)),
                 },
                 vec![Effect::Assignment(
                     var(1),
@@ -216,14 +215,12 @@ mod test {
                 vec![Effect::Branch(
                     BranchCondition {
                         variable: var(1),
-                        first_branch: RangeConstraint::from_range(T::from(5), T::from(6)),
-                        second_branch: RangeConstraint::from_range(T::from(7), T::from(8)),
+                        condition: RangeConstraint::from_range(T::from(5), T::from(6)),
                     },
                     vec![Effect::Branch(
                         BranchCondition {
                             variable: var(2),
-                            first_branch: RangeConstraint::from_range(T::from(5), T::from(6)),
-                            second_branch: RangeConstraint::from_range(T::from(7), T::from(8)),
+                            condition: RangeConstraint::from_range(T::from(5), T::from(6)),
                         },
                         vec![Effect::Assignment(
                             var(8),
@@ -237,8 +234,7 @@ mod test {
                     vec![Effect::Branch(
                         BranchCondition {
                             variable: var(3),
-                            first_branch: RangeConstraint::from_range(T::from(5), T::from(6)),
-                            second_branch: RangeConstraint::from_range(T::from(7), T::from(8)),
+                            condition: RangeConstraint::from_range(T::from(5), T::from(6)),
                         },
                         vec![Effect::Assignment(
                             var(21),

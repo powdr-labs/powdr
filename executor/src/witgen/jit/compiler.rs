@@ -1022,8 +1022,7 @@ extern \"C\" fn witgen(
             vec![Effect::Branch(
                 BranchCondition {
                     variable: z.clone(),
-                    first_branch: RangeConstraint::from_range(7.into(), 20.into()),
-                    second_branch: RangeConstraint::from_range(21.into(), 6.into()),
+                    condition: RangeConstraint::from_range(7.into(), 20.into()),
                 },
                 vec![assignment(&y, symbol(&x) + number(2))],
                 vec![assignment(&y, symbol(&x) + number(3))],
