@@ -87,6 +87,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             requested_known,
             SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
+        // We set a block size of two because in the end, each identity needs to be completed on both rows.
         .with_block_size(2)
         .generate_code(can_process, witgen)
         .map_err(|e| e.to_string())
