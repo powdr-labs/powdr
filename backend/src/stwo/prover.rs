@@ -375,7 +375,6 @@ where
                     machine_witness.sort_by_key(|(k, _)| {
                         new_witness.iter().position(|(name, _)| name == k).unwrap()
                     });
-                   
                 });
 
             let mut results = Vec::new();
