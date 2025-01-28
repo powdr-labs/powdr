@@ -7,16 +7,16 @@ use std::{
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression as Expression, AlgebraicReference, AlgebraicReferenceThin, Identity,
-        PolyID, PolynomialIdentity, PolynomialType,
+        AlgebraicExpression as Expression, AlgebraicReference, AlgebraicReferenceThin, PolyID,
+        PolynomialIdentity, PolynomialType,
     },
     parsed::visitor::{AllChildren, Children},
 };
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    range_constraints::RangeConstraint,
-    {jit::debug_formatter::format_identities, FixedData},
+    data_structures::identity::Identity, jit::debug_formatter::format_identities,
+    range_constraints::RangeConstraint, FixedData,
 };
 
 use super::{
@@ -576,19 +576,7 @@ impl<T> PartialEq for IdentitySorter<'_, T> {
 impl<T> Eq for IdentitySorter<'_, T> {}
 
 fn is_machine_call<T>(identity: &Identity<T>) -> bool {
-    match identity {
-        Identity::Lookup(_)
-        | Identity::Permutation(_)
-        | Identity::PhantomLookup(_)
-        | Identity::PhantomPermutation(_) => true,
-        // TODO(bus_interaction): Bus interactions are currently ignored,
-        // so processing them does not succeed. We currently assume that for
-        // every bus interaction, there is an equivalent (phantom) lookup or
-        // permutation constraint.
-        // Returning false here to give JITing a chance to succeed.
-        Identity::PhantomBusInteraction(_) => false,
-        Identity::Polynomial(_) | Identity::Connect(_) => false,
-    }
+    matches!(identity, Identity::BusSend(_))
 }
 
 fn combine_range_constraints<T: FieldElement>(

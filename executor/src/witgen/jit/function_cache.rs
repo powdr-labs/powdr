@@ -6,7 +6,7 @@ use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
-    jit::processor::ProcessorResult,
+    jit::{effect::format_code, processor::ProcessorResult},
     machines::{LookupCell, MachineParts},
     range_constraints::RangeConstraint,
     EvalError, FixedData, MutableState, QueryCallback,
@@ -40,7 +40,7 @@ pub struct FunctionCache<'a, T: FieldElement> {
 
 pub struct CacheEntry<T: FieldElement> {
     pub function: WitgenFunction<T>,
-    pub _range_constraints: Vec<RangeConstraint<T>>,
+    pub range_constraints: Vec<RangeConstraint<T>>,
 }
 
 impl<'a, T: FieldElement> FunctionCache<'a, T> {
@@ -125,15 +125,24 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .ok()?;
 
         log::debug!("=> Success!");
-        let is_in_bounds = code
+        let out_of_bounds_vars = code
             .iter()
             .flat_map(|effect| effect.referenced_variables())
             .filter_map(|var| match var {
-                Variable::WitnessCell(cell) => Some(cell.row_offset),
+                Variable::WitnessCell(cell) => Some(cell),
                 _ => None,
             })
-            .all(|row_offset| row_offset >= -1 && row_offset < self.block_size as i32);
-        assert!(is_in_bounds, "Expected JITed code to only reference cells in the block + the last row of the previous block.");
+            .filter(|cell| cell.row_offset < -1 || cell.row_offset >= self.block_size as i32)
+            .collect_vec();
+        if !out_of_bounds_vars.is_empty() {
+            log::debug!("Code:\n{}", format_code(&code));
+            panic!(
+                "Expected JITed code to only reference cells in the block + the last row \
+                of the previous block, i.e. rows -1 until (including) {}, but it does reference the following:\n{}",
+                self.block_size - 1,
+                out_of_bounds_vars.iter().format(", ")
+            );
+        }
 
         log::trace!("Generated code ({} steps)", code.len());
         let known_inputs = cache_key
@@ -155,7 +164,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
 
         Some(CacheEntry {
             function,
-            _range_constraints: range_constraints,
+            range_constraints,
         })
     }
 

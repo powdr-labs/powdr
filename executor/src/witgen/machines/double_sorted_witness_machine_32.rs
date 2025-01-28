@@ -7,6 +7,7 @@ use itertools::Itertools;
 use super::{LookupCell, Machine, MachineParts};
 use crate::witgen::data_structures::caller_data::CallerData;
 use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::jit::witgen_inference::CanProcessCall;
 use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::range_constraints::RangeConstraint;
@@ -69,7 +70,7 @@ pub struct DoubleSortedWitnesses32<'a, T: FieldElement> {
     has_bootloader_write_column: bool,
     /// All selector IDs that are used on the right-hand side connecting identities.
     selector_ids: BTreeMap<u64, PolyID>,
-    latest_step: T,
+    latest_step: BTreeMap<T, T>,
 }
 
 struct Operation<T> {
@@ -182,7 +183,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
             data: Default::default(),
             is_initialized: Default::default(),
             selector_ids,
-            latest_step: T::zero(),
+            latest_step: Default::default(),
         })
     }
 }
@@ -190,6 +191,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
     fn can_process_call_fully(
         &mut self,
+        _can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_arguments: &BitVec,
         range_constraints: &[RangeConstraint<T>],
@@ -502,13 +504,15 @@ impl<T: FieldElement> DoubleSortedWitnesses32<'_, T> {
                 .is_none()
         };
 
-        if step < &self.latest_step {
+        let latest_step = self.latest_step.entry(*addr).or_insert_with(T::zero);
+
+        if step < latest_step {
             panic!(
-                "Expected the step to be at least equal to the previous step, but {step} < {}!\nFrom identity: {}",
-                self.latest_step, self.parts.connections[&identity_id]
+                "Expected the step for addr {addr} to be at least equal to the previous step, but {step} < {latest_step}!\nFrom identity: {}",
+                self.parts.connections[&identity_id]
             );
         }
-        self.latest_step = *step;
+        self.latest_step.insert(*addr, *step);
 
         assert!(
             added_memory_access,

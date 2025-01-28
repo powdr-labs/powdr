@@ -91,10 +91,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             -1
         };
         let identities = (start_row..self.block_size as i32).flat_map(move |row| {
-            self.machine_parts
-                .identities
-                .iter()
-                .map(move |&id| (id, row))
+            self.machine_parts.identities.iter().filter_map(move |&id| {
+                // Filter out identities with next references on the last row.
+                if row as usize == self.block_size - 1 && id.contains_next_ref() {
+                    None
+                } else {
+                    Some((id, row))
+                }
+            })
         });
 
         let requested_known = known_args
@@ -189,9 +193,8 @@ mod test {
         let (analyzed, fixed_col_vals) = read_pil(input_pil);
 
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
-        let (fixed_data, retained_identities) =
-            global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
-        let machines = MachineExtractor::new(&fixed_data).split_out_machines(retained_identities);
+        let fixed_data = global_constraints::set_global_constraints(fixed_data);
+        let machines = MachineExtractor::new(&fixed_data).split_out_machines();
         let [KnownMachine::BlockMachine(machine)] = machines
             .iter()
             .filter(|m| m.name().contains(machine_name))
