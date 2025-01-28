@@ -423,9 +423,14 @@ fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable>) -> St
     }
 }
 
-fn format_condition<T: FieldElement>(condition: &BranchCondition<T, Variable>) -> String {
-    let var = format!("IntType::from({})", variable_to_string(&condition.variable));
-    let (min, max) = condition.first_branch.range();
+fn format_condition<T: FieldElement>(
+    BranchCondition {
+        variable,
+        condition,
+    }: &BranchCondition<T, Variable>,
+) -> String {
+    let var = format!("IntType::from({})", variable_to_string(variable));
+    let (min, max) = condition.range();
     match min.cmp(&max) {
         Ordering::Equal => format!("{var} == {min}",),
         Ordering::Less => format!("{min} <= {var} && {var} <= {max}"),
@@ -964,8 +969,7 @@ extern \"C\" fn witgen(
         let effects = vec![Effect::Branch(
             BranchCondition {
                 variable: x.clone(),
-                first_branch: RangeConstraint::from_range(7.into(), 20.into()),
-                second_branch: RangeConstraint::from_range(21.into(), 6.into()),
+                condition: RangeConstraint::from_range(7.into(), 20.into()),
             },
             vec![assignment(&y, symbol(&x) + number(1))],
             vec![assignment(&y, symbol(&x) + number(2))],
@@ -1012,8 +1016,7 @@ extern \"C\" fn witgen(
         let branch_effect = Effect::Branch(
             BranchCondition {
                 variable: x.clone(),
-                first_branch: RangeConstraint::from_range(7.into(), 20.into()),
-                second_branch: RangeConstraint::from_range(21.into(), 6.into()),
+                condition: RangeConstraint::from_range(7.into(), 20.into()),
             },
             vec![assignment(&y, symbol(&x) + number(1))],
             vec![Effect::Branch(
