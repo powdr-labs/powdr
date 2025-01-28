@@ -491,7 +491,7 @@ fn autoprecompiles<F: FieldElement>(
                 && block.len() > 1
                 && *cost > 2
         })
-        //.take(5)
+        .take(1)
         .map(|block| block.0.clone())
         .into_iter()
         .collect();
@@ -541,8 +541,8 @@ fn autoprecompiles<F: FieldElement>(
     println!("Fast executor with autoprecompiles took: {duration:?}");
     println!("Trace length with autoprecompiles: {trace_len}");
 
+    pipeline.compute_witness()?;
     /*
-        pipeline.compute_witness()?;
         pipeline.compute_proof()?;
     */
 

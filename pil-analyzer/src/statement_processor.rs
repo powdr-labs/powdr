@@ -200,12 +200,14 @@ where
                 let trait_impl = self.process_trait_implementation(trait_impl);
                 vec![PILItem::TraitImplementation(trait_impl)]
             }
-            PilStatement::Expression(_, expr) => vec![PILItem::ProofItem(
-                self.expression_processor(&Default::default())
-                    .process_expression(expr)
-                    // TODO propagate this error up
-                    .expect("Expression processing failed"),
-            )],
+            PilStatement::Expression(_, expr) => {
+                vec![PILItem::ProofItem(
+                    self.expression_processor(&Default::default())
+                        .process_expression(expr)
+                        // TODO propagate this error up
+                        .expect("Expression processing failed"),
+                )]
+            }
             PilStatement::StructDeclaration(source, struct_declaration) => self
                 .handle_symbol_definition(
                     source,

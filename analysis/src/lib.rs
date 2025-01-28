@@ -14,15 +14,17 @@ use powdr_ast::{
     asm_analysis::{
         CallableSymbol, CallableSymbolDefinitions, FunctionStatement, FunctionStatements,
         InstructionStatement, LabelStatement, LinkDefinition, Machine, MachineDegree, Module,
-        OperationSymbol, SubmachineDeclaration,
+        OperationSymbol, RegisterTy, SubmachineDeclaration,
     },
     parsed::{
         visitor::{ExpressionVisitable, VisitOrder},
         BinaryOperator, FunctionCall, NamespacedPolynomialReference, Number, PilStatement,
+        UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::BigUint;
 use powdr_number::FieldElement;
+use powdr_parser_util::SourceRef;
 
 type Expression = powdr_ast::asm_analysis::Expression<NamespacedPolynomialReference>;
 
@@ -118,12 +120,22 @@ pub fn transform_autoprecompile_blocks(
                             instruction,
                             inputs: _,
                         }) if instruction.starts_with("branch")
-                            || instruction.starts_with("jump")
-                            || instruction.starts_with("skip") =>
+                            || instruction.starts_with("jump") =>
                         {
-                            break
+                            block_statements.push(program[j].clone());
+                            j += 1;
+                            break;
                         }
-                        FunctionStatement::Return(_) | FunctionStatement::Assignment(_) => break,
+                        FunctionStatement::Return(_) | FunctionStatement::Assignment(_) => {
+                            break;
+                        }
+                        FunctionStatement::Instruction(InstructionStatement {
+                            source: _,
+                            instruction,
+                            inputs: _,
+                        }) if instruction.starts_with("skip") => {
+                            break;
+                        }
                         _ => {
                             block_statements.push(program[j].clone());
                             j += 1;
@@ -133,11 +145,39 @@ pub fn transform_autoprecompile_blocks(
 
                 // Create a synthetic instruction
                 //let synthetic_instruction_name = format!("synthetic_{}", name);
+                let last_st = block_statements.last().unwrap();
+                let dest = match &last_st {
+                    FunctionStatement::Instruction(InstructionStatement {
+                        source: _,
+                        instruction,
+                        inputs,
+                    }) if instruction.starts_with("branch") || instruction.starts_with("jump") => {
+                        if instruction.starts_with("jump") {
+                            inputs[0].clone()
+                        } else if instruction.starts_with("branch_if_diff_nonzero") {
+                            inputs[2].clone()
+                        } else if instruction.starts_with("branch_if_diff_equal")
+                            || instruction.starts_with("branch_if_diff_greater_than")
+                        {
+                            inputs[3].clone()
+                        } else {
+                            panic!("Expected branch or jump")
+                        }
+                    }
+                    _ => Expression::Number(
+                        Default::default(),
+                        Number {
+                            value: BigUint::from(0u32),
+                            type_: None,
+                        },
+                    ),
+                };
+
                 let synthetic_instruction_name = name.clone();
                 let synthetic_instruction = FunctionStatement::Instruction(InstructionStatement {
                     source: source.clone(),
                     instruction: synthetic_instruction_name.clone(),
-                    inputs: vec![],
+                    inputs: vec![dest],
                 });
 
                 blocks.push((name.clone(), block_statements));
@@ -170,6 +210,7 @@ pub fn generate_precompile(
     instruction_map: &BTreeMap<String, Instruction>,
     degree: MachineDegree,
     wits: &[&PilStatement],
+    registers: &[String],
     identities: &[&PilStatement],
     main_links: &[LinkDefinition],
 ) -> Machine {
@@ -197,6 +238,14 @@ pub fn generate_precompile(
 
     // let step;
     let step = PilStatement::LetStatement(Default::default(), "step".to_string(), None, None);
+
+    // let dest;
+    let dest = PilStatement::LetStatement(Default::default(), "dest".to_string(), None, None);
+
+    // let pc;
+    // let pc_next;
+    let pc = PilStatement::LetStatement(Default::default(), "pc".to_string(), None, None);
+    let pc_next = PilStatement::LetStatement(Default::default(), "pc_next".to_string(), None, None);
 
     // std::array::sum(sel)
     let sum_fun_symbol = SymbolPath::from_parts(
@@ -241,23 +290,44 @@ pub fn generate_precompile(
     );
     let bool_used_ref = PilStatement::Expression(Default::default(), bool_used_ref);
 
-    // operation run step;
+    // operation run step, pc, dest -> pc_next;
     let op_param = Param {
         source: Default::default(),
         name: "step".to_string(),
         index: None,
         ty: None,
     };
+    let op_param_dest = Param {
+        source: Default::default(),
+        name: "dest".to_string(),
+        index: None,
+        ty: None,
+    };
+    let op_param_pc = Param {
+        source: Default::default(),
+        name: "pc".to_string(),
+        index: None,
+        ty: None,
+    };
+    let op_ret = Param {
+        source: Default::default(),
+        name: "pc_next".to_string(),
+        index: None,
+        ty: None,
+    };
     let run_symbol = OperationSymbol {
         source: Default::default(),
         id: OperationId { id: None },
-        params: Params::<Param>::new(vec![op_param], vec![]),
+        params: Params::<Param>::new(vec![op_param, op_param_dest, op_param_pc], vec![op_ret]),
     };
     let run_symbol = CallableSymbol::Operation(run_symbol);
     let callable_defs =
         CallableSymbolDefinitions([("run".to_string(), run_symbol)].into_iter().collect());
 
     constraints.push(step);
+    constraints.push(dest);
+    constraints.push(pc);
+    constraints.push(pc_next);
     constraints.push(latch);
     //constraints.push(op_id);
     constraints.push(used);
@@ -266,6 +336,10 @@ pub fn generate_precompile(
     let step_symbol = SymbolPath::from_identifier("step".to_string());
     let step_ref: NamespacedPolynomialReference = step_symbol.into();
     let step_ref = Expression::Reference(Default::default(), step_ref);
+
+    let dest_symbol = SymbolPath::from_identifier("dest".to_string());
+    let dest_ref: NamespacedPolynomialReference = dest_symbol.into();
+    let dest_ref = Expression::Reference(Default::default(), dest_ref);
 
     let four = Expression::Number(
         Default::default(),
@@ -291,8 +365,29 @@ pub fn generate_precompile(
                         .collect::<Vec<_>>();
 
                     // Create initial substitution map
-                    let sub_map: BTreeMap<String, Expression> =
-                        instr_inputs.into_iter().zip(inputs.clone()).collect();
+                    let mut sub_map: BTreeMap<String, Expression> = instr_inputs
+                        .clone()
+                        .into_iter()
+                        .zip(inputs.clone())
+                        .collect();
+
+                    if instruction.starts_with("branch") || instruction.starts_with("jump") {
+                        let (label_arg, label_param) = if instruction.starts_with("jump") {
+                            (inputs[0].clone(), instr_inputs[0].clone())
+                        } else if instruction.starts_with("branch_if_diff_nonzero") {
+                            (inputs[2].clone(), instr_inputs[2].clone())
+                        } else if instruction.starts_with("branch_if_diff_equal")
+                            || instruction.starts_with("branch_if_diff_greater_than")
+                        {
+                            (inputs[3].clone(), instr_inputs[3].clone())
+                        } else {
+                            panic!("Expected branch or jump")
+                        };
+
+                        sub_map.insert(format!("{label_arg}"), dest_ref.clone());
+                        sub_map.insert(label_param, dest_ref.clone());
+                    }
+                    println!("sub map: {sub_map:?}");
 
                     // STEP_0 = step;
                     // STEP_i = STEP_{i-1} + 1;
@@ -336,13 +431,26 @@ pub fn generate_precompile(
                                     *stage,
                                     names
                                         .iter()
-                                        .map(|n| format!("{}_{}", n.clone(), ssa_counter).into())
+                                        .map(|n| format!("{}_{ssa_counter}", n.clone()).into())
                                         .collect::<Vec<_>>(),
                                     value.clone(),
                                 )
                             } else {
                                 panic!("Expected PolynomialCommitDeclaration")
                             }
+                        })
+                        .collect::<Vec<_>>();
+
+                    // Register columns from main
+                    let local_regs = registers
+                        .iter()
+                        .map(|reg| {
+                            PilStatement::PolynomialCommitDeclaration(
+                                SourceRef::default(),
+                                Some(0),
+                                vec![format!("{reg}_{ssa_counter}").into()],
+                                None,
+                            )
                         })
                         .collect::<Vec<_>>();
 
@@ -361,6 +469,7 @@ pub fn generate_precompile(
                         .collect::<Vec<_>>();
 
                     constraints.extend(local_wits);
+                    constraints.extend(local_regs);
                     constraints.extend(local_identities);
 
                     // Links from main
@@ -453,6 +562,21 @@ pub fn generate_precompile(
                 .map(|p| Part::Named(p.to_string())),
         )),
     };
+    let publics_param = Param {
+        source: Default::default(),
+        name: "publics".to_string(),
+        index: None,
+        ty: Some(SymbolPath::from_parts(
+            [
+                "std",
+                "machines",
+                "write_once_memory_with_8_publics",
+                "WriteOnceMemoryWith8Publics",
+            ]
+            .iter()
+            .map(|p| Part::Named(p.to_string())),
+        )),
+    };
     let split_param = Param {
         source: Default::default(),
         name: "split_gl".to_string(),
@@ -532,6 +656,7 @@ pub fn generate_precompile(
         params: MachineParams(vec![
             regs_param,
             mem_param,
+            publics_param,
             split_param,
             binary_param,
             shift_param,
@@ -553,10 +678,29 @@ pub fn generate_precompile(
 fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
     expr.visit_expressions_mut(
         &mut |expr| {
-            if let Expression::Reference(_, ref mut r) = expr {
-                if let Some(sub_expr) = sub.get(&r.path.to_string()) {
-                    *expr = sub_expr.clone();
+            match expr {
+                Expression::Reference(_, ref mut r) => {
+                    if let Some(sub_expr) = sub.get(&r.path.to_string()) {
+                        *expr = sub_expr.clone();
+                    }
                 }
+                Expression::UnaryOperation(_, ref mut un_op) => {
+                    if matches!(un_op.op, UnaryOperator::Next) {
+                        if let Expression::Reference(_, ref r) = &*un_op.expr {
+                            let name = r.path.try_last_part().unwrap();
+                            if name == "pc" {
+                                let pc_next_symbol =
+                                    SymbolPath::from_identifier("pc_next".to_string());
+                                let pc_next_ref: NamespacedPolynomialReference =
+                                    pc_next_symbol.into();
+                                let pc_next_ref =
+                                    Expression::Reference(Default::default(), pc_next_ref);
+                                *expr = pc_next_ref.clone();
+                            }
+                        }
+                    }
+                }
+                _ => (),
             }
             ControlFlow::Continue::<()>(())
         },
@@ -575,8 +719,10 @@ fn append_suffix_mut(expr: &mut Expression, suffix: &str) {
             }
             Expression::Reference(_, ref mut r) => {
                 let name = r.path.try_last_part().unwrap();
-                let name = format!("{name}_{suffix}");
-                *r.path.try_last_part_mut().unwrap() = name;
+                if name != "pc" && name != "pc_next" && name != "dest" {
+                    let name = format!("{name}_{suffix}");
+                    *r.path.try_last_part_mut().unwrap() = name;
+                }
                 ControlFlow::Continue::<()>(())
             }
             _ => ControlFlow::Continue::<()>(()),
@@ -636,6 +782,18 @@ fn create_precompiles(
         .filter(|stmt| matches!(stmt, PilStatement::PolynomialCommitDeclaration(_, _, _, _)))
         .collect::<Vec<_>>();
 
+    let registers = machine
+        .registers
+        .iter()
+        .filter_map(|r| {
+            if !matches!(r.ty, RegisterTy::Pc) {
+                Some(r.name.clone())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
     let identities = machine
         .pil
         .iter()
@@ -664,6 +822,7 @@ fn create_precompiles(
             &name_to_instr,
             degree.clone(),
             &wits,
+            &registers,
             &identities,
             &machine.links,
         );
@@ -681,6 +840,7 @@ fn create_precompiles(
         let args = vec![
             "regs",
             "memory",
+            "publics",
             "split_gl",
             "binary",
             "shift",
@@ -710,11 +870,53 @@ fn create_precompiles(
             Default::default(),
             NamespacedPolynomialReference::from_identifier("STEP".to_string()),
         );
+        let last_st = block.1.last().unwrap();
+        /*
+                let dest = match &last_st {
+                    FunctionStatement::Instruction(InstructionStatement {
+                        source: _,
+                        instruction,
+                        inputs,
+                    }) if instruction.starts_with("branch") || instruction.starts_with("jump") => {
+                        if instruction.starts_with("jump") {
+                            inputs[0].clone()
+                        } else if instruction.starts_with("branch_if_diff_nonzero") {
+                            inputs[2].clone()
+                        } else if instruction.starts_with("branch_if_diff_equal")
+                            || instruction.starts_with("branch_if_diff_greater_than")
+                        {
+                            inputs[3].clone()
+                        } else {
+                            panic!("Expected branch or jump")
+                        }
+                    }
+                    _ => panic!("Expected branch or jump"),
+                };
+        */
+
+        let tmp1_col = Expression::Reference(
+            Default::default(),
+            NamespacedPolynomialReference::from_identifier("tmp1_col".to_string()),
+        );
+        let l_label = Expression::Reference(
+            Default::default(),
+            NamespacedPolynomialReference::from_identifier("l".to_string()),
+        );
+
+        let pc = Expression::Reference(
+            Default::default(),
+            NamespacedPolynomialReference::from_identifier("pc".to_string()),
+        );
+        let pc_prime = UnaryOperation {
+            op: UnaryOperator::Next,
+            expr: Box::new(pc.clone()),
+        };
+        let pc_prime = Expression::UnaryOperation(Default::default(), pc_prime);
 
         let link_callable = CallableRef {
             instance: precompile_submachine_name,
             callable: "run".to_string(),
-            params: Params::new(vec![step], vec![]),
+            params: Params::new(vec![step, tmp1_col.clone(), pc], vec![pc_prime]),
         };
         let one = Expression::Number(
             Default::default(),
@@ -728,10 +930,19 @@ fn create_precompiles(
             link: link_callable,
             is_permutation: true,
         };
+        let l_param = Param {
+            source: Default::default(),
+            name: "l".to_string(),
+            index: None,
+            ty: Some(SymbolPath::from_identifier("label".to_string())),
+        };
+        let tmp1_eq_l =
+            Expression::new_binary(tmp1_col.clone(), BinaryOperator::Identity, l_label.clone());
+        let tmp1_eq_l = PilStatement::Expression(Default::default(), tmp1_eq_l);
         let instruction = Instruction {
-            params: Default::default(),
+            params: Params::new(vec![l_param], vec![]),
             links: vec![link],
-            body: InstructionBody(vec![]),
+            body: InstructionBody(vec![tmp1_eq_l]),
         };
         let instr_decl = InstructionDefinitionStatement {
             source: Default::default(),
@@ -1026,10 +1237,8 @@ pub fn collect_basic_blocks(
                 source: _,
                 instruction,
                 inputs: _,
-            }) if instruction.starts_with("branch")
-                || instruction.starts_with("jump")
-                || instruction.starts_with("skip") =>
-            {
+            }) if instruction.starts_with("branch") || instruction.starts_with("jump") => {
+                block_statements.push(op.clone());
                 if let Some(label) = curr_label {
                     assert!(!blocks.iter().any(|(l, _)| l == &label));
                     blocks.push((label.clone(), block_statements.clone()));
@@ -1042,13 +1251,6 @@ pub fn collect_basic_blocks(
                 //ghost_labels += 1;
                 //curr_label = format!("ghost_label_{ghost_labels}");
             }
-            FunctionStatement::Instruction(InstructionStatement {
-                source: _,
-                instruction: _,
-                inputs: _,
-            }) => {
-                block_statements.push(op.clone());
-            }
             FunctionStatement::Return(_) | FunctionStatement::Assignment(_) => {
                 if let Some(label) = curr_label {
                     assert!(!blocks.iter().any(|(l, _)| l == &label));
@@ -1060,6 +1262,25 @@ pub fn collect_basic_blocks(
                 //block_statements.clear();
                 //ghost_labels += 1;
                 //curr_label = format!("ghost_label_{ghost_labels}");
+            }
+            FunctionStatement::Instruction(InstructionStatement {
+                source: _,
+                instruction,
+                inputs: _,
+            }) if instruction.starts_with("skip") => {
+                if let Some(label) = curr_label {
+                    assert!(!blocks.iter().any(|(l, _)| l == &label));
+                    blocks.push((label.clone(), block_statements.clone()));
+                }
+                block_statements.clear();
+                curr_label = None;
+            }
+            FunctionStatement::Instruction(InstructionStatement {
+                source: _,
+                instruction: _,
+                inputs: _,
+            }) => {
+                block_statements.push(op.clone());
             }
             _ => {}
         }

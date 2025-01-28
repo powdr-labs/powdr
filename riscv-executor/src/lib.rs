@@ -3173,19 +3173,25 @@ fn execute_inner<F: FieldElement>(
             {
                 precompile_calls += 1;
                 let name = i.instruction.to_string();
-                let pc = e.proc.get_pc();
+                let pc = e.proc.get_pc().u();
 
-                //println!("Executing precompile {}", i.instruction.to_string());
+                println!("Executing precompile {}", i.instruction.to_string());
                 for stmt in precompile_blocks.get(&name).unwrap() {
                     match stmt {
                         FunctionStatement::Instruction(i) => {
+                            //println!("Executing instruction {}", i.instruction);
                             e.exec_instruction(&i.instruction, &i.inputs);
                         }
                         a => unreachable!("{a:?}"),
                     }
                 }
 
-                e.proc.set_pc(pc.add(&Elem::Binary(1)));
+                let pc_after = e.proc.get_next_pc().u();
+                if pc_after == pc {
+                    e.proc.set_pc(Elem::Binary((pc + 1).into()));
+                }
+
+                //e.proc.set_pc(pc.add(&Elem::Binary(1)));
             }
             FunctionStatement::Instruction(i) => {
                 e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
