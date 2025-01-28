@@ -6,9 +6,8 @@ use std::collections::HashSet;
 extern crate alloc;
 use alloc::collections::btree_map::BTreeMap;
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, Identity};
-use powdr_number::Mersenne31Field;
 
-use crate::stwo::prover::into_stwo_field;
+use crate::stwo::prover::{into_stwo_field, T};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use stwo_prover::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use stwo_prover::constraint_framework::{
@@ -25,7 +24,7 @@ pub type PowdrComponent = FrameworkComponent<PowdrEval>;
 
 pub fn gen_stwo_circle_column<B, F>(
     domain: CircleDomain,
-    slice: &[Mersenne31Field],
+    slice: &[T],
 ) -> CircleEvaluation<B, BaseField, BitReversedOrder>
 where
     B: FieldOps<M31> + ColumnOps<F>,
@@ -53,7 +52,7 @@ where
 
 pub struct PowdrEval {
     log_degree: u32,
-    analyzed: Analyzed<Mersenne31Field>,
+    analyzed: Analyzed<T>,
     // the pre-processed are indexed in the whole proof, instead of in each component.
     // this offset represents the index of the first pre-processed column in this component
     preprocess_col_offset: usize,
@@ -61,15 +60,15 @@ pub struct PowdrEval {
     constant_shifted: BTreeMap<PolyID, usize>,
     constant_columns: BTreeMap<PolyID, usize>,
     // stwo supports maximum 2 stages, challenges are only created for stage 0
-    pub challenges: BTreeMap<u64, Mersenne31Field>,
+    pub challenges: BTreeMap<u64, T>,
 }
 
 impl PowdrEval {
     pub fn new(
-        analyzed: Analyzed<Mersenne31Field>,
+        analyzed: Analyzed<T>,
         preprocess_col_offset: usize,
         log_degree: u32,
-        challenges: BTreeMap<u64, Mersenne31Field>,
+        challenges: BTreeMap<u64, T>,
     ) -> Self {
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
@@ -233,7 +232,7 @@ impl FrameworkEval for PowdrEval {
 }
 
 // This function creates a list of the names of the constant polynomials that have next references constraint
-pub fn get_constant_with_next_list(analyzed: &Analyzed<Mersenne31Field>) -> HashSet<&String> {
+pub fn get_constant_with_next_list(analyzed: &Analyzed<T>) -> HashSet<&String> {
     let mut constant_with_next_list: HashSet<&String> = HashSet::new();
     analyzed.all_children().for_each(|e| {
         if let AlgebraicExpression::Reference(AlgebraicReference {

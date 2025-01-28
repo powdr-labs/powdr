@@ -45,6 +45,7 @@ const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 const LOG_LAST_LAYER_DEGREE_BOUND: usize = 0;
+pub type T = Mersenne31Field;
 
 pub enum KeyExportError {
     NoProvingKey,
@@ -61,11 +62,11 @@ impl fmt::Display for KeyExportError {
 }
 
 pub struct StwoProver<B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Channel> {
-    pub analyzed: Arc<Analyzed<Mersenne31Field>>,
+    pub analyzed: Arc<Analyzed<T>>,
     /// The split analyzed PIL
-    split: BTreeMap<String, Analyzed<Mersenne31Field>>,
+    split: BTreeMap<String, Analyzed<T>>,
     /// The value of the fixed columns
-    pub fixed: Arc<Vec<(String, VariablySizedColumn<Mersenne31Field>)>>,
+    pub fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
 
     /// Proving key
     proving_key: StarkProvingKey<B>,
@@ -84,13 +85,12 @@ where
     PowdrComponent: ComponentProver<B>,
 {
     pub fn new(
-        analyzed: Arc<Analyzed<Mersenne31Field>>,
-        fixed: Arc<Vec<(String, VariablySizedColumn<Mersenne31Field>)>>,
+        analyzed: Arc<Analyzed<T>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
     ) -> Result<Self, io::Error> {
-        let split: BTreeMap<String, Analyzed<Mersenne31Field>> =
-            powdr_backend_utils::split_pil(&analyzed)
-                .into_iter()
-                .collect();
+        let split: BTreeMap<String, Analyzed<T>> = powdr_backend_utils::split_pil(&analyzed)
+            .into_iter()
+            .collect();
 
         Ok(Self {
             analyzed,
@@ -221,8 +221,8 @@ where
 
     pub fn prove(
         &self,
-        witness: &[(String, Vec<Mersenne31Field>)],
-        witgen_callback: WitgenCallback<Mersenne31Field>,
+        witness: &[(String, Vec<T>)],
+        witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
         let config = get_config();
         let domain_degree_range = DegreeRange {
@@ -457,7 +457,7 @@ where
         Ok(bincode::serialize(&proof).unwrap())
     }
 
-    pub fn verify(&self, proof: &[u8], _instances: &[Mersenne31Field]) -> Result<(), String> {
+    pub fn verify(&self, proof: &[u8], _instances: &[T]) -> Result<(), String> {
         assert!(
             _instances.is_empty(),
             "Expected _instances slice to be empty, but it has {} elements.",
@@ -558,9 +558,7 @@ fn get_config() -> PcsConfig {
     }
 }
 
-fn get_dummy_challenges<MC: MerkleChannel>(
-    analyzed: &Analyzed<Mersenne31Field>,
-) -> BTreeMap<u64, Mersenne31Field> {
+fn get_dummy_challenges<MC: MerkleChannel>(analyzed: &Analyzed<T>) -> BTreeMap<u64, T> {
     let identities = &analyzed.identities;
     let challenges_stage0 = identities
         .iter()
@@ -593,10 +591,10 @@ fn get_dummy_challenges<MC: MerkleChannel>(
         .collect::<BTreeMap<_, _>>()
 }
 
-pub fn into_stwo_field(powdr_m31: &Mersenne31Field) -> M31 {
+pub fn into_stwo_field(powdr_m31: &T) -> M31 {
     M31::from(powdr_m31.to_integer().try_into_u32().unwrap())
 }
 
-pub fn from_stwo_field(stwo_m31: &M31) -> Mersenne31Field {
-    Mersenne31Field::from(stwo_m31.0)
+pub fn from_stwo_field(stwo_m31: &M31) -> T {
+    T::from(stwo_m31.0)
 }
