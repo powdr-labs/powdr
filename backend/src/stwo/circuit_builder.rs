@@ -110,7 +110,7 @@ struct Data<'a, F> {
     witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
     constant_shifted_eval: &'a BTreeMap<PolyID, F>,
     constant_eval: &'a BTreeMap<PolyID, F>,
-    // challenges for stage 0
+    // challenges for stage 1
     challenges: &'a BTreeMap<u64, F>,
 }
 
