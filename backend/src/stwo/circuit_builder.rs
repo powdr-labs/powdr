@@ -22,7 +22,7 @@ use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_i
 
 use crate::stwo::params::BaseFieldElementMap;
 
-pub type PowdrComponent<'a> = FrameworkComponent<PowdrEval>;
+pub type PowdrComponent= FrameworkComponent<PowdrEval>;
 
 pub fn gen_stwo_circle_column<B, F>(
     domain: CircleDomain,

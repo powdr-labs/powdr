@@ -81,7 +81,7 @@ where
     MC: MerkleChannel + Send,
     C: Channel + Send,
     MC::H: DeserializeOwned + Serialize,
-    PowdrComponent<'a>: ComponentProver<B>,
+    PowdrComponent: ComponentProver<B>,
 {
     pub fn new(
         analyzed: Arc<Analyzed<Mersenne31Field>>,
