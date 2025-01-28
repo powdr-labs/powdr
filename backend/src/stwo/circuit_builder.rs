@@ -59,7 +59,7 @@ pub struct PowdrEval {
     witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
     constant_columns: BTreeMap<PolyID, usize>,
-    // stwo supports maximum 2 stages, challenges are only created for stage 0
+    // stwo supports maximum 2 stages, challenges are only created after stage 0
     pub challenges: BTreeMap<u64, T>,
 }
 
