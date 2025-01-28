@@ -1,17 +1,17 @@
 use bit_vec::BitVec;
 use num_traits::One;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::iter::Peekable;
 use std::mem;
 
 use itertools::{Either, Itertools};
-use powdr_ast::analyzed::{AlgebraicReference, PolynomialType};
+use powdr_ast::analyzed::{AlgebraicExpression, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
 use crate::witgen::data_structures::caller_data::CallerData;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
+use crate::witgen::jit::witgen_inference::CanProcessCall;
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::rows::RowPair;
@@ -47,6 +47,28 @@ impl<T> IndexValue<T> {
     }
 }
 
+#[derive(Debug, Clone)]
+enum FixedColOrConstant<T, C> {
+    FixedCol(C),
+    Constant(T),
+}
+
+impl<T: Clone> TryFrom<&AlgebraicExpression<T>> for FixedColOrConstant<T, PolyID> {
+    type Error = ();
+    fn try_from(e: &AlgebraicExpression<T>) -> Result<Self, Self::Error> {
+        try_to_simple_poly(e)
+            .and_then(|reference| {
+                reference
+                    .is_fixed()
+                    .then_some(Ok(FixedColOrConstant::FixedCol(reference.poly_id)))
+            })
+            .unwrap_or_else(|| match e {
+                AlgebraicExpression::Number(c) => Ok(FixedColOrConstant::Constant(c.clone())),
+                _ => Err(()),
+            })
+    }
+}
+
 /// Create an index for a set of columns to be queried, if does not exist already
 /// `input_fixed_columns` is assumed to be sorted
 fn create_index<T: FieldElement>(
@@ -60,8 +82,8 @@ fn create_index<T: FieldElement>(
     let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
         .expressions
         .iter()
-        .map(|e| try_to_simple_poly(e).unwrap().poly_id)
-        .zip(&application.inputs)
+        .map(|e| FixedColOrConstant::try_from(e).unwrap())
+        .zip_eq(&application.inputs)
         .partition_map(|(poly_id, is_input)| {
             if is_input {
                 Either::Left(poly_id)
@@ -71,35 +93,46 @@ fn create_index<T: FieldElement>(
         });
 
     // create index for this lookup
+    let variable_name = |v: &FixedColOrConstant<T, PolyID>| match v {
+        FixedColOrConstant::FixedCol(poly_id) => fixed_data.column_name(poly_id).to_string(),
+        FixedColOrConstant::Constant(c) => c.to_string(),
+    };
     log::trace!(
         "Generating index for lookup in columns (in: {}, out: {})",
-        input_fixed_columns
-            .iter()
-            .map(|c| fixed_data.column_name(c).to_string())
-            .join(", "),
-        output_fixed_columns
-            .iter()
-            .map(|c| fixed_data.column_name(c).to_string())
-            .join(", ")
+        input_fixed_columns.iter().map(variable_name).join(", "),
+        output_fixed_columns.iter().map(variable_name).join(", ")
     );
 
     let start = std::time::Instant::now();
 
     // get all values for the columns to be indexed
     let input_column_values = input_fixed_columns
-        .iter()
-        .map(|id| fixed_data.fixed_cols[id].values_max_size())
+        .into_iter()
+        .map(|id| match id {
+            FixedColOrConstant::FixedCol(poly_id) => {
+                FixedColOrConstant::FixedCol(fixed_data.fixed_cols[&poly_id].values_max_size())
+            }
+            FixedColOrConstant::Constant(c) => FixedColOrConstant::Constant(c),
+        })
         .collect::<Vec<_>>();
 
     let output_column_values = output_fixed_columns
-        .iter()
-        .map(|id| fixed_data.fixed_cols[id].values_max_size())
+        .into_iter()
+        .map(|id| match id {
+            FixedColOrConstant::FixedCol(poly_id) => {
+                FixedColOrConstant::FixedCol(fixed_data.fixed_cols[&poly_id].values_max_size())
+            }
+            FixedColOrConstant::Constant(c) => FixedColOrConstant::Constant(c),
+        })
         .collect::<Vec<_>>();
 
     let degree = input_column_values
         .iter()
         .chain(output_column_values.iter())
-        .map(|values| values.len())
+        .filter_map(|p| match p {
+            FixedColOrConstant::FixedCol(values) => Some(values.len()),
+            FixedColOrConstant::Constant(_) => None,
+        })
         .unique()
         .exactly_one()
         .expect("all columns in a given lookup are expected to have the same degree");
@@ -113,12 +146,18 @@ fn create_index<T: FieldElement>(
             |(mut acc, mut set), row| {
                 let input: Vec<_> = input_column_values
                     .iter()
-                    .map(|column| column[row])
+                    .map(|column| match column {
+                        FixedColOrConstant::FixedCol(values) => values[row],
+                        FixedColOrConstant::Constant(c) => *c,
+                    })
                     .collect();
 
                 let output: Vec<_> = output_column_values
                     .iter()
-                    .map(|column| column[row])
+                    .map(|column| match column {
+                        FixedColOrConstant::FixedCol(values) => values[row],
+                        FixedColOrConstant::Constant(c) => *c,
+                    })
                     .collect();
 
                 let input_output = (input, output);
@@ -165,11 +204,13 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
     pub fn is_responsible(connection: &Connection<T>) -> bool {
         connection.is_lookup()
             && connection.right.selector.is_one()
-            && connection.right.expressions.iter().all(|e| {
-                try_to_simple_poly(e)
-                    .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
-                    .unwrap_or(false)
-            })
+            && connection
+                .right
+                .expressions
+                .iter()
+                // For native lookups, we do remove constants in the PIL
+                // optimizer, but this might not be the case for bus interactions.
+                .all(|e| FixedColOrConstant::try_from(e).is_ok())
             && !connection.right.expressions.is_empty()
     }
 
@@ -192,18 +233,18 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         identity_id: u64,
         rows: &RowPair<'_, 'a, T>,
         outer_query: OuterQuery<'a, '_, T>,
-        mut right: Peekable<impl Iterator<Item = &'a AlgebraicReference>>,
     ) -> EvalResult<'a, T> {
-        if outer_query.left.len() == 1
-            && !outer_query.left.first().unwrap().is_constant()
-            && right.peek().unwrap().poly_id.ptype == PolynomialType::Constant
-        {
-            // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
-            return self.process_range_check(
-                rows,
-                outer_query.left.first().unwrap(),
-                AlgebraicVariable::Column(right.peek().unwrap()),
-            );
+        let right = self.connections[&identity_id].right;
+
+        if outer_query.left.len() == 1 && !outer_query.left.first().unwrap().is_constant() {
+            if let Some(column_reference) = try_to_simple_poly(&right.expressions[0]) {
+                // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
+                return self.process_range_check(
+                    rows,
+                    outer_query.left.first().unwrap(),
+                    AlgebraicVariable::Column(column_reference),
+                );
+            }
         }
 
         // Split the left-hand-side into known input values and unknown output expressions.
@@ -240,9 +281,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 .constraints
                 .into_iter()
                 .filter(|(poly, _)| match poly {
-                    AlgebraicVariable::Column(poly) => {
-                        poly.poly_id.ptype == PolynomialType::Committed
-                    }
+                    AlgebraicVariable::Column(poly) => poly.is_witness(),
                     _ => unimplemented!(),
                 })
                 .collect(),
@@ -258,6 +297,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
 
     fn can_process_call_fully(
         &mut self,
+        _can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_arguments: &BitVec,
         range_constraints: &[RangeConstraint<T>],
@@ -351,20 +391,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         let identity = self.connections[&identity_id];
-        let right = identity.right;
-
-        // get the values of the fixed columns
-        let right = right
-            .expressions
-            .iter()
-            .map(|e| try_to_simple_poly(e).unwrap())
-            .peekable();
 
         let outer_query = match OuterQuery::try_new(caller_rows, identity) {
             Ok(outer_query) => outer_query,
             Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
         };
-        self.process_plookup_internal(mutable_state, identity_id, caller_rows, outer_query, right)
+        self.process_plookup_internal(mutable_state, identity_id, caller_rows, outer_query)
     }
 
     fn process_lookup_direct<'c, Q: QueryCallback<T>>(
@@ -404,7 +436,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
                 .zip(&right.expressions)
                 .filter_map(|(l, r)| match l {
                     LookupCell::Input(v) => {
-                        let name = try_to_simple_poly(r).unwrap().name.clone();
+                        let name = try_to_simple_poly(r)
+                            .map(|r| r.name.clone())
+                            .unwrap_or_else(|| r.to_string());
                         Some((name, **v))
                     }
                     _ => None,

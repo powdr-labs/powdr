@@ -467,7 +467,8 @@ fn permutation_to_block() {
 }
 
 #[test]
-#[should_panic = "called `Result::unwrap()` on an `Err` value: Linear constraint is not satisfiable: 18446744069414584320 != 0"]
+#[should_panic = "Witness generation failed."]
+
 fn permutation_to_vm() {
     // TODO: witgen issue: Machine incorrectly detected as block machine.
     let f = "asm/permutations/vm_to_vm.asm";

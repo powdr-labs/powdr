@@ -108,6 +108,17 @@ impl Error {
     pub fn message(&self) -> &str {
         &self.message
     }
+
+    pub fn source_ref(&self) -> &SourceRef {
+        &self.source_ref
+    }
+
+    pub fn extend_message<F>(&self, f: F) -> Error
+    where
+        F: FnOnce(&str) -> String,
+    {
+        self.source_ref().with_error(f(self.message()))
+    }
 }
 
 pub fn handle_parse_error(

@@ -22,6 +22,7 @@ use self::second_stage_machine::SecondStageMachine;
 use self::sorted_witness_machine::SortedWitnesses;
 use self::write_once_memory::WriteOnceMemory;
 
+use super::jit::witgen_inference::CanProcessCall;
 use super::range_constraints::RangeConstraint;
 use super::rows::RowPair;
 use super::{EvalError, EvalResult, FixedData, QueryCallback};
@@ -67,6 +68,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// or something similar.
     fn can_process_call_fully(
         &mut self,
+        _can_process: impl CanProcessCall<T>,
         _identity_id: u64,
         _known_arguments: &BitVec,
         _range_constraints: &[RangeConstraint<T>],
@@ -158,8 +160,8 @@ impl<T> LookupCell<'_, T> {
 }
 
 /// All known implementations of [Machine].
-/// This allows us to treat machines uniformly without putting them into a `Box`,
-/// which requires that all lifetime parameters are 'static.
+/// We cannot use Box<dyn Machine<..>> because the trait is not object-safe,
+/// since it has generic methods.
 pub enum KnownMachine<'a, T: FieldElement> {
     SecondStageMachine(SecondStageMachine<'a, T>),
     SortedWitnesses(SortedWitnesses<'a, T>),
@@ -171,52 +173,38 @@ pub enum KnownMachine<'a, T: FieldElement> {
     FixedLookup(FixedLookup<'a, T>),
 }
 
+/// A macro to dispatch a method call to the correct variant of [KnownMachine].
+macro_rules! match_variant {
+    ($s:ident, $i:ident => $e:expr) => {
+        match $s {
+            KnownMachine::SecondStageMachine($i) => $e,
+            KnownMachine::SortedWitnesses($i) => $e,
+            KnownMachine::DoubleSortedWitnesses16($i) => $e,
+            KnownMachine::DoubleSortedWitnesses32($i) => $e,
+            KnownMachine::WriteOnceMemory($i) => $e,
+            KnownMachine::BlockMachine($i) => $e,
+            KnownMachine::DynamicMachine($i) => $e,
+            KnownMachine::FixedLookup($i) => $e,
+        }
+    };
+}
+
 impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
-        match self {
-            KnownMachine::SecondStageMachine(m) => m.run(mutable_state),
-            KnownMachine::SortedWitnesses(m) => m.run(mutable_state),
-            KnownMachine::DoubleSortedWitnesses16(m) => m.run(mutable_state),
-            KnownMachine::DoubleSortedWitnesses32(m) => m.run(mutable_state),
-            KnownMachine::WriteOnceMemory(m) => m.run(mutable_state),
-            KnownMachine::BlockMachine(m) => m.run(mutable_state),
-            KnownMachine::DynamicMachine(m) => m.run(mutable_state),
-            KnownMachine::FixedLookup(m) => m.run(mutable_state),
-        }
+        match_variant!(self, m => m.run(mutable_state));
     }
 
     fn can_process_call_fully(
         &mut self,
+        can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_arguments: &BitVec,
         range_constraints: &[RangeConstraint<T>],
     ) -> Option<Vec<RangeConstraint<T>>> {
-        match self {
-            KnownMachine::SecondStageMachine(m) => {
-                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
-            }
-            KnownMachine::SortedWitnesses(m) => {
-                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
-            }
-            KnownMachine::DoubleSortedWitnesses16(m) => {
-                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
-            }
-            KnownMachine::DoubleSortedWitnesses32(m) => {
-                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
-            }
-            KnownMachine::WriteOnceMemory(m) => {
-                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
-            }
-            KnownMachine::BlockMachine(m) => {
-                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
-            }
-            KnownMachine::DynamicMachine(m) => {
-                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
-            }
-            KnownMachine::FixedLookup(m) => {
-                m.can_process_call_fully(identity_id, known_arguments, range_constraints)
-            }
-        }
+        match_variant!(
+            self,
+            m => m.can_process_call_fully(can_process, identity_id, known_arguments, range_constraints)
+        )
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -225,32 +213,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        match self {
-            KnownMachine::SecondStageMachine(m) => {
-                m.process_plookup(mutable_state, identity_id, caller_rows)
-            }
-            KnownMachine::SortedWitnesses(m) => {
-                m.process_plookup(mutable_state, identity_id, caller_rows)
-            }
-            KnownMachine::DoubleSortedWitnesses16(m) => {
-                m.process_plookup(mutable_state, identity_id, caller_rows)
-            }
-            KnownMachine::DoubleSortedWitnesses32(m) => {
-                m.process_plookup(mutable_state, identity_id, caller_rows)
-            }
-            KnownMachine::WriteOnceMemory(m) => {
-                m.process_plookup(mutable_state, identity_id, caller_rows)
-            }
-            KnownMachine::BlockMachine(m) => {
-                m.process_plookup(mutable_state, identity_id, caller_rows)
-            }
-            KnownMachine::DynamicMachine(m) => {
-                m.process_plookup(mutable_state, identity_id, caller_rows)
-            }
-            KnownMachine::FixedLookup(m) => {
-                m.process_plookup(mutable_state, identity_id, caller_rows)
-            }
-        }
+        match_variant!(self, m => m.process_plookup(mutable_state, identity_id, caller_rows))
     }
 
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
@@ -259,74 +222,22 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         identity_id: u64,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
-        match self {
-            KnownMachine::SecondStageMachine(m) => {
-                m.process_lookup_direct(mutable_state, identity_id, values)
-            }
-            KnownMachine::SortedWitnesses(m) => {
-                m.process_lookup_direct(mutable_state, identity_id, values)
-            }
-            KnownMachine::DoubleSortedWitnesses16(m) => {
-                m.process_lookup_direct(mutable_state, identity_id, values)
-            }
-            KnownMachine::DoubleSortedWitnesses32(m) => {
-                m.process_lookup_direct(mutable_state, identity_id, values)
-            }
-            KnownMachine::WriteOnceMemory(m) => {
-                m.process_lookup_direct(mutable_state, identity_id, values)
-            }
-            KnownMachine::BlockMachine(m) => {
-                m.process_lookup_direct(mutable_state, identity_id, values)
-            }
-            KnownMachine::DynamicMachine(m) => {
-                m.process_lookup_direct(mutable_state, identity_id, values)
-            }
-            KnownMachine::FixedLookup(m) => {
-                m.process_lookup_direct(mutable_state, identity_id, values)
-            }
-        }
+        match_variant!(self, m => m.process_lookup_direct(mutable_state, identity_id, values))
     }
 
     fn name(&self) -> &str {
-        match self {
-            KnownMachine::SecondStageMachine(m) => m.name(),
-            KnownMachine::SortedWitnesses(m) => m.name(),
-            KnownMachine::DoubleSortedWitnesses16(m) => m.name(),
-            KnownMachine::DoubleSortedWitnesses32(m) => m.name(),
-            KnownMachine::WriteOnceMemory(m) => m.name(),
-            KnownMachine::BlockMachine(m) => m.name(),
-            KnownMachine::DynamicMachine(m) => m.name(),
-            KnownMachine::FixedLookup(m) => m.name(),
-        }
+        match_variant!(self, m => m.name())
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
-        match self {
-            KnownMachine::SecondStageMachine(m) => m.take_witness_col_values(mutable_state),
-            KnownMachine::SortedWitnesses(m) => m.take_witness_col_values(mutable_state),
-            KnownMachine::DoubleSortedWitnesses16(m) => m.take_witness_col_values(mutable_state),
-            KnownMachine::DoubleSortedWitnesses32(m) => m.take_witness_col_values(mutable_state),
-            KnownMachine::WriteOnceMemory(m) => m.take_witness_col_values(mutable_state),
-            KnownMachine::BlockMachine(m) => m.take_witness_col_values(mutable_state),
-            KnownMachine::DynamicMachine(m) => m.take_witness_col_values(mutable_state),
-            KnownMachine::FixedLookup(m) => m.take_witness_col_values(mutable_state),
-        }
+        match_variant!(self, m => m.take_witness_col_values(mutable_state))
     }
 
     fn identity_ids(&self) -> Vec<u64> {
-        match self {
-            KnownMachine::SecondStageMachine(m) => m.identity_ids(),
-            KnownMachine::SortedWitnesses(m) => m.identity_ids(),
-            KnownMachine::DoubleSortedWitnesses16(m) => m.identity_ids(),
-            KnownMachine::DoubleSortedWitnesses32(m) => m.identity_ids(),
-            KnownMachine::WriteOnceMemory(m) => m.identity_ids(),
-            KnownMachine::BlockMachine(m) => m.identity_ids(),
-            KnownMachine::DynamicMachine(m) => m.identity_ids(),
-            KnownMachine::FixedLookup(m) => m.identity_ids(),
-        }
+        match_variant!(self, m => m.identity_ids())
     }
 }
 

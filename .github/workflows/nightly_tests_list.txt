@@ -8,7 +8,6 @@ test(=instruction_tests::bge) |
 test(=instruction_tests::blt) |
 test(=instruction_tests::bltu) |
 test(=instruction_tests::bne) |
-test(=instruction_tests::divu) |
 test(=instruction_tests::j) |
 test(=instruction_tests::jal) |
 test(=instruction_tests::lb) |
