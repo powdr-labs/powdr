@@ -310,7 +310,7 @@ where
                     .enumerate()
                     .map(|(index, (name, vec))| {
                         witness_col_circle_domain_index.insert(name.clone(), index + index_acc);
-                        Some(gen_stwo_circle_column::<B, M31>(
+                        Some(gen_stwo_circle_column::<_, M31>(
                             *domain_map
                                 .get(&(vec.len().ilog2() as usize))
                                 .expect("Domain not found for given size"),
