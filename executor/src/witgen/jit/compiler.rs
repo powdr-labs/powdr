@@ -409,9 +409,14 @@ fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable>) -> St
     }
 }
 
-fn format_condition<T: FieldElement>(condition: &BranchCondition<T, Variable>) -> String {
-    let var = format!("IntType::from({})", variable_to_string(&condition.variable));
-    let (min, max) = condition.condition.range();
+fn format_condition<T: FieldElement>(
+    BranchCondition {
+        variable,
+        condition,
+    }: &BranchCondition<T, Variable>,
+) -> String {
+    let var = format!("IntType::from({})", variable_to_string(variable));
+    let (min, max) = condition.range();
     match min.cmp(&max) {
         Ordering::Equal => format!("{var} == {min}",),
         Ordering::Less => format!("{min} <= {var} && {var} <= {max}"),
