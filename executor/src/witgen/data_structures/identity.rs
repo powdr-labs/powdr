@@ -1,5 +1,5 @@
 use core::fmt;
-use std::{cmp::max, collections::BTreeMap, ops::RangeFrom};
+use std::{collections::BTreeMap, ops::RangeFrom};
 
 use itertools::{Either, Itertools};
 use powdr_ast::{
@@ -16,8 +16,6 @@ use powdr_number::FieldElement;
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct BusSend<T> {
     /// The identity ID is globally unique among identities.
-    /// Note that matching send and receive identities have
-    /// different identity IDs.
     pub identity_id: u64,
     /// The ID of the bus this send sends to.
     /// This value is used to match sends and receives.
@@ -28,10 +26,6 @@ pub struct BusSend<T> {
 
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct BusReceive<T> {
-    /// The identity ID is globally unique among identities.
-    /// Note that matching send and receive identities have
-    /// different identity IDs.
-    pub identity_id: u64,
     /// The ID of the bus this receive listens on.
     /// There should be exactly one receive for each bus, but there can be
     /// multiple sends.
@@ -136,8 +130,8 @@ impl<T: fmt::Display> fmt::Display for BusReceive<T> {
             .map_or("None".to_string(), ToString::to_string);
         write!(
             f,
-            "Receive(payload={}, multiplicity={}, bus_id={}, identity_id={})",
-            self.selected_payload, multiplicity, self.bus_id, self.identity_id
+            "Receive(payload={}, multiplicity={}, bus_id={})",
+            self.selected_payload, multiplicity, self.bus_id
         )
     }
 }
@@ -200,12 +194,12 @@ enum IdentityOrReceive<T> {
 pub fn convert_identities<T: FieldElement>(
     analyzed: &Analyzed<T>,
 ) -> (Vec<Identity<T>>, BTreeMap<T, BusReceive<T>>) {
-    let mut id_counter = id_counter(&analyzed.identities);
+    let mut bus_id_counter = bus_id_counter(&analyzed.identities);
 
     let (identities, receives): (Vec<_>, Vec<_>) = analyzed
         .identities
         .iter()
-        .flat_map(|identity| convert_identity(&mut id_counter, identity))
+        .flat_map(|identity| convert_identity(&mut bus_id_counter, identity))
         .partition_map(|id| match id {
             IdentityOrReceive::Identity(identity) => Either::Left(identity),
             IdentityOrReceive::Receive(bus_receive) => Either::Right(bus_receive),
@@ -222,9 +216,8 @@ pub fn convert_identities<T: FieldElement>(
     (identities, receives)
 }
 
-fn id_counter<T: FieldElement>(identities: &[AnalyzedIdentity<T>]) -> RangeFrom<u64> {
-    // We need to allocate new identity and bus IDs. Make sure it doesn't collide.
-    let max_identity_id = identities.iter().map(|id| id.id()).max().unwrap_or(0);
+fn bus_id_counter<T: FieldElement>(identities: &[AnalyzedIdentity<T>]) -> RangeFrom<u64> {
+    // We need to allocate bus IDs. Make sure it doesn't collide.
     let max_bus_id = identities
         .iter()
         .filter_map(|id| match id {
@@ -239,14 +232,14 @@ fn id_counter<T: FieldElement>(identities: &[AnalyzedIdentity<T>]) -> RangeFrom<
         .max()
         .unwrap_or(T::zero())
         .to_degree();
-    (max(max_identity_id, max_bus_id) + 1)..
+    (max_bus_id + 1)..
 }
 
 /// Like [convert_identities], but only converts a single identity.
 /// The caller is responsible for providing an ID counter that does not
 /// collide with IDs from existing identities.
 fn convert_identity<T: FieldElement>(
-    id_counter: &mut RangeFrom<u64>,
+    bus_id_counter: &mut RangeFrom<u64>,
     identity: &AnalyzedIdentity<T>,
 ) -> Vec<IdentityOrReceive<T>> {
     match identity {
@@ -272,18 +265,24 @@ fn convert_identity<T: FieldElement>(
             left,
             right,
             ..
-        }) => bus_interaction_pair(*id, id_counter, left, right, Some(right.selector.clone())),
+        }) => bus_interaction_pair(
+            *id,
+            bus_id_counter,
+            left,
+            right,
+            Some(right.selector.clone()),
+        ),
         // Native lookups do not have a multiplicity.
         AnalyzedIdentity::Lookup(LookupIdentity {
             id, left, right, ..
-        }) => bus_interaction_pair(*id, id_counter, left, right, None),
+        }) => bus_interaction_pair(*id, bus_id_counter, left, right, None),
         AnalyzedIdentity::PhantomLookup(PhantomLookupIdentity {
             id,
             left,
             right,
             multiplicity,
             ..
-        }) => bus_interaction_pair(*id, id_counter, left, right, Some(multiplicity.clone())),
+        }) => bus_interaction_pair(*id, bus_id_counter, left, right, Some(multiplicity.clone())),
     }
 }
 
@@ -314,7 +313,6 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
     };
     if is_receive {
         IdentityOrReceive::Receive(BusReceive {
-            identity_id: bus_interaction.id,
             bus_id,
             multiplicity: Some(multiplicity),
             selected_payload,
@@ -331,12 +329,12 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
 
 fn bus_interaction_pair<T: FieldElement>(
     id: u64,
-    id_counter: &mut RangeFrom<u64>,
+    bus_id_counter: &mut RangeFrom<u64>,
     left: &SelectedExpressions<T>,
     right: &SelectedExpressions<T>,
     rhs_multiplicity: Option<AlgebraicExpression<T>>,
 ) -> Vec<IdentityOrReceive<T>> {
-    let bus_id: T = id_counter.next().unwrap().into();
+    let bus_id: T = bus_id_counter.next().unwrap().into();
     vec![
         IdentityOrReceive::Identity(Identity::BusSend(BusSend {
             identity_id: id,
@@ -344,7 +342,6 @@ fn bus_interaction_pair<T: FieldElement>(
             selected_payload: left.clone(),
         })),
         IdentityOrReceive::Receive(BusReceive {
-            identity_id: id_counter.next().unwrap(),
             multiplicity: rhs_multiplicity,
             bus_id,
             selected_payload: right.clone(),
