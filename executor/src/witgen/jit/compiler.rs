@@ -288,13 +288,17 @@ fn format_effects_inner<T: FieldElement>(
     effects: &[Effect<T, Variable>],
     is_top_level: bool,
 ) -> String {
-    indent(
-        effects
-            .iter()
-            .map(|effect| format_effect(effect, is_top_level))
-            .join("\n"),
-        1,
-    )
+    indent(format_effects_inner_unindented(effects, is_top_level), 1)
+}
+
+fn format_effects_inner_unindented<T: FieldElement>(
+    effects: &[Effect<T, Variable>],
+    is_top_level: bool,
+) -> String {
+    effects
+        .iter()
+        .map(|effect| format_effect(effect, is_top_level))
+        .join("\n")
 }
 
 fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bool) -> String {
@@ -369,12 +373,22 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
             } else {
                 "".to_string()
             };
-            format!(
-                "{var_decls}if {} {{\n{}\n}} else {{\n{}\n}}",
-                format_condition(condition),
-                format_effects_inner(first, false),
-                format_effects_inner(second, false)
-            )
+
+            if matches!(second[..], [Effect::Branch(..)]) {
+                format!(
+                    "{var_decls}if {} {{\n{}\n}} else if {}",
+                    format_condition(condition),
+                    format_effects_inner(first, false),
+                    format_effects_inner_unindented(second, false)
+                )
+            } else {
+                format!(
+                    "{var_decls}if {} {{\n{}\n}} else {{\n{}\n}}",
+                    format_condition(condition),
+                    format_effects_inner(first, false),
+                    format_effects_inner(second, false)
+                )
+            }
         }
     }
 }
@@ -998,19 +1012,29 @@ extern \"C\" fn witgen(
     fn branches_codegen() {
         let x = param(0);
         let y = param(1);
+        let z = param(2);
         let branch_effect = Effect::Branch(
             BranchCondition {
                 variable: x.clone(),
                 condition: RangeConstraint::from_range(7.into(), 20.into()),
             },
             vec![assignment(&y, symbol(&x) + number(1))],
-            vec![assignment(&y, symbol(&x) + number(2))],
+            vec![Effect::Branch(
+                BranchCondition {
+                    variable: z.clone(),
+                    condition: RangeConstraint::from_range(7.into(), 20.into()),
+                },
+                vec![assignment(&y, symbol(&x) + number(2))],
+                vec![assignment(&y, symbol(&x) + number(3))],
+            )],
         );
         let expectation = "    let p_1;
     if 7 <= IntType::from(p_0) && IntType::from(p_0) <= 20 {
         p_1 = (p_0 + FieldElement::from(1));
-    } else {
+    } else if if 7 <= IntType::from(p_2) && IntType::from(p_2) <= 20 {
         p_1 = (p_0 + FieldElement::from(2));
+    } else {
+        p_1 = (p_0 + FieldElement::from(3));
     }";
         assert_eq!(format_effects(&[branch_effect]), expectation);
     }

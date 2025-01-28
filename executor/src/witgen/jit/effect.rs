@@ -145,11 +145,22 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
                 panic!("Range constraints should not be part of the code.")
             }
             Effect::Branch(condition, first, second) => {
-                let first = indent(format_code(first), 1);
-                let second = indent(format_code(second), 1);
+                let first = format_code(first);
+                let second_str = format_code(second);
                 let condition = format_condition(condition);
 
-                format!("if ({condition}) {{\n{first}\n}} else {{\n{second}\n}}")
+                if matches!(second[..], [Effect::Branch(..)]) {
+                    format!(
+                        "if ({condition}) {{\n{}\n}} else {second_str}",
+                        indent(first, 1),
+                    )
+                } else {
+                    format!(
+                        "if ({condition}) {{\n{}\n}} else {{\n{}\n}}",
+                        indent(first, 1),
+                        indent(second_str, 1)
+                    )
+                }
             }
         })
         .join("\n")
@@ -166,5 +177,94 @@ fn format_condition<T: FieldElement>(
         Ordering::Equal => format!("{variable} == {min}"),
         Ordering::Less => format!("{min} <= {variable} && {variable} <= {max}"),
         Ordering::Greater => format!("{variable} <= {min} || {variable} >= {max}"),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use powdr_number::GoldilocksField;
+
+    use crate::witgen::jit::variable::Cell;
+
+    use pretty_assertions::assert_eq;
+
+    use super::*;
+    type T = GoldilocksField;
+
+    fn var(id: u64) -> Variable {
+        Variable::WitnessCell(Cell {
+            column_name: format!("v{id}"),
+            id,
+            row_offset: 0,
+        })
+    }
+
+    #[test]
+    fn combine_if_else() {
+        let effects = vec![
+            Effect::Assignment(var(0), SymbolicExpression::from(T::from(1))),
+            Effect::Branch(
+                BranchCondition {
+                    variable: var(0),
+                    condition: RangeConstraint::from_range(T::from(1), T::from(2)),
+                },
+                vec![Effect::Assignment(
+                    var(1),
+                    SymbolicExpression::from(T::from(2)),
+                )],
+                vec![Effect::Branch(
+                    BranchCondition {
+                        variable: var(1),
+                        condition: RangeConstraint::from_range(T::from(5), T::from(6)),
+                    },
+                    vec![Effect::Branch(
+                        BranchCondition {
+                            variable: var(2),
+                            condition: RangeConstraint::from_range(T::from(5), T::from(6)),
+                        },
+                        vec![Effect::Assignment(
+                            var(8),
+                            SymbolicExpression::from(T::from(3)),
+                        )],
+                        vec![Effect::Assignment(
+                            var(9),
+                            SymbolicExpression::from(T::from(4)),
+                        )],
+                    )],
+                    vec![Effect::Branch(
+                        BranchCondition {
+                            variable: var(3),
+                            condition: RangeConstraint::from_range(T::from(5), T::from(6)),
+                        },
+                        vec![Effect::Assignment(
+                            var(21),
+                            SymbolicExpression::from(T::from(3)),
+                        )],
+                        vec![Effect::Assignment(
+                            var(22),
+                            SymbolicExpression::from(T::from(4)),
+                        )],
+                    )],
+                )],
+            ),
+        ];
+        let code = format_code(&effects);
+        assert_eq!(
+            code,
+            "v0[0] = 1;
+if (1 <= v0[0] && v0[0] <= 2) {
+    v1[0] = 2;
+} else if (5 <= v1[0] && v1[0] <= 6) {
+    if (5 <= v2[0] && v2[0] <= 6) {
+        v8[0] = 3;
+    } else {
+        v9[0] = 4;
+    }
+} else if (5 <= v3[0] && v3[0] <= 6) {
+    v21[0] = 3;
+} else {
+    v22[0] = 4;
+}"
+        );
     }
 }
