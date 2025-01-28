@@ -298,7 +298,7 @@ where
         let mut witness_col_circle_domain_index = BTreeMap::new();
         let mut index_acc = 0;
 
-        //Get witness columns in circle domain for stage 0
+        // Get witness columns in circle domain for stage 0
         let mut witness_cols_circle_domain_eval: ColumnVec<
             Option<CircleEvaluation<B, BaseField, BitReversedOrder>>,
         > = witness_by_machine
