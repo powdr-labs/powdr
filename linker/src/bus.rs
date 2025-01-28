@@ -33,7 +33,7 @@ pub struct BusLinker {
     pil: Vec<PilStatement>,
     /// for each machine instance, the size of the selector array, based on the number of permutation links pointing to it
     selector_array_size_by_instance: BTreeMap<Location, usize>,
-    /// for each link destination, the index in the selector array that the link points to
+    /// for each link destination, the index in the selector array that the link points to. For lookups, this is None.
     selector_array_index_by_operation: BTreeMap<LinkTo, Option<usize>>,
 }
 
@@ -55,8 +55,8 @@ impl LinkerBackend for BusLinker {
             // keep only the unique link destinations
             .unique_by(|link| (&link.to, link.is_permutation))
             // check that the same operation is not called both through lookup and permutation
-            .scan(HashSet::default(), |state: &mut HashSet<_>, link| {
-                let existing_value = state.insert(link.to.clone());
+            .scan(Default::default(), |state: &mut HashSet<_>, link| {
+                let existing_value = state.insert(&link.to);
                 assert!(
                     existing_value,
                     "Operation should not be called both as a lookup and a permutation"
@@ -66,24 +66,20 @@ impl LinkerBackend for BusLinker {
             .fold(
                 (BTreeMap::new(), BTreeMap::new()),
                 |(mut indices, mut sizes), link| {
-                    match link.is_permutation {
-                        false => {
-                            indices.insert(link.to.clone(), None);
-                            (indices, sizes)
-                        }
-                        true => {
-                            // get the current size of the array
-                            let size = sizes.entry(link.to.machine.clone()).or_default();
-                            // that is the index of the next selector
-                            let index = *size;
-                            // increment the size of the array
-                            *size += 1;
-                            // store the index
-                            assert!(indices.insert(link.to.clone(), Some(index)).is_none());
-                            // return the updated maps
-                            (indices, sizes)
-                        }
-                    }
+                    let to_insert = link.is_permutation.then(|| {
+                        // get the current size of the array
+                        let size = sizes.entry(link.to.machine.clone()).or_default();
+                        // that is the index of the next selector
+                        let index = *size;
+                        // increment the size of the array
+                        *size += 1;
+                        // return the index
+                        index
+                    });
+
+                    assert!(indices.insert(link.to.clone(), to_insert).is_none());
+
+                    (indices, sizes)
                 },
             );
 
@@ -137,6 +133,7 @@ impl LinkerBackend for BusLinker {
 
         let namespace_degree = try_into_namespace_degree(object.degree.clone())
             .unwrap_or_else(|| panic!("machine at {location} must have an explicit degree"));
+
         // create a namespace for this object
         self.pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
@@ -147,8 +144,7 @@ impl LinkerBackend for BusLinker {
         self.pil.extend(object.pil.clone());
 
         if let Some(call_selectors) = &object.call_selectors {
-            // TODO: this is not optimal in the case where some operations are called via lookups or not called at all, but it will do for now.
-            // If we used separate selector columns instead of an array, the optimizer could remove the unused ones better
+            // declare the call selectors array. In the case no permutation links point to this object, the array is empty and removed by the optimizer.
             let count = self
                 .selector_array_size_by_instance
                 .get(location)
@@ -237,12 +233,14 @@ impl BusLinker {
             let latch = namespaced_reference(namespace.clone(), object.latch.clone().unwrap());
 
             let (function, arguments) = match selector_index {
+                // a selector index of None means this operation is called via lookup
                 None => (
                     SymbolPath::from_str("std::protocols::lookup_via_bus::lookup_receive")
                         .unwrap()
                         .into(),
                     vec![interaction_id.into(), latch, tuple],
                 ),
+                // a selector index of Some means this operation is called via permutation
                 Some(selector_index) => (
                     SymbolPath::from_str(
                         "std::protocols::permutation_via_bus::permutation_receive",

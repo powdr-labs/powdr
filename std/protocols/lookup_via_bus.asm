@@ -1,6 +1,6 @@
 use std::protocols::bus::bus_receive;
 
-/// Given an ID, selector, tuple and latch, receives (ID, ...tuple) tuple from the bus
+/// Given an ID, selector, and tuple, receives (ID, ...tuple) tuple from the bus
 /// with a prover-provided multiplicity if the selector is 1.
 let lookup_receive: expr, expr, expr[] -> () = constr |id, selector, tuple| {
     let multiplicities;

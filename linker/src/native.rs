@@ -50,6 +50,7 @@ impl LinkerBackend for NativeLinker {
                         .then_some((location.clone(), link.clone()))
                 })
             })
+            // note: many calls to the same machine instance will generate many call selectors
             .fold(
                 (BTreeMap::new(), BTreeMap::new()),
                 |(mut indices, mut sizes), (location, link)| {
@@ -180,6 +181,7 @@ impl LinkerBackend for NativeLinker {
         // declare call selectors if they are present
         if let Some(call_selectors) = &object.call_selectors {
             // declare the call selectors array with a length equal to the number of incoming permutation links
+            // in the absence of incoming permutation links, the array is empty and removed by the optimizer
             let count = self
                 .selector_array_size_by_instance
                 .get(location)

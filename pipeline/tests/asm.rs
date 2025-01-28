@@ -468,7 +468,6 @@ fn permutation_to_block() {
 
 #[test]
 #[should_panic = "Witness generation failed."]
-
 fn permutation_to_vm() {
     // TODO: witgen issue: Machine incorrectly detected as block machine.
     let f = "asm/permutations/vm_to_vm.asm";
