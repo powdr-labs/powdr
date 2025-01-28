@@ -49,9 +49,8 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     fn format_identity(&self, identity: &Identity<T>, row_offset: i32) -> String {
         match identity {
             Identity::BusSend(BusSend {
-                selected_payload: selected_tuple,
-                ..
-            }) => self.format_connection(selected_tuple, row_offset),
+                selected_payload, ..
+            }) => self.format_bus_send(selected_payload, row_offset),
             Identity::BusReceive(_) | Identity::Connect(_) => {
                 format!("{identity}")
             }
@@ -74,9 +73,14 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
         }
     }
 
-    fn format_connection(&self, left: &SelectedExpressions<T>, row_offset: i32) -> String {
-        let sel = self.format_expression_full_and_simplified(&left.selector, row_offset);
-        let exprs = left
+    fn format_bus_send(
+        &self,
+        selected_payload: &SelectedExpressions<T>,
+        row_offset: i32,
+    ) -> String {
+        let sel =
+            self.format_expression_full_and_simplified(&selected_payload.selector, row_offset);
+        let exprs = selected_payload
             .expressions
             .iter()
             .map(|e| self.format_expression_full_and_simplified(e, row_offset))

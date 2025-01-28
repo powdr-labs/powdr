@@ -16,8 +16,11 @@ use powdr_number::FieldElement;
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct BusSend<T> {
     /// The identity ID is globally unique among identities.
+    /// Note that matching send and receive identities have
+    /// different identity IDs.
     pub identity_id: u64,
     /// The ID of the bus this send sends to.
+    /// This value is used to match sends and receives.
     pub bus_id: AlgebraicExpression<T>,
     /// The payload sent to the bus, with a selector.
     pub selected_payload: SelectedExpressions<T>,
@@ -26,6 +29,8 @@ pub struct BusSend<T> {
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct BusReceive<T> {
     /// The identity ID is globally unique among identities.
+    /// Note that matching send and receive identities have
+    /// different identity IDs.
     pub identity_id: u64,
     /// The ID of the bus this receive listens on.
     /// There should be exactly one receive for each bus, but there can be
