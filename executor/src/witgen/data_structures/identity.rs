@@ -185,11 +185,12 @@ enum IdentityOrReceive<T> {
     Receive(BusReceive<T>),
 }
 
-/// Converts a list of [powdr_ast::analyzed::Identity] into a list of [Identity].
+/// Converts a list of [powdr_ast::analyzed::Identity] into a list of [Identity]
+/// and a map of [BusReceive]s (bus ID -> BusReceive).
 /// Polynomial and connect identities remain unchanged, phantom bus interactions
 /// are converted to either a bus send or bus receive, and permutations and lookups
 /// are converted to a pair of bus send and bus receive.
-/// Because this function allocates new identities, we receive a reference to [Analyzed],
+/// Because this function allocates new bus IDs, we receive a reference to [Analyzed],
 /// so we can be sure we operate on all identities.
 pub fn convert_identities<T: FieldElement>(
     analyzed: &Analyzed<T>,
