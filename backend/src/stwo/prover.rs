@@ -303,10 +303,10 @@ where
             Option<CircleEvaluation<B, BaseField, BitReversedOrder>>,
         > = witness_by_machine
             .clone()
-            .into_values()
+            .values()
             .flat_map(|witness_cols| {
                 let witness_cols_in_circle_domain = witness_cols
-                    .into_iter()
+                    .iter()
                     .enumerate()
                     .map(|(index, (name, col))| {
                         witness_col_circle_domain_index.insert(name.clone(), index + index_acc);
@@ -314,7 +314,7 @@ where
                             *domain_map
                                 .get(&(col.len().ilog2() as usize))
                                 .expect("Domain not found for given size"),
-                            &col,
+                            col,
                         ))
                     })
                     .collect::<Vec<_>>();
@@ -375,8 +375,7 @@ where
                     machine_witness.sort_by_key(|(k, _)| {
                         new_witness.iter().position(|(name, _)| name == k).unwrap()
                     });
-
-                    machine_log_sizes.insert(machine_name.clone(), new_witness[0].1.len().ilog2());
+                   
                 });
 
             let mut results = Vec::new();
