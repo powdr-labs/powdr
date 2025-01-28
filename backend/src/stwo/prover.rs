@@ -303,8 +303,8 @@ where
             Option<CircleEvaluation<B, BaseField, BitReversedOrder>>,
         > = witness_by_machine
             .clone()
-            .into_iter()
-            .flat_map(|(_name, witness_cols)| {
+            .into_values()
+            .flat_map(|witness_cols| {
                 let witness_cols_in_circle_domain = witness_cols
                     .into_iter()
                     .enumerate()
