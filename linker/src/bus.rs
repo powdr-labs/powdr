@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::combine_flags,
@@ -10,12 +11,12 @@ use powdr_ast::{
 };
 use powdr_parser_util::SourceRef;
 use sha2::{Digest, Sha256};
-use std::{collections::BTreeMap, str::FromStr};
-
-use crate::{
-    call, try_into_namespace_degree, DegreeMode, InteractionType, LinkerBackend,
-    MAIN_OPERATION_NAME,
+use std::{
+    collections::{BTreeMap, HashSet},
+    str::FromStr,
 };
+
+use crate::{call, try_into_namespace_degree, DegreeMode, LinkerBackend, MAIN_OPERATION_NAME};
 
 /// Compute a unique identifier for an interaction
 fn interaction_id(link_to: &LinkTo) -> u32 {
@@ -30,8 +31,10 @@ fn interaction_id(link_to: &LinkTo) -> u32 {
 pub struct BusLinker {
     /// the pil statements
     pil: Vec<PilStatement>,
-    /// for each operation, whether we are in permutation mode or lookup mode
-    operation_mode: BTreeMap<LinkTo, InteractionType>,
+    /// for each machine instance, the size of the selector array, based on the number of permutation links pointing to it
+    selector_array_size_by_instance: BTreeMap<Location, usize>,
+    /// for each link destination, the index in the selector array that the link points to
+    selector_array_index_by_operation: BTreeMap<LinkTo, Option<usize>>,
 }
 
 impl LinkerBackend for BusLinker {
@@ -43,35 +46,51 @@ impl LinkerBackend for BusLinker {
             DegreeMode::Vadcop => Ok(()),
         }?;
 
-        let operation_mode = graph
+        // generate the maps of selector array sizes and indices
+        let (selector_array_index_by_operation, selector_array_size_by_instance) = graph
             .objects
-            .iter()
-            .flat_map(|(_, object)| {
-                object.links.iter().map(|link| {
-                    (
-                        link.to.clone(),
-                        if link.is_permutation {
-                            InteractionType::Permutation
-                        } else {
-                            InteractionType::Lookup
-                        },
-                    )
-                })
-            })
-            .fold(BTreeMap::default(), |mut acc, (to, interaction_type)| {
-                let existing_value = acc.insert(to, interaction_type);
+            .values()
+            // go through all calls
+            .flat_map(|object| object.links.iter())
+            // keep only the unique link destinations
+            .unique_by(|link| (&link.to, link.is_permutation))
+            // check that the same operation is not called both through lookup and permutation
+            .scan(HashSet::default(), |state: &mut HashSet<_>, link| {
+                let existing_value = state.insert(link.to.clone());
                 assert!(
-                    existing_value
-                        .map(|v| v == interaction_type)
-                        .unwrap_or(true),
-                    "All links to the same operation must have the same permutation mode"
+                    existing_value,
+                    "Operation should not be called both as a lookup and a permutation"
                 );
-                acc
-            });
+                Some(link)
+            })
+            .fold(
+                (BTreeMap::new(), BTreeMap::new()),
+                |(mut indices, mut sizes), link| {
+                    match link.is_permutation {
+                        false => {
+                            indices.insert(link.to.clone(), None);
+                            (indices, sizes)
+                        }
+                        true => {
+                            // get the current size of the array
+                            let size = sizes.entry(link.to.machine.clone()).or_default();
+                            // that is the index of the next selector
+                            let index = *size;
+                            // increment the size of the array
+                            *size += 1;
+                            // store the index
+                            assert!(indices.insert(link.to.clone(), Some(index)).is_none());
+                            // return the updated maps
+                            (indices, sizes)
+                        }
+                    }
+                },
+            );
 
         Ok(Self {
             pil: Default::default(),
-            operation_mode,
+            selector_array_size_by_instance,
+            selector_array_index_by_operation,
         })
     }
 
@@ -130,7 +149,11 @@ impl LinkerBackend for BusLinker {
         if let Some(call_selectors) = &object.call_selectors {
             // TODO: this is not optimal in the case where some operations are called via lookups or not called at all, but it will do for now.
             // If we used separate selector columns instead of an array, the optimizer could remove the unused ones better
-            let count = object.operations.len();
+            let count = self
+                .selector_array_size_by_instance
+                .get(location)
+                .cloned()
+                .unwrap_or_default();
             self.pil.extend([
                 parse_pil_statement(&format!("col witness {call_selectors}[{count}];")),
                 parse_pil_statement(&format!(
@@ -144,8 +167,8 @@ impl LinkerBackend for BusLinker {
             self.process_link(link, location, objects);
         }
         // receive incoming links
-        for (operation_index, (name, operation)) in object.operations.iter().enumerate() {
-            self.process_operation(name, operation, operation_index, location, object);
+        for (name, operation) in &object.operations {
+            self.process_operation(name, operation, location, object);
         }
 
         // if this is the main object, call the main operation
@@ -176,7 +199,6 @@ impl BusLinker {
         &mut self,
         operation_name: &str,
         operation: &Operation,
-        operation_index: usize,
         location: &Location,
         object: &Object,
     ) {
@@ -185,10 +207,10 @@ impl BusLinker {
             operation: operation_name.to_string(),
         };
 
-        let interaction_ty = self.operation_mode.get(&link_to);
+        let selector_index = self.selector_array_index_by_operation.get(&link_to);
 
-        // By construction, all operations *which are called* have an [InteractionType]. The others can be safely ignored.
-        if let Some(interaction_ty) = interaction_ty {
+        // By construction, all operations *which are called* have an optional selector index. The others can be safely ignored.
+        if let Some(selector_index) = selector_index {
             // compute the unique interaction id
             let interaction_id = interaction_id(&link_to);
 
@@ -214,14 +236,14 @@ impl BusLinker {
 
             let latch = namespaced_reference(namespace.clone(), object.latch.clone().unwrap());
 
-            let (function, arguments) = match interaction_ty {
-                InteractionType::Lookup => (
+            let (function, arguments) = match selector_index {
+                None => (
                     SymbolPath::from_str("std::protocols::lookup_via_bus::lookup_receive")
                         .unwrap()
                         .into(),
                     vec![interaction_id.into(), latch, tuple],
                 ),
-                InteractionType::Permutation => (
+                Some(selector_index) => (
                     SymbolPath::from_str(
                         "std::protocols::permutation_via_bus::permutation_receive",
                     )
@@ -236,7 +258,7 @@ impl BusLinker {
                                 .unwrap_or_else(|| panic!("{location} has incoming permutations but doesn't declare call_selectors")),
                             );
                         let call_selector =
-                            index_access(call_selector_array, Some(operation_index.into()));
+                            index_access(call_selector_array, Some((*selector_index).into()));
                         let rhs_selector = latch * call_selector;
 
                         vec![interaction_id.into(), rhs_selector, tuple]
