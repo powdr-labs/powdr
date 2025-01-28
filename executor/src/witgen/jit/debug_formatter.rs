@@ -83,7 +83,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
                 let lines = a.into_iter().zip(b).enumerate();
                 lines
                     .map(|(i, (a, b))| {
-                        let comma = if i == 0 { "," } else { " " };
+                        let comma = if i % 3 == 0 { "," } else { " " };
                         format!("{a}{comma} {b}")
                     })
                     .collect_vec()
@@ -95,7 +95,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
             .zip(exprs)
             .enumerate()
             .map(|(i, (sel, exprs))| {
-                if i == 0 {
+                if i % 3 == 0 {
                     format!("{sel} $ [ {exprs} ]")
                 } else {
                     format!("{sel}     {exprs}  ")
@@ -127,7 +127,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     ) -> [String; 6] {
         let full = self.format_expression(e, row_offset, false);
         let simplified = self.format_expression(e, row_offset, true);
-        pad_center([full, simplified].concat().try_into().unwrap())
+        [full, simplified].concat().try_into().unwrap()
     }
 
     /// Returns three formatted strings of the same length.

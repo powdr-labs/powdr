@@ -324,15 +324,24 @@ VM::instr_mul[1] = 1;"
         match generate_single_step(input, "Main") {
             Ok(_) => panic!("Expected error"),
             Err(e) => {
+                let start = e
+                    .find("The following identities have not been fully processed:")
+                    .unwrap();
+                let end = e
+                    .find("The following branch decisions were taken:")
+                    .unwrap();
                 let expected = "\
+The following identities have not been fully processed:
+--------------[ identity 1 on row 1: ]--------------
 Main::is_arith $ [ Main::a, Main::b, Main::c ]
      ???              2       ???      ???    
                                               
-Main::is_arith        2     Main::b  Main::c  
-     ???                      ???      ???    
-                                          ";
-                assert!(
-                    e.contains(expected),
+Main::is_arith $ [ 2, Main::b, Main::c ]
+     ???                ???      ???    
+                                        \n";
+                assert_eq!(
+                    &e[start..end],
+                    expected,
                     "Error did not contain expected substring. Error:\n{e}\nExpected substring:\n{expected}"
                 );
             }
