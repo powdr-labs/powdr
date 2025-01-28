@@ -87,6 +87,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             requested_known,
             SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
+        .with_block_size(2)
         .generate_code(can_process, witgen)
         .map_err(|e| e.to_string())
         .map(|r| r.code)
@@ -328,15 +329,6 @@ VM::instr_mul[1] = 1;"
             col witness X, Y, Z;
             Z = X + Y;
         ";
-
-        // TODO: This currently succeeds with the following code:
-        // Main::a[1] = 2;
-        // Main::b[1] = 0;
-        // Main::c[1] = 0;
-        // Main::is_arith[1] = 0;
-
-        // But it does not do the call, which should be required!
-        // It should not set `is_arith` to zero - or should it?
 
         match generate_single_step(input, "Main") {
             Ok(r) => {
