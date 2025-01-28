@@ -91,10 +91,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             -1
         };
         let identities = (start_row..self.block_size as i32).flat_map(move |row| {
-            self.machine_parts
-                .identities
-                .iter()
-                .map(move |&id| (id, row))
+            self.machine_parts.identities.iter().filter_map(move |&id| {
+                // Filter out identities with next references on the last row.
+                if row as usize == self.block_size - 1 && id.contains_next_ref() {
+                    None
+                } else {
+                    Some((id, row))
+                }
+            })
         });
 
         let requested_known = known_args

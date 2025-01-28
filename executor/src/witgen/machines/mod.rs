@@ -20,6 +20,7 @@ use self::sorted_witness_machine::SortedWitnesses;
 use self::write_once_memory::WriteOnceMemory;
 
 use super::data_structures::identity::{BusReceive, Identity};
+use super::jit::witgen_inference::CanProcessCall;
 use super::range_constraints::RangeConstraint;
 use super::rows::RowPair;
 use super::{EvalError, EvalResult, FixedData, QueryCallback};
@@ -65,6 +66,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// or something similar.
     fn can_process_call_fully(
         &mut self,
+        _can_process: impl CanProcessCall<T>,
         _identity_id: u64,
         _known_arguments: &BitVec,
         _range_constraints: &[RangeConstraint<T>],
@@ -192,13 +194,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
 
     fn can_process_call_fully(
         &mut self,
+        can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_arguments: &BitVec,
         range_constraints: &[RangeConstraint<T>],
     ) -> Option<Vec<RangeConstraint<T>>> {
         match_variant!(
             self,
-            m => m.can_process_call_fully(identity_id, known_arguments, range_constraints)
+            m => m.can_process_call_fully(can_process, identity_id, known_arguments, range_constraints)
         )
     }
 
