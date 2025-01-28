@@ -328,6 +328,21 @@ where
         // TODO: Commit witness and constant columns of stage 0 to generate sound challenges for stage 1. This is not implemented yet.
         // To commit, Stwo requires the witness and constant columns to be already evaluated in the circle domain,
         // so `witness_cols_circle_domain_eval` and `constant_cols` should be available at this point.
+        let twiddles_max_degree = B::precompute_twiddles(
+            CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
+                .circle_domain()
+                .half_coset,
+        );
+
+        let prover_channel = &mut <MC as MerkleChannel>::C::default();
+        let mut commitment_scheme =
+            CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles_max_degree);
+
+        let mut tree_builder = commitment_scheme.tree_builder();
+
+        tree_builder.extend_evals(constant_cols);
+
+        tree_builder.commit(prover_channel);
 
         // Generate challenges for stage 1 based on stage 0 traces.
         // Stwo supports a maximum of 2 stages, and challenges are created only for stage 0.
@@ -384,63 +399,47 @@ where
             witness_cols_circle_domain_eval = results;
         }
 
-        let twiddles_max_degree = B::precompute_twiddles(
-            CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
-                .circle_domain()
-                .half_coset,
-        );
-
-        let prover_channel = &mut <MC as MerkleChannel>::C::default();
-        let mut commitment_scheme =
-            CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles_max_degree);
-
-        let mut tree_builder = commitment_scheme.tree_builder();
-
-        tree_builder.extend_evals(constant_cols);
-
-        tree_builder.commit(prover_channel);
-
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(witness_cols_circle_domain_eval.into_iter().flatten());
         tree_builder.commit(prover_channel);
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
-        // Each column size in machines needs its own component, the components from different machines are stored in this vector
-        let mut components = Vec::new();
 
         // Build the circuit. The circuit includes constraints of all the machines in both stage 0 and stage 1
         let mut constant_cols_offset_acc = 0;
-        self.split.iter().zip_eq(machine_log_sizes.iter()).for_each(
-            |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
-                assert_eq!(machine_name, proof_machine_name);
+        let components = self
+            .split
+            .iter()
+            .zip_eq(machine_log_sizes.iter())
+            .map(
+                |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
+                    assert_eq!(machine_name, proof_machine_name);
 
-                let component = PowdrComponent::new(
-                    tree_span_provider,
-                    PowdrEval::new(
-                        (*pil).clone(),
-                        constant_cols_offset_acc,
-                        machine_log_size,
-                        stage0_challenges.clone(),
-                    ),
-                    (SecureField::zero(), None),
-                );
+                    let component = PowdrComponent::new(
+                        tree_span_provider,
+                        PowdrEval::new(
+                            (*pil).clone(),
+                            constant_cols_offset_acc,
+                            machine_log_size,
+                            stage0_challenges.clone(),
+                        ),
+                        (SecureField::zero(), None),
+                    );
 
-                components.push(component);
+                    constant_cols_offset_acc +=
+                        pil.constant_count() + get_constant_with_next_list(pil).len();
+                    component
+                },
+            )
+            .collect::<Vec<_>>();
 
-                constant_cols_offset_acc +=
-                    pil.constant_count() + get_constant_with_next_list(pil).len();
-            },
-        );
-
-        let mut components_slice: Vec<&dyn ComponentProver<B>> = components
-            .iter_mut()
+        let components_slice: Vec<&dyn ComponentProver<B>> = components
+            .iter()
             .map(|component| component as &dyn ComponentProver<B>)
             .collect();
 
-        let components_slice = components_slice.as_mut_slice();
-
         let proof_result = stwo_prover::core::prover::prove::<B, MC>(
-            components_slice,
+            &components_slice,
             prover_channel,
             commitment_scheme,
         );
