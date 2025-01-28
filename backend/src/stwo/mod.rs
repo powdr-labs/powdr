@@ -17,7 +17,6 @@ use stwo_prover::core::channel::{Blake2sChannel, Channel, MerkleChannel};
 use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 
 mod circuit_builder;
-mod params;
 mod proof;
 mod prover;
 

@@ -6,7 +6,8 @@ use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
 
-use powdr_number::Mersenne31Field;
+use powdr_number::{FieldElement, LargeInt, Mersenne31Field};
+
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 
@@ -29,7 +30,6 @@ use stwo_prover::constraint_framework::{
     TraceLocationAllocator, ORIGINAL_TRACE_IDX, PREPROCESSED_TRACE_IDX,
 };
 
-use crate::stwo::params::BaseFieldElementMap;
 use stwo_prover::core::air::{Component, ComponentProver};
 use stwo_prover::core::backend::{Backend, BackendForChannel};
 use stwo_prover::core::channel::{Channel, MerkleChannel};
@@ -593,10 +593,14 @@ fn get_dummy_challenges<MC: MerkleChannel>(
 
     challenges_stage0
         .into_iter()
-        .zip(
-            draw_challenges
-                .iter()
-                .map(|&challenge| Mersenne31Field::from_stwo_field(challenge)),
-        )
+        .zip(draw_challenges.iter().map(from_stwo_field))
         .collect::<BTreeMap<_, _>>()
+}
+
+pub fn into_stwo_field(powdr_m31: &Mersenne31Field) -> M31 {
+    M31::from(powdr_m31.to_integer().try_into_u32().unwrap())
+}
+
+pub fn from_stwo_field(stwo_m31: &M31) -> Mersenne31Field {
+    Mersenne31Field::from(stwo_m31.0)
 }

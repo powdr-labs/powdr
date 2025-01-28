@@ -8,6 +8,7 @@ use alloc::collections::btree_map::BTreeMap;
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, Identity};
 use powdr_number::Mersenne31Field;
 
+use crate::stwo::prover::into_stwo_field;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use stwo_prover::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use stwo_prover::constraint_framework::{
@@ -19,8 +20,6 @@ use stwo_prover::core::fields::{ExtensionOf, FieldOps};
 use stwo_prover::core::poly::circle::{CircleDomain, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
-
-use crate::stwo::params::BaseFieldElementMap;
 
 pub type PowdrComponent = FrameworkComponent<PowdrEval>;
 
@@ -45,7 +44,7 @@ where
                 coset_index_to_circle_domain_index(i, slice.len().ilog2()),
                 slice.len().ilog2(),
             ),
-            v.into_stwo_field(),
+            into_stwo_field(v),
         );
     });
 
@@ -194,7 +193,7 @@ impl FrameworkEval for PowdrEval {
         let challenges = self
             .challenges
             .iter()
-            .map(|(k, v)| (*k, E::F::from(v.into_stwo_field())))
+            .map(|(k, v)| (*k, E::F::from(into_stwo_field(v))))
             .collect();
 
         let intermediate_definitions = self.analyzed.intermediate_definitions();
@@ -206,7 +205,7 @@ impl FrameworkEval for PowdrEval {
         };
         let mut evaluator =
             ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {
-                E::F::from(v.into_stwo_field())
+                E::F::from(into_stwo_field(v))
             });
 
         for id in &self.analyzed.identities {
