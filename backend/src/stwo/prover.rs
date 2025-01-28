@@ -308,13 +308,13 @@ where
                 let witness_cols_in_circle_domain = witness_cols
                     .into_iter()
                     .enumerate()
-                    .map(|(index, (name, rows))| {
+                    .map(|(index, (name, col))| {
                         witness_col_circle_domain_index.insert(name.clone(), index + index_acc);
                         Some(gen_stwo_circle_column::<_, M31>(
                             *domain_map
-                                .get(&(vec.len().ilog2() as usize))
+                                .get(&(col.len().ilog2() as usize))
                                 .expect("Domain not found for given size"),
-                            &vec,
+                            &col,
                         ))
                     })
                     .collect::<Vec<_>>();
@@ -401,11 +401,7 @@ where
         tree_builder.commit(prover_channel);
 
         let mut tree_builder = commitment_scheme.tree_builder();
-        tree_builder.extend_evals(
-            witness_cols_circle_domain_eval
-                .into_iter()
-                .flatten()
-        );
+        tree_builder.extend_evals(witness_cols_circle_domain_eval.into_iter().flatten());
         tree_builder.commit(prover_channel);
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
