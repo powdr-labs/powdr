@@ -1,12 +1,19 @@
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_ast::analyzed::{Analyzed, DegreeRange};
+use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, DegreeRange};
+use powdr_ast::parsed::visitor::AllChildren;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
-use powdr_number::FieldElement;
+use powdr_executor::witgen::WitgenCallback;
+
+use powdr_number::{FieldElement, LargeInt, Mersenne31Field};
+
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
-use std::collections::BTreeMap;
+
+extern crate alloc;
+use alloc::collections::{btree_map::BTreeMap, btree_set::BTreeSet};
+use std::collections::HashSet;
 use std::iter::repeat;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -38,6 +45,7 @@ const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 const LOG_LAST_LAYER_DEGREE_BOUND: usize = 0;
+pub type T = Mersenne31Field;
 
 pub enum KeyExportError {
     NoProvingKey,
@@ -53,7 +61,7 @@ impl fmt::Display for KeyExportError {
     }
 }
 
-pub struct StwoProver<T, B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Channel> {
+pub struct StwoProver<B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Channel> {
     pub analyzed: Arc<Analyzed<T>>,
     /// The split analyzed PIL
     split: BTreeMap<String, Analyzed<T>>,
@@ -68,19 +76,19 @@ pub struct StwoProver<T, B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: 
     _merkle_channel_marker: PhantomData<MC>,
 }
 
-impl<'a, F: FieldElement, B, MC, C> StwoProver<F, B, MC, C>
+impl<B, MC, C> StwoProver<B, MC, C>
 where
     B: Backend + Send + BackendForChannel<MC>,
     MC: MerkleChannel + Send,
     C: Channel + Send,
     MC::H: DeserializeOwned + Serialize,
-    PowdrComponent<'a, F>: ComponentProver<B>,
+    PowdrComponent: ComponentProver<B>,
 {
     pub fn new(
-        analyzed: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
+        analyzed: Arc<Analyzed<T>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
     ) -> Result<Self, io::Error> {
-        let split: BTreeMap<String, Analyzed<F>> = powdr_backend_utils::split_pil(&analyzed)
+        let split: BTreeMap<String, Analyzed<T>> = powdr_backend_utils::split_pil(&analyzed)
             .into_iter()
             .collect();
 
@@ -165,7 +173,7 @@ where
                                 > = fixed_columns
                                     .iter()
                                     .map(|(_, vec)| {
-                                        gen_stwo_circle_column::<F, B, M31>(
+                                        gen_stwo_circle_column::<_, M31>(
                                             *domain_map.get(&(vec.len().ilog2() as usize)).unwrap(),
                                             vec,
                                         )
@@ -182,7 +190,7 @@ where
                                     .map(|(_, values)| {
                                         let mut rotated_values = values.to_vec();
                                         rotated_values.rotate_left(1);
-                                        gen_stwo_circle_column::<F, B, M31>(
+                                        gen_stwo_circle_column::<B, M31>(
                                             *domain_map
                                                 .get(&(values.len().ilog2() as usize))
                                                 .unwrap(),
@@ -211,7 +219,11 @@ where
         self.proving_key = proving_key;
     }
 
-    pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
+    pub fn prove(
+        &self,
+        witness: &[(String, Vec<T>)],
+        witgen_callback: WitgenCallback<T>,
+    ) -> Result<Vec<u8>, String> {
         let config = get_config();
         let domain_degree_range = DegreeRange {
             min: self
@@ -240,23 +252,17 @@ where
             })
             .collect();
 
-        let tree_span_provider = &mut TraceLocationAllocator::default();
-        //Each column size in machines needs its own component, the components from different machines are stored in this vector
-        let mut components = Vec::new();
-
-        //The preprocessed columns needs to be indexed in the whole execution instead of each machine, so we need to keep track of the offset
-        let mut constant_cols_offset_acc = 0;
-        let mut machine_log_sizes = BTreeMap::new();
-
+        // Generate witness for stage 0, build constant columns in circle domain at the same time
+        let mut machine_log_sizes: BTreeMap<String, u32> = BTreeMap::new();
         let mut constant_cols = Vec::new();
-
-        let witness_by_machine: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> = self
+        let mut witness_by_machine = self
             .split
             .iter()
             .filter_map(|(machine, pil)| {
                 let witness_columns = machine_witness_columns(witness, pil, machine);
                 if witness_columns[0].1.is_empty() {
-                    //TODO: Empty machines can be removed entirely, but in verification it is not removed, need to be handled
+                    // Empty machines can be removed entirely.
+                    // TODO: Verification  should be able to handle this case
                     None
                 } else {
                     let witness_by_machine = machine_witness_columns(witness, pil, machine);
@@ -282,40 +288,101 @@ where
                     {
                         constant_cols.extend(constant_trace)
                     }
-
-                    let component = PowdrComponent::new(
-                        tree_span_provider,
-                        PowdrEval::new(
-                            (*pil).clone(),
-                            constant_cols_offset_acc,
-                            machine_length.ilog2(),
-                        ),
-                        (SecureField::zero(), None),
-                    );
-                    components.push(component);
-
                     machine_log_sizes.insert(machine.clone(), machine_length.ilog2());
-
-                    constant_cols_offset_acc +=
-                        pil.constant_count() + get_constant_with_next_list(pil).len();
-
-                    Some(
-                        witness_by_machine
-                            .into_iter()
-                            .map(|(_name, vec)| {
-                                gen_stwo_circle_column::<F, B, M31>(
-                                    *domain_map
-                                        .get(&(machine_length.ilog2() as usize))
-                                        .expect("Domain not found for given size"),
-                                    &vec,
-                                )
-                            })
-                            .collect::<Vec<_>>(),
-                    )
+                    Some((machine.clone(), witness_by_machine))
                 }
             })
-            .flatten()
+            .collect::<BTreeMap<_, _>>();
+
+        // remember the witness cols that are already transferred to circle domain, so that we don't need to transfer them again in stage 1
+        let mut witness_col_circle_domain_index = BTreeMap::new();
+        let mut index_acc = 0;
+
+        // Get witness columns in circle domain for stage 0
+        let mut witness_cols_circle_domain_eval: ColumnVec<
+            Option<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        > = witness_by_machine
+            .clone()
+            .into_values()
+            .flat_map(|witness_cols| {
+                let witness_cols_in_circle_domain = witness_cols
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, (name, col))| {
+                        witness_col_circle_domain_index.insert(name.clone(), index + index_acc);
+                        Some(gen_stwo_circle_column::<_, M31>(
+                            *domain_map
+                                .get(&(col.len().ilog2() as usize))
+                                .expect("Domain not found for given size"),
+                            &col,
+                        ))
+                    })
+                    .collect::<Vec<_>>();
+
+                index_acc += witness_cols_in_circle_domain.len();
+
+                witness_cols_in_circle_domain
+            })
             .collect();
+
+        // TODO: Commit witness and constant columns of stage 0 to generate sound challenges for stage 1. This is not implemented yet.
+        // To commit, Stwo requires the witness and constant columns to be already evaluated in the circle domain,
+        // so `witness_cols_circle_domain_eval` and `constant_cols` should be available at this point.
+
+        // Generate challenges for stage 1 based on stage 0 traces.
+        // Stwo supports a maximum of 2 stages, and challenges are created only for stage 0.
+
+        let stage0_challenges = get_dummy_challenges::<MC>(&self.analyzed);
+
+        if self.analyzed.stage_count() > 1 {
+            // build witness columns for stage 1 using the callback function, with the generated challenges
+            witness_by_machine
+                .iter_mut()
+                .for_each(|(machine_name, machine_witness)| {
+                    let new_witness = witgen_callback.next_stage_witness(
+                        &self.split[machine_name],
+                        machine_witness,
+                        stage0_challenges.clone(),
+                        1,
+                    );
+
+                    let keys_in_stage0_machine: HashSet<_> =
+                        HashSet::from_iter(machine_witness.iter().map(|(name, _)| name));
+
+                    let new_witness_in_stage1 = new_witness
+                        .iter()
+                        .filter(|(name, _)| !keys_in_stage0_machine.contains(name))
+                        .cloned()
+                        .collect::<Vec<_>>();
+
+                    machine_witness.extend(new_witness_in_stage1);
+                    // The updated witness cols need to have the same order with the witness cols generated by stage 1
+                    machine_witness.sort_by_key(|(k, _)| {
+                        new_witness.iter().position(|(name, _)| name == k).unwrap()
+                    });
+
+                    machine_log_sizes.insert(machine_name.clone(), new_witness[0].1.len().ilog2());
+                });
+
+            let mut results = Vec::new();
+
+            for (_machine_name, witness_cols) in witness_by_machine {
+                for (witness_name, vec) in witness_cols {
+                    if let Some(index) = witness_col_circle_domain_index.get(&witness_name) {
+                        results.push(witness_cols_circle_domain_eval[*index].take());
+                    } else {
+                        results.push(Some(gen_stwo_circle_column::<B, M31>(
+                            *domain_map
+                                .get(&(vec.len().ilog2() as usize))
+                                .expect("Domain not found for given size"),
+                            &vec,
+                        )));
+                    }
+                }
+            }
+
+            witness_cols_circle_domain_eval = results;
+        }
 
         let twiddles_max_degree = B::precompute_twiddles(
             CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
@@ -334,8 +401,36 @@ where
         tree_builder.commit(prover_channel);
 
         let mut tree_builder = commitment_scheme.tree_builder();
-        tree_builder.extend_evals(witness_by_machine);
+        tree_builder.extend_evals(witness_cols_circle_domain_eval.into_iter().flatten());
         tree_builder.commit(prover_channel);
+
+        let tree_span_provider = &mut TraceLocationAllocator::default();
+        // Each column size in machines needs its own component, the components from different machines are stored in this vector
+        let mut components = Vec::new();
+
+        // Build the circuit. The circuit includes constraints of all the machines in both stage 0 and stage 1
+        let mut constant_cols_offset_acc = 0;
+        self.split.iter().zip_eq(machine_log_sizes.iter()).for_each(
+            |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
+                assert_eq!(machine_name, proof_machine_name);
+
+                let component = PowdrComponent::new(
+                    tree_span_provider,
+                    PowdrEval::new(
+                        (*pil).clone(),
+                        constant_cols_offset_acc,
+                        machine_log_size,
+                        stage0_challenges.clone(),
+                    ),
+                    (SecureField::zero(), None),
+                );
+
+                components.push(component);
+
+                constant_cols_offset_acc +=
+                    pil.constant_count() + get_constant_with_next_list(pil).len();
+            },
+        );
 
         let mut components_slice: Vec<&dyn ComponentProver<B>> = components
             .iter_mut()
@@ -362,7 +457,7 @@ where
         Ok(bincode::serialize(&proof).unwrap())
     }
 
-    pub fn verify(&self, proof: &[u8], _instances: &[F]) -> Result<(), String> {
+    pub fn verify(&self, proof: &[u8], _instances: &[T]) -> Result<(), String> {
         assert!(
             _instances.is_empty(),
             "Expected _instances slice to be empty, but it has {} elements.",
@@ -377,7 +472,7 @@ where
         let verifier_channel = &mut <MC as MerkleChannel>::C::default();
         let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new(config);
 
-        //Constraints that are to be proved
+        // Constraints that are to be proved
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
 
@@ -386,6 +481,9 @@ where
         let mut constant_col_log_sizes = vec![];
         let mut witness_col_log_sizes = vec![];
 
+        // TODO: make the challenge sound, now the challenge is built the same way in prover.
+        let stage0_challenges = get_dummy_challenges::<MC>(&self.analyzed);
+
         let mut components = self
             .split
             .iter()
@@ -393,9 +491,15 @@ where
             .map(
                 |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
                     assert_eq!(machine_name, proof_machine_name);
+
                     let machine_component = PowdrComponent::new(
                         tree_span_provider,
-                        PowdrEval::new((*pil).clone(), constant_cols_offset_acc, machine_log_size),
+                        PowdrEval::new(
+                            (*pil).clone(),
+                            constant_cols_offset_acc,
+                            machine_log_size,
+                            stage0_challenges.clone(),
+                        ),
                         (SecureField::zero(), None),
                     );
 
@@ -452,4 +556,45 @@ fn get_config() -> PcsConfig {
             FRI_NUM_QUERIES,
         ),
     }
+}
+
+fn get_dummy_challenges<MC: MerkleChannel>(analyzed: &Analyzed<T>) -> BTreeMap<u64, T> {
+    let identities = &analyzed.identities;
+    let challenges_stage0 = identities
+        .iter()
+        .flat_map(|identity| {
+            identity.all_children().filter_map(|expr| match expr {
+                AlgebraicExpression::Challenge(challenge) => Some(challenge.id),
+                _ => None,
+            })
+        })
+        .collect::<BTreeSet<_>>();
+
+    let challenge_channel = &mut <MC as MerkleChannel>::C::default();
+
+    // Stwo provides a function to draw challenges from the secure field `QM31`,
+    // which consists of 4 `M31` elements.
+    let draw_challenges = std::iter::repeat_with(|| {
+        let qm31_challenge = challenge_channel.draw_felt();
+        [
+            qm31_challenge.0 .0,
+            qm31_challenge.0 .1,
+            qm31_challenge.1 .0,
+            qm31_challenge.1 .1,
+        ]
+    })
+    .flatten();
+
+    challenges_stage0
+        .into_iter()
+        .zip(draw_challenges.map(|challenge| from_stwo_field(&challenge)))
+        .collect::<BTreeMap<_, _>>()
+}
+
+pub fn into_stwo_field(powdr_m31: &T) -> M31 {
+    M31::from(powdr_m31.to_integer().try_into_u32().unwrap())
+}
+
+pub fn from_stwo_field(stwo_m31: &M31) -> T {
+    T::from(stwo_m31.0)
 }
