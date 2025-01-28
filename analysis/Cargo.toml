@@ -12,6 +12,7 @@ powdr-asm-to-pil.workspace = true
 powdr-ast.workspace = true
 powdr-number.workspace = true
 powdr-parser.workspace = true
+powdr-parser-util.workspace = true
 
 itertools = "0.13"
 lazy_static = "1.4.0"
