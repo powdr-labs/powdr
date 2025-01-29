@@ -32,7 +32,7 @@ use stwo_prover::constraint_framework::{
 use stwo_prover::core::air::{Component, ComponentProver};
 use stwo_prover::core::backend::{Backend, BackendForChannel};
 use stwo_prover::core::channel::{Channel, MerkleChannel};
-use stwo_prover::core::fields::m31::{BaseField, M31};
+use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::fri::FriConfig;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig};
@@ -44,6 +44,7 @@ const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 const LOG_LAST_LAYER_DEGREE_BOUND: usize = 0;
+pub type M31= Mersenne31Field;
 
 pub enum KeyExportError {
     NoProvingKey,
@@ -60,11 +61,11 @@ impl fmt::Display for KeyExportError {
 }
 
 pub struct StwoProver<B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Channel> {
-    pub analyzed: Arc<Analyzed<Mersenne31Field>>,
+    pub analyzed: Arc<Analyzed<M31>>,
     /// The split analyzed PIL
-    split: BTreeMap<String, Analyzed<Mersenne31Field>>,
+    split: BTreeMap<String, Analyzed<M31>>,
     /// The value of the fixed columns
-    pub fixed: Arc<Vec<(String, VariablySizedColumn<Mersenne31Field>)>>,
+    pub fixed: Arc<Vec<(String, VariablySizedColumn<M31>)>>,
 
     /// Proving key
     proving_key: StarkProvingKey<B>,
@@ -83,10 +84,10 @@ where
     PowdrComponent: ComponentProver<B>,
 {
     pub fn new(
-        analyzed: Arc<Analyzed<Mersenne31Field>>,
-        fixed: Arc<Vec<(String, VariablySizedColumn<Mersenne31Field>)>>,
+        analyzed: Arc<Analyzed<M31>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<M31>)>>,
     ) -> Result<Self, io::Error> {
-        let split: BTreeMap<String, Analyzed<Mersenne31Field>> =
+        let split: BTreeMap<String, Analyzed<M31>> =
             powdr_backend_utils::split_pil(&analyzed)
                 .into_iter()
                 .collect();
@@ -172,7 +173,7 @@ where
                                 > = fixed_columns
                                     .iter()
                                     .map(|(_, vec)| {
-                                        gen_stwo_circle_column::<_, M31>(
+                                        gen_stwo_circle_column::<_, BaseField>(
                                             *domain_map.get(&(vec.len().ilog2() as usize)).unwrap(),
                                             vec,
                                         )
@@ -189,7 +190,7 @@ where
                                     .map(|(_, values)| {
                                         let mut rotated_values = values.to_vec();
                                         rotated_values.rotate_left(1);
-                                        gen_stwo_circle_column::<B, M31>(
+                                        gen_stwo_circle_column::<B, BaseField>(
                                             *domain_map
                                                 .get(&(values.len().ilog2() as usize))
                                                 .unwrap(),
@@ -220,8 +221,8 @@ where
 
     pub fn prove(
         &self,
-        witness: &[(String, Vec<Mersenne31Field>)],
-        witgen_callback: WitgenCallback<Mersenne31Field>,
+        witness: &[(String, Vec<M31>)],
+        witgen_callback: WitgenCallback<M31>,
     ) -> Result<Vec<u8>, String> {
         let config = get_config();
         let domain_degree_range = DegreeRange {
@@ -309,7 +310,7 @@ where
                     .enumerate()
                     .map(|(index, (name, col))| {
                         witness_col_circle_domain_index.insert(name.clone(), index + index_acc);
-                        Some(gen_stwo_circle_column::<_, M31>(
+                        Some(gen_stwo_circle_column::<_, BaseField>(
                             *domain_map
                                 .get(&(col.len().ilog2() as usize))
                                 .expect("Domain not found for given size"),
@@ -364,7 +365,7 @@ where
                     if let Some(index) = witness_col_circle_domain_index.get(&witness_name) {
                         witness_cols_circle_domain_eval[*index].take()
                     } else {
-                        Some(gen_stwo_circle_column::<B, M31>(
+                        Some(gen_stwo_circle_column::<B, BaseField>(
                             *domain_map
                                 .get(&(vec.len().ilog2() as usize))
                                 .expect("Domain not found for given size"),
@@ -432,7 +433,7 @@ where
         Ok(bincode::serialize(&proof).unwrap())
     }
 
-    pub fn verify(&self, proof: &[u8], _instances: &[Mersenne31Field]) -> Result<(), String> {
+    pub fn verify(&self, proof: &[u8], _instances: &[M31]) -> Result<(), String> {
         assert!(
             _instances.is_empty(),
             "Expected _instances slice to be empty, but it has {} elements.",
@@ -534,8 +535,8 @@ fn get_config() -> PcsConfig {
 }
 
 fn get_dummy_challenges<MC: MerkleChannel>(
-    analyzed: &Analyzed<Mersenne31Field>,
-) -> BTreeMap<u64, Mersenne31Field> {
+    analyzed: &Analyzed<M31>,
+) -> BTreeMap<u64, M31> {
     let identities = &analyzed.identities;
     let challenges_stage0 = identities
         .iter()
@@ -568,10 +569,10 @@ fn get_dummy_challenges<MC: MerkleChannel>(
         .collect::<BTreeMap<_, _>>()
 }
 
-pub fn into_stwo_field(powdr_m31: &Mersenne31Field) -> M31 {
-    M31::from(powdr_m31.to_integer().try_into_u32().unwrap())
+pub fn into_stwo_field(powdr_m31: &M31) -> BaseField {
+    BaseField::from(powdr_m31.to_integer().try_into_u32().unwrap())
 }
 
-pub fn from_stwo_field(stwo_m31: &M31) -> Mersenne31Field {
-    Mersenne31Field::from(stwo_m31.0)
+pub fn from_stwo_field(stwo_m31: &BaseField) -> M31 {
+    M31::from(stwo_m31.0)
 }
