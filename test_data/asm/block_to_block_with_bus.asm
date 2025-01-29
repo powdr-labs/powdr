@@ -1,7 +1,5 @@
 use std::protocols::bus::bus_receive;
 use std::protocols::bus::bus_send;
-use std::prelude::Query;
-use std::prover::challenge;
 
 // Like block_to_block.asm, but also adds a bus to both machines.
 // This is still flawed currently, because:
