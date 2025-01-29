@@ -7,7 +7,7 @@ extern crate alloc;
 use alloc::collections::btree_map::BTreeMap;
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, Identity};
 
-use crate::stwo::prover::{into_stwo_field,M31};
+use crate::stwo::prover::{into_stwo_field, M31};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use stwo_prover::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use stwo_prover::constraint_framework::{

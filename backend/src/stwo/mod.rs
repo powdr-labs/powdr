@@ -4,10 +4,10 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::stwo::prover::M31;
 use crate::{
     field_filter::generalize_factory, Backend, BackendFactory, BackendOptions, Error, Proof,
 };
-use crate::stwo::prover::M31;
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
@@ -15,7 +15,6 @@ use prover::StwoProver;
 use stwo_prover::core::backend::{simd::SimdBackend, BackendForChannel};
 use stwo_prover::core::channel::{Blake2sChannel, Channel, MerkleChannel};
 use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-
 
 mod circuit_builder;
 mod proof;
@@ -61,8 +60,7 @@ impl BackendFactory<M31> for RestrictedFactory {
 
 generalize_factory!(Factory <- RestrictedFactory, [M31]);
 
-impl<MC: MerkleChannel + Send, C: Channel + Send> Backend<M31>
-    for StwoProver<SimdBackend, MC, C>
+impl<MC: MerkleChannel + Send, C: Channel + Send> Backend<M31> for StwoProver<SimdBackend, MC, C>
 where
     SimdBackend: BackendForChannel<MC>,
     MC: MerkleChannel,

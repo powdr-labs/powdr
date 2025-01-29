@@ -44,7 +44,7 @@ const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 const LOG_LAST_LAYER_DEGREE_BOUND: usize = 0;
-pub type M31= Mersenne31Field;
+pub type M31 = Mersenne31Field;
 
 pub enum KeyExportError {
     NoProvingKey,
@@ -87,10 +87,9 @@ where
         analyzed: Arc<Analyzed<M31>>,
         fixed: Arc<Vec<(String, VariablySizedColumn<M31>)>>,
     ) -> Result<Self, io::Error> {
-        let split: BTreeMap<String, Analyzed<M31>> =
-            powdr_backend_utils::split_pil(&analyzed)
-                .into_iter()
-                .collect();
+        let split: BTreeMap<String, Analyzed<M31>> = powdr_backend_utils::split_pil(&analyzed)
+            .into_iter()
+            .collect();
 
         Ok(Self {
             analyzed,
@@ -534,9 +533,7 @@ fn get_config() -> PcsConfig {
     }
 }
 
-fn get_dummy_challenges<MC: MerkleChannel>(
-    analyzed: &Analyzed<M31>,
-) -> BTreeMap<u64, M31> {
+fn get_dummy_challenges<MC: MerkleChannel>(analyzed: &Analyzed<M31>) -> BTreeMap<u64, M31> {
     let identities = &analyzed.identities;
     let challenges_stage0 = identities
         .iter()
