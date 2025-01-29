@@ -149,7 +149,7 @@ impl LinkerBackend for NativeLinker {
             let latch =
                 namespaced_reference(to_namespace.clone(), to_machine.clone().latch.unwrap());
 
-            // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
+            // lookup rhs is `latch $ [ operation_id, inputs, outputs ]`
             let rhs = selected(latch.clone(), rhs_list);
 
             self.insert_interaction(InteractionType::Lookup, from_namespace, lhs, rhs);
