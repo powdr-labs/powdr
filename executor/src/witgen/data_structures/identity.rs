@@ -440,8 +440,8 @@ namespace main(4);
         // std::protocols::lookup_via_bus::lookup_send and
         // std::protocols::lookup_via_bus::lookup_receive.
         let (send, receive) = get_generated_bus_interaction_pair(
-            r"Constr::PhantomBusInteraction(main::left_latch, [42, main::a], main::left_latch);
-              Constr::PhantomBusInteraction(-main::multiplicities, [42, main::b], main::right_latch);",
+            r"Constr::PhantomBusInteraction(main::left_latch, 42, [main::a], main::left_latch);
+              Constr::PhantomBusInteraction(-main::multiplicities, 42, [main::b], main::right_latch);",
         );
         assert_eq!(
             send.selected_payload.to_string(),
@@ -497,8 +497,8 @@ namespace main(4);
         // std::protocols::permutation_via_bus::permutation_send and
         // std::protocols::permutation_via_bus::permutation_receive.
         let (send, receive) = get_generated_bus_interaction_pair(
-            r"Constr::PhantomBusInteraction(main::left_latch, [42, main::a], main::left_latch);
-              Constr::PhantomBusInteraction(-(main::right_latch * main::right_selector), [42, main::b], main::right_latch * main::right_selector);",
+            r"Constr::PhantomBusInteraction(main::left_latch, 42, [main::a], main::left_latch);
+              Constr::PhantomBusInteraction(-(main::right_latch * main::right_selector), 42, [main::b], main::right_latch * main::right_selector);",
         );
         assert_eq!(
             send.selected_payload.to_string(),
