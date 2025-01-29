@@ -1,4 +1,5 @@
 mod display;
+mod expression_evaluator;
 pub mod visitor;
 
 use std::cmp::max;
@@ -6,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::iter::{self, empty, once};
-use std::ops::{self, ControlFlow};
+use std::ops::{self, Add, ControlFlow, Mul, Neg, Sub};
 use std::sync::Arc;
 
 use itertools::Itertools;
@@ -24,6 +25,7 @@ use crate::parsed::{
     self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, SourceReference,
     TraitDeclaration, TraitImplementation, TypeDeclaration,
 };
+pub use expression_evaluator::{ExpressionEvaluator, OwnedTerminalValues, TerminalAccess};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
 pub enum StatementIdentifier {
@@ -1057,8 +1059,12 @@ pub enum Identity<T> {
 }
 
 impl<T> Identity<T> {
-    pub fn contains_next_ref(&self) -> bool {
-        self.children().any(|e| e.contains_next_ref())
+    pub fn contains_next_ref(
+        &self,
+        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+    ) -> bool {
+        self.children()
+            .any(|e| e.contains_next_ref(intermediate_definitions))
     }
 
     pub fn degree(
@@ -1165,8 +1171,12 @@ pub enum IdentityKind {
 impl<T> SelectedExpressions<T> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
-    pub fn contains_next_ref(&self) -> bool {
-        self.children().any(|e| e.contains_next_ref())
+    pub fn contains_next_ref(
+        &self,
+        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+    ) -> bool {
+        self.children()
+            .any(|e| e.contains_next_ref(intermediate_definitions))
     }
 }
 
@@ -1582,11 +1592,78 @@ impl<T> AlgebraicExpression<T> {
 
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
-    pub fn contains_next_ref(&self) -> bool {
-        self.expr_any(|e| match e {
-            AlgebraicExpression::Reference(poly) => poly.next,
-            _ => false,
-        })
+    pub fn contains_next_ref(
+        &self,
+        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+    ) -> bool {
+        #[derive(Default, Clone)]
+        struct NextRefFinder {
+            inner: bool,
+        }
+
+        impl Add for NextRefFinder {
+            type Output = Self;
+
+            fn add(self, rhs: Self) -> Self::Output {
+                Self {
+                    inner: self.inner || rhs.inner,
+                }
+            }
+        }
+
+        impl Sub for NextRefFinder {
+            type Output = Self;
+
+            fn sub(self, rhs: Self) -> Self::Output {
+                Self {
+                    inner: self.inner || rhs.inner,
+                }
+            }
+        }
+
+        impl Neg for NextRefFinder {
+            type Output = Self;
+
+            fn neg(self) -> Self::Output {
+                self
+            }
+        }
+
+        impl Mul for NextRefFinder {
+            type Output = Self;
+
+            fn mul(self, rhs: Self) -> Self::Output {
+                Self {
+                    inner: self.inner || rhs.inner,
+                }
+            }
+        }
+
+        struct NextRefTerminalAccess;
+
+        impl TerminalAccess<NextRefFinder> for NextRefTerminalAccess {
+            fn get(&self, poly_ref: &AlgebraicReference) -> NextRefFinder {
+                NextRefFinder {
+                    inner: poly_ref.next,
+                }
+            }
+
+            fn get_public(&self, _public: &str) -> NextRefFinder {
+                NextRefFinder::default()
+            }
+
+            fn get_challenge(&self, _challenge: &Challenge) -> NextRefFinder {
+                NextRefFinder::default()
+            }
+        }
+
+        ExpressionEvaluator::new_with_custom_expr(
+            NextRefTerminalAccess,
+            intermediate_definitions,
+            |_| NextRefFinder::default(),
+        )
+        .evaluate(self)
+        .inner
     }
 }
 
@@ -1686,6 +1763,8 @@ impl Display for PolynomialType {
 
 #[cfg(test)]
 mod tests {
+    use std::iter::once;
+
     use powdr_number::DegreeType;
     use powdr_parser_util::SourceRef;
 
@@ -1851,5 +1930,37 @@ mod tests {
                 .collect::<Vec<DegreeType>>(),
             Vec::<DegreeType>::new()
         );
+    }
+
+    #[test]
+    fn contains_next_ref() {
+        let column = AlgebraicExpression::<i32>::Reference(AlgebraicReference {
+            name: "column".to_string(),
+            poly_id: PolyID {
+                id: 0,
+                ptype: PolynomialType::Committed,
+            },
+            next: false,
+        });
+
+        let one = AlgebraicExpression::Number(1);
+
+        let expr = column.clone() + one.clone() * column.clone();
+        assert!(!expr.contains_next_ref(&Default::default()));
+
+        let expr = column.clone() + one.clone() * column.clone().next().unwrap();
+        assert!(expr.contains_next_ref(&Default::default()));
+
+        let inter = AlgebraicReference {
+            name: "inter".to_string(),
+            poly_id: PolyID {
+                id: 1,
+                ptype: PolynomialType::Intermediate,
+            },
+            next: false,
+        };
+        let intermediates = once((inter.to_thin(), column.clone().next().unwrap())).collect();
+        let expr = column.clone() + one.clone() * AlgebraicExpression::Reference(inter.clone());
+        assert!(expr.contains_next_ref(&intermediates));
     }
 }

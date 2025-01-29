@@ -8,11 +8,9 @@ use derive_more::{Display, From};
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_ast::analyzed::Analyzed;
 use powdr_ast::analyzed::{
-    Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, SelectedExpressions,
+    ExpressionEvaluator, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
+    PhantomPermutationIdentity, SelectedExpressions, TerminalAccess,
 };
-use powdr_executor_utils::expression_evaluator::ExpressionEvaluator;
-use powdr_executor_utils::expression_evaluator::TerminalAccess;
 use powdr_number::FieldElement;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
@@ -351,7 +349,19 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
 
 struct EmptyVariables;
 
-impl<T: FieldElement> TerminalAccess<T> for EmptyVariables {}
+impl<T: FieldElement> TerminalAccess<T> for EmptyVariables {
+    fn get(&self, _poly_ref: &powdr_ast::analyzed::AlgebraicReference) -> T {
+        unreachable!()
+    }
+
+    fn get_public(&self, _public: &str) -> T {
+        unreachable!()
+    }
+
+    fn get_challenge(&self, _challenge: &powdr_ast::analyzed::Challenge) -> T {
+        unreachable!()
+    }
+}
 
 #[derive(Debug, Clone)]
 /// A tuple of field elements.

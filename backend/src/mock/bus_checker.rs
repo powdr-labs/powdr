@@ -2,10 +2,9 @@ use std::{cmp::Ordering, collections::BTreeMap, fmt};
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{Analyzed, Identity, PhantomBusInteractionIdentity},
+    analyzed::{Analyzed, ExpressionEvaluator, Identity, PhantomBusInteractionIdentity},
     parsed::visitor::Children,
 };
-use powdr_executor_utils::expression_evaluator::ExpressionEvaluator;
 use powdr_number::FieldElement;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 

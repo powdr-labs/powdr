@@ -37,6 +37,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         &self,
         can_process: impl CanProcessCall<T>,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
+        let intermediate_definitions = self.fixed_data.analyzed.intermediate_definitions();
         let all_witnesses = self
             .machine_parts
             .witnesses
@@ -56,7 +57,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             .identities
             .iter()
             .flat_map(|&id| {
-                if id.contains_next_ref() {
+                if id.contains_next_ref(&intermediate_definitions) {
                     vec![(id, 0)]
                 } else {
                     // Process it on both rows, but mark it as complete on row 0,

@@ -4,8 +4,8 @@ use std::{collections::BTreeMap, ops::RangeFrom};
 use itertools::{Either, Itertools};
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, AlgebraicUnaryOperator, Analyzed, ConnectIdentity,
-        Identity as AnalyzedIdentity, LookupIdentity, PermutationIdentity,
+        AlgebraicExpression, AlgebraicReferenceThin, AlgebraicUnaryOperator, Analyzed,
+        ConnectIdentity, Identity as AnalyzedIdentity, LookupIdentity, PermutationIdentity,
         PhantomBusInteractionIdentity, PhantomLookupIdentity, PhantomPermutationIdentity,
         PolynomialIdentity, SelectedExpressions,
     },
@@ -166,9 +166,12 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
 }
 
 impl<T> Identity<T> {
-    pub fn contains_next_ref(&self) -> bool {
-        // TODO: This does not check the definitions of intermediate polynomials!
-        self.children().any(|e| e.contains_next_ref())
+    pub fn contains_next_ref(
+        &self,
+        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+    ) -> bool {
+        self.children()
+            .any(|e| e.contains_next_ref(intermediate_definitions))
     }
 
     pub fn id(&self) -> u64 {

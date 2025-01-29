@@ -1,10 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
 
 use powdr_ast::{
-    analyzed::{AlgebraicExpression, PolynomialType, SelectedExpressions},
+    analyzed::{
+        AlgebraicExpression, ExpressionEvaluator, OwnedTerminalValues, PolynomialType,
+        SelectedExpressions,
+    },
     parsed::visitor::AllChildren,
 };
-use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, OwnedTerminalValues};
 use powdr_number::FieldElement;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 

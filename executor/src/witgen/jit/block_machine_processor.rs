@@ -75,12 +75,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
         }
 
+        let intermediate_definitions = self.fixed_data.analyzed.intermediate_definitions();
+
         // Compute the identity-row-pairs we consider.
         let have_next_ref = self
             .machine_parts
             .identities
             .iter()
-            .any(|id| id.contains_next_ref());
+            .any(|id| id.contains_next_ref(&intermediate_definitions));
         let start_row = if !have_next_ref {
             // No identity contains a next reference - we do not need to consider row -1,
             // and the block has to be rectangular-shaped.
@@ -90,15 +92,21 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             // We iterate over all rows of the block +/- one row.
             -1
         };
-        let identities = (start_row..self.block_size as i32).flat_map(move |row| {
-            self.machine_parts.identities.iter().filter_map(move |&id| {
-                // Filter out identities with next references on the last row.
-                if row as usize == self.block_size - 1 && id.contains_next_ref() {
-                    None
-                } else {
-                    Some((id, row))
-                }
-            })
+        let identities = (start_row..self.block_size as i32).flat_map(|row| {
+            self.machine_parts
+                .identities
+                .iter()
+                .filter_map(|id| {
+                    // Filter out identities with next references on the last row.
+                    if row as usize == self.block_size - 1
+                        && id.contains_next_ref(&intermediate_definitions)
+                    {
+                        None
+                    } else {
+                        Some((*id, row))
+                    }
+                })
+                .collect_vec()
         });
 
         let requested_known = known_args

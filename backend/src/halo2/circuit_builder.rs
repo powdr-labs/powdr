@@ -10,7 +10,10 @@ use halo2_proofs::{
     },
     poly::Rotation,
 };
-use powdr_ast::parsed::visitor::AllChildren;
+use powdr_ast::{
+    analyzed::{ExpressionEvaluator, TerminalAccess},
+    parsed::visitor::AllChildren,
+};
 use powdr_executor::witgen::WitgenCallback;
 
 use powdr_ast::analyzed::Analyzed;
@@ -18,7 +21,6 @@ use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReferenceThin, Identity, PolynomialIdentity, PolynomialType,
     SelectedExpressions,
 };
-use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, TerminalAccess};
 use powdr_number::FieldElement;
 
 const FIRST_STEP_NAME: &str = "__first_step";

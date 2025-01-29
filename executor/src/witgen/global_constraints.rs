@@ -361,7 +361,7 @@ fn try_transfer_constraints<T: FieldElement>(
     expr: &Expression<T>,
     known_constraints: &BTreeMap<PolyID, RangeConstraint<T>>,
 ) -> Vec<(PolyID, RangeConstraint<T>)> {
-    if expr.contains_next_ref() {
+    if expr.contains_next_ref(intermediate_definitions) {
         return vec![];
     }
 

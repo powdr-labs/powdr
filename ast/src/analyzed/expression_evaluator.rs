@@ -3,25 +3,18 @@ use itertools::Itertools;
 use std::collections::BTreeMap;
 use std::ops::Neg;
 
-use powdr_ast::analyzed::{
+use crate::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, AlgebraicReferenceThin, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
     Analyzed, Challenge, PolyID, PolynomialType,
 };
 use powdr_number::FieldElement;
-use powdr_number::LargeInt;
 
 /// Accessor for terminal symbols.
 pub trait TerminalAccess<T> {
-    fn get(&self, _poly_ref: &AlgebraicReference) -> T {
-        unimplemented!();
-    }
-    fn get_public(&self, _public: &str) -> T {
-        unimplemented!();
-    }
-    fn get_challenge(&self, _challenge: &Challenge) -> T {
-        unimplemented!();
-    }
+    fn get(&self, _poly_ref: &AlgebraicReference) -> T;
+    fn get_public(&self, _public: &str) -> T;
+    fn get_challenge(&self, _challenge: &Challenge) -> T;
 }
 
 /// A simple container for trace values.
@@ -149,7 +142,6 @@ impl<'a, T, Expr, TA> ExpressionEvaluator<'a, T, Expr, TA>
 where
     TA: TerminalAccess<Expr>,
     Expr: Clone + Add<Output = Expr> + Sub<Output = Expr> + Mul<Output = Expr> + Neg<Output = Expr>,
-    T: FieldElement,
 {
     /// Create a new expression evaluator with custom expression converters.
     pub fn new_with_custom_expr(
@@ -192,9 +184,10 @@ where
                 AlgebraicBinaryOperator::Mul => self.evaluate(left) * self.evaluate(right),
                 AlgebraicBinaryOperator::Pow => match &**right {
                     Expression::Number(n) => {
-                        let left = self.evaluate(left);
-                        (0u32..n.to_integer().try_into_u32().unwrap())
-                            .fold((self.to_expr)(&T::one()), |acc, _| acc * left.clone())
+                        // let left = self.evaluate(left);
+                        // (0u32..n.to_integer().try_into_u32().unwrap())
+                        //     .fold((self.to_expr)(&T::one()), |acc, _| acc * left.clone())
+                        unimplemented!("pow with constant exponent bound stuff")
                     }
                     _ => unimplemented!("pow with non-constant exponent"),
                 },

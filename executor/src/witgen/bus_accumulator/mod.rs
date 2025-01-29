@@ -7,11 +7,10 @@ use extension_field::ExtensionField;
 use fp2::Fp2;
 use fp4::Fp4;
 use itertools::Itertools;
-use powdr_ast::analyzed::{Analyzed, Identity, PhantomBusInteractionIdentity};
-use powdr_executor_utils::{
-    expression_evaluator::{ExpressionEvaluator, OwnedTerminalValues},
-    VariablySizedColumn,
+use powdr_ast::analyzed::{
+    Analyzed, ExpressionEvaluator, Identity, OwnedTerminalValues, PhantomBusInteractionIdentity,
 };
+use powdr_executor_utils::VariablySizedColumn;
 use powdr_number::{DegreeType, FieldElement, KnownField};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
