@@ -18,11 +18,11 @@ let fingerprint: fe[], Ext<expr> -> Ext<fe> = query |expr_array, alpha| if array
 };
 
 let fingerprint_impl: fe[], Ext<fe>, int -> Ext<fe> = query |expr_array, alpha, i| if i == len(expr_array) - 1 {
-    // Base case
+    // Base case: Return the last element
     from_base(expr_array[i])
 } else {
 
-    // Recursively compute the fingerprint as fingerprint(expr_array[i + 1:], alpha) * alpha + expr_array[i]
+    // Recursively compute the fingerprint as expr_array[i] + alpha * fingerprint(expr_array[i + 1:], alpha)
     let intermediate_fingerprint = fingerprint_impl(expr_array, alpha, i + 1);
     add_ext(from_base(expr_array[i]), mul_ext(alpha, intermediate_fingerprint))
 };
@@ -35,7 +35,7 @@ let fingerprint_inter: expr[], Ext<expr> -> Ext<expr> = |expr_array, alpha| if l
 } else {
     assert(len(expr_array) > 1, || "fingerprint requires at least one element");
 
-    // Recursively compute the fingerprint as fingerprint(expr_array[1:], alpha) * alpha + expr_array[0]
+    // Recursively compute the fingerprint as expr_array[0] + alpha * fingerprint(expr_array[1:], alpha)
     let intermediate_fingerprint = match fingerprint_inter(array::sub_array(expr_array, 1, len(expr_array) - 1), alpha) {
         Ext::Fp2(std::math::fp2::Fp2::Fp2(a0, a1)) => {
             let intermediate_fingerprint_0: inter = a0;
