@@ -110,11 +110,8 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
 
             // Recursively extend the set to all witnesses connected through identities that preserve
             // a fixed row relation.
-            let machine_witnesses = self.all_row_connected_witnesses(
-                lookup_witnesses,
-                &remaining_witnesses,
-                &self.fixed.identities,
-            );
+            let machine_witnesses =
+                self.all_row_connected_witnesses(lookup_witnesses, &remaining_witnesses);
 
             // Split identities into those that only concern the machine
             // witnesses and those that concern any other witness.
@@ -214,16 +211,13 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         // receiving end of a lookup, we remove any multiplicity columns here.
         let multiplicity_columns = self
             .fixed
-            .identities
-            .iter()
-            .filter_map(|identity| match identity {
-                Identity::BusReceive(bus_receive) => {
-                    bus_receive.multiplicity.as_ref().and_then(|m| match m {
-                        Expression::Reference(reference) => Some(reference.poly_id),
-                        _ => None,
-                    })
-                }
-                _ => None,
+            .bus_receives
+            .values()
+            .filter_map(|bus_receive| {
+                bus_receive.multiplicity.as_ref().and_then(|m| match m {
+                    Expression::Reference(reference) => Some(reference.poly_id),
+                    _ => None,
+                })
             })
             .collect::<HashSet<_>>();
         let main_witnesses = remaining_witnesses
@@ -267,23 +261,26 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         &self,
         mut witnesses: HashSet<PolyID>,
         all_witnesses: &HashSet<PolyID>,
-        identities: &[Identity<T>],
     ) -> HashSet<PolyID> {
         loop {
             let count = witnesses.len();
-            for i in identities {
-                match i {
-                    Identity::Polynomial(_) | Identity::BusSend(_) | Identity::BusReceive(_) => {
-                        // Any current witness in the identity adds all other witnesses.
-                        let in_identity = &self.fixed.polynomial_references(i) & all_witnesses;
-                        if in_identity.intersection(&witnesses).next().is_some() {
-                            witnesses.extend(in_identity);
-                        }
-                    }
-                    Identity::Connect(..) => {
-                        unimplemented!()
-                    }
-                };
+            let references = self
+                .fixed
+                .identities
+                .iter()
+                .map(|i| self.fixed.polynomial_references(i))
+                .chain(
+                    self.fixed
+                        .bus_receives
+                        .values()
+                        .map(|bus_receive| self.fixed.polynomial_references(bus_receive)),
+                );
+            for r in references {
+                // Any current witness in the identity adds all other witnesses.
+                let in_identity = &r & all_witnesses;
+                if in_identity.intersection(&witnesses).next().is_some() {
+                    witnesses.extend(in_identity);
+                }
             }
             if witnesses.len() == count {
                 return witnesses;

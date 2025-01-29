@@ -42,8 +42,6 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
                 &bus_interaction.selected_payload,
                 rows,
             ),
-            // Bus receives are handled when they are matched with a send.
-            Identity::BusReceive(_) => Ok(EvalValue::complete(vec![])),
             Identity::Connect(..) => {
                 // TODO this is not the right cause.
                 Ok(EvalValue::incomplete(IncompleteCause::SolvingFailed))

@@ -51,7 +51,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
             Identity::BusSend(BusSend {
                 selected_payload, ..
             }) => self.format_bus_send(selected_payload, row_offset),
-            Identity::BusReceive(_) | Identity::Connect(_) => {
+            Identity::Connect(_) => {
                 format!("{identity}")
             }
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {

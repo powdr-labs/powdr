@@ -44,7 +44,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
         // Several range constraints might point to the same target
         let mut multiplicity_columns = BTreeMap::new();
 
-        let identities = convert_identities(self.fixed.analyzed);
+        let (identities, _) = convert_identities(self.fixed.analyzed);
         let phantom_lookups = identities
             .iter()
             .filter_map(|identity| {
