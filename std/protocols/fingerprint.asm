@@ -17,7 +17,7 @@ let fingerprint: fe[], Ext<expr> -> Ext<fe> = query |expr_array, alpha| if array
     fingerprint_impl(expr_array, eval_ext(alpha), 0)
 };
 
-let fingerprint_impl: fe[], Ext<fe>, int, int -> Ext<fe> = query |expr_array, alpha, i| if i == len(expr_array) - 1 {
+let fingerprint_impl: fe[], Ext<fe>, int -> Ext<fe> = query |expr_array, alpha, i| if i == len(expr_array) - 1 {
     // Base case
     from_base(expr_array[i])
 } else {
@@ -93,13 +93,13 @@ mod test {
         assert_fingerprint_equal([123], -4, 123);
 
         // For a list [a, b] of length two, the fingerprint is a + b * x
-        assert_fingerprint_equal([123, 456], 0, 456);
+        assert_fingerprint_equal([123, 456], 0, 123);
         assert_fingerprint_equal([123, 456], 1, 123 + 456);
         assert_fingerprint_equal([123, 456], 2, 123 + 456 * 2);
         assert_fingerprint_equal([123, 456], -1, 123 - 456);
 
         // For a list [a, b, c] of length three, the fingerprint is a + b * x + c * x**2
-        assert_fingerprint_equal([123, 456, 789], 0, 789);
+        assert_fingerprint_equal([123, 456, 789], 0, 123);
         assert_fingerprint_equal([123, 456, 789], 1, 123 + 456 + 789);
         assert_fingerprint_equal([123, 456, 789], 2, 123 + 456 * 2 + 789 * 4);
     };
