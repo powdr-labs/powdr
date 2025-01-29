@@ -4,13 +4,13 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::stwo::prover::T;
 use crate::{
     field_filter::generalize_factory, Backend, BackendFactory, BackendOptions, Error, Proof,
 };
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
+use powdr_number::Mersenne31Field;
 use prover::StwoProver;
 use stwo_prover::core::backend::{simd::SimdBackend, BackendForChannel};
 use stwo_prover::core::channel::{Blake2sChannel, Channel, MerkleChannel};
@@ -22,19 +22,19 @@ mod prover;
 
 struct RestrictedFactory;
 
-impl BackendFactory<T> for RestrictedFactory {
+impl BackendFactory<Mersenne31Field> for RestrictedFactory {
     #[allow(unused_variables)]
     fn create(
         &self,
-        pil: Arc<Analyzed<T>>,
-        fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
+        pil: Arc<Analyzed<Mersenne31Field>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<Mersenne31Field>)>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         proving_key: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         options: BackendOptions,
-    ) -> Result<Box<dyn crate::Backend<T>>, Error> {
+    ) -> Result<Box<dyn crate::Backend<Mersenne31Field>>, Error> {
         if proving_key.is_some() {
             return Err(Error::BackendError("Proving key unused".to_string()));
         }
@@ -58,9 +58,10 @@ impl BackendFactory<T> for RestrictedFactory {
     }
 }
 
-generalize_factory!(Factory <- RestrictedFactory, [T]);
+generalize_factory!(Factory <- RestrictedFactory, [Mersenne31Field]);
 
-impl<MC: MerkleChannel + Send, C: Channel + Send> Backend<T> for StwoProver<SimdBackend, MC, C>
+impl<MC: MerkleChannel + Send, C: Channel + Send> Backend<Mersenne31Field>
+    for StwoProver<SimdBackend, MC, C>
 where
     SimdBackend: BackendForChannel<MC>,
     MC: MerkleChannel,
@@ -68,7 +69,7 @@ where
     MC::H: DeserializeOwned + Serialize,
 {
     #[allow(unused_variables)]
-    fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
+    fn verify(&self, proof: &[u8], instances: &[Vec<Mersenne31Field>]) -> Result<(), Error> {
         assert_eq!(instances.len(), 1);
         let instances = &instances[0];
 
@@ -78,9 +79,9 @@ where
     #[allow(unused_variables)]
     fn prove(
         &self,
-        witness: &[(String, Vec<T>)],
+        witness: &[(String, Vec<Mersenne31Field>)],
         prev_proof: Option<Proof>,
-        witgen_callback: WitgenCallback<T>,
+        witgen_callback: WitgenCallback<Mersenne31Field>,
     ) -> Result<Proof, Error> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
