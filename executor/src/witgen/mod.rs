@@ -125,12 +125,15 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
         if has_phantom_bus_sends && supports_field {
             log::debug!("Using hand-written bus witgen.");
             assert_eq!(stage, 1);
-            let bus_columns = generate_bus_accumulator_columns(
+            let external_witness = [];
+            let fixed_data = FixedData::new(
                 pil,
-                current_witness,
                 &self.fixed_col_values,
+                &external_witness,
                 challenges,
+                stage,
             );
+            let bus_columns = generate_bus_accumulator_columns(&fixed_data, current_witness);
 
             current_witness.iter().cloned().chain(bus_columns).collect()
         } else {

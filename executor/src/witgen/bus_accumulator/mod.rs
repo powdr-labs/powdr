@@ -1,19 +1,15 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    iter::once,
-};
+use std::iter::once;
 
 use extension_field::ExtensionField;
 use fp2::Fp2;
 use fp4::Fp4;
 use itertools::Itertools;
-use powdr_ast::analyzed::{Analyzed, Identity, PhantomBusInteractionIdentity};
-use powdr_executor_utils::{
-    expression_evaluator::{ExpressionEvaluator, OwnedTerminalValues},
-    VariablySizedColumn,
-};
+use powdr_ast::analyzed::{Identity, PhantomBusInteractionIdentity};
+use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, OwnedTerminalValues};
 use powdr_number::{DegreeType, FieldElement, KnownField};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+
+use super::FixedData;
 
 mod extension_field;
 mod fp2;
@@ -21,38 +17,26 @@ mod fp4;
 
 /// Generates the second-stage columns for the bus accumulator.
 pub fn generate_bus_accumulator_columns<'a, T>(
-    pil: &'a Analyzed<T>,
+    fixed: &'a FixedData<'a, T>,
     witness_columns: &'a [(String, Vec<T>)],
-    fixed_columns: &'a [(String, VariablySizedColumn<T>)],
-    challenges: BTreeMap<u64, T>,
 ) -> Vec<(String, Vec<T>)>
 where
     T: FieldElement,
 {
     match T::known_field().unwrap() {
-        KnownField::GoldilocksField => BusAccumulatorGenerator::<T, Fp2<T>>::new(
-            pil,
-            witness_columns,
-            fixed_columns,
-            challenges,
-        )
-        .generate(),
+        KnownField::GoldilocksField => {
+            BusAccumulatorGenerator::<T, Fp2<T>>::new(fixed, witness_columns).generate()
+        }
         KnownField::BabyBearField | KnownField::KoalaBearField | KnownField::Mersenne31Field => {
-            BusAccumulatorGenerator::<T, Fp4<T>>::new(
-                pil,
-                witness_columns,
-                fixed_columns,
-                challenges,
-            )
-            .generate()
+            BusAccumulatorGenerator::<T, Fp4<T>>::new(fixed, witness_columns).generate()
         }
         KnownField::Bn254Field => unimplemented!(),
     }
 }
 
 /// Witness generator for the second-stage bus accumulator.
-struct BusAccumulatorGenerator<'a, T, Ext> {
-    pil: &'a Analyzed<T>,
+struct BusAccumulatorGenerator<'a, T: FieldElement, Ext> {
+    fixed: &'a FixedData<'a, T>,
     bus_interactions: Vec<&'a PhantomBusInteractionIdentity<T>>,
     values: OwnedTerminalValues<T>,
     powers_of_alpha: Vec<Ext>,
@@ -60,28 +44,25 @@ struct BusAccumulatorGenerator<'a, T, Ext> {
 }
 
 impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator<'a, T, Ext> {
-    pub fn new(
-        pil: &'a Analyzed<T>,
-        witness_columns: &'a [(String, Vec<T>)],
-        fixed_columns: &'a [(String, VariablySizedColumn<T>)],
-        challenges: BTreeMap<u64, T>,
-    ) -> Self {
+    pub fn new(fixed: &'a FixedData<'a, T>, witness_columns: &'a [(String, Vec<T>)]) -> Self {
         let size = witness_columns.iter().next().unwrap().1.len() as DegreeType;
 
         // The provided PIL might only contain a subset of all fixed columns.
-        let fixed_column_names = pil
+        // Select the columns in the current PIL and select the right size.
+        let fixed_columns = fixed
+            .analyzed
             .constant_polys_in_source_order()
             .flat_map(|(symbol, _)| symbol.array_elements())
-            .map(|(name, _)| name.clone())
-            .collect::<BTreeSet<_>>();
+            .map(|(name, poly_id)| {
+                println!("name: {}, size: {}", name, size);
+                (
+                    name,
+                    fixed.fixed_cols[&poly_id].values.get_by_size(size).unwrap(),
+                )
+            });
 
-        // Select the columns in the current PIL and select the right size.
-        let fixed_columns = fixed_columns
-            .iter()
-            .filter(|(n, _)| fixed_column_names.contains(n))
-            .map(|(n, v)| (n.clone(), v.get_by_size(size).unwrap()));
-
-        let bus_interactions = pil
+        let bus_interactions = fixed
+            .analyzed
             .identities
             .iter()
             .filter_map(|identity| match identity {
@@ -97,21 +78,21 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
             .max()
             .unwrap();
 
-        let alpha = Ext::get_challenge(&challenges, 0);
-        let beta = Ext::get_challenge(&challenges, 1);
+        let alpha = Ext::get_challenge(&fixed.challenges, 0);
+        let beta = Ext::get_challenge(&fixed.challenges, 1);
         let powers_of_alpha = powers_of_alpha(alpha, max_tuple_size);
 
         let values = OwnedTerminalValues::new(
-            pil,
+            fixed.analyzed,
             witness_columns.to_vec(),
             fixed_columns
                 .map(|(name, values)| (name, values.to_vec()))
                 .collect(),
         )
-        .with_challenges(challenges);
+        .with_challenges(fixed.challenges.clone());
 
         Self {
-            pil,
+            fixed,
             bus_interactions,
             values,
             powers_of_alpha,
@@ -126,7 +107,8 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
             .flat_map(|bus_interaction| self.interaction_columns(bus_interaction))
             .collect::<Vec<_>>();
 
-        self.pil
+        self.fixed
+            .analyzed
             .committed_polys_in_source_order()
             .filter(|(symbol, _)| symbol.stage == Some(1))
             .flat_map(|(symbol, _)| symbol.array_elements().map(|(name, _)| name))
@@ -138,15 +120,13 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
         &self,
         bus_interaction: &PhantomBusInteractionIdentity<T>,
     ) -> Vec<Vec<T>> {
-        let intermediate_definitions = self.pil.intermediate_definitions();
-
         let size = self.values.height();
         let mut folded_list = vec![Ext::zero(); size];
         let mut acc_list = vec![Ext::zero(); size];
 
         for i in 0..size {
             let mut evaluator =
-                ExpressionEvaluator::new(self.values.row(i), &intermediate_definitions);
+                ExpressionEvaluator::new(self.values.row(i), &self.fixed.intermediate_definitions);
             let current_acc = if i == 0 { Ext::zero() } else { acc_list[i - 1] };
             let multiplicity = evaluator.evaluate(&bus_interaction.multiplicity);
 
