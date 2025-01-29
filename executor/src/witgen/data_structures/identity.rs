@@ -228,7 +228,7 @@ fn id_counter<T: FieldElement>(identities: &[AnalyzedIdentity<T>]) -> RangeFrom<
         .iter()
         .filter_map(|id| match id {
             AnalyzedIdentity::PhantomBusInteraction(bus_interaction) => {
-                match bus_interaction.payload.0[0] {
+                match bus_interaction.bus_id {
                     AlgebraicExpression::Number(id) => Some(id),
                     _ => None,
                 }
