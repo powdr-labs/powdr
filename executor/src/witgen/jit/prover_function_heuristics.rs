@@ -14,16 +14,19 @@ pub trait TryColumnByName: Copy {
 }
 
 #[allow(unused)]
+#[derive(Clone)]
 pub struct ProverFunctionComputeFrom<'a> {
+    pub index: usize,
     pub target_column: AlgebraicReference,
     pub input_columns: Vec<AlgebraicReference>,
     pub computation: &'a Expression,
 }
 
 #[allow(unused)]
+#[derive(Clone)]
 pub enum ProverFunction<'a, T> {
     /// query |i| std::prover::provide_if_unknown(Y, i, || <value>)
-    ProvideIfUnknown(AlgebraicReference, T),
+    ProvideIfUnknown(usize, AlgebraicReference, T),
     /// query |i| std::prover::compute_from(Y, i, [X, ...], f)
     ComputeFrom(ProverFunctionComputeFrom<'a>),
 }
@@ -39,17 +42,20 @@ pub fn decode_prover_functions<'a, T: FieldElement>(
     machine_parts
         .prover_functions
         .iter()
-        .map(|f| decode_prover_function(f, try_column_by_name))
+        .enumerate()
+        .map(|(index, f)| decode_prover_function(index, f, try_column_by_name))
         .collect()
 }
 
 fn decode_prover_function<T: FieldElement>(
+    index: usize,
     function: &Expression,
     try_column_by_name: impl TryColumnByName,
 ) -> Result<ProverFunction<'_, T>, String> {
     if let Some((name, value)) = try_decode_provide_if_unknown(function, try_column_by_name) {
-        Ok(ProverFunction::ProvideIfUnknown(name, value))
-    } else if let Some(compute_from) = try_decode_compute_from(function, try_column_by_name) {
+        Ok(ProverFunction::ProvideIfUnknown(index, name, value))
+    } else if let Some(compute_from) = try_decode_compute_from(index, function, try_column_by_name)
+    {
         Ok(ProverFunction::ComputeFrom(compute_from))
     } else {
         Err(format!("Unsupported prover function kind: {function}"))
@@ -76,6 +82,7 @@ fn try_decode_provide_if_unknown<T: FieldElement>(
 
 /// Decodes functions of the form `query |i| std::prover::compute_from(Y, i, [X], f)`.
 fn try_decode_compute_from(
+    index: usize,
     function: &Expression,
     try_column_by_name: impl TryColumnByName,
 ) -> Option<ProverFunctionComputeFrom> {
@@ -97,6 +104,7 @@ fn try_decode_compute_from(
         .map(|e| try_extract_algebraic_reference(e, try_column_by_name))
         .collect::<Option<Vec<_>>>()?;
     Some(ProverFunctionComputeFrom {
+        index,
         target_column,
         input_columns,
         computation,
@@ -262,10 +270,12 @@ mod test {
         let (analyzed, _) = read_pil::<GoldilocksField>(input);
         assert_eq!(analyzed.prover_functions.len(), 1);
         let ProverFunctionComputeFrom {
+            index,
             target_column,
             input_columns,
             computation,
-        } = try_decode_compute_from(&analyzed.prover_functions[0], &analyzed).unwrap();
+        } = try_decode_compute_from(0, &analyzed.prover_functions[0], &analyzed).unwrap();
+        assert_eq!(index, 0);
         assert_eq!(target_column.name, "main::Y");
         assert!(!target_column.next);
         let [in_x, in_z] = input_columns.as_slice() else {
