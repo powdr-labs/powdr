@@ -20,6 +20,10 @@ let provide_if_unknown: expr, int, (-> fe) -> () = query |column, row, f| match 
     _ => (),
 };
 
+/// Computes the value of a column based on the values of other columns.
+let compute_from: expr, int, expr[], (fe[] -> fe) -> () = query |dest_col, row, input_cols, f|
+    provide_if_unknown(dest_col, row, || f(std::array::map(input_cols, eval)));
+
 /// Retrieves a field element from a prover-provided (untrusted and not committed) input channel.
 /// The parameters are the channel id and the index in the channel.
 /// Index zero is the length of the channel (number of bytes) and index 1 is the first element.
