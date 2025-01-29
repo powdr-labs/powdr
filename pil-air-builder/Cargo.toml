@@ -1,0 +1,36 @@
+[package]
+name = "pil-air-builder"
+description = "powdr parser"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+
+[dependencies]
+p3-air = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-field = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-challenger = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-commit = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-dft = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-matrix = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-maybe-rayon = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-util = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-keccak-air = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+tracing = "0.1.40"
+itertools = "0.13"
+sp1-stark = "3.4.0"
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
+
+
+
+[dev-dependencies]
+p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-challenger = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-commit = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4", features = ["test-utils"] }
+p3-dft = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-fri = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-keccak = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-matrix = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-merkle-tree = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+p3-symmetric = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }

@@ -31,6 +31,7 @@ members = [
     "schemas",
     "backend-utils",
     "executor-utils",
+    "pil-air-builder",
 ]
 
 exclude = ["riscv-runtime"]
