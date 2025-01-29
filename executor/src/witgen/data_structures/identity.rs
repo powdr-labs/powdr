@@ -294,18 +294,14 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
         },
         _ => (false, bus_interaction.multiplicity.clone()),
     };
-    // By convention, we assume that the first payload entry is the bus ID.
-    // TODO: Instead, we should have a separate field in the phantom bus interaction type.
-    let bus_id = match bus_interaction.payload.0[0] {
+    let bus_id = match bus_interaction.bus_id {
         AlgebraicExpression::Number(id) => id,
         // TODO: Relax this for sends when implementing dynamic sends
         _ => panic!("Expected first payload entry to be a static ID"),
     };
-    // Remove the bus ID from the list of expressions.
-    let expressions = bus_interaction.payload.0.iter().skip(1).cloned().collect();
     let selected_payload = SelectedExpressions {
         selector: bus_interaction.latch.clone(),
-        expressions,
+        expressions: bus_interaction.payload.0.clone(),
     };
     if is_receive {
         Identity::BusReceive(BusReceive {
