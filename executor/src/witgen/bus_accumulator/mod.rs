@@ -183,7 +183,7 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
     fn fingerprint(&self, tuple: &[T]) -> Ext {
         tuple
             .iter()
-            .zip_eq(self.powers_of_alpha.iter().take(tuple.len()).rev())
+            .zip_eq(self.powers_of_alpha.iter().take(tuple.len()))
             .map(|(a, b)| (*b) * (*a))
             .sum()
     }
