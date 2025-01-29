@@ -228,7 +228,7 @@ fn id_counter<T: FieldElement>(identities: &[AnalyzedIdentity<T>]) -> RangeFrom<
         .iter()
         .filter_map(|id| match id {
             AnalyzedIdentity::PhantomBusInteraction(bus_interaction) => {
-                match bus_interaction.payload.0[0] {
+                match bus_interaction.bus_id {
                     AlgebraicExpression::Number(id) => Some(id),
                     _ => None,
                 }
@@ -294,18 +294,14 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
         },
         _ => (false, bus_interaction.multiplicity.clone()),
     };
-    // By convention, we assume that the first payload entry is the bus ID.
-    // TODO: Instead, we should have a separate field in the phantom bus interaction type.
-    let bus_id = match bus_interaction.payload.0[0] {
+    let bus_id = match bus_interaction.bus_id {
         AlgebraicExpression::Number(id) => id,
         // TODO: Relax this for sends when implementing dynamic sends
         _ => panic!("Expected first payload entry to be a static ID"),
     };
-    // Remove the bus ID from the list of expressions.
-    let expressions = bus_interaction.payload.0.iter().skip(1).cloned().collect();
     let selected_payload = SelectedExpressions {
         selector: bus_interaction.latch.clone(),
-        expressions,
+        expressions: bus_interaction.payload.0.clone(),
     };
     if is_receive {
         Identity::BusReceive(BusReceive {
@@ -444,8 +440,8 @@ namespace main(4);
         // std::protocols::lookup_via_bus::lookup_send and
         // std::protocols::lookup_via_bus::lookup_receive.
         let (send, receive) = get_generated_bus_interaction_pair(
-            r"Constr::PhantomBusInteraction(main::left_latch, [42, main::a], main::left_latch);
-              Constr::PhantomBusInteraction(-main::multiplicities, [42, main::b], main::right_latch);",
+            r"Constr::PhantomBusInteraction(main::left_latch, 42, [main::a], main::left_latch);
+              Constr::PhantomBusInteraction(-main::multiplicities, 42, [main::b], main::right_latch);",
         );
         assert_eq!(
             send.selected_payload.to_string(),
@@ -501,8 +497,8 @@ namespace main(4);
         // std::protocols::permutation_via_bus::permutation_send and
         // std::protocols::permutation_via_bus::permutation_receive.
         let (send, receive) = get_generated_bus_interaction_pair(
-            r"Constr::PhantomBusInteraction(main::left_latch, [42, main::a], main::left_latch);
-              Constr::PhantomBusInteraction(-(main::right_latch * main::right_selector), [42, main::b], main::right_latch * main::right_selector);",
+            r"Constr::PhantomBusInteraction(main::left_latch, 42, [main::a], main::left_latch);
+              Constr::PhantomBusInteraction(-(main::right_latch * main::right_selector), 42, [main::b], main::right_latch * main::right_selector);",
         );
         assert_eq!(
             send.selected_payload.to_string(),

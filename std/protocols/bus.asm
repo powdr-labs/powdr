@@ -32,8 +32,7 @@ use std::check::panic;
 let bus_interaction: expr, expr[], expr, expr -> () = constr |id, payload, multiplicity, latch| {
 
     // Add phantom bus interaction
-    let full_payload = [id] + payload;
-    Constr::PhantomBusInteraction(multiplicity, full_payload, latch);
+    Constr::PhantomBusInteraction(multiplicity, id, payload, latch);
 
     let extension_field_size = required_extension_size();
 

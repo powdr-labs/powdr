@@ -1011,6 +1011,7 @@ pub struct PhantomBusInteractionIdentity<T> {
     pub id: u64,
     pub source: SourceRef,
     pub multiplicity: AlgebraicExpression<T>,
+    pub bus_id: AlgebraicExpression<T>,
     pub payload: ExpressionList<T>,
     pub latch: AlgebraicExpression<T>,
 }

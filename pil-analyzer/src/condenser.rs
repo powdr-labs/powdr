@@ -796,11 +796,12 @@ fn to_constraint<T: FieldElement>(
             id: counters.dispense_identity_id(),
             source,
             multiplicity: to_expr(&fields[0]),
-            payload: ExpressionList(match fields[1].as_ref() {
+            bus_id: to_expr(&fields[1]),
+            payload: ExpressionList(match fields[2].as_ref() {
                 Value::Array(fields) => fields.iter().map(|f| to_expr(f)).collect(),
-                _ => panic!("Expected array, got {:?}", fields[1]),
+                _ => panic!("Expected array, got {:?}", fields[2]),
             }),
-            latch: to_expr(&fields[2]),
+            latch: to_expr(&fields[3]),
         }
         .into(),
         _ => panic!("Expected constraint but got {constraint}"),
