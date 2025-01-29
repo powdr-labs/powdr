@@ -385,6 +385,16 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                         self.code.push(e);
                     }
                 }
+                Effect::ProverFunctionCall(variable, fun_index, args) => {
+                    if self.record_known(variable.clone()) {
+                        log::trace!(
+                            "{variable} := prover_function_{fun_index}({})",
+                            args.iter().format(", ")
+                        );
+                        updated_variables.push(variable.clone());
+                        self.code.push(e);
+                    }
+                }
                 Effect::RangeConstraint(variable, rc) => {
                     if self.add_range_constraint(variable.clone(), rc.clone()) {
                         log::trace!("{variable}: {rc}");
