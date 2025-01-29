@@ -31,9 +31,9 @@ fn interaction_id(link_to: &LinkTo) -> u32 {
 pub struct BusLinker {
     /// the pil statements
     pil: Vec<PilStatement>,
-    /// for each machine instance, the size of the selector array, based on the number of permutation links pointing to it
+    /// for each machine instance, the size of the selector array, based on the number of used operations accessed via permutation
     selector_array_size_by_instance: BTreeMap<Location, usize>,
-    /// for each link destination, the index in the selector array that the link points to. For lookups, this is None.
+    /// for each used operation, the index in the selector array. For operations accessed via lookups, this is None.
     selector_array_index_by_operation: BTreeMap<LinkTo, Option<usize>>,
 }
 
