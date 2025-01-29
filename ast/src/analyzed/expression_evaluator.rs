@@ -8,7 +8,7 @@ use crate::analyzed::{
     AlgebraicReference, AlgebraicReferenceThin, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
     Analyzed, Challenge, PolyID, PolynomialType,
 };
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 /// Accessor for terminal symbols.
 pub trait TerminalAccess<T> {
@@ -142,6 +142,7 @@ impl<'a, T, Expr, TA> ExpressionEvaluator<'a, T, Expr, TA>
 where
     TA: TerminalAccess<Expr>,
     Expr: Clone + Add<Output = Expr> + Sub<Output = Expr> + Mul<Output = Expr> + Neg<Output = Expr>,
+    T: FieldElement,
 {
     /// Create a new expression evaluator with custom expression converters.
     pub fn new_with_custom_expr(
@@ -184,10 +185,9 @@ where
                 AlgebraicBinaryOperator::Mul => self.evaluate(left) * self.evaluate(right),
                 AlgebraicBinaryOperator::Pow => match &**right {
                     Expression::Number(n) => {
-                        // let left = self.evaluate(left);
-                        // (0u32..n.to_integer().try_into_u32().unwrap())
-                        //     .fold((self.to_expr)(&T::one()), |acc, _| acc * left.clone())
-                        unimplemented!("pow with constant exponent bound stuff")
+                        let left = self.evaluate(left);
+                        (0u32..n.to_integer().try_into_u32().unwrap())
+                            .fold((self.to_expr)(&T::one()), |acc, _| acc * left.clone())
                     }
                     _ => unimplemented!("pow with non-constant exponent"),
                 },

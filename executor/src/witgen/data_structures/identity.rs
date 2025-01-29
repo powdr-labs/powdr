@@ -165,7 +165,7 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
     }
 }
 
-impl<T> Identity<T> {
+impl<T: FieldElement> Identity<T> {
     pub fn contains_next_ref(
         &self,
         intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
@@ -173,7 +173,9 @@ impl<T> Identity<T> {
         self.children()
             .any(|e| e.contains_next_ref(intermediate_definitions))
     }
+}
 
+impl<T> Identity<T> {
     pub fn id(&self) -> u64 {
         match self {
             Identity::Polynomial(i) => i.id,

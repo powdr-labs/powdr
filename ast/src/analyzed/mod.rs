@@ -1058,7 +1058,7 @@ pub enum Identity<T> {
     PhantomBusInteraction(PhantomBusInteractionIdentity<T>),
 }
 
-impl<T> Identity<T> {
+impl<T: FieldElement> Identity<T> {
     pub fn contains_next_ref(
         &self,
         intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
@@ -1066,7 +1066,9 @@ impl<T> Identity<T> {
         self.children()
             .any(|e| e.contains_next_ref(intermediate_definitions))
     }
+}
 
+impl<T> Identity<T> {
     pub fn degree(
         &self,
         intermediate_polynomials: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
@@ -1168,7 +1170,7 @@ pub enum IdentityKind {
     PhantomBusInteraction,
 }
 
-impl<T> SelectedExpressions<T> {
+impl<T: FieldElement> SelectedExpressions<T> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(
@@ -1589,7 +1591,9 @@ impl<T> AlgebraicExpression<T> {
     pub fn new_unary(op: AlgebraicUnaryOperator, expr: Self) -> Self {
         AlgebraicUnaryOperation::new(op, expr).into()
     }
+}
 
+impl<T: FieldElement> AlgebraicExpression<T> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(
@@ -1765,7 +1769,8 @@ impl Display for PolynomialType {
 mod tests {
     use std::iter::once;
 
-    use powdr_number::DegreeType;
+    use num_traits::One;
+    use powdr_number::{BabyBearField, DegreeType};
     use powdr_parser_util::SourceRef;
 
     use crate::analyzed::{
@@ -1934,7 +1939,7 @@ mod tests {
 
     #[test]
     fn contains_next_ref() {
-        let column = AlgebraicExpression::<i32>::Reference(AlgebraicReference {
+        let column = AlgebraicExpression::<BabyBearField>::Reference(AlgebraicReference {
             name: "column".to_string(),
             poly_id: PolyID {
                 id: 0,
@@ -1943,7 +1948,7 @@ mod tests {
             next: false,
         });
 
-        let one = AlgebraicExpression::Number(1);
+        let one = AlgebraicExpression::Number(BabyBearField::one());
 
         let expr = column.clone() + one.clone() * column.clone();
         assert!(!expr.contains_next_ref(&Default::default()));
