@@ -3,18 +3,25 @@ use itertools::Itertools;
 use std::collections::BTreeMap;
 use std::ops::Neg;
 
-use crate::analyzed::{
+use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, AlgebraicReferenceThin, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
     Analyzed, Challenge, PolyID, PolynomialType,
 };
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::FieldElement;
+use powdr_number::LargeInt;
 
 /// Accessor for terminal symbols.
 pub trait TerminalAccess<T> {
-    fn get(&self, _poly_ref: &AlgebraicReference) -> T;
-    fn get_public(&self, _public: &str) -> T;
-    fn get_challenge(&self, _challenge: &Challenge) -> T;
+    fn get(&self, _poly_ref: &AlgebraicReference) -> T {
+        unimplemented!();
+    }
+    fn get_public(&self, _public: &str) -> T {
+        unimplemented!();
+    }
+    fn get_challenge(&self, _challenge: &Challenge) -> T {
+        unimplemented!();
+    }
 }
 
 /// A simple container for trace values.

@@ -1,9 +1,10 @@
 use std::{collections::BTreeMap, fmt};
 
 use powdr_ast::{
-    analyzed::{AlgebraicExpression, ExpressionEvaluator, Identity, PolynomialIdentity},
+    analyzed::{AlgebraicExpression, Identity, PolynomialIdentity},
     parsed::visitor::AllChildren,
 };
+use powdr_executor_utils::expression_evaluator::ExpressionEvaluator;
 use powdr_number::FieldElement;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 

@@ -1,5 +1,4 @@
 mod display;
-mod expression_evaluator;
 pub mod visitor;
 
 use std::cmp::max;
@@ -7,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::iter::{self, empty, once};
-use std::ops::{self, Add, ControlFlow, Mul, Neg, Sub};
+use std::ops::{self, ControlFlow};
 use std::sync::Arc;
 
 use itertools::Itertools;
@@ -18,14 +17,13 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::parsed::types::{ArrayType, Type, TypeBounds, TypeScheme};
-use crate::parsed::visitor::{Children, ExpressionVisitable};
+use crate::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
     self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, SourceReference,
     TraitDeclaration, TraitImplementation, TypeDeclaration,
 };
-pub use expression_evaluator::{ExpressionEvaluator, OwnedTerminalValues, TerminalAccess};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
 pub enum StatementIdentifier {
@@ -1058,7 +1056,7 @@ pub enum Identity<T> {
     PhantomBusInteraction(PhantomBusInteractionIdentity<T>),
 }
 
-impl<T: FieldElement> Identity<T> {
+impl<T> Identity<T> {
     pub fn contains_next_ref(
         &self,
         intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
@@ -1066,9 +1064,7 @@ impl<T: FieldElement> Identity<T> {
         self.children()
             .any(|e| e.contains_next_ref(intermediate_definitions))
     }
-}
 
-impl<T> Identity<T> {
     pub fn degree(
         &self,
         intermediate_polynomials: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
@@ -1170,7 +1166,7 @@ pub enum IdentityKind {
     PhantomBusInteraction,
 }
 
-impl<T: FieldElement> SelectedExpressions<T> {
+impl<T> SelectedExpressions<T> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(
@@ -1591,83 +1587,50 @@ impl<T> AlgebraicExpression<T> {
     pub fn new_unary(op: AlgebraicUnaryOperator, expr: Self) -> Self {
         AlgebraicUnaryOperation::new(op, expr).into()
     }
-}
 
-impl<T: FieldElement> AlgebraicExpression<T> {
+    fn contains_next_ref_with_intermediates(
+        &self,
+        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+        intermediates_cache: &mut BTreeMap<AlgebraicReferenceThin, bool>,
+    ) -> bool {
+        self.all_children()
+            .filter_map(|e| {
+                if let AlgebraicExpression::Reference(reference) = e {
+                    Some(reference)
+                } else {
+                    None
+                }
+            })
+            .any(|reference| {
+                if reference.next {
+                    true
+                } else if reference.poly_id.ptype == PolynomialType::Intermediate {
+                    let reference = reference.to_thin();
+                    intermediates_cache
+                        .get(&reference)
+                        .cloned()
+                        .unwrap_or_else(|| {
+                            let result = intermediate_definitions[&reference]
+                                .contains_next_ref_with_intermediates(
+                                    intermediate_definitions,
+                                    intermediates_cache,
+                                );
+                            intermediates_cache.insert(reference, result);
+                            result
+                        })
+                } else {
+                    false
+                }
+            })
+    }
+
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(
         &self,
         intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     ) -> bool {
-        #[derive(Default, Clone)]
-        struct NextRefFinder {
-            inner: bool,
-        }
-
-        impl Add for NextRefFinder {
-            type Output = Self;
-
-            fn add(self, rhs: Self) -> Self::Output {
-                Self {
-                    inner: self.inner || rhs.inner,
-                }
-            }
-        }
-
-        impl Sub for NextRefFinder {
-            type Output = Self;
-
-            fn sub(self, rhs: Self) -> Self::Output {
-                Self {
-                    inner: self.inner || rhs.inner,
-                }
-            }
-        }
-
-        impl Neg for NextRefFinder {
-            type Output = Self;
-
-            fn neg(self) -> Self::Output {
-                self
-            }
-        }
-
-        impl Mul for NextRefFinder {
-            type Output = Self;
-
-            fn mul(self, rhs: Self) -> Self::Output {
-                Self {
-                    inner: self.inner || rhs.inner,
-                }
-            }
-        }
-
-        struct NextRefTerminalAccess;
-
-        impl TerminalAccess<NextRefFinder> for NextRefTerminalAccess {
-            fn get(&self, poly_ref: &AlgebraicReference) -> NextRefFinder {
-                NextRefFinder {
-                    inner: poly_ref.next,
-                }
-            }
-
-            fn get_public(&self, _public: &str) -> NextRefFinder {
-                NextRefFinder::default()
-            }
-
-            fn get_challenge(&self, _challenge: &Challenge) -> NextRefFinder {
-                NextRefFinder::default()
-            }
-        }
-
-        ExpressionEvaluator::new_with_custom_expr(
-            NextRefTerminalAccess,
-            intermediate_definitions,
-            |_| NextRefFinder::default(),
-        )
-        .evaluate(self)
-        .inner
+        self.contains_next_ref_with_intermediates(intermediate_definitions, &mut BTreeMap::new())
     }
 }
 

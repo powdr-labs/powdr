@@ -28,10 +28,12 @@ use powdr_ast::analyzed::{
 };
 
 use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder};
-use powdr_ast::analyzed::{ExpressionEvaluator, TerminalAccess};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 
-use powdr_executor_utils::WitgenCallback;
+use powdr_executor_utils::{
+    expression_evaluator::{ExpressionEvaluator, TerminalAccess},
+    WitgenCallback,
+};
 use powdr_number::FieldElement;
 
 /// A description of the constraint system.
