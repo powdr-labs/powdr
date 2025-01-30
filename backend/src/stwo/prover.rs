@@ -293,34 +293,21 @@ where
             })
             .collect::<BTreeMap<_, _>>();
 
-        // remember the witness cols that are already transferred to circle domain, so that we don't need to transfer them again in stage 1
-        let mut witness_col_circle_domain_index = BTreeMap::new();
-        let mut index_acc = 0;
-
         // Get witness columns in circle domain for stage 0
-        let mut witness_cols_circle_domain_eval: ColumnVec<
-            Option<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        let stage0_witness_cols_circle_domain_eval: ColumnVec<
+            CircleEvaluation<B, BaseField, BitReversedOrder>,
         > = witness_by_machine
             .clone()
             .values()
             .flat_map(|witness_cols| {
-                let witness_cols_in_circle_domain = witness_cols
-                    .iter()
-                    .enumerate()
-                    .map(|(index, (name, col))| {
-                        witness_col_circle_domain_index.insert(name.clone(), index + index_acc);
-                        Some(gen_stwo_circle_column::<_, BaseField>(
-                            *domain_map
-                                .get(&(col.len().ilog2() as usize))
-                                .expect("Domain not found for given size"),
-                            col,
-                        ))
-                    })
-                    .collect::<Vec<_>>();
-
-                index_acc += witness_cols_in_circle_domain.len();
-
-                witness_cols_in_circle_domain
+                witness_cols.iter().enumerate().map(|(index, (name, col))| {
+                    gen_stwo_circle_column::<_, BaseField>(
+                        *domain_map
+                            .get(&(col.len().ilog2() as usize))
+                            .expect("Domain not found for given size"),
+                        col,
+                    )
+                })
             })
             .collect();
 
@@ -348,35 +335,53 @@ where
 
         let stage0_challenges = get_dummy_challenges::<MC>(&self.analyzed);
 
-        if self.analyzed.stage_count() > 1 {
+        let stage1_witness_cols_circle_domain_eval = if self.analyzed.stage_count() > 1 {
             // build witness columns for stage 1 using the callback function, with the generated challenges
-            witness_cols_circle_domain_eval = witness_by_machine
-                .into_iter()
-                .flat_map(|(machine_name, machine_witness)| {
-                    witgen_callback.next_stage_witness(
-                        &self.split[&machine_name],
-                        &machine_witness,
-                        stage0_challenges.clone(),
-                        1,
-                    )
-                })
-                .map(|(witness_name, vec)| {
-                    if let Some(index) = witness_col_circle_domain_index.get(&witness_name) {
-                        witness_cols_circle_domain_eval[*index].take()
-                    } else {
-                        Some(gen_stwo_circle_column::<B, BaseField>(
-                            *domain_map
-                                .get(&(vec.len().ilog2() as usize))
-                                .expect("Domain not found for given size"),
-                            &vec,
-                        ))
-                    }
-                })
-                .collect();
-        }
+            Some(
+                witness_by_machine
+                    .into_iter()
+                    .map(|(machine_name, machine_witness)| {
+                        (
+                            machine_witness
+                                .iter()
+                                .map(|(k, _)| k.clone())
+                                .collect::<BTreeSet<_>>(),
+                            witgen_callback.next_stage_witness(
+                                &self.split[&machine_name],
+                                &machine_witness,
+                                stage0_challenges.clone(),
+                                1,
+                            ),
+                        )
+                    })
+                    .flat_map(move |(stage0_columns, callback_result)| {
+                        callback_result
+                            .iter()
+                            .filter_map(|(witness_name, vec)| {
+                                if stage0_columns.contains(witness_name) {
+                                    None
+                                } else {
+                                    Some(gen_stwo_circle_column::<B, BaseField>(
+                                        *domain_map
+                                            .get(&(vec.len().ilog2() as usize))
+                                            .expect("Domain not found for given size"),
+                                        vec,
+                                    ))
+                                }
+                            })
+                            .collect_vec()
+                    }),
+            )
+        } else {
+            None
+        };
 
         let mut tree_builder = commitment_scheme.tree_builder();
-        tree_builder.extend_evals(witness_cols_circle_domain_eval.into_iter().flatten());
+        tree_builder.extend_evals(
+            stage0_witness_cols_circle_domain_eval
+                .into_iter()
+                .chain(stage1_witness_cols_circle_domain_eval.into_iter().flatten()),
+        );
         tree_builder.commit(prover_channel);
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
