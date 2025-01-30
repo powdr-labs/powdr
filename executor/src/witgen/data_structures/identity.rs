@@ -5,9 +5,9 @@ use itertools::{Either, Itertools};
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, AlgebraicReferenceThin, AlgebraicUnaryOperator, Analyzed,
-        ConnectIdentity, Identity as AnalyzedIdentity, LookupIdentity, PermutationIdentity,
-        PhantomBusInteractionIdentity, PhantomLookupIdentity, PhantomPermutationIdentity,
-        PolynomialIdentity, SelectedExpressions,
+        ConnectIdentity, ContainsNextRef, Identity as AnalyzedIdentity, LookupIdentity,
+        PermutationIdentity, PhantomBusInteractionIdentity, PhantomLookupIdentity,
+        PhantomPermutationIdentity, PolynomialIdentity, SelectedExpressions,
     },
     parsed::visitor::Children,
 };

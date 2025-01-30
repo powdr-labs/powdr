@@ -6,7 +6,7 @@ use num_traits::Zero;
 use num_traits::One;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicReferenceThin, PolyID, PolynomialType,
+    AlgebraicReference, AlgebraicReferenceThin, ContainsNextRef, PolyID, PolynomialType,
 };
 
 use powdr_number::FieldElement;

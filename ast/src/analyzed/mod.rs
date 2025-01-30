@@ -1,3 +1,4 @@
+mod contains_next_ref;
 mod display;
 pub mod visitor;
 
@@ -17,13 +18,14 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::parsed::types::{ArrayType, Type, TypeBounds, TypeScheme};
-use crate::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
+use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
     self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, SourceReference,
     TraitDeclaration, TraitImplementation, TypeDeclaration,
 };
+pub use contains_next_ref::ContainsNextRef;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
 pub enum StatementIdentifier {
@@ -1057,14 +1059,6 @@ pub enum Identity<T> {
 }
 
 impl<T> Identity<T> {
-    pub fn contains_next_ref(
-        &self,
-        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
-    ) -> bool {
-        self.children()
-            .any(|e| e.contains_next_ref(intermediate_definitions))
-    }
-
     pub fn degree(
         &self,
         intermediate_polynomials: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
@@ -1164,18 +1158,6 @@ pub enum IdentityKind {
     PhantomPermutation,
     Connect,
     PhantomBusInteraction,
-}
-
-impl<T> SelectedExpressions<T> {
-    /// @returns true if the expression contains a reference to a next value of a
-    /// (witness or fixed) column
-    pub fn contains_next_ref(
-        &self,
-        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
-    ) -> bool {
-        self.children()
-            .any(|e| e.contains_next_ref(intermediate_definitions))
-    }
 }
 
 pub type Expression = parsed::Expression<Reference>;
@@ -1587,51 +1569,6 @@ impl<T> AlgebraicExpression<T> {
     pub fn new_unary(op: AlgebraicUnaryOperator, expr: Self) -> Self {
         AlgebraicUnaryOperation::new(op, expr).into()
     }
-
-    fn contains_next_ref_with_intermediates(
-        &self,
-        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
-        intermediates_cache: &mut BTreeMap<AlgebraicReferenceThin, bool>,
-    ) -> bool {
-        self.all_children()
-            .filter_map(|e| {
-                if let AlgebraicExpression::Reference(reference) = e {
-                    Some(reference)
-                } else {
-                    None
-                }
-            })
-            .any(|reference| {
-                if reference.next {
-                    true
-                } else if reference.poly_id.ptype == PolynomialType::Intermediate {
-                    let reference = reference.to_thin();
-                    intermediates_cache
-                        .get(&reference)
-                        .cloned()
-                        .unwrap_or_else(|| {
-                            let result = intermediate_definitions[&reference]
-                                .contains_next_ref_with_intermediates(
-                                    intermediate_definitions,
-                                    intermediates_cache,
-                                );
-                            intermediates_cache.insert(reference, result);
-                            result
-                        })
-                } else {
-                    false
-                }
-            })
-    }
-
-    /// @returns true if the expression contains a reference to a next value of a
-    /// (witness or fixed) column
-    pub fn contains_next_ref(
-        &self,
-        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
-    ) -> bool {
-        self.contains_next_ref_with_intermediates(intermediate_definitions, &mut BTreeMap::new())
-    }
 }
 
 impl<T> ops::Add for AlgebraicExpression<T> {
@@ -1730,10 +1667,8 @@ impl Display for PolynomialType {
 
 #[cfg(test)]
 mod tests {
-    use std::iter::once;
 
-    use num_traits::One;
-    use powdr_number::{BabyBearField, DegreeType};
+    use powdr_number::DegreeType;
     use powdr_parser_util::SourceRef;
 
     use crate::analyzed::{
@@ -1898,37 +1833,5 @@ mod tests {
                 .collect::<Vec<DegreeType>>(),
             Vec::<DegreeType>::new()
         );
-    }
-
-    #[test]
-    fn contains_next_ref() {
-        let column = AlgebraicExpression::<BabyBearField>::Reference(AlgebraicReference {
-            name: "column".to_string(),
-            poly_id: PolyID {
-                id: 0,
-                ptype: PolynomialType::Committed,
-            },
-            next: false,
-        });
-
-        let one = AlgebraicExpression::Number(BabyBearField::one());
-
-        let expr = column.clone() + one.clone() * column.clone();
-        assert!(!expr.contains_next_ref(&Default::default()));
-
-        let expr = column.clone() + one.clone() * column.clone().next().unwrap();
-        assert!(expr.contains_next_ref(&Default::default()));
-
-        let inter = AlgebraicReference {
-            name: "inter".to_string(),
-            poly_id: PolyID {
-                id: 1,
-                ptype: PolynomialType::Intermediate,
-            },
-            next: false,
-        };
-        let intermediates = once((inter.to_thin(), column.clone().next().unwrap())).collect();
-        let expr = column.clone() + one.clone() * AlgebraicExpression::Reference(inter.clone());
-        assert!(expr.contains_next_ref(&intermediates));
     }
 }

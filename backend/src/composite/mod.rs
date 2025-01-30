@@ -8,7 +8,7 @@ use std::{
 };
 
 use itertools::Itertools;
-use powdr_ast::analyzed::Analyzed;
+use powdr_ast::analyzed::{Analyzed, ContainsNextRef};
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
