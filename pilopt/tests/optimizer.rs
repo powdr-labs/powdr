@@ -465,3 +465,32 @@ fn equal_constrained_transitive() {
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
+#[test]
+fn simplify_associative_operations() {
+    let input = r#"namespace N(150);
+        col witness x;
+        col witness y;
+        col witness z;
+        col fixed c1 = [1]*;
+        col fixed c2 = [2]*;
+        
+        (x + c2) + c1 = y;
+        (x - c2) + c1 = y;
+        
+        ((x + 3) - y) - 9 = z;
+        ((-x + 3) + y) + 9 = z;
+    "#;
+
+    let expectation = r#"namespace N(150);
+    col witness x;
+    col witness y;
+    col witness z;
+    N::x - N::y = 3;
+    N::x - N::y = 1;
+    N::x - N::y - N::z = 6;
+    -N::x + N::y - N::z = 12;
+"#;
+
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}

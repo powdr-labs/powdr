@@ -355,6 +355,14 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
             return;
         }
     }
+
+    if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) = e {
+        if let Some(simplified) = try_simplify_associative_operation(left, right, *op) {
+            *e = simplified;
+            return;
+        }
+    }
+
     match e {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left,
@@ -424,6 +432,81 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
             }
         }
         _ => {}
+    }
+}
+
+fn try_simplify_associative_operation<T: FieldElement>(
+    left: &Box<AlgebraicExpression<T>>,
+    right: &Box<AlgebraicExpression<T>>,
+    op: AlgebraicBinaryOperator,
+) -> Option<AlgebraicExpression<T>> {
+    // Find binary operation and other expression, handling both orderings:
+    // - (X ± C1) ± Other
+    // - Other ± (X ± C1)
+    let (bin_op, other_expr) = match (left.as_ref(), right.as_ref()) {
+        (AlgebraicExpression::BinaryOperation(bin), other) => (bin, other),
+        (other, AlgebraicExpression::BinaryOperation(bin)) => (bin, other),
+        _ => return None,
+    };
+
+    // Extract variable and constant from binary operation, handling both orderings:
+    // - (X ± C1) -> (X, C1)
+    // - (C1 ± X) -> (X, C1)
+    let AlgebraicBinaryOperation {
+        left: x1,
+        right: x2,
+        op: inner_op,
+    } = bin_op;
+    let (x, c1_val) = if let AlgebraicExpression::Number(val) = x1.as_ref() {
+        (x2, val)
+    } else if let AlgebraicExpression::Number(val) = x2.as_ref() {
+        (x1, val)
+    } else {
+        return None;
+    };
+
+    match other_expr {
+        // Case 1: Combining with a constant
+        // (X ± C1) ± C2 -> X ± (C1 ± C2)
+        // Handles all combinations of + and - for both operations
+        AlgebraicExpression::Number(c2) => {
+            let result = match inner_op {
+                AlgebraicBinaryOperator::Add => *c1_val + *c2,
+                AlgebraicBinaryOperator::Sub => *c1_val - *c2,
+                _ => return None,
+            };
+            Some(AlgebraicExpression::BinaryOperation(
+                AlgebraicBinaryOperation {
+                    left: x.clone(),
+                    op,
+                    right: Box::new(AlgebraicExpression::Number(result)),
+                },
+            ))
+        }
+
+        // Case 2: Combining with a binary operation
+        // (X ± C1) ± Y -> (X ± Y) ± C1
+        // Preserves the sign of C1 based on the inner operation
+        y => {
+            let result = match inner_op {
+                AlgebraicBinaryOperator::Add => *c1_val,
+                AlgebraicBinaryOperator::Sub => -*c1_val,
+                _ => return None,
+            };
+            Some(AlgebraicExpression::BinaryOperation(
+                AlgebraicBinaryOperation {
+                    left: Box::new(AlgebraicExpression::BinaryOperation(
+                        AlgebraicBinaryOperation {
+                            left: x.clone(),
+                            op,
+                            right: Box::new(y.clone()),
+                        },
+                    )),
+                    op,
+                    right: Box::new(AlgebraicExpression::Number(result)),
+                },
+            ))
+        }
     }
 }
 
