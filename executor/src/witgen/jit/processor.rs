@@ -223,7 +223,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         let second_branch_result = self.generate_code_for_branch(
             can_process,
             second_branch,
-            identity_queue.clone(),
+            identity_queue,
             branch_depth + 1,
         );
         let mut result = match (first_branch_result, second_branch_result) {
