@@ -31,9 +31,6 @@ use std::check::panic;
 /// - latch: a binary expression which indicates where the multiplicity can be non-zero.
 let bus_interaction: expr, expr[], expr, expr -> () = constr |id, payload, multiplicity, latch| {
 
-    // Add phantom bus interaction
-    Constr::PhantomBusInteraction(multiplicity, id, payload, latch);
-
     let extension_field_size = required_extension_size();
 
     // Alpha is used to compress the LHS and RHS arrays.
@@ -92,6 +89,9 @@ let bus_interaction: expr, expr[], expr, expr -> () = constr |id, payload, multi
     );
     
     constrain_eq_ext(update_expr, from_base(0));
+
+    // Add phantom bus interaction
+    Constr::PhantomBusInteraction(multiplicity, id, payload, latch, acc);
 };
 
 /// Compute acc' = acc * (1 - is_first') + multiplicity' / fingerprint(id, payload...),

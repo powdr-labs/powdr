@@ -54,7 +54,8 @@ enum Constr {
     ///   would be in an equivalent lookup or permutation:
     ///   - It should always evaluate to a binary value.
     ///   - If it evaluates to zero, the multiplicity must be zero.
-    PhantomBusInteraction(expr, expr, expr[], expr)
+    /// - The list of accumulator columns.
+    PhantomBusInteraction(expr, expr, expr[], expr, expr[])
 }
 
 /// This is the result of the "$" operator. It can be used as the left and

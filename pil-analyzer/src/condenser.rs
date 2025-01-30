@@ -802,6 +802,19 @@ fn to_constraint<T: FieldElement>(
                 _ => panic!("Expected array, got {:?}", fields[2]),
             }),
             latch: to_expr(&fields[3]),
+            accumulator_columns: match fields[4].as_ref() {
+                Value::Array(fields) => fields
+                    .iter()
+                    .map(|f| match to_expr(f) {
+                        AlgebraicExpression::Reference(reference) => {
+                            assert!(!reference.next);
+                            reference
+                        }
+                        _ => panic!("Expected reference, got {f:?}"),
+                    })
+                    .collect(),
+                _ => panic!("Expected array, got {:?}", fields[2]),
+            },
         }
         .into(),
         _ => panic!("Expected constraint but got {constraint}"),
