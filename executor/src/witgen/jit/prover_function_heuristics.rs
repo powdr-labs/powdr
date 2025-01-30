@@ -36,7 +36,7 @@ pub enum ProverFunction<'a, T> {
 /// - query |i| std::prover::provide_if_unknown(Y, i, || <value>)
 /// - query |i| std::prover::compute_from(Y, i, [X, ...], f)
 pub fn decode_prover_functions<'a, T: FieldElement>(
-    machine_parts: &'a MachineParts<T>,
+    machine_parts: &MachineParts<'a, T>,
     try_column_by_name: impl TryColumnByName,
 ) -> Result<Vec<ProverFunction<'a, T>>, String> {
     machine_parts

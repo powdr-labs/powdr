@@ -109,10 +109,13 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             cache_key.known_args
         );
 
-        let ProcessorResult {
-            code,
-            range_constraints,
-        } = self
+        let (
+            ProcessorResult {
+                code,
+                range_constraints,
+            },
+            prover_functions,
+        ) = self
             .processor
             .generate_code(can_process, cache_key.identity_id, &cache_key.known_args)
             .map_err(|e| {
@@ -158,6 +161,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             self.column_layout.column_count,
             &known_inputs,
             &code,
+            prover_functions,
         )
         .unwrap();
         log::trace!("Compilation done.");

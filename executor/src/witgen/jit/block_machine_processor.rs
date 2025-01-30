@@ -13,6 +13,7 @@ use crate::witgen::{
 
 use super::{
     processor::ProcessorResult,
+    prover_function_heuristics::ProverFunction,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -50,7 +51,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_args: &BitVec,
-    ) -> Result<ProcessorResult<T>, String> {
+    ) -> Result<(ProcessorResult<T>, Vec<ProverFunction<'a, T>>), String> {
         let connection = self.machine_parts.connections[&identity_id];
         assert_eq!(connection.right.expressions.len(), known_args.len());
 
@@ -62,10 +63,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .collect::<HashSet<_>>();
         let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables, []);
 
-        let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?
-            .into_iter()
-            .flat_map(|f| (0..self.block_size).map(move |row| (f.clone(), row as i32)))
-            .collect_vec();
+        let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
 
         // In the latch row, set the RHS selector to 1.
         let selector = &connection.right.selector;
@@ -114,7 +112,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .iter()
             .enumerate()
             .filter_map(|(i, is_input)| (!is_input).then_some(Variable::Param(i)));
-        Processor::new(
+        let result = Processor::new(
             self.fixed_data,
             self,
             identities,
@@ -124,7 +122,11 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         .with_block_shape_check()
         .with_block_size(self.block_size)
         .with_requested_range_constraints((0..known_args.len()).map(Variable::Param))
-        .with_prover_functions(prover_functions)
+        .with_prover_functions(         prover_functions
+            .iter()
+            .flat_map(|f| (0..self.block_size).map(move |row| (f.clone(), row as i32)))
+            .collect_vec()
+)
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string_with_variable_formatter(|var| match var {
@@ -144,7 +146,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .take(10)
                 .format("\n  ");
             format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
-        })
+        })?;
+        Ok((result, prover_functions))
     }
 }
 
@@ -233,7 +236,9 @@ mod test {
                 .chain((0..num_outputs).map(|_| false)),
         );
 
-        processor.generate_code(&mutable_state, connection_id, &known_values)
+        processor
+            .generate_code(&mutable_state, connection_id, &known_values)
+            .map(|(result, _prover_functions)| result)
     }
 
     #[test]
