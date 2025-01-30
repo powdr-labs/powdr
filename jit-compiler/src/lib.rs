@@ -7,7 +7,7 @@ use std::{
     sync::Arc,
 };
 
-use codegen::CodeGenerator;
+pub use codegen::{CodeGenerator, DefinitionFetcher};
 use compiler::{generate_glue_code, load_library};
 
 use itertools::Itertools;
@@ -58,7 +58,7 @@ pub fn compile<T: FieldElement>(
     // TODO this should be changed back to Info after the introduction of the ToCol trait.
     log::debug!("JIT-compiling {} symbols...", requested_symbols.len());
 
-    let mut codegen = CodeGenerator::new(analyzed);
+    let mut codegen = CodeGenerator::<T, _>::new(analyzed);
     let successful_symbols = requested_symbols
         .iter()
         .filter_map(|&sym| match codegen.request_symbol(sym, &[]) {

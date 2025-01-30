@@ -6,6 +6,7 @@ use powdr_ast::{
     analyzed::{PolyID, PolynomialType},
     indent,
 };
+use powdr_jit_compiler::{CodeGenerator, DefinitionFetcher};
 use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
@@ -85,6 +86,7 @@ extern "C" fn call_machine<T: FieldElement, Q: QueryCallback<T>>(
 
 /// Compile the given inferred effects into machine code and load it.
 pub fn compile_effects<T: FieldElement>(
+    analyzed: &impl DefinitionFetcher,
     first_column_id: u64,
     column_count: usize,
     known_inputs: &[Variable],
@@ -92,15 +94,19 @@ pub fn compile_effects<T: FieldElement>(
     prover_functions: Vec<ProverFunction<'_, T>>,
 ) -> Result<WitgenFunction<T>, String> {
     let utils = util_code::<T>(first_column_id, column_count)?;
+
+    let mut codegen = powdr_jit_compiler::CodeGenerator::new(analyzed);
     let prover_functions = prover_functions
         .iter()
-        .map(|f| prover_function_code(f))
+        .map(|f| prover_function_code(f, &mut codegen))
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .format("\n");
+    let codegen_util_code = codegen.generated_code();
     let witgen_code = witgen_code(known_inputs, effects);
     let code = format!(
         "{utils}\n//-------------------------------\n\n\
+        {codegen_util_code}\n\n//-------------------------------\n\n\
         {prover_functions}\n\n//-------------------------------\n\n\
         {witgen_code}"
     );
@@ -503,8 +509,22 @@ fn format_row_offset(row_offset: i32) -> String {
     }
 }
 
-fn prover_function_code<T: FieldElement>(f: &ProverFunction<'_, T>) -> Result<String, String> {
-    Ok(String::new())
+fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
+    f: &ProverFunction<'_, T>,
+    codegen: &mut CodeGenerator<'_, T, D>,
+) -> Result<String, String> {
+    let ProverFunction::ComputeFrom(f) = f else {
+        return Err("ProvideIfUnknown functions are not supported".to_string());
+    };
+
+    let code = codegen.generate_code_for_expresson(f.computation)?;
+
+    let index = f.index;
+    Ok(format!(
+        "fn prover_function_{index}(args: &[FieldElement]) -> FieldElement {{\n\
+            ({code})(args)\n\
+        }}"
+    ))
 }
 
 /// Returns the rust code containing utility functions given a first column id and a column count
@@ -570,6 +590,7 @@ mod tests {
 
     use std::ptr::null;
 
+    use powdr_ast::analyzed::FunctionValueDefinition;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -581,9 +602,32 @@ mod tests {
 
     use super::*;
 
+    struct NoDefinitions;
+    impl DefinitionFetcher for NoDefinitions {
+        fn get_definition(&self, _: &str) -> Option<&FunctionValueDefinition> {
+            None
+        }
+    }
+
+    fn compile_effects(
+        column_count: usize,
+        known_inputs: &[Variable],
+        effects: &[Effect<GoldilocksField, Variable>],
+        prover_functions: Vec<ProverFunction<'_, GoldilocksField>>,
+    ) -> Result<WitgenFunction<GoldilocksField>, String> {
+        super::compile_effects::<GoldilocksField>(
+            &NoDefinitions,
+            0,
+            column_count,
+            known_inputs,
+            effects,
+            prover_functions,
+        )
+    }
+
     #[test]
     fn compile_util_code_goldilocks() {
-        compile_effects::<GoldilocksField>(0, 2, &[], &[], vec![]).unwrap();
+        compile_effects(2, &[], &[], vec![]).unwrap();
     }
 
     // We would like to test the generic field implementation, but
@@ -739,7 +783,7 @@ extern \"C\" fn witgen(
             assignment(&x, number(7)),
             assignment(&y, symbol(&x) + number(2)),
         ];
-        let f = compile_effects(0, 1, &[], &effects, vec![]).unwrap();
+        let f = compile_effects(1, &[], &effects, vec![]).unwrap();
         let mut data = vec![GoldilocksField::from(0); 2];
         let mut known = vec![0; 1];
         (f.function)(witgen_fun_params(&mut data, &mut known));
@@ -762,8 +806,8 @@ extern \"C\" fn witgen(
         let row_count = 2;
         let column_count = 2;
         let data_len = column_count * row_count;
-        let f1 = compile_effects(0, column_count, &[], &effects1, vec![]).unwrap();
-        let f2 = compile_effects(0, column_count, &[], &effects2, vec![]).unwrap();
+        let f1 = compile_effects(column_count, &[], &effects1, vec![]).unwrap();
+        let f2 = compile_effects(column_count, &[], &effects2, vec![]).unwrap();
         let mut data = vec![GoldilocksField::from(0); data_len];
         let mut known = vec![0; row_count];
         (f1.function)(witgen_fun_params(&mut data, &mut known));
@@ -799,7 +843,7 @@ extern \"C\" fn witgen(
             assignment(&cell("x", 0, 3), number(8).field_div(&-number(2))),
             assignment(&cell("x", 0, 4), (-number(8)).field_div(&-number(2))),
         ];
-        let f = compile_effects(0, 1, &[], &effects, vec![]).unwrap();
+        let f = compile_effects(1, &[], &effects, vec![]).unwrap();
         let mut data = vec![GoldilocksField::from(0); 5];
         let mut known = vec![0; 5];
         (f.function)(witgen_fun_params(&mut data, &mut known));
@@ -820,7 +864,7 @@ extern \"C\" fn witgen(
         let z = cell("z", 2, 0);
         let effects = vec![assignment(&x, symbol(&y) * symbol(&z))];
         let known_inputs = vec![y.clone(), z.clone()];
-        let f = compile_effects(0, 3, &known_inputs, &effects, vec![]).unwrap();
+        let f = compile_effects(3, &known_inputs, &effects, vec![]).unwrap();
         let mut data = vec![
             GoldilocksField::from(0),
             GoldilocksField::from(3),
@@ -841,7 +885,7 @@ extern \"C\" fn witgen(
             assignment(&z, symbol(&x).integer_div(&-number(10))),
         ];
         let known_inputs = vec![x.clone()];
-        let f = compile_effects(0, 3, &known_inputs, &effects, vec![]).unwrap();
+        let f = compile_effects(3, &known_inputs, &effects, vec![]).unwrap();
         let mut data = vec![
             GoldilocksField::from(23),
             GoldilocksField::from(0),
@@ -861,7 +905,7 @@ extern \"C\" fn witgen(
         let x_val: GoldilocksField = 7.into();
         let mut y_val: GoldilocksField = 9.into();
         let effects = vec![assignment(&y, symbol(&x) + number(7))];
-        let f = compile_effects(0, 1, &[x], &effects, vec![]).unwrap();
+        let f = compile_effects(1, &[x], &effects, vec![]).unwrap();
         let mut data = vec![];
         let mut known = vec![];
         let mut params = vec![LookupCell::Input(&x_val), LookupCell::Output(&mut y_val)];
@@ -905,7 +949,7 @@ extern \"C\" fn witgen(
             row_offset: 6,
         });
         let effects = vec![assignment(&a, symbol(&x))];
-        let f = compile_effects(0, 1, &[], &effects, vec![]).unwrap();
+        let f = compile_effects(1, &[], &effects, vec![]).unwrap();
         let mut data = vec![7.into()];
         let mut known = vec![0];
         let mut params = vec![];
@@ -965,7 +1009,7 @@ extern \"C\" fn witgen(
             Effect::Assignment(y.clone(), symbol(&r2)),
         ];
         let known_inputs = vec![];
-        let f = compile_effects(0, 3, &known_inputs, &effects, vec![]).unwrap();
+        let f = compile_effects(3, &known_inputs, &effects, vec![]).unwrap();
         let mut data = vec![GoldilocksField::from(0); 3];
         let mut known = vec![0; 1];
         let params = WitgenFunctionParams {
@@ -998,7 +1042,7 @@ extern \"C\" fn witgen(
             vec![assignment(&y, symbol(&x) + number(1))],
             vec![assignment(&y, symbol(&x) + number(2))],
         )];
-        let f = compile_effects(0, 1, &[x], &effects, vec![]).unwrap();
+        let f = compile_effects(1, &[x], &effects, vec![]).unwrap();
         let mut data = vec![];
         let mut known = vec![];
 
