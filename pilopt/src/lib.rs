@@ -436,14 +436,14 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
 }
 
 fn try_simplify_associative_operation<T: FieldElement>(
-    left: &Box<AlgebraicExpression<T>>,
-    right: &Box<AlgebraicExpression<T>>,
+    left: &AlgebraicExpression<T>,
+    right: &AlgebraicExpression<T>,
     op: AlgebraicBinaryOperator,
 ) -> Option<AlgebraicExpression<T>> {
     // Find binary operation and other expression, handling both orderings:
     // - (X ± C1) ± Other
     // - Other ± (X ± C1)
-    let (bin_op, other_expr) = match (left.as_ref(), right.as_ref()) {
+    let (bin_op, other_expr) = match (left, right) {
         (AlgebraicExpression::BinaryOperation(bin), other) => (bin, other),
         (other, AlgebraicExpression::BinaryOperation(bin)) => (bin, other),
         _ => return None,
@@ -468,7 +468,6 @@ fn try_simplify_associative_operation<T: FieldElement>(
     match other_expr {
         // Case 1: Combining with a constant
         // (X ± C1) ± C2 -> X ± (C1 ± C2)
-        // Handles all combinations of + and - for both operations
         AlgebraicExpression::Number(c2) => {
             let result = match inner_op {
                 AlgebraicBinaryOperator::Add => *c1_val + *c2,
@@ -486,7 +485,6 @@ fn try_simplify_associative_operation<T: FieldElement>(
 
         // Case 2: Combining with a binary operation
         // (X ± C1) ± Y -> (X ± Y) ± C1
-        // Preserves the sign of C1 based on the inner operation
         y => {
             let result = match inner_op {
                 AlgebraicBinaryOperator::Add => *c1_val,
