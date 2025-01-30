@@ -5,7 +5,11 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
-use crate::witgen::{jit::processor::Processor, machines::MachineParts, FixedData};
+use crate::witgen::{
+    jit::{processor::Processor, prover_function_heuristics::decode_prover_functions},
+    machines::MachineParts,
+    FixedData,
+};
 
 use super::{
     processor::ProcessorResult,
@@ -57,6 +61,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .filter_map(|(i, is_input)| is_input.then_some(Variable::Param(i)))
             .collect::<HashSet<_>>();
         let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables, []);
+
+        let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
 
         // In the latch row, set the RHS selector to 1.
         let selector = &connection.right.selector;
@@ -115,6 +121,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         .with_block_shape_check()
         .with_block_size(self.block_size)
         .with_requested_range_constraints((0..known_args.len()).map(Variable::Param))
+        .with_prover_functions(prover_functions)
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string_with_variable_formatter(|var| match var {

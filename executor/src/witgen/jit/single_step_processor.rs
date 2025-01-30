@@ -11,7 +11,7 @@ use crate::witgen::{machines::MachineParts, FixedData};
 use super::{
     effect::Effect,
     processor::Processor,
-    prover_function_heuristics::decode_simple_prover_functions,
+    prover_function_heuristics::decode_prover_functions,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -67,18 +67,10 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             })
             .collect_vec();
 
-        let mut witgen =
+        let witgen =
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
 
-        let prover_assignments = decode_simple_prover_functions(&self.machine_parts)
-            .into_iter()
-            .map(|(col_name, value)| (self.column(&col_name), value))
-            .collect_vec();
-
-        // TODO we should only do it if other methods fail, because it is "provide_if_unknown"
-        for (col, value) in &prover_assignments {
-            witgen.assign_constant(col, 1, *value);
-        }
+        let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
 
         Processor::new(
             self.fixed_data,
@@ -87,6 +79,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             requested_known,
             SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
+        .with_prover_functions(prover_functions)
         .generate_code(can_process, witgen)
         .map_err(|e| e.to_string())
         .map(|r| r.code)
