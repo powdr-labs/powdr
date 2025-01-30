@@ -436,8 +436,8 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
 }
 
 fn try_simplify_associative_operation<T: FieldElement>(
-    left: &Box<AlgebraicExpression<T>>,
-    right: &Box<AlgebraicExpression<T>>,
+    left: &AlgebraicExpression<T>,
+    right: &AlgebraicExpression<T>,
     op: AlgebraicBinaryOperator,
 ) -> Option<AlgebraicExpression<T>> {
     if op != AlgebraicBinaryOperator::Add {
@@ -447,7 +447,7 @@ fn try_simplify_associative_operation<T: FieldElement>(
     // Find binary operation and other expression, handling both orderings:
     // (X + C1) + Other
     // Other + (X + C1)
-    let (bin_op, other_expr) = match (left.as_ref(), right.as_ref()) {
+    let (bin_op, other_expr) = match (left, right) {
         (AlgebraicExpression::BinaryOperation(bin), other) => (bin, other),
         (other, AlgebraicExpression::BinaryOperation(bin)) => (bin, other),
         _ => return None,
@@ -456,7 +456,7 @@ fn try_simplify_associative_operation<T: FieldElement>(
     let AlgebraicBinaryOperation {
         left: x1,
         right: x2,
-        op: inner_op @ AlgebraicBinaryOperator::Add,
+        op: _inner_op @ AlgebraicBinaryOperator::Add,
     } = bin_op
     else {
         return None;
