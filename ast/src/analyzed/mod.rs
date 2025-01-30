@@ -1667,7 +1667,6 @@ impl Display for PolynomialType {
 
 #[cfg(test)]
 mod tests {
-
     use powdr_number::DegreeType;
     use powdr_parser_util::SourceRef;
 
