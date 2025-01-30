@@ -92,8 +92,18 @@ pub fn compile_effects<T: FieldElement>(
     prover_functions: Vec<ProverFunction<'_, T>>,
 ) -> Result<WitgenFunction<T>, String> {
     let utils = util_code::<T>(first_column_id, column_count)?;
+    let prover_functions = prover_functions
+        .iter()
+        .map(|f| prover_function_code(f))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .format("\n");
     let witgen_code = witgen_code(known_inputs, effects);
-    let code = format!("{utils}\n//-------------------------------\n{witgen_code}");
+    let code = format!(
+        "{utils}\n//-------------------------------\n\n\
+        {prover_functions}\n\n//-------------------------------\n\n\
+        {witgen_code}"
+    );
 
     record_start("JIT-compilation");
     let start = std::time::Instant::now();
@@ -354,7 +364,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
         }
         Effect::ProverFunctionCall(var, function_index, args) => {
             format!(
-                "{}{} = prover_function[{function_index}](&[{}]);",
+                "{}{} = prover_function_{function_index}(&[{}]);",
                 if is_top_level { "let " } else { "" },
                 variable_to_string(var),
                 args.iter().map(variable_to_string).format(", ")
@@ -491,6 +501,10 @@ fn format_row_offset(row_offset: i32) -> String {
     } else {
         format!("{row_offset}")
     }
+}
+
+fn prover_function_code<T: FieldElement>(f: &ProverFunction<'_, T>) -> Result<String, String> {
+    Ok(String::new())
 }
 
 /// Returns the rust code containing utility functions given a first column id and a column count
