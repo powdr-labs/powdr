@@ -2,7 +2,7 @@
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, PolyID, PolynomialType,
+    AlgebraicExpression as Expression, AlgebraicReference, ContainsNextRef, PolyID, PolynomialType,
 };
 use powdr_number::FieldElement;
 

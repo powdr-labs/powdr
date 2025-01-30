@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_ast::analyzed::{PolyID, PolynomialType};
+use powdr_ast::analyzed::{ContainsNextRef, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::{jit::processor::Processor, machines::MachineParts, FixedData};

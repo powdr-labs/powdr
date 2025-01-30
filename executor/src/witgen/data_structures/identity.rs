@@ -4,10 +4,10 @@ use std::{collections::BTreeMap, ops::RangeFrom};
 use itertools::{Either, Itertools};
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, AlgebraicReferenceThin, AlgebraicUnaryOperator, Analyzed,
-        ConnectIdentity, ContainsNextRef, Identity as AnalyzedIdentity, LookupIdentity,
-        PermutationIdentity, PhantomBusInteractionIdentity, PhantomLookupIdentity,
-        PhantomPermutationIdentity, PolynomialIdentity, SelectedExpressions,
+        AlgebraicExpression, AlgebraicUnaryOperator, Analyzed, ConnectIdentity,
+        Identity as AnalyzedIdentity, LookupIdentity, PermutationIdentity,
+        PhantomBusInteractionIdentity, PhantomLookupIdentity, PhantomPermutationIdentity,
+        PolynomialIdentity, SelectedExpressions,
     },
     parsed::visitor::Children,
 };
@@ -162,16 +162,6 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
             Identity::Connect(i) => i.children(),
             Identity::BusSend(i) => i.children(),
         }
-    }
-}
-
-impl<T: FieldElement> Identity<T> {
-    pub fn contains_next_ref(
-        &self,
-        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
-    ) -> bool {
-        self.children()
-            .any(|e| e.contains_next_ref(intermediate_definitions))
     }
 }
 

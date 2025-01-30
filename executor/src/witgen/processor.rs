@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use num_traits::One;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, PolyID, PolynomialType,
+    AlgebraicExpression as Expression, AlgebraicReference, ContainsNextRef, PolyID, PolynomialType,
 };
 
 use powdr_number::{DegreeType, FieldElement};

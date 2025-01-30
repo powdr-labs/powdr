@@ -1,6 +1,6 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use powdr_ast::analyzed::DegreeRange;
+use powdr_ast::analyzed::{ContainsNextRef, DegreeRange};
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;

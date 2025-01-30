@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use bit_vec::BitVec;
 use dynamic_machine::DynamicMachine;
-use powdr_ast::analyzed::{self, AlgebraicExpression, DegreeRange, PolyID};
+use powdr_ast::analyzed::{self, AlgebraicExpression, ContainsNextRef, DegreeRange, PolyID};
 
 use powdr_number::DegreeType;
 use powdr_number::FieldElement;
