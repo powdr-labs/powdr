@@ -806,7 +806,10 @@ fn to_constraint<T: FieldElement>(
                 Value::Array(fields) => fields
                     .iter()
                     .map(|f| match to_expr(f) {
-                        AlgebraicExpression::Reference(reference) => reference.poly_id,
+                        AlgebraicExpression::Reference(reference) => {
+                            assert!(!reference.next);
+                            reference
+                        }
                         _ => panic!("Expected reference, got {f:?}"),
                     })
                     .collect(),
