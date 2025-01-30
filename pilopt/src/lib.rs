@@ -447,19 +447,24 @@ fn try_simplify_associative_operation<T: FieldElement>(
     // Find binary operation and other expression, handling both orderings:
     // (X + C1) + Other
     // Other + (X + C1)
-    let (bin_op, other_expr) = match (left, right) {
-        (AlgebraicExpression::BinaryOperation(bin), other) => (bin, other),
-        (other, AlgebraicExpression::BinaryOperation(bin)) => (bin, other),
+    let (x1, x2, other_expr) = match (left, right) {
+        (
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left: x1,
+                right: x2,
+                op: AlgebraicBinaryOperator::Add,
+            }),
+            other,
+        ) => (x1, x2, other),
+        (
+            other,
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left: x1,
+                right: x2,
+                op: AlgebraicBinaryOperator::Add,
+            }),
+        ) => (x1, x2, other),
         _ => return None,
-    };
-
-    let AlgebraicBinaryOperation {
-        left: x1,
-        right: x2,
-        op: _inner_op @ AlgebraicBinaryOperator::Add,
-    } = bin_op
-    else {
-        return None;
     };
 
     // Extract variable and constant from binary operation, handling both orderings:
