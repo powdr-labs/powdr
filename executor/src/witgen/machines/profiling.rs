@@ -81,7 +81,6 @@ pub fn reset_and_print_profile_summary() {
             // Update the call stack.
             match event {
                 Event::Start => {
-                    assert!(current_machine_id != id, "Unexpected recursive call!");
                     call_stack.push(id);
                 }
                 Event::End => {

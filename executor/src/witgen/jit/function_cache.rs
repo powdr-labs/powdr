@@ -7,7 +7,10 @@ use powdr_number::{FieldElement, KnownField};
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
     jit::{effect::format_code, processor::ProcessorResult},
-    machines::{LookupCell, MachineParts},
+    machines::{
+        profiling::{record_end, record_start},
+        LookupCell, MachineParts,
+    },
     range_constraints::RangeConstraint,
     EvalError, FixedData, MutableState, QueryCallback,
 };
@@ -87,6 +90,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             return;
         }
 
+        record_start("Auto-witgen code derivation");
         let f = match T::known_field() {
             // Currently, we only support the Goldilocks fields
             Some(KnownField::GoldilocksField) => {
@@ -94,7 +98,8 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             }
             _ => None,
         };
-        assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none())
+        assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none());
+        record_end("Auto-witgen code derivation");
     }
 
     fn compile_witgen_function(
