@@ -483,8 +483,9 @@ namespace main(4);
         // std::protocols::permutation_via_bus::permutation_send and
         // std::protocols::permutation_via_bus::permutation_receive.
         let (send, receive) = get_generated_bus_interaction_pair(
-            r"Constr::PhantomBusInteraction(main::left_latch, 42, [main::a], main::left_latch);
-              Constr::PhantomBusInteraction(-(main::right_latch * main::right_selector), 42, [main::b], main::right_latch * main::right_selector);",
+            // The accumulator is ignored in both the bus send and receive, so we just use the same.
+            r"Constr::PhantomBusInteraction(main::left_latch, 42, [main::a], main::left_latch, [main::acc]);
+              Constr::PhantomBusInteraction(-(main::right_latch * main::right_selector), 42, [main::b], main::right_latch * main::right_selector, [main::acc]);",
         );
         assert_eq!(
             send.selected_payload.to_string(),
