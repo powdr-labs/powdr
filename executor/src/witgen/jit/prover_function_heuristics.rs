@@ -1,8 +1,8 @@
 use powdr_ast::{
     analyzed::{AlgebraicReference, Analyzed, Expression, PolyID, PolynomialReference, Reference},
     parsed::{
-        ArrayLiteral, FunctionCall, FunctionKind, LambdaExpression, Number, UnaryOperation,
-        UnaryOperator,
+        ArrayLiteral, BlockExpression, FunctionCall, FunctionKind, LambdaExpression, Number,
+        UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::{BigUint, FieldElement};
@@ -108,7 +108,7 @@ fn is_reference_to(e: &Expression, name: &str) -> bool {
 }
 
 fn try_extract_reference(e: &Expression) -> Option<&str> {
-    match e {
+    match unpack(e) {
         Expression::Reference(_, Reference::Poly(PolynomialReference { name, .. })) => Some(name),
         _ => None,
     }
@@ -118,7 +118,7 @@ fn try_extract_algebraic_reference(
     e: &Expression,
     try_column_by_name: impl TryColumnByName,
 ) -> Option<AlgebraicReference> {
-    let (e, next) = match e {
+    let (e, next) = match unpack(e) {
         Expression::UnaryOperation(
             _,
             UnaryOperation {
@@ -138,18 +138,18 @@ fn try_extract_algebraic_reference(
 }
 
 fn is_local_var(e: &Expression, index: u64) -> bool {
-    matches!(e, Expression::Reference(_, Reference::LocalVar(i, _)) if *i == index)
+    matches!(unpack(e), Expression::Reference(_, Reference::LocalVar(i, _)) if *i == index)
 }
 
 fn try_as_number(e: &Expression) -> Option<&BigUint> {
-    match e {
+    match unpack(e) {
         Expression::Number(_, Number { value, .. }) => Some(value),
         _ => None,
     }
 }
 
 fn try_as_function_call(e: &Expression) -> Option<&FunctionCall<Expression>> {
-    match e {
+    match unpack(e) {
         Expression::FunctionCall(_, f) => Some(f),
         _ => None,
     }
@@ -172,20 +172,37 @@ fn try_as_lambda_expression(
     e: &Expression,
     requested_kind: Option<FunctionKind>,
 ) -> Option<&Expression> {
-    match e {
+    match unpack(e) {
         Expression::LambdaExpression(_, LambdaExpression { kind, body, .. })
             if requested_kind.map(|k| k == *kind).unwrap_or(true) =>
         {
-            Some(body)
+            Some(unpack(body))
         }
         _ => None,
     }
 }
 
 fn try_as_literal_array(e: &Expression) -> Option<&[Expression]> {
-    match e {
+    match unpack(e) {
         Expression::ArrayLiteral(_, ArrayLiteral { items }) => Some(items.as_slice()),
         _ => None,
+    }
+}
+
+/// If `e` is a block with just a single expression, returns this inner expression,
+/// otherwise returns `e` again.
+fn unpack(mut e: &Expression) -> &Expression {
+    loop {
+        e = match e {
+            Expression::BlockExpression(
+                _,
+                BlockExpression {
+                    statements,
+                    expr: Some(expr),
+                },
+            ) if statements.is_empty() => expr,
+            _ => return e,
+        }
     }
 }
 
@@ -243,6 +260,41 @@ mod test {
             [x, z] => x + z + 10,
             _ => 0,
         });
+        ";
+        let (analyzed, _) = read_pil::<GoldilocksField>(input);
+        assert_eq!(analyzed.prover_functions.len(), 1);
+        let ProverFunctionComputeFrom {
+            target_column,
+            input_columns,
+            computation,
+        } = try_decode_compute_from(&analyzed.prover_functions[0], &analyzed).unwrap();
+        assert_eq!(target_column.name, "main::Y");
+        assert!(!target_column.next);
+        let [in_x, in_z] = input_columns.as_slice() else {
+            panic!();
+        };
+        assert_eq!(in_x.name, "main::X");
+        assert!(!in_x.next);
+        assert_eq!(in_z.name, "main::Z");
+        assert!(in_z.next);
+        assert!(matches!(computation, Expression::LambdaExpression(_, _)));
+    }
+
+    #[test]
+    fn compute_from_packed() {
+        let input = "
+    namespace std::prover;
+        let compute_from: expr, int, expr[], (fe[] -> fe) -> () = query |dest_col, row, input_cols, f| ();
+    namespace main;
+        let X;
+        let Y;
+        let Z;
+        query |i| { {
+            std::prover::compute_from({{Y}}, (i), [{X}, (Z')], |values| match values {
+                [x, z] => x + z + 10,
+                _ => 0,
+            })
+        } };
         ";
         let (analyzed, _) = read_pil::<GoldilocksField>(input);
         assert_eq!(analyzed.prover_functions.len(), 1);
