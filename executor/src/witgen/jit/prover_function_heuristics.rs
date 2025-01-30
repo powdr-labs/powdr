@@ -191,16 +191,18 @@ fn try_as_literal_array(e: &Expression) -> Option<&[Expression]> {
 
 /// If `e` is a block with just a single expression, returns this inner expression,
 /// otherwise returns `e` again.
-fn unpack(e: &Expression) -> &Expression {
-    match e {
-        Expression::BlockExpression(
-            _,
-            BlockExpression {
-                statements,
-                expr: Some(expr),
-            },
-        ) if statements.is_empty() => expr,
-        _ => e,
+fn unpack(mut e: &Expression) -> &Expression {
+    loop {
+        e = match e {
+            Expression::BlockExpression(
+                _,
+                BlockExpression {
+                    statements,
+                    expr: Some(expr),
+                },
+            ) if statements.is_empty() => expr,
+            _ => return e,
+        }
     }
 }
 
@@ -258,6 +260,41 @@ mod test {
             [x, z] => x + z + 10,
             _ => 0,
         });
+        ";
+        let (analyzed, _) = read_pil::<GoldilocksField>(input);
+        assert_eq!(analyzed.prover_functions.len(), 1);
+        let ProverFunctionComputeFrom {
+            target_column,
+            input_columns,
+            computation,
+        } = try_decode_compute_from(&analyzed.prover_functions[0], &analyzed).unwrap();
+        assert_eq!(target_column.name, "main::Y");
+        assert!(!target_column.next);
+        let [in_x, in_z] = input_columns.as_slice() else {
+            panic!();
+        };
+        assert_eq!(in_x.name, "main::X");
+        assert!(!in_x.next);
+        assert_eq!(in_z.name, "main::Z");
+        assert!(in_z.next);
+        assert!(matches!(computation, Expression::LambdaExpression(_, _)));
+    }
+
+    #[test]
+    fn compute_from_packed() {
+        let input = "
+    namespace std::prover;
+        let compute_from: expr, int, expr[], (fe[] -> fe) -> () = query |dest_col, row, input_cols, f| ();
+    namespace main;
+        let X;
+        let Y;
+        let Z;
+        query |i| { {
+            std::prover::compute_from({{Y}}, (i), [{X}, (Z')], |values| match values {
+                [x, z] => x + z + 10,
+                _ => 0,
+            })
+        } };
         ";
         let (analyzed, _) = read_pil::<GoldilocksField>(input);
         assert_eq!(analyzed.prover_functions.len(), 1);
