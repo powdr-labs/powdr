@@ -1,17 +1,11 @@
 #![allow(dead_code)]
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::BTreeSet,
     fmt::{self, Display, Formatter, Write},
 };
 
 use itertools::Itertools;
-use powdr_ast::{
-    analyzed::{
-        AlgebraicExpression as Expression, AlgebraicReference, AlgebraicReferenceThin, PolyID,
-        PolynomialType,
-    },
-    parsed::visitor::{AllChildren, Children},
-};
+use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -22,6 +16,7 @@ use crate::witgen::{
 use super::{
     affine_symbolic_expression,
     effect::{format_code, Effect},
+    identity_queue::IdentityQueue,
     prover_function_heuristics::ProverFunction,
     variable::{Cell, Variable},
     witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, Value, WitgenInference},
@@ -34,8 +29,6 @@ pub struct Processor<'a, T: FieldElement, FixedEval> {
     fixed_evaluator: FixedEval,
     /// List of identities and row offsets to process them on.
     identities: Vec<(&'a Identity<T>, i32)>,
-    /// Map from each variable to the identities it occurs in.
-    occurrences: HashMap<Variable, Vec<(&'a Identity<T>, i32)>>,
     /// The prover functions, i.e. helpers to compute certain values that
     /// we cannot easily determine.
     _prover_functions: Vec<ProverFunction<'a, T>>,
@@ -69,12 +62,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         max_branch_depth: usize,
     ) -> Self {
         let identities = identities.into_iter().collect_vec();
-        let occurrences = compute_occurrences_map(fixed_data, &identities);
         Self {
             fixed_data,
             fixed_evaluator,
             identities,
-            occurrences,
             _prover_functions: vec![],
             block_size: 1,
             check_block_shape: false,
@@ -118,17 +109,19 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         witgen: WitgenInference<'a, T, FixedEval>,
     ) -> Result<ProcessorResult<T>, Error<'a, T, FixedEval>> {
         let branch_depth = 0;
-        self.generate_code_for_branch(can_process, witgen, branch_depth)
+        let identity_queue = IdentityQueue::new(self.fixed_data, &self.identities);
+        self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
     }
 
     fn generate_code_for_branch(
         &self,
         can_process: impl CanProcessCall<T>,
         mut witgen: WitgenInference<'a, T, FixedEval>,
+        mut identity_queue: IdentityQueue<'a, T>,
         branch_depth: usize,
     ) -> Result<ProcessorResult<T>, Error<'a, T, FixedEval>> {
         if self
-            .process_until_no_progress(can_process.clone(), &mut witgen)
+            .process_until_no_progress(can_process.clone(), &mut witgen, &mut identity_queue)
             .is_err()
         {
             return Err(Error::conflicting_constraints(
@@ -216,13 +209,23 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             branches: [first_branch, second_branch],
         } = witgen.branch_on(&most_constrained_var.clone());
 
+        identity_queue.variables_updated(vec![most_constrained_var.clone()], None);
+
         // TODO Tuning: If this fails (or also if it does not generate progress right away),
         // we could also choose a different variable to branch on.
 
-        let first_branch_result =
-            self.generate_code_for_branch(can_process.clone(), first_branch, branch_depth + 1);
-        let second_branch_result =
-            self.generate_code_for_branch(can_process, second_branch, branch_depth + 1);
+        let first_branch_result = self.generate_code_for_branch(
+            can_process.clone(),
+            first_branch,
+            identity_queue.clone(),
+            branch_depth + 1,
+        );
+        let second_branch_result = self.generate_code_for_branch(
+            can_process,
+            second_branch,
+            identity_queue.clone(),
+            branch_depth + 1,
+        );
         let mut result = match (first_branch_result, second_branch_result) {
             (Err(e), other) | (other, Err(e))
                 if e.reason == ErrorReason::ConflictingConstraints =>
@@ -272,24 +275,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         &self,
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
+        identity_queue: &mut IdentityQueue<'a, T>,
     ) -> Result<(), affine_symbolic_expression::Error> {
-        let mut identities_to_process: BTreeSet<_> = self
-            .identities
-            .iter()
-            .map(|(id, row)| IdentitySorter(id, *row))
-            .collect();
-        while let Some(IdentitySorter(identity, row_offset)) = identities_to_process.pop_first() {
+        while let Some((identity, row_offset)) = identity_queue.next() {
             let updated_vars =
                 witgen.process_identity(can_process.clone(), identity, row_offset)?;
-            identities_to_process.extend(
-                updated_vars
-                    .iter()
-                    .flat_map(|v| self.occurrences.get(v))
-                    .flatten()
-                    // Filter out the one we just processed.
-                    .filter(|(id, row)| (*id, *row) != (identity, row_offset))
-                    .map(|(id, row_offset)| IdentitySorter(id, *row_offset)),
-            );
+            identity_queue.variables_updated(updated_vars, Some((identity, row_offset)));
         }
         Ok(())
     }
@@ -419,128 +410,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         }
     }
 }
-
-/// Computes a map from each variable to the identity-row-offset pairs it occurs in.
-fn compute_occurrences_map<'a, T: FieldElement>(
-    fixed_data: &'a FixedData<'a, T>,
-    identities: &[(&'a Identity<T>, i32)],
-) -> HashMap<Variable, Vec<(&'a Identity<T>, i32)>> {
-    let mut references_per_identity = HashMap::new();
-    let mut intermediate_cache = HashMap::new();
-    for id in identities.iter().map(|(id, _)| *id).unique_by(|id| id.id()) {
-        references_per_identity.insert(
-            id,
-            references_in_identity(id, fixed_data, &mut intermediate_cache),
-        );
-    }
-    identities
-        .iter()
-        .flat_map(|(id, row)| {
-            references_per_identity[id].iter().map(move |reference| {
-                let name = fixed_data.column_name(&reference.poly_id).to_string();
-                let fat_ref = AlgebraicReference {
-                    name,
-                    poly_id: reference.poly_id,
-                    next: reference.next,
-                };
-                let var = Variable::from_reference(&fat_ref, *row);
-                (var, (*id, *row))
-            })
-        })
-        .into_group_map()
-}
-
-/// Returns all references to witness column in the identity.
-fn references_in_identity<T: FieldElement>(
-    identity: &Identity<T>,
-    fixed_data: &FixedData<T>,
-    intermediate_cache: &mut HashMap<AlgebraicReferenceThin, Vec<AlgebraicReferenceThin>>,
-) -> Vec<AlgebraicReferenceThin> {
-    let mut result = BTreeSet::new();
-    for e in identity.children() {
-        result.extend(references_in_expression(e, fixed_data, intermediate_cache));
-    }
-    result.into_iter().collect()
-}
-
-/// Recursively resolves references in intermediate column definitions.
-fn references_in_intermediate<T: FieldElement>(
-    fixed_data: &FixedData<T>,
-    intermediate: &AlgebraicReferenceThin,
-    intermediate_cache: &mut HashMap<AlgebraicReferenceThin, Vec<AlgebraicReferenceThin>>,
-) -> Vec<AlgebraicReferenceThin> {
-    if let Some(references) = intermediate_cache.get(intermediate) {
-        return references.clone();
-    }
-    let references = references_in_expression(
-        &fixed_data.intermediate_definitions[intermediate],
-        fixed_data,
-        intermediate_cache,
-    )
-    .collect_vec();
-    intermediate_cache.insert(intermediate.clone(), references.clone());
-    references
-}
-
-/// Returns all references to witness or intermediate column in the expression.
-fn references_in_expression<'a, T: FieldElement>(
-    expression: &'a Expression<T>,
-    fixed_data: &'a FixedData<T>,
-    intermediate_cache: &'a mut HashMap<AlgebraicReferenceThin, Vec<AlgebraicReferenceThin>>,
-) -> impl Iterator<Item = AlgebraicReferenceThin> + 'a {
-    expression
-        .all_children()
-        .flat_map(
-            move |e| -> Box<dyn Iterator<Item = AlgebraicReferenceThin> + 'a> {
-                match e {
-                    Expression::Reference(r) => match r.poly_id.ptype {
-                        PolynomialType::Constant => Box::new(std::iter::empty()),
-                        PolynomialType::Committed => Box::new(std::iter::once(r.into())),
-                        PolynomialType::Intermediate => Box::new(
-                            references_in_intermediate(fixed_data, &r.into(), intermediate_cache)
-                                .into_iter(),
-                        ),
-                    },
-                    Expression::PublicReference(_) | Expression::Challenge(_) => {
-                        // TODO we need to introduce a variable type for those.
-                        Box::new(std::iter::empty())
-                    }
-                    _ => Box::new(std::iter::empty()),
-                }
-            },
-        )
-        .unique()
-}
-
-/// Sorts identities by row and then by ID.
-struct IdentitySorter<'a, T>(&'a Identity<T>, i32);
-
-impl<T> IdentitySorter<'_, T> {
-    fn key(&self) -> (i32, u64) {
-        let IdentitySorter(id, row) = self;
-        (*row, id.id())
-    }
-}
-
-impl<T> Ord for IdentitySorter<'_, T> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.key().cmp(&other.key())
-    }
-}
-
-impl<T> PartialOrd for IdentitySorter<'_, T> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<T> PartialEq for IdentitySorter<'_, T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.key() == other.key()
-    }
-}
-
-impl<T> Eq for IdentitySorter<'_, T> {}
 
 fn is_machine_call<T>(identity: &Identity<T>) -> bool {
     matches!(identity, Identity::BusSend(_))
