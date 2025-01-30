@@ -485,10 +485,10 @@ fn simplify_associative_operations() {
     col witness x;
     col witness y;
     col witness z;
-    N::x - N::y = 3;
-    N::x - N::y = 1;
-    N::x - N::y - N::z = 6;
-    -N::x + N::y - N::z = 12;
+    N::x + 3 = N::y;
+    N::x - 2 + 1 = N::y;
+    N::x + 3 - N::y - 9 = N::z;
+    -N::x + N::y + 12 = N::z;
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();

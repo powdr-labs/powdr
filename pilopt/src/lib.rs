@@ -436,27 +436,35 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
 }
 
 fn try_simplify_associative_operation<T: FieldElement>(
-    left: &AlgebraicExpression<T>,
-    right: &AlgebraicExpression<T>,
+    left: &Box<AlgebraicExpression<T>>,
+    right: &Box<AlgebraicExpression<T>>,
     op: AlgebraicBinaryOperator,
 ) -> Option<AlgebraicExpression<T>> {
+    if op != AlgebraicBinaryOperator::Add {
+        return None;
+    }
+
     // Find binary operation and other expression, handling both orderings:
-    // - (X ± C1) ± Other
-    // - Other ± (X ± C1)
-    let (bin_op, other_expr) = match (left, right) {
+    // (X + C1) + Other
+    // Other + (X + C1)
+    let (bin_op, other_expr) = match (left.as_ref(), right.as_ref()) {
         (AlgebraicExpression::BinaryOperation(bin), other) => (bin, other),
         (other, AlgebraicExpression::BinaryOperation(bin)) => (bin, other),
         _ => return None,
     };
 
-    // Extract variable and constant from binary operation, handling both orderings:
-    // - (X ± C1) -> (X, C1)
-    // - (C1 ± X) -> (X, C1)
     let AlgebraicBinaryOperation {
         left: x1,
         right: x2,
-        op: inner_op,
-    } = bin_op;
+        op: inner_op @ AlgebraicBinaryOperator::Add,
+    } = bin_op
+    else {
+        return None;
+    };
+
+    // Extract variable and constant from binary operation, handling both orderings:
+    // (X + C1) -> (X, C1)
+    // (C1 + X) -> (X, C1)
     let (x, c1_val) = if let AlgebraicExpression::Number(val) = x1.as_ref() {
         (x2, val)
     } else if let AlgebraicExpression::Number(val) = x2.as_ref() {
@@ -467,44 +475,33 @@ fn try_simplify_associative_operation<T: FieldElement>(
 
     match other_expr {
         // Case 1: Combining with a constant
-        // (X ± C1) ± C2 -> X ± (C1 ± C2)
+        // (X + C1) + C2 -> X + (C1 + C2)
         AlgebraicExpression::Number(c2) => {
-            let result = match inner_op {
-                AlgebraicBinaryOperator::Add => *c1_val + *c2,
-                AlgebraicBinaryOperator::Sub => *c1_val - *c2,
-                _ => return None,
-            };
+            let result = *c1_val + *c2;
             Some(AlgebraicExpression::BinaryOperation(
                 AlgebraicBinaryOperation {
                     left: x.clone(),
-                    op,
+                    op: AlgebraicBinaryOperator::Add,
                     right: Box::new(AlgebraicExpression::Number(result)),
                 },
             ))
         }
 
-        // Case 2: Combining with a binary operation
-        // (X ± C1) ± Y -> (X ± Y) ± C1
-        y => {
-            let result = match inner_op {
-                AlgebraicBinaryOperator::Add => *c1_val,
-                AlgebraicBinaryOperator::Sub => -*c1_val,
-                _ => return None,
-            };
-            Some(AlgebraicExpression::BinaryOperation(
-                AlgebraicBinaryOperation {
-                    left: Box::new(AlgebraicExpression::BinaryOperation(
-                        AlgebraicBinaryOperation {
-                            left: x.clone(),
-                            op,
-                            right: Box::new(y.clone()),
-                        },
-                    )),
-                    op,
-                    right: Box::new(AlgebraicExpression::Number(result)),
-                },
-            ))
-        }
+        // Case 2: Combining with any non-numeric expression
+        // (X + C1) + Y -> (X + Y) + C1
+        y => Some(AlgebraicExpression::BinaryOperation(
+            AlgebraicBinaryOperation {
+                left: Box::new(AlgebraicExpression::BinaryOperation(
+                    AlgebraicBinaryOperation {
+                        left: x.clone(),
+                        op: AlgebraicBinaryOperator::Add,
+                        right: Box::new(y.clone()),
+                    },
+                )),
+                op: AlgebraicBinaryOperator::Add,
+                right: Box::new(AlgebraicExpression::Number(*c1_val)),
+            },
+        )),
     }
 }
 
