@@ -105,3 +105,83 @@ pub struct WitgenFunctionParams<'a, T: 'a> {
     fixed_data: *const std::ffi::c_void,
     get_fixed_value: extern "C" fn(*const std::ffi::c_void, u64, u64) -> T,
 }
+
+// TODO The following is copied from jit-compiler/src/compiler.rs
+
+impl From<ibig::IBig> for FieldElement {
+    fn from(x: ibig::IBig) -> Self {
+        FieldElement(u64::try_from(x).unwrap())
+    }
+}
+impl From<FieldElement> for ibig::IBig {
+    fn from(x: FieldElement) -> Self {
+        ibig::IBig::from(x.0)
+    }
+}
+
+#[derive(Clone)]
+enum Callable<Args, Ret> {
+    Fn(fn(Args) -> Ret),
+    Closure(std::sync::Arc<dyn Fn(Args) -> Ret + Send + Sync>),
+}
+impl<Args, Ret> Callable<Args, Ret> {
+    #[inline(always)]
+    fn call(&self, args: Args) -> Ret {
+        match self {
+            Callable::Fn(f) => f(args),
+            Callable::Closure(f) => f(args),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct PilVec<T>(std::sync::Arc<Vec<T>>);
+
+impl<T> PilVec<T> {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+impl<T> From<Vec<T>> for PilVec<T> {
+    fn from(v: Vec<T>) -> Self {
+        PilVec(std::sync::Arc::new(v))
+    }
+}
+impl<T> std::ops::Index<usize> for PilVec<T> {
+    type Output = T;
+
+    #[inline]
+    fn index(&self, index: usize) -> &T {
+        &self.0[index]
+    }
+}
+
+impl<T: Clone> std::ops::Add for PilVec<T> {
+    fn add(a: Self, b: Self) -> Self {
+        // TODO for a regular "push" or array::map this is very slow.
+        // We could optimize this by sharing a larger backing vector
+        // across prefix instances, allowing to extend the backing vector if
+        // our view is the full vector.
+        PilVec(std::sync::Arc::new(
+            a.0.as_ref()
+                .iter()
+                .chain(b.0.as_ref())
+                .cloned()
+                .collect::<Vec<_>>(),
+        ))
+    }
+}
+
+trait FromLiteral {
+    fn from_u64(x: u64) -> Self;
+}
+impl FromLiteral for ibig::IBig {
+    fn from_u64(x: u64) -> Self {
+        ibig::IBig::from(x)
+    }
+}
+impl FromLiteral for FieldElement {
+    fn from_u64(x: u64) -> Self {
+        FieldElement::from(x)
+    }
+}
