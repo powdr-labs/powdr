@@ -1,3 +1,4 @@
+mod contains_next_ref;
 mod display;
 pub mod visitor;
 
@@ -24,6 +25,7 @@ use crate::parsed::{
     self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, SourceReference,
     TraitDeclaration, TraitImplementation, TypeDeclaration,
 };
+pub use contains_next_ref::ContainsNextRef;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
 pub enum StatementIdentifier {
@@ -1058,10 +1060,6 @@ pub enum Identity<T> {
 }
 
 impl<T> Identity<T> {
-    pub fn contains_next_ref(&self) -> bool {
-        self.children().any(|e| e.contains_next_ref())
-    }
-
     pub fn degree(
         &self,
         intermediate_polynomials: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
@@ -1161,14 +1159,6 @@ pub enum IdentityKind {
     PhantomPermutation,
     Connect,
     PhantomBusInteraction,
-}
-
-impl<T> SelectedExpressions<T> {
-    /// @returns true if the expression contains a reference to a next value of a
-    /// (witness or fixed) column
-    pub fn contains_next_ref(&self) -> bool {
-        self.children().any(|e| e.contains_next_ref())
-    }
 }
 
 pub type Expression = parsed::Expression<Reference>;
@@ -1579,15 +1569,6 @@ impl<T> AlgebraicExpression<T> {
 
     pub fn new_unary(op: AlgebraicUnaryOperator, expr: Self) -> Self {
         AlgebraicUnaryOperation::new(op, expr).into()
-    }
-
-    /// @returns true if the expression contains a reference to a next value of a
-    /// (witness or fixed) column
-    pub fn contains_next_ref(&self) -> bool {
-        self.expr_any(|e| match e {
-            AlgebraicExpression::Reference(poly) => poly.next,
-            _ => false,
-        })
     }
 }
 

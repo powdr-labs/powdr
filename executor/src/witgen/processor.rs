@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use num_traits::One;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, PolyID, PolynomialType,
+    AlgebraicExpression as Expression, AlgebraicReference, ContainsNextRef, PolyID, PolynomialType,
 };
 
 use powdr_number::{DegreeType, FieldElement};
@@ -293,7 +293,8 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 ",
                     self.data[row_index].render_values(false, self.parts)
                 );
-                if identity.contains_next_ref() {
+                let intermediate_definitions = self.fixed_data.analyzed.intermediate_definitions();
+                if identity.contains_next_ref(&intermediate_definitions) {
                     error += &format!(
                         "Known values in next row (local: {}, global {}):\n{}\n",
                         row_index + 1,

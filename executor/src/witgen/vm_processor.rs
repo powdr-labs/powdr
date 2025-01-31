@@ -1,6 +1,6 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use powdr_ast::analyzed::DegreeRange;
+use powdr_ast::analyzed::{ContainsNextRef, DegreeRange};
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;
@@ -87,10 +87,10 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
     ) -> Self {
         let degree_range = parts.common_degree_range();
 
-        let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = parts
-            .identities
-            .iter()
-            .partition(|identity| identity.contains_next_ref());
+        let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) =
+            parts.identities.iter().partition(|identity| {
+                identity.contains_next_ref(&fixed_data.analyzed.intermediate_definitions())
+            });
         let processor = Processor::new(
             row_offset,
             mutable_data,
