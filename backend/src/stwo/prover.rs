@@ -6,7 +6,7 @@ use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
 
-use powdr_number::{FieldElement, LargeInt, Mersenne31Field};
+use powdr_number::{FieldElement, LargeInt, Mersenne31Field as M31};
 
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
@@ -44,7 +44,6 @@ const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 const LOG_LAST_LAYER_DEGREE_BOUND: usize = 0;
-pub type M31 = Mersenne31Field;
 
 pub enum KeyExportError {
     NoProvingKey,

@@ -4,13 +4,13 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::stwo::prover::M31;
 use crate::{
     field_filter::generalize_factory, Backend, BackendFactory, BackendOptions, Error, Proof,
 };
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
+use powdr_number::Mersenne31Field as M31;
 use prover::StwoProver;
 use stwo_prover::core::backend::{simd::SimdBackend, BackendForChannel};
 use stwo_prover::core::channel::{Blake2sChannel, Channel, MerkleChannel};
