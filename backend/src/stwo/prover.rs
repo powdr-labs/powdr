@@ -1,7 +1,6 @@
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicExpression, Analyzed, DegreeRange};
-use powdr_ast::parsed::visitor::AllChildren;
+use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, DegreeRange};
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
@@ -45,7 +44,6 @@ const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 const LOG_LAST_LAYER_DEGREE_BOUND: usize = 0;
-pub type T = Mersenne31Field;
 
 pub enum KeyExportError {
     NoProvingKey,
@@ -387,10 +385,11 @@ where
         } else {
             None
         };
-
-        let mut tree_builder = commitment_scheme.tree_builder();
-        tree_builder.extend_evals(stage1_witness_cols_circle_domain_eval.into_iter().flatten());
-        tree_builder.commit(prover_channel);
+        if self.analyzed.stage_count() > 1 {
+            let mut tree_builder = commitment_scheme.tree_builder();
+            tree_builder.extend_evals(stage1_witness_cols_circle_domain_eval.into_iter().flatten());
+            tree_builder.commit(prover_channel);
+        };
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
         // Each column size in machines needs its own component, the components from different machines are stored in this vector
@@ -469,10 +468,8 @@ where
         let mut constant_cols_offset_acc = 0;
 
         let mut constant_col_log_sizes = vec![];
-        let mut witness_col_log_sizes = vec![];
-
-        // TODO: make the challenge sound, now the challenge is built the same way in prover.
-        let stage0_challenges = get_dummy_challenges::<MC>(&self.analyzed);
+        let mut stage0_witness_col_log_sizes = vec![];
+        let mut stage1_witness_col_log_sizes = vec![];
 
         // TODO: make the challenge sound, now the challenge is built the same way in prover.
         let stage0_challenges = get_dummy_challenges::<MC>(&self.analyzed);
@@ -504,8 +501,10 @@ where
                         repeat(machine_log_size)
                             .take(pil.constant_count() + get_constant_with_next_list(pil).len()),
                     );
-                    witness_col_log_sizes
-                        .extend(repeat(machine_log_size).take(pil.commitment_count()));
+                    stage0_witness_col_log_sizes
+                        .extend(repeat(machine_log_size).take(pil.stage0_commitment_count()));
+                    stage1_witness_col_log_sizes
+                        .extend(repeat(machine_log_size).take(pil.stage1_commitment_count()));
                     machine_component
                 },
             )
@@ -526,15 +525,16 @@ where
 
         commitment_scheme.commit(
             proof.stark_proof.commitments[ORIGINAL_TRACE_IDX],
-            &witness_col_log_sizes,
+            &stage0_witness_col_log_sizes,
             verifier_channel,
         );
-
-        commitment_scheme.commit(
-            proof.stark_proof.commitments[2],
-            &witness_col_log_sizes,
-            verifier_channel,
-        );
+        if self.analyzed.stage_count() > 1 {
+            commitment_scheme.commit(
+                proof.stark_proof.commitments[2],
+                &stage1_witness_col_log_sizes,
+                verifier_channel,
+            );
+        }
 
         stwo_prover::core::prover::verify(
             components_slice,

@@ -4,7 +4,6 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::stwo::prover::T;
 use crate::{
     field_filter::generalize_factory, Backend, BackendFactory, BackendOptions, Error, Proof,
 };

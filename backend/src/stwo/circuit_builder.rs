@@ -71,7 +71,7 @@ impl PowdrEval {
         log_degree: u32,
         challenges: BTreeMap<u64, M31>,
     ) -> Self {
-        let witness_columns: BTreeMap<PolyID, usize> = analyzed
+        let witness_columns_stage0: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .filter(|(symbol, _)| symbol.stage.is_none() || symbol.stage == Some(0))
             .flat_map(|(symbol, _)| symbol.array_elements())
@@ -211,7 +211,7 @@ impl FrameworkEval for PowdrEval {
             .iter()
             .map(|(k, v)| (*k, E::F::from(into_stwo_field(v))))
             .collect();
-
+        witness_eval_stage0.extend(witness_eval_stage1);
         let intermediate_definitions = self.analyzed.intermediate_definitions();
         let data = Data {
             witness_eval: &witness_eval_stage0,
