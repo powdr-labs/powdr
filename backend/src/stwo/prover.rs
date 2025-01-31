@@ -189,7 +189,7 @@ where
                                     .map(|(_, values)| {
                                         let mut rotated_values = values.to_vec();
                                         rotated_values.rotate_left(1);
-                                        gen_stwo_circle_column::<B, BaseField>(
+                                        gen_stwo_circle_column::<_, BaseField>(
                                             *domain_map
                                                 .get(&(values.len().ilog2() as usize))
                                                 .unwrap(),
