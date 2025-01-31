@@ -73,7 +73,7 @@ impl PowdrEval {
     ) -> Self {
         let witness_columns_stage0: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
-            .filter(|(symbol, _)| symbol.stage == Some(0)) 
+            .filter(|(symbol, _)| symbol.stage.is_none() || symbol.stage == Some(0))
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
@@ -81,10 +81,10 @@ impl PowdrEval {
 
         let witness_columns_stage1: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
-            .filter(|(symbol, _)| symbol.stage == Some(1)) 
+            .filter(|(symbol, _)| symbol.stage == Some(1))
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
-            .map(|(index, (_, id))| (id, index+ witness_columns_stage0.len()))
+            .map(|(index, (_, id))| (id, index + witness_columns_stage0.len()))
             .collect();
 
         let constant_with_next_list = get_constant_with_next_list(&analyzed);
@@ -118,8 +118,7 @@ impl PowdrEval {
 }
 
 struct Data<'a, F> {
-    witness_eval_stage0: &'a BTreeMap<PolyID, [F; 2]>,
-    witness_eval_stage1: &'a BTreeMap<PolyID, [F; 2]>,
+    witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
     constant_shifted_eval: &'a BTreeMap<PolyID, F>,
     constant_eval: &'a BTreeMap<PolyID, F>,
     // challenges for stage 0
@@ -163,7 +162,7 @@ impl FrameworkEval for PowdrEval {
             "Error: Expected no public inputs, as they are not supported yet.",
         );
 
-        let witness_eval_stage0: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
+        let mut witness_eval_stage0: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
             .witness_columns_stage0
             .keys()
             .map(|poly_id| {
@@ -177,9 +176,7 @@ impl FrameworkEval for PowdrEval {
         let witness_eval_stage1: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
             .witness_columns_stage1
             .keys()
-            .map(|poly_id| {
-                (*poly_id, eval.next_interaction_mask(2, [0, 1]))
-            })
+            .map(|poly_id| (*poly_id, eval.next_interaction_mask(2, [0, 1])))
             .collect();
 
         let constant_eval: BTreeMap<_, _> = self
@@ -214,11 +211,10 @@ impl FrameworkEval for PowdrEval {
             .iter()
             .map(|(k, v)| (*k, E::F::from(into_stwo_field(v))))
             .collect();
-
+        witness_eval_stage0.extend(witness_eval_stage1);
         let intermediate_definitions = self.analyzed.intermediate_definitions();
         let data = Data {
-            witness_eval_stage0: &witness_eval_stage0,
-            witness_eval_stage1: &witness_eval_stage1,
+            witness_eval: &witness_eval_stage0,
             constant_shifted_eval: &constant_shifted_eval,
             constant_eval: &constant_eval,
             challenges: &challenges,
@@ -227,8 +223,6 @@ impl FrameworkEval for PowdrEval {
             ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {
                 E::F::from(into_stwo_field(v))
             });
-
-    
 
         for id in &self.analyzed.identities {
             match id {
