@@ -92,7 +92,7 @@ impl<T: FieldElement> RangeConstraint<T> {
         let in_range = if self.min <= self.max {
             self.min <= v && v <= self.max
         } else {
-            v <= self.min || self.max <= v
+            self.min <= v || v <= self.max
         };
         let in_mask = v.to_integer() & self.mask == v.to_integer();
         in_range && in_mask
@@ -178,6 +178,32 @@ impl<T: FieldElement> RangeConstraint<T> {
         }
 
         Self { min, max, mask }
+    }
+
+    /// Returns the disjunction of this constraint and the other.
+    pub fn disjunction(&self, other: &Self) -> Self {
+        let mask = self.mask | other.mask;
+        match (self.min <= self.max, other.min <= other.max) {
+            (true, true) => Self {
+                min: cmp::min(self.min, other.min),
+                max: cmp::max(self.max, other.max),
+                mask,
+            },
+            (true, false) | (false, true) => {
+                // These cases are too complicated - we could refine them in the future.
+                Self::from_mask(mask)
+            }
+            (false, false) => {
+                let min = cmp::min(self.min, other.min);
+                let max = cmp::max(self.max, other.max);
+                if min <= max {
+                    // The ranges cover the full field.
+                    Self::from_mask(mask)
+                } else {
+                    Self { min, max, mask }
+                }
+            }
+        }
     }
 
     /// The constraint of an integer multiple of an expression.
@@ -299,6 +325,7 @@ impl<T: FieldElement> Display for RangeConstraint<T> {
 
 #[cfg(test)]
 mod test {
+    use itertools::Itertools;
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
@@ -617,6 +644,23 @@ mod test {
     }
 
     #[test]
+    fn allows_value() {
+        type F = GoldilocksField;
+        let a = RangeConstraint::<F>::from_range(20.into(), 10.into());
+        assert!(a.allows_value(5.into()));
+        assert!(a.allows_value(10.into()));
+        assert!(!a.allows_value(15.into()));
+        assert!(a.allows_value(20.into()));
+        assert!(a.allows_value(25.into()));
+        let b = RangeConstraint::<F>::from_range(10.into(), 20.into());
+        assert!(!b.allows_value(5.into()));
+        assert!(b.allows_value(10.into()));
+        assert!(b.allows_value(15.into()));
+        assert!(b.allows_value(20.into()));
+        assert!(!b.allows_value(25.into()));
+    }
+
+    #[test]
     fn conjunction() {
         // This mostly tests the refinement of the bounds from min-max to mask and vice-versa.
 
@@ -642,6 +686,46 @@ mod test {
                 mask: 0xf000u32.into(),
             },
         );
+    }
+
+    #[test]
+    fn disjunction() {
+        type F = GoldilocksField;
+        let a = RangeConstraint::<F>::from_range(20.into(), 10.into());
+        let b = RangeConstraint::<F>::from_range(30.into(), 15.into());
+        let d = a.disjunction(&b);
+        assert!(d.allows_value(5.into()));
+        assert!(d.allows_value(10.into()));
+        assert!(d.allows_value(15.into()));
+        assert!(!d.allows_value(18.into()));
+        assert!(d.allows_value(20.into()));
+        assert!(d.allows_value(25.into()));
+    }
+
+    #[test]
+    fn disjunction_combinations() {
+        type F = GoldilocksField;
+        let lower = [10, 10000, 100060];
+        let upper = [20, 10006, 100070];
+        let test = [
+            5, 10, 15, 20, 900, 10000, 10004, 10006, 10010, 100055, 100060, 100065, 100070, 100075,
+        ]
+        .iter()
+        .map(|t| F::from(*t))
+        .collect_vec();
+        for (l1, u1) in lower.iter().cartesian_product(upper.iter()) {
+            for (l2, u2) in lower.iter().cartesian_product(upper.iter()) {
+                let a = RangeConstraint::<F>::from_range((*l1).into(), (*u1).into());
+                let b = RangeConstraint::<F>::from_range((*l2).into(), (*u2).into());
+                let c = a.disjunction(&b);
+                for t in &test {
+                    // Range constraints are allowed to be less strict, so we can only test one direction.
+                    if !c.allows_value(*t) {
+                        assert!(!a.allows_value(*t) || !b.allows_value(*t));
+                    }
+                }
+            }
+        }
     }
 
     fn range_constraint(min: u64, max: u64) -> RangeConstraint<GoldilocksField> {

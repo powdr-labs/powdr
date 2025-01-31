@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    iter::once,
+};
 
 use extension_field::ExtensionField;
 use fp2::Fp2;
@@ -89,7 +92,8 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
 
         let max_tuple_size = bus_interactions
             .iter()
-            .map(|i| i.tuple.0.len())
+            // Maximum length of the payload + bus ID
+            .map(|i| i.payload.0.len() + 1)
             .max()
             .unwrap();
 
@@ -146,11 +150,14 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
             let current_acc = if i == 0 { Ext::zero() } else { acc_list[i - 1] };
             let multiplicity = evaluator.evaluate(&bus_interaction.multiplicity);
 
-            let tuple = bus_interaction
-                .tuple
-                .0
-                .iter()
-                .map(|r| evaluator.evaluate(r))
+            let tuple = once(evaluator.evaluate(&bus_interaction.bus_id))
+                .chain(
+                    bus_interaction
+                        .payload
+                        .0
+                        .iter()
+                        .map(|r| evaluator.evaluate(r)),
+                )
                 .collect::<Vec<_>>();
             let folded = self.beta - self.fingerprint(&tuple);
 
@@ -183,7 +190,7 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
     fn fingerprint(&self, tuple: &[T]) -> Ext {
         tuple
             .iter()
-            .zip_eq(self.powers_of_alpha.iter().take(tuple.len()).rev())
+            .zip_eq(self.powers_of_alpha.iter().take(tuple.len()))
             .map(|(a, b)| (*b) * (*a))
             .sum()
     }

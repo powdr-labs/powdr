@@ -7,7 +7,7 @@ use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, make_prepared_pipeline, make_simple_prepared_pipeline,
         regular_test_all_fields, regular_test_gl, resolve_test_file, test_mock_backend,
-        test_pilcom, test_plonky3_pipeline, BackendVariant,
+        test_pilcom, test_plonky3_pipeline, test_stwo_pipeline, BackendVariant,
     },
     Pipeline,
 };
@@ -41,6 +41,8 @@ fn challenges_asm() {
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
+    let pipeline = make_simple_prepared_pipeline::<Mersenne31Field>(f, LinkerMode::Bus);
+    test_stwo_pipeline(pipeline);
 }
 
 #[test]
@@ -129,7 +131,7 @@ fn empty() {
 
 #[test]
 // TODO: https://github.com/powdr-labs/powdr/issues/2292
-#[should_panic = "Identity references no namespace: Constr::PhantomBusInteraction(1, [0], 1);"]
+#[should_panic = "No column references found: []"]
 fn single_operation() {
     let f = "asm/single_operation.asm";
     regular_test_all_fields(f, &[]);
@@ -220,6 +222,22 @@ fn block_to_block_with_bus_composite() {
     // Native linker mode, because bus constraints are exponential in Halo2
     let pipeline = make_simple_prepared_pipeline(f, LinkerMode::Native);
     test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
+}
+
+#[test]
+fn static_bus() {
+    let f = "asm/static_bus.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
+}
+
+#[test]
+#[should_panic = "Expected first payload entry to be a static ID"]
+fn dynamic_bus() {
+    // Witgen does not currently support this.
+    let f = "asm/dynamic_bus.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
 }
 
 #[test]
@@ -467,7 +485,7 @@ fn permutation_to_block() {
 }
 
 #[test]
-#[should_panic = "Column main_bin::pc is not stackable in a 1-row block, conflict in rows 0 and 1"]
+#[should_panic = "Witness generation failed."]
 fn permutation_to_vm() {
     // TODO: witgen issue: Machine incorrectly detected as block machine.
     let f = "asm/permutations/vm_to_vm.asm";

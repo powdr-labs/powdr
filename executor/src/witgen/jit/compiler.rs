@@ -2,7 +2,10 @@ use std::{cmp::Ordering, ffi::c_void, mem, sync::Arc};
 
 use itertools::Itertools;
 use libloading::Library;
-use powdr_ast::indent;
+use powdr_ast::{
+    analyzed::{PolyID, PolynomialType},
+    indent,
+};
 use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
@@ -11,7 +14,7 @@ use crate::witgen::{
         profiling::{record_end, record_start},
         LookupCell,
     },
-    QueryCallback,
+    FixedData, QueryCallback,
 };
 
 use super::{
@@ -20,7 +23,7 @@ use super::{
     variable::Variable,
 };
 
-pub struct WitgenFunction<T: FieldElement> {
+pub struct WitgenFunction<T> {
     // TODO We might want to pass arguments as direct function parameters
     // (instead of a struct), so that
     // they are stored in registers instead of the stack. Should be checked.
@@ -35,6 +38,7 @@ impl<T: FieldElement> WitgenFunction<T> {
     /// This function always succeeds (unless it panics).
     pub fn call<Q: QueryCallback<T>>(
         &self,
+        fixed_data: &FixedData<'_, T>,
         mutable_state: &MutableState<'_, T, Q>,
         params: &mut [LookupCell<T>],
         mut data: CompactDataRef<'_, T>,
@@ -48,8 +52,23 @@ impl<T: FieldElement> WitgenFunction<T> {
             params: params.into(),
             mutable_state: mutable_state as *const _ as *const c_void,
             call_machine: call_machine::<T, Q>,
+            fixed_data: fixed_data as *const _ as *const c_void,
+            get_fixed_value: get_fixed_value::<T>,
         });
     }
+}
+
+extern "C" fn get_fixed_value<T: FieldElement>(
+    fixed_data: *const c_void,
+    column: u64,
+    row: u64,
+) -> T {
+    let fixed_data = unsafe { &*(fixed_data as *const FixedData<'_, T>) };
+    let poly_id = PolyID {
+        id: column,
+        ptype: PolynomialType::Constant,
+    };
+    fixed_data.fixed_cols[&poly_id].values_max_size()[row as usize]
 }
 
 extern "C" fn call_machine<T: FieldElement, Q: QueryCallback<T>>(
@@ -105,6 +124,11 @@ struct WitgenFunctionParams<'a, T: 'a> {
     mutable_state: *const c_void,
     /// A callback to call submachines.
     call_machine: extern "C" fn(*const c_void, u64, MutSlice<LookupCell<'_, T>>) -> bool,
+    /// A pointer to the "fixed data".
+    fixed_data: *const c_void,
+    /// A callback to retrieve values from fixed columns.
+    /// The parameters are: fixed data pointer, fixed column id, row number.
+    get_fixed_value: extern "C" fn(*const c_void, u64, u64) -> T,
 }
 
 #[repr(C)]
@@ -146,10 +170,11 @@ fn witgen_code<T: FieldElement>(
         .map(|v| {
             let var_name = variable_to_string(v);
             let value = match v {
-                Variable::Cell(c) => {
+                Variable::WitnessCell(c) => {
                     format!("get(data, row_offset, {}, {})", c.row_offset, c.id)
                 }
                 Variable::Param(i) => format!("get_param(params, {i})"),
+                Variable::FixedCell(_) => panic!("Fixed columns should not be known inputs."),
                 Variable::MachineCallParam(_) => {
                     unreachable!("Machine call variables should not be pre-known.")
                 }
@@ -157,6 +182,27 @@ fn witgen_code<T: FieldElement>(
             format!("    let {var_name} = {value};")
         })
         .format("\n");
+
+    // Pre-load all the fixed columns so that we can treat them as
+    // plain variables later.
+    let load_fixed = effects
+        .iter()
+        .flat_map(|e| e.referenced_variables())
+        .filter_map(|v| match v {
+            Variable::FixedCell(c) => Some((v, c)),
+            _ => None,
+        })
+        .unique()
+        .map(|(var, cell)| {
+            format!(
+                "    let {} = get_fixed_value(fixed_data, {}, (row_offset + {}));",
+                variable_to_string(var),
+                cell.id,
+                cell.row_offset,
+            )
+        })
+        .format("\n");
+
     let main_code = format_effects(effects);
     let vars_known = effects
         .iter()
@@ -168,11 +214,12 @@ fn witgen_code<T: FieldElement>(
         .filter_map(|var| {
             let value = variable_to_string(var);
             match var {
-                Variable::Cell(cell) => Some(format!(
+                Variable::WitnessCell(cell) => Some(format!(
                     "    set(data, row_offset, {}, {}, {value});",
                     cell.row_offset, cell.id,
                 )),
                 Variable::Param(i) => Some(format!("    set_param(params, {i}, {value});")),
+                Variable::FixedCell(_) => panic!("Fixed columns should not be written to."),
                 Variable::MachineCallParam(_) => {
                     // This is just an internal variable.
                     None
@@ -185,8 +232,8 @@ fn witgen_code<T: FieldElement>(
     let store_known = vars_known
         .iter()
         .filter_map(|var| match var {
-            Variable::Cell(cell) => Some(cell),
-            Variable::Param(_) | Variable::MachineCallParam(_) => None,
+            Variable::WitnessCell(cell) => Some(cell),
+            Variable::Param(_) | Variable::FixedCell(_) | Variable::MachineCallParam(_) => None,
         })
         .map(|cell| {
             format!(
@@ -205,19 +252,28 @@ extern "C" fn witgen(
         row_offset,
         params,
         mutable_state,
-        call_machine
+        call_machine,
+        fixed_data,
+        get_fixed_value,
     }}: WitgenFunctionParams<FieldElement>,
 ) {{
     let known = known_to_slice(known, data.len);
     let data = data.to_mut_slice();
     let params = params.to_mut_slice();
 
+    // Pre-load fixed column values into local variables
+{load_fixed}
+
+    // Load all known inputs into local variables
 {load_known_inputs}
 
+    // Perform the main computations
 {main_code}
 
+    // Store the newly derived witness cell values
 {store_values}
 
+    // Store the "known" flags
 {store_known}
 }}
 "#
@@ -232,13 +288,17 @@ fn format_effects_inner<T: FieldElement>(
     effects: &[Effect<T, Variable>],
     is_top_level: bool,
 ) -> String {
-    indent(
-        effects
-            .iter()
-            .map(|effect| format_effect(effect, is_top_level))
-            .join("\n"),
-        1,
-    )
+    indent(format_effects_inner_unindented(effects, is_top_level), 1)
+}
+
+fn format_effects_inner_unindented<T: FieldElement>(
+    effects: &[Effect<T, Variable>],
+    is_top_level: bool,
+) -> String {
+    effects
+        .iter()
+        .map(|effect| format_effect(effect, is_top_level))
+        .join("\n")
 }
 
 fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bool) -> String {
@@ -313,12 +373,22 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
             } else {
                 "".to_string()
             };
-            format!(
-                "{var_decls}if {} {{\n{}\n}} else {{\n{}\n}}",
-                format_condition(condition),
-                format_effects_inner(first, false),
-                format_effects_inner(second, false)
-            )
+
+            if matches!(second[..], [Effect::Branch(..)]) {
+                format!(
+                    "{var_decls}if {} {{\n{}\n}} else if {}",
+                    format_condition(condition),
+                    format_effects_inner(first, false),
+                    format_effects_inner_unindented(second, false)
+                )
+            } else {
+                format!(
+                    "{var_decls}if {} {{\n{}\n}} else {{\n{}\n}}",
+                    format_condition(condition),
+                    format_effects_inner(first, false),
+                    format_effects_inner(second, false)
+                )
+            }
         }
     }
 }
@@ -353,9 +423,14 @@ fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable>) -> St
     }
 }
 
-fn format_condition<T: FieldElement>(condition: &BranchCondition<T, Variable>) -> String {
-    let var = format!("IntType::from({})", variable_to_string(&condition.variable));
-    let (min, max) = condition.first_branch.range();
+fn format_condition<T: FieldElement>(
+    BranchCondition {
+        variable,
+        condition,
+    }: &BranchCondition<T, Variable>,
+) -> String {
+    let var = format!("IntType::from({})", variable_to_string(variable));
+    let (min, max) = condition.range();
     match min.cmp(&max) {
         Ordering::Equal => format!("{var} == {min}",),
         Ordering::Less => format!("{min} <= {var} && {var} <= {max}"),
@@ -366,13 +441,21 @@ fn format_condition<T: FieldElement>(condition: &BranchCondition<T, Variable>) -
 /// Returns the name of a local (stack) variable for the given expression variable.
 fn variable_to_string(v: &Variable) -> String {
     match v {
-        Variable::Cell(cell) => format!(
+        Variable::WitnessCell(cell) => format!(
             "c_{}_{}_{}",
             escape_column_name(&cell.column_name),
             cell.id,
             format_row_offset(cell.row_offset)
         ),
         Variable::Param(i) => format!("p_{i}"),
+        Variable::FixedCell(cell) => {
+            format!(
+                "f_{}_{}_{}",
+                escape_column_name(&cell.column_name),
+                cell.id,
+                cell.row_offset
+            )
+        }
         Variable::MachineCallParam(call_var) => {
             format!(
                 "call_var_{}_{}_{}",
@@ -461,6 +544,8 @@ fn util_code<T: FieldElement>(first_column_id: u64, column_count: usize) -> Resu
 #[cfg(test)]
 mod tests {
 
+    use std::ptr::null;
+
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -485,7 +570,7 @@ mod tests {
     // }
 
     fn cell(column_name: &str, id: u64, row_offset: i32) -> Variable {
-        Variable::Cell(Cell {
+        Variable::WitnessCell(Cell {
             column_name: column_name.to_string(),
             row_offset,
             id,
@@ -546,8 +631,8 @@ mod tests {
         let known_inputs = vec![a0.clone()];
         let code = witgen_code(&known_inputs, &effects);
         assert_eq!(
-                code,
-                "
+            code,
+            "
 #[no_mangle]
 extern \"C\" fn witgen(
     WitgenFunctionParams{
@@ -556,15 +641,22 @@ extern \"C\" fn witgen(
         row_offset,
         params,
         mutable_state,
-        call_machine
+        call_machine,
+        fixed_data,
+        get_fixed_value,
     }: WitgenFunctionParams<FieldElement>,
 ) {
     let known = known_to_slice(known, data.len);
     let data = data.to_mut_slice();
     let params = params.to_mut_slice();
 
+    // Pre-load fixed column values into local variables
+
+
+    // Load all known inputs into local variables
     let c_a_2_0 = get(data, row_offset, 0, 2);
 
+    // Perform the main computations
     let c_x_0_0 = (FieldElement::from(7) * c_a_2_0);
     let call_var_7_1_0 = c_x_0_0;
     let mut call_var_7_1_1 = FieldElement::default();
@@ -573,16 +665,18 @@ extern \"C\" fn witgen(
     let c_y_1_1 = (c_y_1_m1 + c_x_0_0);
     assert!(c_y_1_m1 == c_x_0_0);
 
+    // Store the newly derived witness cell values
     set(data, row_offset, 0, 0, c_x_0_0);
     set(data, row_offset, -1, 1, c_y_1_m1);
     set(data, row_offset, 1, 1, c_y_1_1);
 
+    // Store the \"known\" flags
     set_known(known, row_offset, 0, 0);
     set_known(known, row_offset, -1, 1);
     set_known(known, row_offset, 1, 1);
 }
 "
-            );
+        );
     }
 
     extern "C" fn no_call_machine(
@@ -591,6 +685,10 @@ extern \"C\" fn witgen(
         _: MutSlice<LookupCell<'_, GoldilocksField>>,
     ) -> bool {
         false
+    }
+
+    extern "C" fn get_fixed_data_test(_: *const c_void, col_id: u64, row: u64) -> GoldilocksField {
+        GoldilocksField::from(col_id * 2000 + row)
     }
 
     fn witgen_fun_params<'a>(
@@ -604,6 +702,8 @@ extern \"C\" fn witgen(
             params: Default::default(),
             mutable_state: std::ptr::null(),
             call_machine: no_call_machine,
+            fixed_data: null(),
+            get_fixed_value: get_fixed_data_test,
         }
     }
 
@@ -655,6 +755,8 @@ extern \"C\" fn witgen(
             params: Default::default(),
             mutable_state: std::ptr::null(),
             call_machine: no_call_machine,
+            fixed_data: null(),
+            get_fixed_value: get_fixed_data_test,
         };
         (f2.function)(params2);
         assert_eq!(data[0], GoldilocksField::from(7));
@@ -746,6 +848,8 @@ extern \"C\" fn witgen(
             params: params.as_mut_slice().into(),
             mutable_state: std::ptr::null(),
             call_machine: no_call_machine,
+            fixed_data: null(),
+            get_fixed_value: get_fixed_data_test,
         };
         (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(7 * 2));
@@ -766,6 +870,33 @@ extern \"C\" fn witgen(
         let known_inputs = vec![a.clone()];
         let code = witgen_code(&known_inputs, &effects);
         assert!(code.contains(&format!("let c_x_1_0 = (c_a_0_0 & {large_num:#x});")));
+    }
+
+    #[test]
+    fn fixed_column_access() {
+        let a = cell("a", 0, 0);
+        let x = Variable::FixedCell(Cell {
+            column_name: "X".to_string(),
+            id: 15,
+            row_offset: 6,
+        });
+        let effects = vec![assignment(&a, symbol(&x))];
+        let f = compile_effects(0, 1, &[], &effects).unwrap();
+        let mut data = vec![7.into()];
+        let mut known = vec![0];
+        let mut params = vec![];
+        let params = WitgenFunctionParams {
+            data: data.as_mut_slice().into(),
+            known: known.as_mut_ptr(),
+            row_offset: 0,
+            params: params.as_mut_slice().into(),
+            mutable_state: std::ptr::null(),
+            call_machine: no_call_machine,
+            fixed_data: null(),
+            get_fixed_value: get_fixed_data_test,
+        };
+        (f.function)(params);
+        assert_eq!(data[0], GoldilocksField::from(30006));
     }
 
     extern "C" fn mock_call_machine(
@@ -820,6 +951,8 @@ extern \"C\" fn witgen(
             params: Default::default(),
             mutable_state: std::ptr::null(),
             call_machine: mock_call_machine,
+            fixed_data: null(),
+            get_fixed_value: get_fixed_data_test,
         };
         (f.function)(params);
         assert_eq!(data[0], GoldilocksField::from(9));
@@ -836,8 +969,7 @@ extern \"C\" fn witgen(
         let effects = vec![Effect::Branch(
             BranchCondition {
                 variable: x.clone(),
-                first_branch: RangeConstraint::from_range(7.into(), 20.into()),
-                second_branch: RangeConstraint::from_range(21.into(), 6.into()),
+                condition: RangeConstraint::from_range(7.into(), 20.into()),
             },
             vec![assignment(&y, symbol(&x) + number(1))],
             vec![assignment(&y, symbol(&x) + number(2))],
@@ -854,6 +986,8 @@ extern \"C\" fn witgen(
             params: params.as_mut_slice().into(),
             mutable_state: std::ptr::null(),
             call_machine: no_call_machine,
+            fixed_data: null(),
+            get_fixed_value: get_fixed_data_test,
         };
         (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(8));
@@ -867,6 +1001,8 @@ extern \"C\" fn witgen(
             params: params.as_mut_slice().into(),
             mutable_state: std::ptr::null(),
             call_machine: no_call_machine,
+            fixed_data: null(),
+            get_fixed_value: get_fixed_data_test,
         };
         (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(4));
@@ -876,20 +1012,29 @@ extern \"C\" fn witgen(
     fn branches_codegen() {
         let x = param(0);
         let y = param(1);
+        let z = param(2);
         let branch_effect = Effect::Branch(
             BranchCondition {
                 variable: x.clone(),
-                first_branch: RangeConstraint::from_range(7.into(), 20.into()),
-                second_branch: RangeConstraint::from_range(21.into(), 6.into()),
+                condition: RangeConstraint::from_range(7.into(), 20.into()),
             },
             vec![assignment(&y, symbol(&x) + number(1))],
-            vec![assignment(&y, symbol(&x) + number(2))],
+            vec![Effect::Branch(
+                BranchCondition {
+                    variable: z.clone(),
+                    condition: RangeConstraint::from_range(7.into(), 20.into()),
+                },
+                vec![assignment(&y, symbol(&x) + number(2))],
+                vec![assignment(&y, symbol(&x) + number(3))],
+            )],
         );
         let expectation = "    let p_1;
     if 7 <= IntType::from(p_0) && IntType::from(p_0) <= 20 {
         p_1 = (p_0 + FieldElement::from(1));
-    } else {
+    } else if if 7 <= IntType::from(p_2) && IntType::from(p_2) <= 20 {
         p_1 = (p_0 + FieldElement::from(2));
+    } else {
+        p_1 = (p_0 + FieldElement::from(3));
     }";
         assert_eq!(format_effects(&[branch_effect]), expectation);
     }

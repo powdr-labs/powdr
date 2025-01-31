@@ -4,19 +4,16 @@ use super::super::affine_expression::AffineExpression;
 use super::{Connection, EvalResult, FixedData, LookupCell};
 use super::{Machine, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
+use crate::witgen::data_structures::identity::Identity;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::evaluators::fixed_evaluator::FixedEvaluator;
 use crate::witgen::evaluators::partial_expression_evaluator::PartialExpressionEvaluator;
 use crate::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
 use crate::witgen::rows::RowPair;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause, QueryCallback};
-use crate::Identity;
 use itertools::Itertools;
 use num_traits::One;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, LookupIdentity, PhantomLookupIdentity,
-    PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 
 /// A machine that can support a lookup in a set of columns that are sorted
@@ -44,7 +41,11 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        if parts.identities.len() != 1 {
+        let mut identities_iter = parts.identities.iter();
+        let identity = identities_iter.next()?;
+
+        if identities_iter.next().is_some() {
+            // Expecting exactly one identity
             return None;
         }
         if parts.connections.is_empty() {
@@ -53,7 +54,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
 
         let degree = parts.common_degree_range().max;
 
-        check_identity(fixed_data, parts.identities.first().unwrap(), degree).and_then(|key_col| {
+        check_identity(fixed_data, identity, degree).and_then(|key_col| {
             let witness_positions = parts
                 .witnesses
                 .iter()
@@ -115,13 +116,18 @@ fn check_identity<T: FieldElement>(
     degree: DegreeType,
 ) -> Option<PolyID> {
     // Looking for a lookup
-    let (left, right) = match id {
-        Identity::Lookup(LookupIdentity { left, right, .. })
-        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => (left, right),
+    let send = match id {
+        Identity::BusSend(bus_interaction) => bus_interaction,
         _ => return None,
     };
+    let receive = send.try_match_static(&fixed_data.bus_receives)?;
+    if !receive.has_arbitrary_multiplicity() {
+        return None;
+    }
 
     // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
+    let left = &send.selected_payload;
+    let right = &receive.selected_payload;
     if !right.selector.is_one() || left.expressions.len() != 1 {
         return None;
     }

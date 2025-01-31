@@ -909,15 +909,16 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     // call offset
                     Ins {
                         opc: Op::JALR,
-                        rd: Some(1),
-                        rs1: Some(1),
+                        rd: Some(link_reg),
+                        rs1: Some(hi_reg),
                         rs2: None,
                         imm: Some(lo),
                         ..
-                    } if *rd_auipc == 1 => HighLevelInsn {
-                        op: "call",
+                    } if rd_auipc == hi_reg && hi_reg == link_reg => HighLevelInsn {
+                        op: "jal",
                         args: HighLevelArgs {
                             imm: HighLevelImmediate::CodeLabel(hi.wrapping_add(*lo) as u32),
+                            rd: Some(*link_reg as u32),
                             ..Default::default()
                         },
                         loc,

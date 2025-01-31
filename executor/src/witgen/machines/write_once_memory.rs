@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use itertools::{Either, Itertools};
 
 use num_traits::One;
-use powdr_ast::analyzed::{Identity, PolyID, PolynomialType};
+use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::data_structures::mutable_state::MutableState;
@@ -47,12 +47,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        if parts
-            .identities
-            .iter()
-            // The only identity we'd expect is a PhantomBusInteraction
-            .any(|id| !matches!(id, Identity::PhantomBusInteraction(_)))
-        {
+        if !parts.identities.is_empty() {
             return None;
         }
 

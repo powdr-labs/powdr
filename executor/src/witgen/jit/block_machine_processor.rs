@@ -2,14 +2,18 @@ use std::collections::HashSet;
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_ast::analyzed::AlgebraicReference;
+use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
-use crate::witgen::{jit::processor::Processor, machines::MachineParts, FixedData};
+use crate::witgen::{
+    jit::{processor::Processor, prover_function_heuristics::decode_prover_functions},
+    machines::MachineParts,
+    FixedData,
+};
 
 use super::{
-    effect::Effect,
-    variable::Variable,
+    processor::ProcessorResult,
+    variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
 
@@ -41,12 +45,12 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
     /// Generates the JIT code for a given combination of connection and known arguments.
     /// Fails if it cannot solve for the outputs, or if any sub-machine calls cannot be completed.
-    pub fn generate_code<CanProcess: CanProcessCall<T> + Clone>(
+    pub fn generate_code(
         &self,
-        can_process: CanProcess,
+        can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_args: &BitVec,
-    ) -> Result<Vec<Effect<T, Variable>>, String> {
+    ) -> Result<ProcessorResult<T>, String> {
         let connection = self.machine_parts.connections[&identity_id];
         assert_eq!(connection.right.expressions.len(), known_args.len());
 
@@ -57,6 +61,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .filter_map(|(i, is_input)| is_input.then_some(Variable::Param(i)))
             .collect::<HashSet<_>>();
         let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables, []);
+
+        let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
 
         // In the latch row, set the RHS selector to 1.
         let selector = &connection.right.selector;
@@ -75,12 +81,32 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
         }
 
-        let identities = self.row_range().flat_map(move |row| {
-            self.machine_parts
-                .identities
-                .iter()
-                .map(move |&id| (id, row))
+        // Compute the identity-row-pairs we consider.
+        let have_next_ref = self
+            .machine_parts
+            .identities
+            .iter()
+            .any(|id| id.contains_next_ref());
+        let start_row = if !have_next_ref {
+            // No identity contains a next reference - we do not need to consider row -1,
+            // and the block has to be rectangular-shaped.
+            0
+        } else {
+            // A machine that might have a non-rectangular shape.
+            // We iterate over all rows of the block +/- one row.
+            -1
+        };
+        let identities = (start_row..self.block_size as i32).flat_map(move |row| {
+            self.machine_parts.identities.iter().filter_map(move |&id| {
+                // Filter out identities with next references on the last row.
+                if row as usize == self.block_size - 1 && id.contains_next_ref() {
+                    None
+                } else {
+                    Some((id, row))
+                }
+            })
         });
+
         let requested_known = known_args
             .iter()
             .enumerate()
@@ -89,15 +115,17 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             self.fixed_data,
             self,
             identities,
-            self.block_size,
-            true,
             requested_known,
             BLOCK_MACHINE_MAX_BRANCH_DEPTH,
         )
+        .with_block_shape_check()
+        .with_block_size(self.block_size)
+        .with_requested_range_constraints((0..known_args.len()).map(Variable::Param))
+        .with_prover_functions(prover_functions)
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string_with_variable_formatter(|var| match var {
-                Variable::Param(i) => format!("{}", &connection.right.expressions[*i]),
+                Variable::Param(i) => format!("{} (connection param)", &connection.right.expressions[*i]),
                 _ => var.to_string(),
             });
             log::trace!("\nCode generation failed for connection:\n  {connection}");
@@ -115,25 +143,22 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
         })
     }
-
-    fn row_range(&self) -> std::ops::Range<i32> {
-        // We iterate over all rows of the block +/- one row, so that we can also solve for non-rectangular blocks.
-        -1..self.block_size as i32
-    }
 }
 
 impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
-    fn evaluate(&self, var: &AlgebraicReference, row_offset: i32) -> Option<T> {
-        assert!(var.is_fixed());
-        let values = self.fixed_data.fixed_cols[&var.poly_id].values_max_size();
+    fn evaluate(&self, fixed_cell: &Cell) -> Option<T> {
+        let poly_id = PolyID {
+            id: fixed_cell.id,
+            ptype: PolynomialType::Constant,
+        };
+        let values = self.fixed_data.fixed_cols[&poly_id].values_max_size();
 
         // By assumption of the block machine, all fixed columns are cyclic with a period of <block_size>.
         // An exception might be the first and last row.
-        assert!(row_offset >= -1);
+        assert!(fixed_cell.row_offset >= -1);
         assert!(self.block_size >= 1);
-        // The current row is guaranteed to be at least 1.
-        let current_row = (2 * self.block_size as i32 + row_offset) as usize;
-        let row = current_row + var.next as usize;
+        // The row is guaranteed to be at least 1.
+        let row = (2 * self.block_size as i32 + fixed_cell.row_offset) as usize;
 
         assert!(values.len() >= self.block_size * 4);
 
@@ -158,11 +183,9 @@ mod test {
     use crate::witgen::{
         data_structures::mutable_state::MutableState,
         global_constraints,
-        jit::{
-            effect::{format_code, Effect},
-            test_util::read_pil,
-        },
+        jit::{effect::format_code, test_util::read_pil},
         machines::{machine_extractor::MachineExtractor, KnownMachine, Machine},
+        range_constraints::RangeConstraint,
         FixedData,
     };
 
@@ -173,13 +196,12 @@ mod test {
         machine_name: &str,
         num_inputs: usize,
         num_outputs: usize,
-    ) -> Result<Vec<Effect<GoldilocksField, Variable>>, String> {
+    ) -> Result<ProcessorResult<GoldilocksField>, String> {
         let (analyzed, fixed_col_vals) = read_pil(input_pil);
 
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
-        let (fixed_data, retained_identities) =
-            global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
-        let machines = MachineExtractor::new(&fixed_data).split_out_machines(retained_identities);
+        let fixed_data = global_constraints::set_global_constraints(fixed_data);
+        let machines = MachineExtractor::new(&fixed_data).split_out_machines();
         let [KnownMachine::BlockMachine(machine)] = machines
             .iter()
             .filter(|m| m.name().contains(machine_name))
@@ -221,9 +243,9 @@ mod test {
             col witness sel, a, b, c;
             c = a + b;
         ";
-        let code = generate_for_block_machine(input, "Add", 2, 1);
+        let code = generate_for_block_machine(input, "Add", 2, 1).unwrap().code;
         assert_eq!(
-            format_code(&code.unwrap()),
+            format_code(&code),
             "Add::sel[0] = 1;
 Add::a[0] = params[0];
 Add::b[0] = params[1];
@@ -266,9 +288,14 @@ params[2] = Add::c[0];"
     #[test]
     fn binary() {
         let input = read_to_string("../test_data/pil/binary.pil").unwrap();
-        let code = generate_for_block_machine(&input, "main_binary", 3, 1).unwrap();
+        let result = generate_for_block_machine(&input, "main_binary", 3, 1).unwrap();
+        let [op_rc, a_rc, b_rc, c_rc] = &result.range_constraints.try_into().unwrap();
+        assert_eq!(op_rc, &RangeConstraint::from_range(0.into(), 2.into()));
+        assert_eq!(a_rc, &RangeConstraint::from_mask(0xffffffffu64));
+        assert_eq!(b_rc, &RangeConstraint::from_mask(0xffffffffu64));
+        assert_eq!(c_rc, &RangeConstraint::from_mask(0xffffffffu64));
         assert_eq!(
-            format_code(&code),
+            format_code(&result.code),
             "main_binary::sel[0][3] = 1;
 main_binary::operation_id[3] = params[0];
 main_binary::A[3] = params[1];

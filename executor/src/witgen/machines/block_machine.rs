@@ -9,16 +9,20 @@ use super::{
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::analysis::detect_connection_type_and_block_size;
 use crate::witgen::block_processor::BlockProcessor;
+use crate::witgen::data_structures::caller_data::CallerData;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::jit::function_cache::FunctionCache;
+use crate::witgen::jit::witgen_inference::CanProcessCall;
 use crate::witgen::processor::{OuterQuery, Processor, SolverState};
+use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
 };
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause, QueryCallback};
+use bit_vec::BitVec;
 use powdr_ast::analyzed::{DegreeRange, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
@@ -159,13 +163,39 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         self.parts.connections.keys().copied().collect()
     }
 
+    fn can_process_call_fully(
+        &mut self,
+        can_process: impl CanProcessCall<T>,
+        identity_id: u64,
+        known_arguments: &BitVec,
+        _range_constraints: &[RangeConstraint<T>],
+    ) -> Option<Vec<RangeConstraint<T>>> {
+        // We do not use the input range constraints because then we would need
+        // to generate new code depending on the range constraints as well.
+        self.function_cache
+            .compile_cached(can_process, identity_id, known_arguments)
+            .map(|r| r.range_constraints.clone())
+    }
+
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b MutableState<'a, T, Q>,
-        _identity_id: u64,
-        _values: &mut [LookupCell<'c, T>],
+        mutable_state: &'b MutableState<'a, T, Q>,
+        identity_id: u64,
+        values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
-        unimplemented!("Direct lookup not supported by machine {}.", self.name())
+        if self.rows() + self.block_size as DegreeType > self.degree {
+            return Err(EvalError::RowsExhausted(self.name.clone()));
+        }
+
+        self.data.finalize_all();
+        let data = self.data.append_new_finalized_rows(self.block_size);
+
+        let success =
+            self.function_cache
+                .process_lookup_direct(mutable_state, identity_id, values, data)?;
+        assert!(success);
+        self.block_count_jit += 1;
+        Ok(true)
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -468,8 +498,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identity_id: u64,
         outer_query: OuterQuery<'a, 'b, T>,
     ) -> EvalResult<'a, T> {
-        let mut input_output_data = vec![T::zero(); outer_query.left.len()];
-        let values = outer_query.prepare_for_direct_lookup(&mut input_output_data);
+        let mut values = CallerData::from(&outer_query);
 
         assert!(
             (self.rows() + self.block_size as DegreeType) <= self.degree,
@@ -478,14 +507,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         self.data.finalize_all();
         let data = self.data.append_new_finalized_rows(self.block_size);
 
-        let success =
-            self.function_cache
-                .process_lookup_direct(mutable_state, identity_id, values, data)?;
+        let success = self.function_cache.process_lookup_direct(
+            mutable_state,
+            identity_id,
+            &mut values.as_lookup_cells(),
+            data,
+        )?;
         assert!(success);
 
-        Ok(outer_query
-            .direct_lookup_to_eval_result(input_output_data)?
-            .report_side_effect())
+        values.into()
     }
 
     fn process<'b, Q: QueryCallback<T>>(

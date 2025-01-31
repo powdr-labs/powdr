@@ -1,19 +1,19 @@
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, DegreeRange};
+use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicExpression, Analyzed, DegreeRange};
+use powdr_ast::parsed::visitor::AllChildren;
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
 
-use powdr_number::{FieldElement, LargeInt, Mersenne31Field};
+use powdr_number::{FieldElement, LargeInt, Mersenne31Field as M31};
 
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
 
 extern crate alloc;
 use alloc::collections::{btree_map::BTreeMap, btree_set::BTreeSet};
-use std::collections::HashSet;
 use std::iter::repeat;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -33,7 +33,7 @@ use stwo_prover::constraint_framework::{
 use stwo_prover::core::air::{Component, ComponentProver};
 use stwo_prover::core::backend::{Backend, BackendForChannel};
 use stwo_prover::core::channel::{Channel, MerkleChannel};
-use stwo_prover::core::fields::m31::{BaseField, M31};
+use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::fri::FriConfig;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig};
@@ -62,11 +62,11 @@ impl fmt::Display for KeyExportError {
 }
 
 pub struct StwoProver<B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Channel> {
-    pub analyzed: Arc<Analyzed<T>>,
+    pub analyzed: Arc<Analyzed<M31>>,
     /// The split analyzed PIL
-    split: BTreeMap<String, Analyzed<T>>,
+    split: BTreeMap<String, Analyzed<M31>>,
     /// The value of the fixed columns
-    pub fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
+    pub fixed: Arc<Vec<(String, VariablySizedColumn<M31>)>>,
 
     /// Proving key
     proving_key: StarkProvingKey<B>,
@@ -85,10 +85,10 @@ where
     PowdrComponent: ComponentProver<B>,
 {
     pub fn new(
-        analyzed: Arc<Analyzed<T>>,
-        fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
+        analyzed: Arc<Analyzed<M31>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<M31>)>>,
     ) -> Result<Self, io::Error> {
-        let split: BTreeMap<String, Analyzed<T>> = powdr_backend_utils::split_pil(&analyzed)
+        let split: BTreeMap<String, Analyzed<M31>> = powdr_backend_utils::split_pil(&analyzed)
             .into_iter()
             .collect();
 
@@ -173,7 +173,7 @@ where
                                 > = fixed_columns
                                     .iter()
                                     .map(|(_, vec)| {
-                                        gen_stwo_circle_column::<_, M31>(
+                                        gen_stwo_circle_column::<_, BaseField>(
                                             *domain_map.get(&(vec.len().ilog2() as usize)).unwrap(),
                                             vec,
                                         )
@@ -190,7 +190,7 @@ where
                                     .map(|(_, values)| {
                                         let mut rotated_values = values.to_vec();
                                         rotated_values.rotate_left(1);
-                                        gen_stwo_circle_column::<B, M31>(
+                                        gen_stwo_circle_column::<_, BaseField>(
                                             *domain_map
                                                 .get(&(values.len().ilog2() as usize))
                                                 .unwrap(),
@@ -221,8 +221,8 @@ where
 
     pub fn prove(
         &self,
-        witness: &[(String, Vec<T>)],
-        witgen_callback: WitgenCallback<T>,
+        witness: &[(String, Vec<M31>)],
+        witgen_callback: WitgenCallback<M31>,
     ) -> Result<Vec<u8>, String> {
         let config = get_config();
         let domain_degree_range = DegreeRange {
@@ -255,7 +255,7 @@ where
         // Generate witness for stage 0, build constant columns in circle domain at the same time
         let mut machine_log_sizes: BTreeMap<String, u32> = BTreeMap::new();
         let mut constant_cols = Vec::new();
-        let mut witness_by_machine = self
+        let witness_by_machine = self
             .split
             .iter()
             .filter_map(|(machine, pil)| {
@@ -318,6 +318,9 @@ where
             })
             .collect::<Vec<_>>();
 
+        // TODO: Commit witness and constant columns of stage 0 to generate sound challenges for stage 1. This is not implemented yet.
+        // To commit, Stwo requires the witness and constant columns to be already evaluated in the circle domain,
+        // so `witness_cols_circle_domain_eval` and `constant_cols` should be available at this point.
         let twiddles_max_degree = B::precompute_twiddles(
             CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
                 .circle_domain()
@@ -427,7 +430,7 @@ where
         println!("start proving, machine log sizes: {:?}", machine_log_sizes);
 
         let proof_result = stwo_prover::core::prover::prove::<B, MC>(
-            components_slice,
+            &components_slice,
             prover_channel,
             commitment_scheme,
         );
@@ -444,7 +447,7 @@ where
         Ok(bincode::serialize(&proof).unwrap())
     }
 
-    pub fn verify(&self, proof: &[u8], _instances: &[T]) -> Result<(), String> {
+    pub fn verify(&self, proof: &[u8], _instances: &[M31]) -> Result<(), String> {
         assert!(
             _instances.is_empty(),
             "Expected _instances slice to be empty, but it has {} elements.",
@@ -467,6 +470,9 @@ where
 
         let mut constant_col_log_sizes = vec![];
         let mut witness_col_log_sizes = vec![];
+
+        // TODO: make the challenge sound, now the challenge is built the same way in prover.
+        let stage0_challenges = get_dummy_challenges::<MC>(&self.analyzed);
 
         // TODO: make the challenge sound, now the challenge is built the same way in prover.
         let stage0_challenges = get_dummy_challenges::<MC>(&self.analyzed);
@@ -551,7 +557,7 @@ fn get_config() -> PcsConfig {
     }
 }
 
-fn get_dummy_challenges<MC: MerkleChannel>(analyzed: &Analyzed<T>) -> BTreeMap<u64, T> {
+fn get_dummy_challenges<MC: MerkleChannel>(analyzed: &Analyzed<M31>) -> BTreeMap<u64, M31> {
     let identities = &analyzed.identities;
     let challenges_stage0 = identities
         .iter()
@@ -584,10 +590,10 @@ fn get_dummy_challenges<MC: MerkleChannel>(analyzed: &Analyzed<T>) -> BTreeMap<u
         .collect::<BTreeMap<_, _>>()
 }
 
-pub fn into_stwo_field(powdr_m31: &T) -> M31 {
-    M31::from(powdr_m31.to_integer().try_into_u32().unwrap())
+pub fn into_stwo_field(powdr_m31: &M31) -> BaseField {
+    BaseField::from(powdr_m31.to_integer().try_into_u32().unwrap())
 }
 
-pub fn from_stwo_field(stwo_m31: &M31) -> T {
-    T::from(stwo_m31.0)
+pub fn from_stwo_field(stwo_m31: &BaseField) -> M31 {
+    M31::from(stwo_m31.0)
 }

@@ -11,6 +11,7 @@ use crate::{
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
+use powdr_number::Mersenne31Field as M31;
 use prover::StwoProver;
 use stwo_prover::core::backend::{simd::SimdBackend, BackendForChannel};
 use stwo_prover::core::channel::{Blake2sChannel, Channel, MerkleChannel};
@@ -22,19 +23,19 @@ mod prover;
 
 struct RestrictedFactory;
 
-impl BackendFactory<T> for RestrictedFactory {
+impl BackendFactory<M31> for RestrictedFactory {
     #[allow(unused_variables)]
     fn create(
         &self,
-        pil: Arc<Analyzed<T>>,
-        fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
+        pil: Arc<Analyzed<M31>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<M31>)>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         proving_key: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         options: BackendOptions,
-    ) -> Result<Box<dyn crate::Backend<T>>, Error> {
+    ) -> Result<Box<dyn crate::Backend<M31>>, Error> {
         if proving_key.is_some() {
             return Err(Error::BackendError("Proving key unused".to_string()));
         }
@@ -58,9 +59,9 @@ impl BackendFactory<T> for RestrictedFactory {
     }
 }
 
-generalize_factory!(Factory <- RestrictedFactory, [T]);
+generalize_factory!(Factory <- RestrictedFactory, [M31]);
 
-impl<MC: MerkleChannel + Send, C: Channel + Send> Backend<T> for StwoProver<SimdBackend, MC, C>
+impl<MC: MerkleChannel + Send, C: Channel + Send> Backend<M31> for StwoProver<SimdBackend, MC, C>
 where
     SimdBackend: BackendForChannel<MC>,
     MC: MerkleChannel,
@@ -68,7 +69,7 @@ where
     MC::H: DeserializeOwned + Serialize,
 {
     #[allow(unused_variables)]
-    fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
+    fn verify(&self, proof: &[u8], instances: &[Vec<M31>]) -> Result<(), Error> {
         assert_eq!(instances.len(), 1);
         let instances = &instances[0];
 
@@ -78,9 +79,9 @@ where
     #[allow(unused_variables)]
     fn prove(
         &self,
-        witness: &[(String, Vec<T>)],
+        witness: &[(String, Vec<M31>)],
         prev_proof: Option<Proof>,
-        witgen_callback: WitgenCallback<T>,
+        witgen_callback: WitgenCallback<M31>,
     ) -> Result<Proof, Error> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
