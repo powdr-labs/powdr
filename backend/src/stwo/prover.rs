@@ -398,11 +398,20 @@ where
 
         tree_builder.extend_evals(constant_cols);
 
+        println!("commit to constant columns");
+        tree_builder.commit(prover_channel);
+
+        let mut tree_builder = commitment_scheme.tree_builder();
+        println!("extend the evals of tree builder by witness columns");
+        tree_builder.extend_evals(witness_cols_circle_domain_eval.clone().into_iter().flatten());
+        println!("commit to witness columns");
+        println!("machine log sizes are {:?}", machine_log_sizes);
         tree_builder.commit(prover_channel);
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(witness_cols_circle_domain_eval.into_iter().flatten());
         tree_builder.commit(prover_channel);
+
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
         // Each column size in machines needs its own component, the components from different machines are stored in this vector
@@ -438,6 +447,8 @@ where
             .collect();
 
         let components_slice = components_slice.as_mut_slice();
+
+        println!("start proving, machine log sizes: {:?}", machine_log_sizes);
 
         let proof_result = stwo_prover::core::prover::prove::<B, MC>(
             components_slice,
@@ -533,6 +544,12 @@ where
 
         commitment_scheme.commit(
             proof.stark_proof.commitments[ORIGINAL_TRACE_IDX],
+            &witness_col_log_sizes,
+            verifier_channel,
+        );
+
+        commitment_scheme.commit(
+            proof.stark_proof.commitments[2],
             &witness_col_log_sizes,
             verifier_channel,
         );
