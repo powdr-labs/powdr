@@ -124,18 +124,10 @@ impl<T> std::ops::Index<usize> for PilVec<T> {
         &self.0[index]
     }
 }
-    
 
-trait Add {
-    fn add(a: Self, b: Self) -> Self;
-}
-
-impl Add for ibig::IBig {
-    fn add(a: Self, b: Self) -> Self { a + b }
-}
-
-impl<T: Clone> Add for PilVec<T> {
-    fn add(a: Self, b: Self) -> Self {
+impl<T: Clone> std::ops::Add for PilVec<T> {
+    type Output = Self;
+    fn add(self, b: Self) -> Self {
         // TODO for a regular "push" or array::map this is very slow.
         // We could optimize this by sharing a larger backing vector
         // across prefix instances, allowing to extend the backing vector if
@@ -169,7 +161,8 @@ fn field_specific_preamble<T: FieldElement>() -> String {
             }}
         }}
         impl Add for FieldElement {{
-            fn add(a: Self, b: Self) -> Self {{
+            type Output = Self;
+            fn add(self, b: Self) -> Self {{
                 // TODO this is inefficient.
                 Self(u64::try_from((u128::from(a.0) + u128::from(b.0)) % u128::from({modulus}_u64)).unwrap())
             }}
@@ -233,7 +226,6 @@ pub fn call_cargo(code: &str, opt_level: Option<u32>) -> Result<PathInTempDir, S
     if !out.status.success() {
         if true {
             let stderr = from_utf8(&out.stderr).unwrap_or("UTF-8 error in error message.");
-            println!("stderr: {}", stderr);
             return Err(format!(
                 "Rust compiler error when JIT-compiling. Will use interpreter instead. Error message:\n{stderr}."
             ));

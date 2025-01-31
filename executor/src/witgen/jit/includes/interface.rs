@@ -110,11 +110,12 @@ pub struct WitgenFunctionParams<'a, T: 'a> {
 
 impl From<ibig::IBig> for FieldElement {
     fn from(x: ibig::IBig) -> Self {
-        FieldElement(u64::try_from(x).unwrap())
+        u64::try_from(x).unwrap().into()
     }
 }
 impl From<FieldElement> for ibig::IBig {
     fn from(x: FieldElement) -> Self {
+        // TODO we shouldn't access x.0 here.
         ibig::IBig::from(x.0)
     }
 }
@@ -157,13 +158,16 @@ impl<T> std::ops::Index<usize> for PilVec<T> {
 }
 
 impl<T: Clone> std::ops::Add for PilVec<T> {
-    fn add(a: Self, b: Self) -> Self {
+    type Output = Self;
+
+    fn add(self, b: Self) -> Self {
         // TODO for a regular "push" or array::map this is very slow.
         // We could optimize this by sharing a larger backing vector
         // across prefix instances, allowing to extend the backing vector if
         // our view is the full vector.
         PilVec(std::sync::Arc::new(
-            a.0.as_ref()
+            self.0
+                .as_ref()
                 .iter()
                 .chain(b.0.as_ref())
                 .cloned()

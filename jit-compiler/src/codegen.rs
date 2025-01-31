@@ -290,7 +290,7 @@ impl<'a, T: FieldElement, Def: DefinitionFetcher> CodeGenerator<'a, T, Def> {
                         format!("(({left}).clone() >> usize::try_from(({right}).clone()).unwrap())")
                     }
                     BinaryOperator::Add => {
-                        format!("Add::add(({left}).clone(), ({right}).clone())")
+                        format!("(({left}).clone() + ({right}).clone())")
                     }
                     _ => format!("(({left}).clone() {op} ({right}).clone())"),
                 }
@@ -758,7 +758,7 @@ mod test {
         );
         assert_eq!(
             result,
-            "fn c((i): (ibig::IBig)) -> ibig::IBig { Add::add((i).clone(), (ibig::IBig::from(20_u64)).clone()) }\n\
+            "fn c((i): (ibig::IBig)) -> ibig::IBig { ((i).clone() + (ibig::IBig::from(20_u64)).clone()) }\n\
             \n\
             fn d((k): (ibig::IBig)) -> ibig::IBig { (Callable::Fn(c)).call((((k).clone() * (ibig::IBig::from(20_u64)).clone()).clone())) }\n\
             "

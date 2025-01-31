@@ -21,7 +21,7 @@ use crate::witgen::{
 
 use super::{
     affine_symbolic_expression::{AffineSymbolicExpression, Error, ProcessResult},
-    effect::{BranchCondition, Effect},
+    effect::{BranchCondition, Effect, ProverFunctionCall},
     prover_function_heuristics::ProverFunction,
     symbolic_expression::SymbolicExpression,
     variable::{Cell, MachineCallVariable, Variable},
@@ -215,11 +215,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                         .map(|c| Variable::from_reference(c, row_offset))
                         .collect::<Vec<_>>();
                     if inputs.iter().all(|v| self.is_known(v)) {
-                        let effect = Effect::ProverFunctionCall(
-                            target.clone(),
-                            compute_from.index,
-                            inputs.iter().cloned().collect_vec(),
-                        );
+                        let effect = Effect::ProverFunctionCall(ProverFunctionCall {
+                            target,
+                            function_index: compute_from.index,
+                            row_offset,
+                            inputs,
+                        });
                         return self.ingest_effects(
                             ProcessResult {
                                 effects: vec![effect],
@@ -423,13 +424,18 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                         self.code.push(e);
                     }
                 }
-                Effect::ProverFunctionCall(variable, fun_index, args) => {
-                    if self.record_known(variable.clone()) {
+                Effect::ProverFunctionCall(ProverFunctionCall {
+                    target,
+                    function_index,
+                    row_offset,
+                    inputs,
+                }) => {
+                    if self.record_known(target.clone()) {
                         log::trace!(
-                            "{variable} := prover_function_{fun_index}({})",
-                            args.iter().format(", ")
+                            "{target} := prover_function_{function_index}({row_offset}, {})",
+                            inputs.iter().format(", ")
                         );
-                        updated_variables.push(variable.clone());
+                        updated_variables.push(target.clone());
                         self.code.push(e);
                     }
                 }

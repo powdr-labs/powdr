@@ -11,6 +11,7 @@ use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::{finalizable_data::CompactDataRef, mutable_state::MutableState},
+    jit::effect::ProverFunctionCall,
     machines::{
         profiling::{record_end, record_start},
         LookupCell,
@@ -368,12 +369,17 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                 "{var_decls}assert!(call_machine(mutable_state, {id}, MutSlice::from((&mut [{args}]).as_mut_slice())));"
             )
         }
-        Effect::ProverFunctionCall(var, function_index, args) => {
+        Effect::ProverFunctionCall(ProverFunctionCall {
+            target,
+            function_index,
+            row_offset,
+            inputs,
+        }) => {
             format!(
-                "{}{} = prover_function_{function_index}(&[{}]);",
+                "{}{} = prover_function_{function_index}(row_offset + {row_offset}, &[{}]);",
                 if is_top_level { "let " } else { "" },
-                variable_to_string(var),
-                args.iter().map(variable_to_string).format(", ")
+                variable_to_string(target),
+                inputs.iter().map(variable_to_string).format(", ")
             )
         }
         Effect::Branch(condition, first, second) => {
@@ -521,8 +527,9 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
 
     let index = f.index;
     Ok(format!(
-        "fn prover_function_{index}(args: &[FieldElement]) -> FieldElement {{\n\
-            ({code})(args)\n\
+        "fn prover_function_{index}(i: u64, args: &[FieldElement]) -> FieldElement {{\n\
+            let i: ibig::IBig = i.into();\n\
+            ({code}).call(args.to_vec().into())\n\
         }}"
     ))
 }
