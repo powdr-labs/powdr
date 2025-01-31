@@ -435,9 +435,10 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
     }
 }
 
+/// Uses associative properties to simplify expressions by regrouping constant terms.
 fn try_simplify_associative_operation<T: FieldElement>(
-    left: &AlgebraicExpression<T>,
-    right: &AlgebraicExpression<T>,
+    left: &mut AlgebraicExpression<T>,
+    right: &mut AlgebraicExpression<T>,
     op: AlgebraicBinaryOperator,
 ) -> Option<AlgebraicExpression<T>> {
     if op != AlgebraicBinaryOperator::Add {
@@ -471,13 +472,14 @@ fn try_simplify_associative_operation<T: FieldElement>(
     // (X + C1) -> (X, C1)
     // (C1 + X) -> (X, C1)
     let (x, c1_val) = if let AlgebraicExpression::Number(val) = x1.as_ref() {
-        (x2, val)
+        (x2.as_mut(), val)
     } else if let AlgebraicExpression::Number(val) = x2.as_ref() {
-        (x1, val)
+        (x1.as_mut(), val)
     } else {
         return None;
     };
 
+    let x = std::mem::replace(x, AlgebraicExpression::Number(0.into()));
     match other_expr {
         // Case 1: Combining with a constant
         // (X + C1) + C2 -> X + (C1 + C2)
@@ -485,7 +487,7 @@ fn try_simplify_associative_operation<T: FieldElement>(
             let result = *c1_val + *c2;
             Some(AlgebraicExpression::BinaryOperation(
                 AlgebraicBinaryOperation {
-                    left: x.clone(),
+                    left: Box::new(x),
                     op: AlgebraicBinaryOperator::Add,
                     right: Box::new(AlgebraicExpression::Number(result)),
                 },
@@ -494,19 +496,22 @@ fn try_simplify_associative_operation<T: FieldElement>(
 
         // Case 2: Combining with any non-numeric expression
         // (X + C1) + Y -> (X + Y) + C1
-        y => Some(AlgebraicExpression::BinaryOperation(
-            AlgebraicBinaryOperation {
-                left: Box::new(AlgebraicExpression::BinaryOperation(
-                    AlgebraicBinaryOperation {
-                        left: x.clone(),
-                        op: AlgebraicBinaryOperator::Add,
-                        right: Box::new(y.clone()),
-                    },
-                )),
-                op: AlgebraicBinaryOperator::Add,
-                right: Box::new(AlgebraicExpression::Number(*c1_val)),
-            },
-        )),
+        y => {
+            let y = std::mem::replace(y, AlgebraicExpression::Number(0.into()));
+            Some(AlgebraicExpression::BinaryOperation(
+                AlgebraicBinaryOperation {
+                    left: Box::new(AlgebraicExpression::BinaryOperation(
+                        AlgebraicBinaryOperation {
+                            left: Box::new(x),
+                            op: AlgebraicBinaryOperator::Add,
+                            right: Box::new(y),
+                        },
+                    )),
+                    op: AlgebraicBinaryOperator::Add,
+                    right: Box::new(AlgebraicExpression::Number(*c1_val)),
+                },
+            ))
+        }
     }
 }
 
