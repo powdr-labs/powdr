@@ -21,7 +21,7 @@ use crate::witgen::{
 
 use super::{
     affine_symbolic_expression::{AffineSymbolicExpression, Error, ProcessResult},
-    effect::{BranchCondition, Effect},
+    effect::{BranchCondition, Effect, ProverFunctionCall},
     symbolic_expression::SymbolicExpression,
     variable::{Cell, MachineCallVariable, Variable},
 };
@@ -385,13 +385,18 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                         self.code.push(e);
                     }
                 }
-                Effect::ProverFunctionCall(variable, fun_index, args) => {
-                    if self.record_known(variable.clone()) {
+                Effect::ProverFunctionCall(ProverFunctionCall {
+                    target,
+                    function_index,
+                    row_offset,
+                    inputs,
+                }) => {
+                    if self.record_known(target.clone()) {
                         log::trace!(
-                            "{variable} := prover_function_{fun_index}({})",
-                            args.iter().format(", ")
+                            "{target} := prover_function_{function_index}({row_offset}, {})",
+                            inputs.iter().format(", ")
                         );
-                        updated_variables.push(variable.clone());
+                        updated_variables.push(target.clone());
                         self.code.push(e);
                     }
                 }
