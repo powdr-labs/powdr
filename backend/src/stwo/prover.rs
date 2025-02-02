@@ -341,9 +341,8 @@ where
         tree_builder.commit(prover_channel);
 
         // Generate challenges for stage 1 based on stage 0 traces.
-        // Stwo supports a maximum of 2 stages, and challenges are created only for stage 0.
-
-        let stage0_challenges = get_dummy_challenges::<MC>(&self.analyzed);
+        // Stwo supports a maximum of 2 stages, and challenges are created only after stage 0.
+        let stage0_challenges = get_challenges::<MC>(&self.analyzed, prover_channel);
 
         let stage1_witness_cols_circle_domain_eval = if self.analyzed.stage_count() > 1 {
             // build witness columns for stage 1 using the callback function, with the generated challenges
@@ -471,8 +470,38 @@ where
         let mut stage0_witness_col_log_sizes = vec![];
         let mut stage1_witness_col_log_sizes = vec![];
 
+        self.split
+            .iter()
+            .zip_eq(proof.machine_log_sizes.iter())
+            .for_each(
+                |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
+                    assert_eq!(machine_name, proof_machine_name);
+
+                    constant_col_log_sizes.extend(
+                        repeat(machine_log_size)
+                            .take(pil.constant_count() + get_constant_with_next_list(pil).len()),
+                    );
+                    stage0_witness_col_log_sizes
+                        .extend(repeat(machine_log_size).take(pil.stage0_commitment_count()));
+                    stage1_witness_col_log_sizes
+                        .extend(repeat(machine_log_size).take(pil.stage1_commitment_count()));
+                },
+            );
+
+        commitment_scheme.commit(
+            proof.stark_proof.commitments[PREPROCESSED_TRACE_IDX],
+            &constant_col_log_sizes,
+            verifier_channel,
+        );
+
+        commitment_scheme.commit(
+            proof.stark_proof.commitments[ORIGINAL_TRACE_IDX],
+            &stage0_witness_col_log_sizes,
+            verifier_channel,
+        );
+
         // TODO: make the challenge sound, now the challenge is built the same way in prover.
-        let stage0_challenges = get_dummy_challenges::<MC>(&self.analyzed);
+        let stage0_challenges = get_challenges::<MC>(&self.analyzed, verifier_channel);
 
         let mut components = self
             .split
@@ -496,15 +525,6 @@ where
                     constant_cols_offset_acc += pil.constant_count();
 
                     constant_cols_offset_acc += get_constant_with_next_list(pil).len();
-
-                    constant_col_log_sizes.extend(
-                        repeat(machine_log_size)
-                            .take(pil.constant_count() + get_constant_with_next_list(pil).len()),
-                    );
-                    stage0_witness_col_log_sizes
-                        .extend(repeat(machine_log_size).take(pil.stage0_commitment_count()));
-                    stage1_witness_col_log_sizes
-                        .extend(repeat(machine_log_size).take(pil.stage1_commitment_count()));
                     machine_component
                 },
             )
@@ -517,17 +537,6 @@ where
 
         let components_slice = components_slice.as_mut_slice();
 
-        commitment_scheme.commit(
-            proof.stark_proof.commitments[PREPROCESSED_TRACE_IDX],
-            &constant_col_log_sizes,
-            verifier_channel,
-        );
-
-        commitment_scheme.commit(
-            proof.stark_proof.commitments[ORIGINAL_TRACE_IDX],
-            &stage0_witness_col_log_sizes,
-            verifier_channel,
-        );
         if self.analyzed.stage_count() > 1 {
             commitment_scheme.commit(
                 proof.stark_proof.commitments[2],
@@ -557,7 +566,10 @@ fn get_config() -> PcsConfig {
     }
 }
 
-fn get_dummy_challenges<MC: MerkleChannel>(analyzed: &Analyzed<M31>) -> BTreeMap<u64, M31> {
+fn get_challenges<MC: MerkleChannel>(
+    analyzed: &Analyzed<M31>,
+    challenge_channel: &mut MC::C,
+) -> BTreeMap<u64, M31> {
     let identities = &analyzed.identities;
     let challenges_stage0 = identities
         .iter()
@@ -568,8 +580,6 @@ fn get_dummy_challenges<MC: MerkleChannel>(analyzed: &Analyzed<M31>) -> BTreeMap
             })
         })
         .collect::<BTreeSet<_>>();
-
-    let challenge_channel = &mut <MC as MerkleChannel>::C::default();
 
     // Stwo provides a function to draw challenges from the secure field `QM31`,
     // which consists of 4 `M31` elements.

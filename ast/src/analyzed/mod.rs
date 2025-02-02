@@ -109,7 +109,7 @@ impl<T> Analyzed<T> {
     pub fn stage1_commitment_count(&self) -> usize {
         self.stage1_declaration_type_count(PolynomialType::Committed)
     }
-    
+
     /// @returns the number of intermediate polynomials (with multiplicities for arrays)
     pub fn intermediate_count(&self) -> usize {
         self.intermediate_columns
