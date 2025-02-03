@@ -20,9 +20,46 @@ let provide_if_unknown: expr, int, (-> fe) -> () = query |column, row, f| match 
     _ => (),
 };
 
-/// Computes the value of a column based on the values of other columns.
+/// Returns true if all the provided columns are unknown.
+let all_unknown: expr[] -> bool = query |columns|
+    std::array::fold(columns, true, |acc, c| acc && match try_eval(c) {
+        Option::None => true,
+        Option::Some(_) => false,
+    });
+
+/// Computes the value of a column in a row based on the values of other columns.
 let compute_from: expr, int, expr[], (fe[] -> fe) -> () = query |dest_col, row, input_cols, f|
     provide_if_unknown(dest_col, row, || f(std::array::map(input_cols, eval)));
+
+/// Computes the value of multiple columns in a row based on the values of other columns.
+let compute_from_multi: expr[], int, expr[], (fe[] -> fe[]) -> () = query |dest_cols, row, input_cols, f|
+    if all_unknown(dest_cols) {
+        let values = f(std::array::map(input_cols, eval));
+        let _ = std::array::zip(dest_cols, values, |c, v| provide_value(c, row, v));
+    } else {
+    };
+
+/// Computes the value of a column in a row based on the values of other columns, but only if an equality constraint is met.
+let compute_from_conditional: expr, int, expr[], Constr, (fe[] -> fe) -> () = query |dest_col, row, input_cols, condition, f|
+    match condition {
+        Constr::Identity(l, r) =>
+            if eval(l - r) == 0 {
+                compute_from(dest_col, row, input_cols, f);
+            } else {
+            },
+        _ => std::check::panic("Only equality constraints are supported."),
+    };
+
+/// Computes the value of multiple columns in a row based on the values of other columns, but only if an equality constraint is met.
+let compute_from_conditional_multi: expr[], int, expr[], Constr, (fe[] -> fe[]) -> () = query |dest_cols, row, input_cols, condition, f|
+    match condition {
+        Constr::Identity(l, r) =>
+            if eval(l - r) == 0 {
+                compute_from_multi(dest_cols, row, input_cols, f);
+            } else {
+            },
+        _ => std::check::panic("Only equality constraints are supported."),
+    };
 
 /// Retrieves a field element from a prover-provided (untrusted and not committed) input channel.
 /// The parameters are the channel id and the index in the channel.
