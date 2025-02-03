@@ -1,5 +1,6 @@
 mod codegen;
 mod compiler;
+pub mod util_code;
 
 use std::{
     collections::{HashMap, HashSet},
