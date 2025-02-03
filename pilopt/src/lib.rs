@@ -446,8 +446,8 @@ fn try_simplify_associative_operation<T: FieldElement>(
     }
 
     // Find binary operation and other expression, handling both orderings:
-    // (X + C1) + Other
-    // Other + (X + C1)
+    // (X1 + X2) + Other
+    // Other + (X1 + X2)
     let (x1, x2, other_expr) = match (left, right) {
         (
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
@@ -469,8 +469,8 @@ fn try_simplify_associative_operation<T: FieldElement>(
     };
 
     // Extract variable and constant from binary operation, handling both orderings:
-    // (X + C1) -> (X, C1)
-    // (C1 + X) -> (X, C1)
+    // (X1 + C1) -> (X1, C1) if X2 is a constant
+    // (C1 + X2) -> (X2, C1) if X1 is a constant
     let (x, c1_val) = if let AlgebraicExpression::Number(val) = x1.as_ref() {
         (x2.as_mut(), val)
     } else if let AlgebraicExpression::Number(val) = x2.as_ref() {
@@ -482,7 +482,7 @@ fn try_simplify_associative_operation<T: FieldElement>(
     let x = std::mem::replace(x, AlgebraicExpression::Number(0.into()));
     match other_expr {
         // Case 1: Combining with a constant
-        // (X + C1) + C2 -> X + (C1 + C2)
+        // (X + C1) + Other -> X + (C1 + Other)
         AlgebraicExpression::Number(c2) => {
             let result = *c1_val + *c2;
             Some(AlgebraicExpression::BinaryOperation(
