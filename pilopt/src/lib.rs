@@ -8,8 +8,8 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicReferenceThin, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed,
-    ConnectIdentity, Expression, FunctionValueDefinition, Identity, LookupIdentity,
-    PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolyID,
+    ConnectIdentity, ContainsNextRef, Expression, FunctionValueDefinition, Identity,
+    LookupIdentity, PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolyID,
     PolynomialIdentity, PolynomialReference, PolynomialType, Reference, StatementIdentifier,
     Symbol, SymbolKind,
 };
@@ -740,7 +740,7 @@ fn constrained_to_linear<T: FieldElement>(
     };
 
     // we require `y` to be a multi-linear expression over non-shifted columns
-    if right.contains_next_ref()
+    if right.contains_next_ref(intermediate_columns)
         || right.degree_with_cache(intermediate_columns, &mut Default::default()) != 1
     {
         return None;
