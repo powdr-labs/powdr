@@ -166,11 +166,6 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
 }
 
 impl<T> Identity<T> {
-    pub fn contains_next_ref(&self) -> bool {
-        // TODO: This does not check the definitions of intermediate polynomials!
-        self.children().any(|e| e.contains_next_ref())
-    }
-
     pub fn id(&self) -> u64 {
         match self {
             Identity::Polynomial(i) => i.id,
