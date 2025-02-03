@@ -474,7 +474,7 @@ mod tests {
             let beta: expr = std::prelude::challenge(0, 42);
             col witness x;
             col witness stage(1) y;
-            x = y + beta * alpha;
+            y = x * x + beta * alpha;
         "#;
         run_test(content);
     }
@@ -498,7 +498,7 @@ mod tests {
 
     #[test]
     fn polynomial_identity() {
-        let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
+        let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z * z + 1;";
         run_test(content);
     }
 

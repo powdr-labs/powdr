@@ -10,13 +10,11 @@ repository = { workspace = true }
 [dependencies]
 powdr-ast.workspace = true
 powdr-number.workspace = true
+powdr-pil-analyzer.workspace = true
 
 log = "0.4.17"
 pretty_assertions = "1.4.0"
 itertools = "0.13.0"
-
-[dev-dependencies]
-powdr-pil-analyzer.workspace = true
 
 [lints]
 workspace = true

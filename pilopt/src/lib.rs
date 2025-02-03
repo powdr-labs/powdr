@@ -19,6 +19,7 @@ use powdr_number::{BigUint, FieldElement};
 
 pub mod referenced_symbols;
 
+use powdr_pil_analyzer::try_algebraic_expression_to_expression;
 use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
@@ -30,9 +31,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         deduplicate_fixed_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
         extract_constant_lookups(&mut pil_file);
-        println!("before {pil_file}");
         replace_linear_witness_columns(&mut pil_file);
-        println!("after {pil_file}");
         remove_constant_witness_columns(&mut pil_file);
         remove_constant_intermediate_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
@@ -545,6 +544,7 @@ fn replace_linear_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                         ..*poly_id
                     };
                     new_symbol.kind = SymbolKind::Poly(PolynomialType::Intermediate);
+                    new_symbol.stage = None;
                     // Add the definition to the intermediate columns
                     pil_file
                         .intermediate_columns
@@ -635,6 +635,10 @@ fn substitute_polynomial_references<T: FieldElement>(
     pil_file: &mut Analyzed<T>,
     substitutions: Vec<((String, PolyID), AlgebraicExpression<T>)>,
 ) {
+    let poly_id_to_name = substitutions
+        .iter()
+        .map(|((name, id), _)| ((id.ptype, id.id), name.clone()))
+        .collect();
     let substitutions_by_id = substitutions
         .iter()
         .map(|((_, id), value)| (*id, value.clone()))
@@ -650,7 +654,7 @@ fn substitute_polynomial_references<T: FieldElement>(
         ) = e
         {
             if let Some(value) = substitutions_by_name.get(name) {
-                *e = value.clone().into();
+                *e = try_algebraic_expression_to_expression(&poly_id_to_name, value).unwrap();
             }
         }
     });
