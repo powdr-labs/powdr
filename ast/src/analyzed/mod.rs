@@ -102,12 +102,8 @@ impl<T> Analyzed<T> {
         self.declaration_type_count(PolynomialType::Committed)
     }
 
-    pub fn stage0_commitment_count(&self) -> usize {
-        self.stage0_declaration_type_count(PolynomialType::Committed)
-    }
-
-    pub fn stage1_commitment_count(&self) -> usize {
-        self.stage1_declaration_type_count(PolynomialType::Committed)
+    pub fn stage_commitment_count(&self, stage: Option<u32>) -> usize {
+        self.stage_declaration_type_count(PolynomialType::Committed, stage)
     }
 
     /// @returns the number of intermediate polynomials (with multiplicities for arrays)
@@ -209,23 +205,12 @@ impl<T> Analyzed<T> {
             .sum()
     }
 
-    fn stage0_declaration_type_count(&self, poly_type: PolynomialType) -> usize {
+    fn stage_declaration_type_count(&self, poly_type: PolynomialType, stage: Option<u32>) -> usize {
         self.definitions
             .iter()
-            .filter(|(_name, (symbol, _))| symbol.stage.is_none() || symbol.stage == Some(0))
-            .filter_map(move |(_name, (symbol, _))| match symbol.kind {
-                SymbolKind::Poly(ptype) if ptype == poly_type => {
-                    Some(symbol.length.unwrap_or(1) as usize)
-                }
-                _ => None,
+            .filter(|(_name, (symbol, _))| {
+                symbol.stage == stage || (stage.is_none() && symbol.stage.is_none())
             })
-            .sum()
-    }
-
-    fn stage1_declaration_type_count(&self, poly_type: PolynomialType) -> usize {
-        self.definitions
-            .iter()
-            .filter(|(_name, (symbol, _))| symbol.stage == Some(1))
             .filter_map(move |(_name, (symbol, _))| match symbol.kind {
                 SymbolKind::Poly(ptype) if ptype == poly_type => {
                     Some(symbol.length.unwrap_or(1) as usize)

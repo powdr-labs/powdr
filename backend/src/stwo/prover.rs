@@ -20,14 +20,13 @@ use std::{fmt, io};
 
 use crate::stwo::circuit_builder::{
     gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
+    STAGE0_TRACE_IDX, STAGE1_TRACE_IDX,
 };
 use crate::stwo::proof::{
     Proof, SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
 };
 
-use stwo_prover::constraint_framework::{
-    TraceLocationAllocator, ORIGINAL_TRACE_IDX, PREPROCESSED_TRACE_IDX,
-};
+use stwo_prover::constraint_framework::{TraceLocationAllocator, PREPROCESSED_TRACE_IDX};
 
 use stwo_prover::core::air::{Component, ComponentProver};
 use stwo_prover::core::backend::{Backend, BackendForChannel};
@@ -292,8 +291,6 @@ where
             })
             .collect::<BTreeMap<_, _>>();
 
-        // remember the witness cols that are already transferred to circle domain, so that we don't need to transfer them again in stage 1
-
         // Get witness columns in circle domain for stage 0
         let stage0_witness_cols_circle_domain_eval: ColumnVec<
             CircleEvaluation<B, BaseField, BitReversedOrder>,
@@ -303,8 +300,7 @@ where
             .flat_map(|witness_cols| {
                 witness_cols
                     .iter()
-                    .enumerate()
-                    .map(|(index, (name, col))| {
+                    .map(|(_name, col)| {
                         gen_stwo_circle_column::<_, BaseField>(
                             *domain_map
                                 .get(&(col.len().ilog2() as usize))
@@ -316,9 +312,6 @@ where
             })
             .collect::<Vec<_>>();
 
-        // TODO: Commit witness and constant columns of stage 0 to generate sound challenges for stage 1. This is not implemented yet.
-        // To commit, Stwo requires the witness and constant columns to be already evaluated in the circle domain,
-        // so `witness_cols_circle_domain_eval` and `constant_cols` should be available at this point.
         let twiddles_max_degree = B::precompute_twiddles(
             CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
                 .circle_domain()
@@ -418,14 +411,10 @@ where
             },
         );
 
-        let mut components_slice: Vec<&dyn ComponentProver<B>> = components
-            .iter_mut()
+        let components_slice: Vec<&dyn ComponentProver<B>> = components
+            .iter()
             .map(|component| component as &dyn ComponentProver<B>)
             .collect();
-
-        let components_slice = components_slice.as_mut_slice();
-
-        println!("start proving, machine log sizes: {:?}", machine_log_sizes);
 
         let proof_result = stwo_prover::core::prover::prove::<B, MC>(
             &components_slice,
@@ -482,9 +471,9 @@ where
                             .take(pil.constant_count() + get_constant_with_next_list(pil).len()),
                     );
                     stage0_witness_col_log_sizes
-                        .extend(repeat(machine_log_size).take(pil.stage0_commitment_count()));
+                        .extend(repeat(machine_log_size).take(pil.stage_commitment_count(None)));
                     stage1_witness_col_log_sizes
-                        .extend(repeat(machine_log_size).take(pil.stage1_commitment_count()));
+                        .extend(repeat(machine_log_size).take(pil.stage_commitment_count(Some(1))));
                 },
             );
 
@@ -495,7 +484,7 @@ where
         );
 
         commitment_scheme.commit(
-            proof.stark_proof.commitments[ORIGINAL_TRACE_IDX],
+            proof.stark_proof.commitments[STAGE0_TRACE_IDX],
             &stage0_witness_col_log_sizes,
             verifier_channel,
         );
@@ -539,7 +528,7 @@ where
 
         if self.analyzed.stage_count() > 1 {
             commitment_scheme.commit(
-                proof.stark_proof.commitments[2],
+                proof.stark_proof.commitments[STAGE1_TRACE_IDX],
                 &stage1_witness_col_log_sizes,
                 verifier_channel,
             );

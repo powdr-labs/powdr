@@ -191,7 +191,8 @@ fn block_to_block_with_bus_monolithic() {
     test_plonky3_pipeline(pipeline);
     let pipeline = make_simple_prepared_pipeline::<Mersenne31Field>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
-    test_plonky3_pipeline(pipeline);
+    test_plonky3_pipeline(pipeline.clone());
+    test_stwo_pipeline(pipeline);
 }
 
 #[test]
@@ -200,6 +201,8 @@ fn block_to_block_with_bus_different_sizes() {
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
+    let pipeline = make_simple_prepared_pipeline::<Mersenne31Field>(f, LinkerMode::Bus);
+    test_stwo_pipeline(pipeline);
 }
 
 #[cfg(feature = "halo2")]

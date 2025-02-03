@@ -10,15 +10,16 @@ use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Analyzed, Cha
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::Mersenne31Field as M31;
 use stwo_prover::constraint_framework::preprocessed_columns::PreprocessedColumn;
-use stwo_prover::constraint_framework::{
-    EvalAtRow, FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX,
-};
+use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use stwo_prover::core::backend::{Column, ColumnOps};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::{ExtensionOf, FieldOps};
 use stwo_prover::core::poly::circle::{CircleDomain, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
+
+pub const STAGE0_TRACE_IDX: usize = 1;
+pub const STAGE1_TRACE_IDX: usize = 2;
 
 pub type PowdrComponent = FrameworkComponent<PowdrEval>;
 
@@ -168,7 +169,7 @@ impl FrameworkEval for PowdrEval {
             .map(|poly_id| {
                 (
                     *poly_id,
-                    eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, 1]),
+                    eval.next_interaction_mask(STAGE0_TRACE_IDX, [0, 1]),
                 )
             })
             .collect();
@@ -176,7 +177,12 @@ impl FrameworkEval for PowdrEval {
         let witness_eval_stage1: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
             .witness_columns_stage1
             .keys()
-            .map(|poly_id| (*poly_id, eval.next_interaction_mask(2, [0, 1])))
+            .map(|poly_id| {
+                (
+                    *poly_id,
+                    eval.next_interaction_mask(STAGE1_TRACE_IDX, [0, 1]),
+                )
+            })
             .collect();
 
         let constant_eval: BTreeMap<_, _> = self
