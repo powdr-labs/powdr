@@ -325,3 +325,14 @@ impl std::ops::BitOr<GoldilocksField> for GoldilocksField {
         Self(self.0 | b.0)
     }
 }
+
+impl From<ibig::IBig> for FieldElement {
+    fn from(x: ibig::IBig) -> Self {
+        FieldElement::from(u64::try_from(x).unwrap())
+    }
+}
+impl From<FieldElement> for ibig::IBig {
+    fn from(x: FieldElement) -> Self {
+        ibig::IBig::from(IntType::from(x))
+    }
+}
