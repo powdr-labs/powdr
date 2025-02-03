@@ -133,12 +133,24 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
             })
             .collect::<BTreeMap<_, _>>();
 
-        self.pil
+        let result = self
+            .pil
             .committed_polys_in_source_order()
             .filter(|(symbol, _)| symbol.stage == Some(1))
             .flat_map(|(symbol, _)| symbol.array_elements())
-            .map(|(name, poly_id)| (name, columns.remove(&poly_id).unwrap()))
-            .collect()
+            .map(|(name, poly_id)| {
+                let column = columns
+                    .remove(&poly_id)
+                    .unwrap_or_else(|| panic!("Unexpected column: {name}"));
+                (name, column)
+            })
+            .collect();
+        assert!(
+            columns.is_empty(),
+            "Some expected columns not found in the PIL."
+        );
+
+        result
     }
 
     fn interaction_columns(
