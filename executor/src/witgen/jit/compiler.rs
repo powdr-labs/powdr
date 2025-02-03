@@ -6,7 +6,7 @@ use powdr_ast::{
     analyzed::{PolyID, PolynomialType},
     indent,
 };
-use powdr_jit_compiler::util_code::util_code;
+use powdr_jit_compiler::{util_code::util_code, CodeGenerator, DefinitionFetcher};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -23,6 +23,7 @@ use crate::witgen::{
 
 use super::{
     effect::{Assertion, BranchCondition, Effect, ProverFunctionCall},
+    prover_function_heuristics::ProverFunction,
     symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator},
     variable::Variable,
 };
@@ -87,16 +88,29 @@ extern "C" fn call_machine<T: FieldElement, Q: QueryCallback<T>>(
 }
 
 /// Compile the given inferred effects into machine code and load it.
-pub fn compile_effects<T: FieldElement>(
+pub fn compile_effects<T: FieldElement, D: DefinitionFetcher>(
+    definitions: &D,
     column_layout: ColumnLayout,
     known_inputs: &[Variable],
     effects: &[Effect<T, Variable>],
+    prover_functions: Vec<ProverFunction<T>>,
 ) -> Result<WitgenFunction<T>, String> {
     let utils = util_code::<T>()?;
     let interface = interface_code(column_layout);
+    let mut codegen = CodeGenerator::new(definitions);
+    let prover_functions = prover_functions
+        .iter()
+        .map(|f| prover_function_code(f, &mut codegen))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .format("\n");
+    let prover_functions_dependents = codegen.generated_code();
     let witgen_code = witgen_code(known_inputs, effects);
     let code = format!(
         "{utils}\n\
+        //-------------------------------\n\
+        {prover_functions_dependents}\n\
+        {prover_functions}\n\
         //-------------------------------\n\
         {interface}\n\
         //-------------------------------\n\
@@ -522,11 +536,31 @@ fn interface_code(column_layout: ColumnLayout) -> String {
     )
 }
 
+fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
+    f: &ProverFunction<'_, T>,
+    codegen: &mut CodeGenerator<'_, T, D>,
+) -> Result<String, String> {
+    let ProverFunction::ComputeFrom(f) = f else {
+        return Err("ProvideIfUnknown functions are not supported".to_string());
+    };
+
+    let code = codegen.generate_code_for_expresson(f.computation)?;
+
+    let index = f.index;
+    Ok(format!(
+        "fn prover_function_{index}(i: u64, args: &[FieldElement]) -> FieldElement {{\n\
+            let i: ibig::IBig = i.into();\n\
+            ({code}).call(args.to_vec().into())\n\
+        }}"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
 
     use std::ptr::null;
 
+    use powdr_ast::analyzed::FunctionValueDefinition;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -538,18 +572,27 @@ mod tests {
 
     use super::*;
 
+    struct NoDefinitions;
+    impl DefinitionFetcher for NoDefinitions {
+        fn get_definition(&self, _: &str) -> Option<&FunctionValueDefinition> {
+            None
+        }
+    }
+
     fn compile_effects(
         column_count: usize,
         known_inputs: &[Variable],
         effects: &[Effect<GoldilocksField, Variable>],
     ) -> Result<WitgenFunction<GoldilocksField>, String> {
         super::compile_effects(
+            &NoDefinitions,
             ColumnLayout {
                 column_count,
                 first_column_id: 0,
             },
             known_inputs,
             effects,
+            vec![],
         )
     }
 

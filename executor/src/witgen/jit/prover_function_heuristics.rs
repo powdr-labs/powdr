@@ -13,7 +13,6 @@ pub trait TryColumnByName: Copy {
     fn try_column_by_name(&self, name: &str) -> Option<PolyID>;
 }
 
-#[allow(unused)]
 #[derive(Clone)]
 pub struct ProverFunctionComputeFrom<'a> {
     pub index: usize,
@@ -22,7 +21,6 @@ pub struct ProverFunctionComputeFrom<'a> {
     pub computation: &'a Expression,
 }
 
-#[allow(unused)]
 #[derive(Clone)]
 pub enum ProverFunction<'a, T> {
     /// query |i| std::prover::provide_if_unknown(Y, i, || <value>)

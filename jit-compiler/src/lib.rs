@@ -8,13 +8,13 @@ use std::{
     sync::Arc,
 };
 
-use codegen::CodeGenerator;
 use compiler::{generate_glue_code, load_library};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::FieldElement;
 
+pub use codegen::{CodeGenerator, DefinitionFetcher};
 pub use compiler::call_cargo;
 
 pub struct CompiledPIL {
