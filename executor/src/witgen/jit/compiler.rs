@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, ffi::c_void, mem, sync::Arc};
+use std::{cmp::Ordering, ffi::c_void, sync::Arc};
 
 use itertools::Itertools;
 use libloading::Library;
@@ -6,10 +6,14 @@ use powdr_ast::{
     analyzed::{PolyID, PolynomialType},
     indent,
 };
-use powdr_number::{FieldElement, KnownField};
+use powdr_jit_compiler::util_code::util_code;
+use powdr_number::FieldElement;
 
 use crate::witgen::{
-    data_structures::{finalizable_data::CompactDataRef, mutable_state::MutableState},
+    data_structures::{
+        finalizable_data::{ColumnLayout, CompactDataRef},
+        mutable_state::MutableState,
+    },
     machines::{
         profiling::{record_end, record_start},
         LookupCell,
@@ -84,14 +88,20 @@ extern "C" fn call_machine<T: FieldElement, Q: QueryCallback<T>>(
 
 /// Compile the given inferred effects into machine code and load it.
 pub fn compile_effects<T: FieldElement>(
-    first_column_id: u64,
-    column_count: usize,
+    column_layout: ColumnLayout,
     known_inputs: &[Variable],
     effects: &[Effect<T, Variable>],
 ) -> Result<WitgenFunction<T>, String> {
-    let utils = util_code::<T>(first_column_id, column_count)?;
+    let utils = util_code::<T>()?;
+    let interface = interface_code(column_layout);
     let witgen_code = witgen_code(known_inputs, effects);
-    let code = format!("{utils}\n//-------------------------------\n{witgen_code}");
+    let code = format!(
+        "{utils}\n\
+        //-------------------------------\n\
+        {interface}\n\
+        //-------------------------------\n\
+        {witgen_code}"
+    );
 
     record_start("JIT-compilation");
     let start = std::time::Instant::now();
@@ -496,62 +506,20 @@ fn format_row_offset(row_offset: i32) -> String {
     }
 }
 
-/// Returns the rust code containing utility functions given a first column id and a column count
-/// that is used to store the column table.
-fn util_code<T: FieldElement>(first_column_id: u64, column_count: usize) -> Result<String, String> {
-    if !(T::has_direct_repr() && (mem::size_of::<T>() == 8 || mem::size_of::<T>() == 4)) {
-        return Err(format!(
-            "Field {}not supported",
-            T::known_field()
-                .map(|f| format!("{f} "))
-                .unwrap_or_default()
-        ));
-    }
-
-    let field_impl = match T::known_field() {
-        Some(KnownField::GoldilocksField) => {
-            include_str!("includes/field_goldilocks.rs").to_string()
-        }
-        _ => {
-            let int_type = if mem::size_of::<T>() == 8 {
-                "u64"
-            } else {
-                "u32"
-            };
-            let double_int_type = if mem::size_of::<T>() == 8 {
-                "u128"
-            } else {
-                "u64"
-            };
-            let modulus = T::modulus();
-
-            format!(
-                "\
-                #[derive(Clone, Copy, Default)]\n\
-                #[repr(transparent)]\n\
-                struct FieldElement({int_type});\n\
-                \n\
-                type IntType = {int_type};\n\
-                type DoubleIntType = {double_int_type};\n\
-                const MODULUS: IntType = {modulus}_{int_type};\n\
-                {}\
-                ",
-                include_str!("includes/field_generic_up_to_64.rs")
-            )
-        }
-    };
-
-    let interface = format!(
+/// Returns the rust code containing functions and data structures used to
+/// interface with witgen functions given the layout of the trace table.
+fn interface_code(column_layout: ColumnLayout) -> String {
+    let ColumnLayout {
+        column_count,
+        first_column_id,
+    } = column_layout;
+    format!(
         "\
         const column_count: u64 = {column_count};\n\
         const first_column_id: u64 = {first_column_id};\n\
         {}",
         include_str!("includes/interface.rs")
-    );
-
-    Ok(format!(
-        "#![allow(non_snake_case, unused_parens, unused_variables)]\n{field_impl}\n{interface}"
-    ))
+    )
 }
 
 #[cfg(test)]
@@ -570,9 +538,24 @@ mod tests {
 
     use super::*;
 
+    fn compile_effects(
+        column_count: usize,
+        known_inputs: &[Variable],
+        effects: &[Effect<GoldilocksField, Variable>],
+    ) -> Result<WitgenFunction<GoldilocksField>, String> {
+        super::compile_effects(
+            ColumnLayout {
+                column_count,
+                first_column_id: 0,
+            },
+            known_inputs,
+            effects,
+        )
+    }
+
     #[test]
     fn compile_util_code_goldilocks() {
-        compile_effects::<GoldilocksField>(0, 2, &[], &[]).unwrap();
+        compile_effects(2, &[], &[]).unwrap();
     }
 
     // We would like to test the generic field implementation, but
@@ -728,7 +711,7 @@ extern \"C\" fn witgen(
             assignment(&x, number(7)),
             assignment(&y, symbol(&x) + number(2)),
         ];
-        let f = compile_effects(0, 1, &[], &effects).unwrap();
+        let f = compile_effects(1, &[], &effects).unwrap();
         let mut data = vec![GoldilocksField::from(0); 2];
         let mut known = vec![0; 1];
         (f.function)(witgen_fun_params(&mut data, &mut known));
@@ -751,8 +734,8 @@ extern \"C\" fn witgen(
         let row_count = 2;
         let column_count = 2;
         let data_len = column_count * row_count;
-        let f1 = compile_effects(0, column_count, &[], &effects1).unwrap();
-        let f2 = compile_effects(0, column_count, &[], &effects2).unwrap();
+        let f1 = compile_effects(column_count, &[], &effects1).unwrap();
+        let f2 = compile_effects(column_count, &[], &effects2).unwrap();
         let mut data = vec![GoldilocksField::from(0); data_len];
         let mut known = vec![0; row_count];
         (f1.function)(witgen_fun_params(&mut data, &mut known));
@@ -788,7 +771,7 @@ extern \"C\" fn witgen(
             assignment(&cell("x", 0, 3), number(8).field_div(&-number(2))),
             assignment(&cell("x", 0, 4), (-number(8)).field_div(&-number(2))),
         ];
-        let f = compile_effects(0, 1, &[], &effects).unwrap();
+        let f = compile_effects(1, &[], &effects).unwrap();
         let mut data = vec![GoldilocksField::from(0); 5];
         let mut known = vec![0; 5];
         (f.function)(witgen_fun_params(&mut data, &mut known));
@@ -809,7 +792,7 @@ extern \"C\" fn witgen(
         let z = cell("z", 2, 0);
         let effects = vec![assignment(&x, symbol(&y) * symbol(&z))];
         let known_inputs = vec![y.clone(), z.clone()];
-        let f = compile_effects(0, 3, &known_inputs, &effects).unwrap();
+        let f = compile_effects(3, &known_inputs, &effects).unwrap();
         let mut data = vec![
             GoldilocksField::from(0),
             GoldilocksField::from(3),
@@ -830,7 +813,7 @@ extern \"C\" fn witgen(
             assignment(&z, symbol(&x).integer_div(&-number(10))),
         ];
         let known_inputs = vec![x.clone()];
-        let f = compile_effects(0, 3, &known_inputs, &effects).unwrap();
+        let f = compile_effects(3, &known_inputs, &effects).unwrap();
         let mut data = vec![
             GoldilocksField::from(23),
             GoldilocksField::from(0),
@@ -850,7 +833,7 @@ extern \"C\" fn witgen(
         let x_val: GoldilocksField = 7.into();
         let mut y_val: GoldilocksField = 9.into();
         let effects = vec![assignment(&y, symbol(&x) + number(7))];
-        let f = compile_effects(0, 1, &[x], &effects).unwrap();
+        let f = compile_effects(1, &[x], &effects).unwrap();
         let mut data = vec![];
         let mut known = vec![];
         let mut params = vec![LookupCell::Input(&x_val), LookupCell::Output(&mut y_val)];
@@ -894,7 +877,7 @@ extern \"C\" fn witgen(
             row_offset: 6,
         });
         let effects = vec![assignment(&a, symbol(&x))];
-        let f = compile_effects(0, 1, &[], &effects).unwrap();
+        let f = compile_effects(1, &[], &effects).unwrap();
         let mut data = vec![7.into()];
         let mut known = vec![0];
         let mut params = vec![];
@@ -954,7 +937,7 @@ extern \"C\" fn witgen(
             Effect::Assignment(y.clone(), symbol(&r2)),
         ];
         let known_inputs = vec![];
-        let f = compile_effects(0, 3, &known_inputs, &effects).unwrap();
+        let f = compile_effects(3, &known_inputs, &effects).unwrap();
         let mut data = vec![GoldilocksField::from(0); 3];
         let mut known = vec![0; 1];
         let params = WitgenFunctionParams {
@@ -987,7 +970,7 @@ extern \"C\" fn witgen(
             vec![assignment(&y, symbol(&x) + number(1))],
             vec![assignment(&y, symbol(&x) + number(2))],
         )];
-        let f = compile_effects(0, 1, &[x], &effects).unwrap();
+        let f = compile_effects(1, &[x], &effects).unwrap();
         let mut data = vec![];
         let mut known = vec![];
 

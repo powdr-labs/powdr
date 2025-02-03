@@ -177,13 +177,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .collect::<Vec<_>>();
 
         log::trace!("Compiling effects...");
-        let function = compile_effects(
-            self.column_layout.first_column_id,
-            self.column_layout.column_count,
-            &known_inputs,
-            &code,
-        )
-        .unwrap();
+        let function = compile_effects(self.column_layout.clone(), &known_inputs, &code).unwrap();
         log::trace!("Compilation done.");
 
         Some(CacheEntry {
