@@ -31,7 +31,7 @@ pub struct Processor<'a, T: FieldElement, FixedEval> {
     identities: Vec<(&'a Identity<T>, i32)>,
     /// The prover functions, i.e. helpers to compute certain values that
     /// we cannot easily determine.
-    prover_functions: Vec<ProverFunction<'a, T>>,
+    prover_functions: Vec<ProverFunction<'a>>,
     /// The size of a block.
     block_size: usize,
     /// If the processor should check for correctly stackable block shapes.
@@ -97,7 +97,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         self
     }
 
-    pub fn with_prover_functions(mut self, prover_functions: Vec<ProverFunction<'a, T>>) -> Self {
+    pub fn with_prover_functions(mut self, prover_functions: Vec<ProverFunction<'a>>) -> Self {
         assert!(self.prover_functions.is_empty());
         self.prover_functions = prover_functions;
         self
