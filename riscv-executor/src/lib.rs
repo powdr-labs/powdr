@@ -3175,22 +3175,25 @@ fn execute_inner<F: FieldElement>(
                 let name = i.instruction.to_string();
                 let pc = e.proc.get_pc().u();
 
-                println!("Executing precompile {}", i.instruction.to_string());
-                for stmt in precompile_blocks.get(&name).unwrap() {
+                //println!("Executing precompile {}", i.instruction.to_string());
+                let statements = precompile_blocks.get(&name).unwrap();
+                let mut last_instr = "";
+                for stmt in statements {
                     match stmt {
                         FunctionStatement::Instruction(i) => {
                             //println!("Executing instruction {}", i.instruction);
                             e.exec_instruction(&i.instruction, &i.inputs);
+                            last_instr = &i.instruction;
                         }
                         a => unreachable!("{a:?}"),
                     }
                 }
 
-                let pc_after = e.proc.get_next_pc().u();
-                if pc_after == pc {
+                if !last_instr.starts_with("branch") && !last_instr.starts_with("jump") {
                     e.proc.set_pc(Elem::Binary((pc + 1).into()));
                 }
 
+                //println!("End of executing precompile {}", i.instruction.to_string());
                 //e.proc.set_pc(pc.add(&Elem::Binary(1)));
             }
             FunctionStatement::Instruction(i) => {

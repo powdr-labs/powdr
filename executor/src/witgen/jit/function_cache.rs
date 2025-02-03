@@ -74,7 +74,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         identity_id: u64,
         known_args: &BitVec,
     ) -> Option<&CacheEntry<T>> {
-        return &None;
+        return None;
         let cache_key = CacheKey {
             identity_id,
             known_args: known_args.clone(),
