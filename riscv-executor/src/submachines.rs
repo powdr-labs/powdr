@@ -311,11 +311,11 @@ impl<F: FieldElement> SubmachineTrace<F> {
 }
 
 pub struct BinaryMachine;
-witness_cols! {BinaryCols, A_byte, B_byte, C_byte, A, B, C, operation_id, operation_id_next}
+witness_cols! {BinaryCols, A_byte0, A_byte1, A_byte2, A_byte3, B_byte0, B_byte1, B_byte2, B_byte3, C_byte0, C_byte1, C_byte2, C_byte3, A, B, C, operation_id}
 
 impl SubmachineKind for BinaryMachine {
     const SELECTORS: &'static str = "sel";
-    const BLOCK_SIZE: u32 = 4;
+    const BLOCK_SIZE: u32 = 1;
 
     fn cols() -> Vec<String> {
         BinaryCols::all()
@@ -346,82 +346,24 @@ impl SubmachineKind for BinaryMachine {
         let (c1, c2, c3, c4, _sign) =
             decompose_lower32(c.to_integer().try_into_u32().unwrap().into());
 
-        // set last row of the previous block
-        if trace.len() > 0 {
-            trace.set_current_row(BinaryCols::A_byte as usize, (a1 as u32).into());
-            trace.set_current_row(BinaryCols::B_byte as usize, (b1 as u32).into());
-            trace.set_current_row(BinaryCols::C_byte as usize, (c1 as u32).into());
-            trace.set_current_row(BinaryCols::operation_id_next as usize, op_id);
-        } else {
-            trace.set_final_row(BinaryCols::A_byte as usize, (a1 as u32).into());
-            trace.set_final_row(BinaryCols::B_byte as usize, (b1 as u32).into());
-            trace.set_final_row(BinaryCols::C_byte as usize, (c1 as u32).into());
-            trace.set_final_row(BinaryCols::operation_id_next as usize, op_id);
-        }
-
-        // 4 rows for each binary operation
+        // 1 row for each binary operation
         trace.push_row();
-        trace.set_current_row(BinaryCols::operation_id as usize, op_id);
-        trace.set_current_row(BinaryCols::operation_id_next as usize, op_id);
-        trace.set_current_row(BinaryCols::A_byte as usize, (a2 as u32).into());
-        trace.set_current_row(BinaryCols::B_byte as usize, (b2 as u32).into());
-        trace.set_current_row(BinaryCols::C_byte as usize, (c2 as u32).into());
-        trace.set_current_row(
-            BinaryCols::A as usize,
-            (a.to_integer().try_into_u32().unwrap() & 0xff).into(),
-        );
-        trace.set_current_row(
-            BinaryCols::B as usize,
-            (b.to_integer().try_into_u32().unwrap() & 0xff).into(),
-        );
-        trace.set_current_row(
-            BinaryCols::C as usize,
-            (c.to_integer().try_into_u32().unwrap() & 0xff).into(),
-        );
-
-        trace.push_row();
-        trace.set_current_row(BinaryCols::operation_id as usize, op_id);
-        trace.set_current_row(BinaryCols::operation_id_next as usize, op_id);
-        trace.set_current_row(BinaryCols::A_byte as usize, (a3 as u32).into());
-        trace.set_current_row(BinaryCols::B_byte as usize, (b3 as u32).into());
-        trace.set_current_row(BinaryCols::C_byte as usize, (c3 as u32).into());
-        trace.set_current_row(
-            BinaryCols::A as usize,
-            (a.to_integer().try_into_u32().unwrap() & 0xffff).into(),
-        );
-        trace.set_current_row(
-            BinaryCols::B as usize,
-            (b.to_integer().try_into_u32().unwrap() & 0xffff).into(),
-        );
-        trace.set_current_row(
-            BinaryCols::C as usize,
-            (c.to_integer().try_into_u32().unwrap() & 0xffff).into(),
-        );
-
-        trace.push_row();
-        trace.set_current_row(BinaryCols::operation_id as usize, op_id);
-        trace.set_current_row(BinaryCols::operation_id_next as usize, op_id);
-        trace.set_current_row(BinaryCols::A_byte as usize, (a4 as u32).into());
-        trace.set_current_row(BinaryCols::B_byte as usize, (b4 as u32).into());
-        trace.set_current_row(BinaryCols::C_byte as usize, (c4 as u32).into());
-        trace.set_current_row(
-            BinaryCols::A as usize,
-            (a.to_integer().try_into_u32().unwrap() & 0xffffff).into(),
-        );
-        trace.set_current_row(
-            BinaryCols::B as usize,
-            (b.to_integer().try_into_u32().unwrap() & 0xffffff).into(),
-        );
-        trace.set_current_row(
-            BinaryCols::C as usize,
-            (c.to_integer().try_into_u32().unwrap() & 0xffffff).into(),
-        );
-
-        trace.push_row();
-        trace.set_current_row(BinaryCols::operation_id as usize, op_id);
+        trace.set_current_row(BinaryCols::A_byte0 as usize, (a1 as u32).into());
+        trace.set_current_row(BinaryCols::A_byte1 as usize, (a2 as u32).into());
+        trace.set_current_row(BinaryCols::A_byte2 as usize, (a3 as u32).into());
+        trace.set_current_row(BinaryCols::A_byte3 as usize, (a4 as u32).into());
+        trace.set_current_row(BinaryCols::B_byte0 as usize, (b1 as u32).into());
+        trace.set_current_row(BinaryCols::B_byte1 as usize, (b2 as u32).into());
+        trace.set_current_row(BinaryCols::B_byte2 as usize, (b3 as u32).into());
+        trace.set_current_row(BinaryCols::B_byte3 as usize, (b4 as u32).into());
+        trace.set_current_row(BinaryCols::C_byte0 as usize, (c1 as u32).into());
+        trace.set_current_row(BinaryCols::C_byte1 as usize, (c2 as u32).into());
+        trace.set_current_row(BinaryCols::C_byte2 as usize, (c3 as u32).into());
+        trace.set_current_row(BinaryCols::C_byte3 as usize, (c4 as u32).into());
         trace.set_current_row(BinaryCols::A as usize, a);
         trace.set_current_row(BinaryCols::B as usize, b);
         trace.set_current_row(BinaryCols::C as usize, c);
+        trace.set_current_row(BinaryCols::operation_id as usize, op_id);
         // latch row: set selector
         trace.set_current_row_selector(selector, 1.into());
     }
