@@ -18,15 +18,10 @@ pub fn util_code<T: FieldElement>() -> Result<String, String> {
             include_str!("includes/field_goldilocks.rs").to_string()
         }
         _ => {
-            let int_type = if mem::size_of::<T>() == 8 {
-                "u64"
+            let (int_type, double_int_type) = if mem::size_of::<T>() == 8 {
+                ("u64", "u128")
             } else {
-                "u32"
-            };
-            let double_int_type = if mem::size_of::<T>() == 8 {
-                "u128"
-            } else {
-                "u64"
+                ("u32", "u64")
             };
             let modulus = T::modulus();
 
