@@ -501,7 +501,22 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 fn replace_linear_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let intermediate_definitions = pil_file.intermediate_definitions();
 
-    let mut linear_polys = pil_file
+    // We cannot remove arrays or array elements, so we filter them out.
+    // Also, we filter out columns that are used in public declarations.
+
+    let in_publics: HashSet<_> = pil_file
+        .public_declarations
+        .values()
+        .map(|pubd| pubd.polynomial.name.clone())
+        .collect();
+
+    let keep = pil_file
+        .committed_polys_in_source_order()
+        .filter(|&(s, _)| s.is_array() || in_publics.contains(&s.absolute_name))
+        .map(|(s, _)| s.into())
+        .collect::<HashSet<PolyID>>();
+
+    let linear_polys = pil_file
         .identities
         .iter()
         .enumerate()
@@ -515,21 +530,8 @@ fn replace_linear_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .filter_map(|(index, identity)| {
             constrained_to_linear(identity, &intermediate_definitions).map(|e| (index, e))
         })
+        .filter(|(_, ((_, poly_id), _))| !keep.contains(poly_id))
         .collect::<Vec<(usize, ((String, PolyID), _))>>();
-
-    let in_publics: HashSet<_> = pil_file
-        .public_declarations
-        .values()
-        .map(|pubd| pubd.polynomial.name.clone())
-        .collect();
-    // We cannot remove arrays or array elements, so filter them out.
-    // Also, we filter out columns that are used in public declarations.
-    let columns = pil_file
-        .committed_polys_in_source_order()
-        .filter(|&(s, _)| !s.is_array() && !in_publics.contains(&s.absolute_name))
-        .map(|(s, _)| s.into())
-        .collect::<HashSet<PolyID>>();
-    linear_polys.retain(|(_, ((_, id), _))| columns.contains(id));
 
     let (identities_to_remove, intermediate_polys): (BTreeSet<_>, Vec<_>) = linear_polys
         .iter()
