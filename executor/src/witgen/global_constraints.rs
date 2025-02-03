@@ -6,7 +6,7 @@ use num_traits::Zero;
 use num_traits::One;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicReferenceThin, PolyID, PolynomialType,
+    AlgebraicReference, AlgebraicReferenceThin, ContainsNextRef, PolyID, PolynomialType,
 };
 
 use powdr_number::FieldElement;
@@ -361,7 +361,7 @@ fn try_transfer_constraints<T: FieldElement>(
     expr: &Expression<T>,
     known_constraints: &BTreeMap<PolyID, RangeConstraint<T>>,
 ) -> Vec<(PolyID, RangeConstraint<T>)> {
-    if expr.contains_next_ref() {
+    if expr.contains_next_ref(intermediate_definitions) {
         return vec![];
     }
 

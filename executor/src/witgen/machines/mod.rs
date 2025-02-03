@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use bit_vec::BitVec;
 use dynamic_machine::DynamicMachine;
-use powdr_ast::analyzed::{self, AlgebraicExpression, DegreeRange, PolyID};
+use powdr_ast::analyzed::{self, AlgebraicExpression, ContainsNextRef, DegreeRange, PolyID};
 
 use powdr_number::DegreeType;
 use powdr_number::FieldElement;
@@ -361,10 +361,15 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
     /// Returns a copy of the machine parts but only containing identities that
     /// have a "next" reference.
     pub fn restricted_to_identities_with_next_references(&self) -> MachineParts<'a, T> {
+        let intermediate_definitions = self.fixed_data.analyzed.intermediate_definitions();
         let identities_with_next_reference = self
             .identities
             .iter()
-            .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
+            .filter_map(|identity| {
+                identity
+                    .contains_next_ref(&intermediate_definitions)
+                    .then_some(*identity)
+            })
             .collect::<Vec<_>>();
         Self {
             identities: identities_with_next_reference,
