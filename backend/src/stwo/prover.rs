@@ -454,29 +454,38 @@ where
         let tree_span_provider = &mut TraceLocationAllocator::default();
 
         let mut constant_cols_offset_acc = 0;
+        let iter = self.split.iter().zip_eq(proof.machine_log_sizes.iter());
 
-        let mut constant_col_log_sizes = vec![];
-        let mut stage0_witness_col_log_sizes = vec![];
-        let mut stage1_witness_col_log_sizes = vec![];
-
-        // get the column sizes for stage 0 and stage 1, used by verifier to read the commitments from the proof
-        self.split
-            .iter()
-            .zip_eq(proof.machine_log_sizes.iter())
-            .for_each(
+        let constant_col_log_sizes = iter
+            .clone()
+            .flat_map(
                 |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
                     assert_eq!(machine_name, proof_machine_name);
-
-                    constant_col_log_sizes.extend(
-                        repeat(machine_log_size)
-                            .take(pil.constant_count() + get_constant_with_next_list(pil).len()),
-                    );
-                    stage0_witness_col_log_sizes
-                        .extend(repeat(machine_log_size).take(pil.stage_commitment_count(None)));
-                    stage1_witness_col_log_sizes
-                        .extend(repeat(machine_log_size).take(pil.stage_commitment_count(Some(1))));
+                    repeat(machine_log_size)
+                        .take(pil.constant_count() + get_constant_with_next_list(pil).len())
                 },
-            );
+            )
+            .collect::<Vec<_>>();
+
+        // get the column sizes for stage 0 and stage 1, used by verifier to read the commitments from the proof
+        let stage0_witness_col_log_sizes = iter
+            .clone()
+            .flat_map(
+                |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
+                    assert_eq!(machine_name, proof_machine_name);
+                    repeat(machine_log_size).take(pil.stage_commitment_count(0))
+                },
+            )
+            .collect::<Vec<_>>();
+        let stage1_witness_col_log_sizes = iter
+            .clone()
+            .flat_map(
+                |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
+                    assert_eq!(machine_name, proof_machine_name);
+                    repeat(machine_log_size).take(pil.stage_commitment_count(1))
+                },
+            )
+            .collect::<Vec<_>>();
 
         // Verifier gets the commitments of the constant columns and stage 0 witness columns (two Merkle tree roots)
         commitment_scheme.commit(

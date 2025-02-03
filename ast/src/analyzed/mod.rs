@@ -103,7 +103,7 @@ impl<T> Analyzed<T> {
     }
 
     /// @returns the number of committed polynomials (with multiplicities for arrays) in a specific stage
-    pub fn stage_commitment_count(&self, stage: Option<u32>) -> usize {
+    pub fn stage_commitment_count(&self, stage: u32) -> usize {
         self.stage_declaration_type_count(PolynomialType::Committed, stage)
     }
 
@@ -206,13 +206,11 @@ impl<T> Analyzed<T> {
             .sum()
     }
 
-    fn stage_declaration_type_count(&self, poly_type: PolynomialType, stage: Option<u32>) -> usize {
+    fn stage_declaration_type_count(&self, poly_type: PolynomialType, stage: u32) -> usize {
         self.definitions
-            .iter()
-            .filter(|(_name, (symbol, _))| {
-                symbol.stage == stage || (stage.is_none() && symbol.stage.is_none())
-            })
-            .filter_map(move |(_name, (symbol, _))| match symbol.kind {
+            .values()
+            .filter(|(symbol, _)| symbol.stage.unwrap_or(0) == stage)
+            .filter_map(move |(symbol, _)| match symbol.kind {
                 SymbolKind::Poly(ptype) if ptype == poly_type => {
                     Some(symbol.length.unwrap_or(1) as usize)
                 }

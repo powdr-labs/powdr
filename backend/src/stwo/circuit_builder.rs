@@ -58,8 +58,8 @@ pub struct PowdrEval {
     // the pre-processed are indexed in the whole proof, instead of in each component.
     // this offset represents the index of the first pre-processed column in this component
     preprocess_col_offset: usize,
-    witness_columns_stage0: BTreeMap<PolyID, usize>,
-    witness_columns_stage1: BTreeMap<PolyID, usize>,
+    stage0_witness_columns: BTreeMap<PolyID, usize>,
+    stage1_witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
     constant_columns: BTreeMap<PolyID, usize>,
     // stwo supports maximum 2 stages, challenges are only created after stage 0
@@ -73,24 +73,24 @@ impl PowdrEval {
         log_degree: u32,
         challenges: BTreeMap<u64, M31>,
     ) -> Self {
-        let witness_columns_stage0: BTreeMap<PolyID, usize> = analyzed
+        let stage0_witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
-            .filter(|(symbol, _)| symbol.stage.is_none() || symbol.stage == Some(0))
+            .filter(|(symbol, _)| symbol.stage.unwrap_or(0) == 0)
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
 
-        let witness_columns_stage1: BTreeMap<PolyID, usize> = analyzed
+        let stage1_witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
-            .filter(|(symbol, _)| symbol.stage == Some(1))
+            .filter(|(symbol, _)| symbol.stage.unwrap_or(0) == 1)
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             // During the circuit-building phase, stage1 witness columns are indexed after stage0 witness columns,
             // resulting in a concatenation of witness columns from both stages.
             // In the proving phase, all stage1 witness columns are appended after stage0 witness columns
             // to maintain consistency with the circuit-building phase.
-            .map(|(index, (_, id))| (id, index + witness_columns_stage0.len()))
+            .map(|(index, (_, id))| (id, index + stage0_witness_columns.len()))
             .collect();
 
         let constant_with_next_list = get_constant_with_next_list(&analyzed);
@@ -114,8 +114,8 @@ impl PowdrEval {
             log_degree,
             analyzed,
             preprocess_col_offset,
-            witness_columns_stage0,
-            witness_columns_stage1,
+            stage0_witness_columns,
+            stage1_witness_columns,
             constant_shifted,
             constant_columns,
             challenges,
@@ -168,8 +168,8 @@ impl FrameworkEval for PowdrEval {
             "Error: Expected no public inputs, as they are not supported yet.",
         );
 
-        let mut witness_eval_stage0: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
-            .witness_columns_stage0
+        let mut stage0_witness_eval: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
+            .stage0_witness_columns
             .keys()
             .map(|poly_id| {
                 (
@@ -179,8 +179,8 @@ impl FrameworkEval for PowdrEval {
             })
             .collect();
 
-        let witness_eval_stage1: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
-            .witness_columns_stage1
+        let stage1_witness_eval: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
+            .stage1_witness_columns
             .keys()
             .map(|poly_id| {
                 (
@@ -223,11 +223,11 @@ impl FrameworkEval for PowdrEval {
             .map(|(k, v)| (*k, E::F::from(into_stwo_field(v))))
             .collect();
         // concatenate stage0 and stage1 witness columns
-        witness_eval_stage0.extend(witness_eval_stage1);
+        stage0_witness_eval.extend(stage1_witness_eval);
 
         let intermediate_definitions = self.analyzed.intermediate_definitions();
         let data = Data {
-            witness_eval: &witness_eval_stage0,
+            witness_eval: &stage0_witness_eval,
             constant_shifted_eval: &constant_shifted_eval,
             constant_eval: &constant_eval,
             challenges: &challenges,
