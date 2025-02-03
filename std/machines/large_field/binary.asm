@@ -20,7 +20,8 @@ machine Binary(byte_binary: ByteBinary) with
     let operation_id;
     let latch = 1;
 
-    // We do not range check the bytes because the inputs are assumed 32-bits.
+    // We do not range check the bytes
+    // because they are constrained to be 8 bits by the ByteBinary machine.
     let A_byte0;
     let A_byte1;
     let A_byte2;
