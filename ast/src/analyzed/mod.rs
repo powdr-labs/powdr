@@ -102,6 +102,7 @@ impl<T> Analyzed<T> {
         self.declaration_type_count(PolynomialType::Committed)
     }
 
+    /// @returns the number of committed polynomials (with multiplicities for arrays) in a specific stage
     pub fn stage_commitment_count(&self, stage: Option<u32>) -> usize {
         self.stage_declaration_type_count(PolynomialType::Committed, stage)
     }

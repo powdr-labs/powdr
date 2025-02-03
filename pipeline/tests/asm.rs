@@ -73,6 +73,8 @@ fn second_phase_hint() {
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
+    let pipeline = make_simple_prepared_pipeline::<Mersenne31Field>(f, LinkerMode::Bus);
+    test_stwo_pipeline(pipeline);
 }
 
 #[test]

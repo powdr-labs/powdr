@@ -20,13 +20,13 @@ use std::{fmt, io};
 
 use crate::stwo::circuit_builder::{
     gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
-    STAGE0_TRACE_IDX, STAGE1_TRACE_IDX,
+    PREPROCESSED_TRACE_IDX, STAGE0_TRACE_IDX, STAGE1_TRACE_IDX,
 };
 use crate::stwo::proof::{
     Proof, SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
 };
 
-use stwo_prover::constraint_framework::{TraceLocationAllocator, PREPROCESSED_TRACE_IDX};
+use stwo_prover::constraint_framework::TraceLocationAllocator;
 
 use stwo_prover::core::air::{Component, ComponentProver};
 use stwo_prover::core::backend::{Backend, BackendForChannel};
@@ -459,6 +459,7 @@ where
         let mut stage0_witness_col_log_sizes = vec![];
         let mut stage1_witness_col_log_sizes = vec![];
 
+        // get the column sizes for stage 0 and stage 1, used by verifier to read the commitments from the proof
         self.split
             .iter()
             .zip_eq(proof.machine_log_sizes.iter())
@@ -477,6 +478,7 @@ where
                 },
             );
 
+        // Verifier gets the commitments of the constant columns and stage 0 witness columns (two Merkle tree roots)
         commitment_scheme.commit(
             proof.stark_proof.commitments[PREPROCESSED_TRACE_IDX],
             &constant_col_log_sizes,
@@ -489,10 +491,10 @@ where
             verifier_channel,
         );
 
-        // TODO: make the challenge sound, now the challenge is built the same way in prover.
+        // Get challenges based on the commitments of constant columns and stage 0 witness columns
         let stage0_challenges = get_challenges::<MC>(&self.analyzed, verifier_channel);
 
-        let mut components = self
+        let components = self
             .split
             .iter()
             .zip_eq(proof.machine_log_sizes.iter())
@@ -519,12 +521,10 @@ where
             )
             .collect::<Vec<_>>();
 
-        let mut components_slice: Vec<&dyn Component> = components
-            .iter_mut()
+        let components_slice: Vec<&dyn Component> = components
+            .iter()
             .map(|component| component as &dyn Component)
             .collect();
-
-        let components_slice = components_slice.as_mut_slice();
 
         if self.analyzed.stage_count() > 1 {
             commitment_scheme.commit(
@@ -535,7 +535,7 @@ where
         }
 
         stwo_prover::core::prover::verify(
-            components_slice,
+            &components_slice,
             verifier_channel,
             commitment_scheme,
             proof.stark_proof,

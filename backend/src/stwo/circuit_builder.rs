@@ -18,6 +18,7 @@ use stwo_prover::core::poly::circle::{CircleDomain, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 
+pub const PREPROCESSED_TRACE_IDX: usize = 0;
 pub const STAGE0_TRACE_IDX: usize = 1;
 pub const STAGE1_TRACE_IDX: usize = 2;
 
@@ -85,6 +86,10 @@ impl PowdrEval {
             .filter(|(symbol, _)| symbol.stage == Some(1))
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
+            // During the circuit-building phase, stage1 witness columns are indexed after stage0 witness columns,
+            // resulting in a concatenation of witness columns from both stages.
+            // In the proving phase, all stage1 witness columns are appended after stage0 witness columns
+            // to maintain consistency with the circuit-building phase.
             .map(|(index, (_, id))| (id, index + witness_columns_stage0.len()))
             .collect();
 
@@ -217,7 +222,9 @@ impl FrameworkEval for PowdrEval {
             .iter()
             .map(|(k, v)| (*k, E::F::from(into_stwo_field(v))))
             .collect();
+        // concatenate stage0 and stage1 witness columns
         witness_eval_stage0.extend(witness_eval_stage1);
+
         let intermediate_definitions = self.analyzed.intermediate_definitions();
         let data = Data {
             witness_eval: &witness_eval_stage0,
