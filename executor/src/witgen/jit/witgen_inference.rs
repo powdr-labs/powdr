@@ -202,39 +202,33 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Returns the list of updated variables.
     pub fn process_prover_function(
         &mut self,
-        prover_function: &ProverFunction<'a, T>,
+        prover_function: &ProverFunction<'a>,
         row_offset: i32,
     ) -> Result<Vec<Variable>, Error> {
-        match prover_function {
-            ProverFunction::ProvideIfUnknown(..) => {
-                // We ignore them for now.
-            }
-            ProverFunction::ComputeFrom(compute_from) => {
-                let target = Variable::from_reference(&compute_from.target_column, row_offset);
-                if !self.is_known(&target) {
-                    let inputs = compute_from
-                        .input_columns
-                        .iter()
-                        .map(|c| Variable::from_reference(c, row_offset))
-                        .collect::<Vec<_>>();
-                    if inputs.iter().all(|v| self.is_known(v)) {
-                        let effect = Effect::ProverFunctionCall(ProverFunctionCall {
-                            target,
-                            function_index: compute_from.index,
-                            row_offset,
-                            inputs,
-                        });
-                        return self.ingest_effects(
-                            ProcessResult {
-                                effects: vec![effect],
-                                complete: true,
-                            },
-                            None,
-                        );
-                    }
-                }
+        let target = Variable::from_reference(&prover_function.target_column, row_offset);
+        if !self.is_known(&target) {
+            let inputs = prover_function
+                .input_columns
+                .iter()
+                .map(|c| Variable::from_reference(c, row_offset))
+                .collect::<Vec<_>>();
+            if inputs.iter().all(|v| self.is_known(v)) {
+                let effect = Effect::ProverFunctionCall(ProverFunctionCall {
+                    target,
+                    function_index: prover_function.index,
+                    row_offset,
+                    inputs,
+                });
+                return self.ingest_effects(
+                    ProcessResult {
+                        effects: vec![effect],
+                        complete: true,
+                    },
+                    None,
+                );
             }
         }
+
         Ok(vec![])
     }
 

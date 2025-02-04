@@ -1,11 +1,11 @@
 use powdr_ast::{
     analyzed::{AlgebraicReference, Analyzed, Expression, PolyID, PolynomialReference, Reference},
     parsed::{
-        ArrayLiteral, BlockExpression, FunctionCall, FunctionKind, LambdaExpression, Number,
+        ArrayLiteral, BlockExpression, FunctionCall, FunctionKind, LambdaExpression,
         UnaryOperation, UnaryOperator,
     },
 };
-use powdr_number::{BigUint, FieldElement};
+use powdr_number::FieldElement;
 
 use crate::witgen::{machines::MachineParts, FixedData};
 
@@ -13,20 +13,24 @@ pub trait TryColumnByName: Copy {
     fn try_column_by_name(&self, name: &str) -> Option<PolyID>;
 }
 
+#[allow(unused)]
 #[derive(Clone)]
-pub struct ProverFunctionComputeFrom<'a> {
+pub struct ProverFunction<'a> {
     pub index: usize,
     pub target_column: AlgebraicReference,
     pub input_columns: Vec<AlgebraicReference>,
-    pub computation: &'a Expression,
+    pub computation: ProverFunctionComputation<'a>,
 }
 
+#[allow(unused)]
 #[derive(Clone)]
-pub enum ProverFunction<'a, T> {
-    /// query |i| std::prover::provide_if_unknown(Y, i, || <value>)
-    ProvideIfUnknown(usize, AlgebraicReference, T),
-    /// query |i| std::prover::compute_from(Y, i, [X, ...], f)
-    ComputeFrom(ProverFunctionComputeFrom<'a>),
+pub enum ProverFunctionComputation<'a> {
+    /// The expression `f` in `query |i| std::prover::provide_if_unknown(Y, i, f)`,
+    /// where f: (-> fe)
+    ProvideIfUnknown(&'a Expression),
+    /// The expression `f` in `query |i| std::prover::compute_from(Y, i, [X, ...], f)`,
+    /// where f: (fe[] -> fe)
+    ComputeFrom(&'a Expression),
 }
 
 /// Tries to decode the prover functions.
@@ -36,7 +40,7 @@ pub enum ProverFunction<'a, T> {
 pub fn decode_prover_functions<'a, T: FieldElement>(
     machine_parts: &MachineParts<'a, T>,
     try_column_by_name: impl TryColumnByName,
-) -> Result<Vec<ProverFunction<'a, T>>, String> {
+) -> Result<Vec<ProverFunction<'a>>, String> {
     machine_parts
         .prover_functions
         .iter()
@@ -45,25 +49,28 @@ pub fn decode_prover_functions<'a, T: FieldElement>(
         .collect()
 }
 
-fn decode_prover_function<T: FieldElement>(
+fn decode_prover_function(
     index: usize,
     function: &Expression,
     try_column_by_name: impl TryColumnByName,
-) -> Result<ProverFunction<'_, T>, String> {
-    if let Some((name, value)) = try_decode_provide_if_unknown(function, try_column_by_name) {
-        Ok(ProverFunction::ProvideIfUnknown(index, name, value))
+) -> Result<ProverFunction<'_>, String> {
+    if let Some(provide_if_unknown) =
+        try_decode_provide_if_unknown(index, function, try_column_by_name)
+    {
+        Ok(provide_if_unknown)
     } else if let Some(compute_from) = try_decode_compute_from(index, function, try_column_by_name)
     {
-        Ok(ProverFunction::ComputeFrom(compute_from))
+        Ok(compute_from)
     } else {
         Err(format!("Unsupported prover function kind: {function}"))
     }
 }
 
-fn try_decode_provide_if_unknown<T: FieldElement>(
+fn try_decode_provide_if_unknown(
+    index: usize,
     function: &Expression,
     try_column_by_name: impl TryColumnByName,
-) -> Option<(AlgebraicReference, T)> {
+) -> Option<ProverFunction<'_>> {
     let body = try_as_lambda_expression(function, Some(FunctionKind::Query))?;
     let [arg_column, arg_row, arg_value] =
         try_as_function_call_to(body, "std::prover::provide_if_unknown")?
@@ -74,8 +81,12 @@ fn try_decode_provide_if_unknown<T: FieldElement>(
     if !is_local_var(arg_row, 0) {
         return None;
     }
-    let value = try_as_number(try_as_lambda_expression(arg_value, None)?)?;
-    Some((assigned_column, T::from(value.clone())))
+    Some(ProverFunction {
+        index,
+        target_column: assigned_column,
+        input_columns: vec![],
+        computation: ProverFunctionComputation::ProvideIfUnknown(arg_value),
+    })
 }
 
 /// Decodes functions of the form `query |i| std::prover::compute_from(Y, i, [X], f)`.
@@ -83,7 +94,7 @@ fn try_decode_compute_from(
     index: usize,
     function: &Expression,
     try_column_by_name: impl TryColumnByName,
-) -> Option<ProverFunctionComputeFrom> {
+) -> Option<ProverFunction<'_>> {
     let body = try_as_lambda_expression(function, Some(FunctionKind::Query))?;
     let [target_column, row, input_columns, computation] =
         try_as_function_call_to(body, "std::prover::compute_from")?
@@ -101,7 +112,8 @@ fn try_decode_compute_from(
         .iter()
         .map(|e| try_extract_algebraic_reference(e, try_column_by_name))
         .collect::<Option<Vec<_>>>()?;
-    Some(ProverFunctionComputeFrom {
+    let computation = ProverFunctionComputation::ComputeFrom(computation);
+    Some(ProverFunction {
         index,
         target_column,
         input_columns,
@@ -145,13 +157,6 @@ fn try_extract_algebraic_reference(
 
 fn is_local_var(e: &Expression, index: u64) -> bool {
     matches!(unpack(e), Expression::Reference(_, Reference::LocalVar(i, _)) if *i == index)
-}
-
-fn try_as_number(e: &Expression) -> Option<&BigUint> {
-    match unpack(e) {
-        Expression::Number(_, Number { value, .. }) => Some(value),
-        _ => None,
-    }
 }
 
 fn try_as_function_call(e: &Expression) -> Option<&FunctionCall<Expression>> {
@@ -243,14 +248,16 @@ mod test {
         ";
         let (analyzed, _) = read_pil::<GoldilocksField>(input);
         assert_eq!(analyzed.prover_functions.len(), 1);
-        let (name, value) = try_decode_provide_if_unknown::<GoldilocksField>(
-            &analyzed.prover_functions[0],
-            &analyzed,
-        )
-        .unwrap();
-        assert_eq!(name.name, "main::X");
-        assert!(!name.next);
-        assert_eq!(value, 11.into());
+        let prover_function =
+            try_decode_provide_if_unknown(7, &analyzed.prover_functions[0], &analyzed).unwrap();
+        assert_eq!(prover_function.index, 7);
+        assert_eq!(prover_function.target_column.name, "main::X");
+        assert!(!prover_function.target_column.next);
+        assert_eq!(prover_function.input_columns.len(), 0);
+        matches!(
+            prover_function.computation,
+            ProverFunctionComputation::ProvideIfUnknown(Expression::LambdaExpression(..))
+        );
     }
 
     #[test]
@@ -269,7 +276,7 @@ mod test {
         ";
         let (analyzed, _) = read_pil::<GoldilocksField>(input);
         assert_eq!(analyzed.prover_functions.len(), 1);
-        let ProverFunctionComputeFrom {
+        let ProverFunction {
             index,
             target_column,
             input_columns,
@@ -285,7 +292,10 @@ mod test {
         assert!(!in_x.next);
         assert_eq!(in_z.name, "main::Z");
         assert!(in_z.next);
-        assert!(matches!(computation, Expression::LambdaExpression(_, _)));
+        assert!(matches!(
+            computation,
+            ProverFunctionComputation::ComputeFrom(Expression::LambdaExpression(_, _))
+        ));
     }
 
     #[test]
@@ -306,7 +316,7 @@ mod test {
         ";
         let (analyzed, _) = read_pil::<GoldilocksField>(input);
         assert_eq!(analyzed.prover_functions.len(), 1);
-        let ProverFunctionComputeFrom {
+        let ProverFunction {
             index,
             target_column,
             input_columns,
@@ -322,6 +332,9 @@ mod test {
         assert!(!in_x.next);
         assert_eq!(in_z.name, "main::Z");
         assert!(in_z.next);
-        assert!(matches!(computation, Expression::LambdaExpression(_, _)));
+        assert!(matches!(
+            computation,
+            ProverFunctionComputation::ComputeFrom(Expression::LambdaExpression(_, _))
+        ));
     }
 }
