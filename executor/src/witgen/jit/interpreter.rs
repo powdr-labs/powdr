@@ -534,7 +534,7 @@ mod test {
         );
 
         let effects = processor
-            .generate_code(&mutable_state, connection_id, &known_values)
+            .generate_code(&mutable_state, connection_id, &known_values, None)
             .unwrap()
             .code;
 
