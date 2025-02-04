@@ -151,7 +151,7 @@ where
             .iter()
             .filter_map(|(namespace, pil)| {
                 // if we have no fixed columns, we don't need to commit to anything.
-                if pil.constant_count() == 0 {
+                if pil.constant_count() + pil.publics_count()== 0 {
                     None
                 } else {
                     let fixed_columns = machine_fixed_columns(&self.fixed, pil);
@@ -434,12 +434,26 @@ where
         Ok(bincode::serialize(&proof).unwrap())
     }
 
-    pub fn verify(&self, proof: &[u8], _instances: &[M31]) -> Result<(), String> {
-        assert!(
-            _instances.is_empty(),
-            "Expected _instances slice to be empty, but it has {} elements.",
-            _instances.len()
-        );
+    pub fn verify(&self, proof: &[u8], instances: &[M31]) -> Result<(), String> {
+        
+        let stage_count = self.analyzed.stage_count();
+        // get public values
+        let mut instance_map: BTreeMap<String, Vec<Vec<M31>>> = self
+            .split
+            .keys()
+            .map(|name| (name.clone(), vec![vec![]; stage_count]))
+            .collect();
+        self.analyzed
+            .get_publics()
+            .iter()
+            .zip_eq(instances.iter())
+            .map(|((_, poly_name, _, _, stage), value)| {
+                let namespace = poly_name.split("::").next().unwrap();
+                (namespace, stage, value)
+            })
+            .for_each(|(namespace, stage, value)| {
+                instance_map.get_mut(namespace).unwrap()[*stage as usize].push(*value);
+            });
 
         let config = get_config();
 
