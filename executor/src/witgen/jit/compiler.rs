@@ -544,10 +544,10 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
     let code = match f.computation {
         ProverFunctionComputation::ComputeFrom(code) => format!(
             "({}).call(args.to_vec().into())",
-            codegen.generate_code_for_expresson(code)?
+            codegen.generate_code_for_expression(code)?
         ),
         ProverFunctionComputation::ProvideIfUnknown(code) => {
-            format!("({}).call()", codegen.generate_code_for_expresson(code)?)
+            format!("({}).call()", codegen.generate_code_for_expression(code)?)
         }
     };
 

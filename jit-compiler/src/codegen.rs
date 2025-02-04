@@ -83,7 +83,7 @@ impl<'a, T: FieldElement, Def: DefinitionFetcher> CodeGenerator<'a, T, Def> {
     /// Generates code for an isolated expression. This might request code generation
     /// for referenced symbols, this the returned code is only valid code in connection with
     /// the code returned by `self.generated_code`.
-    pub fn generate_code_for_expresson(&mut self, e: &Expression) -> Result<String, String> {
+    pub fn generate_code_for_expression(&mut self, e: &Expression) -> Result<String, String> {
         self.format_expr(e, 0)
     }
 
