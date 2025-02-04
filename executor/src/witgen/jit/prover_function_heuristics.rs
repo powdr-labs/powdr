@@ -8,7 +8,7 @@ use powdr_ast::{
         LambdaExpression, Number, UnaryOperation, UnaryOperator,
     },
 };
-use powdr_number::FieldElement;
+use powdr_number::{BigUint, FieldElement};
 
 use crate::witgen::{machines::MachineParts, FixedData};
 
@@ -22,7 +22,7 @@ pub struct ProverFunction<'a, T> {
     pub index: usize,
     pub condition: Option<AlgebraicExpression<T>>,
     pub target: Vec<AlgebraicReference>,
-    /// If false, then `target_columns` has length 1 and `computation` returns
+    /// If false, then `target` has length 1 and `computation` returns
     /// a `fe`. Otherwise, `computation` returns `fe[]`.
     pub compute_multi: bool,
     pub input_columns: Vec<AlgebraicReference>,
@@ -65,11 +65,9 @@ fn decode_prover_function<T: FieldElement>(
         try_decode_provide_if_unknown(index, function, try_symbol_by_name)
     {
         Ok(provide_if_unknown)
-    } else if let Some(compute_from) = try_decode_compute_from(index, function, try_symbol_by_name)
-    {
-        Ok(compute_from)
     } else {
-        Err(format!("Unsupported prover function kind: {function}"))
+        try_decode_compute_from(index, function, try_symbol_by_name)
+            .map_err(|e| format!("Prover function not recognized: {e}"))
     }
 }
 
@@ -78,13 +76,13 @@ fn try_decode_provide_if_unknown<T>(
     function: &Expression,
     try_symbol_by_name: impl TrySymbolByName,
 ) -> Option<ProverFunction<'_, T>> {
-    let body = try_as_lambda_expression(function, Some(FunctionKind::Query))?;
+    let body = try_as_lambda_expression(function, Some(FunctionKind::Query)).ok()?;
     let [arg_column, arg_row, arg_value] =
         try_as_function_call_to(body, "std::prover::provide_if_unknown")?
     else {
         return None;
     };
-    let assigned_column = try_extract_witness_reference(arg_column, try_symbol_by_name)?;
+    let assigned_column = try_extract_witness_reference(arg_column, try_symbol_by_name).ok()?;
     if !is_local_var(arg_row, 0) {
         return None;
     }
@@ -108,7 +106,7 @@ fn try_decode_compute_from<T: FieldElement>(
     index: usize,
     function: &Expression,
     try_symbol_by_name: impl TrySymbolByName,
-) -> Option<ProverFunction<'_, T>> {
+) -> Result<ProverFunction<'_, T>, String> {
     let body = try_as_lambda_expression(function, Some(FunctionKind::Query))?;
     let FunctionCall {
         function,
@@ -119,11 +117,15 @@ fn try_decode_compute_from<T: FieldElement>(
         "std::prover::compute_from_if" => (Some(&arguments[0]), false, &arguments[1..]),
         "std::prover::compute_from_multi" => (None, true, &arguments[..]),
         "std::prover::compute_from_multi_if" => (Some(&arguments[0]), true, &arguments[1..]),
-        _ => return None,
+        name => {
+            return Err(format!(
+                "Expected call to function `std::prover::compute_from_*`, but got `{name}`"
+            ))
+        }
     };
 
     let [target, row, input_columns, computation] = arguments else {
-        return None;
+        return Err(format!("Invalid number of arguments"));
     };
     let condition = match condition {
         Some(c) => Some(try_extract_algebraic_expression(c, try_symbol_by_name)?),
@@ -132,19 +134,21 @@ fn try_decode_compute_from<T: FieldElement>(
     let target = if target_is_array {
         try_extract_array_of_witness_references(target, try_symbol_by_name, false)?
     } else {
-        let target = try_extract_witness_reference(target, try_symbol_by_name)?;
-        if target.next {
-            return None;
+        let target_expr = try_extract_witness_reference(target, try_symbol_by_name)?;
+        if target_expr.next {
+            return Err(format!("Next references not supported in {target}"));
         }
-        vec![target]
+        vec![target_expr]
     };
     if !is_local_var(row, 0) {
-        return None;
+        return Err(format!(
+            "Expected row variable as second argument, but got {row}"
+        ));
     }
     let input_columns =
         try_extract_array_of_witness_references(input_columns, try_symbol_by_name, true)?;
     let computation = ProverFunctionComputation::ComputeFrom(computation);
-    Some(ProverFunction {
+    Ok(ProverFunction {
         index,
         condition,
         target,
@@ -154,27 +158,39 @@ fn try_decode_compute_from<T: FieldElement>(
     })
 }
 
+/// Tries to turn an algebraic expression into an expression.
+/// Only supports basic arithmetic.
 fn try_extract_algebraic_expression<T: FieldElement>(
     e: &Expression,
     try_symbol_by_name: impl TrySymbolByName,
-) -> Option<AlgebraicExpression<T>> {
-    Some(match unpack(e) {
+) -> Result<AlgebraicExpression<T>, String> {
+    Ok(match unpack(e) {
         Expression::BinaryOperation(_, BinaryOperation { left, op, right }) => match op {
             BinaryOperator::Add => {
                 try_extract_algebraic_expression(left, try_symbol_by_name)?
                     + try_extract_algebraic_expression(right, try_symbol_by_name)?
             }
-            BinaryOperator::Sub => {
+            BinaryOperator::Sub | BinaryOperator::Identity => {
                 try_extract_algebraic_expression(left, try_symbol_by_name)?
                     - try_extract_algebraic_expression(right, try_symbol_by_name)?
             }
-            _ => return None,
+            _ => {
+                return Err(format!(
+                    "Algebraic expression of this kind (operator {op}) is not supported: {e}"
+                ))
+            }
         },
-        Expression::Reference(_, Reference::Poly(PolynomialReference { name, .. })) => {
-            try_extract_algebraic_reference(e, try_symbol_by_name)?
+        Expression::Reference(..) => {
+            AlgebraicExpression::Reference(try_extract_algebraic_reference(e, try_symbol_by_name)?)
         }
-        Expression::Number(_, Number { value, .. }) => T::try_from(value),
-        _ => return None,
+        Expression::Number(_, Number { value, .. }) => {
+            AlgebraicExpression::Number(T::checked_from(value.clone()).unwrap())
+        }
+        _ => {
+            return Err(format!(
+                "Algebraic expression of this kind is not supported: {e}"
+            ))
+        }
     })
 }
 
@@ -185,7 +201,7 @@ fn try_extract_array_of_witness_references(
     e: &Expression,
     try_symbol_by_name: impl TrySymbolByName,
     next_allowed: bool,
-) -> Option<Vec<AlgebraicReference>> {
+) -> Result<Vec<AlgebraicReference>, String> {
     match unpack(e) {
         Expression::BinaryOperation(
             _,
@@ -200,37 +216,43 @@ fn try_extract_array_of_witness_references(
             let right =
                 try_extract_array_of_witness_references(right, try_symbol_by_name, next_allowed)?;
             left.extend(right);
-            Some(left)
+            Ok(left)
         }
         Expression::ArrayLiteral(_, ArrayLiteral { items }) => items
             .iter()
             .map(|e| {
                 let r = try_extract_witness_reference(e, try_symbol_by_name)?;
                 if r.next && !next_allowed {
-                    None
+                    Err(format!(
+                        "Next references not supported in this context: {e}"
+                    ))
                 } else {
-                    Some(r)
+                    Ok(r)
                 }
             })
             .collect(),
         Expression::Reference(_, Reference::Poly(p)) => {
-            let symbol = try_symbol_by_name.try_symbol_by_name(&p.name)?;
+            let symbol = try_symbol_by_name.try_symbol_by_name(&p.name).unwrap();
             if !symbol.is_array() || symbol.kind != SymbolKind::Poly(PolynomialType::Committed) {
-                None
+                return Err(format!(
+                    "Expected array of witness columns but this expression is not supported: {e}"
+                ));
             } else {
-                Some(
-                    symbol
-                        .array_elements()
-                        .map(|(name, poly_id)| AlgebraicReference {
-                            name,
-                            poly_id,
-                            next: false,
-                        })
-                        .collect(),
-                )
+                Ok(symbol
+                    .array_elements()
+                    .map(|(name, poly_id)| AlgebraicReference {
+                        name,
+                        poly_id,
+                        next: false,
+                    })
+                    .collect())
             }
         }
-        _ => None,
+        _ => {
+            return Err(format!(
+                "Expected array of witness columns but this expression is not supported: {e}"
+            ))
+        }
     }
 }
 
@@ -238,17 +260,17 @@ fn is_reference_to(e: &Expression, name: &str) -> bool {
     try_extract_reference(e).map(|r| r == name).unwrap_or(false)
 }
 
-fn try_extract_reference(e: &Expression) -> Option<&str> {
+fn try_extract_reference(e: &Expression) -> Result<&str, String> {
     match unpack(e) {
-        Expression::Reference(_, Reference::Poly(PolynomialReference { name, .. })) => Some(name),
-        _ => None,
+        Expression::Reference(_, Reference::Poly(PolynomialReference { name, .. })) => Ok(name),
+        _ => Err(format!("Expected reference but got {e}")),
     }
 }
 
 fn try_extract_algebraic_reference(
     e: &Expression,
     try_symbol_by_name: impl TrySymbolByName,
-) -> Option<AlgebraicReference> {
+) -> Result<AlgebraicReference, String> {
     let (e, next) = match unpack(e) {
         Expression::UnaryOperation(
             _,
@@ -260,30 +282,42 @@ fn try_extract_algebraic_reference(
         _ => (e, false),
     };
     let name = try_extract_reference(e)?.to_string();
-    let symbol = try_symbol_by_name.try_symbol_by_name(&name)?;
-    (!symbol.is_array()).then_some(AlgebraicReference {
-        name,
-        poly_id: symbol.into(),
-        next,
-    })
+    let symbol = try_symbol_by_name.try_symbol_by_name(&name).unwrap();
+    if symbol.is_array() {
+        Err(format!(
+            "Expected single witness column but got array {name}"
+        ))
+    } else {
+        Ok(AlgebraicReference {
+            name,
+            poly_id: symbol.into(),
+            next,
+        })
+    }
 }
 
 fn try_extract_witness_reference(
     e: &Expression,
     try_symbol_by_name: impl TrySymbolByName,
-) -> Option<AlgebraicReference> {
+) -> Result<AlgebraicReference, String> {
     let reference = try_extract_algebraic_reference(e, try_symbol_by_name)?;
-    (!reference.next && reference.poly_id.ptype == PolynomialType::Committed).then_some(reference)
+    if !reference.next && reference.poly_id.ptype == PolynomialType::Committed {
+        Ok(reference)
+    } else {
+        Err(format!(
+            "Expected witness column without next reference but got {e}"
+        ))
+    }
 }
 
 fn is_local_var(e: &Expression, index: u64) -> bool {
     matches!(unpack(e), Expression::Reference(_, Reference::LocalVar(i, _)) if *i == index)
 }
 
-fn try_as_function_call(e: &Expression) -> Option<&FunctionCall<Expression>> {
+fn try_as_function_call(e: &Expression) -> Result<&FunctionCall<Expression>, String> {
     match unpack(e) {
-        Expression::FunctionCall(_, f) => Some(f),
-        _ => None,
+        Expression::FunctionCall(_, f) => Ok(f),
+        _ => Err(format!("Expected function call but got {e}")),
     }
 }
 
@@ -293,7 +327,7 @@ fn try_as_function_call_to<'a>(e: &'a Expression, name: &str) -> Option<&'a [Exp
     let FunctionCall {
         function,
         arguments,
-    } = try_as_function_call(e)?;
+    } = try_as_function_call(e).ok()?;
     is_reference_to(function, name).then_some(arguments.as_slice())
 }
 
@@ -303,21 +337,21 @@ fn try_as_function_call_to<'a>(e: &'a Expression, name: &str) -> Option<&'a [Exp
 fn try_as_lambda_expression(
     e: &Expression,
     requested_kind: Option<FunctionKind>,
-) -> Option<&Expression> {
+) -> Result<&Expression, String> {
     match unpack(e) {
         Expression::LambdaExpression(_, LambdaExpression { kind, body, .. })
             if requested_kind.map(|k| k == *kind).unwrap_or(true) =>
         {
-            Some(unpack(body))
+            Ok(unpack(body))
         }
-        _ => None,
-    }
-}
-
-fn try_as_literal_array(e: &Expression) -> Option<&[Expression]> {
-    match unpack(e) {
-        Expression::ArrayLiteral(_, ArrayLiteral { items }) => Some(items.as_slice()),
-        _ => None,
+        _ => Err(format!(
+            "Expected lambda expression {}but got {e}",
+            if let Some(kind) = requested_kind {
+                format!("of kind `{kind}` ")
+            } else {
+                "".to_string()
+            }
+        )),
     }
 }
 
@@ -496,18 +530,30 @@ mod test {
         pol commit b[16];
         query |i| std::prover::compute_from_multi(x + y, i, a + b + [X], |_| []);
         query |i| std::prover::compute_from_if(X = 9, Z, i, a, |_| 5);
-        query |i| std::prover::compute_from_multi_if(Z = Y, x + y + [Y], i, a + b + [X], |_| []);
+        query |i| std::prover::compute_from_multi_if(Z = {Y}, x + y + {[Y]}, i, a + b + [{X}], |_| []);
         ";
         let (analyzed, _) = read_pil::<GoldilocksField>(input);
         assert_eq!(analyzed.prover_functions.len(), 3);
         let p1 =
             try_decode_compute_from::<GoldilocksField>(7, &analyzed.prover_functions[0], &analyzed)
                 .unwrap();
+        assert_eq!(p1.target.len(), 32);
+        assert_eq!(p1.input_columns.len(), 16 + 16 + 1);
+        assert!(p1.compute_multi);
+        assert!(p1.condition.is_none());
         let p2 =
             try_decode_compute_from::<GoldilocksField>(8, &analyzed.prover_functions[1], &analyzed)
                 .unwrap();
+        assert_eq!(p2.target.len(), 1);
+        assert_eq!(p2.input_columns.len(), 16);
+        assert!(!p2.compute_multi);
+        assert!(p2.condition.is_some());
         let p3 =
             try_decode_compute_from::<GoldilocksField>(9, &analyzed.prover_functions[2], &analyzed)
                 .unwrap();
+        assert_eq!(p3.target.len(), 16 + 16 + 1);
+        assert_eq!(p3.input_columns.len(), 16 + 16 + 1);
+        assert!(p3.compute_multi);
+        assert!(p3.condition.is_some());
     }
 }

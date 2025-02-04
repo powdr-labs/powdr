@@ -23,7 +23,6 @@ use super::{
     affine_symbolic_expression::{AffineSymbolicExpression, Error, ProcessResult},
     effect::{BranchCondition, Effect, ProverFunctionCall},
     prover_function_heuristics::ProverFunction,
-    prover_function_heuristics::ProverFunction,
     symbolic_expression::SymbolicExpression,
     variable::{Cell, MachineCallVariable, Variable},
 };
