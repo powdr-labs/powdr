@@ -295,8 +295,7 @@ where
         let stage0_witness_cols_circle_domain_eval: ColumnVec<
             CircleEvaluation<B, BaseField, BitReversedOrder>,
         > = witness_by_machine
-            .clone()
-            .into_values()
+            .values()
             .flat_map(|witness_cols| {
                 witness_cols
                     .iter()
@@ -478,6 +477,7 @@ where
             .collect_vec();
 
         let stage1_witness_col_log_sizes = iter
+            .clone()
             .flat_map(|(pil, machine_log_size)| {
                 repeat(machine_log_size).take(pil.stage_commitment_count(1))
             })
@@ -499,31 +499,25 @@ where
         // Get challenges based on the commitments of constant columns and stage 0 witness columns
         let stage0_challenges = get_challenges::<MC>(&self.analyzed, verifier_channel);
 
-        let components = self
-            .split
-            .iter()
-            .zip_eq(proof.machine_log_sizes.iter())
-            .map(
-                |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
-                    assert_eq!(machine_name, proof_machine_name);
+        let components = iter
+            .clone()
+            .map(|(pil, machine_log_size)| {
+                let machine_component = PowdrComponent::new(
+                    tree_span_provider,
+                    PowdrEval::new(
+                        (*pil).clone(),
+                        constant_cols_offset_acc,
+                        machine_log_size,
+                        stage0_challenges.clone(),
+                    ),
+                    (SecureField::zero(), None),
+                );
 
-                    let machine_component = PowdrComponent::new(
-                        tree_span_provider,
-                        PowdrEval::new(
-                            (*pil).clone(),
-                            constant_cols_offset_acc,
-                            machine_log_size,
-                            stage0_challenges.clone(),
-                        ),
-                        (SecureField::zero(), None),
-                    );
+                constant_cols_offset_acc += pil.constant_count();
 
-                    constant_cols_offset_acc += pil.constant_count();
-
-                    constant_cols_offset_acc += get_constant_with_next_list(pil).len();
-                    machine_component
-                },
-            )
+                constant_cols_offset_acc += get_constant_with_next_list(pil).len();
+                machine_component
+            })
             .collect_vec();
 
         let components_slice: Vec<&dyn Component> = components
