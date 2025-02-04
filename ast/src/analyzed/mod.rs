@@ -1008,6 +1008,7 @@ impl<T> Children<AlgebraicExpression<T>> for ExpressionList<T> {
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
 )]
+/// For documentation, see the equivalent `Constr` variant in std/prelude.asm.
 pub struct PhantomBusInteractionIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
@@ -1016,6 +1017,10 @@ pub struct PhantomBusInteractionIdentity<T> {
     pub bus_id: AlgebraicExpression<T>,
     pub payload: ExpressionList<T>,
     pub latch: AlgebraicExpression<T>,
+    pub folded_expressions: ExpressionList<T>,
+    // Note that in PIL, this is a list of expressions, but we'd
+    // always expect direct column references, so this is unpacked
+    // when converting from PIL to this struct.
     pub accumulator_columns: Vec<AlgebraicReference>,
 }
 
