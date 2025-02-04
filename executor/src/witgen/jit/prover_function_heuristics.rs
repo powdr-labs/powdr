@@ -168,12 +168,12 @@ fn try_extract_algebraic_expression<T: FieldElement>(
     Ok(match unpack(e) {
         Expression::BinaryOperation(_, BinaryOperation { left, op, right }) => match op {
             BinaryOperator::Add => {
-                try_extract_algebraic_expression(&left, try_symbol_by_name)?
-                    + try_extract_algebraic_expression(&right, try_symbol_by_name)?
+                try_extract_algebraic_expression(left, try_symbol_by_name)?
+                    + try_extract_algebraic_expression(right, try_symbol_by_name)?
             }
             BinaryOperator::Sub | BinaryOperator::Identity => {
-                try_extract_algebraic_expression(&left, try_symbol_by_name)?
-                    - try_extract_algebraic_expression(&right, try_symbol_by_name)?
+                try_extract_algebraic_expression(left, try_symbol_by_name)?
+                    - try_extract_algebraic_expression(right, try_symbol_by_name)?
             }
             _ => {
                 return Err(format!(
