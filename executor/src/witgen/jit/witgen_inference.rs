@@ -198,15 +198,21 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 
     /// Process a prover function on a row, i.e. determine if we can execute it and if it will
-    /// help us to compute the value of a previously unknown variable.
+    /// help us to compute the value of previously unknown variables.
     /// Returns the list of updated variables.
     pub fn process_prover_function(
         &mut self,
-        prover_function: &ProverFunction<'a>,
+        prover_function: &ProverFunction<'a, T>,
         row_offset: i32,
     ) -> Result<Vec<Variable>, Error> {
-        let target = Variable::from_reference(&prover_function.target_column, row_offset);
-        if !self.is_known(&target) {
+        let targets = prover_function
+            .target
+            .iter()
+            .map(|t| Variable::from_reference(t, row_offset))
+            .collect::<Vec<_>>();
+        // Only continue if none of the targets are known.
+        if !targets.iter().any(|t| self.is_known(t)) {
+            // TODO process condition.
             let inputs = prover_function
                 .input_columns
                 .iter()
@@ -214,7 +220,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 .collect::<Vec<_>>();
             if inputs.iter().all(|v| self.is_known(v)) {
                 let effect = Effect::ProverFunctionCall(ProverFunctionCall {
-                    target,
+                    target: todo!(),
                     function_index: prover_function.index,
                     row_offset,
                     inputs,
