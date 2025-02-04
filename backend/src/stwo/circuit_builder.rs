@@ -10,15 +10,17 @@ use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Analyzed, Cha
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::Mersenne31Field as M31;
 use stwo_prover::constraint_framework::preprocessed_columns::PreprocessedColumn;
-use stwo_prover::constraint_framework::{
-    EvalAtRow, FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX,
-};
+use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use stwo_prover::core::backend::{Column, ColumnOps};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::{ExtensionOf, FieldOps};
 use stwo_prover::core::poly::circle::{CircleDomain, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
+
+pub const PREPROCESSED_TRACE_IDX: usize = 0;
+pub const STAGE0_TRACE_IDX: usize = 1;
+pub const STAGE1_TRACE_IDX: usize = 2;
 
 pub type PowdrComponent = FrameworkComponent<PowdrEval>;
 
@@ -56,11 +58,13 @@ pub struct PowdrEval {
     // the pre-processed are indexed in the whole proof, instead of in each component.
     // this offset represents the index of the first pre-processed column in this component
     preprocess_col_offset: usize,
-    witness_columns: BTreeMap<PolyID, usize>,
+    stage0_witness_columns: BTreeMap<PolyID, usize>,
+    stage1_witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
     constant_columns: BTreeMap<PolyID, usize>,
     // stwo supports maximum 2 stages, challenges are only created after stage 0
     pub challenges: BTreeMap<u64, M31>,
+    poly_stage_map: BTreeMap<PolyID, usize>,
 }
 
 impl PowdrEval {
@@ -70,8 +74,17 @@ impl PowdrEval {
         log_degree: u32,
         challenges: BTreeMap<u64, M31>,
     ) -> Self {
-        let witness_columns: BTreeMap<PolyID, usize> = analyzed
+        let stage0_witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
+            .filter(|(symbol, _)| symbol.stage.unwrap_or(0) == 0)
+            .flat_map(|(symbol, _)| symbol.array_elements())
+            .enumerate()
+            .map(|(index, (_, id))| (id, index))
+            .collect();
+
+        let stage1_witness_columns: BTreeMap<PolyID, usize> = analyzed
+            .definitions_in_source_order(PolynomialType::Committed)
+            .filter(|(symbol, _)| symbol.stage.unwrap_or(0) == 1)
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
@@ -94,33 +107,48 @@ impl PowdrEval {
             .map(|(index, (_, id))| (id, index))
             .collect();
 
+        let poly_stage_map: BTreeMap<PolyID, usize> = stage0_witness_columns
+            .keys()
+            .map(|k| (*k, 0))
+            .chain(stage1_witness_columns.keys().map(|k| (*k, 1)))
+            .collect();
+
         Self {
             log_degree,
             analyzed,
             preprocess_col_offset,
-            witness_columns,
+            stage0_witness_columns,
+            stage1_witness_columns,
             constant_shifted,
             constant_columns,
             challenges,
+            poly_stage_map,
         }
     }
 }
 
 struct Data<'a, F> {
-    witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
+    stage0_witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
+    stage1_witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
     constant_shifted_eval: &'a BTreeMap<PolyID, F>,
     constant_eval: &'a BTreeMap<PolyID, F>,
     // challenges for stage 1
     challenges: &'a BTreeMap<u64, F>,
+    poly_stage_map: &'a BTreeMap<PolyID, usize>,
 }
 
 impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
     fn get(&self, poly_ref: &AlgebraicReference) -> F {
         match poly_ref.poly_id.ptype {
-            PolynomialType::Committed => match poly_ref.next {
-                false => self.witness_eval[&poly_ref.poly_id][0].clone(),
-                true => self.witness_eval[&poly_ref.poly_id][1].clone(),
-            },
+            PolynomialType::Committed => {
+                match (self.poly_stage_map[&poly_ref.poly_id], poly_ref.next) {
+                    (0, false) => self.stage0_witness_eval[&poly_ref.poly_id][0].clone(),
+                    (0, true) => self.stage0_witness_eval[&poly_ref.poly_id][1].clone(),
+                    (1, false) => self.stage1_witness_eval[&poly_ref.poly_id][0].clone(),
+                    (1, true) => self.stage1_witness_eval[&poly_ref.poly_id][1].clone(),
+                    _ => unreachable!(),
+                }
+            }
             PolynomialType::Constant => match poly_ref.next {
                 false => self.constant_eval[&poly_ref.poly_id].clone(),
                 true => self.constant_shifted_eval[&poly_ref.poly_id].clone(),
@@ -151,13 +179,24 @@ impl FrameworkEval for PowdrEval {
             "Error: Expected no public inputs, as they are not supported yet.",
         );
 
-        let witness_eval: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
-            .witness_columns
+        let stage0_witness_eval: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
+            .stage0_witness_columns
             .keys()
             .map(|poly_id| {
                 (
                     *poly_id,
-                    eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, 1]),
+                    eval.next_interaction_mask(STAGE0_TRACE_IDX, [0, 1]),
+                )
+            })
+            .collect();
+
+        let stage1_witness_eval: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
+            .stage1_witness_columns
+            .keys()
+            .map(|poly_id| {
+                (
+                    *poly_id,
+                    eval.next_interaction_mask(STAGE1_TRACE_IDX, [0, 1]),
                 )
             })
             .collect();
@@ -197,10 +236,12 @@ impl FrameworkEval for PowdrEval {
 
         let intermediate_definitions = self.analyzed.intermediate_definitions();
         let data = Data {
-            witness_eval: &witness_eval,
+            stage0_witness_eval: &stage0_witness_eval,
+            stage1_witness_eval: &stage1_witness_eval,
             constant_shifted_eval: &constant_shifted_eval,
             constant_eval: &constant_eval,
             challenges: &challenges,
+            poly_stage_map: &self.poly_stage_map,
         };
         let mut evaluator =
             ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {
