@@ -14,6 +14,7 @@ use crate::witgen::{
         finalizable_data::{ColumnLayout, CompactDataRef},
         mutable_state::MutableState,
     },
+    jit::prover_function_heuristics::ProverFunctionComputation,
     machines::{
         profiling::{record_end, record_start},
         LookupCell,
@@ -93,11 +94,11 @@ pub fn compile_effects<T: FieldElement, D: DefinitionFetcher>(
     column_layout: ColumnLayout,
     known_inputs: &[Variable],
     effects: &[Effect<T, Variable>],
-    prover_functions: Vec<ProverFunction<T>>,
+    prover_functions: Vec<ProverFunction<'_>>,
 ) -> Result<WitgenFunction<T>, String> {
     let utils = util_code::<T>()?;
     let interface = interface_code(column_layout);
-    let mut codegen = CodeGenerator::new(definitions);
+    let mut codegen = CodeGenerator::<T, _>::new(definitions);
     let prover_functions = prover_functions
         .iter()
         .map(|f| prover_function_code(f, &mut codegen))
@@ -537,20 +538,24 @@ fn interface_code(column_layout: ColumnLayout) -> String {
 }
 
 fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
-    f: &ProverFunction<'_, T>,
+    f: &ProverFunction<'_>,
     codegen: &mut CodeGenerator<'_, T, D>,
 ) -> Result<String, String> {
-    let ProverFunction::ComputeFrom(f) = f else {
-        return Err("ProvideIfUnknown functions are not supported".to_string());
+    let code = match f.computation {
+        ProverFunctionComputation::ComputeFrom(code) => format!(
+            "({}).call(args.to_vec().into())",
+            codegen.generate_code_for_expresson(code)?
+        ),
+        ProverFunctionComputation::ProvideIfUnknown(code) => {
+            format!("({}).call()", codegen.generate_code_for_expresson(code)?)
+        }
     };
-
-    let code = codegen.generate_code_for_expresson(f.computation)?;
 
     let index = f.index;
     Ok(format!(
         "fn prover_function_{index}(i: u64, args: &[FieldElement]) -> FieldElement {{\n\
             let i: ibig::IBig = i.into();\n\
-            ({code}).call(args.to_vec().into())\n\
+            {code}
         }}"
     ))
 }

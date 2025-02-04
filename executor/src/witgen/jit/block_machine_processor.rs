@@ -51,7 +51,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_args: &BitVec,
-    ) -> Result<(ProcessorResult<T>, Vec<ProverFunction<'a, T>>), String> {
+    ) -> Result<(ProcessorResult<T>, Vec<ProverFunction<'a>>), String> {
         let connection = self.machine_parts.connections[&identity_id];
         assert_eq!(connection.right.expressions.len(), known_args.len());
 
