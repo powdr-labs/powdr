@@ -64,6 +64,7 @@ pub struct PowdrEval {
     constant_columns: BTreeMap<PolyID, usize>,
     // stwo supports maximum 2 stages, challenges are only created after stage 0
     pub challenges: BTreeMap<u64, M31>,
+    poly_stage_map: BTreeMap<PolyID, usize>,
 }
 
 impl PowdrEval {
@@ -106,6 +107,12 @@ impl PowdrEval {
             .map(|(index, (_, id))| (id, index))
             .collect();
 
+        let poly_stage_map: BTreeMap<PolyID, usize> = stage0_witness_columns
+            .keys()
+            .map(|k| (*k, 0))
+            .chain(stage1_witness_columns.keys().map(|k| (*k, 1)))
+            .collect();
+
         Self {
             log_degree,
             analyzed,
@@ -115,6 +122,7 @@ impl PowdrEval {
             constant_shifted,
             constant_columns,
             challenges,
+            poly_stage_map,
         }
     }
 }
@@ -193,13 +201,6 @@ impl FrameworkEval for PowdrEval {
             })
             .collect();
 
-        let poly_stage_map: BTreeMap<PolyID, usize> = self
-            .stage0_witness_columns
-            .keys()
-            .map(|k| (*k, 0))
-            .chain(self.stage1_witness_columns.keys().map(|k| (*k, 1)))
-            .collect();
-
         let constant_eval: BTreeMap<_, _> = self
             .constant_columns
             .keys()
@@ -240,7 +241,7 @@ impl FrameworkEval for PowdrEval {
             constant_shifted_eval: &constant_shifted_eval,
             constant_eval: &constant_eval,
             challenges: &challenges,
-            poly_stage_map: &poly_stage_map,
+            poly_stage_map: &self.poly_stage_map,
         };
         let mut evaluator =
             ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {

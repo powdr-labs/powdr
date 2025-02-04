@@ -310,7 +310,7 @@ where
                     })
                     .collect_vec()
             })
-            .collect::<Vec<_>>();
+            .collect_vec();
 
         let twiddles_max_degree = B::precompute_twiddles(
             CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
@@ -471,20 +471,20 @@ where
                 repeat(machine_log_size)
                     .take(pil.constant_count() + get_constant_with_next_list(pil).len())
             })
-            .collect::<Vec<_>>();
+            .collect_vec();
 
         let stage0_witness_col_log_sizes = iter
             .clone()
             .flat_map(|(pil, machine_log_size)| {
                 repeat(machine_log_size).take(pil.stage_commitment_count(0))
             })
-            .collect::<Vec<_>>();
+            .collect_vec();
 
         let stage1_witness_col_log_sizes = iter
             .flat_map(|(pil, machine_log_size)| {
                 repeat(machine_log_size).take(pil.stage_commitment_count(1))
             })
-            .collect::<Vec<_>>();
+            .collect_vec();
 
         // Verifier gets the commitments of the constant columns and stage 0 witness columns (two Merkle tree roots)
         commitment_scheme.commit(
@@ -527,7 +527,7 @@ where
                     machine_component
                 },
             )
-            .collect::<Vec<_>>();
+            .collect_vec();
 
         let components_slice: Vec<&dyn Component> = components
             .iter()
