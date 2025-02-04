@@ -14,6 +14,7 @@ pub trait TryColumnByName: Copy {
 }
 
 #[allow(unused)]
+#[derive(Clone)]
 pub struct ProverFunction<'a> {
     pub index: usize,
     pub target_column: AlgebraicReference,
@@ -22,6 +23,7 @@ pub struct ProverFunction<'a> {
 }
 
 #[allow(unused)]
+#[derive(Clone)]
 pub enum ProverFunctionComputation<'a> {
     /// The expression `f` in `query |i| std::prover::provide_if_unknown(Y, i, f)`,
     /// where f: (-> fe)
