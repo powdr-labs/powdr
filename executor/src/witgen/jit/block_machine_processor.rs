@@ -391,7 +391,7 @@ params[3] = main_binary::C[3];"
         assert_eq!(
             format_code(&code),
             "Sub::a[0] = params[0];
-Sub::b[0] = prover_function_0(0, [Sub::a[0]]);
+[Sub::b[0]] = prover_function_0(0, [Sub::a[0]]);
 params[1] = Sub::b[0];"
         );
     }

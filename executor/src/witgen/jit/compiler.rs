@@ -361,15 +361,15 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
             )
         }
         Effect::ProverFunctionCall(ProverFunctionCall {
-            target,
+            targets,
             function_index,
             row_offset,
             inputs,
         }) => {
             format!(
-                "{}{} = prover_function_{function_index}(row_offset + {row_offset}, &[{}]);",
+                "{}[{}] = prover_function_{function_index}(row_offset + {row_offset}, &[{}]);",
                 if is_top_level { "let " } else { "" },
-                variable_to_string(target),
+                targets.iter().map(variable_to_string).format(", "),
                 inputs.iter().map(variable_to_string).format(", ")
             )
         }

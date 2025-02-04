@@ -1,6 +1,6 @@
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, AlgebraicReference, Analyzed, Expression, PolyID, PolynomialReference,
+        AlgebraicExpression, AlgebraicReference, Analyzed, Expression, PolynomialReference,
         PolynomialType, Reference, Symbol, SymbolKind,
     },
     parsed::{
@@ -8,7 +8,7 @@ use powdr_ast::{
         LambdaExpression, Number, UnaryOperation, UnaryOperator,
     },
 };
-use powdr_number::{BigUint, FieldElement};
+use powdr_number::FieldElement;
 
 use crate::witgen::{machines::MachineParts, FixedData};
 
@@ -82,7 +82,8 @@ fn try_decode_provide_if_unknown<T>(
     else {
         return None;
     };
-    let assigned_column = try_extract_witness_reference(arg_column, try_symbol_by_name).ok()?;
+    let assigned_column =
+        try_extract_witness_reference(arg_column, try_symbol_by_name, false).ok()?;
     if !is_local_var(arg_row, 0) {
         return None;
     }
@@ -125,7 +126,7 @@ fn try_decode_compute_from<T: FieldElement>(
     };
 
     let [target, row, input_columns, computation] = arguments else {
-        return Err(format!("Invalid number of arguments"));
+        panic!()
     };
     let condition = match condition {
         Some(c) => Some(try_extract_algebraic_expression(c, try_symbol_by_name)?),
@@ -134,7 +135,7 @@ fn try_decode_compute_from<T: FieldElement>(
     let target = if target_is_array {
         try_extract_array_of_witness_references(target, try_symbol_by_name, false)?
     } else {
-        let target_expr = try_extract_witness_reference(target, try_symbol_by_name)?;
+        let target_expr = try_extract_witness_reference(target, try_symbol_by_name, false)?;
         if target_expr.next {
             return Err(format!("Next references not supported in {target}"));
         }
@@ -158,7 +159,7 @@ fn try_decode_compute_from<T: FieldElement>(
     })
 }
 
-/// Tries to turn an algebraic expression into an expression.
+/// Tries to turn an expression into an algebraic expression.
 /// Only supports basic arithmetic.
 fn try_extract_algebraic_expression<T: FieldElement>(
     e: &Expression,
@@ -167,12 +168,12 @@ fn try_extract_algebraic_expression<T: FieldElement>(
     Ok(match unpack(e) {
         Expression::BinaryOperation(_, BinaryOperation { left, op, right }) => match op {
             BinaryOperator::Add => {
-                try_extract_algebraic_expression(left, try_symbol_by_name)?
-                    + try_extract_algebraic_expression(right, try_symbol_by_name)?
+                try_extract_algebraic_expression(&left, try_symbol_by_name)?
+                    + try_extract_algebraic_expression(&right, try_symbol_by_name)?
             }
             BinaryOperator::Sub | BinaryOperator::Identity => {
-                try_extract_algebraic_expression(left, try_symbol_by_name)?
-                    - try_extract_algebraic_expression(right, try_symbol_by_name)?
+                try_extract_algebraic_expression(&left, try_symbol_by_name)?
+                    - try_extract_algebraic_expression(&right, try_symbol_by_name)?
             }
             _ => {
                 return Err(format!(
@@ -221,7 +222,7 @@ fn try_extract_array_of_witness_references(
         Expression::ArrayLiteral(_, ArrayLiteral { items }) => items
             .iter()
             .map(|e| {
-                let r = try_extract_witness_reference(e, try_symbol_by_name)?;
+                let r = try_extract_witness_reference(e, try_symbol_by_name, next_allowed)?;
                 if r.next && !next_allowed {
                     Err(format!(
                         "Next references not supported in this context: {e}"
@@ -234,9 +235,9 @@ fn try_extract_array_of_witness_references(
         Expression::Reference(_, Reference::Poly(p)) => {
             let symbol = try_symbol_by_name.try_symbol_by_name(&p.name).unwrap();
             if !symbol.is_array() || symbol.kind != SymbolKind::Poly(PolynomialType::Committed) {
-                return Err(format!(
+                Err(format!(
                     "Expected array of witness columns but this expression is not supported: {e}"
-                ));
+                ))
             } else {
                 Ok(symbol
                     .array_elements()
@@ -248,11 +249,9 @@ fn try_extract_array_of_witness_references(
                     .collect())
             }
         }
-        _ => {
-            return Err(format!(
-                "Expected array of witness columns but this expression is not supported: {e}"
-            ))
-        }
+        _ => Err(format!(
+            "Expected array of witness columns but this expression is not supported: {e}"
+        )),
     }
 }
 
@@ -299,14 +298,17 @@ fn try_extract_algebraic_reference(
 fn try_extract_witness_reference(
     e: &Expression,
     try_symbol_by_name: impl TrySymbolByName,
+    next_allowed: bool,
 ) -> Result<AlgebraicReference, String> {
     let reference = try_extract_algebraic_reference(e, try_symbol_by_name)?;
-    if !reference.next && reference.poly_id.ptype == PolynomialType::Committed {
-        Ok(reference)
-    } else {
+    if reference.poly_id.ptype != PolynomialType::Committed {
+        Err(format!("Expected witness column reference but got {e}"))
+    } else if !next_allowed && reference.next {
         Err(format!(
-            "Expected witness column without next reference but got {e}"
+            "Next references not supported in this context: {e}"
         ))
+    } else {
+        Ok(reference)
     }
 }
 
@@ -374,7 +376,7 @@ fn unpack(mut e: &Expression) -> &Expression {
 
 impl<T: FieldElement> TrySymbolByName for &FixedData<'_, T> {
     fn try_symbol_by_name<'a>(&'a self, name: &str) -> Option<&'a Symbol> {
-        todo!()
+        FixedData::try_symbol_by_name(self, name)
     }
 }
 

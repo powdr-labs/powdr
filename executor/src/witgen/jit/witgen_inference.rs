@@ -211,31 +211,43 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .map(|t| Variable::from_reference(t, row_offset))
             .collect::<Vec<_>>();
         // Only continue if none of the targets are known.
-        if !targets.iter().any(|t| self.is_known(t)) {
-            // TODO process condition.
-            let inputs = prover_function
-                .input_columns
-                .iter()
-                .map(|c| Variable::from_reference(c, row_offset))
-                .collect::<Vec<_>>();
-            if inputs.iter().all(|v| self.is_known(v)) {
-                let effect = Effect::ProverFunctionCall(ProverFunctionCall {
-                    target: todo!(),
-                    function_index: prover_function.index,
-                    row_offset,
-                    inputs,
-                });
-                return self.ingest_effects(
-                    ProcessResult {
-                        effects: vec![effect],
-                        complete: true,
-                    },
-                    None,
-                );
+        if targets.iter().any(|t| self.is_known(t)) {
+            return Ok(vec![]);
+        }
+        let inputs = prover_function
+            .input_columns
+            .iter()
+            .map(|c| Variable::from_reference(c, row_offset))
+            .collect::<Vec<_>>();
+        if !inputs.iter().all(|v| self.is_known(v)) {
+            return Ok(vec![]);
+        }
+
+        // If there is a condition, only continue if the constraint
+        // is known to be hold.
+        if let Some(condition) = prover_function.condition.as_ref() {
+            if self
+                .evaluate(condition, row_offset)
+                .and_then(|c| c.try_to_known().map(|c| c.is_known_zero()))
+                != Some(true)
+            {
+                return Ok(vec![]);
             }
         }
 
-        Ok(vec![])
+        let effect = Effect::ProverFunctionCall(ProverFunctionCall {
+            targets,
+            function_index: prover_function.index,
+            row_offset,
+            inputs,
+        });
+        self.ingest_effects(
+            ProcessResult {
+                effects: vec![effect],
+                complete: true,
+            },
+            None,
+        )
     }
 
     /// Process the constraint that the expression evaluated at the given offset equals the given value.
@@ -428,17 +440,25 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     }
                 }
                 Effect::ProverFunctionCall(ProverFunctionCall {
-                    target,
+                    targets,
                     function_index,
                     row_offset,
                     inputs,
                 }) => {
-                    if self.record_known(target.clone()) {
+                    let mut some_known = false;
+                    for t in targets {
+                        if self.record_known(t.clone()) {
+                            some_known = true;
+                            updated_variables.push(t.clone());
+                        }
+                    }
+                    if some_known {
                         log::trace!(
-                            "{target} := prover_function_{function_index}({row_offset}, {})",
+                            "[{}] := prover_function_{function_index}({row_offset}, {})",
+                            targets.iter().format(", "),
                             inputs.iter().format(", ")
                         );
-                        updated_variables.push(target.clone());
+
                         self.code.push(e);
                     }
                 }
