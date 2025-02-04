@@ -206,7 +206,7 @@ impl<T: FieldElement> VMConverter<T> {
                                 // introduce an intermediate witness polynomial to keep the degree of polynomial identities at 2
                                 // this may not be optimal for backends which support higher degree constraints
                                 let pc_update_name = format!("{name}_update");
-                                vec![
+                                let mut pil = vec![
                                     witness_column(
                                         SourceRef::unknown(),
                                         pc_update_name.clone(),
@@ -219,15 +219,18 @@ impl<T: FieldElement> VMConverter<T> {
                                             rhs,
                                         ),
                                     ),
-                                    PilStatement::Expression(
+                                ];
+                                if !input.pc_update_disabled {
+                                    pil.push(PilStatement::Expression(
                                         SourceRef::unknown(),
                                         build::identity(
                                             lhs,
                                             (Expression::from(1) - next_reference("first_step"))
                                                 * direct_reference(pc_update_name),
                                         ),
-                                    ),
-                                ]
+                                    ));
+                                }
+                                pil
                             }
                             // Un-constrain read-only registers when calling `_reset`
                             ReadOnly => {

@@ -848,6 +848,12 @@ fn set_hint() {
 }
 
 #[test]
+fn disable_pc_update() {
+    let f = "asm/disable_pc_update.asm";
+    regular_test_all_fields(f, Default::default());
+}
+
+#[test]
 fn expand_fixed_jit() {
     // Test some more or less complicated code and see that it all JIT-compiles.
     let file_name = "asm/expand_fixed.asm";

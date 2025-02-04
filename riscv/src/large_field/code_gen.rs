@@ -30,6 +30,7 @@ pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -
     riscv_machine(
         options,
         &runtime,
+        options.continuations,
         initial_mem,
         prover_data_bounds,
         instructions,
@@ -190,6 +191,7 @@ const RISCV_ASM_TEMPLATE: &str = include_str!("../riscv_gl.asm");
 fn riscv_machine(
     options: CompilerOptions,
     runtime: &Runtime,
+    pc_update_disabled: bool,
     initial_memory: Vec<String>,
     prover_data_bounds: (u32, u32),
     program: Vec<String>,
@@ -239,6 +241,14 @@ fn riscv_machine(
 
     RISCV_ASM_TEMPLATE
         .to_string()
+        .replace(
+            "{{PC_UPDATE_DISABLED}}",
+            if pc_update_disabled {
+                "pc_update_disabled"
+            } else {
+                ""
+            },
+        )
         .replace("{{IMPORTS}}", &runtime.submachines_import())
         .replace(
             "{{SUBMACHINE_EXTRA_REGISTERS}}",

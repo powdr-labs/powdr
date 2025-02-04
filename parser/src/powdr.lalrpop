@@ -248,6 +248,7 @@ MachineProperties: MachineProperties = {
 
 MachineProperty: (String, Expression) = {
     <name:Identifier> ":" <value:RestrictedExpression> => (name, value),
+    <start:@L> <name:Identifier> <end:@R> => (name, Expression::Tuple(ctx.source_ref(start, end), Vec::new())),
 }
 
 MachineParams: MachineParams = {

@@ -6,7 +6,7 @@ let MAX_DEGREE_LOG: int = {{MAX_DEGREE_LOG}};
 let MAIN_MAX_DEGREE: int = 2**MAX_DEGREE_LOG;
 let LARGE_SUBMACHINES_MAX_DEGREE: int = 2**(MAX_DEGREE_LOG + 2);
 
-machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
+machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}}, {{PC_UPDATE_DISABLED}} {
 
     reg pc[@pc];
     reg X[<=];

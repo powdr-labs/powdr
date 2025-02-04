@@ -402,25 +402,36 @@ pub struct Machine {
 
 impl Machine {
     /// Returns a vector of all local variables / names defined in the machine.
-    pub fn local_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
+    pub fn local_names(&self) -> Box<dyn Iterator<Item = String> + '_> {
         Box::new(
             self.statements
                 .iter()
-                .flat_map(|s| -> Box<dyn Iterator<Item = &String> + '_> {
+                .flat_map(|s| -> Box<dyn Iterator<Item = String> + '_> {
                     match s {
+                        MachineStatement::RegisterDeclaration(
+                            _,
+                            name,
+                            Some(RegisterFlag::IsPC),
+                        ) => Box::new(once(name.to_string()).chain(once(format!("{name}_update")))),
                         MachineStatement::Submachine(_, _, name, _)
-                        | MachineStatement::RegisterDeclaration(_, name, _) => Box::new(once(name)),
-                        MachineStatement::Pil(_, statement) => {
-                            Box::new(statement.symbol_definition_names().map(|(s, _)| s))
+                        | MachineStatement::RegisterDeclaration(_, name, _) => {
+                            Box::new(once(name.to_string()))
                         }
-                        MachineStatement::InstructionDeclaration(_, _, _)
-                        | MachineStatement::LinkDeclaration(_, _)
+                        MachineStatement::Pil(_, statement) => Box::new(
+                            statement
+                                .symbol_definition_names()
+                                .map(|(s, _)| s.to_string()),
+                        ),
+                        MachineStatement::InstructionDeclaration(_, name, _) => {
+                            Box::new(once(format!("instr_{name}")))
+                        }
+                        MachineStatement::LinkDeclaration(_, _)
                         | MachineStatement::FunctionDeclaration(_, _, _, _)
                         | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
                     }
                 })
-                .chain(self.params.defined_names())
-                .chain(self.properties.defined_names()),
+                .chain(self.params.defined_names().map(|s| s.to_string()))
+                .chain(self.properties.defined_names().map(|s| s.to_string())),
         )
     }
 }
@@ -451,6 +462,7 @@ pub struct MachineProperties {
     pub latch: Option<String>,
     pub operation_id: Option<String>,
     pub call_selectors: Option<String>,
+    pub pc_update_disabled: Option<()>,
 }
 
 impl MachineProperties {
@@ -508,6 +520,11 @@ impl MachineProperties {
                         ))
                     })?;
                     if props.call_selectors.replace(id.clone()).is_some() {
+                        already_defined = true;
+                    }
+                }
+                "pc_update_disabled" => {
+                    if props.pc_update_disabled.replace(()).is_some() {
                         already_defined = true;
                     }
                 }
