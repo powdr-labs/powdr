@@ -72,11 +72,11 @@ machine Arith with
     let int_to_limbs: int -> fe[] = |x| array::new(16, |i| fe(select_limb(x, i)));
 
     // Prover function in case we are computing division or modulo (y1 is not an input).
-    query |i| std::prover::compute_from_conditional_multi(
+    query |i| std::prover::compute_from_multi_if(
+        operation_id = 1,
         y1 + x2,
         i,
         y2 + y3 + x1,
-        operation_id = 1,
         |values| match limbs_to_ints(values) {
             [y2, y3, x1] => {
                 let dividend = (y2 << 256) + y3;
@@ -87,11 +87,11 @@ machine Arith with
     );
 
     // Prover function for elliptic curve addition.
-    query |i| std::prover::compute_from_conditional_multi(
+    query |i| std::prover::compute_from_multi_if(
+        operation_id = 10, // ec_add
         s + q0 + q1 + q2 + x3 + y3,
         i,
         x1 + x2 + y1 + y2,
-        operation_id = 10, // ec_add
         |values| match limbs_to_ints(values) {
             [x1, x2, y1, y2] => {
                 let s = div(sub(y2, y1), sub(x2, x1));
@@ -112,11 +112,11 @@ machine Arith with
     );
     
     // Prover function for elliptic curve doubling.
-    query |i| std::prover::compute_from_conditional_multi(
+    query |i| std::prover::compute_from_multi_if(
+        operation_id = 12, // ec_double
         s + q0 + q1 + q2 + x3 + y3,
         i,
         x1 + x2 + y1,
-        operation_id = 12, // ec_double
         |values| match limbs_to_ints(values) {
             [x1, x2, y1] => {
                 let s = div(mul(3, mul(x1, x1)), mul(2, y1));

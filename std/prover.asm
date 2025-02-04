@@ -40,7 +40,7 @@ let compute_from_multi: expr[], int, expr[], (fe[] -> fe[]) -> () = query |dest_
     };
 
 /// Computes the value of a column in a row based on the values of other columns, but only if an equality constraint is met.
-let compute_from_conditional: expr, int, expr[], Constr, (fe[] -> fe) -> () = query |dest_col, row, input_cols, condition, f|
+let compute_from_if: Constr, expr, int, expr[], (fe[] -> fe) -> () = query |condition, dest_col, row, input_cols, f|
     match condition {
         Constr::Identity(l, r) =>
             if eval(l - r) == 0 {
@@ -51,7 +51,7 @@ let compute_from_conditional: expr, int, expr[], Constr, (fe[] -> fe) -> () = qu
     };
 
 /// Computes the value of multiple columns in a row based on the values of other columns, but only if an equality constraint is met.
-let compute_from_conditional_multi: expr[], int, expr[], Constr, (fe[] -> fe[]) -> () = query |dest_cols, row, input_cols, condition, f|
+let compute_from_multi_if: Constr, expr[], int, expr[], (fe[] -> fe[]) -> () = query |condition, dest_cols, row, input_cols, f|
     match condition {
         Constr::Identity(l, r) =>
             if eval(l - r) == 0 {
