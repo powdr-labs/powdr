@@ -65,7 +65,7 @@ impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
             Effect::MachineCall(_, _, args) => Box::new(args.iter()),
             Effect::ProverFunctionCall(ProverFunctionCall {
                 targets, inputs, ..
-            }) => Box::new(targets.iter().chain(inputs)), // TODO Do we need the condition here?
+            }) => Box::new(targets.iter().chain(inputs)),
             Effect::Branch(branch_condition, first, second) => Box::new(
                 iter::once(&branch_condition.variable).chain(
                     [first, second]
