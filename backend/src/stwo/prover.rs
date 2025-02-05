@@ -20,14 +20,13 @@ use std::{fmt, io};
 
 use crate::stwo::circuit_builder::{
     gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
+    PREPROCESSED_TRACE_IDX, STAGE0_TRACE_IDX, STAGE1_TRACE_IDX,
 };
 use crate::stwo::proof::{
     Proof, SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
 };
 
-use stwo_prover::constraint_framework::{
-    TraceLocationAllocator, ORIGINAL_TRACE_IDX, PREPROCESSED_TRACE_IDX,
-};
+use stwo_prover::constraint_framework::TraceLocationAllocator;
 
 use stwo_prover::core::air::{Component, ComponentProver};
 use stwo_prover::core::backend::{Backend, BackendForChannel};
@@ -292,40 +291,26 @@ where
             })
             .collect::<BTreeMap<_, _>>();
 
-        // remember the witness cols that are already transferred to circle domain, so that we don't need to transfer them again in stage 1
-        let mut witness_col_circle_domain_index = BTreeMap::new();
-        let mut index_acc = 0;
-
         // Get witness columns in circle domain for stage 0
-        let mut witness_cols_circle_domain_eval: ColumnVec<
-            Option<CircleEvaluation<B, BaseField, BitReversedOrder>>,
+        let stage0_witness_cols_circle_domain_eval: ColumnVec<
+            CircleEvaluation<B, BaseField, BitReversedOrder>,
         > = witness_by_machine
-            .clone()
             .values()
             .flat_map(|witness_cols| {
-                let witness_cols_in_circle_domain = witness_cols
+                witness_cols
                     .iter()
-                    .enumerate()
-                    .map(|(index, (name, col))| {
-                        witness_col_circle_domain_index.insert(name.clone(), index + index_acc);
-                        Some(gen_stwo_circle_column::<_, BaseField>(
+                    .map(|(_name, col)| {
+                        gen_stwo_circle_column::<_, BaseField>(
                             *domain_map
                                 .get(&(col.len().ilog2() as usize))
                                 .expect("Domain not found for given size"),
                             col,
-                        ))
+                        )
                     })
-                    .collect::<Vec<_>>();
-
-                index_acc += witness_cols_in_circle_domain.len();
-
-                witness_cols_in_circle_domain
+                    .collect_vec()
             })
-            .collect();
+            .collect_vec();
 
-        // TODO: Commit witness and constant columns of stage 0 to generate sound challenges for stage 1. This is not implemented yet.
-        // To commit, Stwo requires the witness and constant columns to be already evaluated in the circle domain,
-        // so `witness_cols_circle_domain_eval` and `constant_cols` should be available at this point.
         let twiddles_max_degree = B::precompute_twiddles(
             CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
                 .circle_domain()
@@ -336,47 +321,61 @@ where
         let mut commitment_scheme =
             CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles_max_degree);
 
+        // commit to constant columns
         let mut tree_builder = commitment_scheme.tree_builder();
-
         tree_builder.extend_evals(constant_cols);
+        tree_builder.commit(prover_channel);
+
+        // commit to witness columns of stage 0
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(stage0_witness_cols_circle_domain_eval);
 
         tree_builder.commit(prover_channel);
 
         // Generate challenges for stage 1 based on stage 0 traces.
-        // Stwo supports a maximum of 2 stages, and challenges are created only for stage 0.
-
-        let stage0_challenges = get_dummy_challenges::<MC>(&self.analyzed);
+        // Stwo supports a maximum of 2 stages, and challenges are created only after stage 0.
+        let stage0_challenges = get_challenges::<MC>(&self.analyzed, prover_channel);
 
         if self.analyzed.stage_count() > 1 {
-            // build witness columns for stage 1 using the callback function, with the generated challenges
-            witness_cols_circle_domain_eval = witness_by_machine
+            // Build witness columns for stage 1 using the callback function, with the generated challenges
+            let stage1_witness_cols_circle_domain_eval = witness_by_machine
                 .into_iter()
-                .flat_map(|(machine_name, machine_witness)| {
-                    witgen_callback.next_stage_witness(
-                        &self.split[&machine_name],
-                        &machine_witness,
-                        stage0_challenges.clone(),
-                        1,
+                .map(|(machine_name, machine_witness)| {
+                    (
+                        machine_witness
+                            .iter()
+                            .map(|(k, _)| k.clone())
+                            .collect::<BTreeSet<_>>(),
+                        witgen_callback.next_stage_witness(
+                            &self.split[&machine_name],
+                            &machine_witness,
+                            stage0_challenges.clone(),
+                            1,
+                        ),
                     )
                 })
-                .map(|(witness_name, vec)| {
-                    if let Some(index) = witness_col_circle_domain_index.get(&witness_name) {
-                        witness_cols_circle_domain_eval[*index].take()
-                    } else {
-                        Some(gen_stwo_circle_column::<B, BaseField>(
-                            *domain_map
-                                .get(&(vec.len().ilog2() as usize))
-                                .expect("Domain not found for given size"),
-                            &vec,
-                        ))
-                    }
-                })
-                .collect();
-        }
+                .flat_map(move |(stage0_columns, callback_result)| {
+                    callback_result
+                        .iter()
+                        .filter_map(|(witness_name, vec)| {
+                            if stage0_columns.contains(witness_name) {
+                                None
+                            } else {
+                                Some(gen_stwo_circle_column::<B, BaseField>(
+                                    *domain_map
+                                        .get(&(vec.len().ilog2() as usize))
+                                        .expect("Domain not found for given size"),
+                                    vec,
+                                ))
+                            }
+                        })
+                        .collect_vec()
+                });
 
-        let mut tree_builder = commitment_scheme.tree_builder();
-        tree_builder.extend_evals(witness_cols_circle_domain_eval.into_iter().flatten());
-        tree_builder.commit(prover_channel);
+            let mut tree_builder = commitment_scheme.tree_builder();
+            tree_builder.extend_evals(stage1_witness_cols_circle_domain_eval);
+            tree_builder.commit(prover_channel);
+        }
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
 
@@ -406,7 +405,7 @@ where
                     component
                 },
             )
-            .collect::<Vec<_>>();
+            .collect_vec();
 
         let components_slice: Vec<&dyn ComponentProver<B>> = components
             .iter()
@@ -451,54 +450,40 @@ where
         let tree_span_provider = &mut TraceLocationAllocator::default();
 
         let mut constant_cols_offset_acc = 0;
-
-        let mut constant_col_log_sizes = vec![];
-        let mut witness_col_log_sizes = vec![];
-
-        // TODO: make the challenge sound, now the challenge is built the same way in prover.
-        let stage0_challenges = get_dummy_challenges::<MC>(&self.analyzed);
-
-        let mut components = self
+        let iter = self
             .split
             .iter()
             .zip_eq(proof.machine_log_sizes.iter())
             .map(
                 |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
                     assert_eq!(machine_name, proof_machine_name);
-
-                    let machine_component = PowdrComponent::new(
-                        tree_span_provider,
-                        PowdrEval::new(
-                            (*pil).clone(),
-                            constant_cols_offset_acc,
-                            machine_log_size,
-                            stage0_challenges.clone(),
-                        ),
-                        (SecureField::zero(), None),
-                    );
-
-                    constant_cols_offset_acc += pil.constant_count();
-
-                    constant_cols_offset_acc += get_constant_with_next_list(pil).len();
-
-                    constant_col_log_sizes.extend(
-                        repeat(machine_log_size)
-                            .take(pil.constant_count() + get_constant_with_next_list(pil).len()),
-                    );
-                    witness_col_log_sizes
-                        .extend(repeat(machine_log_size).take(pil.commitment_count()));
-                    machine_component
+                    (pil, machine_log_size) // Keep only relevant values
                 },
-            )
-            .collect::<Vec<_>>();
+            );
 
-        let mut components_slice: Vec<&dyn Component> = components
-            .iter_mut()
-            .map(|component| component as &dyn Component)
-            .collect();
+        let constant_col_log_sizes = iter
+            .clone()
+            .flat_map(|(pil, machine_log_size)| {
+                repeat(machine_log_size)
+                    .take(pil.constant_count() + get_constant_with_next_list(pil).len())
+            })
+            .collect_vec();
 
-        let components_slice = components_slice.as_mut_slice();
+        let stage0_witness_col_log_sizes = iter
+            .clone()
+            .flat_map(|(pil, machine_log_size)| {
+                repeat(machine_log_size).take(pil.stage_commitment_count(0))
+            })
+            .collect_vec();
 
+        let stage1_witness_col_log_sizes = iter
+            .clone()
+            .flat_map(|(pil, machine_log_size)| {
+                repeat(machine_log_size).take(pil.stage_commitment_count(1))
+            })
+            .collect_vec();
+
+        // Verifier gets the commitments of the constant columns and stage 0 witness columns (two Merkle tree roots)
         commitment_scheme.commit(
             proof.stark_proof.commitments[PREPROCESSED_TRACE_IDX],
             &constant_col_log_sizes,
@@ -506,13 +491,50 @@ where
         );
 
         commitment_scheme.commit(
-            proof.stark_proof.commitments[ORIGINAL_TRACE_IDX],
-            &witness_col_log_sizes,
+            proof.stark_proof.commitments[STAGE0_TRACE_IDX],
+            &stage0_witness_col_log_sizes,
             verifier_channel,
         );
 
+        // Get challenges based on the commitments of constant columns and stage 0 witness columns
+        let stage0_challenges = get_challenges::<MC>(&self.analyzed, verifier_channel);
+
+        let components = iter
+            .clone()
+            .map(|(pil, machine_log_size)| {
+                let machine_component = PowdrComponent::new(
+                    tree_span_provider,
+                    PowdrEval::new(
+                        (*pil).clone(),
+                        constant_cols_offset_acc,
+                        machine_log_size,
+                        stage0_challenges.clone(),
+                    ),
+                    (SecureField::zero(), None),
+                );
+
+                constant_cols_offset_acc += pil.constant_count();
+
+                constant_cols_offset_acc += get_constant_with_next_list(pil).len();
+                machine_component
+            })
+            .collect_vec();
+
+        let components_slice: Vec<&dyn Component> = components
+            .iter()
+            .map(|component| component as &dyn Component)
+            .collect();
+
+        if self.analyzed.stage_count() > 1 {
+            commitment_scheme.commit(
+                proof.stark_proof.commitments[STAGE1_TRACE_IDX],
+                &stage1_witness_col_log_sizes,
+                verifier_channel,
+            );
+        }
+
         stwo_prover::core::prover::verify(
-            components_slice,
+            &components_slice,
             verifier_channel,
             commitment_scheme,
             proof.stark_proof,
@@ -532,7 +554,10 @@ fn get_config() -> PcsConfig {
     }
 }
 
-fn get_dummy_challenges<MC: MerkleChannel>(analyzed: &Analyzed<M31>) -> BTreeMap<u64, M31> {
+fn get_challenges<MC: MerkleChannel>(
+    analyzed: &Analyzed<M31>,
+    challenge_channel: &mut MC::C,
+) -> BTreeMap<u64, M31> {
     let identities = &analyzed.identities;
     let challenges_stage0 = identities
         .iter()
@@ -543,8 +568,6 @@ fn get_dummy_challenges<MC: MerkleChannel>(analyzed: &Analyzed<M31>) -> BTreeMap
             })
         })
         .collect::<BTreeSet<_>>();
-
-    let challenge_channel = &mut <MC as MerkleChannel>::C::default();
 
     // Stwo provides a function to draw challenges from the secure field `QM31`,
     // which consists of 4 `M31` elements.
