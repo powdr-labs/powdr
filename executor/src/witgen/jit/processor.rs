@@ -530,14 +530,6 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
             )
             .unwrap();
         };
-        if !self.incomplete_identities.is_empty() {
-            write!(
-                s,
-                "\nThe following identities have not been fully processed:\n{}",
-                format_identities(&self.incomplete_identities, &self.witgen,)
-            )
-            .unwrap();
-        };
         write!(
             s,
             "\nThe following branch decisions were taken:\n{}",
@@ -548,6 +540,14 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
                 .join("\n")
         )
         .unwrap();
+        if !self.incomplete_identities.is_empty() {
+            write!(
+                s,
+                "\nThe following identities have not been fully processed:\n{}",
+                format_identities(&self.incomplete_identities, &self.witgen,)
+            )
+            .unwrap();
+        };
         let code = self.witgen.code();
         if code.is_empty() {
             write!(s, "\nNo code generated so far.").unwrap();
