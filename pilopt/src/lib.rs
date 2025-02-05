@@ -535,33 +535,59 @@ fn replace_linear_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 
     let (identities_to_remove, intermediate_polys): (BTreeSet<_>, Vec<_>) = linear_polys
         .iter()
-        .filter_map(|(index, ((name, poly_id), expression))| {
+        .filter_map(|(index, ((name, old_poly_id), expression))| {
             // Remove the definition. If this fails, we have already replaced it by an intermediate column.
-            pil_file
-                .definitions
-                .remove(name)
-                .map(|(mut new_symbol, _)| {
-                    let new_poly_id = PolyID {
-                        ptype: PolynomialType::Intermediate,
-                        ..*poly_id
-                    };
-                    new_symbol.kind = SymbolKind::Poly(PolynomialType::Intermediate);
-                    new_symbol.stage = None;
-                    // Add the definition to the intermediate columns
-                    pil_file
-                        .intermediate_columns
-                        .insert(name.clone(), (new_symbol, vec![expression.clone()]));
-                    // Note: the `statement_order` does not need to be updated, since we are still declaring the same symbol
-                    let r = AlgebraicReference {
-                        name: name.clone(),
-                        poly_id: new_poly_id,
-                        next: false,
-                    };
+            pil_file.definitions.remove(name).map(|(symbol, value)| {
+                // sanity checks that we are looking at a single witness column
+                assert!(symbol.kind == SymbolKind::Poly(PolynomialType::Committed));
+                assert!(value.is_none());
+                assert!(symbol.length.is_none());
+
+                // we introduce a new intermediate symbol, so we need a new unique id
+                let id = pil_file
+                    .intermediate_columns
+                    .values()
+                    .flat_map(|(s, _)| s.array_elements())
+                    .map(|(_, poly_id)| poly_id.id)
+                    .max()
+                    .unwrap_or(0)
+                    + 1;
+
+                // the symbol is not an array, so the poly_id uses the same id as the symbol
+                let poly_id = PolyID {
+                    ptype: PolynomialType::Intermediate,
+                    id,
+                };
+
+                let kind = SymbolKind::Poly(PolynomialType::Intermediate);
+
+                let stage = None;
+
+                let symbol = Symbol {
+                    id,
+                    kind,
+                    stage,
+                    ..symbol
+                };
+                // Add the definition to the intermediate columns
+                assert!(pil_file
+                    .intermediate_columns
+                    .insert(name.clone(), (symbol, vec![expression.clone()]))
+                    .is_none());
+                // Note: the `statement_order` does not need to be updated, since we are still declaring the same symbol
+                let r = AlgebraicReference {
+                    name: name.clone(),
+                    poly_id,
+                    next: false,
+                };
+                (
+                    index,
                     (
-                        index,
-                        ((name.clone(), *poly_id), AlgebraicExpression::Reference(r)),
-                    )
-                })
+                        (name.clone(), *old_poly_id),
+                        AlgebraicExpression::Reference(r),
+                    ),
+                )
+            })
         })
         .unzip();
     // we remove the identities by hand here, because they do *not* become trivial by applying this optimization

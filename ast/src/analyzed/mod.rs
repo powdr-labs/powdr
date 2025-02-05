@@ -689,6 +689,7 @@ impl DegreeRange {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Hash)]
 pub struct Symbol {
+    /// Unique ID of the symbol within the set of symbols of this kind.
     pub id: u64,
     pub source: SourceRef,
     pub absolute_name: String,
