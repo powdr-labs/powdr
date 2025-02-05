@@ -58,6 +58,8 @@ pub struct PowdrEval {
     // the pre-processed are indexed in the whole proof, instead of in each component.
     // this offset represents the index of the first pre-processed column in this component
     preprocess_col_offset: usize,
+    // for each stage, for each public input of that stage, the name, the column name, the poly_id, the row index
+    pub(crate) publics_by_stage: Vec<Vec<(String, String, PolyID, usize)>>,
     stage0_witness_columns: BTreeMap<PolyID, usize>,
     stage1_witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
@@ -106,6 +108,14 @@ impl PowdrEval {
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
+        
+        let publics_by_stage = analyzed.get_publics().into_iter().fold(
+            vec![vec![]; analyzed.stage_count()],
+            |mut acc, (name, column_name, id, row, stage)| {
+                acc[stage as usize].push((name, column_name, id, row));
+                acc
+            },
+        );
 
         let poly_stage_map: BTreeMap<PolyID, usize> = stage0_witness_columns
             .keys()
@@ -117,6 +127,7 @@ impl PowdrEval {
             log_degree,
             analyzed,
             preprocess_col_offset,
+            publics_by_stage,
             stage0_witness_columns,
             stage1_witness_columns,
             constant_shifted,

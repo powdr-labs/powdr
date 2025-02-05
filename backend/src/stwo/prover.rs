@@ -435,6 +435,34 @@ where
     }
 
     pub fn verify(&self, proof: &[u8], instances: &[M31]) -> Result<(), String> {
+        // TODO: optimize this to get only needed domain sizes
+        let domain_degree_range = DegreeRange {
+            min: self
+                .analyzed
+                .degree_ranges()
+                .iter()
+                .map(|range| range.min)
+                .min()
+                .unwrap(),
+            max: self
+                .analyzed
+                .degree_ranges()
+                .iter()
+                .map(|range| range.max)
+                .max()
+                .unwrap(),
+        };
+
+        let domain_map: BTreeMap<usize, CircleDomain> = domain_degree_range
+            .iter()
+            .map(|size| {
+                (
+                    size.ilog2() as usize,
+                    CanonicCoset::new(size.ilog2()).circle_domain(),
+                )
+            })
+            .collect();
+
         
         let stage_count = self.analyzed.stage_count();
         // get public values
@@ -454,6 +482,24 @@ where
             .for_each(|(namespace, stage, value)| {
                 instance_map.get_mut(namespace).unwrap()[*stage as usize].push(*value);
             });
+
+            let public_inputs = instance_map
+            .into_iter()
+            .map(|(name, values)| {
+                (
+                    name,
+                    values
+                        .into_iter()
+                        .map(|values| gen_stwo_circle_column::<B, BaseField>(
+                            *domain_map
+                                .get(&(values.len().ilog2() as usize))
+                                .expect("Domain not found for given size"),
+                            &values,
+                        ))
+                        .collect_vec(),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
 
         let config = get_config();
 
