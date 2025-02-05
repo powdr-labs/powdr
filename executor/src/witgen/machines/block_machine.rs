@@ -181,7 +181,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             can_process,
             identity_id,
             known_arguments,
-            queration_id,
+            operation_id,
         ) {
             Some(entry) => (true, entry.range_constraints.clone()),
             None => (false, range_constraints.to_vec()),
