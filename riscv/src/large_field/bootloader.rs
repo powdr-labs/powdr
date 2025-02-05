@@ -40,21 +40,27 @@ pub fn bootloader_preamble() -> String {
 "#.to_string();
 
     for (i, reg) in REGISTER_MEMORY_NAMES
-        .iter()
-        .chain(&REGISTER_NAMES)
+        .into_iter()
+        .chain(
+            REGISTER_NAMES
+                .iter()
+                .map(|r| r.strip_prefix("main::").unwrap()),
+        )
         .enumerate()
     {
-        let reg = reg.strip_prefix("main::").unwrap();
         preamble.push_str(&format!(
             "    //public initial_{reg} = main_bootloader_inputs::value({i});\n"
         ));
     }
     for (i, reg) in REGISTER_MEMORY_NAMES
-        .iter()
-        .chain(&REGISTER_NAMES)
+        .into_iter()
+        .chain(
+            REGISTER_NAMES
+                .iter()
+                .map(|r| r.strip_prefix("main::").unwrap()),
+        )
         .enumerate()
     {
-        let reg = reg.strip_prefix("main::").unwrap();
         preamble.push_str(&format!(
             "    //public final_{reg} = main_bootloader_inputs::value({});\n",
             i + REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len()
@@ -475,8 +481,7 @@ assert_bootloader_input 0, 25, 1, {MEMORY_HASH_START_INDEX} + 15;
     ));
 
     // Go over all memory registers
-    for (i, reg) in REGISTER_MEMORY_NAMES.iter().enumerate() {
-        let reg = reg.strip_prefix("main::").unwrap();
+    for (i, reg) in REGISTER_MEMORY_NAMES.into_iter().enumerate() {
         bootloader.push_str(&format!(
             r#"load_bootloader_input 0, {}, 1, {i};"#,
             Register::from(reg).addr()
@@ -537,8 +542,7 @@ shutdown_start:
     );
 
     // Go over all memory registers
-    for (i, reg) in REGISTER_MEMORY_NAMES.iter().enumerate() {
-        let reg = reg.strip_prefix("main::").unwrap();
+    for (i, reg) in REGISTER_MEMORY_NAMES.into_iter().enumerate() {
         bootloader.push_str(&format!(
             "assert_bootloader_input 0, {}, 1, {};\n",
             Register::from(reg).addr(),
