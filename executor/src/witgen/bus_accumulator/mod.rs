@@ -15,7 +15,7 @@ use powdr_executor_utils::{
     VariablySizedColumn,
 };
 use powdr_number::{DegreeType, FieldElement, KnownField};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator, IntoParallelIterator};
 
 mod extension_field;
 mod fp2;
@@ -135,15 +135,35 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
             .collect();
     
         // Now group by PolyID and sum the Vec<T> values element-wise.
-        let mut columns: BTreeMap<PolyID, Vec<T>> = BTreeMap::new();
-        for (poly_id, column) in intermediate {
-            columns.entry(poly_id).and_modify(|existing| {
-                // We assume both vectors have the same length.
-                for (a, b) in existing.iter_mut().zip(&column) {
-                    *a += *b;
-                }
-            }).or_insert(column);
-        }
+        let mut columns: BTreeMap<PolyID, Vec<T>> = intermediate
+            .into_par_iter()
+            // Each thread builds its own BTreeMap.
+            .fold(
+                || BTreeMap::new(),
+                |mut acc, (poly_id, column)| {
+                    acc.entry(poly_id).and_modify(|existing: &mut Vec<T>| {
+                        // Element-wise addition. We assume both vectors have the same length.
+                        for (a, b) in existing.iter_mut().zip(&column) {
+                            *a += *b;
+                        }
+                    }).or_insert(column);
+                    acc
+                },
+            )
+            // Merge the thread-local BTreeMaps.
+            .reduce(
+                || BTreeMap::new(),
+                |mut map1, map2| {
+                    for (poly_id, column) in map2 {
+                        map1.entry(poly_id).and_modify(|existing| {
+                            for (a, b) in existing.iter_mut().zip(&column) {
+                                *a += *b;
+                            }
+                        }).or_insert(column);
+                    }
+                    map1
+                },
+            );
     
         // Finally, for each committed poly from the PIL in stage 1, remove its column from the map.
         let result = self.pil
