@@ -15,7 +15,7 @@ use powdr_executor_utils::{
     VariablySizedColumn,
 };
 use powdr_number::{DegreeType, FieldElement, KnownField};
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 mod extension_field;
 mod fp2;
@@ -123,7 +123,7 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
 
     pub fn generate(&self) -> Vec<(String, Vec<T>)> {
         // First, collect all (PolyID, Vec<T>) pairs from all bus interactions.
-        let intermediate: Vec<(PolyID, Vec<T>)> = self
+        let mut columns: BTreeMap<PolyID, Vec<T>> = self
             .bus_interactions
             .par_iter()
             .flat_map(|bus_interaction| {
@@ -132,17 +132,12 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
                     .chain(collect_acc_columns(bus_interaction, acc))
                     .collect::<Vec<_>>()
             })
-            .collect();
-
-        // Now group by PolyID and sum the Vec<T> values element-wise.
-        let mut columns: BTreeMap<PolyID, Vec<T>> = intermediate
-            .into_par_iter()
             // Each thread builds its own BTreeMap.
             .fold(BTreeMap::new, |mut acc, (poly_id, column)| {
                 acc.entry(poly_id)
                     .and_modify(|existing: &mut Vec<T>| {
                         // Element-wise addition. We assume both vectors have the same length.
-                        for (a, b) in existing.iter_mut().zip(&column) {
+                        for (a, b) in existing.iter_mut().zip_eq(&column) {
                             *a += *b;
                         }
                     })
@@ -154,7 +149,7 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
                 for (poly_id, column) in map2 {
                     map1.entry(poly_id)
                         .and_modify(|existing| {
-                            for (a, b) in existing.iter_mut().zip(&column) {
+                            for (a, b) in existing.iter_mut().zip_eq(&column) {
                                 *a += *b;
                             }
                         })
