@@ -341,11 +341,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .map(|e| e.as_ref().and_then(|e| e.try_to_known()).is_some())
             .collect();
 
-        let Some(new_range_constraints) =
-            can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints)
-        else {
-            return ProcessResult::empty();
-        };
+        let (can_process, new_range_constraints) =
+            can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints);
+
         let mut effects = vec![];
         let vars = arguments
             .iter()
@@ -365,10 +363,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 var
             })
             .collect_vec();
-        effects.push(Effect::MachineCall(lookup_id, known, vars.clone()));
+        if can_process {
+            effects.push(Effect::MachineCall(lookup_id, known, vars.clone()));
+        }
         ProcessResult {
             effects,
-            complete: true,
+            complete: can_process,
         }
     }
 
@@ -680,17 +680,17 @@ pub trait FixedEvaluator<T: FieldElement>: Clone {
 }
 
 pub trait CanProcessCall<T: FieldElement>: Clone {
-    /// Returns Some(..) if a call to the machine that handles the given identity
+    /// Returns (true, _) if a call to the machine that handles the given identity
     /// can always be processed with the given known inputs and range constraints
     /// on the parameters.
-    /// The value in the Option is a vector of new range constraints.
+    /// The second return value is a vector of new range constraints.
     /// @see Machine::can_process_call
     fn can_process_call_fully(
         &self,
         _identity_id: u64,
         _known_inputs: &BitVec,
         _range_constraints: &[RangeConstraint<T>],
-    ) -> Option<Vec<RangeConstraint<T>>>;
+    ) -> (bool, Vec<RangeConstraint<T>>);
 }
 
 impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'_, T, Q> {
@@ -699,7 +699,7 @@ impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'
         identity_id: u64,
         known_inputs: &BitVec,
         range_constraints: &[RangeConstraint<T>],
-    ) -> Option<Vec<RangeConstraint<T>>> {
+    ) -> (bool, Vec<RangeConstraint<T>>) {
         MutableState::can_process_call_fully(self, identity_id, known_inputs, range_constraints)
     }
 }
@@ -873,37 +873,37 @@ namespace Xor(256 * 256);
 Xor::A_byte[6] = ((Xor::A[7] & 0xff000000) // 16777216);
 Xor::A[6] = (Xor::A[7] & 0xffffff);
 assert (Xor::A[7] & 0xffffffff00000000) == 0;
+call_var(0, 6, 0) = Xor::A_byte[6];
 Xor::C_byte[6] = ((Xor::C[7] & 0xff000000) // 16777216);
 Xor::C[6] = (Xor::C[7] & 0xffffff);
 assert (Xor::C[7] & 0xffffffff00000000) == 0;
+call_var(0, 6, 2) = Xor::C_byte[6];
 Xor::A_byte[5] = ((Xor::A[6] & 0xff0000) // 65536);
 Xor::A[5] = (Xor::A[6] & 0xffff);
 assert (Xor::A[6] & 0xffffffffff000000) == 0;
+call_var(0, 5, 0) = Xor::A_byte[5];
 Xor::C_byte[5] = ((Xor::C[6] & 0xff0000) // 65536);
 Xor::C[5] = (Xor::C[6] & 0xffff);
 assert (Xor::C[6] & 0xffffffffff000000) == 0;
-call_var(0, 6, 0) = Xor::A_byte[6];
-call_var(0, 6, 2) = Xor::C_byte[6];
+call_var(0, 5, 2) = Xor::C_byte[5];
 machine_call(0, [Known(call_var(0, 6, 0)), Unknown(call_var(0, 6, 1)), Known(call_var(0, 6, 2))]);
 Xor::B_byte[6] = call_var(0, 6, 1);
 Xor::A_byte[4] = ((Xor::A[5] & 0xff00) // 256);
 Xor::A[4] = (Xor::A[5] & 0xff);
 assert (Xor::A[5] & 0xffffffffffff0000) == 0;
+call_var(0, 4, 0) = Xor::A_byte[4];
 Xor::C_byte[4] = ((Xor::C[5] & 0xff00) // 256);
 Xor::C[4] = (Xor::C[5] & 0xff);
 assert (Xor::C[5] & 0xffffffffffff0000) == 0;
-call_var(0, 5, 0) = Xor::A_byte[5];
-call_var(0, 5, 2) = Xor::C_byte[5];
+call_var(0, 4, 2) = Xor::C_byte[4];
 machine_call(0, [Known(call_var(0, 5, 0)), Unknown(call_var(0, 5, 1)), Known(call_var(0, 5, 2))]);
 Xor::B_byte[5] = call_var(0, 5, 1);
 Xor::A_byte[3] = Xor::A[4];
+call_var(0, 3, 0) = Xor::A_byte[3];
 Xor::C_byte[3] = Xor::C[4];
-call_var(0, 4, 0) = Xor::A_byte[4];
-call_var(0, 4, 2) = Xor::C_byte[4];
+call_var(0, 3, 2) = Xor::C_byte[3];
 machine_call(0, [Known(call_var(0, 4, 0)), Unknown(call_var(0, 4, 1)), Known(call_var(0, 4, 2))]);
 Xor::B_byte[4] = call_var(0, 4, 1);
-call_var(0, 3, 0) = Xor::A_byte[3];
-call_var(0, 3, 2) = Xor::C_byte[3];
 machine_call(0, [Known(call_var(0, 3, 0)), Unknown(call_var(0, 3, 1)), Known(call_var(0, 3, 2))]);
 Xor::B_byte[3] = call_var(0, 3, 1);
 Xor::B[4] = Xor::B_byte[3];

@@ -321,43 +321,43 @@ main_binary::operation_id[2] = main_binary::operation_id[3];
 main_binary::operation_id[1] = main_binary::operation_id[2];
 main_binary::operation_id[0] = main_binary::operation_id[1];
 main_binary::operation_id_next[-1] = main_binary::operation_id[0];
+call_var(9, -1, 0) = main_binary::operation_id_next[-1];
 main_binary::operation_id_next[0] = main_binary::operation_id[1];
+call_var(9, 0, 0) = main_binary::operation_id_next[0];
 main_binary::operation_id_next[1] = main_binary::operation_id[2];
+call_var(9, 1, 0) = main_binary::operation_id_next[1];
 main_binary::A_byte[2] = ((main_binary::A[3] & 0xff000000) // 16777216);
 main_binary::A[2] = (main_binary::A[3] & 0xffffff);
 assert (main_binary::A[3] & 0xffffffff00000000) == 0;
 main_binary::A_byte[1] = ((main_binary::A[2] & 0xff0000) // 65536);
 main_binary::A[1] = (main_binary::A[2] & 0xffff);
 assert (main_binary::A[2] & 0xffffffffff000000) == 0;
+call_var(9, 1, 1) = main_binary::A_byte[1];
 main_binary::A_byte[0] = ((main_binary::A[1] & 0xff00) // 256);
 main_binary::A[0] = (main_binary::A[1] & 0xff);
 assert (main_binary::A[1] & 0xffffffffffff0000) == 0;
+call_var(9, 0, 1) = main_binary::A_byte[0];
 main_binary::A_byte[-1] = main_binary::A[0];
+call_var(9, -1, 1) = main_binary::A_byte[-1];
 main_binary::B_byte[2] = ((main_binary::B[3] & 0xff000000) // 16777216);
 main_binary::B[2] = (main_binary::B[3] & 0xffffff);
 assert (main_binary::B[3] & 0xffffffff00000000) == 0;
 main_binary::B_byte[1] = ((main_binary::B[2] & 0xff0000) // 65536);
 main_binary::B[1] = (main_binary::B[2] & 0xffff);
 assert (main_binary::B[2] & 0xffffffffff000000) == 0;
+call_var(9, 1, 2) = main_binary::B_byte[1];
 main_binary::B_byte[0] = ((main_binary::B[1] & 0xff00) // 256);
 main_binary::B[0] = (main_binary::B[1] & 0xff);
 assert (main_binary::B[1] & 0xffffffffffff0000) == 0;
+call_var(9, 0, 2) = main_binary::B_byte[0];
 main_binary::B_byte[-1] = main_binary::B[0];
-call_var(9, -1, 0) = main_binary::operation_id_next[-1];
-call_var(9, -1, 1) = main_binary::A_byte[-1];
 call_var(9, -1, 2) = main_binary::B_byte[-1];
 machine_call(9, [Known(call_var(9, -1, 0)), Known(call_var(9, -1, 1)), Known(call_var(9, -1, 2)), Unknown(call_var(9, -1, 3))]);
 main_binary::C_byte[-1] = call_var(9, -1, 3);
 main_binary::C[0] = main_binary::C_byte[-1];
-call_var(9, 0, 0) = main_binary::operation_id_next[0];
-call_var(9, 0, 1) = main_binary::A_byte[0];
-call_var(9, 0, 2) = main_binary::B_byte[0];
 machine_call(9, [Known(call_var(9, 0, 0)), Known(call_var(9, 0, 1)), Known(call_var(9, 0, 2)), Unknown(call_var(9, 0, 3))]);
 main_binary::C_byte[0] = call_var(9, 0, 3);
 main_binary::C[1] = (main_binary::C[0] + (main_binary::C_byte[0] * 256));
-call_var(9, 1, 0) = main_binary::operation_id_next[1];
-call_var(9, 1, 1) = main_binary::A_byte[1];
-call_var(9, 1, 2) = main_binary::B_byte[1];
 machine_call(9, [Known(call_var(9, 1, 0)), Known(call_var(9, 1, 1)), Known(call_var(9, 1, 2)), Unknown(call_var(9, 1, 3))]);
 main_binary::C_byte[1] = call_var(9, 1, 3);
 main_binary::C[2] = (main_binary::C[1] + (main_binary::C_byte[1] * 65536));
@@ -397,6 +397,44 @@ params[3] = main_binary::C[3];"
             "Sub::a[0] = params[0];
 Sub::b[0] = prover_function_0(0, [Sub::a[0]]);
 params[1] = Sub::b[0];"
+        );
+    }
+
+    #[test]
+    fn complex_fixed_lookup_range_constraint() {
+        let input = "
+        namespace main(256);
+            col witness a, b, c;
+            [a, b, c] is SubM.sel $ [SubM.a, SubM.b, SubM.c]; 
+        namespace SubM(256);
+            col witness a, b, c;
+            let sel: col = |i| (i + 1) % 2;
+            let clock_0: col = |i| i % 2;
+            let clock_1: col = |i| (i + 1) % 2;
+            let byte: col = |i| i & 0xff;
+            [ b * clock_0 + c * clock_1 ] in [ byte ];
+            (b' - b) * sel = 0;
+            (c' - c) * sel = 0;
+            a = b * 256 + c;
+        ";
+        let code = generate_for_block_machine(input, "SubM", 1, 2)
+            .unwrap()
+            .code;
+        assert_eq!(
+            format_code(&code),
+            "SubM::a[0] = params[0];
+SubM::b[0] = ((SubM::a[0] & 0xff00) // 256);
+SubM::c[0] = (SubM::a[0] & 0xff);
+assert (SubM::a[0] & 0xffffffffffff0000) == 0;
+params[1] = SubM::b[0];
+params[2] = SubM::c[0];
+call_var(1, 0, 0) = SubM::c[0];
+machine_call(1, [Known(call_var(1, 0, 0))]);
+SubM::b[1] = SubM::b[0];
+call_var(1, 1, 0) = SubM::b[1];
+SubM::c[1] = SubM::c[0];
+machine_call(1, [Known(call_var(1, 1, 0))]);
+SubM::a[1] = ((SubM::b[1] * 256) + SubM::c[1]);"
         );
     }
 }

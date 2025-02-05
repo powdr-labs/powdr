@@ -168,13 +168,17 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_arguments: &BitVec,
-        _range_constraints: &[RangeConstraint<T>],
-    ) -> Option<Vec<RangeConstraint<T>>> {
+        range_constraints: &[RangeConstraint<T>],
+    ) -> (bool, Vec<RangeConstraint<T>>) {
         // We do not use the input range constraints because then we would need
         // to generate new code depending on the range constraints as well.
-        self.function_cache
+        match self
+            .function_cache
             .compile_cached(can_process, identity_id, known_arguments)
-            .map(|r| r.range_constraints.clone())
+        {
+            Some(entry) => (true, entry.range_constraints.clone()),
+            None => (false, range_constraints.to_vec()),
+        }
     }
 
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
