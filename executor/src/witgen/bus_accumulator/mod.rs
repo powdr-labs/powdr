@@ -139,7 +139,7 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
             .into_par_iter()
             // Each thread builds its own BTreeMap.
             .fold(
-                || BTreeMap::new(),
+                BTreeMap::new,
                 |mut acc, (poly_id, column)| {
                     acc.entry(poly_id).and_modify(|existing: &mut Vec<T>| {
                         // Element-wise addition. We assume both vectors have the same length.
@@ -152,7 +152,7 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
             )
             // Merge the thread-local BTreeMaps.
             .reduce(
-                || BTreeMap::new(),
+                BTreeMap::new,
                 |mut map1, map2| {
                     for (poly_id, column) in map2 {
                         map1.entry(poly_id).and_modify(|existing| {
