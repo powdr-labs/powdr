@@ -13,6 +13,7 @@ use crate::witgen::{
 
 use super::{
     processor::ProcessorResult,
+    prover_function_heuristics::ProverFunction,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -50,7 +51,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_args: &BitVec,
-    ) -> Result<ProcessorResult<T>, String> {
+    ) -> Result<(ProcessorResult<T>, Vec<ProverFunction<'a, T>>), String> {
         let connection = self.machine_parts.connections[&identity_id];
         assert_eq!(connection.right.expressions.len(), known_args.len());
 
@@ -119,7 +120,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .iter()
             .enumerate()
             .filter_map(|(i, is_input)| (!is_input).then_some(Variable::Param(i)));
-        Processor::new(
+        let result = Processor::new(
             self.fixed_data,
             self,
             identities,
@@ -154,7 +155,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .take(10)
                 .format("\n  ");
             format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
-        })
+        })?;
+        Ok((result, prover_functions))
     }
 }
 
@@ -243,7 +245,9 @@ mod test {
                 .chain((0..num_outputs).map(|_| false)),
         );
 
-        processor.generate_code(&mutable_state, connection_id, &known_values)
+        processor
+            .generate_code(&mutable_state, connection_id, &known_values)
+            .map(|(result, _)| result)
     }
 
     #[test]
