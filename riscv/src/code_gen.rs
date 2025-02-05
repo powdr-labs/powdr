@@ -8,6 +8,50 @@ use crate::CompilerOptions;
 use crate::large_field;
 use crate::small_field;
 
+/// These are the names of the RISCV registers that are stored in memory.
+pub const REGISTER_MEMORY_NAMES: [&str; 36] = [
+    "x0",
+    "x1",
+    "x2",
+    "x3",
+    "x4",
+    "x5",
+    "x6",
+    "x7",
+    "x8",
+    "x9",
+    "x10",
+    "x11",
+    "x12",
+    "x13",
+    "x14",
+    "x15",
+    "x16",
+    "x17",
+    "x18",
+    "x19",
+    "x20",
+    "x21",
+    "x22",
+    "x23",
+    "x24",
+    "x25",
+    "x26",
+    "x27",
+    "x28",
+    "x29",
+    "x30",
+    "x31",
+    "tmp1",
+    "tmp2",
+    "tmp3",
+    "tmp4",
+    "lr_sc_reservation",
+];
+
+/// List of machine registers, declared in the asm machine.
+pub const REGISTER_NAMES: [&str; 3] = ["main::query_arg_1", "main::query_arg_2", "main::pc"];
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Register {
     value: u8,
@@ -29,43 +73,17 @@ impl Register {
 
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.value < 32 {
-            // 0 indexed
-            write!(f, "x{}", self.value)
-        } else if self.value < 36 {
-            // 1 indexed
-            write!(f, "tmp{}", self.value - 31 + 1)
-        } else if self.value == 36 {
-            write!(f, "lr_sc_reservation")
-        } else {
-            // 0 indexed
-            write!(f, "xtra{}", self.value - 37)
-        }
+        write!(f, "{}", REGISTER_MEMORY_NAMES[self.value as usize])
     }
 }
 
 impl From<&str> for Register {
     fn from(s: &str) -> Self {
-        if let Some(prefix) = s.strip_prefix("xtra") {
-            // 0 indexed
-            let value: u8 = prefix.parse().expect("Invalid register");
-            Self::new(value + 37)
-        } else if let Some(prefix) = s.strip_prefix('x') {
-            // 0 indexed
-            let value = prefix.parse().expect("Invalid register");
-            assert!(value < 32, "Invalid register");
-            Self::new(value)
-        } else if let Some(prefix) = s.strip_prefix("tmp") {
-            // 1 indexed
-            let value: u8 = prefix.parse().expect("Invalid register");
-            assert!(value >= 1);
-            assert!(value <= 4);
-            Self::new(value - 1 + 32)
-        } else if s == "lr_sc_reservation" {
-            Self::new(36)
-        } else {
-            panic!("Invalid register")
-        }
+        REGISTER_MEMORY_NAMES
+            .iter()
+            .position(|&name| name == s)
+            .map(|value| Self::new(value as u8))
+            .unwrap_or_else(|| panic!("Invalid register"))
     }
 }
 

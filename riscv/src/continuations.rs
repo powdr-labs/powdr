@@ -14,10 +14,9 @@ use powdr_riscv_executor::{get_main_machine, MemoryState, ProfilerOptions};
 pub mod bootloader;
 mod memory_merkle_tree;
 
+use crate::code_gen::{REGISTER_MEMORY_NAMES, REGISTER_NAMES};
 use bootloader::split_fe;
-use bootloader::{
-    default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_MEMORY_NAMES, REGISTER_NAMES,
-};
+use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX};
 use memory_merkle_tree::MerkleTree;
 use rand::Rng;
 
