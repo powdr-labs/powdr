@@ -224,7 +224,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
 
         // If there is a condition, only continue if the constraint
-        // is known to be hold.
+        // is known to hold.
         if let Some(condition) = prover_function.condition.as_ref() {
             if self
                 .evaluate(condition, row_offset)
