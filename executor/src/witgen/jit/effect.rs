@@ -43,8 +43,8 @@ impl<T: FieldElement> Effect<T, Variable> {
                     .zip_eq(known)
                     .flat_map(|(v, known)| (!known).then_some((v, true))),
             ),
-            Effect::ProverFunctionCall(ProverFunctionCall { target, .. }) => {
-                Box::new(iter::once((target, false)))
+            Effect::ProverFunctionCall(ProverFunctionCall { targets, .. }) => {
+                Box::new(targets.iter().map(|v| (v, false)))
             }
             Effect::Branch(_, first, second) => {
                 Box::new(first.iter().chain(second).flat_map(|e| e.written_vars()))
@@ -63,9 +63,9 @@ impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
                 Box::new(lhs.referenced_symbols().chain(rhs.referenced_symbols()))
             }
             Effect::MachineCall(_, _, args) => Box::new(args.iter()),
-            Effect::ProverFunctionCall(ProverFunctionCall { target, inputs, .. }) => {
-                Box::new(iter::once(target).chain(inputs))
-            }
+            Effect::ProverFunctionCall(ProverFunctionCall {
+                targets, inputs, ..
+            }) => Box::new(targets.iter().chain(inputs)),
             Effect::Branch(branch_condition, first, second) => Box::new(
                 iter::once(&branch_condition.variable).chain(
                     [first, second]
@@ -123,8 +123,8 @@ pub struct BranchCondition<T: FieldElement, V> {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct ProverFunctionCall<V> {
-    /// Which variable to assign the result to.
-    pub target: V,
+    /// Which variables to assign the result to.
+    pub targets: Vec<V>,
     /// The index of the prover function in the list.
     pub function_index: usize,
     /// The row offset to supply to the prover function.
@@ -166,13 +166,14 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
                 panic!("Range constraints should not be part of the code.")
             }
             Effect::ProverFunctionCall(ProverFunctionCall {
-                target,
+                targets,
                 function_index,
                 row_offset,
                 inputs,
             }) => {
                 format!(
-                    "{target} = prover_function_{function_index}({row_offset}, [{}]);",
+                    "[{}] = prover_function_{function_index}({row_offset}, [{}]);",
+                    targets.iter().join(", "),
                     inputs.iter().join(", ")
                 )
             }
