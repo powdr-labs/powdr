@@ -39,6 +39,20 @@ let materialize_folded: -> bool = || match known_field() {
     _ => panic("Unexpected field!")
 };
 
+// Helper function.
+// Implemented as: folded = (beta - fingerprint(id, payload...));
+let create_folded: expr, expr[], Ext<expr>, Ext<expr> -> Ext<expr> = constr |id, payload, alpha, beta| 
+    if materialize_folded() {
+        let folded = from_array(
+            array::new(required_extension_size(),
+                    |i| std::prover::new_witness_col_at_stage("folded", 1))
+        );
+        constrain_eq_ext(folded, sub_ext(beta, fingerprint_with_id_inter(id, payload, alpha)));
+        folded
+    } else {
+        sub_ext(beta, fingerprint_with_id_inter(id, payload, alpha))
+    };
+
 /// Sends the payload (id, payload...) to the bus by adding
 /// `multiplicity / (beta - fingerprint(id, payload...))` to `acc`
 /// It is the callers responsibility to properly constrain the multiplicity (e.g. constrain
@@ -110,26 +124,8 @@ let bus_multi_interaction: expr, expr[], expr, expr, expr, expr[], expr, expr ->
     let beta = from_array(array::new(extension_field_size, |i| challenge(0, i + 1 + extension_field_size)));
 
     // Implemented as: folded = (beta - fingerprint(id, payload...));
-    let folded_0 = if materialize_folded() {
-        let folded_0 = from_array(
-            array::new(extension_field_size,
-                    |i| std::prover::new_witness_col_at_stage("folded_0", 1))
-        );
-        constrain_eq_ext(folded_0, sub_ext(beta, fingerprint_with_id_inter(id_0, payload_0, alpha)));
-        folded_0
-    } else {
-        sub_ext(beta, fingerprint_with_id_inter(id_0, payload_0, alpha))
-    };
-    let folded_1 = if materialize_folded() {
-        let folded_1 = from_array(
-            array::new(extension_field_size,
-                    |i| std::prover::new_witness_col_at_stage("folded_1", 1))
-        );
-        constrain_eq_ext(folded_1, sub_ext(beta, fingerprint_with_id_inter(id_1, payload_1, alpha)));
-        folded_1
-    } else {
-        sub_ext(beta, fingerprint_with_id_inter(id_1, payload_1, alpha))
-    };
+    let folded_0 = create_folded(id_0, payload_0, alpha, beta);
+    let folded_1 = create_folded(id_1, payload_1, alpha, beta);
 
     let folded_next_0 = next_ext(folded_0);
     let folded_next_1 = next_ext(folded_1);
@@ -167,6 +163,84 @@ let bus_multi_interaction: expr, expr[], expr, expr, expr, expr[], expr, expr ->
     // Add phantom bus interaction
     Constr::PhantomBusInteraction(multiplicity_0, id_0, payload_0, latch_0, unpack_ext_array(folded_0), acc);
     Constr::PhantomBusInteraction(multiplicity_1, id_1, payload_1, latch_1, unpack_ext_array(folded_1), acc);
+};
+
+/// Multi version of `bus_interaction`.
+/// Batches two bus interactions.
+/// Requires a prove system constraint degree bound of 4 or more (so won't work with our setup of Plonky3).
+/// In practice, saves `acc`, `is_first`, `alpha`, and `beta` columns as well as rotated columns thereof.
+let bus_multi_interaction_2: expr[], expr[][], expr[], expr[] -> () = constr |ids, payloads, multiplicities, latches| {
+
+    // Check length of inputs
+    let input_len: int = array::len(ids);
+    assert(input_len == array::len(payloads), || "inputs ids and payloads have unequal lengths");
+    assert(input_len == array::len(multiplicities), || "inputs ids and multiplicities have unequal lengths");
+    assert(input_len == array::len(latches), || "inputs ids and latches have unequal lengths");
+
+    let extension_field_size = required_extension_size();
+
+    // Alpha is used to compress the LHS and RHS arrays.
+    let alpha = from_array(array::new(extension_field_size, |i| challenge(0, i + 1)));
+    // Beta is used to update the accumulator.
+    let beta = from_array(array::new(extension_field_size, |i| challenge(0, i + 1 + extension_field_size)));
+
+    // Create folded columns.
+    let folded_arr = array::new(input_len, |i| create_folded(ids[i], payloads[i], alpha, beta)); // Ext<expr>[]
+    let folded_next_arr = array::map(folded_arr, |folded| next_ext(folded)); // Ext<expr>[]
+
+    let m_ext_arr = array::map(multiplicities, |multiplicity| from_base(multiplicity)); // Ext<expr>[]
+    let m_ext_next_arr = array::map(m_ext_arr, |m_ext| next_ext(m_ext)); // Ext<expr>[]
+
+    let acc = array::new(extension_field_size, |i| std::prover::new_witness_col_at_stage("acc", 1));
+    let acc_ext = from_array(acc);
+    let next_acc = next_ext(acc_ext);
+
+    let is_first: col = std::well_known::is_first;
+    let is_first_next = from_base(is_first');
+
+    // Create helper columns to bound degree to 3 for arbitrary number of bus interactions.
+    // Each helper processes two bus interactions:
+    // helper_i = multiplicity_{2*i}' / folded_{2*i}' + multiplicity_{2*i+1}' / folded_{2*i+1}'
+    // Or equivalently when expanded:
+    // folded_{2*i}' * folded_{2*i+1}' * helper_i - folded_{2*i+1}' * multiplicity_{2*i}' - folded_{2*i}' * multiplicity_{2*i+1}' = 0
+    let helper_arr = array::new(
+        array::new
+    );
+    
+    let helper_expr_arr = array::new(
+        (input_len + 1) / 2,
+        |i| sub_ext(
+            sub_ext(
+                mul_ext(
+                    mul_ext(folded_next_arr[2 * i], folded_next_arr[2 * i + 1]),
+                    helper[i]
+                ),
+                mul_ext(folded_next[2 * i + 1], multiplicity_next[2 * i])
+            ),
+            mul_ext(folded_next[2 * i], multiplicity_next[2 * i + 1])
+        )
+    );
+
+//    // Update rule:
+//    // acc' =  acc * (1 - is_first') + multiplicity_0' / folded_0' + multiplicity_1' / folded_1'
+//    // or equivalently:
+//    // folded_0' * folded_1' * (acc' - acc * (1 - is_first')) - multiplicity_0' * folded_1' - multiplicity_1' * folded_0' = 0
+//    let update_expr = sub_ext(
+//        sub_ext(
+//            mul_ext(
+//                mul_ext(folded_next_0, folded_next_1),
+//                sub_ext(next_acc, mul_ext(acc_ext, sub_ext(from_base(1), is_first_next)))
+//            ),
+//            mul_ext(m_ext_next_0, folded_next_1)
+//        ),
+//        mul_ext(m_ext_next_1, folded_next_0)
+//    );
+//    
+//    constrain_eq_ext(update_expr, from_base(0));
+//
+//    // Add phantom bus interaction
+//    Constr::PhantomBusInteraction(multiplicity_0, id_0, payload_0, latch_0, unpack_ext_array(folded_0), acc);
+//    Constr::PhantomBusInteraction(multiplicity_1, id_1, payload_1, latch_1, unpack_ext_array(folded_1), acc);
 };
 
 /// Compute acc' = acc * (1 - is_first') + multiplicity' / fingerprint(id, payload...),
@@ -220,3 +294,14 @@ let bus_multi_send: expr, expr[], expr, expr, expr[], expr -> () = constr |id_0,
 let bus_multi_receive: expr, expr[], expr, expr, expr, expr[], expr, expr -> () = constr |id_0, payload_0, multiplicity_0, latch_0, id_1, payload_1, multiplicity_1, latch_1| {
     bus_multi_interaction(id_0, payload_0, -multiplicity_0, latch_0, id_1, payload_1, -multiplicity_1, latch_1);
 };
+
+// /// Convenience function for bus interaction to send columns
+// let bus_multi_send_2: expr[], expr[][], expr[] -> () = constr |id, payload, multiplicity| {
+//     // For bus sends, the multiplicity always equals the latch
+//     bus_multi_interaction_2(id, payload, multiplicity, multiplicity);
+// };
+// 
+// /// Convenience function for bus interaction to receive columns
+// let bus_multi_receive_2: expr[], expr[][], expr[], expr[] -> () = constr |id, payload, multiplicity, latch| {
+//     bus_multi_interaction_2(id, payload, -multiplicity, latch);
+// };
