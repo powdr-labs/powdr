@@ -9,7 +9,7 @@ use crate::large_field;
 use crate::small_field;
 
 /// These are the names of the RISCV registers that are stored in memory.
-pub const REGISTER_MEMORY_NAMES: [&str; 36] = [
+pub const REGISTER_MEMORY_NAMES: [&str; 37] = [
     "x0",
     "x1",
     "x2",
@@ -50,6 +50,7 @@ pub const REGISTER_MEMORY_NAMES: [&str; 36] = [
 ];
 
 /// List of machine registers, declared in the asm machine.
+/// NOTE: the bootloader expects the PC to be the last register in this list.
 pub const REGISTER_NAMES: [&str; 3] = ["main::query_arg_1", "main::query_arg_2", "main::pc"];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
