@@ -97,12 +97,21 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
 
         // we use a set to collect all used challenges
         let mut challenges_by_stage = vec![BTreeSet::new(); analyzed.stage_count()];
-        for identity in &identities {
-            identity.pre_visit_expressions(&mut |expr| {
-                if let AlgebraicExpression::Challenge(challenge) = expr {
-                    challenges_by_stage[challenge.stage as usize].insert(challenge.id);
-                }
-            });
+        {
+            for identity in &identities {
+                identity.pre_visit_expressions(&mut |expr| {
+                    if let AlgebraicExpression::Challenge(challenge) = expr {
+                        challenges_by_stage[challenge.stage as usize].insert(challenge.id);
+                    }
+                });
+            }
+            for definition in analyzed.intermediate_definitions().values() {
+                definition.pre_visit_expressions(&mut |expr| {
+                    if let AlgebraicExpression::Challenge(challenge) = expr {
+                        challenges_by_stage[challenge.stage as usize].insert(challenge.id);
+                    }
+                });
+            }
         }
 
         // finally, we convert the set to a vector

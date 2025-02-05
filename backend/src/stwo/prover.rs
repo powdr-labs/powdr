@@ -567,6 +567,17 @@ fn get_challenges<MC: MerkleChannel>(
                 _ => None,
             })
         })
+        .chain(
+            // Note: iterating on a `HashMap` is fine here because we are creating another map.
+            analyzed
+                .intermediate_columns
+                .values()
+                .flat_map(|(_, def)| def.iter().flat_map(|d| d.all_children()))
+                .filter_map(|expr| match expr {
+                    AlgebraicExpression::Challenge(challenge) => Some(challenge.id),
+                    _ => None,
+                }),
+        )
         .collect::<BTreeSet<_>>();
 
     // Stwo provides a function to draw challenges from the secure field `QM31`,
