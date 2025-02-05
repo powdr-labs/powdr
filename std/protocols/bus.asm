@@ -102,13 +102,10 @@ let bus_multi_interaction: expr, expr[], expr, expr, expr, expr[], expr, expr ->
 
     let extension_field_size = required_extension_size();
 
-    // Deriving two alphas and two betas is mathematically equivalent to the non-multi version.
     // Alpha is used to compress the LHS and RHS arrays.
-    let alpha_0 = from_array(array::new(extension_field_size, |i| challenge(0, i + 1)));
-    let alpha_1 = from_array(array::new(extension_field_size, |i| challenge(0, i + 1 + extension_field_size)));
+    let alpha = from_array(array::new(extension_field_size, |i| challenge(0, i + 1)));
     // Beta is used to update the accumulator.
-    let beta_0 = from_array(array::new(extension_field_size, |i| challenge(0, i + 1 + extension_field_size * 2)));
-    let beta_1 = from_array(array::new(extension_field_size, |i| challenge(0, i + 1 + extension_field_size * 3)));
+    let beta = from_array(array::new(extension_field_size, |i| challenge(0, i + 1 + extension_field_size)));
 
     // Implemented as: folded = (beta - fingerprint(id, payload...));
     let materialize_folded = match known_field() {
@@ -134,20 +131,20 @@ let bus_multi_interaction: expr, expr[], expr, expr, expr, expr[], expr, expr ->
             array::new(extension_field_size,
                     |i| std::prover::new_witness_col_at_stage("folded_0", 1))
         );
-        constrain_eq_ext(folded_0, sub_ext(beta_0, fingerprint_with_id_inter(id_0, payload_0, alpha_0)));
+        constrain_eq_ext(folded_0, sub_ext(beta, fingerprint_with_id_inter(id_0, payload_0, alpha)));
         folded_0
     } else {
-        sub_ext(beta_0, fingerprint_with_id_inter(id_0, payload_0, alpha_0))
+        sub_ext(beta, fingerprint_with_id_inter(id_0, payload_0, alpha))
     };
     let folded_1 = if materialize_folded {
         let folded_1 = from_array(
             array::new(extension_field_size,
                     |i| std::prover::new_witness_col_at_stage("folded_1", 1))
         );
-        constrain_eq_ext(folded_1, sub_ext(beta_1, fingerprint_with_id_inter(id_1, payload_1, alpha_1)));
+        constrain_eq_ext(folded_1, sub_ext(beta, fingerprint_with_id_inter(id_1, payload_1, alpha)));
         folded_1
     } else {
-        sub_ext(beta_1, fingerprint_with_id_inter(id_1, payload_1, alpha_1))
+        sub_ext(beta, fingerprint_with_id_inter(id_1, payload_1, alpha))
     };
 
     let folded_next_0 = next_ext(folded_0);
