@@ -146,7 +146,7 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
         }
     
         // Finally, for each committed poly from the PIL in stage 1, remove its column from the map.
-        self.pil
+        let result = self.pil
             .committed_polys_in_source_order()
             .filter(|(symbol, _)| symbol.stage == Some(1))
             .flat_map(|(symbol, _)| symbol.array_elements())

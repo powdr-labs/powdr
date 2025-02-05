@@ -19,6 +19,26 @@ use std::field::known_field;
 use std::field::KnownField;
 use std::check::panic;
 
+// Helper function.
+// Materialized as a witness column for two reasons:
+// - It makes sure the constraint degree is independent of the input payload.
+// - We can access folded', even if the payload contains next references.
+// Note that if all expressions are degree-1 and there is no next reference,
+// this is wasteful, but we can't check that here.
+let materialize_folded: -> bool = || match known_field() {
+    Option::Some(KnownField::Goldilocks) => true,
+    Option::Some(KnownField::BabyBear) => true,
+    Option::Some(KnownField::KoalaBear) => true,
+    Option::Some(KnownField::M31) => true,
+    // The case above triggers our hand-written witness generation, but on Bn254, we'd not be
+    // on the extension field and use the automatic witness generation.
+    // However, it does not work with a materialized folded payload. At the same time, Halo2
+    // (the only prover that supports BN254) does not have a hard degree bound. So, we can
+    // in-line the expression here.
+    Option::Some(KnownField::BN254) => false,
+    _ => panic("Unexpected field!")
+};
+
 /// Sends the payload (id, payload...) to the bus by adding
 /// `multiplicity / (beta - fingerprint(id, payload...))` to `acc`
 /// It is the callers responsibility to properly constrain the multiplicity (e.g. constrain
@@ -39,25 +59,7 @@ let bus_interaction: expr, expr[], expr, expr -> () = constr |id, payload, multi
     let beta = from_array(array::new(extension_field_size, |i| challenge(0, i + 1 + extension_field_size)));
 
     // Implemented as: folded = (beta - fingerprint(id, payload...));
-    let materialize_folded = match known_field() {
-        // Materialized as a witness column for two reasons:
-        // - It makes sure the constraint degree is independent of the input payload.
-        // - We can access folded', even if the payload contains next references.
-        // Note that if all expressions are degree-1 and there is no next reference,
-        // this is wasteful, but we can't check that here.
-        Option::Some(KnownField::Goldilocks) => true,
-        Option::Some(KnownField::BabyBear) => true,
-        Option::Some(KnownField::KoalaBear) => true,
-        Option::Some(KnownField::M31) => true,
-        // The case above triggers our hand-written witness generation, but on Bn254, we'd not be
-        // on the extension field and use the automatic witness generation.
-        // However, it does not work with a materialized folded payload. At the same time, Halo2
-        // (the only prover that supports BN254) does not have a hard degree bound. So, we can
-        // in-line the expression here.
-        Option::Some(KnownField::BN254) => false,
-        _ => panic("Unexpected field!")
-    };
-    let folded = if materialize_folded {
+    let folded = if materialize_folded() {
         let folded = from_array(
             array::new(extension_field_size,
                     |i| std::prover::new_witness_col_at_stage("folded", 1))
@@ -96,8 +98,8 @@ let bus_interaction: expr, expr[], expr, expr -> () = constr |id, payload, multi
 
 /// Multi version of `bus_interaction`.
 /// Batches two bus interactions.
-/// Requires a prove system constraint degree bound of 4 or more.
-/// In practice, saves `acc` and `is_first` columns and rotated columns thereof.
+/// Requires a prove system constraint degree bound of 4 or more (so won't work with our setup of Plonky3).
+/// In practice, saves `acc`, `is_first`, `alpha`, and `beta` columns as well as rotated columns thereof.
 let bus_multi_interaction: expr, expr[], expr, expr, expr, expr[], expr, expr -> () = constr |id_0, payload_0, multiplicity_0, latch_0, id_1, payload_1, multiplicity_1, latch_1| {
 
     let extension_field_size = required_extension_size();
@@ -108,25 +110,7 @@ let bus_multi_interaction: expr, expr[], expr, expr, expr, expr[], expr, expr ->
     let beta = from_array(array::new(extension_field_size, |i| challenge(0, i + 1 + extension_field_size)));
 
     // Implemented as: folded = (beta - fingerprint(id, payload...));
-    let materialize_folded = match known_field() {
-        // Materialized as a witness column for two reasons:
-        // - It makes sure the constraint degree is independent of the input payload.
-        // - We can access folded', even if the payload contains next references.
-        // Note that if all expressions are degree-1 and there is no next reference,
-        // this is wasteful, but we can't check that here.
-        Option::Some(KnownField::Goldilocks) => true,
-        Option::Some(KnownField::BabyBear) => true,
-        Option::Some(KnownField::KoalaBear) => true,
-        Option::Some(KnownField::M31) => true,
-        // The case above triggers our hand-written witness generation, but on Bn254, we'd not be
-        // on the extension field and use the automatic witness generation.
-        // However, it does not work with a materialized folded payload. At the same time, Halo2
-        // (the only prover that supports BN254) does not have a hard degree bound. So, we can
-        // in-line the expression here.
-        Option::Some(KnownField::BN254) => false,
-        _ => panic("Unexpected field!")
-    };
-    let folded_0 = if materialize_folded {
+    let folded_0 = if materialize_folded() {
         let folded_0 = from_array(
             array::new(extension_field_size,
                     |i| std::prover::new_witness_col_at_stage("folded_0", 1))
@@ -136,7 +120,7 @@ let bus_multi_interaction: expr, expr[], expr, expr, expr, expr[], expr, expr ->
     } else {
         sub_ext(beta, fingerprint_with_id_inter(id_0, payload_0, alpha))
     };
-    let folded_1 = if materialize_folded {
+    let folded_1 = if materialize_folded() {
         let folded_1 = from_array(
             array::new(extension_field_size,
                     |i| std::prover::new_witness_col_at_stage("folded_1", 1))
