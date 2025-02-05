@@ -119,13 +119,60 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
         }
     }
 
+    // pub fn generate(&self) -> Vec<(String, Vec<T>)> {
+    //     let mut columns = self
+    //         .bus_interactions
+    //         .par_iter()
+    //         .flat_map(|bus_interaction| {
+    //             let (folded, acc) = self.interaction_columns(bus_interaction);
+    //             collect_folded_columns(bus_interaction, folded)
+    //                 .chain(collect_acc_columns(bus_interaction, acc))
+    //                 .collect::<Vec<_>>()
+    //         })
+    //         .collect::<BTreeMap<_, _>>();
+
+    //     self.pil
+    //         .committed_polys_in_source_order()
+    //         .filter(|(symbol, _)| symbol.stage == Some(1))
+    //         .flat_map(|(symbol, _)| symbol.array_elements())
+    //         .map(|(name, poly_id)| (name, columns.remove(&poly_id).unwrap()))
+    //         .collect()
+    // }
+
     pub fn generate(&self) -> Vec<(String, Vec<T>)> {
+<<<<<<< HEAD
         let accumulators = self
             .bus_interactions
             .par_iter()
             .flat_map(|bus_interaction| self.interaction_columns(bus_interaction))
             .collect::<Vec<_>>();
 
+=======
+        // First, collect all (PolyID, Vec<T>) pairs from all bus interactions.
+        let intermediate: Vec<(PolyID, Vec<T>)> = self
+            .bus_interactions
+            .par_iter()
+            .flat_map(|bus_interaction| {
+                let (folded, acc) = self.interaction_columns(bus_interaction);
+                collect_folded_columns(bus_interaction, folded)
+                    .chain(collect_acc_columns(bus_interaction, acc))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+    
+        // Now group by PolyID and sum the Vec<T> values element-wise.
+        let mut columns: BTreeMap<PolyID, Vec<T>> = BTreeMap::new();
+        for (poly_id, column) in intermediate {
+            columns.entry(poly_id).and_modify(|existing| {
+                // We assume both vectors have the same length.
+                for (a, b) in existing.iter_mut().zip(&column) {
+                    *a += *b;
+                }
+            }).or_insert(column);
+        }
+    
+        // Finally, for each committed poly from the PIL in stage 1, remove its column from the map.
+>>>>>>> 266a7169 (test passes for mock+bn254 but not for mock+gl; so probably some extension field related bug is happenning)
         self.pil
             .committed_polys_in_source_order()
             .filter(|(symbol, _)| symbol.stage == Some(1))
