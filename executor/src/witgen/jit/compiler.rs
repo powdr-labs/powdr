@@ -94,7 +94,7 @@ pub fn compile_effects<T: FieldElement, D: DefinitionFetcher>(
     column_layout: ColumnLayout,
     known_inputs: &[Variable],
     effects: &[Effect<T, Variable>],
-    prover_functions: Vec<ProverFunction<'_>>,
+    prover_functions: Vec<ProverFunction<'_, T>>,
 ) -> Result<WitgenFunction<T>, String> {
     let utils = util_code::<T>()?;
     let interface = interface_code(column_layout);
@@ -376,15 +376,15 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
             )
         }
         Effect::ProverFunctionCall(ProverFunctionCall {
-            target,
+            targets,
             function_index,
             row_offset,
             inputs,
         }) => {
             format!(
-                "{}{} = prover_function_{function_index}(row_offset + {row_offset}, &[{}]);",
+                "{}[{}] = prover_function_{function_index}(row_offset + {row_offset}, &[{}]);",
                 if is_top_level { "let " } else { "" },
-                variable_to_string(target),
+                targets.iter().map(variable_to_string).format(", "),
                 inputs.iter().map(variable_to_string).format(", ")
             )
         }
@@ -538,7 +538,7 @@ fn interface_code(column_layout: ColumnLayout) -> String {
 }
 
 fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
-    f: &ProverFunction<'_>,
+    f: &ProverFunction<'_, T>,
     codegen: &mut CodeGenerator<'_, T, D>,
 ) -> Result<String, String> {
     let code = match f.computation {
