@@ -19,13 +19,13 @@ use std::{
 use crate::{call, try_into_namespace_degree, DegreeMode, LinkerBackend, MAIN_OPERATION_NAME};
 
 /// Compute a unique identifier for an interaction
-fn interaction_id(link_to: &LinkTo) -> u32 {
+fn interaction_id(link_to: &LinkTo) -> u16 {
     let mut hasher = Sha256::default();
     hasher.update(format!("{}/{}", link_to.machine, link_to.operation));
     let result = hasher.finalize();
-    let mut bytes = [0u8; 4];
-    bytes.copy_from_slice(&result[..4]);
-    u32::from_le_bytes(bytes)
+    let mut bytes = [0u8; 2];
+    bytes.copy_from_slice(&result[..2]);
+    u16::from_le_bytes(bytes)
 }
 
 pub struct BusLinker {
@@ -122,7 +122,7 @@ impl LinkerBackend for BusLinker {
                             .unwrap()
                             .into(),
                     )),
-                    arguments: vec![interaction_id.into(), tuple, selector],
+                    arguments: vec![(interaction_id as u32).into(), tuple, selector],
                 },
             ),
         ));
@@ -238,7 +238,7 @@ impl BusLinker {
                     SymbolPath::from_str("std::protocols::lookup_via_bus::lookup_receive")
                         .unwrap()
                         .into(),
-                    vec![interaction_id.into(), latch, tuple],
+                    vec![(interaction_id as u32).into(), latch, tuple],
                 ),
                 // a selector index of Some means this operation is called via permutation
                 Some(selector_index) => (
@@ -259,7 +259,7 @@ impl BusLinker {
                             index_access(call_selector_array, Some((*selector_index).into()));
                         let rhs_selector = latch * call_selector;
 
-                        vec![interaction_id.into(), rhs_selector, tuple]
+                        vec![(interaction_id as u32).into(), rhs_selector, tuple]
                     },
                 ),
             };
@@ -334,7 +334,7 @@ mod test {
     pc' = (1 - first_step') * pc_update;
     pol commit call_selectors[0];
     std::array::map(call_selectors, std::utils::force_bool);
-    std::protocols::bus::bus_send(1816473376, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1);
+    std::protocols::bus::bus_send(12064, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1);
 namespace main__rom(4);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
@@ -343,7 +343,7 @@ namespace main__rom(4);
     pol constant p_instr_return = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-    std::protocols::lookup_via_bus::lookup_receive(1816473376, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return]);
+    std::protocols::lookup_via_bus::lookup_receive(12064, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return]);
 "#;
 
         let file_name = "../test_data/asm/empty_vm.asm";
