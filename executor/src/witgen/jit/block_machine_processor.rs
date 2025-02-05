@@ -395,4 +395,40 @@ Sub::b[0] = prover_function_0(0, [Sub::a[0]]);
 params[1] = Sub::b[0];"
         );
     }
+
+    #[test]
+    fn intermediates() {
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is [Sub.x, Sub.y, Sub.z];
+        namespace Sub(256);
+            col witness a, b, c, d, e, f;
+            col x = a * 256 + b;
+            col y = c * 256 + d;
+            col z = e * 256 + f;
+            e = a + c;
+            f = b + d;
+            let BYTE: col = |i| i & 0xff;
+            [ a ] in [ BYTE ];
+            [ b ] in [ BYTE ];
+            [ c ] in [ BYTE ];
+            [ d ] in [ BYTE ];
+            [ e ] in [ BYTE ];
+            [ f ] in [ BYTE ];
+        ";
+        let code = generate_for_block_machine(input, "Sub", 2, 1).unwrap().code;
+        assert_eq!(
+            format_code(&code),
+            "Sub::a[0] = ((params[0] & 0xff00) // 256);
+Sub::b[0] = (params[0] & 0xff);
+assert (params[0] & 0xffffffffffff0000) == 0;
+Sub::c[0] = ((params[1] & 0xff00) // 256);
+Sub::d[0] = (params[1] & 0xff);
+assert (params[1] & 0xffffffffffff0000) == 0;
+Sub::e[0] = (Sub::a[0] + Sub::c[0]);
+Sub::f[0] = (Sub::b[0] + Sub::d[0]);
+params[2] = ((Sub::e[0] * 256) + Sub::f[0]);"
+        );
+    }
 }
