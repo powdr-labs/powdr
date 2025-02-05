@@ -1,5 +1,5 @@
 use itertools::Itertools;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, DegreeRange};
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
@@ -29,7 +29,7 @@ use crate::stwo::proof::{
 use stwo_prover::constraint_framework::TraceLocationAllocator;
 
 use stwo_prover::core::air::{Component, ComponentProver};
-use stwo_prover::core::backend::{Backend, BackendForChannel};
+use stwo_prover::core::backend::{Backend, BackendForChannel, Col, Column};
 use stwo_prover::core::channel::{Channel, MerkleChannel};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
@@ -37,6 +37,7 @@ use stwo_prover::core::fri::FriConfig;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use stwo_prover::core::ColumnVec;
 
 const FRI_LOG_BLOWUP: usize = 1;
@@ -151,7 +152,7 @@ where
             .iter()
             .filter_map(|(namespace, pil)| {
                 // if we have no fixed columns, we don't need to commit to anything.
-                if pil.constant_count() + pil.publics_count()== 0 {
+                if pil.constant_count() + pil.publics_count() == 0 {
                     None
                 } else {
                     let fixed_columns = machine_fixed_columns(&self.fixed, pil);
@@ -197,6 +198,32 @@ where
                                     .collect();
 
                                 constant_trace.extend(constant_shifted_trace);
+
+                                // get selector columns for the public inputs, as closures
+                                let publics_selector: ColumnVec<
+                                    CircleEvaluation<B, BaseField, BitReversedOrder>,
+                                > = pil
+                                    .get_publics()
+                                    .into_iter()
+                                    .map(|(_, _, _, row_id, _)| {
+                                        let mut col = Col::<B, BaseField>::zeros(1 << size.ilog2());
+                                        col.set(
+                                            bit_reverse_index(
+                                                coset_index_to_circle_domain_index(
+                                                    row_id,
+                                                    size.ilog2(),
+                                                ),
+                                                size.ilog2(),
+                                            ),
+                                            BaseField::one(),
+                                        );
+                                        CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
+                                            *domain_map.get(&(size.ilog2() as usize)).unwrap(),
+                                            col,
+                                        )
+                                    })
+                                    .collect();
+                                constant_trace.extend(publics_selector);
 
                                 (
                                     size as usize,
@@ -378,27 +405,27 @@ where
         }
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
-        // Each column size in machines needs its own component, the components from different machines are stored in this vector
-        let mut components = Vec::new();
 
         // Build the circuit. The circuit includes constraints of all the machines in both stage 0 and stage 1
         let mut constant_cols_offset_acc = 0;
-        self.split.iter().zip_eq(machine_log_sizes.iter()).for_each(
-            |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
-                assert_eq!(machine_name, proof_machine_name);
+        let components = self
+            .split
+            .iter()
+            .zip_eq(machine_log_sizes.iter())
+            .map(
+                |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
+                    assert_eq!(machine_name, proof_machine_name);
 
-                let component = PowdrComponent::new(
-                    tree_span_provider,
-                    PowdrEval::new(
-                        (*pil).clone(),
-                        constant_cols_offset_acc,
-                        machine_log_size,
-                        stage0_challenges.clone(),
-                    ),
-                    (SecureField::zero(), None),
-                );
-
-                components.push(component);
+                    let component = PowdrComponent::new(
+                        tree_span_provider,
+                        PowdrEval::new(
+                            (*pil).clone(),
+                            constant_cols_offset_acc,
+                            machine_log_size,
+                            stage0_challenges.clone(),
+                        ),
+                        (SecureField::zero(), None),
+                    );
 
                     constant_cols_offset_acc +=
                         pil.constant_count() + get_constant_with_next_list(pil).len();
@@ -459,7 +486,6 @@ where
             })
             .collect();
 
-        
         let stage_count = self.analyzed.stage_count();
         // get public values
         let mut instance_map: BTreeMap<String, Vec<Vec<M31>>> = self
@@ -479,19 +505,21 @@ where
                 instance_map.get_mut(namespace).unwrap()[*stage as usize].push(*value);
             });
 
-            let public_inputs = instance_map
+        let public_inputs = instance_map
             .into_iter()
             .map(|(name, values)| {
                 (
                     name,
                     values
                         .into_iter()
-                        .map(|values| gen_stwo_circle_column::<B, BaseField>(
-                            *domain_map
-                                .get(&(values.len().ilog2() as usize))
-                                .expect("Domain not found for given size"),
-                            &values,
-                        ))
+                        .map(|values| {
+                            gen_stwo_circle_column::<B, BaseField>(
+                                *domain_map
+                                    .get(&(values.len().ilog2() as usize))
+                                    .expect("Domain not found for given size"),
+                                &values,
+                            )
+                        })
                         .collect_vec(),
                 )
             })

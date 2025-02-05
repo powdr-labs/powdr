@@ -108,7 +108,7 @@ impl PowdrEval {
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
-        
+
         let publics_by_stage = analyzed.get_publics().into_iter().fold(
             vec![vec![]; analyzed.stage_count()],
             |mut acc, (name, column_name, id, row, stage)| {
@@ -254,6 +254,27 @@ impl FrameworkEval for PowdrEval {
             challenges: &challenges,
             poly_stage_map: &self.poly_stage_map,
         };
+
+        // build selector columns and constraints for publics, for now I am using constant columns as selectors
+        self.publics_by_stage.iter().flatten().enumerate().for_each(
+            |(index, (name, _, poly_id, _))| {
+                let selector = eval.get_preprocessed_column(PreprocessedColumn::Plonk(
+                    index
+                        + constant_eval.len()
+                        + self.preprocess_col_offset
+                        + constant_shifted_eval.len(),
+                ));
+                let stage= self.poly_stage_map[poly_id];
+                let witness_col= match stage {
+                    0 => self.stage0_witness_columns[poly_id],
+                    1 => self.stage1_witness_columns[poly_id],
+                    _ => unreachable!(),
+                };
+                // constraining s(i) * (pub[i] - x(i)) = 0
+               // eval.add_constraint(selector * (public_value.into() - witness_col));
+            },
+        );
+
         let mut evaluator =
             ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {
                 E::F::from(into_stwo_field(v))
