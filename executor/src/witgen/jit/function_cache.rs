@@ -6,7 +6,10 @@ use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
-    jit::{effect::format_code, processor::ProcessorResult},
+    jit::{
+        effect::{format_code, Effect},
+        processor::ProcessorResult,
+    },
     machines::{
         profiling::{record_end, record_start},
         LookupCell, MachineParts,
@@ -114,10 +117,13 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             cache_key.known_args
         );
 
-        let ProcessorResult {
-            code,
-            range_constraints,
-        } = self
+        let (
+            ProcessorResult {
+                code,
+                range_constraints,
+            },
+            prover_functions,
+        ) = self
             .processor
             .generate_code(can_process, cache_key.identity_id, &cache_key.known_args)
             .map_err(|e| {
@@ -149,6 +155,22 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             );
         }
 
+        // TODO remove this once code generation for prover functions is working.
+        if code
+            .iter()
+            .flat_map(|e| -> Box<dyn Iterator<Item = &Effect<_, _>>> {
+                if let Effect::Branch(_, first, second) = e {
+                    Box::new(first.iter().chain(second))
+                } else {
+                    Box::new(std::iter::once(e))
+                }
+            })
+            .any(|e| matches!(e, Effect::ProverFunctionCall { .. }))
+        {
+            log::debug!("Inferred code contains call to prover function, which is not yet implemented. Using runtime solving instead.");
+            return None;
+        }
+
         log::trace!("Generated code ({} steps)", code.len());
         let known_inputs = cache_key
             .known_args
@@ -158,7 +180,14 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .collect::<Vec<_>>();
 
         log::trace!("Compiling effects...");
-        let function = compile_effects(self.column_layout.clone(), &known_inputs, &code).unwrap();
+        let function = compile_effects(
+            self.fixed_data.analyzed,
+            self.column_layout.clone(),
+            &known_inputs,
+            &code,
+            prover_functions,
+        )
+        .unwrap();
         log::trace!("Compilation done.");
 
         Some(CacheEntry {

@@ -13,6 +13,7 @@ use crate::witgen::{
 
 use super::{
     processor::ProcessorResult,
+    prover_function_heuristics::ProverFunction,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -50,7 +51,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_args: &BitVec,
-    ) -> Result<ProcessorResult<T>, String> {
+    ) -> Result<(ProcessorResult<T>, Vec<ProverFunction<'a>>), String> {
         let connection = self.machine_parts.connections[&identity_id];
         assert_eq!(connection.right.expressions.len(), known_args.len());
 
@@ -119,7 +120,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .iter()
             .enumerate()
             .filter_map(|(i, is_input)| (!is_input).then_some(Variable::Param(i)));
-        Processor::new(
+        let result = Processor::new(
             self.fixed_data,
             self,
             identities,
@@ -129,7 +130,12 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         .with_block_shape_check()
         .with_block_size(self.block_size)
         .with_requested_range_constraints((0..known_args.len()).map(Variable::Param))
-        .with_prover_functions(prover_functions)
+        .with_prover_functions(
+            prover_functions
+                .iter()
+                .flat_map(|f| (0..self.block_size).map(move |row| (f.clone(), row as i32)))
+                .collect_vec()
+        )
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string_with_variable_formatter(|var| match var {
@@ -149,7 +155,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .take(10)
                 .format("\n  ");
             format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
-        })
+        })?;
+        Ok((result, prover_functions))
     }
 }
 
@@ -238,7 +245,9 @@ mod test {
                 .chain((0..num_outputs).map(|_| false)),
         );
 
-        processor.generate_code(&mutable_state, connection_id, &known_values)
+        processor
+            .generate_code(&mutable_state, connection_id, &known_values)
+            .map(|(result, _)| result)
     }
 
     #[test]
@@ -367,5 +376,27 @@ params[3] = main_binary::C[3];"
     fn poseidon() {
         let input = read_to_string("../test_data/pil/poseidon_gl.pil").unwrap();
         generate_for_block_machine(&input, "main_poseidon", 12, 4).unwrap();
+    }
+
+    #[test]
+    fn simple_prover_function() {
+        let input = "
+        namespace std::prover;
+            let compute_from: expr, int, expr[], (fe[] -> fe) -> () = query |dest_col, row, input_cols, f| {};
+        namespace Main(256);
+            col witness a, b;
+            [a, b] is [Sub.a, Sub.b]; 
+        namespace Sub(256);
+            col witness a, b;
+            (a - 20) * (b + 3) = 1;
+            query |i| std::prover::compute_from(b, i, [a], |values| 20);
+        ";
+        let code = generate_for_block_machine(input, "Sub", 1, 1).unwrap().code;
+        assert_eq!(
+            format_code(&code),
+            "Sub::a[0] = params[0];
+Sub::b[0] = prover_function_0(0, [Sub::a[0]]);
+params[1] = Sub::b[0];"
+        );
     }
 }

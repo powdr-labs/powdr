@@ -84,9 +84,66 @@ let<T> from_array: T[] -> Ext<T> = |arr| match len(arr) {
     _ => panic("Expected 1, 2, or 4")
 };
 
+let eq_ext: Ext<fe>, Ext<fe> -> bool = |a, b| match (a, b) {
+    (Ext::Fp(aa), Ext::Fp(bb)) => aa == bb,
+    (Ext::Fp2(aa), Ext::Fp2(bb)) => std::math::fp2::eq_ext(aa, bb),
+    (Ext::Fp4(aa), Ext::Fp4(bb)) => std::math::fp4::eq_ext(aa, bb),
+    _ => panic("Operands have different types")
+};
+
 let constrain_eq_ext: Ext<expr>, Ext<expr> -> Constr[] = |a, b| match (a, b) {
     (Ext::Fp(aa), Ext::Fp(bb)) => [aa = bb],
     (Ext::Fp2(aa), Ext::Fp2(bb)) => std::math::fp2::constrain_eq_ext(aa, bb),
     (Ext::Fp4(aa), Ext::Fp4(bb)) => std::math::fp4::constrain_eq_ext(aa, bb),
     _ => panic("Operands have different types")
 };
+
+
+mod test {
+    use super::Ext;
+    use super::from_base;
+    use super::add_ext;
+    use super::sub_ext;
+    use super::mul_ext;
+    use super::inv_ext;
+    use super::eq_ext;
+    use super::from_array;
+    use super::unpack_ext_array;
+    use std::check::assert;
+    use std::array;
+    use std::math::fp2::Fp2;
+    use std::math::fp4::Fp4;
+
+    let run_test = query |a, x| {
+        let dimensions = array::len(unpack_ext_array(x));
+        // Don't use from_base, because then it depends on the field on which we run.
+        let a_ext = from_array([a] + array::new(dimensions - 1, |i| 0));
+
+        // Assert that (a + x) * x / x - x == a
+        assert(
+            eq_ext(
+                sub_ext(
+                    mul_ext(
+                        mul_ext(
+                            add_ext(
+                                a_ext,
+                                x
+                            ),
+                            x
+                        ),
+                        inv_ext(x)
+                    ),
+                    x
+                ),
+                a_ext
+            ),
+            || "(a + x) * x / x - x != a"
+        );
+    };
+
+    let test_all_extension_fields = query || {
+        run_test(42, Ext::Fp(123));
+        run_test(42, Ext::Fp2(Fp2::Fp2(123, 456)));
+        run_test(42, Ext::Fp4(Fp4::Fp4(123, 456, 789, 150)));
+    };
+}
