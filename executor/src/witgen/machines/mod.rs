@@ -54,14 +54,16 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         );
     }
 
-    /// Returns Some(..) if this machine can alway fully process a call via the given
+    /// Returns (true, _) if this machine can alway fully process a call via the given
     /// identity, the set of known arguments and a list of range constraints
     /// on the parameters. Note that the range constraints can be imposed both
     /// on inputs and on outputs.
-    /// If this returns Some(..), then corresponding calls to `process_lookup_direct`
+    /// If this returns (true, _), then corresponding calls to `process_lookup_direct`
     /// are safe.
-    /// The value returned inside the option is a vector of range constraints on the arguments,
+    /// The second return value is a vector of range constraints on the arguments,
     /// which again can be imposed both on inputs and on outputs.
+    /// The returned range constraints can be used by the caller even if the first
+    /// return value is false.
     /// The function requires `&mut self` because it usually builds an index structure
     /// or something similar.
     fn can_process_call_fully(
@@ -69,9 +71,9 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         _can_process: impl CanProcessCall<T>,
         _identity_id: u64,
         _known_arguments: &BitVec,
-        _range_constraints: &[RangeConstraint<T>],
-    ) -> Option<Vec<RangeConstraint<T>>> {
-        None
+        range_constraints: &[RangeConstraint<T>],
+    ) -> (bool, Vec<RangeConstraint<T>>) {
+        (false, range_constraints.to_vec())
     }
 
     /// Like `process_plookup`, but also records the time spent in this machine.
@@ -198,7 +200,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         identity_id: u64,
         known_arguments: &BitVec,
         range_constraints: &[RangeConstraint<T>],
-    ) -> Option<Vec<RangeConstraint<T>>> {
+    ) -> (bool, Vec<RangeConstraint<T>>) {
         match_variant!(
             self,
             m => m.can_process_call_fully(can_process, identity_id, known_arguments, range_constraints)

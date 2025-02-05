@@ -6,7 +6,7 @@ use powdr_ast::{
     analyzed::{PolyID, PolynomialType},
     indent,
 };
-use powdr_jit_compiler::util_code::util_code;
+use powdr_jit_compiler::{util_code::util_code, CodeGenerator, DefinitionFetcher};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -14,6 +14,7 @@ use crate::witgen::{
         finalizable_data::{ColumnLayout, CompactDataRef},
         mutable_state::MutableState,
     },
+    jit::prover_function_heuristics::ProverFunctionComputation,
     machines::{
         profiling::{record_end, record_start},
         LookupCell,
@@ -23,6 +24,7 @@ use crate::witgen::{
 
 use super::{
     effect::{Assertion, BranchCondition, Effect, ProverFunctionCall},
+    prover_function_heuristics::ProverFunction,
     symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator},
     variable::Variable,
 };
@@ -87,16 +89,29 @@ extern "C" fn call_machine<T: FieldElement, Q: QueryCallback<T>>(
 }
 
 /// Compile the given inferred effects into machine code and load it.
-pub fn compile_effects<T: FieldElement>(
+pub fn compile_effects<T: FieldElement, D: DefinitionFetcher>(
+    definitions: &D,
     column_layout: ColumnLayout,
     known_inputs: &[Variable],
     effects: &[Effect<T, Variable>],
+    prover_functions: Vec<ProverFunction<'_, T>>,
 ) -> Result<WitgenFunction<T>, String> {
     let utils = util_code::<T>()?;
     let interface = interface_code(column_layout);
+    let mut codegen = CodeGenerator::<T, _>::new(definitions);
+    let prover_functions = prover_functions
+        .iter()
+        .map(|f| prover_function_code(f, &mut codegen))
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .format("\n");
+    let prover_functions_dependents = codegen.generated_code();
     let witgen_code = witgen_code(known_inputs, effects);
     let code = format!(
         "{utils}\n\
+        //-------------------------------\n\
+        {prover_functions_dependents}\n\
+        {prover_functions}\n\
         //-------------------------------\n\
         {interface}\n\
         //-------------------------------\n\
@@ -361,15 +376,15 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
             )
         }
         Effect::ProverFunctionCall(ProverFunctionCall {
-            target,
+            targets,
             function_index,
             row_offset,
             inputs,
         }) => {
             format!(
-                "{}{} = prover_function_{function_index}(row_offset + {row_offset}, &[{}]);",
+                "{}[{}] = prover_function_{function_index}(row_offset + {row_offset}, &[{}]);",
                 if is_top_level { "let " } else { "" },
-                variable_to_string(target),
+                targets.iter().map(variable_to_string).format(", "),
                 inputs.iter().map(variable_to_string).format(", ")
             )
         }
@@ -522,11 +537,35 @@ fn interface_code(column_layout: ColumnLayout) -> String {
     )
 }
 
+fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
+    f: &ProverFunction<'_, T>,
+    codegen: &mut CodeGenerator<'_, T, D>,
+) -> Result<String, String> {
+    let code = match f.computation {
+        ProverFunctionComputation::ComputeFrom(code) => format!(
+            "({}).call(args.to_vec().into())",
+            codegen.generate_code_for_expression(code)?
+        ),
+        ProverFunctionComputation::ProvideIfUnknown(code) => {
+            format!("({}).call()", codegen.generate_code_for_expression(code)?)
+        }
+    };
+
+    let index = f.index;
+    Ok(format!(
+        "fn prover_function_{index}(i: u64, args: &[FieldElement]) -> FieldElement {{\n\
+            let i: ibig::IBig = i.into();\n\
+            {code}
+        }}"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
 
     use std::ptr::null;
 
+    use powdr_ast::analyzed::FunctionValueDefinition;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -538,18 +577,27 @@ mod tests {
 
     use super::*;
 
+    struct NoDefinitions;
+    impl DefinitionFetcher for NoDefinitions {
+        fn get_definition(&self, _: &str) -> Option<&FunctionValueDefinition> {
+            None
+        }
+    }
+
     fn compile_effects(
         column_count: usize,
         known_inputs: &[Variable],
         effects: &[Effect<GoldilocksField, Variable>],
     ) -> Result<WitgenFunction<GoldilocksField>, String> {
         super::compile_effects(
+            &NoDefinitions,
             ColumnLayout {
                 column_count,
                 first_column_id: 0,
             },
             known_inputs,
             effects,
+            vec![],
         )
     }
 

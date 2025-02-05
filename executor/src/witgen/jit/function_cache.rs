@@ -127,10 +127,13 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
                 .unwrap_or_default()
         );
 
-        let ProcessorResult {
-            code,
-            range_constraints,
-        } = self
+        let (
+            ProcessorResult {
+                code,
+                range_constraints,
+            },
+            prover_functions,
+        ) = self
             .processor
             .generate_code(
                 can_process,
@@ -192,7 +195,14 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .collect::<Vec<_>>();
 
         log::trace!("Compiling effects...");
-        let function = compile_effects(self.column_layout.clone(), &known_inputs, &code).unwrap();
+        let function = compile_effects(
+            self.fixed_data.analyzed,
+            self.column_layout.clone(),
+            &known_inputs,
+            &code,
+            prover_functions,
+        )
+        .unwrap();
         log::trace!("Compilation done.");
 
         Some(CacheEntry {

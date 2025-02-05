@@ -169,7 +169,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         identity_id: u64,
         known_arguments: &BitVec,
         range_constraints: &[RangeConstraint<T>],
-    ) -> Option<Vec<RangeConstraint<T>>> {
+    ) -> (bool, Vec<RangeConstraint<T>>) {
         // We use the input range constraints to see if there is a column
         // containing the substring "operation_id" which is constrained to a
         // single value and use that value as part of the cache key.
@@ -177,9 +177,15 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             let v = range_constraints[index].try_to_single_value()?;
             Some((index, v))
         });
-        self.function_cache
-            .compile_cached(can_process, identity_id, known_arguments, operation_id)
-            .map(|r| r.range_constraints.clone())
+        match self.function_cache.compile_cached(
+            can_process,
+            identity_id,
+            known_arguments,
+            queration_id,
+        ) {
+            Some(entry) => (true, entry.range_constraints.clone()),
+            None => (false, range_constraints.to_vec()),
+        }
     }
 
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(

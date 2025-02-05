@@ -529,6 +529,13 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         self.column_by_name.get(name).cloned()
     }
 
+    pub fn try_symbol_by_name(&self, name: &str) -> Option<&Symbol> {
+        self.analyzed
+            .definitions
+            .get(name)
+            .map(|(symbol, _)| symbol)
+    }
+
     fn external_witness(&self, row: DegreeType, column: &PolyID) -> Option<T> {
         self.witness_cols[column]
             .external_values
