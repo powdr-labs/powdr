@@ -47,7 +47,7 @@ impl<T> IndexValue<T> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone)]
 enum FixedColOrConstant<T, C> {
     FixedCol(C),
     Constant(T),
@@ -207,6 +207,7 @@ fn create_index<T: FieldElement>(
 pub struct FixedLookup<'a, T: FieldElement> {
     global_constraints: GlobalConstraints<T>,
     indices: HashMap<Application, Index<T>>,
+    range_constraint_indices: BTreeMap<RangeConstraintCacheKey<T>, Option<Vec<RangeConstraint<T>>>>,
     connections: BTreeMap<u64, Connection<'a, T>>,
     fixed_data: &'a FixedData<'a, T>,
 }
@@ -233,6 +234,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         Self {
             global_constraints,
             indices: Default::default(),
+            range_constraint_indices: Default::default(),
             connections,
             fixed_data,
         }
@@ -340,27 +342,40 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
 
         let columns = (self.connections[&identity_id].right.expressions.iter())
             .map(|e| FixedColOrConstant::try_from(e).unwrap())
-            .map(|col| col.into_values(self.fixed_data))
             .collect_vec();
-        let degree = (columns.iter().filter_map(|p| p.degree()).unique())
-            .exactly_one()
-            .expect("all columns in a given lookup are expected to have the same degree");
-
-        let new_range_constraints: Option<Vec<RangeConstraint<T>>> = (0..degree)
-            .map(|row| columns.iter().map(|col| col[row]).collect::<Vec<_>>())
-            .filter(|values| matches_range_constraint(values, range_constraints))
-            .map(|values| {
-                values
+        let cache_key = RangeConstraintCacheKey {
+            columns: columns.clone(),
+            range_constraints: range_constraints.to_vec(),
+        };
+        let new_range_constraints = self
+            .range_constraint_indices
+            .entry(cache_key)
+            .or_insert_with(|| {
+                let columns = columns
                     .into_iter()
-                    .map(RangeConstraint::from_value)
-                    .collect_vec()
+                    .map(|col| col.into_values(self.fixed_data))
+                    .collect_vec();
+                let degree = (columns.iter().filter_map(|p| p.degree()).unique())
+                    .exactly_one()
+                    .expect("all columns in a given lookup are expected to have the same degree");
+
+                (0..degree)
+                    .map(|row| columns.iter().map(|col| col[row]).collect::<Vec<_>>())
+                    .filter(|values| matches_range_constraint(values, range_constraints))
+                    .map(|values| {
+                        values
+                            .into_iter()
+                            .map(RangeConstraint::from_value)
+                            .collect_vec()
+                    })
+                    .reduce(|mut acc, values| {
+                        acc.iter_mut()
+                            .zip_eq(values)
+                            .for_each(|(rc, v)| *rc = rc.disjunction(&v));
+                        acc
+                    })
             })
-            .reduce(|mut acc, values| {
-                acc.iter_mut()
-                    .zip_eq(values)
-                    .for_each(|(rc, v)| *rc = rc.disjunction(&v));
-                acc
-            });
+            .clone();
         if let Some(new_range_constraints) = new_range_constraints {
             (can_answer, new_range_constraints)
         } else {
@@ -466,6 +481,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.connections.keys().copied().collect()
     }
+}
+
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone)]
+struct RangeConstraintCacheKey<T: FieldElement> {
+    pub columns: Vec<FixedColOrConstant<T, PolyID>>,
+    pub range_constraints: Vec<RangeConstraint<T>>,
 }
 
 /// Combines witness constraints on a concrete row with global range constraints
