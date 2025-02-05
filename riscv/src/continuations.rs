@@ -569,9 +569,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
         // Go over all memory registers
         register_values = REGISTER_MEMORY_NAMES
-            .iter()
+            .into_iter()
             .map(|reg| {
-                let reg = reg.strip_prefix("main::").unwrap();
                 let id = Register::from(reg).addr();
                 *chunk_exec
                     .register_memory
