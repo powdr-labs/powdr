@@ -1,3 +1,4 @@
+mod contains_next_ref;
 mod display;
 pub mod visitor;
 
@@ -24,6 +25,7 @@ use crate::parsed::{
     self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, SourceReference,
     TraitDeclaration, TraitImplementation, TypeDeclaration,
 };
+pub use contains_next_ref::ContainsNextRef;
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
 pub enum StatementIdentifier {
@@ -1025,6 +1027,7 @@ impl<T> Children<AlgebraicExpression<T>> for ExpressionList<T> {
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
 )]
+/// For documentation, see the equivalent `Constr` variant in std/prelude.asm.
 pub struct PhantomBusInteractionIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
@@ -1033,6 +1036,10 @@ pub struct PhantomBusInteractionIdentity<T> {
     pub bus_id: AlgebraicExpression<T>,
     pub payload: ExpressionList<T>,
     pub latch: AlgebraicExpression<T>,
+    pub folded_expressions: ExpressionList<T>,
+    // Note that in PIL, this is a list of expressions, but we'd
+    // always expect direct column references, so this is unpacked
+    // when converting from PIL to this struct.
     pub accumulator_columns: Vec<AlgebraicReference>,
 }
 
@@ -1077,10 +1084,6 @@ pub enum Identity<T> {
 }
 
 impl<T> Identity<T> {
-    pub fn contains_next_ref(&self) -> bool {
-        self.children().any(|e| e.contains_next_ref())
-    }
-
     pub fn degree(
         &self,
         intermediate_polynomials: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
@@ -1180,14 +1183,6 @@ pub enum IdentityKind {
     PhantomPermutation,
     Connect,
     PhantomBusInteraction,
-}
-
-impl<T> SelectedExpressions<T> {
-    /// @returns true if the expression contains a reference to a next value of a
-    /// (witness or fixed) column
-    pub fn contains_next_ref(&self) -> bool {
-        self.children().any(|e| e.contains_next_ref())
-    }
 }
 
 pub type Expression = parsed::Expression<Reference>;
@@ -1598,15 +1593,6 @@ impl<T> AlgebraicExpression<T> {
 
     pub fn new_unary(op: AlgebraicUnaryOperator, expr: Self) -> Self {
         AlgebraicUnaryOperation::new(op, expr).into()
-    }
-
-    /// @returns true if the expression contains a reference to a next value of a
-    /// (witness or fixed) column
-    pub fn contains_next_ref(&self) -> bool {
-        self.expr_any(|e| match e {
-            AlgebraicExpression::Reference(poly) => poly.next,
-            _ => false,
-        })
     }
 }
 

@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_ast::analyzed::{PolyID, PolynomialType};
+use powdr_ast::analyzed::{ContainsNextRef, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -81,12 +81,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
         }
 
+        let intermediate_definitions = self.fixed_data.analyzed.intermediate_definitions();
+
         // Compute the identity-row-pairs we consider.
         let have_next_ref = self
             .machine_parts
             .identities
             .iter()
-            .any(|id| id.contains_next_ref());
+            .any(|id| id.contains_next_ref(&intermediate_definitions));
         let start_row = if !have_next_ref {
             // No identity contains a next reference - we do not need to consider row -1,
             // and the block has to be rectangular-shaped.
@@ -96,15 +98,21 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             // We iterate over all rows of the block +/- one row.
             -1
         };
-        let identities = (start_row..self.block_size as i32).flat_map(move |row| {
-            self.machine_parts.identities.iter().filter_map(move |&id| {
-                // Filter out identities with next references on the last row.
-                if row as usize == self.block_size - 1 && id.contains_next_ref() {
-                    None
-                } else {
-                    Some((id, row))
-                }
-            })
+        let identities = (start_row..self.block_size as i32).flat_map(|row| {
+            self.machine_parts
+                .identities
+                .iter()
+                .filter_map(|id| {
+                    // Filter out identities with next references on the last row.
+                    if row as usize == self.block_size - 1
+                        && id.contains_next_ref(&intermediate_definitions)
+                    {
+                        None
+                    } else {
+                        Some((*id, row))
+                    }
+                })
+                .collect_vec()
         });
 
         let requested_known = known_args
@@ -121,7 +129,12 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         .with_block_shape_check()
         .with_block_size(self.block_size)
         .with_requested_range_constraints((0..known_args.len()).map(Variable::Param))
-        .with_prover_functions(prover_functions)
+        .with_prover_functions(
+            prover_functions
+                .iter()
+                .flat_map(|f| (0..self.block_size).map(move |row| (f.clone(), row as i32)))
+                .collect_vec()
+        )
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string_with_variable_formatter(|var| match var {
@@ -359,5 +372,27 @@ params[3] = main_binary::C[3];"
     fn poseidon() {
         let input = read_to_string("../test_data/pil/poseidon_gl.pil").unwrap();
         generate_for_block_machine(&input, "main_poseidon", 12, 4).unwrap();
+    }
+
+    #[test]
+    fn simple_prover_function() {
+        let input = "
+        namespace std::prover;
+            let compute_from: expr, int, expr[], (fe[] -> fe) -> () = query |dest_col, row, input_cols, f| {};
+        namespace Main(256);
+            col witness a, b;
+            [a, b] is [Sub.a, Sub.b]; 
+        namespace Sub(256);
+            col witness a, b;
+            (a - 20) * (b + 3) = 1;
+            query |i| std::prover::compute_from(b, i, [a], |values| 20);
+        ";
+        let code = generate_for_block_machine(input, "Sub", 1, 1).unwrap().code;
+        assert_eq!(
+            format_code(&code),
+            "Sub::a[0] = params[0];
+Sub::b[0] = prover_function_0(0, [Sub::a[0]]);
+params[1] = Sub::b[0];"
+        );
     }
 }

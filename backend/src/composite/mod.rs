@@ -8,7 +8,7 @@ use std::{
 };
 
 use itertools::Itertools;
-use powdr_ast::analyzed::Analyzed;
+use powdr_ast::analyzed::{Analyzed, ContainsNextRef};
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
@@ -178,7 +178,10 @@ fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
         .map(|i| i.degree(&intermediate_definitions))
         .max()
         .unwrap_or(0);
-    let uses_next_operator = pil.identities.iter().any(|i| i.contains_next_ref());
+    let uses_next_operator = pil
+        .identities
+        .iter()
+        .any(|i| i.contains_next_ref(&intermediate_definitions));
     // This assumes that we'll always at least once reference the current row
     let number_of_rotations = 1 + if uses_next_operator { 1 } else { 0 };
     let num_identities_by_kind = pil

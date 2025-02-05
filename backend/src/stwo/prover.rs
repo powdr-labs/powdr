@@ -295,8 +295,7 @@ where
         let stage0_witness_cols_circle_domain_eval: ColumnVec<
             CircleEvaluation<B, BaseField, BitReversedOrder>,
         > = witness_by_machine
-            .clone()
-            .into_values()
+            .values()
             .flat_map(|witness_cols| {
                 witness_cols
                     .iter()
@@ -337,51 +336,46 @@ where
         // Stwo supports a maximum of 2 stages, and challenges are created only after stage 0.
         let stage0_challenges = get_challenges::<MC>(&self.analyzed, prover_channel);
 
-        let stage1_witness_cols_circle_domain_eval = if self.analyzed.stage_count() > 1 {
-            // build witness columns for stage 1 using the callback function, with the generated challenges
-            Some(
-                witness_by_machine
-                    .into_iter()
-                    .map(|(machine_name, machine_witness)| {
-                        (
-                            machine_witness
-                                .iter()
-                                .map(|(k, _)| k.clone())
-                                .collect::<BTreeSet<_>>(),
-                            witgen_callback.next_stage_witness(
-                                &self.split[&machine_name],
-                                &machine_witness,
-                                stage0_challenges.clone(),
-                                1,
-                            ),
-                        )
-                    })
-                    .flat_map(move |(stage0_columns, callback_result)| {
-                        callback_result
-                            .iter()
-                            .filter_map(|(witness_name, vec)| {
-                                if stage0_columns.contains(witness_name) {
-                                    None
-                                } else {
-                                    Some(gen_stwo_circle_column::<B, BaseField>(
-                                        *domain_map
-                                            .get(&(vec.len().ilog2() as usize))
-                                            .expect("Domain not found for given size"),
-                                        vec,
-                                    ))
-                                }
-                            })
-                            .collect_vec()
-                    }),
-            )
-        } else {
-            None
-        };
         if self.analyzed.stage_count() > 1 {
+            // Build witness columns for stage 1 using the callback function, with the generated challenges
+            let stage1_witness_cols_circle_domain_eval = witness_by_machine
+                .into_iter()
+                .map(|(machine_name, machine_witness)| {
+                    (
+                        machine_witness
+                            .iter()
+                            .map(|(k, _)| k.clone())
+                            .collect::<BTreeSet<_>>(),
+                        witgen_callback.next_stage_witness(
+                            &self.split[&machine_name],
+                            &machine_witness,
+                            stage0_challenges.clone(),
+                            1,
+                        ),
+                    )
+                })
+                .flat_map(move |(stage0_columns, callback_result)| {
+                    callback_result
+                        .iter()
+                        .filter_map(|(witness_name, vec)| {
+                            if stage0_columns.contains(witness_name) {
+                                None
+                            } else {
+                                Some(gen_stwo_circle_column::<B, BaseField>(
+                                    *domain_map
+                                        .get(&(vec.len().ilog2() as usize))
+                                        .expect("Domain not found for given size"),
+                                    vec,
+                                ))
+                            }
+                        })
+                        .collect_vec()
+                });
+
             let mut tree_builder = commitment_scheme.tree_builder();
-            tree_builder.extend_evals(stage1_witness_cols_circle_domain_eval.into_iter().flatten());
+            tree_builder.extend_evals(stage1_witness_cols_circle_domain_eval);
             tree_builder.commit(prover_channel);
-        };
+        }
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
         // Each column size in machines needs its own component, the components from different machines are stored in this vector
@@ -406,10 +400,12 @@ where
 
                 components.push(component);
 
-                constant_cols_offset_acc +=
-                    pil.constant_count() + get_constant_with_next_list(pil).len();
-            },
-        );
+                    constant_cols_offset_acc +=
+                        pil.constant_count() + get_constant_with_next_list(pil).len();
+                    component
+                },
+            )
+            .collect_vec();
 
         let components_slice: Vec<&dyn ComponentProver<B>> = components
             .iter()
@@ -541,6 +537,7 @@ where
             .collect_vec();
 
         let stage1_witness_col_log_sizes = iter
+            .clone()
             .flat_map(|(pil, machine_log_size)| {
                 repeat(machine_log_size).take(pil.stage_commitment_count(1))
             })
@@ -562,31 +559,25 @@ where
         // Get challenges based on the commitments of constant columns and stage 0 witness columns
         let stage0_challenges = get_challenges::<MC>(&self.analyzed, verifier_channel);
 
-        let components = self
-            .split
-            .iter()
-            .zip_eq(proof.machine_log_sizes.iter())
-            .map(
-                |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
-                    assert_eq!(machine_name, proof_machine_name);
+        let components = iter
+            .clone()
+            .map(|(pil, machine_log_size)| {
+                let machine_component = PowdrComponent::new(
+                    tree_span_provider,
+                    PowdrEval::new(
+                        (*pil).clone(),
+                        constant_cols_offset_acc,
+                        machine_log_size,
+                        stage0_challenges.clone(),
+                    ),
+                    (SecureField::zero(), None),
+                );
 
-                    let machine_component = PowdrComponent::new(
-                        tree_span_provider,
-                        PowdrEval::new(
-                            (*pil).clone(),
-                            constant_cols_offset_acc,
-                            machine_log_size,
-                            stage0_challenges.clone(),
-                        ),
-                        (SecureField::zero(), None),
-                    );
+                constant_cols_offset_acc += pil.constant_count();
 
-                    constant_cols_offset_acc += pil.constant_count();
-
-                    constant_cols_offset_acc += get_constant_with_next_list(pil).len();
-                    machine_component
-                },
-            )
+                constant_cols_offset_acc += get_constant_with_next_list(pil).len();
+                machine_component
+            })
             .collect_vec();
 
         let components_slice: Vec<&dyn Component> = components
