@@ -7,8 +7,7 @@ use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolynomialIdentity,
-    PolynomialType,
+    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolynomialType,
 };
 use powdr_number::FieldElement;
 
