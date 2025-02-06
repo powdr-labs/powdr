@@ -15,7 +15,7 @@ use powdr_executor_utils::{
     VariablySizedColumn,
 };
 use powdr_number::{DegreeType, FieldElement, KnownField};
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 mod extension_field;
 mod fp2;
@@ -123,7 +123,7 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
 
     pub fn generate(&self) -> Vec<(String, Vec<T>)> {
         // First, collect all (PolyID, Vec<T>) pairs from all bus interactions.
-        let intermediate: Vec<(PolyID, Vec<T>)> = self
+        let mut columns: BTreeMap<PolyID, Vec<T>> = self
             .bus_interactions
             .into_par_iter()
             .flat_map(|bus_interaction| {
