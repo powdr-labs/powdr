@@ -16,7 +16,7 @@ use crate::witgen::{
 use super::{
     affine_symbolic_expression,
     effect::{format_code, Effect},
-    identity_queue::IdentityQueue,
+    identity_queue::{identity_queue, IdentityQueueItem, ProcessingQueue},
     prover_function_heuristics::ProverFunction,
     variable::{Cell, Variable},
     witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, Value, WitgenInference},
@@ -112,7 +112,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         witgen: WitgenInference<'a, T, FixedEval>,
     ) -> Result<ProcessorResult<T>, Error<'a, T, FixedEval>> {
         let branch_depth = 0;
-        let identity_queue = IdentityQueue::new(self.fixed_data, &self.identities);
+        let identity_queue = identity_queue(self.fixed_data, &self.identities);
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
     }
 
@@ -120,7 +120,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         &self,
         can_process: impl CanProcessCall<T>,
         mut witgen: WitgenInference<'a, T, FixedEval>,
-        mut identity_queue: IdentityQueue<'a, T>,
+        mut identity_queue: ProcessingQueue<IdentityQueueItem<'a, T>>,
         branch_depth: usize,
     ) -> Result<ProcessorResult<T>, Error<'a, T, FixedEval>> {
         if self
@@ -278,7 +278,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         &self,
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        identity_queue: &mut IdentityQueue<'a, T>,
+        identity_queue: &mut ProcessingQueue<IdentityQueueItem<'a, T>>,
     ) -> Result<(), affine_symbolic_expression::Error> {
         loop {
             let identity = identity_queue.next();

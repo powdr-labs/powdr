@@ -17,87 +17,122 @@ use crate::witgen::{data_structures::identity::Identity, FixedData};
 
 use super::variable::Variable;
 
-/// Keeps track of identities that still need to be processed and
-/// updates this list based on the occurrence of updated variables
-/// in identities.
-#[derive(Clone)]
-pub struct IdentityQueue<'a, T: FieldElement> {
-    queue: BTreeSet<QueueItem<'a, T>>,
-    occurrences: Rc<HashMap<Variable, Vec<QueueItem<'a, T>>>>,
+/// Constructs a `ProcessingQueue` for pairs of identities and rows.
+pub fn identity_queue<'a, T: FieldElement>(
+    fixed_data: &'a FixedData<'a, T>,
+    identities: &[(&'a Identity<T>, i32)],
+) -> ProcessingQueue<IdentityQueueItem<'a, T>> {
+    ProcessingQueue::new(
+        identities.iter().cloned(),
+        compute_occurrences_map(fixed_data, identities),
+    )
 }
 
-impl<'a, T: FieldElement> IdentityQueue<'a, T> {
-    pub fn new(fixed_data: &'a FixedData<'a, T>, identities: &[(&'a Identity<T>, i32)]) -> Self {
-        let occurrences = compute_occurrences_map(fixed_data, identities).into();
+/// Keeps track of identities or assignments that still need to be processed and
+/// updates this list based on the occurrence of updated variables
+/// in identities and assignments.
+#[derive(Clone)]
+pub struct ProcessingQueue<Item: QueueItem> {
+    queue: BTreeSet<Item>,
+    occurrences: Rc<HashMap<Variable, Vec<Item>>>,
+}
+
+impl<Item: QueueItem> ProcessingQueue<Item> {
+    pub fn new(
+        queue: impl IntoIterator<Item = Item::OuterType>,
+        occurrences: impl IntoIterator<Item = (Variable, Item::OuterType)>,
+    ) -> Self {
         Self {
-            queue: identities
-                .iter()
-                .map(|(id, row)| QueueItem(id, *row))
-                .collect(),
-            occurrences,
+            queue: queue.into_iter().map(Item::from_outer_type).collect(),
+            occurrences: Rc::new(
+                occurrences
+                    .into_iter()
+                    .map(|(v, i)| (v, Item::from_outer_type(i)))
+                    .into_group_map(),
+            ),
         }
     }
 
-    /// Returns the next identity to be processed and its row and
+    /// Returns the next identity or assignment to be processed and its row and
     /// removes it from the queue.
-    pub fn next(&mut self) -> Option<(&'a Identity<T>, i32)> {
-        self.queue.pop_first().map(|QueueItem(id, row)| (id, row))
+    pub fn next(&mut self) -> Option<Item::OuterType> {
+        self.queue.pop_first().map(|i| i.to_outer_type())
     }
 
     pub fn variables_updated(
         &mut self,
         variables: impl IntoIterator<Item = Variable>,
-        skip_identity: Option<(&'a Identity<T>, i32)>,
+        skip_identity: Option<Item::OuterType>,
     ) {
+        let skip_item = skip_identity.map(Item::from_outer_type);
         self.queue.extend(
             variables
                 .into_iter()
                 .flat_map(|var| self.occurrences.get(&var))
                 .flatten()
-                .filter(|QueueItem(id, row)| match skip_identity {
-                    Some((id2, row2)) => (id.id(), *row) != (id2.id(), row2),
+                .filter(|&item| match &skip_item {
+                    Some(skip_item) => item != skip_item,
                     None => true,
-                }),
+                })
+                .cloned(),
         )
     }
 }
 
+pub trait QueueItem: Clone + Ord + PartialEq {
+    type OuterType;
+    fn to_outer_type(&self) -> Self::OuterType;
+    fn from_outer_type(outer: Self::OuterType) -> Self;
+}
+
 /// Sorts identities by row and then by ID.
 #[derive(Clone, Copy)]
-struct QueueItem<'a, T>(&'a Identity<T>, i32);
+pub struct IdentityQueueItem<'a, T>(&'a Identity<T>, i32);
 
-impl<T> QueueItem<'_, T> {
+impl<'a, T: Clone> QueueItem for IdentityQueueItem<'a, T> {
+    type OuterType = (&'a Identity<T>, i32);
+
+    fn to_outer_type(&self) -> Self::OuterType {
+        (self.0, self.1)
+    }
+
+    fn from_outer_type(outer: Self::OuterType) -> Self {
+        IdentityQueueItem(outer.0, outer.1)
+    }
+}
+
+impl<T> IdentityQueueItem<'_, T> {
     fn key(&self) -> (i32, u64) {
-        let QueueItem(id, row) = self;
+        let IdentityQueueItem(id, row) = self;
         (*row, id.id())
     }
 }
 
-impl<T> Ord for QueueItem<'_, T> {
+impl<T> Ord for IdentityQueueItem<'_, T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.key().cmp(&other.key())
     }
 }
 
-impl<T> PartialOrd for QueueItem<'_, T> {
+impl<T> PartialOrd for IdentityQueueItem<'_, T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<T> PartialEq for QueueItem<'_, T> {
+impl<T> PartialEq for IdentityQueueItem<'_, T> {
     fn eq(&self, other: &Self) -> bool {
         self.key() == other.key()
     }
 }
 
-impl<T> Eq for QueueItem<'_, T> {}
+impl<T> Eq for IdentityQueueItem<'_, T> {}
 
 /// Computes a map from each variable to the identity-row-offset pairs it occurs in.
 fn compute_occurrences_map<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
     identities: &[(&'a Identity<T>, i32)],
-) -> HashMap<Variable, Vec<QueueItem<'a, T>>> {
+) -> Vec<(Variable, (&'a Identity<T>, i32))> {
     let mut references_per_identity = HashMap::new();
     let mut intermediate_cache = HashMap::new();
     for id in identities.iter().map(|(id, _)| *id).unique_by(|id| id.id()) {
@@ -117,10 +152,10 @@ fn compute_occurrences_map<'a, T: FieldElement>(
                     next: reference.next,
                 };
                 let var = Variable::from_reference(&fat_ref, *row);
-                (var, QueueItem(*id, *row))
+                (var, (*id, *row))
             })
         })
-        .into_group_map()
+        .collect()
 }
 
 /// Returns all references to witness column in the identity.
