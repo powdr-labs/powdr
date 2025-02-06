@@ -178,6 +178,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         id: &'a Identity<T>,
         row_offset: i32,
     ) -> Result<Vec<Variable>, Error> {
+        if id.id() == 96 && (row_offset == 30 || row_offset == 31) {
+            println!("Processing identity 96 on row 30");
+        }
         let result = match id {
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => self
                 .process_equality_on_row(
@@ -428,13 +431,38 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         for e in process_result.effects {
             match &e {
                 Effect::Assignment(variable, assignment) => {
+                    if let Variable::WitnessCell(Cell {
+                        column_name,
+                        id,
+                        row_offset,
+                    }) = variable
+                    {
+                        if id == &242 && (row_offset == &31 || row_offset == &30) {
+                            println!("{variable} := {assignment}");
+                            println!(
+                                "  from ID {}",
+                                identity_id
+                                    .map(|(id, row)| format!("{} on row {}", id, row))
+                                    .unwrap_or_default()
+                            );
+                        }
+                    }
                     // If the variable was determined to be a constant, we add this
                     // as a range constraint, so we can use it in future evaluations.
                     if self.add_range_constraint(variable.clone(), assignment.range_constraint()) {
                         updated_variables.push(variable.clone());
                     }
                     if self.record_known(variable.clone()) {
-                        log::trace!("{variable} := {assignment}");
+                        if let Variable::WitnessCell(Cell {
+                            column_name,
+                            id,
+                            row_offset,
+                        }) = variable
+                        {
+                            if id == &242 && (row_offset == &31 || row_offset == &30) {
+                                println!("{variable} is now known");
+                            }
+                        }
                         updated_variables.push(variable.clone());
                         self.code.push(e);
                     }
@@ -463,6 +491,22 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     }
                 }
                 Effect::RangeConstraint(variable, rc) => {
+                    if let Variable::WitnessCell(Cell {
+                        column_name,
+                        id,
+                        row_offset,
+                    }) = variable
+                    {
+                        if id == &242 && (row_offset == &31 || row_offset == &30) {
+                            println!("{variable} : {rc}");
+                            println!(
+                                "  from ID {}",
+                                identity_id
+                                    .map(|(id, row)| format!("{} on row {}", id, row))
+                                    .unwrap_or_default()
+                            );
+                        }
+                    }
                     if self.add_range_constraint(variable.clone(), rc.clone()) {
                         log::trace!("{variable}: {rc}");
                         updated_variables.push(variable.clone());

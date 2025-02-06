@@ -13,7 +13,7 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::{data_structures::identity::Identity, FixedData};
+use crate::witgen::{data_structures::identity::Identity, jit::variable::Cell, FixedData};
 
 use super::variable::Variable;
 
@@ -28,7 +28,21 @@ pub struct IdentityQueue<'a, T: FieldElement> {
 
 impl<'a, T: FieldElement> IdentityQueue<'a, T> {
     pub fn new(fixed_data: &'a FixedData<'a, T>, identities: &[(&'a Identity<T>, i32)]) -> Self {
-        let occurrences = compute_occurrences_map(fixed_data, identities).into();
+        let occurrences = Rc::new(compute_occurrences_map(fixed_data, identities));
+        let v = Variable::WitnessCell(Cell {
+            column_name: "a".to_string(),
+            id: 242,
+            row_offset: 31,
+        });
+        // println!(
+        //     " ---> {}",
+        //     occurrences
+        //         .get(&v)
+        //         .unwrap()
+        //         .iter()
+        //         .map(|QueueItem(id, row)| format!("row: {row}, id: {id}"))
+        //         .format("\n    ")
+        // );
         Self {
             queue: identities
                 .iter()
@@ -49,16 +63,40 @@ impl<'a, T: FieldElement> IdentityQueue<'a, T> {
         variables: impl IntoIterator<Item = Variable>,
         skip_identity: Option<(&'a Identity<T>, i32)>,
     ) {
-        self.queue.extend(
-            variables
-                .into_iter()
-                .flat_map(|var| self.occurrences.get(&var))
-                .flatten()
-                .filter(|QueueItem(id, row)| match skip_identity {
-                    Some((id2, row2)) => (id.id(), *row) != (id2.id(), row2),
-                    None => true,
-                }),
-        )
+        let variables = variables.into_iter().collect_vec();
+        let print_it = variables
+            .iter()
+            .find(|v| {
+                matches!(
+                    v,
+                    Variable::WitnessCell(Cell {
+                        id: 242,
+                        row_offset: 31,
+                        ..
+                    })
+                )
+            })
+            .is_some();
+        let extension = variables
+            .into_iter()
+            .flat_map(|var| self.occurrences.get(&var))
+            .flatten()
+            .filter(|QueueItem(id, row)| match skip_identity {
+                Some((id2, row2)) => (id.id(), *row) != (id2.id(), row2),
+                None => true,
+            })
+            .collect_vec();
+        if print_it {
+            println!("Variable updated");
+            // println!(
+            //     " ---> {}",
+            //     extension
+            //         .iter()
+            //         .map(|QueueItem(id, row)| format!("row: {row}, id: {id}"))
+            //         .format("\n    ")
+            // );
+        }
+        self.queue.extend(extension)
     }
 }
 
@@ -117,6 +155,11 @@ fn compute_occurrences_map<'a, T: FieldElement>(
                     next: reference.next,
                 };
                 let var = Variable::from_reference(&fat_ref, *row);
+                if id.id() == 96 && *row == 30 {
+                    println!("{id}");
+                    println!("Identity 96 references on row 30: {var}");
+                    println!("polyid: {}", reference.poly_id.id);
+                }
                 (var, QueueItem(*id, *row))
             })
         })
