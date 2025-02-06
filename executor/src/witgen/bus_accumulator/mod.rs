@@ -122,7 +122,8 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
     }
 
     pub fn generate(&self) -> Vec<(String, Vec<T>)> {
-        let mut columns = self
+        // First, collect all (PolyID, Vec<T>) pairs from all bus interactions.
+        let mut columns: BTreeMap<PolyID, Vec<T>> = self
             .bus_interactions
             .par_iter()
             .flat_map(|bus_interaction| {
@@ -131,8 +132,33 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
                     .chain(collect_acc_columns(bus_interaction, acc))
                     .collect::<Vec<_>>()
             })
-            .collect::<BTreeMap<_, _>>();
+            // Each thread builds its own BTreeMap.
+            .fold(BTreeMap::new, |mut acc, (poly_id, column)| {
+                acc.entry(poly_id)
+                    .and_modify(|existing: &mut Vec<T>| {
+                        // Element-wise addition. We assume both vectors have the same length.
+                        for (a, b) in existing.iter_mut().zip_eq(&column) {
+                            *a += *b;
+                        }
+                    })
+                    .or_insert(column);
+                acc
+            })
+            // Merge the thread-local BTreeMaps.
+            .reduce(BTreeMap::new, |mut map1, map2| {
+                for (poly_id, column) in map2 {
+                    map1.entry(poly_id)
+                        .and_modify(|existing| {
+                            for (a, b) in existing.iter_mut().zip_eq(&column) {
+                                *a += *b;
+                            }
+                        })
+                        .or_insert(column);
+                }
+                map1
+            });
 
+        // Finally, for each committed poly from the PIL in stage 1, remove its column from the map.
         let result = self
             .pil
             .committed_polys_in_source_order()
