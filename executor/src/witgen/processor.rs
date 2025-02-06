@@ -11,7 +11,7 @@ use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 
-use super::data_structures::identity::Identity;
+use super::data_structures::identity::{BusReceive, Identity};
 use super::machines::{Connection, MachineParts};
 use super::FixedData;
 use super::{
@@ -62,7 +62,7 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
 impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
     pub fn try_new(
         caller_rows: &'b RowPair<'b, 'a, T>,
-        connection: Connection<'a, T>,
+        bus_receive: &'a BusReceive<T>,
     ) -> Result<Self, IncompleteCause<AlgebraicVariable<'a>>> {
         // Evaluate once, for performance reasons.
         let left = connection

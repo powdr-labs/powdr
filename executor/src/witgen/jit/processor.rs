@@ -38,18 +38,18 @@ pub struct Processor<'a, T: FieldElement, FixedEval> {
     check_block_shape: bool,
     /// List of variables we want to be known at the end. One of them not being known
     /// is a failure.
-    requested_known_vars: Vec<Variable>,
+    requested_known_vars: Vec<Variable<T>>,
     /// List of variables we want to know the derived range constraints of at the very end
     /// (for every branch).
-    requested_range_constraints: Vec<Variable>,
+    requested_range_constraints: Vec<Variable<T>>,
     /// Maximum branch depth allowed.
     max_branch_depth: usize,
 }
 
 pub struct ProcessorResult<T: FieldElement> {
     /// Generated code.
-    pub code: Vec<Effect<T, Variable>>,
-    /// Range constrainst of the variables they were requested on.
+    pub code: Vec<Effect<T, Variable<T>>>,
+    /// Range constraints of the variables they were requested on.
     pub range_constraints: Vec<RangeConstraint<T>>,
 }
 
@@ -58,7 +58,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         fixed_data: &'a FixedData<'a, T>,
         fixed_evaluator: FixedEval,
         identities: impl IntoIterator<Item = (&'a Identity<T>, i32)>,
-        requested_known_vars: impl IntoIterator<Item = Variable>,
+        requested_known_vars: impl IntoIterator<Item = Variable<T>>,
         max_branch_depth: usize,
     ) -> Self {
         let identities = identities.into_iter().collect_vec();
@@ -78,7 +78,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
     /// Provides a list of variables that we want to know the derived range constraints of at the end.
     pub fn with_requested_range_constraints(
         mut self,
-        vars: impl IntoIterator<Item = Variable>,
+        vars: impl IntoIterator<Item = Variable<T>>,
     ) -> Self {
         self.requested_range_constraints.extend(vars);
         self
@@ -302,7 +302,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
     fn process_prover_functions(
         &self,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-    ) -> Result<Vec<Variable>, affine_symbolic_expression::Error> {
+    ) -> Result<Vec<Variable<T>>, affine_symbolic_expression::Error> {
         for (prover_function, row_offset) in &self.prover_functions {
             let updated_vars = witgen.process_prover_function(prover_function, *row_offset)?;
             if !updated_vars.is_empty() {
@@ -459,7 +459,7 @@ pub struct Error<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     pub witgen: WitgenInference<'a, T, FixedEval>,
     pub fixed_evaluator: FixedEval,
     /// Required variables that could not be determined
-    pub missing_variables: Vec<Variable>,
+    pub missing_variables: Vec<Variable<T>>,
     /// Identities that could not be processed completely.
     /// Note that we only force submachine calls to be complete.
     pub incomplete_identities: Vec<(&'a Identity<T>, i32)>,
@@ -504,7 +504,7 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
 
     pub fn to_string_with_variable_formatter(
         &self,
-        var_formatter: impl Fn(&Variable) -> String,
+        var_formatter: impl Fn(&Variable<T>) -> String,
     ) -> String {
         let mut s = String::new();
         let reason_str = match &self.reason {
