@@ -79,12 +79,11 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         record_start(self.name());
-        let result =
-            self.process_plookup(mutable_state, identity_id, parameters, range_constraints);
+        let result = self.process_plookup(mutable_state, identity_id, arguments, range_constraints);
         record_end(self.name());
         result
     }
@@ -112,7 +111,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T>;
 
@@ -212,10 +211,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        match_variant!(self, m => m.process_plookup(mutable_state, identity_id, parameters, range_constraints))
+        match_variant!(self, m => m.process_plookup(mutable_state, identity_id, arguments, range_constraints))
     }
 
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(

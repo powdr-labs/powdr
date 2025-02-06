@@ -116,7 +116,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
 
         let mut updates = EvalValue::complete(vec![]);
 
-        for (l, r) in outer_query.parameters.iter().zip(right.expressions.iter()) {
+        for (l, r) in outer_query.arguments.iter().zip(right.expressions.iter()) {
             match current_rows.evaluate(r) {
                 Ok(r) => {
                     let result = (l.clone() - r).solve_with_range_constraints(&range_constraint)?;

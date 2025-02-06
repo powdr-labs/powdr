@@ -234,14 +234,13 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
     ) -> EvalResult<'a, T> {
         let right = self.connections[&identity_id].right;
 
-        if outer_query.parameters.len() == 1
-            && !outer_query.parameters.first().unwrap().is_constant()
+        if outer_query.arguments.len() == 1 && !outer_query.arguments.first().unwrap().is_constant()
         {
             if let Some(column_reference) = try_to_simple_poly(&right.expressions[0]) {
                 // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
                 return self.process_range_check(
                     outer_query.range_constraints,
-                    outer_query.parameters.first().unwrap(),
+                    outer_query.arguments.first().unwrap(),
                     AlgebraicVariable::Column(column_reference),
                 );
             }

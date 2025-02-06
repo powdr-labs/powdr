@@ -57,24 +57,24 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
     /// Connection.
     pub connection: Connection<'a, T>,
     /// The left side of the connection, evaluated.
-    pub parameters: Left<'a, T>,
+    pub arguments: Left<'a, T>,
 }
 
 impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
     pub fn try_new(
-        parameters: &'b [AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &'b [AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
         connection: Connection<'a, T>,
     ) -> Result<Self, IncompleteCause<AlgebraicVariable<'a>>> {
         Ok(Self {
             range_constraints,
             connection,
-            parameters: parameters.to_vec(),
+            arguments: arguments.to_vec(),
         })
     }
 
     pub fn is_complete(&self) -> bool {
-        self.parameters.iter().all(|l| l.is_constant())
+        self.arguments.iter().all(|l| l.is_constant())
     }
 }
 
@@ -162,7 +162,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
         log::trace!("  Extracting inputs:");
         let mut inputs = vec![];
         for (l, r) in outer_query
-            .parameters
+            .arguments
             .iter()
             .zip(&outer_query.connection.right.expressions)
         {
@@ -350,7 +350,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             .map_err(|e| {
                 log::warn!("Error in outer query: {e}");
                 log::warn!("Some of the following entries could not be matched:");
-                for (l, r) in outer_query.parameters.iter().zip(right.expressions.iter()) {
+                for (l, r) in outer_query.arguments.iter().zip(right.expressions.iter()) {
                     if let Ok(r) = row_pair.evaluate(r) {
                         log::warn!("  => {} = {}", l, r);
                     }
@@ -470,7 +470,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                         progress = true;
                         self.propagate_along_copy_constraints(row_index, poly, c);
                     } else if let Constraint::Assignment(v) = c {
-                        let left = &mut self.outer_query.as_mut().unwrap().parameters;
+                        let left = &mut self.outer_query.as_mut().unwrap().arguments;
                         log::trace!("      => {} (outer) = {}", poly, v);
                         for l in left.iter_mut() {
                             l.assign(*var, *v);

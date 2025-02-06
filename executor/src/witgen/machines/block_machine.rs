@@ -204,16 +204,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         let previous_len = self.data.len();
-        let result = self.process_plookup_internal(
-            mutable_state,
-            identity_id,
-            parameters,
-            range_constraints,
-        );
+        let result =
+            self.process_plookup_internal(mutable_state, identity_id, arguments, range_constraints);
         if let Ok(assignments) = &result {
             if !assignments.is_complete() {
                 // rollback the changes.
@@ -418,11 +414,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         let outer_query = match OuterQuery::try_new(
-            parameters,
+            arguments,
             range_constraints,
             self.parts.connections[&identity_id],
         ) {
@@ -433,7 +429,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
         if log::log_enabled!(log::Level::Trace) {
-            for l in &outer_query.parameters {
+            for l in &outer_query.arguments {
                 log::trace!("  {}", l);
             }
         }
@@ -443,7 +439,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
 
         let known_inputs = outer_query
-            .parameters
+            .arguments
             .iter()
             .map(|e| e.is_constant())
             .collect();
@@ -461,7 +457,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // TODO this assumes we are always using the same lookup for this machine.
         let mut sequence_iterator = self
             .processing_sequence_cache
-            .get_processing_sequence(&outer_query.parameters);
+            .get_processing_sequence(&outer_query.arguments);
 
         if !sequence_iterator.has_steps() {
             // Shortcut, no need to do anything.
@@ -493,7 +489,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
                 // We solved the query, so report it to the cache.
                 self.processing_sequence_cache
-                    .report_processing_sequence(&outer_query.parameters, sequence_iterator);
+                    .report_processing_sequence(&outer_query.arguments, sequence_iterator);
                 Ok(updates)
             }
             ProcessResult::Incomplete(updates) => {
@@ -502,7 +498,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                     self.name()
                 );
                 self.processing_sequence_cache
-                    .report_incomplete(&outer_query.parameters);
+                    .report_incomplete(&outer_query.arguments);
                 Ok(updates)
             }
         }

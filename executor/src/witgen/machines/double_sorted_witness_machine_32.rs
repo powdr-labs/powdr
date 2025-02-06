@@ -243,11 +243,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         let connection = self.parts.connections[&identity_id];
-        let outer_query = match OuterQuery::try_new(parameters, range_constraints, connection) {
+        let outer_query = match OuterQuery::try_new(arguments, range_constraints, connection) {
             Ok(outer_query) => outer_query,
             Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
         };

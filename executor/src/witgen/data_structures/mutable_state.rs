@@ -66,11 +66,11 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
     pub fn call(
         &self,
         identity_id: u64,
-        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         self.responsible_machine(identity_id)?
-            .process_plookup_timed(self, identity_id, parameters, range_constraints)
+            .process_plookup_timed(self, identity_id, arguments, range_constraints)
     }
 
     /// Call the machine responsible for the right-hand-side of an identity given its ID,

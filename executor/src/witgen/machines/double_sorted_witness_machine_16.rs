@@ -236,10 +236,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
         &mut self,
         _mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, parameters, range_constraints)
+        self.process_plookup_internal(identity_id, arguments, range_constraints)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -413,7 +413,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
     pub fn process_plookup_internal(
         &mut self,
         identity_id: u64,
-        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         // We blindly assume the lookup is of the form
@@ -424,7 +424,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         // - operation_id == 1: Write
         // - operation_id == 2: Bootloader write
 
-        let operation_id = match parameters[0].constant_value() {
+        let operation_id = match arguments[0].constant_value() {
             Some(v) => v,
             None => {
                 return Ok(EvalValue::incomplete(
@@ -438,10 +438,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         let is_normal_write = operation_id == T::from(OPERATION_ID_WRITE);
         let is_bootloader_write = operation_id == T::from(OPERATION_ID_BOOTLOADER_WRITE);
         let is_write = is_bootloader_write || is_normal_write;
-        let addr = match (
-            parameters[1].constant_value(),
-            parameters[2].constant_value(),
-        ) {
+        let addr = match (arguments[1].constant_value(), arguments[2].constant_value()) {
             (Some(high), Some(low)) => Word32(high, low),
             _ => {
                 return Ok(EvalValue::incomplete(
@@ -460,13 +457,13 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
             self.is_initialized.insert(addr, true);
         }
 
-        let step = parameters[3]
+        let step = arguments[3]
             .constant_value()
-            .ok_or_else(|| format!("Step must be known but is: {}", parameters[3]))?;
+            .ok_or_else(|| format!("Step must be known but is: {}", arguments[3]))?;
         let step_word = Word32::from(step.to_degree());
 
-        let value1_expr = &parameters[4];
-        let value2_expr = &parameters[5];
+        let value1_expr = &arguments[4];
+        let value2_expr = &arguments[5];
 
         log::trace!(
             "Query addr=0x{:x}, step={step}, write: {is_write}, value: ({} {})",

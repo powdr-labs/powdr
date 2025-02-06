@@ -65,11 +65,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         let identity = *self.parts.connections.get(&identity_id).unwrap();
-        let outer_query = match OuterQuery::try_new(parameters, range_constraints, identity) {
+        let outer_query = match OuterQuery::try_new(arguments, range_constraints, identity) {
             Ok(outer_query) => outer_query,
             Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
         };
@@ -80,7 +80,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
             .right
             .expressions
             .iter()
-            .zip(&outer_query.parameters)
+            .zip(&outer_query.arguments)
         {
             log::trace!("  {r} = {l}");
         }
