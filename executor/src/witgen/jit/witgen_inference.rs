@@ -182,6 +182,24 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.ingest_effects(result, Some((identity_id, row_offset)))
     }
 
+    pub fn process_call(
+        &mut self,
+        can_process_call: impl CanProcessCall<T>,
+        lookup_id: u64,
+        selector: &Expression<T>,
+        argument_count: usize,
+        row_offset: i32,
+    ) -> Result<Vec<Variable>, Error> {
+        let result = self.process_call_inner(
+            can_process_call,
+            lookup_id,
+            selector,
+            argument_count,
+            row_offset,
+        );
+        self.ingest_effects(result, Some((lookup_id, row_offset)))
+    }
+
     /// Process a prover function on a row, i.e. determine if we can execute it and if it will
     /// help us to compute the value of previously unknown variables.
     /// Returns the list of updated variables.
@@ -306,25 +324,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         (lhs_evaluated - rhs_evaluated).solve()
     }
 
-    pub fn process_call(
-        &mut self,
-        can_process_call: impl CanProcessCall<T>,
-        lookup_id: u64,
-        selector: &Expression<T>,
-        argument_count: usize,
-        row_offset: i32,
-    ) -> Result<Vec<Variable>, Error> {
-        let result = self.process_call_(
-            can_process_call,
-            lookup_id,
-            selector,
-            argument_count,
-            row_offset,
-        );
-        self.ingest_effects(result, Some((lookup_id, row_offset)))
-    }
-
-    fn process_call_(
+    fn process_call_inner(
         &mut self,
         can_process_call: impl CanProcessCall<T>,
         lookup_id: u64,
