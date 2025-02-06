@@ -16,7 +16,7 @@ use crate::witgen::{
 use super::{
     affine_symbolic_expression,
     effect::{format_code, Effect},
-    identity_queue::IdentityQueue,
+    identity_queue::{IdentityQueue, QueueItem},
     prover_function_heuristics::ProverFunction,
     variable::{Cell, Variable},
     witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, Value, WitgenInference},
@@ -112,7 +112,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         witgen: WitgenInference<'a, T, FixedEval>,
     ) -> Result<ProcessorResult<T>, Error<'a, T, FixedEval>> {
         let branch_depth = 0;
-        let identity_queue = IdentityQueue::new(self.fixed_data, &self.identities);
+        let identity_queue = IdentityQueue::new(self.fixed_data, &self.identities, &[]);
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
     }
 
@@ -283,8 +283,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         loop {
             let identity = identity_queue.next();
             let updated_vars = match identity {
-                Some((identity, row_offset)) => {
+                Some(QueueItem::Identity(identity, row_offset)) => {
                     witgen.process_identity(can_process.clone(), identity, row_offset)
+                }
+                Some(QueueItem::Assignment(assignment)) => {
+                    todo!()
                 }
                 None => self.process_prover_functions(witgen),
             }?;

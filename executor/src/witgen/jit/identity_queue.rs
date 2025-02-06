@@ -15,7 +15,10 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{data_structures::identity::Identity, FixedData};
 
-use super::variable::Variable;
+use super::{
+    variable::Variable,
+    witgen_inference::{Assignment, VariableOrValue},
+};
 
 /// Keeps track of identities that still need to be processed and
 /// updates this list based on the occurrence of updated variables
@@ -27,98 +30,120 @@ pub struct IdentityQueue<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> IdentityQueue<'a, T> {
-    pub fn new(fixed_data: &'a FixedData<'a, T>, identities: &[(&'a Identity<T>, i32)]) -> Self {
-        let occurrences = compute_occurrences_map(fixed_data, identities).into();
-        Self {
-            queue: identities
-                .iter()
-                .map(|(id, row)| QueueItem(id, *row))
-                .collect(),
-            occurrences,
-        }
+    pub fn new(
+        fixed_data: &'a FixedData<'a, T>,
+        identities: &[(&'a Identity<T>, i32)],
+        assignments: &[Assignment<'a, T>],
+    ) -> Self {
+        let queue: BTreeSet<_> = identities
+            .iter()
+            .map(|(id, row)| QueueItem::Identity(id, *row))
+            .chain(assignments.iter().map(|a| QueueItem::Assignment(a.clone())))
+            .collect();
+        let occurrences = compute_occurrences_map(fixed_data, &queue).into();
+        Self { queue, occurrences }
     }
 
     /// Returns the next identity to be processed and its row and
     /// removes it from the queue.
-    pub fn next(&mut self) -> Option<(&'a Identity<T>, i32)> {
-        self.queue.pop_first().map(|QueueItem(id, row)| (id, row))
+    pub fn next(&mut self) -> Option<QueueItem<'a, T>> {
+        self.queue.pop_first()
     }
 
     pub fn variables_updated(
         &mut self,
         variables: impl IntoIterator<Item = Variable>,
-        skip_identity: Option<(&'a Identity<T>, i32)>,
+        skip_item: Option<QueueItem<'a, T>>,
     ) {
         self.queue.extend(
             variables
                 .into_iter()
                 .flat_map(|var| self.occurrences.get(&var))
                 .flatten()
-                .filter(|QueueItem(id, row)| match skip_identity {
-                    Some((id2, row2)) => (id.id(), *row) != (id2.id(), row2),
+                .filter(|item| match &skip_item {
+                    Some(it) => *item != it,
                     None => true,
-                }),
+                })
+                .cloned(),
         )
     }
 }
 
-/// Sorts identities by row and then by ID.
-#[derive(Clone, Copy)]
-struct QueueItem<'a, T>(&'a Identity<T>, i32);
-
-impl<T> QueueItem<'_, T> {
-    fn key(&self) -> (i32, u64) {
-        let QueueItem(id, row) = self;
-        (*row, id.id())
-    }
+#[derive(Clone)]
+pub enum QueueItem<'a, T: FieldElement> {
+    Identity(&'a Identity<T>, i32),
+    Assignment(Assignment<'a, T>),
 }
 
-impl<T> Ord for QueueItem<'_, T> {
+/// Sorts identities by row and then by ID, followed by assignments.
+impl<T: FieldElement> Ord for QueueItem<'_, T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.key().cmp(&other.key())
+        match (self, other) {
+            (QueueItem::Identity(id1, row1), QueueItem::Identity(id2, row2)) => {
+                (row1, id1.id()).cmp(&(row2, id2.id()))
+            }
+            (QueueItem::Assignment(a1), QueueItem::Assignment(a2)) => a1.cmp(a2),
+            (QueueItem::Identity(_, _), QueueItem::Assignment(_)) => std::cmp::Ordering::Less,
+            (QueueItem::Assignment(_), QueueItem::Identity(_, _)) => std::cmp::Ordering::Greater,
+        }
     }
 }
 
-impl<T> PartialOrd for QueueItem<'_, T> {
+impl<T: FieldElement> PartialOrd for QueueItem<'_, T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl<T> PartialEq for QueueItem<'_, T> {
+impl<T: FieldElement> PartialEq for QueueItem<'_, T> {
     fn eq(&self, other: &Self) -> bool {
-        self.key() == other.key()
+        self.cmp(other) == std::cmp::Ordering::Equal
     }
 }
 
-impl<T> Eq for QueueItem<'_, T> {}
+impl<T: FieldElement> Eq for QueueItem<'_, T> {}
 
-/// Computes a map from each variable to the identity-row-offset pairs it occurs in.
-fn compute_occurrences_map<'a, T: FieldElement>(
+/// Computes a map from each variable to the queue items it occurs in.
+fn compute_occurrences_map<'b, 'a: 'b, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
-    identities: &[(&'a Identity<T>, i32)],
+    items: &BTreeSet<QueueItem<'a, T>>,
 ) -> HashMap<Variable, Vec<QueueItem<'a, T>>> {
-    let mut references_per_identity = HashMap::new();
     let mut intermediate_cache = HashMap::new();
-    for id in identities.iter().map(|(id, _)| *id).unique_by(|id| id.id()) {
+
+    // Compute references only once per identity.
+    let mut references_per_identity = HashMap::new();
+    for id in items
+        .iter()
+        .filter_map(|item| match item {
+            QueueItem::Identity(id, _) => Some(id),
+            _ => None,
+        })
+        .unique_by(|id| id.id())
+    {
         references_per_identity.insert(
-            id,
+            id.id(),
             references_in_identity(id, fixed_data, &mut intermediate_cache),
         );
     }
-    identities
+
+    items
         .iter()
-        .flat_map(|(id, row)| {
-            references_per_identity[id].iter().map(move |reference| {
-                let name = fixed_data.column_name(&reference.poly_id).to_string();
-                let fat_ref = AlgebraicReference {
-                    name,
-                    poly_id: reference.poly_id,
-                    next: reference.next,
-                };
-                let var = Variable::from_reference(&fat_ref, *row);
-                (var, QueueItem(*id, *row))
-            })
+        .flat_map(|item| {
+            let variables = match item {
+                QueueItem::Identity(id, row) => {
+                    references_in_identity(id, fixed_data, &mut intermediate_cache)
+                        .into_iter()
+                        .map(|r| {
+                            let name = fixed_data.column_name(&r.poly_id).to_string();
+                            Variable::from_reference(&r.with_name(name), *row)
+                        })
+                        .collect_vec()
+                }
+                QueueItem::Assignment(a) => {
+                    variables_in_assignment(a, fixed_data, &mut intermediate_cache)
+                }
+            };
+            variables.into_iter().map(move |v| (v, item.clone()))
         })
         .into_group_map()
 }
@@ -183,4 +208,23 @@ fn references_in_expression<'a, T: FieldElement>(
             },
         )
         .unique()
+}
+
+/// Returns a vector of all variables that occur in the assignment.
+fn variables_in_assignment<'a, T: FieldElement>(
+    assignment: &Assignment<'a, T>,
+    fixed_data: &'a FixedData<'a, T>,
+    intermediate_cache: &mut HashMap<AlgebraicReferenceThin, Vec<AlgebraicReferenceThin>>,
+) -> Vec<Variable> {
+    let rhs_var = match &assignment.rhs {
+        VariableOrValue::Variable(v) => Some(v.clone()),
+        VariableOrValue::Value(_) => None,
+    };
+    references_in_expression(assignment.lhs, fixed_data, intermediate_cache)
+        .map(|r| {
+            let name = fixed_data.column_name(&r.poly_id).to_string();
+            Variable::from_reference(&r.with_name(name), assignment.row_offset)
+        })
+        .chain(rhs_var)
+        .collect()
 }

@@ -682,14 +682,14 @@ fn is_known_zero<T: FieldElement>(x: &Option<AffineSymbolicExpression<T, Variabl
 /// An equality constraint between an algebraic expression evaluated
 /// on a certain row offset and a variable or fixed constant value.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
-struct Assignment<'a, T: FieldElement> {
-    lhs: &'a Expression<T>,
-    row_offset: i32,
-    rhs: VariableOrValue<T, Variable>,
+pub struct Assignment<'a, T: FieldElement> {
+    pub lhs: &'a Expression<T>,
+    pub row_offset: i32,
+    pub rhs: VariableOrValue<T, Variable>,
 }
 
 #[derive(Clone, derive_more::Display, Ord, PartialOrd, Eq, PartialEq, Debug)]
-enum VariableOrValue<T, V> {
+pub enum VariableOrValue<T, V> {
     Variable(V),
     Value(T),
 }
