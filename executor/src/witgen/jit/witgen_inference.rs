@@ -185,13 +185,15 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     row_offset,
                     &VariableOrValue::Value(T::from(0)),
                 )?,
-            Identity::BusSend(bus_interaction) => self.process_call(
-                can_process,
-                bus_interaction.identity_id,
-                &bus_interaction.selected_payload.selector,
-                &bus_interaction.selected_payload.expressions,
-                row_offset,
-            ),
+            Identity::BusSend(bus_interaction) => {
+                return self.process_call(
+                    can_process,
+                    bus_interaction.identity_id,
+                    &bus_interaction.selected_payload.selector,
+                    &bus_interaction.selected_payload.expressions,
+                    row_offset,
+                )
+            }
             Identity::Connect(_) => ProcessResult::empty(),
         };
         self.ingest_effects(result, Some((id.id(), row_offset)))
@@ -335,14 +337,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         (lhs_evaluated - rhs_evaluated).solve()
     }
 
-    fn process_call(
+    pub fn process_call(
         &mut self,
         can_process_call: impl CanProcessCall<T>,
         lookup_id: u64,
         selector: &Expression<T>,
         arguments: &'a [Expression<T>],
         row_offset: i32,
-    ) -> ProcessResult<T, Variable> {
+    ) -> Result<Vec<Variable>, Error> {
         let vars = arguments
             .iter()
             .enumerate()
@@ -356,7 +358,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 var
             })
             .collect_vec();
-        self.process_call_(can_process_call, lookup_id, selector, &vars, row_offset)
+        let result = self.process_call_(can_process_call, lookup_id, selector, &vars, row_offset);
+        self.ingest_effects(result, Some((lookup_id, row_offset)))
     }
 
     fn process_call_(
