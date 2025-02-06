@@ -59,7 +59,8 @@ enum Constr {
     ///   Note that this could refer to witness columns, intermediate columns, or
     ///   in-lined expressions.
     /// - The list of accumulator columns.
-    PhantomBusInteraction(expr, expr, expr[], expr, expr[], expr[])
+    /// - The list of helper columns.
+    PhantomBusInteraction(expr, expr, expr[], expr, expr[], expr[], expr[])
 }
 
 /// This is the result of the "$" operator. It can be used as the left and
