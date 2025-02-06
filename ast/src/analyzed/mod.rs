@@ -1203,6 +1203,16 @@ pub struct AlgebraicReferenceThin {
     pub next: bool,
 }
 
+impl AlgebraicReferenceThin {
+    pub fn with_name(&self, name: String) -> AlgebraicReference {
+        AlgebraicReference {
+            name,
+            poly_id: self.poly_id,
+            next: self.next,
+        }
+    }
+}
+
 impl From<&AlgebraicReference> for AlgebraicReferenceThin {
     fn from(value: &AlgebraicReference) -> Self {
         value.to_thin()

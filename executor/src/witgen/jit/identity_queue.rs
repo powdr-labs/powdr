@@ -5,10 +5,7 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{
-        AlgebraicExpression as Expression, AlgebraicReference, AlgebraicReferenceThin,
-        PolynomialType,
-    },
+    analyzed::{AlgebraicExpression as Expression, AlgebraicReferenceThin, PolynomialType},
     parsed::visitor::{AllChildren, Children},
 };
 use powdr_number::FieldElement;
@@ -35,6 +32,15 @@ pub fn identity_queue<'a, T: FieldElement>(
 pub struct ProcessingQueue<Item: QueueItem> {
     queue: BTreeSet<Item>,
     occurrences: Rc<HashMap<Variable, Vec<Item>>>,
+}
+
+impl<Item: QueueItem> Default for ProcessingQueue<Item> {
+    fn default() -> Self {
+        Self {
+            queue: BTreeSet::new(),
+            occurrences: Rc::new(HashMap::new()),
+        }
+    }
 }
 
 impl<Item: QueueItem> ProcessingQueue<Item> {
@@ -76,6 +82,18 @@ impl<Item: QueueItem> ProcessingQueue<Item> {
                 })
                 .cloned(),
         )
+    }
+
+    /// Adds new occurrences. Panics if the queue is not empty.
+    pub fn extend_occurrences(
+        &mut self,
+        new_occurrences: impl IntoIterator<Item = (Variable, Item)>,
+    ) {
+        assert!(self.queue.is_empty());
+        let occurrences = Rc::make_mut(&mut self.occurrences);
+        for (var, item) in new_occurrences {
+            occurrences.entry(var).or_default().push(item);
+        }
     }
 }
 
@@ -146,12 +164,7 @@ fn compute_occurrences_map<'a, T: FieldElement>(
         .flat_map(|(id, row)| {
             references_per_identity[id].iter().map(move |reference| {
                 let name = fixed_data.column_name(&reference.poly_id).to_string();
-                let fat_ref = AlgebraicReference {
-                    name,
-                    poly_id: reference.poly_id,
-                    next: reference.next,
-                };
-                let var = Variable::from_reference(&fat_ref, *row);
+                let var = Variable::from_reference(&reference.with_name(name), *row);
                 (var, (*id, *row))
             })
         })
@@ -191,7 +204,7 @@ fn references_in_intermediate<T: FieldElement>(
 }
 
 /// Returns all references to witness or intermediate column in the expression.
-fn references_in_expression<'a, T: FieldElement>(
+pub fn references_in_expression<'a, T: FieldElement>(
     expression: &'a Expression<T>,
     fixed_data: &'a FixedData<T>,
     intermediate_cache: &'a mut HashMap<AlgebraicReferenceThin, Vec<AlgebraicReferenceThin>>,

@@ -22,6 +22,7 @@ use crate::witgen::{
 use super::{
     affine_symbolic_expression::{AffineSymbolicExpression, Error, ProcessResult},
     effect::{BranchCondition, Effect, ProverFunctionCall},
+    identity_queue::{references_in_expression, ProcessingQueue, QueueItem},
     prover_function_heuristics::ProverFunction,
     symbolic_expression::SymbolicExpression,
     variable::{Cell, MachineCallVariable, Variable},
@@ -43,8 +44,7 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval> {
     /// This mainly avoids generating multiple submachine calls for the same
     /// connection on the same row.
     complete_identities: HashSet<(u64, i32)>,
-    /// Internal equality constraints that are not identities from the constraint set.
-    assignments: BTreeSet<Assignment<'a, T>>,
+    assignments: ProcessingQueue<Assignment<'a, T>>,
     code: Vec<Effect<T, Variable>>,
 }
 
@@ -254,12 +254,16 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// This does not have to be solvable right away, but is always processed as soon as we have progress.
     /// Note that all variables in the expression can be unknown and their status can also change over time.
     pub fn assign_constant(&mut self, expression: &'a Expression<T>, row_offset: i32, value: T) {
-        self.assignments.insert(Assignment {
+        let assignment = Assignment {
             lhs: expression,
             row_offset,
             rhs: VariableOrValue::Value(value),
-        });
-        self.process_assignments().unwrap();
+        };
+        let vars = variables_in_assignment(self.fixed_data, &assignment);
+        self.assignments
+            .extend_occurrences(vars.into_iter().map(|v| (v, assignment.clone())));
+        // TODO what about the updated vars?
+        self.process_assignment(&assignment).unwrap();
     }
 
     /// Process the constraint that the expression evaluated at the given offset equals the given formal variable.
@@ -271,12 +275,16 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         row_offset: i32,
         variable: Variable,
     ) {
-        self.assignments.insert(Assignment {
+        let assignment = Assignment {
             lhs: expression,
             row_offset,
             rhs: VariableOrValue::Variable(variable),
-        });
-        self.process_assignments().unwrap();
+        };
+        let vars = variables_in_assignment(self.fixed_data, &assignment);
+        self.assignments
+            .extend_occurrences(vars.into_iter().map(|v| (v, assignment.clone())));
+        // TODO what about the updated vars?
+        self.process_assignment(&assignment).unwrap();
     }
 
     /// Processes an equality constraint.
@@ -390,29 +398,29 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    fn process_assignments(&mut self) -> Result<Vec<Variable>, Error> {
-        let mut updated_variables = vec![];
-        loop {
-            let mut progress = false;
-            // We need to take them out because ingest_effects needs a &mut self.
-            let assignments = std::mem::take(&mut self.assignments);
-            for assignment in &assignments {
-                let r = self.process_equality_on_row(
-                    assignment.lhs,
-                    assignment.row_offset,
-                    &assignment.rhs,
-                )?;
-                let updated_vars = self.ingest_effects(r, None)?;
-                progress |= !updated_vars.is_empty();
-                updated_variables.extend(updated_vars);
-            }
-            assert!(self.assignments.is_empty());
-            self.assignments = assignments;
-            if !progress {
-                break;
-            }
+    fn process_assignments(
+        &mut self,
+        updated_variables: &[Variable],
+    ) -> Result<Vec<Variable>, Error> {
+        let mut inner_updated_variables = BTreeSet::new();
+        self.assignments
+            .variables_updated(updated_variables.iter().cloned(), None);
+        while let Some(assignment) = self.assignments.next() {
+            let updated_vars = self.process_assignment(&assignment)?;
+            self.assignments
+                .variables_updated(updated_vars.iter().cloned(), Some(assignment));
+            inner_updated_variables.extend(updated_vars);
         }
-        Ok(updated_variables)
+        Ok(inner_updated_variables.into_iter().collect())
+    }
+
+    fn process_assignment(
+        &mut self,
+        assignment: &Assignment<'a, T>,
+    ) -> Result<Vec<Variable>, Error> {
+        let r =
+            self.process_equality_on_row(assignment.lhs, assignment.row_offset, &assignment.rhs)?;
+        self.ingest_effects(r, None)
     }
 
     /// Analyze the effects and update the internal state.
@@ -495,10 +503,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 self.complete_identities.insert(identity_id);
             }
         }
-        if !updated_variables.is_empty() {
-            // TODO we could have an occurrence map for the assignments as well.
-            updated_variables.extend(self.process_assignments()?);
-        }
+        updated_variables.extend(self.process_assignments(&updated_variables)?);
         Ok(updated_variables)
     }
 
@@ -682,7 +687,7 @@ fn is_known_zero<T: FieldElement>(x: &Option<AffineSymbolicExpression<T, Variabl
 /// An equality constraint between an algebraic expression evaluated
 /// on a certain row offset and a variable or fixed constant value.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
-struct Assignment<'a, T: FieldElement> {
+pub struct Assignment<'a, T: FieldElement> {
     lhs: &'a Expression<T>,
     row_offset: i32,
     rhs: VariableOrValue<T, Variable>,
@@ -692,6 +697,36 @@ struct Assignment<'a, T: FieldElement> {
 enum VariableOrValue<T, V> {
     Variable(V),
     Value(T),
+}
+
+impl<T: FieldElement> QueueItem for Assignment<'_, T> {
+    type OuterType = Self;
+
+    fn to_outer_type(&self) -> Self::OuterType {
+        self.clone()
+    }
+
+    fn from_outer_type(outer: Self::OuterType) -> Self {
+        outer
+    }
+}
+
+fn variables_in_assignment<'a, T: FieldElement>(
+    fixed_data: &'a FixedData<'a, T>,
+    assignment: &Assignment<'a, T>,
+) -> Vec<Variable> {
+    let mut intermediate_cache = Default::default();
+    let rhs_var = match &assignment.rhs {
+        VariableOrValue::Variable(v) => Some(v.clone()),
+        VariableOrValue::Value(_) => None,
+    };
+    references_in_expression(assignment.lhs, fixed_data, &mut intermediate_cache)
+        .map(|r| {
+            let name = fixed_data.column_name(&r.poly_id).to_string();
+            Variable::from_reference(&r.with_name(name), assignment.row_offset)
+        })
+        .chain(rhs_var)
+        .collect()
 }
 
 pub trait FixedEvaluator<T: FieldElement>: Clone {
