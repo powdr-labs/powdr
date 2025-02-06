@@ -289,6 +289,17 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                     Identity::Polynomial(PolynomialIdentity { id, expression, .. }) => {
                         witgen.process_polynomial_identity(*id, expression, row_offset)
                     }
+                    Identity::BusSend(BusSend {
+                        bus_id: _,
+                        identity_id,
+                        selected_payload,
+                    }) => witgen.process_call(
+                        can_process.clone(),
+                        *identity_id,
+                        &selected_payload.selector,
+                        &selected_payload.expressions,
+                        row_offset,
+                    ),
                     _ => witgen.process_identity(can_process.clone(), identity, row_offset),
                 },
                 None => self.process_prover_functions(witgen),
