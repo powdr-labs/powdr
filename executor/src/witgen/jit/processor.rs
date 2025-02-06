@@ -286,8 +286,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             let identity = identity_queue.next();
             let updated_vars = match identity {
                 Some((identity, row_offset)) => match identity {
-                    Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                        witgen.process_polynomial_identity(expression, row_offset)
+                    Identity::Polynomial(PolynomialIdentity { id, expression, .. }) => {
+                        witgen.process_polynomial_identity(*id, expression, row_offset)
                     }
                     _ => witgen.process_identity(can_process.clone(), identity, row_offset),
                 },

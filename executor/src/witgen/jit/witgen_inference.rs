@@ -199,6 +199,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 
     pub fn process_polynomial_identity(
         &mut self,
+        identity_id: u64,
         expression: &'a Expression<T>,
         row_offset: i32,
     ) -> Result<Vec<Variable>, Error> {
@@ -207,7 +208,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             row_offset,
             &VariableOrValue::Value(T::from(0)),
         )?;
-        self.ingest_effects(result, None)
+        self.ingest_effects(result, Some((identity_id, row_offset)))
     }
 
     /// Process a prover function on a row, i.e. determine if we can execute it and if it will
