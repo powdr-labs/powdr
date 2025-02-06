@@ -324,10 +324,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     row_offset,
                     index,
                 });
-                self.assign_variable(arg, row_offset, var.clone());
+                //self.assign_variable(arg, row_offset, var.clone());
                 var
             })
             .collect_vec();
+        self.process_assignments().unwrap();
         let result = self.process_call_(can_process_call, lookup_id, selector, &vars, row_offset);
         self.ingest_effects(result, Some((lookup_id, row_offset)))
     }

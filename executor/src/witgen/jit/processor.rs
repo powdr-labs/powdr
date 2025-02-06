@@ -20,7 +20,7 @@ use super::{
     effect::{format_code, Effect},
     identity_queue::IdentityQueue,
     prover_function_heuristics::ProverFunction,
-    variable::{Cell, Variable},
+    variable::{Cell, MachineCallVariable, Variable},
     witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, Value, WitgenInference},
 };
 
@@ -111,8 +111,21 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
     pub fn generate_code(
         self,
         can_process: impl CanProcessCall<T>,
-        witgen: WitgenInference<'a, T, FixedEval>,
+        mut witgen: WitgenInference<'a, T, FixedEval>,
     ) -> Result<ProcessorResult<T>, Error<'a, T, FixedEval>> {
+        // Create variables for bus send arguments.
+        for (id, row_offset) in &self.identities {
+            if let Identity::BusSend(bus_send) = id {
+                for (index, arg) in bus_send.selected_payload.expressions.iter().enumerate() {
+                    let var = Variable::MachineCallParam(MachineCallVariable {
+                        identity_id: bus_send.identity_id,
+                        row_offset: *row_offset,
+                        index,
+                    });
+                    witgen.assign_variable(arg, *row_offset, var.clone());
+                }
+            }
+        }
         let branch_depth = 0;
         let identity_queue = IdentityQueue::new(self.fixed_data, &self.identities);
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
