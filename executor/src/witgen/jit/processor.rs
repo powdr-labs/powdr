@@ -286,7 +286,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 Some(QueueItem::Identity(identity, row_offset)) => {
                     witgen.process_identity(can_process.clone(), identity, row_offset)
                 }
-                Some(QueueItem::Assignment(assignment)) => {
+                Some(QueueItem::Assignment(_assignment)) => {
                     todo!()
                 }
                 None => self.process_prover_functions(witgen),

@@ -5,10 +5,7 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{
-        AlgebraicExpression as Expression, AlgebraicReference, AlgebraicReferenceThin,
-        PolynomialType,
-    },
+    analyzed::{AlgebraicExpression as Expression, AlgebraicReferenceThin, PolynomialType},
     parsed::visitor::{AllChildren, Children},
 };
 use powdr_number::FieldElement;
