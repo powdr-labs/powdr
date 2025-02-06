@@ -5,8 +5,10 @@ use std::collections::HashSet;
 
 extern crate alloc;
 use crate::stwo::prover::into_stwo_field;
-use alloc::collections::btree_map::BTreeMap;
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, Identity};
+use alloc::collections::{btree_map::BTreeMap, btree_set::BTreeSet};
+use powdr_ast::analyzed::{
+    AlgebraicExpression, AlgebraicReference, AlgebraicReferenceThin, Analyzed, Challenge, Identity,
+};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::Mersenne31Field as M31;
 use stwo_prover::constraint_framework::preprocessed_columns::PreprocessedColumn;
@@ -272,21 +274,55 @@ impl FrameworkEval for PowdrEval {
     }
 }
 
-// This function creates a list of the names of the constant polynomials that have next references constraint
-pub fn get_constant_with_next_list(analyzed: &Analyzed<M31>) -> HashSet<&String> {
-    let mut constant_with_next_list: HashSet<&String> = HashSet::new();
-    analyzed.all_children().for_each(|e| {
-        if let AlgebraicExpression::Reference(AlgebraicReference {
-            name,
-            poly_id,
-            next,
-        }) = e
-        {
-            if matches!(poly_id.ptype, PolynomialType::Constant) && *next {
-                // add the name of the constant polynomial to the list
-                constant_with_next_list.insert(name);
+// This function creates a list of the names of the constant polynomials that have next references
+// Note that the anaylsis should also dereference next references to intermediate polynomials
+pub fn get_constant_with_next_list(analyzed: &Analyzed<M31>) -> HashSet<String> {
+    let intermediate_definitions = analyzed.intermediate_definitions();
+    let cache = &mut BTreeMap::new();
+    // get all constant references
+    get_constant_refs_with_intermediates(analyzed, &intermediate_definitions, cache)
+        .into_iter()
+        // only keep the names of next references
+        .filter_map(|r| r.next.then_some(r.name))
+        .collect()
+}
+
+/// Auxiliary function to collect all references and next references to constant polynomials
+/// References to intermediate values are resolved recursively
+fn get_constant_refs_with_intermediates<T, E: AllChildren<AlgebraicExpression<T>>>(
+    e: &E,
+    intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+    intermediates_cache: &mut BTreeMap<AlgebraicReferenceThin, BTreeSet<AlgebraicReference>>,
+) -> BTreeSet<AlgebraicReference> {
+    e.all_children()
+        .filter_map(|e| {
+            if let AlgebraicExpression::Reference(reference) = e {
+                Some(reference)
+            } else {
+                None
             }
-        };
-    });
-    constant_with_next_list
+        })
+        .map(|reference| match reference.poly_id.ptype {
+            PolynomialType::Constant => std::iter::once(reference.clone()).collect(),
+            PolynomialType::Intermediate => {
+                let reference = reference.to_thin();
+                intermediates_cache
+                    .get(&reference)
+                    .cloned()
+                    .unwrap_or_else(|| {
+                        let result = get_constant_refs_with_intermediates(
+                            &intermediate_definitions[&reference],
+                            intermediate_definitions,
+                            intermediates_cache,
+                        );
+                        intermediates_cache.insert(reference, result.clone());
+                        result
+                    })
+            }
+            PolynomialType::Committed => std::iter::empty().collect(),
+        })
+        .fold(BTreeSet::new(), |mut acc, set| {
+            acc.extend(set);
+            acc
+        })
 }
