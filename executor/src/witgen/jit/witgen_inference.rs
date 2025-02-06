@@ -328,8 +328,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 var
             })
             .collect_vec();
-        self.process_assignments().unwrap();
-        let result = self.process_call_(can_process_call, lookup_id, selector, &vars, row_offset);
+
+        let result = self.process_call_(
+            can_process_call,
+            lookup_id,
+            selector,
+            vars.len(),
+            row_offset,
+        );
         self.ingest_effects(result, Some((lookup_id, row_offset)))
     }
 
@@ -338,9 +344,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         can_process_call: impl CanProcessCall<T>,
         lookup_id: u64,
         selector: &Expression<T>,
-        arguments: &[Variable],
+        argument_count: usize,
         row_offset: i32,
     ) -> ProcessResult<T, Variable> {
+        self.process_assignments().unwrap();
         // We need to know the selector.
         let Some(selector) = self
             .evaluate(selector, row_offset)
@@ -358,6 +365,15 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             assert_eq!(selector, 1.into(), "Selector is non-binary");
         }
 
+        let arguments = (0..argument_count)
+            .map(|index| {
+                Variable::MachineCallParam(MachineCallVariable {
+                    identity_id: lookup_id,
+                    row_offset,
+                    index,
+                })
+            })
+            .collect_vec();
         let range_constraints = arguments
             .iter()
             .map(|v| self.range_constraint(v))
