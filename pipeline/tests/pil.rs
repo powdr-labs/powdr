@@ -157,7 +157,8 @@ fn fib_arrays() {
 #[should_panic = "Witness generation failed."]
 fn external_witgen_fails_if_none_provided() {
     let f = "pil/external_witgen.pil";
-    let external_witness: Vec<(String, Vec<GoldilocksField>)> = vec![("main::one".to_string(), vec![GoldilocksField::from(1); 16])];
+    let external_witness: Vec<(String, Vec<GoldilocksField>)> =
+        vec![("main::one".to_string(), vec![GoldilocksField::from(1); 16])];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
@@ -165,7 +166,10 @@ fn external_witgen_fails_if_none_provided() {
 #[test]
 fn external_witgen_a_provided() {
     let f = "pil/external_witgen.pil";
-    let external_witness = vec![("main::a".to_string(), vec![GoldilocksField::from(3); 16]), ("main::one".to_string(), vec![GoldilocksField::from(1); 16])];
+    let external_witness = vec![
+        ("main::a".to_string(), vec![GoldilocksField::from(3); 16]),
+        ("main::one".to_string(), vec![GoldilocksField::from(1); 16]),
+    ];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
@@ -173,7 +177,10 @@ fn external_witgen_a_provided() {
 #[test]
 fn external_witgen_b_provided() {
     let f = "pil/external_witgen.pil";
-    let external_witness = vec![("main::b".to_string(), vec![GoldilocksField::from(4); 16]), ("main::one".to_string(), vec![GoldilocksField::from(1); 16])];
+    let external_witness = vec![
+        ("main::b".to_string(), vec![GoldilocksField::from(4); 16]),
+        ("main::one".to_string(), vec![GoldilocksField::from(1); 16]),
+    ];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }
@@ -199,7 +206,6 @@ fn external_witgen_fails_on_conflicting_external_witness() {
         // Does not satisfy b = a + 1
         ("main::b".to_string(), vec![GoldilocksField::from(3); 16]),
         ("main::one".to_string(), vec![GoldilocksField::from(1); 16]),
-
     ];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness, LinkerMode::Bus);
     test_mock_backend(pipeline);
