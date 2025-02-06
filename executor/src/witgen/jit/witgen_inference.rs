@@ -256,13 +256,18 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Process the constraint that the expression evaluated at the given offset equals the given value.
     /// This does not have to be solvable right away, but is always processed as soon as we have progress.
     /// Note that all variables in the expression can be unknown and their status can also change over time.
-    pub fn assign_constant(&mut self, expression: &'a Expression<T>, row_offset: i32, value: T) {
+    pub fn assign_constant(
+        &mut self,
+        expression: &'a Expression<T>,
+        row_offset: i32,
+        value: T,
+    ) -> Vec<Variable> {
         self.assignments.insert(Assignment {
             lhs: expression,
             row_offset,
             rhs: VariableOrValue::Value(value),
         });
-        self.process_assignments().unwrap();
+        self.process_assignments().unwrap()
     }
 
     /// Process the constraint that the expression evaluated at the given offset equals the given formal variable.
@@ -273,13 +278,13 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         expression: &'a Expression<T>,
         row_offset: i32,
         variable: Variable,
-    ) {
+    ) -> Vec<Variable> {
         self.assignments.insert(Assignment {
             lhs: expression,
             row_offset,
             rhs: VariableOrValue::Variable(variable),
         });
-        self.process_assignments().unwrap();
+        self.process_assignments().unwrap()
     }
 
     /// Processes an equality constraint.
@@ -376,7 +381,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     row_offset,
                     index,
                 });
-                self.assign_variable(arg, row_offset, var.clone());
+                let updated_vars = self.assign_variable(arg, row_offset, var.clone());
+                for var in updated_vars {
+                    println!("Updated variable: {var}");
+                }
                 effects.push(Effect::RangeConstraint(var.clone(), new_rc.clone()));
                 if known[index] {
                     assert!(self.is_known(&var));

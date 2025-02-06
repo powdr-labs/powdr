@@ -113,6 +113,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
     ) -> Result<ProcessorResult<T>, Error<'a, T, FixedEval>> {
         let branch_depth = 0;
         let identity_queue = IdentityQueue::new(self.fixed_data, &self.identities);
+        // TODO maybe do not start with all identities in the queue, but only those
+        // that reference known variables.
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
     }
 
