@@ -280,12 +280,12 @@ if (VM::instr_add[0] == 1) {
         assert_eq!(
             format_code(&code),
             "\
-VM::pc[1] = VM::pc[0];
 call_var(2, 0, 0) = VM::pc[0];
-call_var(2, 0, 1) = 0;
+call_var(2, 0, 1) = VM::instr_add[0];
 call_var(2, 0, 2) = VM::instr_mul[0];
-VM::instr_add[1] = 0;
+VM::pc[1] = VM::pc[0];
 call_var(2, 1, 0) = VM::pc[1];
+VM::instr_add[1] = 0;
 call_var(2, 1, 1) = 0;
 call_var(2, 1, 2) = 1;
 machine_call(2, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(call_var(2, 1, 2))]);
