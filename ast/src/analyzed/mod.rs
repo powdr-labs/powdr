@@ -1041,6 +1041,8 @@ pub struct PhantomBusInteractionIdentity<T> {
     // always expect direct column references, so this is unpacked
     // when converting from PIL to this struct.
     pub accumulator_columns: Vec<AlgebraicReference>,
+    // Assumed to be direct column references.
+    pub helper_columns: Vec<AlgebraicReference>,
 }
 
 impl<T> Children<AlgebraicExpression<T>> for PhantomBusInteractionIdentity<T> {

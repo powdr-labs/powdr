@@ -431,7 +431,7 @@ impl<T: Display> Display for PhantomBusInteractionIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "Constr::PhantomBusInteraction({}, {}, [{}], {}, [{}], [{}]);",
+            "Constr::PhantomBusInteraction({}, {}, [{}], {}, [{}], [{}], [{}]);",
             self.multiplicity,
             self.bus_id,
             self.payload.0.iter().map(ToString::to_string).format(", "),
@@ -445,6 +445,10 @@ impl<T: Display> Display for PhantomBusInteractionIdentity<T> {
                 .iter()
                 .map(ToString::to_string)
                 .format(", "),
+            self.helper_columns
+                .iter()
+                .map(ToString::to_string)
+                .format(", ")
         )
     }
 }

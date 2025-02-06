@@ -819,6 +819,19 @@ fn to_constraint<T: FieldElement>(
                     .collect(),
                 _ => panic!("Expected array, got {:?}", fields[5]),
             },
+            helper_columns: match fields[6].as_ref() {
+                Value::Array(fields) => fields
+                    .iter()
+                    .map(|f| match to_expr(f) {
+                        AlgebraicExpression::Reference(reference) => {
+                            assert!(!reference.next);
+                            reference
+                        }
+                        _ => panic!("Expected reference, got {f:?}"),
+                    })
+                    .collect(),
+                _ => panic!("Expected array, got {:?}", fields[6]),
+            },
         }
         .into(),
         _ => panic!("Expected constraint but got {constraint}"),
