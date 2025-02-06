@@ -7,13 +7,16 @@ use itertools::Itertools;
 use super::{LookupCell, Machine, MachineParts};
 use crate::witgen::data_structures::caller_data::CallerData;
 use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::jit::witgen_inference::CanProcessCall;
 use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::range_constraints::RangeConstraint;
-use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{EvalError, EvalResult, EvalValue, FixedData, IncompleteCause, QueryCallback};
+use crate::witgen::{
+    AffineExpression, AlgebraicVariable, EvalError, EvalResult, EvalValue, FixedData,
+    IncompleteCause, QueryCallback,
+};
 
 use powdr_number::{DegreeType, FieldElement, LargeInt};
 
@@ -240,10 +243,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         let connection = self.parts.connections[&identity_id];
-        let outer_query = match OuterQuery::try_new(caller_rows, connection) {
+        let outer_query = match OuterQuery::try_new(parameters, range_constraints, connection) {
             Ok(outer_query) => outer_query,
             Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
         };

@@ -5,10 +5,12 @@ use itertools::Itertools;
 
 use super::{ConnectionKind, LookupCell, Machine, MachineParts};
 use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::machines::compute_size_and_log;
-use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{EvalError, EvalResult, FixedData, QueryCallback};
+use crate::witgen::{
+    AffineExpression, AlgebraicVariable, EvalError, EvalResult, FixedData, QueryCallback,
+};
 use crate::witgen::{EvalValue, IncompleteCause};
 use powdr_number::{DegreeType, FieldElement, LargeInt};
 
@@ -234,9 +236,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
         &mut self,
         _mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, caller_rows)
+        self.process_plookup_internal(identity_id, parameters, range_constraints)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -410,7 +413,8 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
     pub fn process_plookup_internal(
         &mut self,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         // We blindly assume the lookup is of the form
         // OP { operation_id, ADDR_high, ADDR_low, STEP, X_high, X_low } is
@@ -420,14 +424,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         // - operation_id == 1: Write
         // - operation_id == 2: Bootloader write
 
-        let args = self.parts.connections[&identity_id]
-            .left
-            .expressions
-            .iter()
-            .map(|e| caller_rows.evaluate(e).unwrap())
-            .collect::<Vec<_>>();
-
-        let operation_id = match args[0].constant_value() {
+        let operation_id = match parameters[0].constant_value() {
             Some(v) => v,
             None => {
                 return Ok(EvalValue::incomplete(
@@ -441,7 +438,10 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         let is_normal_write = operation_id == T::from(OPERATION_ID_WRITE);
         let is_bootloader_write = operation_id == T::from(OPERATION_ID_BOOTLOADER_WRITE);
         let is_write = is_bootloader_write || is_normal_write;
-        let addr = match (args[1].constant_value(), args[2].constant_value()) {
+        let addr = match (
+            parameters[1].constant_value(),
+            parameters[2].constant_value(),
+        ) {
             (Some(high), Some(low)) => Word32(high, low),
             _ => {
                 return Ok(EvalValue::incomplete(
@@ -460,13 +460,13 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
             self.is_initialized.insert(addr, true);
         }
 
-        let step = args[3]
+        let step = parameters[3]
             .constant_value()
-            .ok_or_else(|| format!("Step must be known but is: {}", args[3]))?;
+            .ok_or_else(|| format!("Step must be known but is: {}", parameters[3]))?;
         let step_word = Word32::from(step.to_degree());
 
-        let value1_expr = &args[4];
-        let value2_expr = &args[5];
+        let value1_expr = &parameters[4];
+        let value2_expr = &parameters[5];
 
         log::trace!(
             "Query addr=0x{:x}, step={step}, write: {is_write}, value: ({} {})",
@@ -521,10 +521,10 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
             let value_high_fe: T = value_high.into();
 
             let ass = (value1_expr.clone() - value_high_fe.into())
-                .solve_with_range_constraints(caller_rows)?;
+                .solve_with_range_constraints(range_constraints)?;
             assignments.combine(ass);
             let ass2 = (value2_expr.clone() - value_low_fe.into())
-                .solve_with_range_constraints(caller_rows)?;
+                .solve_with_range_constraints(range_constraints)?;
             assignments.combine(ass2);
             self.trace
                 .insert(

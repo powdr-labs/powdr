@@ -21,13 +21,13 @@ impl<'a, 'b, T: FieldElement> From<&'b OuterQuery<'a, '_, T>> for CallerData<'a,
     /// Builds a `CallerData` from an `OuterQuery`.
     fn from(outer_query: &'b OuterQuery<'a, '_, T>) -> Self {
         let data = outer_query
-            .left
+            .parameters
             .iter()
             .map(|l| l.constant_value().unwrap_or_default())
             .collect();
         Self {
             data,
-            left: &outer_query.left,
+            left: &outer_query.parameters,
         }
     }
 }
