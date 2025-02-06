@@ -5,12 +5,14 @@ use std::{
 };
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{PolyID, PolynomialType};
+use powdr_ast::analyzed::{PolyID, PolynomialIdentity, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    data_structures::identity::Identity, jit::debug_formatter::format_identities,
-    range_constraints::RangeConstraint, FixedData,
+    data_structures::identity::{BusSend, Identity},
+    jit::debug_formatter::format_identities,
+    range_constraints::RangeConstraint,
+    FixedData,
 };
 
 use super::{
@@ -283,9 +285,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         loop {
             let identity = identity_queue.next();
             let updated_vars = match identity {
-                Some((identity, row_offset)) => {
-                    witgen.process_identity(can_process.clone(), identity, row_offset)
-                }
+                Some((identity, row_offset)) => match identity {
+                    Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
+                        witgen.process_polynomial_identity(expression, row_offset)
+                    }
+                    _ => witgen.process_identity(can_process.clone(), identity, row_offset),
+                },
                 None => self.process_prover_functions(witgen),
             }?;
             if updated_vars.is_empty() && identity.is_none() {
