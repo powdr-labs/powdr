@@ -275,6 +275,14 @@ where
                 )
             })
             .collect();
+        // TODO:in polonky3, this is built in ConstraintSystem, which is machine-specific, check if it's the same here
+        let publics_by_stage = self.analyzed.get_publics().into_iter().fold(
+            vec![vec![]; self.analyzed.stage_count()],
+            |mut acc, (name, column_name, id, row, stage)| {
+                acc[stage as usize].push((name, column_name, id, row));
+                acc
+            },
+        );
 
         // Generate witness for stage 0, build constant columns in circle domain at the same time
         let mut machine_log_sizes: BTreeMap<String, u32> = BTreeMap::new();
@@ -317,6 +325,22 @@ where
                 }
             })
             .collect::<BTreeMap<_, _>>();
+
+        // get publics of stage0
+        // TODO:when publics are supplied, the order of the witness might cause problem
+        let mut public_values: BTreeMap<String, M31> = witness_by_machine
+            .iter()
+            .flat_map(|(_, witness_cols)| {
+                publics_by_stage[0]
+                    .iter()
+                    .filter_map(|(name, ref_witness_col_name, _, row)| {
+                        witness_cols.iter().find_map(|(witness_col_name, v)| {
+                            (ref_witness_col_name == witness_col_name)
+                                .then(|| (name.clone(), v[*row]))
+                        })
+                    })
+            })
+            .collect();
 
         // Get witness columns in circle domain for stage 0
         let stage0_witness_cols_circle_domain_eval: ColumnVec<
@@ -365,6 +389,46 @@ where
 
         if self.analyzed.stage_count() > 1 {
             // Build witness columns for stage 1 using the callback function, with the generated challenges
+
+            let stage0_witness_names_stage1_witness = witness_by_machine
+                .iter()
+                .map(|(machine_name, machine_witness)| {
+                    (
+                        machine_witness
+                            .iter()
+                            .map(|(k, _)| k.clone())
+                            .collect::<BTreeSet<_>>(),
+                        witgen_callback.next_stage_witness(
+                            &self.split[&machine_name.clone()],
+                            &machine_witness,
+                            stage0_challenges.clone(),
+                            1,
+                        ),
+                    )
+                })
+                .collect_vec();
+
+            // TODO: previous publics are built with the order in publics_by_stage (find map from witness machine, that matches publics by stage))
+            // here is with the order in witness_by_machine, (find map from publics by stage that matach the witness. )
+            // if the orders are different, the publics will be wrong, check
+            let public_values_stage1: BTreeMap<String, M31> = stage0_witness_names_stage1_witness
+                .iter()
+                .flat_map(|(stage0_columns, callback_result)| {
+                    callback_result.iter().filter_map(|(witness_name, vec)| {
+                        if stage0_columns.contains(witness_name) {
+                            None
+                        } else {
+                            publics_by_stage[1].iter().find_map(
+                                |(name, ref_witness_col_name, _, row)| {
+                                    (witness_name == ref_witness_col_name)
+                                        .then(|| (name.clone(), vec[*row]))
+                                },
+                            )
+                        }
+                    })
+                })
+                .collect();
+
             let stage1_witness_cols_circle_domain_eval = witness_by_machine
                 .into_iter()
                 .map(|(machine_name, machine_witness)| {
@@ -402,6 +466,7 @@ where
             let mut tree_builder = commitment_scheme.tree_builder();
             tree_builder.extend_evals(stage1_witness_cols_circle_domain_eval);
             tree_builder.commit(prover_channel);
+            public_values.extend(public_values_stage1);
         }
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
@@ -423,6 +488,7 @@ where
                             constant_cols_offset_acc,
                             machine_log_size,
                             stage0_challenges.clone(),
+                            public_values.clone(),
                         ),
                         (SecureField::zero(), None),
                     );
@@ -497,11 +563,11 @@ where
             .get_publics()
             .iter()
             .zip_eq(instances.iter())
-            .map(|((_, poly_name, _, _, stage), value)| {
+            .map(|((public_name, poly_name, _, _, stage), value)| {
                 let namespace = poly_name.split("::").next().unwrap();
-                (namespace, stage, value)
+                (public_name,namespace, stage, value)
             })
-            .for_each(|(namespace, stage, value)| {
+            .for_each(|(public_name,namespace, stage, value)| {
                 instance_map.get_mut(namespace).unwrap()[*stage as usize].push(*value);
             });
 

@@ -58,7 +58,8 @@ pub struct PowdrEval {
     // the pre-processed are indexed in the whole proof, instead of in each component.
     // this offset represents the index of the first pre-processed column in this component
     preprocess_col_offset: usize,
-    // for each stage, for each public input of that stage, the name, the column name, the poly_id, the row index
+    // for each stage, for each public input of that stage, the name of the public,
+    // the name of the witness column that this public is related to, the poly_id, the row index and its value
     pub(crate) publics_by_stage: Vec<Vec<(String, String, PolyID, usize)>>,
     stage0_witness_columns: BTreeMap<PolyID, usize>,
     stage1_witness_columns: BTreeMap<PolyID, usize>,
@@ -67,6 +68,7 @@ pub struct PowdrEval {
     // stwo supports maximum 2 stages, challenges are only created after stage 0
     pub challenges: BTreeMap<u64, M31>,
     poly_stage_map: BTreeMap<PolyID, usize>,
+    public_values: BTreeMap<String, M31>,
 }
 
 impl PowdrEval {
@@ -75,6 +77,7 @@ impl PowdrEval {
         preprocess_col_offset: usize,
         log_degree: u32,
         challenges: BTreeMap<u64, M31>,
+        public_values: BTreeMap<String, M31>,
     ) -> Self {
         let stage0_witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
@@ -108,7 +111,7 @@ impl PowdrEval {
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
-
+        // TODO:maybe only need in the prove function, before creating PowdrEval
         let publics_by_stage = analyzed.get_publics().into_iter().fold(
             vec![vec![]; analyzed.stage_count()],
             |mut acc, (name, column_name, id, row, stage)| {
@@ -134,6 +137,7 @@ impl PowdrEval {
             constant_columns,
             challenges,
             poly_stage_map,
+            public_values,
         }
     }
 }
@@ -264,14 +268,14 @@ impl FrameworkEval for PowdrEval {
                         + self.preprocess_col_offset
                         + constant_shifted_eval.len(),
                 ));
-                let stage= self.poly_stage_map[poly_id];
-                let witness_col= match stage {
-                    0 => self.stage0_witness_columns[poly_id],
-                    1 => self.stage1_witness_columns[poly_id],
+                let stage = self.poly_stage_map[poly_id];
+                let witness_col = match stage {
+                    0 => stage0_witness_eval[poly_id][0].clone(),
+                    1 => stage1_witness_eval[poly_id][0].clone(),
                     _ => unreachable!(),
                 };
                 // constraining s(i) * (pub[i] - x(i)) = 0
-               // eval.add_constraint(selector * (public_value.into() - witness_col));
+                eval.add_constraint(selector * (E::F::from(into_stwo_field(self.public_values.get(name).unwrap()))) - witness_col);
             },
         );
 
