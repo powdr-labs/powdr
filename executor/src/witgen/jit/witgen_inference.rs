@@ -730,7 +730,7 @@ impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'
 
 #[cfg(test)]
 mod test {
-    use powdr_ast::analyzed::PolyID;
+    use powdr_ast::analyzed::{PolyID, PolynomialIdentity};
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
