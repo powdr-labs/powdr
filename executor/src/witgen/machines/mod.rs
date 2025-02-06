@@ -106,7 +106,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
 
     /// Processes a connection of a given ID (which must be known to the callee).
     /// Returns an error if the query leads to a constraint failure.
-    /// Otherwise, it computes any updates to the caller row pair and returns them.
+    /// Otherwise, it computes any updates to the caller and returns them.
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
