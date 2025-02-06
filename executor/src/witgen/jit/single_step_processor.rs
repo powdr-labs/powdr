@@ -324,9 +324,7 @@ VM::instr_mul[1] = 1;"
                 let start = e
                     .find("The following identities have not been fully processed:")
                     .unwrap();
-                let end = e
-                    .find("The following branch decisions were taken:")
-                    .unwrap();
+                let end = e.find("Generated code so far:").unwrap();
                 let expected = "\
 The following identities have not been fully processed:
 --------------[ identity 1 on row 1: ]--------------

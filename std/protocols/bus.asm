@@ -19,40 +19,6 @@ use std::field::known_field;
 use std::field::KnownField;
 use std::check::panic;
 
-// Helper function.
-// Materialized as a witness column for two reasons:
-// - It makes sure the constraint degree is independent of the input payload.
-// - We can access folded', even if the payload contains next references.
-// Note that if all expressions are degree-1 and there is no next reference,
-// this is wasteful, but we can't check that here.
-let materialize_folded: -> bool = || match known_field() {
-    Option::Some(KnownField::Goldilocks) => true,
-    Option::Some(KnownField::BabyBear) => true,
-    Option::Some(KnownField::KoalaBear) => true,
-    Option::Some(KnownField::M31) => true,
-    // The case above triggers our hand-written witness generation, but on Bn254, we'd not be
-    // on the extension field and use the automatic witness generation.
-    // However, it does not work with a materialized folded payload. At the same time, Halo2
-    // (the only prover that supports BN254) does not have a hard degree bound. So, we can
-    // in-line the expression here.
-    Option::Some(KnownField::BN254) => false,
-    _ => panic("Unexpected field!")
-};
-
-// Helper function.
-// Implemented as: folded = (beta - fingerprint(id, payload...));
-let create_folded: expr, expr[], Ext<expr>, Ext<expr> -> Ext<expr> = constr |id, payload, alpha, beta| 
-    if materialize_folded() {
-        let folded = from_array(
-            array::new(required_extension_size(),
-                    |i| std::prover::new_witness_col_at_stage("folded", 1))
-        );
-        constrain_eq_ext(folded, sub_ext(beta, fingerprint_with_id_inter(id, payload, alpha)));
-        folded
-    } else {
-        sub_ext(beta, fingerprint_with_id_inter(id, payload, alpha))
-    };
-
 /// Sends the payload (id, payload...) to the bus by adding
 /// `multiplicity / (beta - fingerprint(id, payload...))` to `acc`
 /// It is the callers responsibility to properly constrain the multiplicity (e.g. constrain
@@ -73,6 +39,7 @@ let bus_interaction: expr, expr[], expr, expr -> () = constr |id, payload, multi
     let beta = from_array(array::new(extension_field_size, |i| challenge(0, i + 1 + extension_field_size)));
 
     // Implemented as: folded = (beta - fingerprint(id, payload...));
+    let folded = if materialize_folded() {
     let folded = if materialize_folded() {
         let folded = from_array(
             array::new(extension_field_size,

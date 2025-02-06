@@ -287,12 +287,6 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     reg WH[<=];
 "#
         .to_string()
-        // runtime extra registers
-        + &runtime
-            .submachines_extra_registers()
-            .into_iter()
-            .map(|s| format!("\t\t{s}\n"))
-            .join("")
         + &bootloader_preamble_if_included
         + &memory(with_bootloader)
         + r#"

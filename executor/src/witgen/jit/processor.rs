@@ -31,7 +31,7 @@ pub struct Processor<'a, T: FieldElement, FixedEval> {
     identities: Vec<(&'a Identity<T>, i32)>,
     /// The prover functions, i.e. helpers to compute certain values that
     /// we cannot easily determine.
-    prover_functions: Vec<(ProverFunction<'a>, i32)>,
+    prover_functions: Vec<(ProverFunction<'a, T>, i32)>,
     /// The size of a block.
     block_size: usize,
     /// If the processor should check for correctly stackable block shapes.
@@ -99,7 +99,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
 
     pub fn with_prover_functions(
         mut self,
-        prover_functions: Vec<(ProverFunction<'a>, i32)>,
+        prover_functions: Vec<(ProverFunction<'a, T>, i32)>,
     ) -> Self {
         assert!(self.prover_functions.is_empty());
         self.prover_functions = prover_functions;
@@ -530,14 +530,6 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
             )
             .unwrap();
         };
-        if !self.incomplete_identities.is_empty() {
-            write!(
-                s,
-                "\nThe following identities have not been fully processed:\n{}",
-                format_identities(&self.incomplete_identities, &self.witgen,)
-            )
-            .unwrap();
-        };
         write!(
             s,
             "\nThe following branch decisions were taken:\n{}",
@@ -548,6 +540,14 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
                 .join("\n")
         )
         .unwrap();
+        if !self.incomplete_identities.is_empty() {
+            write!(
+                s,
+                "\nThe following identities have not been fully processed:\n{}",
+                format_identities(&self.incomplete_identities, &self.witgen,)
+            )
+            .unwrap();
+        };
         let code = self.witgen.code();
         if code.is_empty() {
             write!(s, "\nNo code generated so far.").unwrap();
