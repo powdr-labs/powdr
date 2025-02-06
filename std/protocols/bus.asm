@@ -93,9 +93,9 @@ let bus_multi_interaction_2: expr[], expr[][], expr[], expr[] -> () = constr |id
 
     // Create helper columns to bound degree to 3 for arbitrary number of bus interactions.
     // Each helper processes two bus interactions:
-    // helper_i = multiplicity_{2*i}' / folded_{2*i}' + multiplicity_{2*i+1}' / folded_{2*i+1}'
+    // helper_i = multiplicity_{2*i} / folded_{2*i} + multiplicity_{2*i+1} / folded_{2*i+1}
     // Or equivalently when expanded:
-    // folded_{2*i}' * folded_{2*i+1}' * helper_i - folded_{2*i+1}' * multiplicity_{2*i}' - folded_{2*i}' * multiplicity_{2*i+1}' = 0
+    // folded_{2*i} * folded_{2*i+1}' * helper_i - folded_{2*i+1} * multiplicity_{2*i} - folded_{2*i} * multiplicity_{2*i+1} = 0
     let helper_arr: expr[][] = array::new(
         input_len / 2,
         |helper|
@@ -108,28 +108,32 @@ let bus_multi_interaction_2: expr[], expr[][], expr[], expr[] -> () = constr |id
         helper_arr,
         |helper| from_array(helper)
     );
+    let helper_ext_next_arr = array::map(
+        helper_ext_arr,
+        |helper_ext| next_ext(helper_ext) 
+    );
     // The expression to constrain.
     let helper_expr_arr = array::new( // Ext<expr>[]
         input_len / 2,
         |i| sub_ext(
             sub_ext(
                 mul_ext(
-                    mul_ext(folded_next_arr[2 * i], folded_next_arr[2 * i + 1]),
+                    mul_ext(folded_arr[2 * i], folded_arr[2 * i + 1]),
                     helper_ext_arr[i]
                 ),
-                mul_ext(folded_next_arr[2 * i + 1], m_ext_next_arr[2 * i])
+                mul_ext(folded_arr[2 * i + 1], m_ext_arr[2 * i])
             ),
-            mul_ext(folded_next_arr[2 * i], m_ext_next_arr[2 * i + 1])
+            mul_ext(folded_arr[2 * i], m_ext_arr[2 * i + 1])
         )
     );
     // Return a flattened array of constraints. (Must use `array::fold` or the compiler won't allow nested Constr[][].)
     array::fold(helper_expr_arr, [], |init, helper_expr| constrain_eq_ext(helper_expr, from_base(0)));
     
     // Update rule:
-    // acc' =  acc * (1 - is_first') + helper_0 + helper_1 + ...
+    // acc' =  acc * (1 - is_first') + helper_0' + helper_1' + ...
     // Add up all helper columns.
     // Or equivalently:
-    // acc * (1 - is_first') + helper_0 + helper_1 + ... - acc' = 0
+    // acc * (1 - is_first') + helper_0' + helper_1' + ... - acc' = 0
     let update_expr = 
         sub_ext(
             add_ext(
@@ -138,7 +142,7 @@ let bus_multi_interaction_2: expr[], expr[][], expr[], expr[] -> () = constr |id
                     sub_ext(from_base(1), is_first_next)
                 ),
                 // Sum of all helper columns.
-                array::fold(helper_ext_arr, from_base(0), |sum, helper_ext| add_ext(sum, helper_ext))
+                array::fold(helper_ext_next_arr, from_base(0), |sum, helper_ext_next| add_ext(sum, helper_ext_next))
             ),
             next_acc
         );

@@ -129,7 +129,8 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
             .flat_map(|bus_interaction| {
                 let (folded, acc) = self.interaction_columns(bus_interaction);
                 collect_folded_columns(bus_interaction, folded)
-                    .chain(collect_acc_columns(bus_interaction, acc))
+                    .chain(collect_acc_columns(bus_interaction, acc.clone()))
+                    .chain(collect_helper_columns(bus_interaction, acc))
                     .collect::<Vec<_>>()
             })
             // Each thread builds its own BTreeMap.
@@ -179,6 +180,13 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
         result
     }
 
+    /// New version of interaction_columns that “batches” several bus interactions
+    /// according to bus_multi_interaction_2.
+    ///
+    /// Returns a triple:
+    /// - the folded columns (one per bus interaction),
+    /// - the accumulator column (shared by all interactions),
+    /// - one helper column per pair of bus interactions.
     fn interaction_columns(
         &self,
         bus_interaction: &PhantomBusInteractionIdentity<T>,
@@ -277,5 +285,16 @@ fn collect_acc_columns<T>(
         .accumulator_columns
         .iter()
         .zip_eq(acc)
+        .map(|(column_reference, column)| (column_reference.poly_id, column))
+}
+
+fn collect_helper_columns<T>(
+    bus_interaction: &PhantomBusInteractionIdentity<T>,
+    helper: Vec<Vec<T>>,
+) -> impl Iterator<Item = (PolyID, Vec<T>)> + '_ {
+    bus_interaction
+        .helper_columns
+        .iter()
+        .zip_eq(helper)
         .map(|(column_reference, column)| (column_reference.poly_id, column))
 }
