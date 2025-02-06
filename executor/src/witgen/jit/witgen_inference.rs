@@ -169,36 +169,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.add_range_constraint(var.clone(), range_constraint);
     }
 
-    /// Process an identity on a certain row.
-    /// Returns Ok(true) if there was progress and Ok(false) if there was no progress.
-    /// If this returns an error, it means we have conflicting constraints.
-    pub fn process_identity(
-        &mut self,
-        can_process: impl CanProcessCall<T>,
-        id: &'a Identity<T>,
-        row_offset: i32,
-    ) -> Result<Vec<Variable>, Error> {
-        let result = match id {
-            Identity::Polynomial(PolynomialIdentity { expression, .. }) => self
-                .process_equality_on_row(
-                    expression,
-                    row_offset,
-                    &VariableOrValue::Value(T::from(0)),
-                )?,
-            Identity::BusSend(bus_interaction) => {
-                return self.process_call(
-                    can_process,
-                    bus_interaction.identity_id,
-                    &bus_interaction.selected_payload.selector,
-                    &bus_interaction.selected_payload.expressions,
-                    row_offset,
-                )
-            }
-            Identity::Connect(_) => ProcessResult::empty(),
-        };
-        self.ingest_effects(result, Some((id.id(), row_offset)))
-    }
-
     pub fn process_polynomial_identity(
         &mut self,
         identity_id: u64,
@@ -762,6 +732,7 @@ mod test {
     use test_log::test;
 
     use crate::witgen::{
+        data_structures::identity::BusSend,
         global_constraints,
         jit::{effect::format_code, test_util::read_pil, variable::Cell},
         machines::{Connection, FixedLookup, KnownMachine},
@@ -821,10 +792,26 @@ mod test {
             counter += 1;
             for row in rows {
                 for id in fixed_data.identities.iter() {
-                    progress |= !witgen
-                        .process_identity(&mutable_state, id, *row)
-                        .unwrap()
-                        .is_empty();
+                    let updated_vars = match id {
+                        Identity::Polynomial(PolynomialIdentity { id, expression, .. }) => witgen
+                            .process_polynomial_identity(*id, expression, *row)
+                            .unwrap(),
+                        Identity::BusSend(BusSend {
+                            bus_id: _,
+                            identity_id,
+                            selected_payload,
+                        }) => witgen
+                            .process_call(
+                                &mutable_state,
+                                *identity_id,
+                                &selected_payload.selector,
+                                &selected_payload.expressions,
+                                *row,
+                            )
+                            .unwrap(),
+                        Identity::Connect(..) => vec![],
+                    };
+                    progress |= !updated_vars.is_empty();
                 }
             }
             if !progress {

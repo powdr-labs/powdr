@@ -300,8 +300,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                         &selected_payload.expressions,
                         row_offset,
                     ),
-                    _ => witgen.process_identity(can_process.clone(), identity, row_offset),
+                    Identity::Connect(..) => Ok(vec![]),
                 },
+                // TODO Also add prover functions to the queue (activated by their variables)
+                // and sort them so that they are always last.
                 None => self.process_prover_functions(witgen),
             }?;
             if updated_vars.is_empty() && identity.is_none() {
