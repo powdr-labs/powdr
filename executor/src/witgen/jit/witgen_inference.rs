@@ -315,25 +315,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         arguments: &'a [Expression<T>],
         row_offset: i32,
     ) -> Result<Vec<Variable>, Error> {
-        let vars = arguments
-            .iter()
-            .enumerate()
-            .map(|(index, arg)| {
-                let var = Variable::MachineCallParam(MachineCallVariable {
-                    identity_id: lookup_id,
-                    row_offset,
-                    index,
-                });
-                //self.assign_variable(arg, row_offset, var.clone());
-                var
-            })
-            .collect_vec();
-
         let result = self.process_call_(
             can_process_call,
             lookup_id,
             selector,
-            vars.len(),
+            arguments.len(),
             row_offset,
         );
         self.ingest_effects(result, Some((lookup_id, row_offset)))
