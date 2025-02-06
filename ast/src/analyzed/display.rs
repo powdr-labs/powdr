@@ -445,10 +445,12 @@ impl<T: Display> Display for PhantomBusInteractionIdentity<T> {
                 .iter()
                 .map(ToString::to_string)
                 .format(", "),
-            self.helper_columns
-                .iter()
-                .map(ToString::to_string)
-                .format(", ")
+            match &self.helper_columns {
+                Some(helper_columns) => {
+                    helper_columns.iter().map(ToString::to_string).format(", ").to_string()
+                }
+                None => "None".to_string(),
+            },
         )
     }
 }

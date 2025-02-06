@@ -299,10 +299,16 @@ fn collect_acc_columns<T>(
 fn collect_helper_columns<T>(
     bus_interaction: &PhantomBusInteractionIdentity<T>,
     helper: Vec<Vec<T>>,
-) -> impl Iterator<Item = (PolyID, Vec<T>)> + '_ {
-    bus_interaction
-        .helper_columns
-        .iter()
-        .zip_eq(helper)
-        .map(|(column_reference, column)| (column_reference.poly_id, column))
+) -> impl Iterator<Item = (PolyID, Vec<T>)> {
+    match &bus_interaction.helper_columns {
+        Some(helper_columns) => {
+            let pairs: Vec<_> = helper_columns
+                .iter()
+                .zip_eq(helper.into_iter())
+                .map(|(column_reference, column)| (column_reference.poly_id, column))
+                .collect();
+            pairs.into_iter()
+        }
+        None => Vec::new().into_iter(),
+    }
 }

@@ -146,19 +146,51 @@ let bus_multi_interaction_2: expr[], expr[][], expr[], expr[] -> () = constr |id
             ),
             next_acc
         );
-    constrain_eq_ext(update_expr, from_base(0));
+    // In cases where there are odd number of bus interactions, the last bus interaction doesn't need helper column.
+    // Instead, we have `update_expr` + multiplicity_last' / folded_last' = 0
+    // Or equivalently:
+    // `update_expr` * folded_last' + multiplicity_last' = 0
+    let update_expr_final = if input_len % 2 == 1 {
+        // Odd number of bus interactions
+        add_ext(
+            mul_ext(
+                update_expr,
+                folded_next_arr[input_len - 1]
+            ),
+            m_ext_next_arr[input_len - 1]
+        )
+    } else {
+        // Even number of bus interactions
+        update_expr
+    };
+
+    // Constrain the accumulator update identity
+    constrain_eq_ext(update_expr_final, from_base(0));
             
     // Add array of phantom bus interactions
     array::new(
         input_len,
-        |i| Constr::PhantomBusInteraction(
-            multiplicities[i], 
-            ids[i], 
-            payloads[i], 
-            latches[i], 
-            unpack_ext_array(folded_arr[i]), 
-            acc, 
-            helper_arr[i / 2])
+        |i| if input_len % 2 == 1 && i == input_len - 1 {
+            Constr::PhantomBusInteraction(
+                multiplicities[i], 
+                ids[i], 
+                payloads[i], 
+                latches[i], 
+                unpack_ext_array(folded_arr[i]), 
+                acc, 
+                Option::None
+            )
+        } else {
+            Constr::PhantomBusInteraction(
+                multiplicities[i], 
+                ids[i], 
+                payloads[i], 
+                latches[i], 
+                unpack_ext_array(folded_arr[i]), 
+                acc, 
+                Option::Some(helper_arr[i / 2])
+            )
+        }
     );
 };
 
