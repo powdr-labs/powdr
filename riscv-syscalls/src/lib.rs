@@ -69,4 +69,5 @@ syscalls!(
     (11, NativeHash, "native_hash"),
     (12, CommitPublic, "commit_public"),
     (13, InvertGL, "invert_gl"),
+    (14, SplitGlVec, "split_gl_vec"),
 );

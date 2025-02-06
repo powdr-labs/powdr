@@ -15,6 +15,8 @@ pub fn native_hash(data: &mut [u64; 12]) -> &[u64; 4] {
 /// Calls the low level Poseidon PIL machine, where the last 4 elements are the
 /// "cap", the return value is placed in data[..4] and the reference to this
 /// sub-array is returned.
+///
+/// TODO: remove poseidon_gl and use poseidon2_gl for everything, instead.
 pub fn poseidon_gl(data: &mut [Goldilocks; 12]) -> &[Goldilocks; 4] {
     unsafe {
         ecall!(Syscall::PoseidonGL, in("a0") data);
@@ -23,16 +25,16 @@ pub fn poseidon_gl(data: &mut [Goldilocks; 12]) -> &[Goldilocks; 4] {
 }
 
 /// Perform one Poseidon2 permutation with 8 Goldilocks field elements in-place.
-pub fn poseidon2_gl_inplace(data: &mut [Goldilocks; 8]) {
+pub fn poseidon2_gl_inplace(data: &mut [OpaqueGoldilocks; 8]) {
     unsafe {
         ecall!(Syscall::Poseidon2GL, in("a0") data, in("a1") data);
     }
 }
 
 /// Perform one Poseidon2 permutation with 8 Goldilocks field elements.
-pub fn poseidon2_gl(data: &[Goldilocks; 8]) -> [Goldilocks; 8] {
+pub fn poseidon2_gl(data: &[OpaqueGoldilocks; 8]) -> [OpaqueGoldilocks; 8] {
     unsafe {
-        let mut output: MaybeUninit<[Goldilocks; 8]> = MaybeUninit::uninit();
+        let mut output: MaybeUninit<[OpaqueGoldilocks; 8]> = MaybeUninit::uninit();
         ecall!(Syscall::Poseidon2GL, in("a0") data, in("a1") output.as_mut_ptr());
         output.assume_init()
     }

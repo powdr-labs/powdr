@@ -3,6 +3,36 @@ use powdr_riscv_syscalls::Syscall;
 
 pub const PRIME: u64 = 0xffffffff00000001;
 
+/// Goldilocks field element.
+/// 
+/// Not a legal value in RISC-V, as it uses a supposedly
+/// 32-bit memory word to store a full field element.
+/// 
+/// But it is more efficient when handled by Powdr machines.
+/// 
+/// TODO: remove the other Golilocks and the functions that use it,
+/// and replace it with this one.
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct OpaqueGoldilocks(u32);
+
+impl From<u32> for OpaqueGoldilocks {
+    fn from(value: u32) -> Self {
+        // This is a trivial conversion because the valid u32 values are
+        // a subset of the valid Goldilocks values.
+        Self(value)
+    }
+}
+
+/// Extract the Goldilocks values from the opaque Goldilocks values.
+pub fn extract_opaque_vec8(vec: &[OpaqueGoldilocks; 8]) -> [u64; 8] {
+    unsafe {
+        let mut output: MaybeUninit<[u64; 8]> = MaybeUninit::uninit();
+        ecall!(Syscall::SplitGlVec, in("a0") vec, in("a1") output);
+        output.assume_init()
+    }
+}
+
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Goldilocks(
