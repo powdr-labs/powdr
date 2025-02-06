@@ -26,7 +26,7 @@ use super::{
     Constraints, EvalError, EvalValue, IncompleteCause, QueryCallback,
 };
 
-pub type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
+pub type Arguments<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
 
 /// The data mutated by the processor
 pub(crate) struct SolverState<'a, T: FieldElement> {
@@ -56,8 +56,8 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
     pub range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     /// Connection.
     pub connection: Connection<'a, T>,
-    /// The left side of the connection, evaluated.
-    pub arguments: Left<'a, T>,
+    /// The payload of the calling bus send, evaluated.
+    pub arguments: Arguments<'a, T>,
 }
 
 impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
