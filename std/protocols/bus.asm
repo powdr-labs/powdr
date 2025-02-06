@@ -210,5 +210,19 @@ let bus_multi_receive: expr, expr[], expr, expr, expr, expr[], expr, expr -> () 
     bus_multi_interaction(id_0, payload_0, -multiplicity_0, latch_0, id_1, payload_1, -multiplicity_1, latch_1);
 };
 
+/// Convenience function for batching two bus sends.
+let bus_multi_send_2: expr[], expr[][], expr[] -> () = constr |ids, payloads, multiplicities| {
+    // For bus sends, the multiplicity always equals the latch
+    bus_multi_interaction_2(ids, payloads, multiplicities, multiplicities);
+};
+
+/// Convenience function for batching two bus receives.
+/// In practice, can also batch one bus send and one bus receive, but requires knowledge of this function and careful configuration of input parameters.
+/// E.g. sending negative multiplicity and multiplicity for "multiplicity" and "latch" parameters for bus sends.
+let bus_multi_receive_2: expr[], expr[][], expr[], expr[] -> () = constr |ids, payloads, multiplicities, latches| {
+    let negated_multiplicities: expr[] = array::map(multiplicities, |multiplicity| -multiplicity);
+    bus_multi_interaction_2(ids, payloads, negated_multiplicities, latches);
+};
+
 let bus_interaction: expr, expr[], expr, expr -> () = constr |id, payload, multiplicity, latch| {};
 let bus_multi_interaction: expr, expr[], expr, expr, expr, expr[], expr, expr -> () = constr |id_0, payload_0, multiplicity_0, latch_0, id_1, payload_1, multiplicity_1, latch_1| {};
