@@ -67,7 +67,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn can_process_call_fully(
         &mut self,
         _can_process: impl CanProcessCall<T>,
-        _identity_id: u64,
+        _bus_id: T,
         _known_arguments: &BitVec,
         _range_constraints: &[RangeConstraint<T>],
     ) -> Option<Vec<RangeConstraint<T>>> {
@@ -78,11 +78,11 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn process_plookup_timed<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
         record_start(self.name());
-        let result = self.process_plookup(mutable_state, identity_id, caller_rows);
+        let result = self.process_plookup(mutable_state, bus_id, caller_rows);
         record_end(self.name());
         result
     }
@@ -91,11 +91,11 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn process_lookup_direct_timed<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         record_start(self.name());
-        let result = self.process_lookup_direct(mutable_state, identity_id, values);
+        let result = self.process_lookup_direct(mutable_state, bus_id, values);
         record_end(self.name());
         result
     }
@@ -109,7 +109,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T>;
 
@@ -126,7 +126,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>>;
 
@@ -136,8 +136,8 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>>;
 
-    /// Returns the identity IDs of the connecting identities that this machine is responsible for.
-    fn identity_ids(&self) -> Vec<u64>;
+    /// Returns the IDs of the busses that this machine listens to.
+    fn bus_ids(&self) -> Vec<T>;
 }
 
 #[repr(C)]
@@ -195,32 +195,32 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     fn can_process_call_fully(
         &mut self,
         can_process: impl CanProcessCall<T>,
-        identity_id: u64,
+        bus_id: T,
         known_arguments: &BitVec,
         range_constraints: &[RangeConstraint<T>],
     ) -> Option<Vec<RangeConstraint<T>>> {
         match_variant!(
             self,
-            m => m.can_process_call_fully(can_process, identity_id, known_arguments, range_constraints)
+            m => m.can_process_call_fully(can_process, bus_id, known_arguments, range_constraints)
         )
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        match_variant!(self, m => m.process_plookup(mutable_state, identity_id, caller_rows))
+        match_variant!(self, m => m.process_plookup(mutable_state, bus_id, caller_rows))
     }
 
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
-        match_variant!(self, m => m.process_lookup_direct(mutable_state, identity_id, values))
+        match_variant!(self, m => m.process_lookup_direct(mutable_state, bus_id, values))
     }
 
     fn name(&self) -> &str {
@@ -234,8 +234,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         match_variant!(self, m => m.take_witness_col_values(mutable_state))
     }
 
-    fn identity_ids(&self) -> Vec<u64> {
-        match_variant!(self, m => m.identity_ids())
+    fn bus_ids(&self) -> Vec<T> {
+        match_variant!(self, m => m.bus_ids())
     }
 }
 
@@ -329,10 +329,9 @@ impl Display for ConnectionKind {
 #[derive(Clone)]
 pub struct MachineParts<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
-    /// Connecting identities, indexed by their ID.
-    /// These are the identities that connect another machine to this one,
-    /// where this one is on the RHS of a lookup.
-    pub connections: BTreeMap<u64, Connection<'a, T>>,
+    /// Bus receives, indexed by their bus ID.
+    /// These represent the machine listening on a specific bus to receive calls.
+    pub bus_receives: BTreeMap<T, &'a BusReceive<T>>,
     /// Identities relevant to this machine and only this machine.
     pub identities: Vec<&'a Identity<T>>,
     /// Witness columns relevant to this machine.
@@ -344,14 +343,14 @@ pub struct MachineParts<'a, T: FieldElement> {
 impl<'a, T: FieldElement> MachineParts<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        connections: BTreeMap<u64, Connection<'a, T>>,
+        bus_receives: BTreeMap<T, &'a BusReceive<T>>,
         identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
         prover_functions: Vec<&'a analyzed::Expression>,
     ) -> Self {
         Self {
             fixed_data,
-            connections,
+            bus_receives,
             identities,
             witnesses,
             prover_functions,
@@ -383,8 +382,8 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
     }
 
     /// Returns the IDs of the connecting identities.
-    pub fn identity_ids(&self) -> Vec<u64> {
-        self.connections.keys().cloned().collect()
+    pub fn bus_ids(&self) -> Vec<T> {
+        self.bus_receives.keys().cloned().collect()
     }
 
     /// Returns the name of a column.

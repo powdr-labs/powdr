@@ -94,10 +94,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let degree = degree_range.max;
 
         let (is_permutation, block_size, latch_row) =
-            detect_connection_type_and_block_size(fixed_data, &parts.connections)?;
+            detect_connection_type_and_block_size(fixed_data, &parts.bus_receives)?;
 
-        for id in parts.connections.values() {
-            for r in id.right.expressions.iter() {
+        for receive in parts.bus_receives.values() {
+            for r in receive.selected_payload.expressions.iter() {
                 if let Some(poly) = try_to_simple_poly(r) {
                     if poly.poly_id.ptype == PolynomialType::Constant {
                         // It does not really make sense to have constant polynomials on the RHS
@@ -159,28 +159,28 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
-    fn identity_ids(&self) -> Vec<u64> {
-        self.parts.connections.keys().copied().collect()
+    fn bus_ids(&self) -> Vec<T> {
+        self.parts.bus_ids()
     }
 
     fn can_process_call_fully(
         &mut self,
         can_process: impl CanProcessCall<T>,
-        identity_id: u64,
+        bus_id: T,
         known_arguments: &BitVec,
         _range_constraints: &[RangeConstraint<T>],
     ) -> Option<Vec<RangeConstraint<T>>> {
         // We do not use the input range constraints because then we would need
         // to generate new code depending on the range constraints as well.
         self.function_cache
-            .compile_cached(can_process, identity_id, known_arguments)
+            .compile_cached(can_process, bus_id, known_arguments)
             .map(|r| r.range_constraints.clone())
     }
 
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         if self.rows() + self.block_size as DegreeType > self.degree {
@@ -192,7 +192,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 
         let success =
             self.function_cache
-                .process_lookup_direct(mutable_state, identity_id, values, data)?;
+                .process_lookup_direct(mutable_state, bus_id, values, data)?;
         assert!(success);
         self.block_count_jit += 1;
         Ok(true)
@@ -201,11 +201,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
         let previous_len = self.data.len();
-        let result = self.process_plookup_internal(mutable_state, identity_id, caller_rows);
+        let result = self.process_plookup_internal(mutable_state, bus_id, caller_rows);
         if let Ok(assignments) = &result {
             if !assignments.is_complete() {
                 // rollback the changes.
@@ -285,11 +285,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
 
             // Set all selectors to 0
-            for id in self.parts.connections.values() {
+            for bus_receive in self.parts.bus_receives.values() {
                 processor
-                    .set_value(self.latch_row + 1, &id.right.selector, T::zero(), || {
-                        "Zero selectors".to_string()
-                    })
+                    .set_value(
+                        self.latch_row + 1,
+                        &bus_receive.selected_payload.selector,
+                        T::zero(),
+                        || "Zero selectors".to_string(),
+                    )
                     .unwrap();
             }
 
@@ -409,14 +412,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     fn process_plookup_internal<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let outer_query =
-            match OuterQuery::try_new(caller_rows, self.parts.connections[&identity_id]) {
-                Ok(outer_query) => outer_query,
-                Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
-            };
+        let outer_query = match OuterQuery::try_new(caller_rows, self.parts.bus_receives[&bus_id]) {
+            Ok(outer_query) => outer_query,
+            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
+        };
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
@@ -433,10 +435,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
         if self
             .function_cache
-            .compile_cached(mutable_state, identity_id, &known_inputs)
+            .compile_cached(mutable_state, bus_id, &known_inputs)
             .is_some()
         {
-            let updates = self.process_lookup_via_jit(mutable_state, identity_id, outer_query)?;
+            let updates = self.process_lookup_via_jit(mutable_state, bus_id, outer_query)?;
             assert!(updates.is_complete());
             self.block_count_jit += 1;
             return Ok(updates);
@@ -495,7 +497,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     fn process_lookup_via_jit<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         outer_query: OuterQuery<'a, 'b, T>,
     ) -> EvalResult<'a, T> {
         let mut values = CallerData::from(&outer_query);
@@ -509,7 +511,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         let success = self.function_cache.process_lookup_direct(
             mutable_state,
-            identity_id,
+            bus_id,
             &mut values.as_lookup_cells(),
             data,
         )?;

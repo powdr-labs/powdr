@@ -7,7 +7,7 @@ use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
 /// A variable that can be used in the inference engine.
-pub enum Variable {
+pub enum Variable<T> {
     /// A witness cell in the current machine.
     WitnessCell(Cell),
     /// A parameter (input or output) of the machine.
@@ -15,12 +15,12 @@ pub enum Variable {
     Param(usize),
     /// An input or output value of a machine call on a certain
     /// identity on a certain row offset.
-    MachineCallParam(MachineCallVariable),
+    MachineCallParam(MachineCallVariable<T>),
     /// A fixed column cell.
     FixedCell(Cell),
 }
 
-impl Display for Variable {
+impl<T: Display> Display for Variable<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Variable::WitnessCell(cell) => write!(f, "{cell}"),
@@ -29,7 +29,7 @@ impl Display for Variable {
                 write!(
                     f,
                     "call_var({}, {}, {})",
-                    ret.identity_id, ret.row_offset, ret.index
+                    ret.bus_id, ret.row_offset, ret.index
                 )
             }
             Variable::FixedCell(cell) => write!(f, "{cell}"),
@@ -37,7 +37,7 @@ impl Display for Variable {
     }
 }
 
-impl Variable {
+impl<T> Variable<T> {
     /// Create a variable from an algebraic reference.
     pub fn from_reference(r: &AlgebraicReference, row_offset: i32) -> Self {
         let cell = Cell {
@@ -69,8 +69,8 @@ impl Variable {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
-pub struct MachineCallVariable {
-    pub identity_id: u64,
+pub struct MachineCallVariable<T> {
+    pub bus_id: T,
     pub row_offset: i32,
     pub index: usize,
 }

@@ -26,8 +26,8 @@ use super::{
 };
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-struct CacheKey {
-    identity_id: u64,
+struct CacheKey<T> {
+    bus_id: T,
     known_args: BitVec,
 }
 
@@ -37,7 +37,7 @@ pub struct FunctionCache<'a, T: FieldElement> {
     processor: BlockMachineProcessor<'a, T>,
     /// The cache of JIT functions and the returned range constraints.
     /// If the entry is None, we attempted to generate the function but failed.
-    witgen_functions: HashMap<CacheKey, Option<CacheEntry<T>>>,
+    witgen_functions: HashMap<CacheKey<T>, Option<CacheEntry<T>>>,
     column_layout: ColumnLayout,
     block_size: usize,
     machine_name: String,
@@ -77,18 +77,18 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
     pub fn compile_cached(
         &mut self,
         can_process: impl CanProcessCall<T>,
-        identity_id: u64,
+        bus_id: T,
         known_args: &BitVec,
     ) -> Option<&CacheEntry<T>> {
         let cache_key = CacheKey {
-            identity_id,
+            bus_id,
             known_args: known_args.clone(),
         };
         self.ensure_cache(can_process, &cache_key);
         self.witgen_functions.get(&cache_key).unwrap().as_ref()
     }
 
-    fn ensure_cache(&mut self, can_process: impl CanProcessCall<T>, cache_key: &CacheKey) {
+    fn ensure_cache(&mut self, can_process: impl CanProcessCall<T>, cache_key: &CacheKey<T>) {
         if self.witgen_functions.contains_key(cache_key) {
             return;
         }
@@ -108,12 +108,12 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
     fn compile_witgen_function(
         &self,
         can_process: impl CanProcessCall<T>,
-        cache_key: &CacheKey,
+        cache_key: &CacheKey<T>,
     ) -> Option<CacheEntry<T>> {
         log::debug!(
             "Compiling JIT function for\n  Machine: {}\n  Connection: {}\n   Inputs: {:?}",
             self.machine_name,
-            self.parts.connections[&cache_key.identity_id],
+            self.parts.bus_receives[&cache_key.bus_id],
             cache_key.known_args
         );
 
@@ -125,7 +125,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             prover_functions,
         ) = self
             .processor
-            .generate_code(can_process, cache_key.identity_id, &cache_key.known_args)
+            .generate_code(can_process, cache_key.bus_id, &cache_key.known_args)
             .map_err(|e| {
                 // These errors can be pretty verbose and are quite common currently.
                 log::debug!(
@@ -199,7 +199,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
     pub fn process_lookup_direct<'c, 'd, Q: QueryCallback<T>>(
         &self,
         mutable_state: &MutableState<'a, T, Q>,
-        connection_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
         data: CompactDataRef<'d, T>,
     ) -> Result<bool, EvalError<T>> {
@@ -208,10 +208,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .map(|cell| cell.is_input())
             .collect::<BitVec>();
 
-        let cache_key = CacheKey {
-            identity_id: connection_id,
-            known_args,
-        };
+        let cache_key = CacheKey { bus_id, known_args };
 
         self.witgen_functions
             .get(&cache_key)

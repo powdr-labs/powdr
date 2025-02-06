@@ -49,11 +49,12 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
     pub fn generate_code(
         &self,
         can_process: impl CanProcessCall<T>,
-        identity_id: u64,
+        bus_id: T,
         known_args: &BitVec,
     ) -> Result<(ProcessorResult<T>, Vec<ProverFunction<'a, T>>), String> {
-        let connection = self.machine_parts.connections[&identity_id];
-        assert_eq!(connection.right.expressions.len(), known_args.len());
+        let bus_receive = self.machine_parts.bus_receives[&bus_id];
+        let payload = &bus_receive.selected_payload;
+        assert_eq!(payload.expressions.len(), known_args.len());
 
         // Set up WitgenInference with known arguments.
         let known_variables = known_args
@@ -66,19 +67,19 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
 
         // In the latch row, set the RHS selector to 1.
-        let selector = &connection.right.selector;
+        let selector = &payload.selector;
         witgen.assign_constant(selector, self.latch_row as i32, T::one());
 
         // Set all other selectors to 0 in the latch row.
-        for other_connection in self.machine_parts.connections.values() {
-            let other_selector = &other_connection.right.selector;
+        for other_receive in self.machine_parts.bus_receives.values() {
+            let other_selector = &other_receive.selected_payload.selector;
             if other_selector != selector {
                 witgen.assign_constant(other_selector, self.latch_row as i32, T::zero());
             }
         }
 
         // For each argument, connect the expression on the RHS with the formal parameter.
-        for (index, expr) in connection.right.expressions.iter().enumerate() {
+        for (index, expr) in payload.expressions.iter().enumerate() {
             witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
         }
 
@@ -139,14 +140,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string_with_variable_formatter(|var| match var {
-                Variable::Param(i) => format!("{} (connection param)", &connection.right.expressions[*i]),
+                Variable::Param(i) => format!("{} (connection param)", &payload.expressions[*i]),
                 _ => var.to_string(),
             });
-            log::trace!("\nCode generation failed for connection:\n  {connection}");
+            log::trace!("\nCode generation failed for bus receive:\n  {bus_receive}");
             let known_args_str = known_args
                 .iter()
                 .enumerate()
-                .filter_map(|(i, b)| b.then_some(connection.right.expressions[i].to_string()))
+                .filter_map(|(i, b)| b.then_some(payload.expressions[i].to_string()))
                 .join("\n  ");
             log::trace!("Known arguments:\n  {known_args_str}");
             log::trace!("Error:\n  {err_str}");
@@ -226,8 +227,8 @@ mod test {
             panic!("Expected exactly one matching block machine")
         };
         let (machine_parts, block_size, latch_row) = machine.machine_info();
-        assert_eq!(machine_parts.connections.len(), 1);
-        let connection_id = *machine_parts.connections.keys().next().unwrap();
+        assert_eq!(machine_parts.bus_receives.len(), 1);
+        let bus_id = *machine_parts.bus_receives.keys().next().unwrap();
         let processor = BlockMachineProcessor {
             fixed_data: &fixed_data,
             machine_parts: machine_parts.clone(),
@@ -246,7 +247,7 @@ mod test {
         );
 
         processor
-            .generate_code(&mutable_state, connection_id, &known_values)
+            .generate_code(&mutable_state, bus_id, &known_values)
             .map(|(result, _)| result)
     }
 

@@ -38,7 +38,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
         let result = match identity {
             Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
             Identity::BusSend(bus_interaction) => self.process_lookup_or_permutation(
-                bus_interaction.identity_id,
+                bus_interaction.bus_id().expect("Expected static bus ID!"),
                 &bus_interaction.selected_payload,
                 rows,
             ),
@@ -67,7 +67,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
 
     fn process_lookup_or_permutation(
         &mut self,
-        id: u64,
+        bus_id: T,
         left: &'a powdr_ast::analyzed::SelectedExpressions<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -75,7 +75,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
             return Ok(status);
         }
 
-        self.mutable_state.call(id, rows)
+        self.mutable_state.call(bus_id, rows)
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.

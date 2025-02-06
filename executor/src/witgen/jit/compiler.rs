@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, ffi::c_void, sync::Arc};
+use std::{cmp::Ordering, ffi::c_void, fmt::Display, sync::Arc};
 
 use itertools::Itertools;
 use libloading::Library;
@@ -79,21 +79,19 @@ extern "C" fn get_fixed_value<T: FieldElement>(
 
 extern "C" fn call_machine<T: FieldElement, Q: QueryCallback<T>>(
     mutable_state: *const c_void,
-    identity_id: u64,
+    bus_id: T,
     params: MutSlice<LookupCell<T>>,
 ) -> bool {
     let mutable_state = unsafe { &*(mutable_state as *const MutableState<T, Q>) };
-    mutable_state
-        .call_direct(identity_id, params.into())
-        .unwrap()
+    mutable_state.call_direct(bus_id, params.into()).unwrap()
 }
 
 /// Compile the given inferred effects into machine code and load it.
 pub fn compile_effects<T: FieldElement, D: DefinitionFetcher>(
     definitions: &D,
     column_layout: ColumnLayout,
-    known_inputs: &[Variable],
-    effects: &[Effect<T, Variable>],
+    known_inputs: &[Variable<T>],
+    effects: &[Effect<T, Variable<T>>],
     prover_functions: Vec<ProverFunction<'_, T>>,
 ) -> Result<WitgenFunction<T>, String> {
     let utils = util_code::<T>()?;
@@ -148,7 +146,7 @@ struct WitgenFunctionParams<'a, T: 'a> {
     /// The pointer to the mutable state.
     mutable_state: *const c_void,
     /// A callback to call submachines.
-    call_machine: extern "C" fn(*const c_void, u64, MutSlice<LookupCell<'_, T>>) -> bool,
+    call_machine: extern "C" fn(*const c_void, T, MutSlice<LookupCell<'_, T>>) -> bool,
     /// A pointer to the "fixed data".
     fixed_data: *const c_void,
     /// A callback to retrieve values from fixed columns.
@@ -187,8 +185,8 @@ impl<T> From<MutSlice<T>> for &mut [T] {
 }
 
 fn witgen_code<T: FieldElement>(
-    known_inputs: &[Variable],
-    effects: &[Effect<T, Variable>],
+    known_inputs: &[Variable<T>],
+    effects: &[Effect<T, Variable<T>>],
 ) -> String {
     let load_known_inputs = known_inputs
         .iter()
@@ -305,19 +303,19 @@ extern "C" fn witgen(
     )
 }
 
-pub fn format_effects<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
+pub fn format_effects<T: FieldElement>(effects: &[Effect<T, Variable<T>>]) -> String {
     format_effects_inner(effects, true)
 }
 
 fn format_effects_inner<T: FieldElement>(
-    effects: &[Effect<T, Variable>],
+    effects: &[Effect<T, Variable<T>>],
     is_top_level: bool,
 ) -> String {
     indent(format_effects_inner_unindented(effects, is_top_level), 1)
 }
 
 fn format_effects_inner_unindented<T: FieldElement>(
-    effects: &[Effect<T, Variable>],
+    effects: &[Effect<T, Variable<T>>],
     is_top_level: bool,
 ) -> String {
     effects
@@ -326,7 +324,7 @@ fn format_effects_inner_unindented<T: FieldElement>(
         .join("\n")
 }
 
-fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bool) -> String {
+fn format_effect<T: FieldElement>(effect: &Effect<T, Variable<T>>, is_top_level: bool) -> String {
     match effect {
         Effect::Assignment(var, e) => {
             format!(
@@ -431,7 +429,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
     }
 }
 
-fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable>) -> String {
+fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable<T>>) -> String {
     match e {
         SymbolicExpression::Concrete(v) => format!("FieldElement::from({v})"),
         SymbolicExpression::Symbol(symbol, _) => variable_to_string(symbol),
@@ -465,7 +463,7 @@ fn format_condition<T: FieldElement>(
     BranchCondition {
         variable,
         condition,
-    }: &BranchCondition<T, Variable>,
+    }: &BranchCondition<T, Variable<T>>,
 ) -> String {
     let var = format!("IntType::from({})", variable_to_string(variable));
     let (min, max) = condition.range();
@@ -477,7 +475,7 @@ fn format_condition<T: FieldElement>(
 }
 
 /// Returns the name of a local (stack) variable for the given expression variable.
-fn variable_to_string(v: &Variable) -> String {
+fn variable_to_string<T: Display>(v: &Variable<T>) -> String {
     match v {
         Variable::WitnessCell(cell) => format!(
             "c_{}_{}_{}",
@@ -497,7 +495,7 @@ fn variable_to_string(v: &Variable) -> String {
         Variable::MachineCallParam(call_var) => {
             format!(
                 "call_var_{}_{}_{}",
-                call_var.identity_id,
+                call_var.bus_id,
                 format_row_offset(call_var.row_offset),
                 call_var.index
             )
@@ -586,8 +584,8 @@ mod tests {
 
     fn compile_effects(
         column_count: usize,
-        known_inputs: &[Variable],
-        effects: &[Effect<GoldilocksField, Variable>],
+        known_inputs: &[Variable<GoldilocksField>],
+        effects: &[Effect<GoldilocksField, Variable<GoldilocksField>>],
     ) -> Result<WitgenFunction<GoldilocksField>, String> {
         super::compile_effects(
             &NoDefinitions,
@@ -613,7 +611,7 @@ mod tests {
     //     compile_effects::<KoalaBearField>(0, 2, &[], &[]).unwrap();
     // }
 
-    fn cell(column_name: &str, id: u64, row_offset: i32) -> Variable {
+    fn cell(column_name: &str, id: u64, row_offset: i32) -> Variable<GoldilocksField> {
         Variable::WitnessCell(Cell {
             column_name: column_name.to_string(),
             row_offset,
@@ -621,30 +619,36 @@ mod tests {
         })
     }
 
-    fn param(i: usize) -> Variable {
+    fn param(i: usize) -> Variable<GoldilocksField> {
         Variable::Param(i)
     }
 
-    fn call_var(identity_id: u64, row_offset: i32, index: usize) -> Variable {
+    fn call_var(
+        bus_id: GoldilocksField,
+        row_offset: i32,
+        index: usize,
+    ) -> Variable<GoldilocksField> {
         Variable::MachineCallParam(MachineCallVariable {
-            identity_id,
+            bus_id,
             row_offset,
             index,
         })
     }
 
-    fn symbol(var: &Variable) -> SymbolicExpression<GoldilocksField, Variable> {
+    fn symbol(
+        var: &Variable<GoldilocksField>,
+    ) -> SymbolicExpression<GoldilocksField, Variable<GoldilocksField>> {
         SymbolicExpression::from_symbol(var.clone(), Default::default())
     }
 
-    fn number(n: u64) -> SymbolicExpression<GoldilocksField, Variable> {
+    fn number(n: u64) -> SymbolicExpression<GoldilocksField, Variable<GoldilocksField>> {
         SymbolicExpression::from(GoldilocksField::from(n))
     }
 
     fn assignment(
-        var: &Variable,
-        e: SymbolicExpression<GoldilocksField, Variable>,
-    ) -> Effect<GoldilocksField, Variable> {
+        var: &Variable<GoldilocksField>,
+        e: SymbolicExpression<GoldilocksField, Variable<GoldilocksField>>,
+    ) -> Effect<GoldilocksField, Variable<GoldilocksField>> {
         Effect::Assignment(var.clone(), e)
     }
 
@@ -654,13 +658,13 @@ mod tests {
         let x0 = cell("x", 0, 0);
         let ym1 = cell("y", 1, -1);
         let yp1 = cell("y", 1, 1);
-        let cv1 = call_var(7, 1, 0);
-        let r1 = call_var(7, 1, 1);
+        let cv1 = call_var(7.into(), 1, 0);
+        let r1 = call_var(7.into(), 1, 1);
         let effects = vec![
             assignment(&x0, number(7) * symbol(&a0)),
             assignment(&cv1, symbol(&x0)),
             Effect::MachineCall(
-                7,
+                7.into(),
                 [false, true].into_iter().collect(),
                 vec![r1.clone(), cv1.clone()],
             ),
@@ -723,9 +727,9 @@ extern \"C\" fn witgen(
         );
     }
 
-    extern "C" fn no_call_machine(
+    extern "C" fn no_call_machine<T>(
         _: *const c_void,
-        _: u64,
+        _: T,
         _: MutSlice<LookupCell<'_, GoldilocksField>>,
     ) -> bool {
         false
@@ -943,12 +947,12 @@ extern \"C\" fn witgen(
         assert_eq!(data[0], GoldilocksField::from(30006));
     }
 
-    extern "C" fn mock_call_machine(
+    extern "C" fn mock_call_machine<T: FieldElement>(
         _: *const c_void,
-        id: u64,
+        id: T,
         params: MutSlice<LookupCell<'_, GoldilocksField>>,
     ) -> bool {
-        assert_eq!(id, 7);
+        assert_eq!(id, 7.into());
         assert_eq!(params.len, 3);
 
         let params: &mut [LookupCell<GoldilocksField>] = params.into();
@@ -971,13 +975,13 @@ extern \"C\" fn witgen(
     fn submachine_calls() {
         let x = cell("x", 0, 0);
         let y = cell("y", 1, 0);
-        let v1 = call_var(7, 0, 0);
-        let r1 = call_var(7, 0, 1);
-        let r2 = call_var(7, 0, 2);
+        let v1 = call_var(7.into(), 0, 0);
+        let r1 = call_var(7.into(), 0, 1);
+        let r2 = call_var(7.into(), 0, 2);
         let effects = vec![
             Effect::Assignment(v1.clone(), number(7)),
             Effect::MachineCall(
-                7,
+                7.into(),
                 [true, false, false].into_iter().collect(),
                 vec![v1, r1.clone(), r2.clone()],
             ),

@@ -23,7 +23,7 @@ use super::variable::Variable;
 #[derive(Clone)]
 pub struct IdentityQueue<'a, T: FieldElement> {
     queue: BTreeSet<QueueItem<'a, T>>,
-    occurrences: Rc<HashMap<Variable, Vec<QueueItem<'a, T>>>>,
+    occurrences: Rc<HashMap<Variable<T>, Vec<QueueItem<'a, T>>>>,
 }
 
 impl<'a, T: FieldElement> IdentityQueue<'a, T> {
@@ -46,7 +46,7 @@ impl<'a, T: FieldElement> IdentityQueue<'a, T> {
 
     pub fn variables_updated(
         &mut self,
-        variables: impl IntoIterator<Item = Variable>,
+        variables: impl IntoIterator<Item = Variable<T>>,
         skip_identity: Option<(&'a Identity<T>, i32)>,
     ) {
         self.queue.extend(
@@ -97,7 +97,7 @@ impl<T> Eq for QueueItem<'_, T> {}
 fn compute_occurrences_map<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
     identities: &[(&'a Identity<T>, i32)],
-) -> HashMap<Variable, Vec<QueueItem<'a, T>>> {
+) -> HashMap<Variable<T>, Vec<QueueItem<'a, T>>> {
     let mut references_per_identity = HashMap::new();
     let mut intermediate_cache = HashMap::new();
     for id in identities.iter().map(|(id, _)| *id).unique_by(|id| id.id()) {

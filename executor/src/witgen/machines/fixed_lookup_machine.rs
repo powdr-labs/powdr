@@ -9,6 +9,7 @@ use powdr_number::FieldElement;
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
 use crate::witgen::data_structures::caller_data::CallerData;
+use crate::witgen::data_structures::identity::BusReceive;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
 use crate::witgen::jit::witgen_inference::CanProcessCall;
@@ -196,33 +197,33 @@ fn create_index<T: FieldElement>(
 pub struct FixedLookup<'a, T: FieldElement> {
     global_constraints: GlobalConstraints<T>,
     indices: HashMap<Application, Index<T>>,
-    connections: BTreeMap<u64, Connection<'a, T>>,
+    bus_receives: BTreeMap<T, &'a BusReceive<T>>,
     fixed_data: &'a FixedData<'a, T>,
 }
 
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
-    pub fn is_responsible(connection: &Connection<T>) -> bool {
-        connection.is_lookup()
-            && connection.right.selector.is_one()
-            && connection
-                .right
+    pub fn is_responsible(bus_receive: &BusReceive<T>) -> bool {
+        bus_receive.has_arbitrary_multiplicity()
+            && bus_receive.selected_payload.selector.is_one()
+            && bus_receive
+                .selected_payload
                 .expressions
                 .iter()
                 // For native lookups, we do remove constants in the PIL
                 // optimizer, but this might not be the case for bus interactions.
                 .all(|e| FixedColOrConstant::try_from(e).is_ok())
-            && !connection.right.expressions.is_empty()
+            && !bus_receive.selected_payload.expressions.is_empty()
     }
 
     pub fn new(
         global_constraints: GlobalConstraints<T>,
         fixed_data: &'a FixedData<'a, T>,
-        connections: BTreeMap<u64, Connection<'a, T>>,
+        bus_receives: BTreeMap<T, &'a BusReceive<T>>,
     ) -> Self {
         Self {
             global_constraints,
             indices: Default::default(),
-            connections,
+            bus_receives,
             fixed_data,
         }
     }
