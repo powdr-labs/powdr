@@ -136,10 +136,10 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
     fn process_plookup_internal(
         &mut self,
         identity_id: u64,
-        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
     ) -> EvalResult<'a, T> {
         let identity = self.connections[&identity_id];
-        let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = parameters
+        let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = arguments
             .iter()
             .zip(identity.right.expressions.iter())
             .partition(|(_, r)| {
@@ -248,10 +248,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
         &mut self,
         _mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         _range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, parameters)
+        self.process_plookup_internal(identity_id, arguments)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(

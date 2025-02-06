@@ -220,10 +220,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
         &mut self,
         _mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         _range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, parameters)
+        self.process_plookup_internal(identity_id, arguments)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -261,15 +261,15 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     fn process_plookup_internal(
         &mut self,
         identity_id: u64,
-        parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
     ) -> EvalResult<'a, T> {
         let rhs = self.rhs_references.get(&identity_id).unwrap();
         let key_index = rhs.iter().position(|&x| x.poly_id == self.key_col).unwrap();
 
-        let key_value = parameters[key_index].constant_value().ok_or_else(|| {
+        let key_value = arguments[key_index].constant_value().ok_or_else(|| {
             format!(
                 "Value of unique key must be known: {} = {}",
-                parameters[key_index], rhs[key_index]
+                arguments[key_index], rhs[key_index]
             )
         })?;
 
@@ -278,7 +278,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
             .data
             .entry(key_value)
             .or_insert_with(|| vec![None; self.witness_positions.len()]);
-        for (l, &r) in parameters.iter().zip(rhs.iter()).skip(1) {
+        for (l, &r) in arguments.iter().zip(rhs.iter()).skip(1) {
             let stored_value = &mut stored_values[self.witness_positions[&r.poly_id]];
             match stored_value {
                 // There is a stored value

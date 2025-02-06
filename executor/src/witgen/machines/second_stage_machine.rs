@@ -58,7 +58,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SecondStageMachine<'a, T> {
         &mut self,
         _mutable_state: &MutableState<'a, T, Q>,
         _identity_id: u64,
-        _parameters: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        _arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         _range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         panic!("SecondStageMachine can't be called by other machines!")
