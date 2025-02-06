@@ -356,8 +356,8 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
         }
     }
 
-    if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) = e {
-        if let Some(simplified) = try_simplify_associative_operation(left, right, *op) {
+    if let AlgebraicExpression::BinaryOperation(binary_op) = e {
+        if let Some(simplified) = try_simplify_associative_operation(binary_op) {
             *e = simplified;
             return;
         }
@@ -435,20 +435,17 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
     }
 }
 
-/// Uses associative properties to simplify expressions by regrouping constant terms.
 fn try_simplify_associative_operation<T: FieldElement>(
-    left: &mut AlgebraicExpression<T>,
-    right: &mut AlgebraicExpression<T>,
-    op: AlgebraicBinaryOperator,
+    binary_op: &mut AlgebraicBinaryOperation<T>,
 ) -> Option<AlgebraicExpression<T>> {
-    if op != AlgebraicBinaryOperator::Add {
+    if binary_op.op != AlgebraicBinaryOperator::Add {
         return None;
     }
 
     // Find binary operation and other expression, handling both orderings:
     // (X1 + X2) + Other
     // Other + (X1 + X2)
-    let (x1, x2, other_expr) = match (left, right) {
+    let (x1, x2, other_expr) = match (&mut *binary_op.left, &mut *binary_op.right) {
         (
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
                 left: x1,
@@ -500,13 +497,7 @@ fn try_simplify_associative_operation<T: FieldElement>(
             let y = std::mem::replace(y, AlgebraicExpression::Number(0.into()));
             Some(AlgebraicExpression::BinaryOperation(
                 AlgebraicBinaryOperation {
-                    left: Box::new(AlgebraicExpression::BinaryOperation(
-                        AlgebraicBinaryOperation {
-                            left: Box::new(x),
-                            op: AlgebraicBinaryOperator::Add,
-                            right: Box::new(y),
-                        },
-                    )),
+                    left: Box::new(x + y),
                     op: AlgebraicBinaryOperator::Add,
                     right: Box::new(AlgebraicExpression::Number(*c1_val)),
                 },
@@ -514,7 +505,6 @@ fn try_simplify_associative_operation<T: FieldElement>(
         }
     }
 }
-
 /// Extracts columns from lookups that are matched against constants and turns
 /// them into polynomial identities.
 fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
