@@ -312,14 +312,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         can_process_call: impl CanProcessCall<T>,
         lookup_id: u64,
         selector: &Expression<T>,
-        arguments: &'a [Expression<T>],
+        argument_count: usize,
         row_offset: i32,
     ) -> Result<Vec<Variable>, Error> {
         let result = self.process_call_(
             can_process_call,
             lookup_id,
             selector,
-            arguments.len(),
+            argument_count,
             row_offset,
         );
         self.ingest_effects(result, Some((lookup_id, row_offset)))
@@ -489,6 +489,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             if let Some(identity_id) = identity_id {
                 // We actually only need to store completeness for submachine calls,
                 // but we do it for all identities.
+                // TODO this is not correct, somehow we get problems if we do not provide
+                // IDs for poly identities. Need to revisit this.
                 self.complete_identities.insert(identity_id);
             }
         }
@@ -790,6 +792,22 @@ mod test {
         let ref_eval = FixedEvaluatorForFixedData(&fixed_data);
         let mut witgen = WitgenInference::new(&fixed_data, ref_eval, known_cells, []);
         let mut counter = 0;
+        // Create variables for bus send arguments.
+        for row in rows {
+            for id in &fixed_data.identities {
+                if let Identity::BusSend(bus_send) = id {
+                    for (index, arg) in bus_send.selected_payload.expressions.iter().enumerate() {
+                        let var = Variable::MachineCallParam(MachineCallVariable {
+                            identity_id: bus_send.identity_id,
+                            row_offset: *row,
+                            index,
+                        });
+                        witgen.assign_variable(arg, *row, var.clone());
+                    }
+                }
+            }
+        }
+
         loop {
             let mut progress = false;
             counter += 1;
@@ -808,7 +826,7 @@ mod test {
                                 &mutable_state,
                                 *identity_id,
                                 &selected_payload.selector,
-                                &selected_payload.expressions,
+                                selected_payload.expressions.len(),
                                 *row,
                             )
                             .unwrap(),

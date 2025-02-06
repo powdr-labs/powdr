@@ -310,7 +310,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                         can_process.clone(),
                         *identity_id,
                         &selected_payload.selector,
-                        &selected_payload.expressions,
+                        selected_payload.expressions.len(),
                         row_offset,
                     ),
                     Identity::Connect(..) => Ok(vec![]),
