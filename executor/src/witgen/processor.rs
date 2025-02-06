@@ -52,7 +52,7 @@ impl<'a, T: FieldElement> SolverState<'a, T> {
 /// Data needed to handle an outer query.
 #[derive(Clone)]
 pub struct OuterQuery<'a, 'b, T: FieldElement> {
-    /// Rows of the calling machine.
+    /// Range constraints of the caller.
     pub range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     /// Connection.
     pub connection: Connection<'a, T>,

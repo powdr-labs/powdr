@@ -61,8 +61,8 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
         machine.can_process_call_fully(self, identity_id, known_inputs, range_constraints)
     }
 
-    /// Call the machine responsible for the right-hand-side of an identity given its ID
-    /// and the row pair of the caller.
+    /// Call the machine responsible for the right-hand-side of an identity given its ID,
+    /// the evaluated arguments and the caller's range constraints.
     pub fn call(
         &self,
         identity_id: u64,
