@@ -329,6 +329,30 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         arguments: &'a [Expression<T>],
         row_offset: i32,
     ) -> ProcessResult<T, Variable> {
+        let vars = arguments
+            .iter()
+            .enumerate()
+            .map(|(index, arg)| {
+                let var = Variable::MachineCallParam(MachineCallVariable {
+                    identity_id: lookup_id,
+                    row_offset,
+                    index,
+                });
+                self.assign_variable(arg, row_offset, var.clone());
+                var
+            })
+            .collect_vec();
+        self.process_call_(can_process_call, lookup_id, selector, &vars, row_offset)
+    }
+
+    fn process_call_(
+        &mut self,
+        can_process_call: impl CanProcessCall<T>,
+        lookup_id: u64,
+        selector: &Expression<T>,
+        arguments: &[Variable],
+        row_offset: i32,
+    ) -> ProcessResult<T, Variable> {
         // We need to know the selector.
         let Some(selector) = self
             .evaluate(selector, row_offset)
@@ -346,44 +370,27 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             assert_eq!(selector, 1.into(), "Selector is non-binary");
         }
 
-        let evaluated = arguments
+        let range_constraints = arguments
             .iter()
-            .map(|a| self.evaluate(a, row_offset))
-            .collect::<Vec<_>>();
-        let range_constraints = evaluated
-            .iter()
-            .map(|e| e.as_ref().map(|e| e.range_constraint()).unwrap_or_default())
+            .map(|v| self.range_constraint(v))
             .collect_vec();
-        let known: BitVec = evaluated
-            .iter()
-            .map(|e| e.as_ref().and_then(|e| e.try_to_known()).is_some())
-            .collect();
+        let known: BitVec = arguments.iter().map(|v| self.is_known(v)).collect();
 
         let Some(new_range_constraints) =
             can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints)
         else {
             return ProcessResult::empty();
         };
-        let mut effects = vec![];
-        let vars = arguments
+        let effects = arguments
             .iter()
             .zip_eq(new_range_constraints)
-            .enumerate()
-            .map(|(index, (arg, new_rc))| {
-                let var = Variable::MachineCallParam(MachineCallVariable {
-                    identity_id: lookup_id,
-                    row_offset,
-                    index,
-                });
-                self.assign_variable(arg, row_offset, var.clone());
-                effects.push(Effect::RangeConstraint(var.clone(), new_rc.clone()));
-                if known[index] {
-                    assert!(self.is_known(&var));
-                }
-                var
-            })
-            .collect_vec();
-        effects.push(Effect::MachineCall(lookup_id, known, vars.clone()));
+            .map(|(var, new_rc)| Effect::RangeConstraint(var.clone(), new_rc.clone()))
+            .chain(std::iter::once(Effect::MachineCall(
+                lookup_id,
+                known,
+                arguments.to_vec(),
+            )))
+            .collect();
         ProcessResult {
             effects,
             complete: true,
