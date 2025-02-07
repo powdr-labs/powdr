@@ -21,6 +21,8 @@ mod extension_field;
 mod fp2;
 mod fp4;
 
+pub type InteractionColumns<T> = (Vec<Vec<T>>, Vec<Vec<T>>, Vec<Vec<T>>);
+
 /// Generates the second-stage columns for the bus accumulator.
 pub fn generate_bus_accumulator_columns<'a, T>(
     pil: &'a Analyzed<T>,
@@ -129,7 +131,7 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
             .flat_map(|bus_interaction| {
                 let (folded, helper, acc) = self.interaction_columns(bus_interaction);
                 collect_folded_columns(bus_interaction, folded)
-                .chain(collect_helper_columns(bus_interaction, helper))
+                    .chain(collect_helper_columns(bus_interaction, helper))
                     .chain(collect_acc_columns(bus_interaction, acc))
                     .collect::<Vec<_>>()
             })
@@ -180,17 +182,15 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
         result
     }
 
-    /// New version of interaction_columns that “batches” several bus interactions
-    /// according to bus_multi_interaction_2.
-    ///
-    /// Returns a triple:
+    /// Given a bus interaction and existing witness values,
+    /// calculates and returns a triple tuple of:
     /// - the folded columns (one per bus interaction)
     /// - one helper column per pair of bus interactions
     /// - the accumulator column (shared by all interactions)
     fn interaction_columns(
         &self,
         bus_interaction: &PhantomBusInteractionIdentity<T>,
-    ) -> (Vec<Vec<T>>, Vec<Vec<T>>, Vec<Vec<T>>) {
+    ) -> InteractionColumns<T> {
         let intermediate_definitions = self.pil.intermediate_definitions();
 
         let size = self.values.height();

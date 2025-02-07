@@ -1037,11 +1037,14 @@ pub struct PhantomBusInteractionIdentity<T> {
     pub payload: ExpressionList<T>,
     pub latch: AlgebraicExpression<T>,
     pub folded_expressions: ExpressionList<T>,
-    // Note that in PIL, this is a list of expressions, but we'd
-    // always expect direct column references, so this is unpacked
-    // when converting from PIL to this struct.
+    // Note that in PIL, `accumulator_columns` and
+    // `helper_columns` are lists of expressions, but we'd
+    // always expect direct column references, because
+    // they always materialize as witness columns,
+    // so they are unpacked when converting from PIL
+    // to this struct, whereas `folded_expressions`
+    // can be linear and thus optimized away by pilopt.
     pub accumulator_columns: Vec<AlgebraicReference>,
-    // Assumed to be direct column references.
     pub helper_columns: Vec<AlgebraicReference>,
 }
 

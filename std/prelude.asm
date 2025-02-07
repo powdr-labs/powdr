@@ -59,7 +59,8 @@ enum Constr {
     ///   Note that this could refer to witness columns, intermediate columns, or
     ///   in-lined expressions.
     /// - The list of accumulator columns.
-    /// - The list of helper columns that are intermediate values to help calculate
+    /// - The list of helper columns that are intermediate values 
+    ///   (but materialized witnesses) to help calculate
     ///   the accumulator columns, so that constraints are always bounded to
     ///   degree 3. Each set of helper columns is always shared by two bus
     ///   interactions.
