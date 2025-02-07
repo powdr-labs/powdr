@@ -18,7 +18,7 @@ use crate::witgen::{
 use super::{
     affine_symbolic_expression,
     effect::{format_code, Effect},
-    identity_queue::IdentityQueue,
+    identity_queue::{IdentityQueue, QueueItem},
     prover_function_heuristics::ProverFunction,
     variable::{Cell, MachineCallVariable, Variable},
     witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, Value, WitgenInference},
@@ -127,7 +127,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             }
         }
         let branch_depth = 0;
-        let identity_queue = IdentityQueue::new(self.fixed_data, &self.identities);
+        let identity_queue = IdentityQueue::new(self.fixed_data, &self.identities, &[]);
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
     }
 
@@ -298,7 +298,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         loop {
             let identity = identity_queue.next();
             let updated_vars = match identity {
-                Some((identity, row_offset)) => match identity {
+                Some(QueueItem::Identity(identity, row_offset)) => match identity {
                     Identity::Polynomial(PolynomialIdentity { id, expression, .. }) => {
                         witgen.process_polynomial_identity(*id, expression, row_offset)
                     }
@@ -317,6 +317,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 },
                 // TODO Also add prover functions to the queue (activated by their variables)
                 // and sort them so that they are always last.
+                Some(QueueItem::Assignment(_assignment)) => {
+                    todo!()
+                }
                 None => self.process_prover_functions(witgen),
             }?;
             if updated_vars.is_empty() && identity.is_none() {
