@@ -5,12 +5,14 @@ use std::{
 };
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{PolyID, PolynomialType};
+use powdr_ast::analyzed::{PolyID, PolynomialIdentity, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    data_structures::identity::Identity, jit::debug_formatter::format_identities,
-    range_constraints::RangeConstraint, FixedData,
+    data_structures::identity::{BusSend, Identity},
+    jit::debug_formatter::format_identities,
+    range_constraints::RangeConstraint,
+    FixedData,
 };
 
 use super::{
@@ -18,7 +20,7 @@ use super::{
     effect::{format_code, Effect},
     identity_queue::IdentityQueue,
     prover_function_heuristics::ProverFunction,
-    variable::{Cell, Variable},
+    variable::{Cell, MachineCallVariable, Variable},
     witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, Value, WitgenInference},
 };
 
@@ -109,8 +111,21 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
     pub fn generate_code(
         self,
         can_process: impl CanProcessCall<T>,
-        witgen: WitgenInference<'a, T, FixedEval>,
+        mut witgen: WitgenInference<'a, T, FixedEval>,
     ) -> Result<ProcessorResult<T>, Error<'a, T, FixedEval>> {
+        // Create variables for bus send arguments.
+        for (id, row_offset) in &self.identities {
+            if let Identity::BusSend(bus_send) = id {
+                for (index, arg) in bus_send.selected_payload.expressions.iter().enumerate() {
+                    let var = Variable::MachineCallParam(MachineCallVariable {
+                        identity_id: bus_send.identity_id,
+                        row_offset: *row_offset,
+                        index,
+                    });
+                    witgen.assign_variable(arg, *row_offset, var.clone());
+                }
+            }
+        }
         let branch_depth = 0;
         let identity_queue = IdentityQueue::new(self.fixed_data, &self.identities);
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
@@ -283,9 +298,25 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         loop {
             let identity = identity_queue.next();
             let updated_vars = match identity {
-                Some((identity, row_offset)) => {
-                    witgen.process_identity(can_process.clone(), identity, row_offset)
-                }
+                Some((identity, row_offset)) => match identity {
+                    Identity::Polynomial(PolynomialIdentity { id, expression, .. }) => {
+                        witgen.process_polynomial_identity(*id, expression, row_offset)
+                    }
+                    Identity::BusSend(BusSend {
+                        bus_id: _,
+                        identity_id,
+                        selected_payload,
+                    }) => witgen.process_call(
+                        can_process.clone(),
+                        *identity_id,
+                        &selected_payload.selector,
+                        selected_payload.expressions.len(),
+                        row_offset,
+                    ),
+                    Identity::Connect(..) => Ok(vec![]),
+                },
+                // TODO Also add prover functions to the queue (activated by their variables)
+                // and sort them so that they are always last.
                 None => self.process_prover_functions(witgen),
             }?;
             if updated_vars.is_empty() && identity.is_none() {

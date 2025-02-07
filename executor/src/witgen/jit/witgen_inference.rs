@@ -7,8 +7,7 @@ use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolynomialIdentity,
-    PolynomialType,
+    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolynomialType,
 };
 use powdr_number::FieldElement;
 
@@ -169,32 +168,36 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.add_range_constraint(var.clone(), range_constraint);
     }
 
-    /// Process an identity on a certain row.
-    /// Returns Ok(true) if there was progress and Ok(false) if there was no progress.
-    /// If this returns an error, it means we have conflicting constraints.
-    pub fn process_identity(
+    pub fn process_polynomial_identity(
         &mut self,
-        can_process: impl CanProcessCall<T>,
-        id: &'a Identity<T>,
+        identity_id: u64,
+        expression: &'a Expression<T>,
         row_offset: i32,
     ) -> Result<Vec<Variable>, Error> {
-        let result = match id {
-            Identity::Polynomial(PolynomialIdentity { expression, .. }) => self
-                .process_equality_on_row(
-                    expression,
-                    row_offset,
-                    &VariableOrValue::Value(T::from(0)),
-                )?,
-            Identity::BusSend(bus_interaction) => self.process_call(
-                can_process,
-                bus_interaction.identity_id,
-                &bus_interaction.selected_payload.selector,
-                &bus_interaction.selected_payload.expressions,
-                row_offset,
-            ),
-            Identity::Connect(_) => ProcessResult::empty(),
-        };
-        self.ingest_effects(result, Some((id.id(), row_offset)))
+        let result = self.process_equality_on_row(
+            expression,
+            row_offset,
+            &VariableOrValue::Value(T::from(0)),
+        )?;
+        self.ingest_effects(result, Some((identity_id, row_offset)))
+    }
+
+    pub fn process_call(
+        &mut self,
+        can_process_call: impl CanProcessCall<T>,
+        lookup_id: u64,
+        selector: &Expression<T>,
+        argument_count: usize,
+        row_offset: i32,
+    ) -> Result<Vec<Variable>, Error> {
+        let result = self.process_call_inner(
+            can_process_call,
+            lookup_id,
+            selector,
+            argument_count,
+            row_offset,
+        );
+        self.ingest_effects(result, Some((lookup_id, row_offset)))
     }
 
     /// Process a prover function on a row, i.e. determine if we can execute it and if it will
@@ -321,14 +324,15 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         (lhs_evaluated - rhs_evaluated).solve()
     }
 
-    fn process_call(
+    fn process_call_inner(
         &mut self,
         can_process_call: impl CanProcessCall<T>,
         lookup_id: u64,
         selector: &Expression<T>,
-        arguments: &'a [Expression<T>],
+        argument_count: usize,
         row_offset: i32,
     ) -> ProcessResult<T, Variable> {
+        self.process_assignments().unwrap();
         // We need to know the selector.
         let Some(selector) = self
             .evaluate(selector, row_offset)
@@ -346,44 +350,36 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             assert_eq!(selector, 1.into(), "Selector is non-binary");
         }
 
-        let evaluated = arguments
-            .iter()
-            .map(|a| self.evaluate(a, row_offset))
-            .collect::<Vec<_>>();
-        let range_constraints = evaluated
-            .iter()
-            .map(|e| e.as_ref().map(|e| e.range_constraint()).unwrap_or_default())
+        let arguments = (0..argument_count)
+            .map(|index| {
+                Variable::MachineCallParam(MachineCallVariable {
+                    identity_id: lookup_id,
+                    row_offset,
+                    index,
+                })
+            })
             .collect_vec();
-        let known: BitVec = evaluated
+        let range_constraints = arguments
             .iter()
-            .map(|e| e.as_ref().and_then(|e| e.try_to_known()).is_some())
-            .collect();
+            .map(|v| self.range_constraint(v))
+            .collect_vec();
+        let known: BitVec = arguments.iter().map(|v| self.is_known(v)).collect();
 
         let Some(new_range_constraints) =
             can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints)
         else {
             return ProcessResult::empty();
         };
-        let mut effects = vec![];
-        let vars = arguments
+        let effects = arguments
             .iter()
             .zip_eq(new_range_constraints)
-            .enumerate()
-            .map(|(index, (arg, new_rc))| {
-                let var = Variable::MachineCallParam(MachineCallVariable {
-                    identity_id: lookup_id,
-                    row_offset,
-                    index,
-                });
-                self.assign_variable(arg, row_offset, var.clone());
-                effects.push(Effect::RangeConstraint(var.clone(), new_rc.clone()));
-                if known[index] {
-                    assert!(self.is_known(&var));
-                }
-                var
-            })
-            .collect_vec();
-        effects.push(Effect::MachineCall(lookup_id, known, vars.clone()));
+            .map(|(var, new_rc)| Effect::RangeConstraint(var.clone(), new_rc.clone()))
+            .chain(std::iter::once(Effect::MachineCall(
+                lookup_id,
+                known,
+                arguments.to_vec(),
+            )))
+            .collect();
         ProcessResult {
             effects,
             complete: true,
@@ -492,6 +488,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             if let Some(identity_id) = identity_id {
                 // We actually only need to store completeness for submachine calls,
                 // but we do it for all identities.
+                // TODO this is not correct, somehow we get problems if we do not provide
+                // IDs for poly identities. Need to revisit this.
                 self.complete_identities.insert(identity_id);
             }
         }
@@ -732,12 +730,13 @@ impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'
 
 #[cfg(test)]
 mod test {
-    use powdr_ast::analyzed::PolyID;
+    use powdr_ast::analyzed::{PolyID, PolynomialIdentity};
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
     use crate::witgen::{
+        data_structures::identity::BusSend,
         global_constraints,
         jit::{effect::format_code, test_util::read_pil, variable::Cell},
         machines::{Connection, FixedLookup, KnownMachine},
@@ -792,15 +791,47 @@ mod test {
         let ref_eval = FixedEvaluatorForFixedData(&fixed_data);
         let mut witgen = WitgenInference::new(&fixed_data, ref_eval, known_cells, []);
         let mut counter = 0;
+        // Create variables for bus send arguments.
+        for row in rows {
+            for id in &fixed_data.identities {
+                if let Identity::BusSend(bus_send) = id {
+                    for (index, arg) in bus_send.selected_payload.expressions.iter().enumerate() {
+                        let var = Variable::MachineCallParam(MachineCallVariable {
+                            identity_id: bus_send.identity_id,
+                            row_offset: *row,
+                            index,
+                        });
+                        witgen.assign_variable(arg, *row, var.clone());
+                    }
+                }
+            }
+        }
+
         loop {
             let mut progress = false;
             counter += 1;
             for row in rows {
                 for id in fixed_data.identities.iter() {
-                    progress |= !witgen
-                        .process_identity(&mutable_state, id, *row)
-                        .unwrap()
-                        .is_empty();
+                    let updated_vars = match id {
+                        Identity::Polynomial(PolynomialIdentity { id, expression, .. }) => witgen
+                            .process_polynomial_identity(*id, expression, *row)
+                            .unwrap(),
+                        Identity::BusSend(BusSend {
+                            bus_id: _,
+                            identity_id,
+                            selected_payload,
+                        }) => witgen
+                            .process_call(
+                                &mutable_state,
+                                *identity_id,
+                                &selected_payload.selector,
+                                selected_payload.expressions.len(),
+                                *row,
+                            )
+                            .unwrap(),
+                        Identity::Connect(..) => vec![],
+                    };
+                    progress |= !updated_vars.is_empty();
                 }
             }
             if !progress {
@@ -899,37 +930,37 @@ namespace Xor(256 * 256);
 Xor::A_byte[6] = ((Xor::A[7] & 0xff000000) // 16777216);
 Xor::A[6] = (Xor::A[7] & 0xffffff);
 assert (Xor::A[7] & 0xffffffff00000000) == 0;
+call_var(0, 6, 0) = Xor::A_byte[6];
 Xor::C_byte[6] = ((Xor::C[7] & 0xff000000) // 16777216);
 Xor::C[6] = (Xor::C[7] & 0xffffff);
 assert (Xor::C[7] & 0xffffffff00000000) == 0;
+call_var(0, 6, 2) = Xor::C_byte[6];
 Xor::A_byte[5] = ((Xor::A[6] & 0xff0000) // 65536);
 Xor::A[5] = (Xor::A[6] & 0xffff);
 assert (Xor::A[6] & 0xffffffffff000000) == 0;
+call_var(0, 5, 0) = Xor::A_byte[5];
 Xor::C_byte[5] = ((Xor::C[6] & 0xff0000) // 65536);
 Xor::C[5] = (Xor::C[6] & 0xffff);
 assert (Xor::C[6] & 0xffffffffff000000) == 0;
-call_var(0, 6, 0) = Xor::A_byte[6];
-call_var(0, 6, 2) = Xor::C_byte[6];
+call_var(0, 5, 2) = Xor::C_byte[5];
 machine_call(0, [Known(call_var(0, 6, 0)), Unknown(call_var(0, 6, 1)), Known(call_var(0, 6, 2))]);
 Xor::B_byte[6] = call_var(0, 6, 1);
 Xor::A_byte[4] = ((Xor::A[5] & 0xff00) // 256);
 Xor::A[4] = (Xor::A[5] & 0xff);
 assert (Xor::A[5] & 0xffffffffffff0000) == 0;
+call_var(0, 4, 0) = Xor::A_byte[4];
 Xor::C_byte[4] = ((Xor::C[5] & 0xff00) // 256);
 Xor::C[4] = (Xor::C[5] & 0xff);
 assert (Xor::C[5] & 0xffffffffffff0000) == 0;
-call_var(0, 5, 0) = Xor::A_byte[5];
-call_var(0, 5, 2) = Xor::C_byte[5];
+call_var(0, 4, 2) = Xor::C_byte[4];
 machine_call(0, [Known(call_var(0, 5, 0)), Unknown(call_var(0, 5, 1)), Known(call_var(0, 5, 2))]);
 Xor::B_byte[5] = call_var(0, 5, 1);
 Xor::A_byte[3] = Xor::A[4];
+call_var(0, 3, 0) = Xor::A_byte[3];
 Xor::C_byte[3] = Xor::C[4];
-call_var(0, 4, 0) = Xor::A_byte[4];
-call_var(0, 4, 2) = Xor::C_byte[4];
+call_var(0, 3, 2) = Xor::C_byte[3];
 machine_call(0, [Known(call_var(0, 4, 0)), Unknown(call_var(0, 4, 1)), Known(call_var(0, 4, 2))]);
 Xor::B_byte[4] = call_var(0, 4, 1);
-call_var(0, 3, 0) = Xor::A_byte[3];
-call_var(0, 3, 2) = Xor::C_byte[3];
 machine_call(0, [Known(call_var(0, 3, 0)), Unknown(call_var(0, 3, 1)), Known(call_var(0, 3, 2))]);
 Xor::B_byte[3] = call_var(0, 3, 1);
 Xor::B[4] = Xor::B_byte[3];
