@@ -20,10 +20,10 @@ use self::sorted_witness_machine::SortedWitnesses;
 use self::write_once_memory::WriteOnceMemory;
 
 use super::data_structures::identity::{BusReceive, Identity};
+use super::global_constraints::RangeConstraintSet;
 use super::jit::witgen_inference::CanProcessCall;
 use super::range_constraints::RangeConstraint;
-use super::rows::RowPair;
-use super::{EvalError, EvalResult, FixedData, QueryCallback};
+use super::{AffineExpression, AlgebraicVariable, EvalError, EvalResult, FixedData, QueryCallback};
 
 mod block_machine;
 mod double_sorted_witness_machine_16;
@@ -79,10 +79,11 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &'b RowPair<'b, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         record_start(self.name());
-        let result = self.process_plookup(mutable_state, identity_id, caller_rows);
+        let result = self.process_plookup(mutable_state, identity_id, arguments, range_constraints);
         record_end(self.name());
         result
     }
@@ -105,12 +106,13 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
 
     /// Processes a connection of a given ID (which must be known to the callee).
     /// Returns an error if the query leads to a constraint failure.
-    /// Otherwise, it computes any updates to the caller row pair and returns them.
+    /// Otherwise, it computes any updates to the variables in the arguments and returns them.
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &'b RowPair<'b, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T>;
 
     /// Process a connection of a given ID (which must be known to the callee).
@@ -209,9 +211,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &'b RowPair<'b, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        match_variant!(self, m => m.process_plookup(mutable_state, identity_id, caller_rows))
+        match_variant!(self, m => m.process_plookup(mutable_state, identity_id, arguments, range_constraints))
     }
 
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
