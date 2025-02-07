@@ -127,7 +127,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             }
         }
         let branch_depth = 0;
-        let identity_queue = IdentityQueue::new(self.fixed_data, &self.identities, &[]);
+        let identity_queue = IdentityQueue::new(self.fixed_data, &self.identities, &[], &[]);
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
     }
 
@@ -315,11 +315,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                     ),
                     Identity::Connect(..) => Ok(vec![]),
                 },
-                // TODO Also add prover functions to the queue (activated by their variables)
-                // and sort them so that they are always last.
-                Some(QueueItem::Assignment(_assignment)) => {
-                    todo!()
-                }
+                Some(QueueItem::Assignment(..) | QueueItem::ProverFunction(..)) => todo!(),
                 None => self.process_prover_functions(witgen),
             }?;
             if updated_vars.is_empty() && identity.is_none() {
