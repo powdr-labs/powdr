@@ -6,7 +6,10 @@ use powdr_ast::analyzed::{ContainsNextRef, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    jit::{processor::Processor, prover_function_heuristics::decode_prover_functions},
+    jit::{
+        processor::Processor, prover_function_heuristics::decode_prover_functions,
+        witgen_inference::Assignment,
+    },
     machines::MachineParts,
     FixedData,
 };
@@ -61,25 +64,38 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .enumerate()
             .filter_map(|(i, is_input)| is_input.then_some(Variable::Param(i)))
             .collect::<HashSet<_>>();
-        let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables, []);
+        let witgen = WitgenInference::new(self.fixed_data, self, known_variables, []);
 
         let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
 
         // In the latch row, set the RHS selector to 1.
+        let mut assignments = vec![];
         let selector = &connection.right.selector;
-        witgen.assign_constant(selector, self.latch_row as i32, T::one());
+        assignments.push(Assignment::assign_constant(
+            selector,
+            self.latch_row as i32,
+            T::one(),
+        ));
 
         // Set all other selectors to 0 in the latch row.
         for other_connection in self.machine_parts.connections.values() {
             let other_selector = &other_connection.right.selector;
             if other_selector != selector {
-                witgen.assign_constant(other_selector, self.latch_row as i32, T::zero());
+                assignments.push(Assignment::assign_constant(
+                    other_selector,
+                    self.latch_row as i32,
+                    T::zero(),
+                ));
             }
         }
 
         // For each argument, connect the expression on the RHS with the formal parameter.
         for (index, expr) in connection.right.expressions.iter().enumerate() {
-            witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
+            assignments.push(Assignment::assign_variable(
+                expr,
+                self.latch_row as i32,
+                Variable::Param(index),
+            ));
         }
 
         let intermediate_definitions = self.fixed_data.analyzed.intermediate_definitions();
@@ -124,6 +140,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             self.fixed_data,
             self,
             identities,
+            assignments,
             requested_known,
             BLOCK_MACHINE_MAX_BRANCH_DEPTH,
         )
@@ -313,10 +330,10 @@ params[2] = Add::c[0];"
         assert_eq!(c_rc, &RangeConstraint::from_mask(0xffffffffu64));
         assert_eq!(
             format_code(&result.code),
-            "main_binary::sel[0][3] = 1;
-main_binary::operation_id[3] = params[0];
+            "main_binary::operation_id[3] = params[0];
 main_binary::A[3] = params[1];
 main_binary::B[3] = params[2];
+main_binary::sel[0][3] = 1;
 main_binary::operation_id[2] = main_binary::operation_id[3];
 main_binary::operation_id[1] = main_binary::operation_id[2];
 main_binary::operation_id[0] = main_binary::operation_id[1];

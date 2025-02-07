@@ -13,11 +13,13 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::{data_structures::identity::Identity, FixedData};
+use crate::witgen::{
+    data_structures::identity::Identity, jit::variable::MachineCallVariable, FixedData,
+};
 
 use super::{
     prover_function_heuristics::ProverFunction,
-    variable::{MachineCallVariable, Variable},
+    variable::Variable,
     witgen_inference::{Assignment, VariableOrValue},
 };
 

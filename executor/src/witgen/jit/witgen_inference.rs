@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fmt::{Display, Formatter},
 };
 
@@ -42,8 +42,6 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval> {
     /// This mainly avoids generating multiple submachine calls for the same
     /// connection on the same row.
     complete_identities: HashSet<(u64, i32)>,
-    /// Internal equality constraints that are not identities from the constraint set.
-    assignments: BTreeSet<Assignment<'a, T>>,
     code: Vec<Effect<T, Variable>>,
 }
 
@@ -88,7 +86,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             derived_range_constraints: Default::default(),
             known_variables: known_variables.into_iter().collect(),
             complete_identities: complete_identities.into_iter().collect(),
-            assignments: Default::default(),
             code: Default::default(),
         }
     }
@@ -200,6 +197,15 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.ingest_effects(result, Some((lookup_id, row_offset)))
     }
 
+    pub fn process_assignment(
+        &mut self,
+        assignment: &Assignment<'a, T>,
+    ) -> Result<Vec<Variable>, Error> {
+        let result =
+            self.process_equality_on_row(assignment.lhs, assignment.row_offset, &assignment.rhs)?;
+        self.ingest_effects(result, None)
+    }
+
     /// Process a prover function on a row, i.e. determine if we can execute it and if it will
     /// help us to compute the value of previously unknown variables.
     /// Returns the list of updated variables.
@@ -253,35 +259,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         )
     }
 
-    /// Process the constraint that the expression evaluated at the given offset equals the given value.
-    /// This does not have to be solvable right away, but is always processed as soon as we have progress.
-    /// Note that all variables in the expression can be unknown and their status can also change over time.
-    pub fn assign_constant(&mut self, expression: &'a Expression<T>, row_offset: i32, value: T) {
-        self.assignments.insert(Assignment {
-            lhs: expression,
-            row_offset,
-            rhs: VariableOrValue::Value(value),
-        });
-        self.process_assignments().unwrap();
-    }
-
-    /// Process the constraint that the expression evaluated at the given offset equals the given formal variable.
-    /// This does not have to be solvable right away, but is always processed as soon as we have progress.
-    /// Note that all variables in the expression can be unknown and their status can also change over time.
-    pub fn assign_variable(
-        &mut self,
-        expression: &'a Expression<T>,
-        row_offset: i32,
-        variable: Variable,
-    ) {
-        self.assignments.insert(Assignment {
-            lhs: expression,
-            row_offset,
-            rhs: VariableOrValue::Variable(variable),
-        });
-        self.process_assignments().unwrap();
-    }
-
     /// Processes an equality constraint.
     /// If this returns an error, it means we have conflicting constraints.
     fn process_equality_on_row(
@@ -332,7 +309,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         argument_count: usize,
         row_offset: i32,
     ) -> ProcessResult<T, Variable> {
-        self.process_assignments().unwrap();
         // We need to know the selector.
         let Some(selector) = self
             .evaluate(selector, row_offset)
@@ -384,31 +360,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             effects,
             complete: true,
         }
-    }
-
-    fn process_assignments(&mut self) -> Result<Vec<Variable>, Error> {
-        let mut updated_variables = vec![];
-        loop {
-            let mut progress = false;
-            // We need to take them out because ingest_effects needs a &mut self.
-            let assignments = std::mem::take(&mut self.assignments);
-            for assignment in &assignments {
-                let r = self.process_equality_on_row(
-                    assignment.lhs,
-                    assignment.row_offset,
-                    &assignment.rhs,
-                )?;
-                let updated_vars = self.ingest_effects(r, None)?;
-                progress |= !updated_vars.is_empty();
-                updated_variables.extend(updated_vars);
-            }
-            assert!(self.assignments.is_empty());
-            self.assignments = assignments;
-            if !progress {
-                break;
-            }
-        }
-        Ok(updated_variables)
     }
 
     /// Analyze the effects and update the internal state.
@@ -492,10 +443,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 // IDs for poly identities. Need to revisit this.
                 self.complete_identities.insert(identity_id);
             }
-        }
-        if !updated_variables.is_empty() {
-            // TODO we could have an occurrence map for the assignments as well.
-            updated_variables.extend(self.process_assignments()?);
         }
         Ok(updated_variables)
     }
@@ -677,6 +624,8 @@ fn is_known_zero<T: FieldElement>(x: &Option<AffineSymbolicExpression<T, Variabl
         .unwrap_or(false)
 }
 
+// TODO  we could split theassignmnet into variable and constant now.
+
 /// An equality constraint between an algebraic expression evaluated
 /// on a certain row offset and a variable or fixed constant value.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
@@ -686,10 +635,43 @@ pub struct Assignment<'a, T: FieldElement> {
     pub rhs: VariableOrValue<T, Variable>,
 }
 
+impl<'a, T: FieldElement> Assignment<'a, T> {
+    pub fn assign_constant(lhs: &'a Expression<T>, row_offset: i32, rhs: T) -> Self {
+        Self {
+            lhs,
+            row_offset,
+            rhs: VariableOrValue::Value(rhs),
+        }
+    }
+
+    pub fn assign_variable(lhs: &'a Expression<T>, row_offset: i32, rhs: Variable) -> Self {
+        Self {
+            lhs,
+            row_offset,
+            rhs: VariableOrValue::Variable(rhs),
+        }
+    }
+}
+
 #[derive(Clone, derive_more::Display, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum VariableOrValue<T, V> {
     Variable(V),
     Value(T),
+}
+
+impl<T: FieldElement> Display for Assignment<'_, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} = {} [row {}]",
+            self.lhs,
+            match &self.rhs {
+                VariableOrValue::Variable(v) => v.to_string(),
+                VariableOrValue::Value(v) => v.to_string(),
+            },
+            self.row_offset
+        )
+    }
 }
 
 pub trait FixedEvaluator<T: FieldElement>: Clone {
@@ -791,21 +773,6 @@ mod test {
         let ref_eval = FixedEvaluatorForFixedData(&fixed_data);
         let mut witgen = WitgenInference::new(&fixed_data, ref_eval, known_cells, []);
         let mut counter = 0;
-        // Create variables for bus send arguments.
-        for row in rows {
-            for id in &fixed_data.identities {
-                if let Identity::BusSend(bus_send) = id {
-                    for (index, arg) in bus_send.selected_payload.expressions.iter().enumerate() {
-                        let var = Variable::MachineCallParam(MachineCallVariable {
-                            identity_id: bus_send.identity_id,
-                            row_offset: *row,
-                            index,
-                        });
-                        witgen.assign_variable(arg, *row, var.clone());
-                    }
-                }
-            }
-        }
 
         loop {
             let mut progress = false;
@@ -820,15 +787,37 @@ mod test {
                             bus_id: _,
                             identity_id,
                             selected_payload,
-                        }) => witgen
-                            .process_call(
-                                &mutable_state,
-                                *identity_id,
-                                &selected_payload.selector,
-                                selected_payload.expressions.len(),
-                                *row,
-                            )
-                            .unwrap(),
+                        }) => {
+                            let mut updated_vars = vec![];
+                            for (index, arg) in selected_payload.expressions.iter().enumerate() {
+                                let var = Variable::MachineCallParam(MachineCallVariable {
+                                    identity_id: *identity_id,
+                                    row_offset: *row,
+                                    index,
+                                });
+                                updated_vars.extend(
+                                    witgen
+                                        .process_assignment(&Assignment {
+                                            lhs: arg,
+                                            row_offset: *row,
+                                            rhs: VariableOrValue::Variable(var),
+                                        })
+                                        .unwrap(),
+                                );
+                            }
+                            updated_vars.extend(
+                                witgen
+                                    .process_call(
+                                        &mutable_state,
+                                        *identity_id,
+                                        &selected_payload.selector,
+                                        selected_payload.expressions.len(),
+                                        *row,
+                                    )
+                                    .unwrap(),
+                            );
+                            updated_vars
+                        }
                         Identity::Connect(..) => vec![],
                     };
                     progress |= !updated_vars.is_empty();
@@ -930,38 +919,38 @@ namespace Xor(256 * 256);
 Xor::A_byte[6] = ((Xor::A[7] & 0xff000000) // 16777216);
 Xor::A[6] = (Xor::A[7] & 0xffffff);
 assert (Xor::A[7] & 0xffffffff00000000) == 0;
-call_var(0, 6, 0) = Xor::A_byte[6];
 Xor::C_byte[6] = ((Xor::C[7] & 0xff000000) // 16777216);
 Xor::C[6] = (Xor::C[7] & 0xffffff);
 assert (Xor::C[7] & 0xffffffff00000000) == 0;
-call_var(0, 6, 2) = Xor::C_byte[6];
 Xor::A_byte[5] = ((Xor::A[6] & 0xff0000) // 65536);
 Xor::A[5] = (Xor::A[6] & 0xffff);
 assert (Xor::A[6] & 0xffffffffff000000) == 0;
-call_var(0, 5, 0) = Xor::A_byte[5];
 Xor::C_byte[5] = ((Xor::C[6] & 0xff0000) // 65536);
 Xor::C[5] = (Xor::C[6] & 0xffff);
 assert (Xor::C[6] & 0xffffffffff000000) == 0;
-call_var(0, 5, 2) = Xor::C_byte[5];
+call_var(0, 6, 0) = Xor::A_byte[6];
+call_var(0, 6, 2) = Xor::C_byte[6];
 machine_call(0, [Known(call_var(0, 6, 0)), Unknown(call_var(0, 6, 1)), Known(call_var(0, 6, 2))]);
-Xor::B_byte[6] = call_var(0, 6, 1);
 Xor::A_byte[4] = ((Xor::A[5] & 0xff00) // 256);
 Xor::A[4] = (Xor::A[5] & 0xff);
 assert (Xor::A[5] & 0xffffffffffff0000) == 0;
-call_var(0, 4, 0) = Xor::A_byte[4];
 Xor::C_byte[4] = ((Xor::C[5] & 0xff00) // 256);
 Xor::C[4] = (Xor::C[5] & 0xff);
 assert (Xor::C[5] & 0xffffffffffff0000) == 0;
-call_var(0, 4, 2) = Xor::C_byte[4];
+call_var(0, 5, 0) = Xor::A_byte[5];
+call_var(0, 5, 2) = Xor::C_byte[5];
 machine_call(0, [Known(call_var(0, 5, 0)), Unknown(call_var(0, 5, 1)), Known(call_var(0, 5, 2))]);
-Xor::B_byte[5] = call_var(0, 5, 1);
+Xor::B_byte[6] = call_var(0, 6, 1);
 Xor::A_byte[3] = Xor::A[4];
-call_var(0, 3, 0) = Xor::A_byte[3];
 Xor::C_byte[3] = Xor::C[4];
-call_var(0, 3, 2) = Xor::C_byte[3];
+call_var(0, 4, 0) = Xor::A_byte[4];
+call_var(0, 4, 2) = Xor::C_byte[4];
 machine_call(0, [Known(call_var(0, 4, 0)), Unknown(call_var(0, 4, 1)), Known(call_var(0, 4, 2))]);
-Xor::B_byte[4] = call_var(0, 4, 1);
+Xor::B_byte[5] = call_var(0, 5, 1);
+call_var(0, 3, 0) = Xor::A_byte[3];
+call_var(0, 3, 2) = Xor::C_byte[3];
 machine_call(0, [Known(call_var(0, 3, 0)), Unknown(call_var(0, 3, 1)), Known(call_var(0, 3, 2))]);
+Xor::B_byte[4] = call_var(0, 4, 1);
 Xor::B_byte[3] = call_var(0, 3, 1);
 Xor::B[4] = Xor::B_byte[3];
 Xor::B[5] = (Xor::B[4] + (Xor::B_byte[4] * 256));
