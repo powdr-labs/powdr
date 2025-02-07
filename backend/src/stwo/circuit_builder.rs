@@ -23,6 +23,7 @@ pub const STAGE0_TRACE_IDX: usize = 1;
 pub const STAGE1_TRACE_IDX: usize = 2;
 
 pub type PowdrComponent = FrameworkComponent<PowdrEval>;
+pub type PublicEntry = (String, String, PolyID, usize, M31);
 
 pub fn gen_stwo_circle_column<B, F>(
     domain: CircleDomain,
@@ -60,7 +61,7 @@ pub struct PowdrEval {
     preprocess_col_offset: usize,
     // for each stage, for each public input of that stage, the name of the public,
     // the name of the witness column that this public is related to, the poly_id, the row index and its value
-    pub(crate) publics_by_stage: Vec<Vec<(String, String, PolyID, usize)>>,
+    pub(crate) publics_by_stage: Vec<Vec<PublicEntry>>,
     stage0_witness_columns: BTreeMap<PolyID, usize>,
     stage1_witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
@@ -68,7 +69,6 @@ pub struct PowdrEval {
     // stwo supports maximum 2 stages, challenges are only created after stage 0
     pub challenges: BTreeMap<u64, M31>,
     poly_stage_map: BTreeMap<PolyID, usize>,
-    public_values: BTreeMap<String, M31>,
 }
 
 impl PowdrEval {
@@ -116,7 +116,13 @@ impl PowdrEval {
         let publics_by_stage = analyzed.get_publics().into_iter().fold(
             vec![vec![]; analyzed.stage_count()],
             |mut acc, (name, column_name, id, row, stage)| {
-                acc[stage as usize].push((name, column_name, id, row));
+                acc[stage as usize].push((
+                    name.clone(),
+                    column_name,
+                    id,
+                    row,
+                    *public_values.get(&name).unwrap(),
+                ));
                 acc
             },
         );
@@ -138,7 +144,6 @@ impl PowdrEval {
             constant_columns,
             challenges,
             poly_stage_map,
-            public_values,
         }
     }
 }
@@ -257,7 +262,7 @@ impl FrameworkEval for PowdrEval {
 
         // build selector columns and constraints for publics, for now I am using constant columns as selectors
         self.publics_by_stage.iter().flatten().enumerate().for_each(
-            |(index, (name, _, poly_id, _))| {
+            |(index, (_, _, poly_id, _, value))| {
                 let selector = eval.get_preprocessed_column(PreprocessedColumn::Plonk(
                     index
                         + constant_eval.len()
@@ -273,11 +278,7 @@ impl FrameworkEval for PowdrEval {
                 };
 
                 // constraining s(i) * (pub[i] - x(i)) = 0
-                eval.add_constraint(
-                    selector
-                        * (E::F::from(into_stwo_field(self.public_values.get(name).unwrap()))
-                            - witness_col),
-                );
+                eval.add_constraint(selector * (E::F::from(into_stwo_field(value)) - witness_col));
             },
         );
 
