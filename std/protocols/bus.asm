@@ -280,10 +280,61 @@ let bus_multi_receive: (expr, expr[], expr, expr)[] -> () = constr |bus_inputs| 
     bus_multi_interaction(ids, payloads, negated_multiplicities, latches);
 };
 
-/// Builds a single bus interaction by using `bus_multi_interaction` for optimized performance.
-/// This is for user's convenience to supply inputs directly rather than a vector of tuples of inputs in the multi version.
+/// Sends the payload (id, payload...) to the bus by adding
+/// `multiplicity / (beta - fingerprint(id, payload...))` to `acc`
+/// It is the callers responsibility to properly constrain the multiplicity (e.g. constrain
+/// it to be boolean) if needed.
+///
+/// # Arguments:
+/// - id: Interaction Id
+/// - payload: An array of expressions to be sent to the bus
+/// - multiplicity: The multiplicity which shows how many times a column will be sent
+/// - latch: a binary expression which indicates where the multiplicity can be non-zero.
 let bus_interaction: expr, expr[], expr, expr -> () = constr |id, payload, multiplicity, latch| {
-    bus_multi_interaction([id], [payload], [multiplicity], [latch]);
+
+    let extension_field_size = required_extension_size();
+
+    // Alpha is used to compress the LHS and RHS arrays.
+    let alpha = from_array(array::new(extension_field_size, |i| challenge(0, i + 1)));
+    // Beta is used to update the accumulator.
+    let beta = from_array(array::new(extension_field_size, |i| challenge(0, i + 1 + extension_field_size)));
+
+    // Implemented as: folded = (beta - fingerprint(id, payload...));
+    let folded = if materialize_folded() {
+        let folded = from_array(
+            array::new(extension_field_size,
+                    |i| std::prover::new_witness_col_at_stage("folded", 1))
+        );
+        constrain_eq_ext(folded, sub_ext(beta, fingerprint_with_id_inter(id, payload, alpha)));
+        folded
+    } else {
+        sub_ext(beta, fingerprint_with_id_inter(id, payload, alpha))
+    };
+
+    let folded_next = next_ext(folded);
+
+    let m_ext = from_base(multiplicity);
+    let m_ext_next = next_ext(m_ext);
+
+    let acc = array::new(extension_field_size, |i| std::prover::new_witness_col_at_stage("acc", 1));
+    let acc_ext = from_array(acc);
+    let next_acc = next_ext(acc_ext);
+
+    let is_first: col = std::well_known::is_first;
+    let is_first_next = from_base(is_first');
+
+    // Update rule:
+    // acc' =  acc * (1 - is_first') + multiplicity' / folded'
+    // or equivalently:
+    // folded' * (acc' - acc * (1 - is_first')) - multiplicity' = 0
+    let update_expr = sub_ext(
+        mul_ext(folded_next, sub_ext(next_acc, mul_ext(acc_ext, sub_ext(from_base(1), is_first_next)))), m_ext_next
+    );
+    
+    constrain_eq_ext(update_expr, from_base(0));
+
+    // Add phantom bus interaction
+    Constr::PhantomBusInteraction(multiplicity, id, payload, latch, unpack_ext_array(folded), acc, []);
 };
 
 /// Convenience function for single bus interaction to send columns
