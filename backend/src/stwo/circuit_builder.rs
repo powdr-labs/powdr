@@ -23,7 +23,6 @@ pub const STAGE0_TRACE_IDX: usize = 1;
 pub const STAGE1_TRACE_IDX: usize = 2;
 
 pub type PowdrComponent = FrameworkComponent<PowdrEval>;
-pub type PublicEntry = (String, String, PolyID, usize, M31);
 
 pub fn gen_stwo_circle_column<B, F>(
     domain: CircleDomain,
@@ -59,9 +58,8 @@ pub struct PowdrEval {
     // the pre-processed are indexed in the whole proof, instead of in each component.
     // this offset represents the index of the first pre-processed column in this component
     preprocess_col_offset: usize,
-    // for each stage, for each public input of that stage, the name of the public,
-    // the name of the witness column that this public is related to, the poly_id, the row index and its value
-    pub(crate) publics_by_stage: Vec<Vec<PublicEntry>>,
+    // The name of the public, the poly-id of the witness poly that this public is related to, the public value
+    pub(crate) publics_by_stage: Vec<Vec<(String, PolyID, M31)>>,
     stage0_witness_columns: BTreeMap<PolyID, usize>,
     stage1_witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
@@ -112,17 +110,10 @@ impl PowdrEval {
             .map(|(index, (_, id))| (id, index))
             .collect();
 
-        // TODO:maybe only need in the prove function, before creating PowdrEval
         let publics_by_stage = analyzed.get_publics().into_iter().fold(
             vec![vec![]; analyzed.stage_count()],
-            |mut acc, (name, column_name, id, row, stage)| {
-                acc[stage as usize].push((
-                    name.clone(),
-                    column_name,
-                    id,
-                    row,
-                    *public_values.get(&name).unwrap(),
-                ));
+            |mut acc, (name, _, id, _, stage)| {
+                acc[stage as usize].push((name.clone(), id, *public_values.get(&name).unwrap()));
                 acc
             },
         );
@@ -260,9 +251,9 @@ impl FrameworkEval for PowdrEval {
             poly_stage_map: &self.poly_stage_map,
         };
 
-        // build selector columns and constraints for publics, for now I am using constant columns as selectors
+        // build selector columns and constraints for publics
         self.publics_by_stage.iter().flatten().enumerate().for_each(
-            |(index, (_, _, poly_id, _, value))| {
+            |(index, (_, poly_id, value))| {
                 let selector = eval.get_preprocessed_column(PreprocessedColumn::Plonk(
                     index
                         + constant_eval.len()

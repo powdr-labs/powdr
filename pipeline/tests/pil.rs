@@ -105,6 +105,7 @@ fn permutation_with_selector_starky() {
 fn fibonacci() {
     let f = "pil/fibonacci.pil";
     regular_test_all_fields(f, Default::default());
+    test_stwo(f, Default::default());
 }
 
 #[test]
@@ -129,6 +130,7 @@ fn fibonacci_invalid_witness() {
     ];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
     assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
+    assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness);
 
     // All constraints are valid, except the initial row.
     // The following constraint should fail in row 3:
@@ -139,6 +141,7 @@ fn fibonacci_invalid_witness() {
     ];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
     assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
+    assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness);
 }
 
 #[test]
@@ -265,8 +268,8 @@ fn add() {
 }
 
 #[test]
-fn stwo_fibonacci() {
-    let f = "pil/fibo_no_publics.pil";
+fn stwo_stage1_publics() {
+    let f = "pil/stage1_publics.pil";
     test_stwo(f, Default::default());
 }
 
@@ -287,28 +290,7 @@ fn stwo_constant_next_test() {
     let f = "pil/fixed_with_incremental.pil";
     test_stwo(f, Default::default());
 }
-#[test]
-fn fibonacci_invalid_witness_stwo() {
-    let f = "pil/fibo_no_publics.pil";
 
-    // Changed one value and then continued.
-    // The following constraint should fail in row 1:
-    //     (1-ISLAST) * (x' - y) = 0;
-    let witness = vec![
-        ("Fibonacci::x".to_string(), vec![1, 1, 10, 3]),
-        ("Fibonacci::y".to_string(), vec![1, 2, 3, 13]),
-    ];
-    assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness);
-
-    // All constraints are valid, except the initial row.
-    // The following constraint should fail in row 3:
-    //     ISLAST * (y' - 1) = 0;
-    let witness = vec![
-        ("Fibonacci::x".to_string(), vec![1, 2, 3, 5]),
-        ("Fibonacci::y".to_string(), vec![2, 3, 5, 8]),
-    ];
-    assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness);
-}
 #[test]
 fn simple_div() {
     let f = "pil/simple_div.pil";
