@@ -353,7 +353,7 @@ let bus_interaction: expr, expr[], expr, expr -> () = constr |id, payload, multi
     constrain_eq_ext(update_expr, from_base(0));
 
     // Add phantom bus interaction
-    Constr::PhantomBusInteraction(multiplicity, id, payload, latch, unpack_ext_array(folded), acc, []);
+    Constr::PhantomBusInteraction(multiplicity, id, payload, latch, unpack_ext_array(folded), acc, Option::None);
 };
 
 /// Convenience function for single bus interaction to send columns
