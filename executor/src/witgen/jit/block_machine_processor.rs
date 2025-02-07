@@ -7,9 +7,8 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     jit::{
-        processor::Processor,
-        prover_function_heuristics::decode_prover_functions,
-        witgen_inference::{Assignment, VariableOrValue},
+        processor::Processor, prover_function_heuristics::decode_prover_functions,
+        witgen_inference::Assignment,
     },
     machines::MachineParts,
     FixedData,
@@ -65,7 +64,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .enumerate()
             .filter_map(|(i, is_input)| is_input.then_some(Variable::Param(i)))
             .collect::<HashSet<_>>();
-        let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables, []);
+        let witgen = WitgenInference::new(self.fixed_data, self, known_variables, []);
 
         let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
 

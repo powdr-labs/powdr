@@ -22,8 +22,7 @@ use super::{
     prover_function_heuristics::ProverFunction,
     variable::{Cell, MachineCallVariable, Variable},
     witgen_inference::{
-        Assignment, BranchResult, CanProcessCall, FixedEvaluator, Value, VariableOrValue,
-        WitgenInference,
+        Assignment, BranchResult, CanProcessCall, FixedEvaluator, Value, WitgenInference,
     },
 };
 
@@ -336,7 +335,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                     ),
                     Identity::Connect(..) => Ok(vec![]),
                 },
-                Some(QueueItem::Assignment(assignment)) => witgen.process_assignment(&assignment),
+                Some(QueueItem::Assignment(assignment)) => witgen.process_assignment(assignment),
                 // TODO Also add prover functions to the queue (activated by their variables)
                 // and sort them so that they are always last.
                 None => self.process_prover_functions(witgen),

@@ -10,7 +10,9 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::{data_structures::identity::Identity, FixedData};
+use crate::witgen::{
+    data_structures::identity::Identity, jit::variable::MachineCallVariable, FixedData,
+};
 
 use super::{
     variable::Variable,
@@ -128,13 +130,25 @@ fn compute_occurrences_map<'b, 'a: 'b, T: FieldElement>(
         .flat_map(|item| {
             let variables = match item {
                 QueueItem::Identity(id, row) => {
-                    references_in_identity(id, fixed_data, &mut intermediate_cache)
-                        .into_iter()
+                    let mut variables = references_per_identity[&id.id()]
+                        .iter()
                         .map(|r| {
                             let name = fixed_data.column_name(&r.poly_id).to_string();
                             Variable::from_reference(&r.with_name(name), *row)
                         })
-                        .collect_vec()
+                        .collect_vec();
+                    if let Identity::BusSend(bus_send) = id {
+                        variables.extend((0..bus_send.selected_payload.expressions.len()).map(
+                            |index| {
+                                Variable::MachineCallParam(MachineCallVariable {
+                                    identity_id: id.id(),
+                                    row_offset: *row,
+                                    index,
+                                })
+                            },
+                        ));
+                    };
+                    variables
                 }
                 QueueItem::Assignment(a) => {
                     variables_in_assignment(a, fixed_data, &mut intermediate_cache)
@@ -152,9 +166,20 @@ fn references_in_identity<T: FieldElement>(
     intermediate_cache: &mut HashMap<AlgebraicReferenceThin, Vec<AlgebraicReferenceThin>>,
 ) -> Vec<AlgebraicReferenceThin> {
     let mut result = BTreeSet::new();
-    for e in identity.children() {
-        result.extend(references_in_expression(e, fixed_data, intermediate_cache));
+
+    match identity {
+        Identity::BusSend(bus_send) => result.extend(references_in_expression(
+            &bus_send.selected_payload.selector,
+            fixed_data,
+            intermediate_cache,
+        )),
+        _ => {
+            for e in identity.children() {
+                result.extend(references_in_expression(e, fixed_data, intermediate_cache));
+            }
+        }
     }
+
     result.into_iter().collect()
 }
 

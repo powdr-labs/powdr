@@ -627,6 +627,8 @@ fn is_known_zero<T: FieldElement>(x: &Option<AffineSymbolicExpression<T, Variabl
         .unwrap_or(false)
 }
 
+// TODO  we could split theassignmnet into variable and constant now.
+
 /// An equality constraint between an algebraic expression evaluated
 /// on a certain row offset and a variable or fixed constant value.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
@@ -658,6 +660,21 @@ impl<'a, T: FieldElement> Assignment<'a, T> {
 pub enum VariableOrValue<T, V> {
     Variable(V),
     Value(T),
+}
+
+impl<T: FieldElement> Display for Assignment<'_, T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{} = {} [row {}]",
+            self.lhs,
+            match &self.rhs {
+                VariableOrValue::Variable(v) => v.to_string(),
+                VariableOrValue::Value(v) => v.to_string(),
+            },
+            self.row_offset
+        )
+    }
 }
 
 pub trait FixedEvaluator<T: FieldElement>: Clone {
