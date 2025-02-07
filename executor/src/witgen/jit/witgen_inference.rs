@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fmt::{Display, Formatter},
 };
 
@@ -42,8 +42,6 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval> {
     /// This mainly avoids generating multiple submachine calls for the same
     /// connection on the same row.
     complete_identities: HashSet<(u64, i32)>,
-    /// Internal equality constraints that are not identities from the constraint set.
-    assignments: BTreeSet<Assignment<'a, T>>,
     code: Vec<Effect<T, Variable>>,
 }
 
@@ -88,7 +86,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             derived_range_constraints: Default::default(),
             known_variables: known_variables.into_iter().collect(),
             complete_identities: complete_identities.into_iter().collect(),
-            assignments: Default::default(),
             code: Default::default(),
         }
     }
