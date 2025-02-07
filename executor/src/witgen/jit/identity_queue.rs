@@ -216,6 +216,10 @@ impl<'a, T: FieldElement> ReferencesComputer<'a, T> {
         &mut self,
         identity: &PolynomialIdentity<T>,
     ) -> Vec<AlgebraicReferenceThin> {
+        // Clippy suggests to use `entry()...or_insert_with()`,
+        // but the code does not work, since we need `&mut self` in
+        // self.references_in_expression.
+        #[allow(clippy::map_entry)]
         if !self.references_per_identity.contains_key(&identity.id) {
             let mut result = BTreeSet::new();
             for e in identity.children() {
