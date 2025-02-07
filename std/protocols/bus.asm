@@ -98,7 +98,7 @@ let bus_multi_interaction: expr[], expr[][], expr[], expr[] -> () = constr |ids,
     // Or equivalently when expanded:
     // folded_{2*i} * folded_{2*i+1}' * helper_i - folded_{2*i+1} * multiplicity_{2*i} - folded_{2*i} * multiplicity_{2*i+1} = 0
     let helper_arr: expr[][] = array::new(
-        (input_len + 1) / 2,
+        input_len / 2,
         |helper|
         array::new(
             extension_field_size,
@@ -115,31 +115,17 @@ let bus_multi_interaction: expr[], expr[][], expr[], expr[] -> () = constr |ids,
     );
     // The expression to constrain.
     let helper_expr_arr = array::new( // Ext<expr>[]
-        (input_len + 1) / 2,
-        |i| if i == input_len / 2 && input_len % 2 == 1 {
-            // The last helper column built from odd number of bus interactions
-            // is simply multiplicity / folded.
-            // Or equivalently:
-            // helper_i * folded_{2*i} - multiplicity_{2*i} = 0.
+        input_len / 2,
+        |i| sub_ext(
             sub_ext(
                 mul_ext(
-                    helper_ext_arr[i],
-                    folded_arr[2 * i],
+                    mul_ext(folded_arr[2 * i], folded_arr[2 * i + 1]),
+                    helper_ext_arr[i]
                 ),
-                m_ext_arr[2 * i]
-            )
-        } else {
-            sub_ext(
-                sub_ext(
-                    mul_ext(
-                        mul_ext(folded_arr[2 * i], folded_arr[2 * i + 1]),
-                        helper_ext_arr[i]
-                    ),
-                    mul_ext(folded_arr[2 * i + 1], m_ext_arr[2 * i])
-                ),
-                mul_ext(folded_arr[2 * i], m_ext_arr[2 * i + 1])
-            )
-        }
+                mul_ext(folded_arr[2 * i + 1], m_ext_arr[2 * i])
+            ),
+            mul_ext(folded_arr[2 * i], m_ext_arr[2 * i + 1])
+        )
     );
     // Return a flattened array of constraints. (Must use `array::fold` or the compiler won't allow nested Constr[][].)
     array::fold(helper_expr_arr, [], |init, helper_expr| constrain_eq_ext(helper_expr, from_base(0)));
@@ -161,19 +147,52 @@ let bus_multi_interaction: expr[], expr[][], expr[], expr[] -> () = constr |ids,
             ),
             next_acc
         );
-    constrain_eq_ext(update_expr, from_base(0));
+    
+    // In cases where there are odd number of bus interactions, the last bus interaction doesn't need helper column.
+    // Instead, we have `update_expr` + multiplicity_last' / folded_last' = 0
+    // Or equivalently:
+    // `update_expr` * folded_last' + multiplicity_last' = 0
+    let update_expr_final = if input_len % 2 == 1 {
+        // Odd number of bus interactions
+        add_ext(
+            mul_ext(
+                update_expr,
+                folded_next_arr[input_len - 1]
+            ),
+            m_ext_next_arr[input_len - 1]
+        )
+    } else {
+        // Even number of bus interactions
+        update_expr
+    };
+
+    // Constrain the accumulator update identity
+    constrain_eq_ext(update_expr_final, from_base(0));
             
     // Add array of phantom bus interactions
     array::new(
         input_len,
-        |i| Constr::PhantomBusInteraction(
-            multiplicities[i], 
-            ids[i], 
-            payloads[i], 
-            latches[i], 
-            unpack_ext_array(folded_arr[i]), 
-            acc, 
-            helper_arr[i / 2])
+        |i| if input_len % 2 == 1 && i == input_len - 1 {
+            Constr::PhantomBusInteraction(
+                multiplicities[i], 
+                ids[i], 
+                payloads[i], 
+                latches[i], 
+                unpack_ext_array(folded_arr[i]), 
+                acc, 
+                Option::None
+            )
+        } else {
+            Constr::PhantomBusInteraction(
+                multiplicities[i], 
+                ids[i], 
+                payloads[i], 
+                latches[i], 
+                unpack_ext_array(folded_arr[i]), 
+                acc, 
+                Option::Some(helper_arr[i / 2])
+            )
+        }
     );
 };
 

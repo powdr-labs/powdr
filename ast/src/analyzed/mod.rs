@@ -1045,7 +1045,7 @@ pub struct PhantomBusInteractionIdentity<T> {
     // to this struct, whereas `folded_expressions`
     // can be linear and thus optimized away by pilopt.
     pub accumulator_columns: Vec<AlgebraicReference>,
-    pub helper_columns: Vec<AlgebraicReference>,
+    pub helper_columns: Option<Vec<AlgebraicReference>>,
 }
 
 impl<T> Children<AlgebraicExpression<T>> for PhantomBusInteractionIdentity<T> {
