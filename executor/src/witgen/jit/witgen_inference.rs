@@ -909,7 +909,6 @@ namespace Xor(256 * 256);
                 ("Xor::C", 7), // We solve it in reverse, just for fun.
             ],
         );
-        println!("{}", code);
         assert_eq!(
             code,
             "\
