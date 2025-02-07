@@ -166,13 +166,14 @@ where
                             .map(|size| {
                                 //Group the fixed columns by size
                                 let fixed_columns = &fixed_columns[&size];
+                                let log_size = size.ilog2();
                                 let mut constant_trace: ColumnVec<
                                     CircleEvaluation<B, BaseField, BitReversedOrder>,
                                 > = fixed_columns
                                     .iter()
                                     .map(|(_, vec)| {
                                         gen_stwo_circle_column::<_, BaseField>(
-                                            *domain_map.get(&(vec.len().ilog2() as usize)).unwrap(),
+                                            *domain_map.get(&(log_size as usize)).unwrap(),
                                             vec,
                                         )
                                     })
@@ -189,9 +190,7 @@ where
                                         let mut rotated_values = values.to_vec();
                                         rotated_values.rotate_left(1);
                                         gen_stwo_circle_column::<_, BaseField>(
-                                            *domain_map
-                                                .get(&(values.len().ilog2() as usize))
-                                                .unwrap(),
+                                            *domain_map.get(&(log_size as usize)).unwrap(),
                                             &rotated_values,
                                         )
                                     })
@@ -199,31 +198,31 @@ where
 
                                 constant_trace.extend(constant_shifted_trace);
 
-                                // get selector columns for the public inputs, as closures
-                                let publics_selector: ColumnVec<
+                                // get selector columns for the public inputs
+                                let publics_selectors: ColumnVec<
                                     CircleEvaluation<B, BaseField, BitReversedOrder>,
                                 > = pil
                                     .get_publics()
                                     .into_iter()
                                     .map(|(_, _, _, row_id, _)| {
-                                        let mut col = Col::<B, BaseField>::zeros(1 << size.ilog2());
+                                        let mut col = Col::<B, BaseField>::zeros(1 << log_size);
                                         col.set(
                                             bit_reverse_index(
                                                 coset_index_to_circle_domain_index(
-                                                    row_id,
-                                                    size.ilog2(),
+                                                    row_id, log_size,
                                                 ),
-                                                size.ilog2(),
+                                                log_size,
                                             ),
                                             BaseField::one(),
                                         );
                                         CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
-                                            *domain_map.get(&(size.ilog2() as usize)).unwrap(),
+                                            *domain_map.get(&(log_size as usize)).unwrap(),
                                             col,
                                         )
                                     })
                                     .collect();
-                                constant_trace.extend(publics_selector);
+
+                                constant_trace.extend(publics_selectors);
 
                                 (
                                     size as usize,
@@ -400,7 +399,7 @@ where
                             .collect::<BTreeSet<_>>(),
                         witgen_callback.next_stage_witness(
                             &self.split[&machine_name.clone()],
-                            &machine_witness,
+                            machine_witness,
                             stage0_challenges.clone(),
                             1,
                         ),
@@ -524,72 +523,14 @@ where
     }
 
     pub fn verify(&self, proof: &[u8], instances: &[M31]) -> Result<(), String> {
-        // TODO: optimize this to get only needed domain sizes
-        let domain_degree_range = DegreeRange {
-            min: self
-                .analyzed
-                .degree_ranges()
-                .iter()
-                .map(|range| range.min)
-                .min()
-                .unwrap(),
-            max: self
-                .analyzed
-                .degree_ranges()
-                .iter()
-                .map(|range| range.max)
-                .max()
-                .unwrap(),
-        };
-
-        let domain_map: BTreeMap<usize, CircleDomain> = domain_degree_range
-            .iter()
-            .map(|size| {
-                (
-                    size.ilog2() as usize,
-                    CanonicCoset::new(size.ilog2()).circle_domain(),
-                )
-            })
-            .collect();
-
-        let stage_count = self.analyzed.stage_count();
         // get public values
-        let mut instance_map: BTreeMap<String, Vec<Vec<M31>>> = self
-            .split
-            .keys()
-            .map(|name| (name.clone(), vec![vec![]; stage_count]))
-            .collect();
-        self.analyzed
+        let public_values: BTreeMap<String, M31> = self
+            .analyzed
             .get_publics()
             .iter()
             .zip_eq(instances.iter())
-            .map(|((public_name, poly_name, _, _, stage), value)| {
-                let namespace = poly_name.split("::").next().unwrap();
-                (public_name,namespace, stage, value)
-            })
-            .for_each(|(public_name,namespace, stage, value)| {
-                instance_map.get_mut(namespace).unwrap()[*stage as usize].push(*value);
-            });
-
-        let public_inputs = instance_map
-            .into_iter()
-            .map(|(name, values)| {
-                (
-                    name,
-                    values
-                        .into_iter()
-                        .map(|values| {
-                            gen_stwo_circle_column::<B, BaseField>(
-                                *domain_map
-                                    .get(&(values.len().ilog2() as usize))
-                                    .expect("Domain not found for given size"),
-                                &values,
-                            )
-                        })
-                        .collect_vec(),
-                )
-            })
-            .collect::<BTreeMap<_, _>>();
+            .map(|((public_name, _, _, _, _), value)| (public_name.to_string(), *value))
+            .collect();
 
         let config = get_config();
 
@@ -618,8 +559,11 @@ where
         let constant_col_log_sizes = iter
             .clone()
             .flat_map(|(pil, machine_log_size)| {
-                repeat(machine_log_size)
-                    .take(pil.constant_count() + get_constant_with_next_list(pil).len())
+                repeat(machine_log_size).take(
+                    pil.constant_count()
+                        + get_constant_with_next_list(pil).len()
+                        + pil.publics_count(),
+                )
             })
             .collect_vec();
 
@@ -663,6 +607,7 @@ where
                         constant_cols_offset_acc,
                         machine_log_size,
                         stage0_challenges.clone(),
+                        public_values.clone(),
                     ),
                     (SecureField::zero(), None),
                 );

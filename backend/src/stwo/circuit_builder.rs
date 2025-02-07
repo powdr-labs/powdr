@@ -111,6 +111,7 @@ impl PowdrEval {
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
+
         // TODO:maybe only need in the prove function, before creating PowdrEval
         let publics_by_stage = analyzed.get_publics().into_iter().fold(
             vec![vec![]; analyzed.stage_count()],
@@ -189,11 +190,6 @@ impl FrameworkEval for PowdrEval {
         self.log_degree + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        assert!(
-            self.analyzed.publics_count() == 0,
-            "Error: Expected no public inputs, as they are not supported yet.",
-        );
-
         let stage0_witness_eval: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
             .stage0_witness_columns
             .keys()
@@ -268,14 +264,20 @@ impl FrameworkEval for PowdrEval {
                         + self.preprocess_col_offset
                         + constant_shifted_eval.len(),
                 ));
+
                 let stage = self.poly_stage_map[poly_id];
                 let witness_col = match stage {
                     0 => stage0_witness_eval[poly_id][0].clone(),
                     1 => stage1_witness_eval[poly_id][0].clone(),
                     _ => unreachable!(),
                 };
+
                 // constraining s(i) * (pub[i] - x(i)) = 0
-                eval.add_constraint(selector * (E::F::from(into_stwo_field(self.public_values.get(name).unwrap()))) - witness_col);
+                eval.add_constraint(
+                    selector
+                        * (E::F::from(into_stwo_field(self.public_values.get(name).unwrap()))
+                            - witness_col),
+                );
             },
         );
 
