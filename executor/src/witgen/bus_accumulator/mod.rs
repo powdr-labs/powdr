@@ -215,11 +215,16 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
                 .collect::<Vec<_>>();
             let folded = self.beta - self.fingerprint(&tuple);
 
-            let helper = folded.inverse() * multiplicity;
+            let to_add = folded.inverse() * multiplicity;
+
+            let helper = match bus_interaction.helper_columns {
+                Some(_) => to_add,
+                None => Ext::zero(),
+            };
 
             let new_acc = match multiplicity.is_zero() {
                 true => current_acc,
-                false => current_acc + helper,
+                false => current_acc + to_add,
             };
 
             folded_list[i] = folded;
@@ -304,7 +309,7 @@ fn collect_helper_columns<T>(
         Some(helper_columns) => {
             let pairs: Vec<_> = helper_columns
                 .iter()
-                .zip_eq(helper.into_iter())
+                .zip_eq(helper)
                 .map(|(column_reference, column)| (column_reference.poly_id, column))
                 .collect();
             pairs.into_iter()

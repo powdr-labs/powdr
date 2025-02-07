@@ -823,7 +823,7 @@ fn to_constraint<T: FieldElement>(
                 Value::Enum(enum_value) => {
                     assert_eq!(enum_value.enum_decl.name, "std::prelude::Option");
                     match enum_value.variant {
-                        "None" => vec![].into(),
+                        "None" => None,
                         "Some" => {
                             let fields = enum_value.data.as_ref().unwrap();
                             assert_eq!(fields.len(), 1);
@@ -837,13 +837,14 @@ fn to_constraint<T: FieldElement>(
                                         }
                                         _ => panic!("Expected reference, got {f:?}"),
                                     })
-                                    .collect::<Vec<_>>().into(),
+                                    .collect::<Vec<_>>()
+                                    .into(),
                                 _ => panic!("Expected array, got {:?}", fields[0]),
                             }
                         }
                         _ => panic!("Expected Some or None, got {0}", enum_value.variant),
                     }
-                },
+                }
                 _ => panic!("Expected Enum, got {:?}", fields[6]),
             },
         }
