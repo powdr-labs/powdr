@@ -13,6 +13,7 @@ use powdr_number::FieldElement;
 use crate::witgen::{data_structures::identity::Identity, FixedData};
 
 use super::{
+    prover_function_heuristics::ProverFunction,
     variable::Variable,
     witgen_inference::{Assignment, VariableOrValue},
 };
@@ -31,11 +32,17 @@ impl<'a, T: FieldElement> IdentityQueue<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         identities: &[(&'a Identity<T>, i32)],
         assignments: &[Assignment<'a, T>],
+        prover_functions: &[(ProverFunction<'a, T>, i32)],
     ) -> Self {
         let queue: BTreeSet<_> = identities
             .iter()
             .map(|(id, row)| QueueItem::Identity(id, *row))
             .chain(assignments.iter().map(|a| QueueItem::Assignment(a.clone())))
+            .chain(
+                prover_functions
+                    .iter()
+                    .map(|(p, row)| QueueItem::ProverFunction(p.clone(), *row)),
+            )
             .collect();
         let occurrences = compute_occurrences_map(fixed_data, &queue).into();
         Self { queue, occurrences }
@@ -70,6 +77,7 @@ impl<'a, T: FieldElement> IdentityQueue<'a, T> {
 pub enum QueueItem<'a, T: FieldElement> {
     Identity(&'a Identity<T>, i32),
     Assignment(Assignment<'a, T>),
+    ProverFunction(ProverFunction<'a, T>, i32),
 }
 
 /// Sorts identities by row and then by ID, preceded by assignments.
@@ -80,8 +88,13 @@ impl<T: FieldElement> Ord for QueueItem<'_, T> {
                 (row1, id1.id()).cmp(&(row2, id2.id()))
             }
             (QueueItem::Assignment(a1), QueueItem::Assignment(a2)) => a1.cmp(a2),
-            (QueueItem::Assignment(_), QueueItem::Identity(_, _)) => std::cmp::Ordering::Less,
-            (QueueItem::Identity(_, _), QueueItem::Assignment(_)) => std::cmp::Ordering::Greater,
+            (QueueItem::ProverFunction(p1, row1), QueueItem::ProverFunction(p2, row2)) => {
+                (row1, p1.index).cmp(&(row2, p2.index))
+            }
+            (QueueItem::Identity(_, _), _) => std::cmp::Ordering::Less,
+            (QueueItem::Assignment(_), QueueItem::Identity(_, _)) => std::cmp::Ordering::Greater,
+            (QueueItem::Assignment(_), QueueItem::ProverFunction(_, _)) => std::cmp::Ordering::Less,
+            (QueueItem::ProverFunction(_, _), _) => std::cmp::Ordering::Greater,
         }
     }
 }
@@ -138,6 +151,21 @@ fn compute_occurrences_map<'b, 'a: 'b, T: FieldElement>(
                 }
                 QueueItem::Assignment(a) => {
                     variables_in_assignment(a, fixed_data, &mut intermediate_cache)
+                }
+                QueueItem::ProverFunction(p, row) => {
+                    let refs_in_condition = p
+                        .condition
+                        .iter()
+                        .flat_map(|c| {
+                            references_in_expression(c, fixed_data, &mut intermediate_cache)
+                        })
+                        .map(|r| r.with_name(fixed_data.column_name(&r.poly_id).to_string()))
+                        .collect_vec();
+                    refs_in_condition
+                        .iter()
+                        .chain(&p.input_columns)
+                        .map(|r| Variable::from_reference(&r, *row))
+                        .collect_vec()
                 }
             };
             variables.into_iter().map(move |v| (v, item.clone()))
