@@ -72,7 +72,7 @@ pub enum QueueItem<'a, T: FieldElement> {
     Assignment(Assignment<'a, T>),
 }
 
-/// Sorts identities by row and then by ID, followed by assignments.
+/// Sorts identities by row and then by ID, preceded by assignments.
 impl<T: FieldElement> Ord for QueueItem<'_, T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
@@ -80,8 +80,8 @@ impl<T: FieldElement> Ord for QueueItem<'_, T> {
                 (row1, id1.id()).cmp(&(row2, id2.id()))
             }
             (QueueItem::Assignment(a1), QueueItem::Assignment(a2)) => a1.cmp(a2),
-            (QueueItem::Identity(_, _), QueueItem::Assignment(_)) => std::cmp::Ordering::Less,
-            (QueueItem::Assignment(_), QueueItem::Identity(_, _)) => std::cmp::Ordering::Greater,
+            (QueueItem::Assignment(_), QueueItem::Identity(_, _)) => std::cmp::Ordering::Less,
+            (QueueItem::Identity(_, _), QueueItem::Assignment(_)) => std::cmp::Ordering::Greater,
         }
     }
 }
