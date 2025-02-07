@@ -7,10 +7,12 @@ use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::{
-    rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
-    IncompleteCause, QueryCallback,
+    util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData, IncompleteCause,
+    QueryCallback,
 };
+use crate::witgen::{AffineExpression, AlgebraicVariable};
 
 use super::{Connection, LookupCell, Machine, MachineParts};
 
@@ -134,16 +136,10 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
     fn process_plookup_internal(
         &mut self,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
     ) -> EvalResult<'a, T> {
         let identity = self.connections[&identity_id];
-        let args = identity
-            .left
-            .expressions
-            .iter()
-            .map(|e| caller_rows.evaluate(e).unwrap())
-            .collect::<Vec<_>>();
-        let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = args
+        let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = arguments
             .iter()
             .zip(identity.right.expressions.iter())
             .partition(|(_, r)| {
@@ -252,9 +248,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
         &mut self,
         _mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        _range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, caller_rows)
+        self.process_plookup_internal(identity_id, arguments)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(

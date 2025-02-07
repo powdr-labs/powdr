@@ -82,8 +82,8 @@ impl<T: FieldElement> Ord for QueueItem<'_, T> {
                 (row1, id1.id()).cmp(&(row2, id2.id()))
             }
             (QueueItem::Assignment(a1), QueueItem::Assignment(a2)) => a1.cmp(a2),
-            (QueueItem::Identity(_, _), QueueItem::Assignment(_)) => std::cmp::Ordering::Greater,
             (QueueItem::Assignment(_), QueueItem::Identity(_, _)) => std::cmp::Ordering::Less,
+            (QueueItem::Identity(_, _), QueueItem::Assignment(_)) => std::cmp::Ordering::Greater,
         }
     }
 }

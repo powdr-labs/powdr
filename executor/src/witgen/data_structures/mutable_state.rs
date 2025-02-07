@@ -7,10 +7,10 @@ use bit_vec::BitVec;
 use powdr_number::FieldElement;
 
 use crate::witgen::{
+    global_constraints::RangeConstraintSet,
     machines::{KnownMachine, LookupCell, Machine},
     range_constraints::RangeConstraint,
-    rows::RowPair,
-    EvalError, EvalResult, QueryCallback,
+    AffineExpression, AlgebraicVariable, EvalError, EvalResult, QueryCallback,
 };
 
 /// The container and access method for machines and the query callback.
@@ -61,11 +61,16 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
         machine.can_process_call_fully(self, identity_id, known_inputs, range_constraints)
     }
 
-    /// Call the machine responsible for the right-hand-side of an identity given its ID
-    /// and the row pair of the caller.
-    pub fn call(&self, identity_id: u64, caller_rows: &RowPair<'_, 'a, T>) -> EvalResult<'a, T> {
+    /// Call the machine responsible for the right-hand-side of an identity given its ID,
+    /// the evaluated arguments and the caller's range constraints.
+    pub fn call(
+        &self,
+        identity_id: u64,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
+    ) -> EvalResult<'a, T> {
         self.responsible_machine(identity_id)?
-            .process_plookup_timed(self, identity_id, caller_rows)
+            .process_plookup_timed(self, identity_id, arguments, range_constraints)
     }
 
     /// Call the machine responsible for the right-hand-side of an identity given its ID,
