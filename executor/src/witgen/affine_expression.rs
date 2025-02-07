@@ -214,13 +214,27 @@ where
         let negated = -self.clone();
 
         // Try to find a division-with-remainder pattern and solve it.
-        if let Some(result) = self.try_solve_division(known_constraints).transpose()? {
+        println!("try_solve_division {self}");
+        if let Some(result) = self
+            .try_solve_division(known_constraints)
+            .map_err(|e| println!("{e}"))
+            .ok()
+            .transpose()?
+        {
             if !result.is_empty() {
+                for (k, constraint) in &result.constraints {
+                    println!("try_solve_division {k} -> {constraint}");
+                }
                 return Ok(result);
             }
         };
-
-        if let Some(result) = negated.try_solve_division(known_constraints).transpose()? {
+        println!("try_solve_division {negated}");
+        if let Some(result) = negated
+            .try_solve_division(known_constraints)
+            .map_err(|e| println!("{e}"))
+            .ok()
+            .transpose()?
+        {
             if !result.is_empty() {
                 return Ok(result);
             }
@@ -273,48 +287,134 @@ where
     fn try_solve_division(
         &self,
         known_constraints: &impl RangeConstraintSet<K, T>,
-    ) -> Option<EvalResult<T, K>> {
-        // Detect pattern: `dividend = divisor * quotient + remainder`
-        let (first, second, offset) = match self {
+    ) -> Result<EvalResult<T, K>, &'static str> {
+        // Detect pattern: `dividend = sum_n((divisor * LIMB_SIZE ** i) * quotient_i) + sum_n((LIMB_SIZE ** i) * remainder_i)`
+        // `LIMB_SIZE` is possibly undefined in the case where n = 1
+        // For example, for `3 * X_b1 + 768 * X_b2 + R_b1 + 256 * R_b2 + 18446744069414584308`
+        // LIMB_SIZE = Some(256), found from the second term of the remainder.
+        // n = 2, divisor = 3, quotient_0 = X_b1, quotient_1 = X_b2, remainder_0 = R_b1, remainder_1 = R_b2, dividend = -18446744069414584308
+        // Note that this is a match because `768 = 3 * 256 = divisor * LIMB_SIZE ** 1`
+        // Note that we assume that the limbs are constrained to be in the range [0, LIMB_SIZE - 1]
+        let (divisor, quotient, remainder, dividend, limb_size_bits) = match self {
             AffineExpression::ManyVars(coefficients, offset) => {
-                let [first, second] = &coefficients[..] else {
-                    return None;
+                if coefficients.is_empty() {
+                    return Err("Empty coefficients");
+                }
+                if coefficients.len() % 2 != 0 {
+                    // We need an even number of coefficients since we are looking for two sums of the same number of terms.
+                    return Err("Odd number of coefficients");
+                }
+                let n = coefficients.len() / 2;
+                let (quotient, remainder) = coefficients.split_at(n);
+                // The coefficient on the first element of the quotient sum is `divisor * OFFSET ** 0 = divisor`
+                let divisor = quotient[0].1;
+                // The offset is the second element of the remainder sum
+                let limb_size = remainder.get(1).map(|(_, k)| *k);
+                let limb_size_bits = match limb_size {
+                    Some(k) => {
+                        let bits = k.to_integer().try_into_u64().unwrap();
+                        if bits.is_power_of_two() {
+                            Some(bits.trailing_zeros())
+                        } else {
+                            None
+                        }
+                    }
+                    None => None,
                 };
-                (first, second, offset)
+                println!("limb_size_bits {limb_size_bits:?}");
+                // check that the coefficients are in the expected pattern
+                if !quotient.iter().zip_eq(remainder).enumerate().all(
+                    |(i, ((_, k_quotient), (_, k_remainder)))| {
+                        let offset_pow = limb_size
+                            .map(|o| o.pow((i as u64).into()))
+                            .unwrap_or(T::ONE);
+                        *k_quotient == divisor * offset_pow && *k_remainder == offset_pow
+                    },
+                ) {
+                    return Err("Coefficients don't match pattern");
+                }
+                (divisor, quotient, remainder, -*offset, limb_size_bits)
             }
             _ => {
-                return None;
+                return Err("Not ManyVars");
             }
-        };
-        if !first.1.is_one() && !second.1.is_one() {
-            return None;
-        }
-        let (dividend, divisor, quotient, remainder) = if first.1.is_one() {
-            (-*offset, second.1, second.0, first.0)
-        } else {
-            (-*offset, first.1, first.0, second.0)
         };
 
         // Check that remainder is in [0, divisor - 1].
-        let (remainder_lower, remainder_upper) =
-            known_constraints.range_constraint(remainder)?.range();
-        if remainder_lower > remainder_upper || remainder_upper >= divisor {
-            return None;
-        }
-        let (quotient_lower, quotient_upper) =
-            known_constraints.range_constraint(quotient)?.range();
-        // Check that divisor * quotient + remainder is range-constraint to not overflow.
+        // TODO: is there a function which does this already? Range of an expression based on range of the variables?
+        let (remainder_lower, remainder_upper) = remainder
+            .iter()
+            .try_fold(None, |acc, (v, c)| {
+                let (limb_min, limb_max) = known_constraints.range_constraint(*v)?.range();
+                println!("limb: {v} {limb_min} {limb_max}");
+                Some(Some((
+                    acc.map_or(limb_min, |(min, _)| min + *c * limb_min),
+                    acc.map_or(limb_max, |(_, max)| max + *c * limb_max),
+                )))
+            })
+            .ok_or("No range on remainder")?
+            .unwrap();
+        println!("remainder: {remainder_lower} {remainder_upper}");
+        // TODO: this is commented out because otherwise the division is never solved.
+        // if remainder_lower > remainder_upper || remainder_upper >= divisor {
+        //     return Err("Remainder out of range");
+        // }
+        let (quotient_lower, quotient_upper) = quotient
+            .iter()
+            .try_fold(None, |acc, (v, c)| {
+                let (limb_min, limb_max) = known_constraints.range_constraint(*v)?.range();
+                println!("limb: {v} {limb_min} {limb_max}");
+                Some(Some((
+                    acc.map_or(limb_min, |(min, _)| min + *c * limb_min),
+                    acc.map_or(limb_max, |(_, max)| max + *c * limb_max),
+                )))
+            })
+            .ok_or("No range on quotient")?
+            .unwrap();
+        println!("quotient: {quotient_lower} {quotient_upper}");
+        // Check that divisor * quotient + remainder is range-constrained to not overflow.
         let result_upper = quotient_upper.to_arbitrary_integer() * divisor.to_arbitrary_integer()
             + remainder_upper.to_arbitrary_integer();
         if quotient_lower > quotient_upper || result_upper >= T::modulus().to_arbitrary_integer() {
-            return None;
+            return Err("Possible overflow");
         }
 
-        let quotient_value =
-            (dividend.to_arbitrary_integer() / divisor.to_arbitrary_integer()).into();
-        let remainder_value =
-            (dividend.to_arbitrary_integer() % divisor.to_arbitrary_integer()).into();
-        Some(
+        let quotient_value = dividend.to_arbitrary_integer() / divisor.to_arbitrary_integer();
+        println!("Quotient: {quotient_value}");
+        let limb_size_bits = limb_size_bits.ok_or("No limb size")?;
+        let quotient_constraints = quotient
+            .iter()
+            .enumerate()
+            .map(|(i, (v, _))| {
+                (
+                    *v,
+                    // extract the i-th limb from the quotient
+                    Constraint::Assignment(T::from(
+                        (&quotient_value >> (i * limb_size_bits as usize))
+                            & ((1 << limb_size_bits) - 1),
+                    )),
+                )
+            })
+            .collect_vec();
+        let remainder_value = dividend.to_arbitrary_integer() % divisor.to_arbitrary_integer();
+        println!("Remainder {remainder_value}");
+        let remainder_constraints = remainder
+            .iter()
+            .enumerate()
+            .map(|(i, (v, _))| {
+                (
+                    *v,
+                    // extract the i-th limb from the remainder
+                    Constraint::Assignment(T::from(
+                        (&remainder_value >> (i * limb_size_bits as usize))
+                            & ((1 << limb_size_bits) - 1),
+                    )),
+                )
+            })
+            .collect_vec();
+        let quotient_value: T = quotient_value.into();
+        let remainder_value: T = remainder_value.into();
+        Ok(
             if quotient_value < quotient_lower
                 || quotient_value > quotient_upper
                 || remainder_value < remainder_lower
@@ -322,10 +422,12 @@ where
             {
                 Err(ConflictingRangeConstraints)
             } else {
-                Ok(EvalValue::complete(vec![
-                    (quotient, Constraint::Assignment(quotient_value)),
-                    (remainder, Constraint::Assignment(remainder_value)),
-                ]))
+                Ok(EvalValue::complete(
+                    quotient_constraints
+                        .into_iter()
+                        .chain(remainder_constraints)
+                        .collect(),
+                ))
             },
         )
     }

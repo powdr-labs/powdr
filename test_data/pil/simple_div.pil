@@ -3,10 +3,8 @@ let N: int = 0x10000;
 namespace SimpleDiv(N);
     col fixed BYTE(i) { i & 0xff };
 
-    col witness X;
     col witness Y;
     col witness Z;
-    col witness R;
 
     // Compute X = Y / Z, i.e.
     // X * Z + R = Y, where 0 <= R < Z
@@ -16,8 +14,8 @@ namespace SimpleDiv(N);
 
     X * Z + R = Y;
     Z - R - 1 = Y_b1 + Y_b2 * 0x100;
-    X = X_b1 + X_b2 * 0x100;
-    R = R_b1 + R_b2 * 0x100;
+    col X = X_b1 + X_b2 * 0x100;
+    col R = R_b1 + R_b2 * 0x100;
 
     col witness Y_b1;
     col witness Y_b2;
