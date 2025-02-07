@@ -330,10 +330,10 @@ params[2] = Add::c[0];"
         assert_eq!(c_rc, &RangeConstraint::from_mask(0xffffffffu64));
         assert_eq!(
             format_code(&result.code),
-            "main_binary::sel[0][3] = 1;
-main_binary::operation_id[3] = params[0];
+            "main_binary::operation_id[3] = params[0];
 main_binary::A[3] = params[1];
 main_binary::B[3] = params[2];
+main_binary::sel[0][3] = 1;
 main_binary::operation_id[2] = main_binary::operation_id[3];
 main_binary::operation_id[1] = main_binary::operation_id[2];
 main_binary::operation_id[0] = main_binary::operation_id[1];
