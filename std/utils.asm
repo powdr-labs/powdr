@@ -78,3 +78,28 @@ let cross_product_internal: int, int, int[] -> (int -> int)[] = |cycle_len, pos,
         [|i| (i / cycle_len) % sizes[pos]] +
             cross_product_internal(cycle_len * sizes[pos], pos + 1, sizes)
     };
+
+/// Transposes a rectangular matrix by swapping its rows and columns.
+///
+/// Given a matrix `matrix` represented as a two-dimensional array of type `T[][]`,
+/// this function returns a new matrix where the element at position `(i, j)` in the
+/// original matrix is moved to position `(j, i)` in the transposed matrix.
+/// In other words, if `matrix` has dimensions `n x m` (with `n` rows and `m` columns),
+/// the resulting matrix will have dimensions `m x n`.
+let<T> transpose: T[][] -> T[][] = |matrix| {
+    // If the input matrix is empty, return an empty matrix.
+    if std::array::len(matrix) == 0 {
+        []
+    } else {
+        // Determine the number of rows and columns.
+        let nrows = std::array::len(matrix);
+        let ncols = std::array::len(matrix[0]);
+        // Verify that each row has exactly ncols elements.
+        let _ = std::array::map(matrix, |row| {
+            std::check::assert(std::array::len(row) == ncols, || "All rows in the matrix must have the same length")
+        });
+        // Create a new array of length 'ncols' (the new number of rows)
+        // For each index 'j', create a new row by collecting the j-th element of each original row.
+        std::array::new(ncols, |j| std::array::new(nrows, |i| matrix[i][j]))
+    }
+};

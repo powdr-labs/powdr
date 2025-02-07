@@ -12,15 +12,17 @@ use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::caller_data::CallerData;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::jit::function_cache::FunctionCache;
 use crate::witgen::jit::witgen_inference::CanProcessCall;
 use crate::witgen::processor::{OuterQuery, Processor, SolverState};
 use crate::witgen::range_constraints::RangeConstraint;
-use crate::witgen::rows::{Row, RowIndex, RowPair};
+use crate::witgen::rows::{Row, RowIndex};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
 };
 use crate::witgen::util::try_to_simple_poly;
+use crate::witgen::AffineExpression;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause, QueryCallback};
 use bit_vec::BitVec;
 use powdr_ast::analyzed::{DegreeRange, PolyID, PolynomialType};
@@ -206,10 +208,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &'b RowPair<'b, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         let previous_len = self.data.len();
-        let result = self.process_plookup_internal(mutable_state, identity_id, caller_rows);
+        let result =
+            self.process_plookup_internal(mutable_state, identity_id, arguments, range_constraints);
         if let Ok(assignments) = &result {
             if !assignments.is_complete() {
                 // rollback the changes.
@@ -410,22 +414,26 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         RowIndex::from_i64(self.rows() as i64 - 1, self.degree)
     }
 
-    fn process_plookup_internal<'b, Q: QueryCallback<T>>(
+    fn process_plookup_internal<Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &'b RowPair<'b, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        let outer_query =
-            match OuterQuery::try_new(caller_rows, self.parts.connections[&identity_id]) {
-                Ok(outer_query) => outer_query,
-                Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
-            };
+        let outer_query = match OuterQuery::try_new(
+            arguments,
+            range_constraints,
+            self.parts.connections[&identity_id],
+        ) {
+            Ok(outer_query) => outer_query,
+            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
+        };
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
         if log::log_enabled!(log::Level::Trace) {
-            for l in &outer_query.left {
+            for l in &outer_query.arguments {
                 log::trace!("  {}", l);
             }
         }
@@ -434,7 +442,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
-        let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
+        let known_inputs = outer_query
+            .arguments
+            .iter()
+            .map(|e| e.is_constant())
+            .collect();
         if self
             .function_cache
             .compile_cached(mutable_state, identity_id, &known_inputs)
@@ -449,7 +461,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // TODO this assumes we are always using the same lookup for this machine.
         let mut sequence_iterator = self
             .processing_sequence_cache
-            .get_processing_sequence(&outer_query.left);
+            .get_processing_sequence(&outer_query.arguments);
 
         if !sequence_iterator.has_steps() {
             // Shortcut, no need to do anything.
@@ -481,7 +493,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
                 // We solved the query, so report it to the cache.
                 self.processing_sequence_cache
-                    .report_processing_sequence(&outer_query.left, sequence_iterator);
+                    .report_processing_sequence(&outer_query.arguments, sequence_iterator);
                 Ok(updates)
             }
             ProcessResult::Incomplete(updates) => {
@@ -490,7 +502,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                     self.name()
                 );
                 self.processing_sequence_cache
-                    .report_incomplete(&outer_query.left);
+                    .report_incomplete(&outer_query.arguments);
                 Ok(updates)
             }
         }

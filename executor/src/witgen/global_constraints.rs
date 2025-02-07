@@ -47,25 +47,26 @@ impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
 }
 
 /// A range constraint set that combines two other range constraint sets.
-pub struct CombinedRangeConstraintSet<'a, R1, R2, K, T>
+pub struct CombinedRangeConstraintSet<'a, R, K, T>
 where
     T: FieldElement,
-    R1: RangeConstraintSet<K, T>,
-    R2: RangeConstraintSet<K, T>,
+    R: RangeConstraintSet<K, T>,
 {
-    range_constraints1: &'a R1,
-    range_constraints2: &'a R2,
+    range_constraints1: &'a dyn RangeConstraintSet<K, T>,
+    range_constraints2: &'a R,
     _marker_k: PhantomData<K>,
     _marker_t: PhantomData<T>,
 }
 
-impl<'a, R1, R2, K, T> CombinedRangeConstraintSet<'a, R1, R2, K, T>
+impl<'a, R, K, T> CombinedRangeConstraintSet<'a, R, K, T>
 where
     T: FieldElement,
-    R1: RangeConstraintSet<K, T>,
-    R2: RangeConstraintSet<K, T>,
+    R: RangeConstraintSet<K, T>,
 {
-    pub fn new(range_constraints1: &'a R1, range_constraints2: &'a R2) -> Self {
+    pub fn new(
+        range_constraints1: &'a dyn RangeConstraintSet<K, T>,
+        range_constraints2: &'a R,
+    ) -> Self {
         Self {
             range_constraints1,
             range_constraints2,
@@ -75,12 +76,11 @@ where
     }
 }
 
-impl<R1, R2, K, T> RangeConstraintSet<K, T> for CombinedRangeConstraintSet<'_, R1, R2, K, T>
+impl<R, K, T> RangeConstraintSet<K, T> for CombinedRangeConstraintSet<'_, R, K, T>
 where
     T: FieldElement,
     K: Copy,
-    R1: RangeConstraintSet<K, T>,
-    R2: RangeConstraintSet<K, T>,
+    R: RangeConstraintSet<K, T>,
 {
     fn range_constraint(&self, id: K) -> Option<RangeConstraint<T>> {
         match (

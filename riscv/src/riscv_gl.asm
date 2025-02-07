@@ -13,7 +13,6 @@ machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
     reg Y[<=];
     reg Z[<=];
     reg W[<=];
-    {{SUBMACHINE_EXTRA_REGISTERS}}
 
     // We still need these registers for prover inputs.
     reg query_arg_1;
