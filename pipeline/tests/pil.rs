@@ -1,3 +1,4 @@
+use num_traits::ConstOne;
 use powdr_linker::LinkerMode;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::{
@@ -322,7 +323,15 @@ fn fibonacci_invalid_witness_stwo() {
 #[test]
 fn simple_div() {
     let f = "pil/simple_div.pil";
-    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    let pipeline = make_prepared_pipeline::<GoldilocksField>(
+        f,
+        vec![],
+        vec![(
+            "SimpleDiv::one".to_string(),
+            vec![GoldilocksField::ONE; 0x10000],
+        )],
+        LinkerMode::Bus,
+    );
     test_mock_backend(pipeline);
 }
 
