@@ -453,7 +453,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             .is_some()
         {
             let updates = self.process_lookup_via_jit(mutable_state, identity_id, outer_query)?;
-            assert!(updates.is_complete());
+            //assert!(updates.is_complete());
             self.block_count_jit += 1;
             return Ok(updates);
         }

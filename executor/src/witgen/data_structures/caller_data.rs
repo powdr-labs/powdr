@@ -2,9 +2,10 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::witgen::{
+    global_constraints::RangeConstraintSet,
     machines::LookupCell,
     processor::{Arguments, OuterQuery},
-    EvalError, EvalResult, EvalValue,
+    AlgebraicVariable, EvalError, EvalResult, EvalValue,
 };
 
 /// A representation of the caller's data.
@@ -15,6 +16,7 @@ pub struct CallerData<'a, 'b, T> {
     data: Vec<T>,
     /// The affine expressions of the caller.
     arguments: &'b Arguments<'a, T>,
+    range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
 }
 
 impl<'a, 'b, T: FieldElement> From<&'b OuterQuery<'a, '_, T>> for CallerData<'a, 'b, T> {
@@ -28,6 +30,7 @@ impl<'a, 'b, T: FieldElement> From<&'b OuterQuery<'a, '_, T>> for CallerData<'a,
         Self {
             data,
             arguments: &outer_query.arguments,
+            range_constraints: outer_query.range_constraints,
         }
     }
 }
@@ -51,12 +54,18 @@ impl<'a, 'b, T: FieldElement> From<CallerData<'a, 'b, T>> for EvalResult<'a, T> 
     ///
     /// Note that this function assumes that the lookup was successful and complete.
     fn from(data: CallerData<'a, 'b, T>) -> EvalResult<'a, T> {
+        println!("froma data:");
         let mut result = EvalValue::complete(vec![]);
         for (l, v) in data.arguments.iter().zip_eq(data.data.iter()) {
             if !l.is_constant() {
+                println!("l: {}, v: {}", l, v);
                 let evaluated = l.clone() - (*v).into();
-                match evaluated.solve() {
+                match evaluated.solve_with_range_constraints(data.range_constraints) {
                     Ok(constraints) => {
+                        println!("solved: {:?}", constraints.status);
+                        for constraint in &constraints.constraints {
+                            println!("constraint: {:?}", constraint);
+                        }
                         result.combine(constraints);
                     }
                     Err(_) => {
