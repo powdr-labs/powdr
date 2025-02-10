@@ -247,10 +247,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         let connection = self.parts.connections[&identity_id];
-        let outer_query = match OuterQuery::try_new(arguments, range_constraints, connection) {
-            Ok(outer_query) => outer_query,
-            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
-        };
+        let outer_query = OuterQuery::new(arguments, range_constraints, connection);
         let mut data = CallerData::from(&outer_query);
         if self.process_lookup_direct(mutable_state, identity_id, &mut data.as_lookup_cells())? {
             Ok(EvalResult::from(data)?.report_side_effect())
