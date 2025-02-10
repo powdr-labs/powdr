@@ -6,13 +6,17 @@ use powdr_ast::analyzed::{ContainsNextRef, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    jit::{processor::Processor, prover_function_heuristics::decode_prover_functions},
+    jit::{
+        processor::Processor, prover_function_heuristics::decode_prover_functions,
+        witgen_inference::Assignment,
+    },
     machines::MachineParts,
     FixedData,
 };
 
 use super::{
     processor::ProcessorResult,
+    prover_function_heuristics::ProverFunction,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -51,7 +55,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         identity_id: u64,
         known_args: &BitVec,
         known_concrete: Option<(usize, T)>,
-    ) -> Result<ProcessorResult<T>, String> {
+    ) -> Result<(ProcessorResult<T>, Vec<ProverFunction<'a, T>>), String> {
         let connection = self.machine_parts.connections[&identity_id];
         assert_eq!(connection.right.expressions.len(), known_args.len());
 
@@ -61,34 +65,47 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .enumerate()
             .filter_map(|(i, is_input)| is_input.then_some(Variable::Param(i)))
             .collect::<HashSet<_>>();
-        let mut witgen = WitgenInference::new(self.fixed_data, self, known_variables, []);
+        let witgen = WitgenInference::new(self.fixed_data, self, known_variables, []);
 
         let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
 
         // In the latch row, set the RHS selector to 1.
+        let mut assignments = vec![];
         let selector = &connection.right.selector;
-        witgen.assign_constant(selector, self.latch_row as i32, T::one());
+        assignments.push(Assignment::assign_constant(
+            selector,
+            self.latch_row as i32,
+            T::one(),
+        ));
 
         if let Some((index, value)) = known_concrete {
             // Set the known argument to the concrete value.
-            witgen.assign_constant(
+            assignments.push(Assignment::assign_constant(
                 &connection.right.expressions[index],
                 self.latch_row as i32,
                 value,
-            );
+            ));
         }
 
         // Set all other selectors to 0 in the latch row.
         for other_connection in self.machine_parts.connections.values() {
             let other_selector = &other_connection.right.selector;
             if other_selector != selector {
-                witgen.assign_constant(other_selector, self.latch_row as i32, T::zero());
+                assignments.push(Assignment::assign_constant(
+                    other_selector,
+                    self.latch_row as i32,
+                    T::zero(),
+                ));
             }
         }
 
         // For each argument, connect the expression on the RHS with the formal parameter.
         for (index, expr) in connection.right.expressions.iter().enumerate() {
-            witgen.assign_variable(expr, self.latch_row as i32, Variable::Param(index));
+            assignments.push(Assignment::assign_variable(
+                expr,
+                self.latch_row as i32,
+                Variable::Param(index),
+            ));
         }
 
         let intermediate_definitions = self.fixed_data.analyzed.intermediate_definitions();
@@ -129,10 +146,11 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .iter()
             .enumerate()
             .filter_map(|(i, is_input)| (!is_input).then_some(Variable::Param(i)));
-        Processor::new(
+        let result = Processor::new(
             self.fixed_data,
             self,
             identities,
+            assignments,
             requested_known,
             BLOCK_MACHINE_MAX_BRANCH_DEPTH,
         )
@@ -164,7 +182,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .take(10)
                 .format("\n  ");
             format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
-        })
+        })?;
+        Ok((result, prover_functions))
     }
 }
 
@@ -253,7 +272,9 @@ mod test {
                 .chain((0..num_outputs).map(|_| false)),
         );
 
-        processor.generate_code(&mutable_state, connection_id, &known_values, None)
+        processor
+            .generate_code(&mutable_state, connection_id, &known_values, None)
+            .map(|(result, _)| result)
     }
 
     #[test]
@@ -319,58 +340,58 @@ params[2] = Add::c[0];"
         assert_eq!(c_rc, &RangeConstraint::from_mask(0xffffffffu64));
         assert_eq!(
             format_code(&result.code),
-            "main_binary::sel[0][3] = 1;
-main_binary::operation_id[3] = params[0];
+            "main_binary::operation_id[3] = params[0];
 main_binary::A[3] = params[1];
 main_binary::B[3] = params[2];
+main_binary::sel[0][3] = 1;
 main_binary::operation_id[2] = main_binary::operation_id[3];
 main_binary::operation_id[1] = main_binary::operation_id[2];
 main_binary::operation_id[0] = main_binary::operation_id[1];
 main_binary::operation_id_next[-1] = main_binary::operation_id[0];
+call_var(9, -1, 0) = main_binary::operation_id_next[-1];
 main_binary::operation_id_next[0] = main_binary::operation_id[1];
+call_var(9, 0, 0) = main_binary::operation_id_next[0];
 main_binary::operation_id_next[1] = main_binary::operation_id[2];
+call_var(9, 1, 0) = main_binary::operation_id_next[1];
 main_binary::A_byte[2] = ((main_binary::A[3] & 0xff000000) // 16777216);
 main_binary::A[2] = (main_binary::A[3] & 0xffffff);
 assert (main_binary::A[3] & 0xffffffff00000000) == 0;
+call_var(9, 2, 1) = main_binary::A_byte[2];
 main_binary::A_byte[1] = ((main_binary::A[2] & 0xff0000) // 65536);
 main_binary::A[1] = (main_binary::A[2] & 0xffff);
 assert (main_binary::A[2] & 0xffffffffff000000) == 0;
+call_var(9, 1, 1) = main_binary::A_byte[1];
 main_binary::A_byte[0] = ((main_binary::A[1] & 0xff00) // 256);
 main_binary::A[0] = (main_binary::A[1] & 0xff);
 assert (main_binary::A[1] & 0xffffffffffff0000) == 0;
+call_var(9, 0, 1) = main_binary::A_byte[0];
 main_binary::A_byte[-1] = main_binary::A[0];
+call_var(9, -1, 1) = main_binary::A_byte[-1];
 main_binary::B_byte[2] = ((main_binary::B[3] & 0xff000000) // 16777216);
 main_binary::B[2] = (main_binary::B[3] & 0xffffff);
 assert (main_binary::B[3] & 0xffffffff00000000) == 0;
+call_var(9, 2, 2) = main_binary::B_byte[2];
 main_binary::B_byte[1] = ((main_binary::B[2] & 0xff0000) // 65536);
 main_binary::B[1] = (main_binary::B[2] & 0xffff);
 assert (main_binary::B[2] & 0xffffffffff000000) == 0;
+call_var(9, 1, 2) = main_binary::B_byte[1];
 main_binary::B_byte[0] = ((main_binary::B[1] & 0xff00) // 256);
 main_binary::B[0] = (main_binary::B[1] & 0xff);
 assert (main_binary::B[1] & 0xffffffffffff0000) == 0;
+call_var(9, 0, 2) = main_binary::B_byte[0];
 main_binary::B_byte[-1] = main_binary::B[0];
-call_var(9, -1, 0) = main_binary::operation_id_next[-1];
-call_var(9, -1, 1) = main_binary::A_byte[-1];
 call_var(9, -1, 2) = main_binary::B_byte[-1];
 machine_call(9, [Known(call_var(9, -1, 0)), Known(call_var(9, -1, 1)), Known(call_var(9, -1, 2)), Unknown(call_var(9, -1, 3))]);
 main_binary::C_byte[-1] = call_var(9, -1, 3);
 main_binary::C[0] = main_binary::C_byte[-1];
-call_var(9, 0, 0) = main_binary::operation_id_next[0];
-call_var(9, 0, 1) = main_binary::A_byte[0];
-call_var(9, 0, 2) = main_binary::B_byte[0];
 machine_call(9, [Known(call_var(9, 0, 0)), Known(call_var(9, 0, 1)), Known(call_var(9, 0, 2)), Unknown(call_var(9, 0, 3))]);
 main_binary::C_byte[0] = call_var(9, 0, 3);
 main_binary::C[1] = (main_binary::C[0] + (main_binary::C_byte[0] * 256));
-call_var(9, 1, 0) = main_binary::operation_id_next[1];
-call_var(9, 1, 1) = main_binary::A_byte[1];
-call_var(9, 1, 2) = main_binary::B_byte[1];
 machine_call(9, [Known(call_var(9, 1, 0)), Known(call_var(9, 1, 1)), Known(call_var(9, 1, 2)), Unknown(call_var(9, 1, 3))]);
 main_binary::C_byte[1] = call_var(9, 1, 3);
 main_binary::C[2] = (main_binary::C[1] + (main_binary::C_byte[1] * 65536));
 main_binary::operation_id_next[2] = main_binary::operation_id[3];
 call_var(9, 2, 0) = main_binary::operation_id_next[2];
-call_var(9, 2, 1) = main_binary::A_byte[2];
-call_var(9, 2, 2) = main_binary::B_byte[2];
 machine_call(9, [Known(call_var(9, 2, 0)), Known(call_var(9, 2, 1)), Known(call_var(9, 2, 2)), Unknown(call_var(9, 2, 3))]);
 main_binary::C_byte[2] = call_var(9, 2, 3);
 main_binary::C[3] = (main_binary::C[2] + (main_binary::C_byte[2] * 16777216));
@@ -401,7 +422,7 @@ params[3] = main_binary::C[3];"
         assert_eq!(
             format_code(&code),
             "Sub::a[0] = params[0];
-Sub::b[0] = prover_function_0(0, [Sub::a[0]]);
+[Sub::b[0]] = prover_function_0(0, [Sub::a[0]]);
 params[1] = Sub::b[0];"
         );
     }

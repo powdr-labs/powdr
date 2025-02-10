@@ -14,7 +14,6 @@ use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
 use crate::witgen::jit::witgen_inference::CanProcessCall;
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::range_constraints::RangeConstraint;
-use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause, QueryCallback};
 use crate::witgen::{EvalResult, FixedData};
@@ -231,17 +230,17 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        rows: &RowPair<'_, 'a, T>,
         outer_query: OuterQuery<'a, '_, T>,
     ) -> EvalResult<'a, T> {
         let right = self.connections[&identity_id].right;
 
-        if outer_query.left.len() == 1 && !outer_query.left.first().unwrap().is_constant() {
+        if outer_query.arguments.len() == 1 && !outer_query.arguments.first().unwrap().is_constant()
+        {
             if let Some(column_reference) = try_to_simple_poly(&right.expressions[0]) {
                 // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
                 return self.process_range_check(
-                    rows,
-                    outer_query.left.first().unwrap(),
+                    outer_query.range_constraints,
+                    outer_query.arguments.first().unwrap(),
                     AlgebraicVariable::Column(column_reference),
                 );
             }
@@ -262,7 +261,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
 
     fn process_range_check(
         &self,
-        rows: &RowPair<'_, '_, T>,
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
         lhs: &AffineExpression<AlgebraicVariable<'a>, T>,
         rhs: AlgebraicVariable<'a>,
     ) -> EvalResult<'a, T> {
@@ -270,7 +269,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         // from the rhs to the lhs.
         let equation = lhs.clone() - AffineExpression::from_variable_id(rhs);
         let range_constraints = UnifiedRangeConstraints {
-            witness_constraints: rows,
+            witness_constraints: range_constraints,
             global_constraints: &self.global_constraints,
         };
         let updates = equation.solve_with_range_constraints(&range_constraints)?;
@@ -388,15 +387,16 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         let identity = self.connections[&identity_id];
 
-        let outer_query = match OuterQuery::try_new(caller_rows, identity) {
+        let outer_query = match OuterQuery::try_new(arguments, range_constraints, identity) {
             Ok(outer_query) => outer_query,
             Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
         };
-        self.process_plookup_internal(mutable_state, identity_id, caller_rows, outer_query)
+        self.process_plookup_internal(mutable_state, identity_id, outer_query)
     }
 
     fn process_lookup_direct<'c, Q: QueryCallback<T>>(
@@ -482,12 +482,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
 /// This is useful in order to transfer range constraints from fixed columns to
 /// witness columns (see [FixedLookup::process_range_check]).
 pub struct UnifiedRangeConstraints<'a, 'b, T: FieldElement> {
-    witness_constraints: &'b RowPair<'b, 'a, T>,
+    witness_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     global_constraints: &'b GlobalConstraints<T>,
 }
 
 impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
-    for UnifiedRangeConstraints<'_, '_, T>
+    for UnifiedRangeConstraints<'a, '_, T>
 {
     fn range_constraint(&self, var: AlgebraicVariable<'a>) -> Option<RangeConstraint<T>> {
         let poly = match var {

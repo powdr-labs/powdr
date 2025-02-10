@@ -5,21 +5,25 @@ use std::{
 };
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{PolyID, PolynomialType};
+use powdr_ast::analyzed::{PolyID, PolynomialIdentity, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    data_structures::identity::Identity, jit::debug_formatter::format_identities,
-    range_constraints::RangeConstraint, FixedData,
+    data_structures::identity::{BusSend, Identity},
+    jit::debug_formatter::format_identities,
+    range_constraints::RangeConstraint,
+    FixedData,
 };
 
 use super::{
     affine_symbolic_expression,
     effect::{format_code, Effect},
-    identity_queue::IdentityQueue,
+    identity_queue::{IdentityQueue, QueueItem},
     prover_function_heuristics::ProverFunction,
-    variable::{Cell, Variable},
-    witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, Value, WitgenInference},
+    variable::{Cell, MachineCallVariable, Variable},
+    witgen_inference::{
+        Assignment, BranchResult, CanProcessCall, FixedEvaluator, Value, WitgenInference,
+    },
 };
 
 /// A generic processor for generating JIT code.
@@ -29,9 +33,11 @@ pub struct Processor<'a, T: FieldElement, FixedEval> {
     fixed_evaluator: FixedEval,
     /// List of identities and row offsets to process them on.
     identities: Vec<(&'a Identity<T>, i32)>,
+    /// List of assignments provided from outside.
+    initial_assignments: Vec<Assignment<'a, T>>,
     /// The prover functions, i.e. helpers to compute certain values that
     /// we cannot easily determine.
-    prover_functions: Vec<(ProverFunction<'a>, i32)>,
+    prover_functions: Vec<(ProverFunction<'a, T>, i32)>,
     /// The size of a block.
     block_size: usize,
     /// If the processor should check for correctly stackable block shapes.
@@ -58,6 +64,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         fixed_data: &'a FixedData<'a, T>,
         fixed_evaluator: FixedEval,
         identities: impl IntoIterator<Item = (&'a Identity<T>, i32)>,
+        assignments: Vec<Assignment<'a, T>>,
         requested_known_vars: impl IntoIterator<Item = Variable>,
         max_branch_depth: usize,
     ) -> Self {
@@ -66,6 +73,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             fixed_data,
             fixed_evaluator,
             identities,
+            initial_assignments: assignments,
             prover_functions: vec![],
             block_size: 1,
             check_block_shape: false,
@@ -99,7 +107,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
 
     pub fn with_prover_functions(
         mut self,
-        prover_functions: Vec<(ProverFunction<'a>, i32)>,
+        prover_functions: Vec<(ProverFunction<'a, T>, i32)>,
     ) -> Self {
         assert!(self.prover_functions.is_empty());
         self.prover_functions = prover_functions;
@@ -111,8 +119,40 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         can_process: impl CanProcessCall<T>,
         witgen: WitgenInference<'a, T, FixedEval>,
     ) -> Result<ProcessorResult<T>, Error<'a, T, FixedEval>> {
+        // Create variable assignments for bus send arguments.
+        let mut assignments = self.initial_assignments.clone();
+        assignments.extend(
+            self.identities
+                .iter()
+                .filter_map(|(id, row_offset)| {
+                    if let Identity::BusSend(bus_send) = id {
+                        Some((
+                            bus_send.identity_id,
+                            &bus_send.selected_payload.expressions,
+                            *row_offset,
+                        ))
+                    } else {
+                        None
+                    }
+                })
+                .flat_map(|(identity_id, arguments, row_offset)| {
+                    arguments.iter().enumerate().map(move |(index, arg)| {
+                        let var = Variable::MachineCallParam(MachineCallVariable {
+                            identity_id,
+                            row_offset,
+                            index,
+                        });
+                        Assignment::assign_variable(arg, row_offset, var)
+                    })
+                }),
+        );
         let branch_depth = 0;
-        let identity_queue = IdentityQueue::new(self.fixed_data, &self.identities);
+        let identity_queue = IdentityQueue::new(
+            self.fixed_data,
+            &self.identities,
+            &assignments,
+            &self.prover_functions,
+        );
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
     }
 
@@ -280,37 +320,33 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         witgen: &mut WitgenInference<'a, T, FixedEval>,
         identity_queue: &mut IdentityQueue<'a, T>,
     ) -> Result<(), affine_symbolic_expression::Error> {
-        loop {
-            let identity = identity_queue.next();
-            let updated_vars = match identity {
-                Some((identity, row_offset)) => {
-                    witgen.process_identity(can_process.clone(), identity, row_offset)
+        while let Some(item) = identity_queue.next() {
+            let updated_vars = match &item {
+                QueueItem::Identity(identity, row_offset) => match identity {
+                    Identity::Polynomial(PolynomialIdentity { id, expression, .. }) => {
+                        witgen.process_polynomial_identity(*id, expression, *row_offset)
+                    }
+                    Identity::BusSend(BusSend {
+                        bus_id: _,
+                        identity_id,
+                        selected_payload,
+                    }) => witgen.process_call(
+                        can_process.clone(),
+                        *identity_id,
+                        &selected_payload.selector,
+                        selected_payload.expressions.len(),
+                        *row_offset,
+                    ),
+                    Identity::Connect(..) => Ok(vec![]),
+                },
+                QueueItem::Assignment(assignment) => witgen.process_assignment(assignment),
+                QueueItem::ProverFunction(prover_function, row_offset) => {
+                    witgen.process_prover_function(prover_function, *row_offset)
                 }
-                None => self.process_prover_functions(witgen),
             }?;
-            if updated_vars.is_empty() && identity.is_none() {
-                // No identities to process and prover functions did not make any progress,
-                // we are done.
-                return Ok(());
-            }
-            identity_queue.variables_updated(updated_vars, identity);
+            identity_queue.variables_updated(updated_vars, Some(item));
         }
-    }
-
-    /// Tries to process all prover functions until the first one is able to update a variable.
-    /// Returns the updated variables.
-    fn process_prover_functions(
-        &self,
-        witgen: &mut WitgenInference<'a, T, FixedEval>,
-    ) -> Result<Vec<Variable>, affine_symbolic_expression::Error> {
-        for (prover_function, row_offset) in &self.prover_functions {
-            let updated_vars = witgen.process_prover_function(prover_function, *row_offset)?;
-            if !updated_vars.is_empty() {
-                return Ok(updated_vars);
-            }
-        }
-
-        Ok(vec![])
+        Ok(())
     }
 
     /// If any machine call could not be completed, that's bad because machine calls typically have side effects.
@@ -530,14 +566,6 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
             )
             .unwrap();
         };
-        if !self.incomplete_identities.is_empty() {
-            write!(
-                s,
-                "\nThe following identities have not been fully processed:\n{}",
-                format_identities(&self.incomplete_identities, &self.witgen,)
-            )
-            .unwrap();
-        };
         write!(
             s,
             "\nThe following branch decisions were taken:\n{}",
@@ -548,6 +576,14 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
                 .join("\n")
         )
         .unwrap();
+        if !self.incomplete_identities.is_empty() {
+            write!(
+                s,
+                "\nThe following identities have not been fully processed:\n{}",
+                format_identities(&self.incomplete_identities, &self.witgen,)
+            )
+            .unwrap();
+        };
         let code = self.witgen.code();
         if code.is_empty() {
             write!(s, "\nNo code generated so far.").unwrap();

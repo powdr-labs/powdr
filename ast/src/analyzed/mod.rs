@@ -103,6 +103,12 @@ impl<T> Analyzed<T> {
     pub fn commitment_count(&self) -> usize {
         self.declaration_type_count(PolynomialType::Committed)
     }
+
+    /// @returns the number of committed polynomials (with multiplicities for arrays) in a specific stage
+    pub fn stage_commitment_count(&self, stage: u32) -> usize {
+        self.stage_declaration_type_count(PolynomialType::Committed, stage)
+    }
+
     /// @returns the number of intermediate polynomials (with multiplicities for arrays)
     pub fn intermediate_count(&self) -> usize {
         self.intermediate_columns
@@ -194,6 +200,19 @@ impl<T> Analyzed<T> {
         self.definitions
             .iter()
             .filter_map(move |(_name, (symbol, _))| match symbol.kind {
+                SymbolKind::Poly(ptype) if ptype == poly_type => {
+                    Some(symbol.length.unwrap_or(1) as usize)
+                }
+                _ => None,
+            })
+            .sum()
+    }
+
+    fn stage_declaration_type_count(&self, poly_type: PolynomialType, stage: u32) -> usize {
+        self.definitions
+            .values()
+            .filter(|(symbol, _)| symbol.stage.unwrap_or(0) == stage)
+            .filter_map(move |(symbol, _)| match symbol.kind {
                 SymbolKind::Poly(ptype) if ptype == poly_type => {
                     Some(symbol.length.unwrap_or(1) as usize)
                 }
@@ -1187,6 +1206,16 @@ pub struct AlgebraicReferenceThin {
 impl From<&AlgebraicReference> for AlgebraicReferenceThin {
     fn from(value: &AlgebraicReference) -> Self {
         value.to_thin()
+    }
+}
+
+impl AlgebraicReferenceThin {
+    pub fn with_name(&self, name: String) -> AlgebraicReference {
+        AlgebraicReference {
+            name,
+            poly_id: self.poly_id,
+            next: self.next,
+        }
     }
 }
 
