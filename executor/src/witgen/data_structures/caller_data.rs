@@ -2,9 +2,8 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    machines::LookupCell,
-    processor::{Arguments, OuterQuery},
-    EvalError, EvalResult, EvalValue,
+    machines::LookupCell, processor::OuterQuery, AffineExpression, AlgebraicVariable, EvalError,
+    EvalResult, EvalValue,
 };
 
 /// A representation of the caller's data.
@@ -14,7 +13,7 @@ pub struct CallerData<'a, 'b, T> {
     /// The raw data of the caller. Unknown values should be ignored.
     data: Vec<T>,
     /// The affine expressions of the caller.
-    arguments: &'b Arguments<'a, T>,
+    arguments: &'b [AffineExpression<AlgebraicVariable<'a>, T>],
 }
 
 impl<'a, 'b, T: FieldElement> From<&'b OuterQuery<'a, '_, T>> for CallerData<'a, 'b, T> {
@@ -29,6 +28,19 @@ impl<'a, 'b, T: FieldElement> From<&'b OuterQuery<'a, '_, T>> for CallerData<'a,
             data,
             arguments: &outer_query.arguments,
         }
+    }
+}
+
+impl<'a, 'b, T: FieldElement> From<&'b [AffineExpression<AlgebraicVariable<'a>, T>]>
+    for CallerData<'a, 'b, T>
+{
+    /// Builds a `CallerData` from an `Arguments`.
+    fn from(arguments: &'b [AffineExpression<AlgebraicVariable<'a>, T>]) -> Self {
+        let data = arguments
+            .iter()
+            .map(|l| l.constant_value().unwrap_or_default())
+            .collect();
+        Self { data, arguments }
     }
 }
 

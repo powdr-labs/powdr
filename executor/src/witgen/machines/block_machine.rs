@@ -417,16 +417,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        let outer_query = OuterQuery::new(
-            arguments,
-            range_constraints,
-            self.parts.connections[&identity_id],
-        );
-
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
         if log::log_enabled!(log::Level::Trace) {
-            for l in &outer_query.arguments {
+            for l in arguments {
                 log::trace!("  {}", l);
             }
         }
@@ -435,21 +429,24 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
-        let known_inputs = outer_query
-            .arguments
-            .iter()
-            .map(|e| e.is_constant())
-            .collect();
+        let known_inputs = arguments.iter().map(|e| e.is_constant()).collect();
         if self
             .function_cache
             .compile_cached(mutable_state, identity_id, &known_inputs)
             .is_some()
         {
-            let updates = self.process_lookup_via_jit(mutable_state, identity_id, outer_query)?;
+            let caller_data = arguments.into();
+            let updates = self.process_lookup_via_jit(mutable_state, identity_id, caller_data)?;
             assert!(updates.is_complete());
             self.block_count_jit += 1;
             return Ok(updates);
         }
+
+        let outer_query = OuterQuery::new(
+            arguments,
+            range_constraints,
+            self.parts.connections[&identity_id],
+        );
 
         // TODO this assumes we are always using the same lookup for this machine.
         let mut sequence_iterator = self
@@ -505,10 +502,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        outer_query: OuterQuery<'a, 'b, T>,
+        mut caller_data: CallerData<'a, 'b, T>,
     ) -> EvalResult<'a, T> {
-        let mut values = CallerData::from(&outer_query);
-
         assert!(
             (self.rows() + self.block_size as DegreeType) <= self.degree,
             "Block machine is full (this should have been checked before)"
@@ -519,12 +514,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let success = self.function_cache.process_lookup_direct(
             mutable_state,
             identity_id,
-            &mut values.as_lookup_cells(),
+            &mut caller_data.as_lookup_cells(),
             data,
         )?;
         assert!(success);
 
-        values.into()
+        caller_data.into()
     }
 
     fn process<'b, Q: QueryCallback<T>>(
