@@ -55,18 +55,12 @@ impl<'a, 'b, T: FieldElement> From<CallerData<'a, 'b, T>> for EvalResult<'a, T> 
     ///
     /// Note that this function assumes that the lookup was successful and complete.
     fn from(data: CallerData<'a, 'b, T>) -> EvalResult<'a, T> {
-        println!("froma data:");
         let mut result = EvalValue::complete(vec![]);
         for (l, v) in data.arguments.iter().zip_eq(data.data.iter()) {
             if !l.is_constant() {
-                println!("l: {l}, v: {v}");
                 let evaluated = l.clone() - (*v).into();
                 match evaluated.solve_with_range_constraints(data.range_constraints) {
                     Ok(constraints) => {
-                        println!("solved: {:?}", constraints.status);
-                        for constraint in &constraints.constraints {
-                            println!("constraint: {constraint:?}");
-                        }
                         result.combine(constraints);
                     }
                     Err(_) => {
