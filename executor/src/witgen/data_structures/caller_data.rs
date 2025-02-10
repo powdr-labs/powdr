@@ -16,6 +16,7 @@ pub struct CallerData<'a, 'b, T> {
     data: Vec<T>,
     /// The affine expressions of the caller.
     arguments: &'b Arguments<'a, T>,
+    /// Range constraints coming from the caller.
     range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
 }
 
@@ -58,13 +59,13 @@ impl<'a, 'b, T: FieldElement> From<CallerData<'a, 'b, T>> for EvalResult<'a, T> 
         let mut result = EvalValue::complete(vec![]);
         for (l, v) in data.arguments.iter().zip_eq(data.data.iter()) {
             if !l.is_constant() {
-                println!("l: {}, v: {}", l, v);
+                println!("l: {l}, v: {v}");
                 let evaluated = l.clone() - (*v).into();
                 match evaluated.solve_with_range_constraints(data.range_constraints) {
                     Ok(constraints) => {
                         println!("solved: {:?}", constraints.status);
                         for constraint in &constraints.constraints {
-                            println!("constraint: {:?}", constraint);
+                            println!("constraint: {constraint:?}");
                         }
                         result.combine(constraints);
                     }
