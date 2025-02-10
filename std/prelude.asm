@@ -64,7 +64,7 @@ enum Constr {
     ///   the accumulator columns, so that constraints are always bounded to
     ///   degree 3. Each set of helper columns is always shared by two bus
     ///   interactions.
-    PhantomBusInteraction(expr, expr, expr[], expr, expr[], expr[], expr[])
+    PhantomBusInteraction(expr, expr, expr[], expr, expr[], expr[], Option<expr[]>)
 }
 
 /// This is the result of the "$" operator. It can be used as the left and

@@ -820,17 +820,32 @@ fn to_constraint<T: FieldElement>(
                 _ => panic!("Expected array, got {:?}", fields[5]),
             },
             helper_columns: match fields[6].as_ref() {
-                Value::Array(fields) => fields
-                    .iter()
-                    .map(|f| match to_expr(f) {
-                        AlgebraicExpression::Reference(reference) => {
-                            assert!(!reference.next);
-                            reference
+                Value::Enum(enum_value) => {
+                    assert_eq!(enum_value.enum_decl.name, "std::prelude::Option");
+                    match enum_value.variant {
+                        "None" => None,
+                        "Some" => {
+                            let fields = enum_value.data.as_ref().unwrap();
+                            assert_eq!(fields.len(), 1);
+                            match fields[0].as_ref() {
+                                Value::Array(fields) => fields
+                                    .iter()
+                                    .map(|f| match to_expr(f) {
+                                        AlgebraicExpression::Reference(reference) => {
+                                            assert!(!reference.next);
+                                            reference
+                                        }
+                                        _ => panic!("Expected reference, got {f:?}"),
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .into(),
+                                _ => panic!("Expected array, got {:?}", fields[0]),
+                            }
                         }
-                        _ => panic!("Expected reference, got {f:?}"),
-                    })
-                    .collect(),
-                _ => panic!("Expected array, got {:?}", fields[6]),
+                        _ => panic!("Expected Some or None, got {0}", enum_value.variant),
+                    }
+                }
+                _ => panic!("Expected Enum, got {:?}", fields[6]),
             },
         }
         .into(),
