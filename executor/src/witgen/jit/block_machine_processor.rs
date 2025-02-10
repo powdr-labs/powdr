@@ -54,6 +54,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_args: &BitVec,
+        known_concrete: Option<(usize, T)>,
     ) -> Result<(ProcessorResult<T>, Vec<ProverFunction<'a, T>>), String> {
         let connection = self.machine_parts.connections[&identity_id];
         assert_eq!(connection.right.expressions.len(), known_args.len());
@@ -76,6 +77,15 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             self.latch_row as i32,
             T::one(),
         ));
+
+        if let Some((index, value)) = known_concrete {
+            // Set the known argument to the concrete value.
+            assignments.push(Assignment::assign_constant(
+                &connection.right.expressions[index],
+                self.latch_row as i32,
+                value,
+            ));
+        }
 
         // Set all other selectors to 0 in the latch row.
         for other_connection in self.machine_parts.connections.values() {
@@ -263,7 +273,7 @@ mod test {
         );
 
         processor
-            .generate_code(&mutable_state, connection_id, &known_values)
+            .generate_code(&mutable_state, connection_id, &known_values, None)
             .map(|(result, _)| result)
     }
 
