@@ -1,5 +1,6 @@
 use std::protocols::bus::bus_receive;
 use std::protocols::bus::bus_send;
+use std::protocols::bus::BusInteraction;
 
 let ADD_BUS_ID = 123;
 let MUL_BUS_ID = 456;
@@ -17,13 +18,13 @@ machine Main with
     col witness add_a, add_b, add_c, add_sel;
     std::utils::force_bool(add_sel);
     add_c = add_a + add_b;
-    bus_receive(ADD_BUS_ID, [add_a, add_b, add_c], add_sel, add_sel);
+    bus_receive(BusInteraction(ADD_BUS_ID, [add_a, add_b, add_c], add_sel, add_sel));
 
     // Mul block machine
     col witness mul_a, mul_b, mul_c, mul_sel;
     std::utils::force_bool(mul_sel);
     mul_c = mul_a * mul_b;
-    bus_receive(MUL_BUS_ID, [mul_a, mul_b, mul_c], mul_sel, mul_sel);
+    bus_receive(BusInteraction(MUL_BUS_ID, [mul_a, mul_b, mul_c], mul_sel, mul_sel));
     
     // Main machine
     col fixed is_mul = [0, 1]*;
@@ -33,5 +34,5 @@ machine Main with
 
     // Because we're doing exactly one of the two operations at any given time,
     // we only need to do one send, choosing the bus to send to at runtime.
-    bus_send(is_mul * MUL_BUS_ID + (1 - is_mul) * ADD_BUS_ID, [x, y, z], 1);
+    bus_send(BusInteraction::Send(is_mul * MUL_BUS_ID + (1 - is_mul) * ADD_BUS_ID, [x, y, z], 1));
 }

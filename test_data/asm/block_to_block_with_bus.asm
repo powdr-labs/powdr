@@ -1,5 +1,6 @@
 use std::protocols::bus::bus_receive;
 use std::protocols::bus::bus_send;
+use std::protocols::bus::BusInteraction;
 
 // Like block_to_block.asm, but also adds a bus to both machines.
 // This is still flawed currently, because:
@@ -22,7 +23,7 @@ machine Arith with
 
     col witness bus_selector;
     std::utils::force_bool(bus_selector);
-    bus_receive(ARITH_INTERACTION_ID, [0, x, y, z], latch * bus_selector, latch * bus_selector);
+    bus_receive(BusInteraction::Receive(ARITH_INTERACTION_ID, [0, x, y, z], latch * bus_selector, latch * bus_selector));
 
     // TODO: Expose final value of acc as public.
 
@@ -51,7 +52,7 @@ machine Main with
     // Need a constraint so that it's not optimized away
     dummy = dummy';
 
-    bus_send(ARITH_INTERACTION_ID, [0, x, y, z], instr_add);
+    bus_send(BusInteraction::Send(ARITH_INTERACTION_ID, [0, x, y, z], instr_add));
 
     // TODO: Expose final value of acc as public.
 

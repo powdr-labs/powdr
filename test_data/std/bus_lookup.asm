@@ -1,4 +1,5 @@
 use std::protocols::bus::bus_send;
+use std::protocols::bus::BusInteraction;
 use std::protocols::lookup_via_bus::lookup_receive;
 
 machine Main with degree: 8 {
@@ -11,6 +12,6 @@ machine Main with degree: 8 {
     col fixed INC_Y = [2, 3, 4, 5, 6, 7, 8, 9];
 
     let LOOKUP_ID = 42;
-    bus_send(LOOKUP_ID, [x, y], 1);
+    bus_send(BusInteraction::Send(LOOKUP_ID, [x, y], 1));
     lookup_receive(LOOKUP_ID, 1, [INC_X, INC_Y]);
 }
