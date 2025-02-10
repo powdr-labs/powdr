@@ -123,7 +123,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             cache_key.known_args,
             cache_key
                 .known_concrete
-                .map(|(i, v)| format!("\n input {i} = {v}"))
+                .map(|(i, v)| format!("\n   Input {i} = {v}"))
                 .unwrap_or_default()
         );
 
