@@ -173,9 +173,18 @@ impl LinkerBackend for BusLinker {
 
         // add pil for bus_multi_send, lookup_multi_receive, and permutation_multi_receive
         for (args, path) in [
-            (&mut self.bus_multi_send_args, "std::protocols::bus::bus_multi_send"),
-            (&mut self.lookup_multi_receive_args, "std::protocols::lookup_via_bus::lookup_multi_receive"),
-            (&mut self.permutation_multi_receive_args, "std::protocols::permutation_via_bus::permutation_multi_receive"),
+            (
+                &mut self.bus_multi_send_args,
+                "std::protocols::bus::bus_multi_send",
+            ),
+            (
+                &mut self.lookup_multi_receive_args,
+                "std::protocols::lookup_via_bus::lookup_multi_receive",
+            ),
+            (
+                &mut self.permutation_multi_receive_args,
+                "std::protocols::permutation_via_bus::permutation_multi_receive",
+            ),
         ] {
             if !args.items.is_empty() {
                 self.pil.push(PilStatement::Expression(
