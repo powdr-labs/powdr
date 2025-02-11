@@ -356,7 +356,7 @@ mod test {
             r"
 namespace main(4);
     col fixed right_latch = [0, 1]*;
-    col witness right_selector, left_latch, a, b, multiplicities, folded, acc;
+    col witness right_selector, left_latch, a, b, multiplicities, folded, acc, helper;
     {constraint}
     
     // Selectors should be binary
