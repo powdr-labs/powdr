@@ -319,8 +319,6 @@ where
             .collect::<BTreeMap<_, _>>();
 
         // get publics of stage0
-        // TODO:when publics are supplied, the order of the witness might cause problem
-        // TODO:in polonky3, this is built in ConstraintSystem, which is machine-specific, check if it's the same here
         let publics_by_stage = self.analyzed.get_publics().into_iter().fold(
             vec![vec![]; self.analyzed.stage_count()],
             |mut acc, (name, column_name, id, row, stage)| {
@@ -390,51 +388,56 @@ where
         if self.analyzed.stage_count() > 1 {
             // Build witness columns for stage 1 using the callback function, with the generated challenges
 
-            let stage0_witness_names_stage1_witness_cols = witness_by_machine
+            let stage0_witness_name_list = witness_by_machine
+                .values()
+                .map(|machine_witness| {
+                    machine_witness
+                        .iter()
+                        .map(|(k, _)| k.clone())
+                        .collect::<BTreeSet<_>>()
+                })
+                .collect_vec();
+
+            let stage1_witness_cols = witness_by_machine
                 .iter()
                 .map(|(machine_name, machine_witness)| {
-                    (
-                        machine_witness
-                            .iter()
-                            .map(|(k, _)| k.clone())
-                            .collect::<BTreeSet<_>>(),
-                        witgen_callback.next_stage_witness(
-                            &self.split[&machine_name.clone()],
-                            machine_witness,
-                            stage0_challenges.clone(),
-                            1,
-                        ),
+                    witgen_callback.next_stage_witness(
+                        &self.split[&machine_name.clone()],
+                        machine_witness,
+                        stage0_challenges.clone(),
+                        1,
                     )
                 })
                 .collect_vec();
 
             // Get publics of stage 1
-            let public_values_stage1: BTreeMap<String, M31> =
-                stage0_witness_names_stage1_witness_cols
-                    .iter()
-                    .flat_map(|(stage0_columns, callback_result)| {
-                        callback_result.iter().filter_map(|(witness_name, vec)| {
-                            if stage0_columns.contains(witness_name) {
-                                None
-                            } else {
-                                publics_by_stage[1].iter().find_map(
-                                    |(name, ref_witness_col_name, _, row)| {
-                                        (witness_name == ref_witness_col_name)
-                                            .then(|| (name.clone(), vec[*row]))
-                                    },
-                                )
-                            }
-                        })
-                    })
-                    .collect();
-
-            let stage1_witness_cols_circle_domain_eval = stage0_witness_names_stage1_witness_cols
+            let public_values_stage1: BTreeMap<String, M31> = stage0_witness_name_list
                 .iter()
-                .flat_map(move |(stage0_columns, callback_result)| {
+                .zip_eq(stage1_witness_cols.iter())
+                .flat_map(|(stage0_witness_name_list, callback_result)| {
+                    callback_result.iter().filter_map(|(witness_name, vec)| {
+                        if stage0_witness_name_list.contains(witness_name) {
+                            None
+                        } else {
+                            publics_by_stage[1].iter().find_map(
+                                |(name, ref_witness_col_name, _, row)| {
+                                    (witness_name == ref_witness_col_name)
+                                        .then(|| (name.clone(), vec[*row]))
+                                },
+                            )
+                        }
+                    })
+                })
+                .collect();
+
+            let stage1_witness_cols_circle_domain_eval = stage0_witness_name_list
+                .iter()
+                .zip_eq(stage1_witness_cols.iter())
+                .flat_map(|(stage0_witness_name_list, callback_result)| {
                     callback_result
                         .iter()
                         .filter_map(|(witness_name, vec)| {
-                            if stage0_columns.contains(witness_name) {
+                            if stage0_witness_name_list.contains(witness_name) {
                                 None
                             } else {
                                 Some(gen_stwo_circle_column::<B, BaseField>(
@@ -510,9 +513,17 @@ where
 
     pub fn verify(&self, proof: &[u8], instances: &[M31]) -> Result<(), String> {
         // get public values
-        let public_values: BTreeMap<String, M31> = self
-            .analyzed
-            .get_publics()
+        let publics = self.analyzed.get_publics();
+
+        if publics.len() != instances.len() {
+            return Err(format!(
+                "Instance size mismatch: expected {}, got {}",
+                publics.len(),
+                instances.len()
+            ));
+        };
+
+        let public_values: BTreeMap<String, M31> = publics
             .iter()
             .zip_eq(instances.iter())
             .map(|((public_name, _, _, _, _), value)| (public_name.to_string(), *value))
