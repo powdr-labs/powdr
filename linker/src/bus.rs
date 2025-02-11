@@ -166,49 +166,34 @@ impl LinkerBackend for BusLinker {
             self.process_operation(name, operation, location, object);
         }
 
-        // add pil for bus multi receive batch lookup permutation
-        if !self.bus_multi_receive_args.items.is_empty() {
-            self.pil.push(PilStatement::Expression(
-                SourceRef::unknown(),
-                Expression::FunctionCall(
+        // add pil for bus_multi_send and bus_multi_receive_batch_lookup_permutation
+        for (args, path) in [
+            (
+                &mut self.bus_multi_send_args,
+                "std::protocols::bus::bus_multi_send",
+            ),
+            (
+                &mut self.bus_multi_receive_args,
+                "std::protocols::bus::bus_multi_receive_batch_lookup_permutation",
+            ),
+        ] {
+            if !args.items.is_empty() {
+                self.pil.push(PilStatement::Expression(
                     SourceRef::unknown(),
-                    FunctionCall {
-                        function: Box::new(Expression::Reference(
-                            SourceRef::unknown(),
-                            SymbolPath::from_str(
-                                "std::protocols::bus::bus_multi_receive_batch_lookup_permutation",
-                            )
-                            .unwrap()
-                            .into(),
-                        )),
-                        arguments: vec![self.bus_multi_receive_args.clone().into()],
-                    },
-                ),
-            ));
+                    Expression::FunctionCall(
+                        SourceRef::unknown(),
+                        FunctionCall {
+                            function: Box::new(Expression::Reference(
+                                SourceRef::unknown(),
+                                SymbolPath::from_str(path).unwrap().into(),
+                            )),
+                            arguments: vec![args.clone().into()],
+                        },
+                    ),
+                ));
+                args.items.clear();
+            }
         }
-
-        // add pil for bus multi send
-        if !self.bus_multi_send_args.items.is_empty() {
-            self.pil.push(PilStatement::Expression(
-                SourceRef::unknown(),
-                Expression::FunctionCall(
-                    SourceRef::unknown(),
-                    FunctionCall {
-                        function: Box::new(Expression::Reference(
-                            SourceRef::unknown(),
-                            SymbolPath::from_str("std::protocols::bus::bus_multi_send")
-                                .unwrap()
-                                .into(),
-                        )),
-                        arguments: vec![self.bus_multi_send_args.clone().into()],
-                    },
-                ),
-            ));
-        }
-
-        // clean up args for next object
-        self.bus_multi_receive_args.items.clear();
-        self.bus_multi_send_args.items.clear();
 
         // if this is the main object, call the main operation
         if *location == Location::main() {
