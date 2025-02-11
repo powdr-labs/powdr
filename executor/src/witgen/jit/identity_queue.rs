@@ -17,11 +17,7 @@ use crate::witgen::{
     data_structures::identity::Identity, jit::variable::MachineCallVariable, FixedData,
 };
 
-use super::{
-    prover_function_heuristics::ProverFunction,
-    variable::Variable,
-    witgen_inference::{Assignment, VariableOrValue},
-};
+use super::{prover_function_heuristics::ProverFunction, variable::Variable};
 
 /// Keeps track of identities that still need to be processed and
 /// updates this list based on the occurrence of updated variables
@@ -35,20 +31,9 @@ pub struct IdentityQueue<'a, T: FieldElement> {
 impl<'a, T: FieldElement> IdentityQueue<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        identities: &[(&'a Identity<T>, i32)],
-        assignments: &[Assignment<'a, T>],
-        prover_functions: &[(ProverFunction<'a, T>, i32)],
+        items: impl IntoIterator<Item = QueueItem<'a, T>>,
     ) -> Self {
-        let queue: BTreeSet<_> = identities
-            .iter()
-            .map(|(id, row)| QueueItem::Identity(id, *row))
-            .chain(assignments.iter().map(|a| QueueItem::Assignment(a.clone())))
-            .chain(
-                prover_functions
-                    .iter()
-                    .map(|(p, row)| QueueItem::ProverFunction(p.clone(), *row)),
-            )
-            .collect();
+        let queue: BTreeSet<_> = items.into_iter().collect();
         let mut references = ReferencesComputer::new(fixed_data);
         let occurrences = Rc::new(
             queue
@@ -93,25 +78,50 @@ impl<'a, T: FieldElement> IdentityQueue<'a, T> {
 #[derive(Clone)]
 pub enum QueueItem<'a, T: FieldElement> {
     Identity(&'a Identity<T>, i32),
-    Assignment(Assignment<'a, T>),
+    VariableAssignment(VariableAssignment<'a, T>),
+    ConstantAssignment(ConstantAssignment<'a, T>),
     ProverFunction(ProverFunction<'a, T>, i32),
 }
 
-/// Sorts identities by row and then by ID, preceded by assignments.
 impl<T: FieldElement> Ord for QueueItem<'_, T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
             (QueueItem::Identity(id1, row1), QueueItem::Identity(id2, row2)) => {
                 (row1, id1.id()).cmp(&(row2, id2.id()))
             }
-            (QueueItem::Assignment(a1), QueueItem::Assignment(a2)) => a1.cmp(a2),
+            (QueueItem::VariableAssignment(a1), QueueItem::VariableAssignment(a2)) => a1.cmp(a2),
+            (QueueItem::ConstantAssignment(a1), QueueItem::ConstantAssignment(a2)) => a1.cmp(a2),
             (QueueItem::ProverFunction(p1, row1), QueueItem::ProverFunction(p2, row2)) => {
                 (row1, p1.index).cmp(&(row2, p2.index))
             }
-            (QueueItem::Assignment(..), _) => std::cmp::Ordering::Less,
-            (QueueItem::Identity(..), QueueItem::Assignment(..)) => std::cmp::Ordering::Greater,
-            (QueueItem::Identity(..), QueueItem::ProverFunction(..)) => std::cmp::Ordering::Less,
-            (QueueItem::ProverFunction(..), _) => std::cmp::Ordering::Greater,
+            (a, b) => a.order().cmp(&b.order()),
+        }
+    }
+}
+
+impl<'a, T: FieldElement> QueueItem<'a, T> {
+    pub fn constant_assignment(lhs: &'a Expression<T>, rhs: T, row_offset: i32) -> Self {
+        QueueItem::ConstantAssignment(ConstantAssignment {
+            lhs,
+            row_offset,
+            rhs,
+        })
+    }
+
+    pub fn variable_assignment(lhs: &'a Expression<T>, rhs: Variable, row_offset: i32) -> Self {
+        QueueItem::VariableAssignment(VariableAssignment {
+            lhs,
+            row_offset,
+            rhs,
+        })
+    }
+
+    fn order(&self) -> u32 {
+        match self {
+            QueueItem::ConstantAssignment(..) => 0,
+            QueueItem::VariableAssignment(..) => 1,
+            QueueItem::Identity(..) => 2,
+            QueueItem::ProverFunction(..) => 3,
         }
     }
 }
@@ -129,6 +139,24 @@ impl<T: FieldElement> PartialEq for QueueItem<'_, T> {
 }
 
 impl<T: FieldElement> Eq for QueueItem<'_, T> {}
+
+/// An equality constraint between an algebraic expression evaluated
+/// on a certain row offset and a variable.
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
+pub struct VariableAssignment<'a, T: FieldElement> {
+    pub lhs: &'a Expression<T>,
+    pub row_offset: i32,
+    pub rhs: Variable,
+}
+
+/// An equality constraint between an algebraic expression evaluated
+/// on a certain row offset and a constant.
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
+pub struct ConstantAssignment<'a, T: FieldElement> {
+    pub lhs: &'a Expression<T>,
+    pub row_offset: i32,
+    pub rhs: T,
+}
 
 /// Utility to compute the variables that occur in a queue item.
 /// Follows intermediate column references and employs caches.
@@ -171,17 +199,14 @@ impl<'a, T: FieldElement> ReferencesComputer<'a, T> {
                 ),
                 Identity::Connect(..) => Box::new(std::iter::empty()),
             },
-            QueueItem::Assignment(a) => {
-                let vars_in_rhs = match &a.rhs {
-                    VariableOrValue::Variable(v) => Some(v.clone()),
-                    VariableOrValue::Value(_) => None,
-                };
-                Box::new(
-                    self.variables_in_expression(a.lhs, a.row_offset)
-                        .into_iter()
-                        .chain(vars_in_rhs),
-                )
-            }
+            QueueItem::ConstantAssignment(a) => Box::new(
+                self.variables_in_expression(a.lhs, a.row_offset)
+                    .into_iter(),
+            ),
+            QueueItem::VariableAssignment(a) => Box::new(
+                std::iter::once(a.rhs.clone())
+                    .chain(self.variables_in_expression(a.lhs, a.row_offset)),
+            ),
             QueueItem::ProverFunction(p, row) => Box::new(
                 p.condition
                     .iter()

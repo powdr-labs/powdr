@@ -32,14 +32,39 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     fn format_identities(&self) -> String {
         self.identities
             .iter()
-            .filter(|(id, row)| !self.witgen.is_complete(id, *row))
             .sorted_by_key(|(id, row)| (row, id.id()))
-            .map(|(id, row)| {
-                format!(
-                    "--------------[ identity {} on row {row}: ]--------------\n{}",
-                    id.id(),
-                    self.format_identity(id, *row)
-                )
+            .flat_map(|(id, row)| {
+                let (skip, conflicting) = match &id {
+                    Identity::BusSend(..) => (self.witgen.is_complete_call(id, *row), false),
+                    Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
+                        let value = self
+                            .witgen
+                            .evaluate(expression, *row)
+                            .and_then(|v| v.try_to_known().cloned());
+                        let conflict = value
+                            .as_ref()
+                            .and_then(|v| v.try_to_number().map(|n| n != 0.into()))
+                            .unwrap_or(false);
+                        // We can skip the identity if it does not have unknown variables
+                        // but only if there is no conflict.
+                        (value.is_some() && !conflict, conflict)
+                    }
+                    Identity::Connect(..) => (false, false),
+                };
+                if skip {
+                    None
+                } else {
+                    Some(format!(
+                        "{}--------------[ identity {} on row {row}: ]--------------\n{}",
+                        if conflicting {
+                            "--------------[ !!! CONFLICT !!! ]--------------\n"
+                        } else {
+                            ""
+                        },
+                        id.id(),
+                        self.format_identity(id, *row)
+                    ))
+                }
             })
             .join("\n")
     }
