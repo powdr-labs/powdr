@@ -7,7 +7,7 @@ use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, make_prepared_pipeline, make_simple_prepared_pipeline,
         regular_test_all_fields, regular_test_gl, resolve_test_file, test_mock_backend,
-        test_pilcom, test_plonky3_pipeline, BackendVariant,
+        test_pilcom, test_plonky3_pipeline, test_stwo_pipeline, BackendVariant,
     },
     Pipeline,
 };
@@ -41,6 +41,8 @@ fn challenges_asm() {
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
+    let pipeline = make_simple_prepared_pipeline::<Mersenne31Field>(f, LinkerMode::Bus);
+    test_stwo_pipeline(pipeline);
 }
 
 #[test]
@@ -71,6 +73,8 @@ fn second_phase_hint() {
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
+    let pipeline = make_simple_prepared_pipeline::<Mersenne31Field>(f, LinkerMode::Bus);
+    test_stwo_pipeline(pipeline);
 }
 
 #[test]
@@ -189,7 +193,8 @@ fn block_to_block_with_bus_monolithic() {
     test_plonky3_pipeline(pipeline);
     let pipeline = make_simple_prepared_pipeline::<Mersenne31Field>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
-    test_plonky3_pipeline(pipeline);
+    test_plonky3_pipeline(pipeline.clone());
+    test_stwo_pipeline(pipeline);
 }
 
 #[test]
@@ -198,6 +203,8 @@ fn block_to_block_with_bus_different_sizes() {
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
+    let pipeline = make_simple_prepared_pipeline::<Mersenne31Field>(f, LinkerMode::Bus);
+    test_stwo_pipeline(pipeline);
 }
 
 #[cfg(feature = "halo2")]
@@ -220,6 +227,29 @@ fn block_to_block_with_bus_composite() {
     // Native linker mode, because bus constraints are exponential in Halo2
     let pipeline = make_simple_prepared_pipeline(f, LinkerMode::Native);
     test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
+}
+
+#[test]
+fn static_bus() {
+    let f = "asm/static_bus.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
+}
+
+#[test]
+fn static_bus_multi() {
+    let f = "asm/static_bus_multi.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
+}
+
+#[test]
+#[should_panic = "Expected first payload entry to be a static ID"]
+fn dynamic_bus() {
+    // Witgen does not currently support this.
+    let f = "asm/dynamic_bus.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
 }
 
 #[test]
@@ -467,7 +497,7 @@ fn permutation_to_block() {
 }
 
 #[test]
-#[should_panic = "Column main_bin::pc_update is not stackable in a 1-row block, conflict in rows -1 and 0"]
+#[should_panic = "Witness generation failed."]
 fn permutation_to_vm() {
     // TODO: witgen issue: Machine incorrectly detected as block machine.
     let f = "asm/permutations/vm_to_vm.asm";

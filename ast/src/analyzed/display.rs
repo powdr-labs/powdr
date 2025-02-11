@@ -431,10 +431,27 @@ impl<T: Display> Display for PhantomBusInteractionIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "Constr::PhantomBusInteraction({}, [{}], {});",
+            "Constr::PhantomBusInteraction({}, {}, [{}], {}, [{}], [{}], {});",
             self.multiplicity,
+            self.bus_id,
             self.payload.0.iter().map(ToString::to_string).format(", "),
             self.latch,
+            self.folded_expressions
+                .0
+                .iter()
+                .map(ToString::to_string)
+                .format(", "),
+            self.accumulator_columns
+                .iter()
+                .map(ToString::to_string)
+                .format(", "),
+            match &self.helper_columns {
+                Some(helper_columns) => format!(
+                    "Option::Some([{}])",
+                    helper_columns.iter().map(ToString::to_string).format(", ")
+                ),
+                None => "Option::None".to_string(),
+            },
         )
     }
 }

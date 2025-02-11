@@ -384,24 +384,15 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             fixed_constraints: FixedColumnMap::new(None, fixed_cols.len()),
         };
 
-        let mut identities = convert_identities(analyzed);
+        let (mut identities, bus_receives) = convert_identities(analyzed);
         if stage > 0 {
             // Unfortunately, with the composite backend, we won't have the matching
             // receives in other machines, which can lead to panics. Machine calls
             // should not be executed in the second stage anyway.
             // TODO: Probably we can remove this once we handle "dynamic" busses, because
             // we need to deal with the case that sends can't be matched statically anyway.
-            identities.retain(|identity| {
-                !matches!(identity, Identity::BusSend(_) | Identity::BusReceive(_))
-            });
+            identities.retain(|identity| !matches!(identity, Identity::BusSend(_)));
         }
-        let bus_receives = identities
-            .iter()
-            .filter_map(|identity| match identity {
-                Identity::BusReceive(id) => Some((id.bus_id, id.clone())),
-                _ => None,
-            })
-            .collect();
 
         FixedData {
             analyzed,
@@ -536,6 +527,13 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
     pub fn try_column_by_name(&self, name: &str) -> Option<PolyID> {
         self.column_by_name.get(name).cloned()
+    }
+
+    pub fn try_symbol_by_name(&self, name: &str) -> Option<&Symbol> {
+        self.analyzed
+            .definitions
+            .get(name)
+            .map(|(symbol, _)| symbol)
     }
 
     fn external_witness(&self, row: DegreeType, column: &PolyID) -> Option<T> {

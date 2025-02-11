@@ -47,12 +47,24 @@ enum Constr {
     /// The actual constraint should be enforced via other constraints.
     /// Contains:
     /// - An expression for the multiplicity. Negative for bus receives.
+    /// - An expression for the bus ID. Each bus receive should have a static
+    ///   bus ID (i.e., just a number) that uniquely identifies the receive.
     /// - The tuple added to the bus.
     /// - An expression for the latch. This should be exactly what the RHS selector
     ///   would be in an equivalent lookup or permutation:
     ///   - It should always evaluate to a binary value.
     ///   - If it evaluates to zero, the multiplicity must be zero.
-    PhantomBusInteraction(expr, expr[], expr)
+    /// - A list of expressions that evaluate to the value of the folded payload,
+    ///   i.e., `beta - fingerprint_with_id(id, payload, alpha)`
+    ///   Note that this could refer to witness columns, intermediate columns, or
+    ///   in-lined expressions.
+    /// - The list of accumulator columns.
+    /// - The list of helper columns that are intermediate values 
+    ///   (but materialized witnesses) to help calculate
+    ///   the accumulator columns, so that constraints are always bounded to
+    ///   degree 3. Each set of helper columns is always shared by two bus
+    ///   interactions.
+    PhantomBusInteraction(expr, expr, expr[], expr, expr[], expr[], Option<expr[]>)
 }
 
 /// This is the result of the "$" operator. It can be used as the left and

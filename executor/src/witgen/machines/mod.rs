@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use bit_vec::BitVec;
 use dynamic_machine::DynamicMachine;
-use powdr_ast::analyzed::{self, AlgebraicExpression, DegreeRange, PolyID};
+use powdr_ast::analyzed::{self, AlgebraicExpression, ContainsNextRef, DegreeRange, PolyID};
 
 use powdr_number::DegreeType;
 use powdr_number::FieldElement;
@@ -20,10 +20,10 @@ use self::sorted_witness_machine::SortedWitnesses;
 use self::write_once_memory::WriteOnceMemory;
 
 use super::data_structures::identity::{BusReceive, Identity};
+use super::global_constraints::RangeConstraintSet;
 use super::jit::witgen_inference::CanProcessCall;
 use super::range_constraints::RangeConstraint;
-use super::rows::RowPair;
-use super::{EvalError, EvalResult, FixedData, QueryCallback};
+use super::{AffineExpression, AlgebraicVariable, EvalError, EvalResult, FixedData, QueryCallback};
 
 mod block_machine;
 mod double_sorted_witness_machine_16;
@@ -54,14 +54,16 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         );
     }
 
-    /// Returns Some(..) if this machine can alway fully process a call via the given
+    /// Returns (true, _) if this machine can alway fully process a call via the given
     /// identity, the set of known arguments and a list of range constraints
     /// on the parameters. Note that the range constraints can be imposed both
     /// on inputs and on outputs.
-    /// If this returns Some(..), then corresponding calls to `process_lookup_direct`
+    /// If this returns (true, _), then corresponding calls to `process_lookup_direct`
     /// are safe.
-    /// The value returned inside the option is a vector of range constraints on the arguments,
+    /// The second return value is a vector of range constraints on the arguments,
     /// which again can be imposed both on inputs and on outputs.
+    /// The returned range constraints can be used by the caller even if the first
+    /// return value is false.
     /// The function requires `&mut self` because it usually builds an index structure
     /// or something similar.
     fn can_process_call_fully(
@@ -69,9 +71,9 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         _can_process: impl CanProcessCall<T>,
         _identity_id: u64,
         _known_arguments: &BitVec,
-        _range_constraints: &[RangeConstraint<T>],
-    ) -> Option<Vec<RangeConstraint<T>>> {
-        None
+        range_constraints: Vec<RangeConstraint<T>>,
+    ) -> (bool, Vec<RangeConstraint<T>>) {
+        (false, range_constraints)
     }
 
     /// Like `process_plookup`, but also records the time spent in this machine.
@@ -79,10 +81,11 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &'b RowPair<'b, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         record_start(self.name());
-        let result = self.process_plookup(mutable_state, identity_id, caller_rows);
+        let result = self.process_plookup(mutable_state, identity_id, arguments, range_constraints);
         record_end(self.name());
         result
     }
@@ -105,12 +108,13 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
 
     /// Processes a connection of a given ID (which must be known to the callee).
     /// Returns an error if the query leads to a constraint failure.
-    /// Otherwise, it computes any updates to the caller row pair and returns them.
+    /// Otherwise, it computes any updates to the variables in the arguments and returns them.
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &'b RowPair<'b, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T>;
 
     /// Process a connection of a given ID (which must be known to the callee).
@@ -197,8 +201,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_arguments: &BitVec,
-        range_constraints: &[RangeConstraint<T>],
-    ) -> Option<Vec<RangeConstraint<T>>> {
+        range_constraints: Vec<RangeConstraint<T>>,
+    ) -> (bool, Vec<RangeConstraint<T>>) {
         match_variant!(
             self,
             m => m.can_process_call_fully(can_process, identity_id, known_arguments, range_constraints)
@@ -209,9 +213,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &'b RowPair<'b, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        match_variant!(self, m => m.process_plookup(mutable_state, identity_id, caller_rows))
+        match_variant!(self, m => m.process_plookup(mutable_state, identity_id, arguments, range_constraints))
     }
 
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
@@ -361,10 +366,15 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
     /// Returns a copy of the machine parts but only containing identities that
     /// have a "next" reference.
     pub fn restricted_to_identities_with_next_references(&self) -> MachineParts<'a, T> {
+        let intermediate_definitions = self.fixed_data.analyzed.intermediate_definitions();
         let identities_with_next_reference = self
             .identities
             .iter()
-            .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
+            .filter_map(|identity| {
+                identity
+                    .contains_next_ref(&intermediate_definitions)
+                    .then_some(*identity)
+            })
             .collect::<Vec<_>>();
         Self {
             identities: identities_with_next_reference,

@@ -6,7 +6,6 @@ use stwo_prover::core::backend::Column;
 use stwo_prover::core::backend::ColumnOps;
 use stwo_prover::core::channel::MerkleChannel;
 use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::prover::StarkProof;
@@ -25,8 +24,8 @@ impl<B: Backend> From<SerializableTableProvingKeyCollection> for TableProvingKey
                 let constant_trace_circle_domain = table_provingkey
                     .into_values()
                     .map(|values| {
-                        let mut column: <B as ColumnOps<M31>>::Column =
-                            <B as ColumnOps<M31>>::Column::zeros(values.len());
+                        let mut column: <B as ColumnOps<BaseField>>::Column =
+                            <B as ColumnOps<BaseField>>::Column::zeros(values.len());
                         values.iter().enumerate().for_each(|(i, v)| {
                             column.set(i, *v);
                         });
@@ -77,7 +76,7 @@ impl<B: Backend> From<SerializableStarkProvingKey> for StarkProvingKey<B> {
 
 #[derive(Serialize, Deserialize)]
 pub struct SerializableTableProvingKeyCollection {
-    constant_trace_circle_domain_collection: BTreeMap<usize, BTreeMap<usize, Vec<M31>>>,
+    constant_trace_circle_domain_collection: BTreeMap<usize, BTreeMap<usize, Vec<BaseField>>>,
 }
 
 impl<B: Backend> From<TableProvingKeyCollection<B>> for SerializableTableProvingKeyCollection {
@@ -87,7 +86,7 @@ impl<B: Backend> From<TableProvingKeyCollection<B>> for SerializableTableProving
         table_provingkey_collection
             .iter()
             .for_each(|(&size, trable_provingkey)| {
-                let mut values: BTreeMap<usize, Vec<M31>> = BTreeMap::new();
+                let mut values: BTreeMap<usize, Vec<BaseField>> = BTreeMap::new();
                 let log_size = size.ilog2();
                 trable_provingkey
                     .constant_trace_circle_domain

@@ -2,7 +2,7 @@
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, PolyID, PolynomialType,
+    AlgebraicExpression as Expression, AlgebraicReference, ContainsNextRef, PolyID, PolynomialType,
 };
 use powdr_number::FieldElement;
 
@@ -10,8 +10,9 @@ use crate::witgen::{machines::MachineParts, FixedData};
 
 use super::{
     effect::Effect,
+    identity_queue::QueueItem,
     processor::Processor,
-    prover_function_heuristics::decode_simple_prover_functions,
+    prover_function_heuristics::decode_prover_functions,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -37,6 +38,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         &self,
         can_process: impl CanProcessCall<T>,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
+        let intermediate_definitions = self.fixed_data.analyzed.intermediate_definitions();
         let all_witnesses = self
             .machine_parts
             .witnesses
@@ -56,7 +58,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             .identities
             .iter()
             .flat_map(|&id| {
-                if id.contains_next_ref() {
+                if id.contains_next_ref(&intermediate_definitions) {
                     vec![(id, 0)]
                 } else {
                     // Process it on both rows, but mark it as complete on row 0,
@@ -67,23 +69,20 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             })
             .collect_vec();
 
-        let mut witgen =
+        let witgen =
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
 
-        let prover_assignments = decode_simple_prover_functions(&self.machine_parts)
+        let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?
             .into_iter()
-            .map(|(col_name, value)| (self.column(&col_name), value))
+            // Process prover functions only on the next row.
+            .map(|f| QueueItem::ProverFunction(f, 1))
             .collect_vec();
-
-        // TODO we should only do it if other methods fail, because it is "provide_if_unknown"
-        for (col, value) in &prover_assignments {
-            witgen.assign_constant(col, 1, *value);
-        }
 
         Processor::new(
             self.fixed_data,
             self,
             identities,
+            prover_functions,
             requested_known,
             SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
@@ -239,12 +238,12 @@ namespace M(256);
         assert_eq!(
             format_code(&code),
             "\
-VM::pc[1] = (VM::pc[0] + 1);
-call_var(1, 0, 0) = VM::pc[0];
 call_var(1, 0, 1) = VM::instr_add[0];
 call_var(1, 0, 2) = VM::instr_mul[0];
-VM::B[1] = VM::B[0];
+call_var(1, 0, 0) = VM::pc[0];
+VM::pc[1] = (VM::pc[0] + 1);
 call_var(1, 1, 0) = VM::pc[1];
+VM::B[1] = VM::B[0];
 machine_call(1, [Known(call_var(1, 1, 0)), Unknown(call_var(1, 1, 1)), Unknown(call_var(1, 1, 2))]);
 VM::instr_add[1] = call_var(1, 1, 1);
 VM::instr_mul[1] = call_var(1, 1, 2);
@@ -282,12 +281,12 @@ if (VM::instr_add[0] == 1) {
         assert_eq!(
             format_code(&code),
             "\
-VM::pc[1] = VM::pc[0];
-call_var(2, 0, 0) = VM::pc[0];
-call_var(2, 0, 1) = 0;
+call_var(2, 0, 1) = VM::instr_add[0];
 call_var(2, 0, 2) = VM::instr_mul[0];
-VM::instr_add[1] = 0;
+call_var(2, 0, 0) = VM::pc[0];
+VM::pc[1] = VM::pc[0];
 call_var(2, 1, 0) = VM::pc[1];
+VM::instr_add[1] = 0;
 call_var(2, 1, 1) = 0;
 call_var(2, 1, 2) = 1;
 machine_call(2, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(call_var(2, 1, 2))]);
@@ -326,9 +325,7 @@ VM::instr_mul[1] = 1;"
                 let start = e
                     .find("The following identities have not been fully processed:")
                     .unwrap();
-                let end = e
-                    .find("The following branch decisions were taken:")
-                    .unwrap();
+                let end = e.find("Generated code so far:").unwrap();
                 let expected = "\
 The following identities have not been fully processed:
 --------------[ identity 1 on row 1: ]--------------

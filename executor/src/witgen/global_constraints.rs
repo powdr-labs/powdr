@@ -6,7 +6,7 @@ use num_traits::Zero;
 use num_traits::One;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicReferenceThin, PolyID, PolynomialType,
+    AlgebraicReference, AlgebraicReferenceThin, ContainsNextRef, PolyID, PolynomialType,
 };
 
 use powdr_number::FieldElement;
@@ -47,25 +47,26 @@ impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
 }
 
 /// A range constraint set that combines two other range constraint sets.
-pub struct CombinedRangeConstraintSet<'a, R1, R2, K, T>
+pub struct CombinedRangeConstraintSet<'a, R, K, T>
 where
     T: FieldElement,
-    R1: RangeConstraintSet<K, T>,
-    R2: RangeConstraintSet<K, T>,
+    R: RangeConstraintSet<K, T>,
 {
-    range_constraints1: &'a R1,
-    range_constraints2: &'a R2,
+    range_constraints1: &'a dyn RangeConstraintSet<K, T>,
+    range_constraints2: &'a R,
     _marker_k: PhantomData<K>,
     _marker_t: PhantomData<T>,
 }
 
-impl<'a, R1, R2, K, T> CombinedRangeConstraintSet<'a, R1, R2, K, T>
+impl<'a, R, K, T> CombinedRangeConstraintSet<'a, R, K, T>
 where
     T: FieldElement,
-    R1: RangeConstraintSet<K, T>,
-    R2: RangeConstraintSet<K, T>,
+    R: RangeConstraintSet<K, T>,
 {
-    pub fn new(range_constraints1: &'a R1, range_constraints2: &'a R2) -> Self {
+    pub fn new(
+        range_constraints1: &'a dyn RangeConstraintSet<K, T>,
+        range_constraints2: &'a R,
+    ) -> Self {
         Self {
             range_constraints1,
             range_constraints2,
@@ -75,12 +76,11 @@ where
     }
 }
 
-impl<R1, R2, K, T> RangeConstraintSet<K, T> for CombinedRangeConstraintSet<'_, R1, R2, K, T>
+impl<R, K, T> RangeConstraintSet<K, T> for CombinedRangeConstraintSet<'_, R, K, T>
 where
     T: FieldElement,
     K: Copy,
-    R1: RangeConstraintSet<K, T>,
-    R2: RangeConstraintSet<K, T>,
+    R: RangeConstraintSet<K, T>,
 {
     fn range_constraint(&self, id: K) -> Option<RangeConstraint<T>> {
         match (
@@ -255,10 +255,6 @@ fn propagate_constraints<T: FieldElement>(
                 false
             }
         }
-        // A bus receive might be part of a range constraint, which is handled in the
-        // bus send case. Even then, it is *not* removed, because it might *also* be
-        // part of a conditional range constraint.
-        Identity::BusReceive(..) => false,
         Identity::BusSend(send) => {
             let receive = send.try_match_static(bus_receives).unwrap();
             if !send.selected_payload.selector.is_one() {
@@ -365,7 +361,7 @@ fn try_transfer_constraints<T: FieldElement>(
     expr: &Expression<T>,
     known_constraints: &BTreeMap<PolyID, RangeConstraint<T>>,
 ) -> Vec<(PolyID, RangeConstraint<T>)> {
-    if expr.contains_next_ref() {
+    if expr.contains_next_ref(intermediate_definitions) {
         return vec![];
     }
 
@@ -415,7 +411,7 @@ fn smallest_period_candidate<T: FieldElement>(fixed: &[T]) -> Option<u64> {
 mod test {
     use std::collections::BTreeMap;
 
-    use powdr_ast::analyzed::{Analyzed, PolyID, PolynomialType};
+    use powdr_ast::analyzed::{PolyID, PolynomialType};
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
@@ -477,20 +473,6 @@ mod test {
         }
     }
 
-    fn identities_and_receives<T: FieldElement>(
-        analyzed: &Analyzed<T>,
-    ) -> (Vec<Identity<T>>, BTreeMap<T, BusReceive<T>>) {
-        let identities = convert_identities(analyzed);
-        let bus_receives = identities
-            .iter()
-            .filter_map(|identity| match identity {
-                Identity::BusReceive(id) => Some((id.bus_id, id.clone())),
-                _ => None,
-            })
-            .collect();
-        (identities, bus_receives)
-    }
-
     #[test]
     fn constraints_propagation() {
         let pil_source = r"
@@ -545,7 +527,7 @@ namespace Global(2**20);
             .into_iter()
             .collect()
         );
-        let (identities, receives) = identities_and_receives(&analyzed);
+        let (identities, receives) = convert_identities(&analyzed);
         for identity in &identities {
             propagate_constraints(
                 &BTreeMap::new(),
@@ -637,7 +619,7 @@ namespace Global(2**20);
             .into_iter()
             .collect()
         );
-        let (identities, receives) = identities_and_receives(&analyzed);
+        let (identities, receives) = convert_identities(&analyzed);
         for identity in &identities {
             propagate_constraints(
                 &BTreeMap::new(),
@@ -687,7 +669,7 @@ namespace Global(1024);
         let mut known_constraints = vec![(constant_poly_id(0), RangeConstraint::from_max_bit(7))]
             .into_iter()
             .collect();
-        let (identities, receives) = identities_and_receives(&analyzed);
+        let (identities, receives) = convert_identities(&analyzed);
         let removed = propagate_constraints(
             &BTreeMap::new(),
             &mut known_constraints,

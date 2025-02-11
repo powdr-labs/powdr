@@ -1,5 +1,6 @@
 mod codegen;
 mod compiler;
+pub mod util_code;
 
 use std::{
     collections::{HashMap, HashSet},
@@ -7,13 +8,13 @@ use std::{
     sync::Arc,
 };
 
-use codegen::CodeGenerator;
 use compiler::{generate_glue_code, load_library};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::FieldElement;
 
+pub use codegen::{CodeGenerator, DefinitionFetcher};
 pub use compiler::call_cargo;
 
 pub struct CompiledPIL {
@@ -58,7 +59,7 @@ pub fn compile<T: FieldElement>(
     // TODO this should be changed back to Info after the introduction of the ToCol trait.
     log::debug!("JIT-compiling {} symbols...", requested_symbols.len());
 
-    let mut codegen = CodeGenerator::new(analyzed);
+    let mut codegen = CodeGenerator::<T, _>::new(analyzed);
     let successful_symbols = requested_symbols
         .iter()
         .filter_map(|&sym| match codegen.request_symbol(sym, &[]) {

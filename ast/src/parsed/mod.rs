@@ -929,6 +929,7 @@ impl<R> Expression<R> {
     }
 
     /// Returns true if the expression contains a reference to a next value
+    // TODO: Is it fine that this does not check references to intermediate polynomials?
     pub fn contains_next_ref(&self) -> bool {
         self.expr_any(|e| {
             matches!(

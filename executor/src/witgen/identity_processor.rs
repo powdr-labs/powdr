@@ -42,8 +42,6 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
                 &bus_interaction.selected_payload,
                 rows,
             ),
-            // Bus receives are handled when they are matched with a send.
-            Identity::BusReceive(_) => Ok(EvalValue::complete(vec![])),
             Identity::Connect(..) => {
                 // TODO this is not the right cause.
                 Ok(EvalValue::incomplete(IncompleteCause::SolvingFailed))
@@ -77,7 +75,17 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
             return Ok(status);
         }
 
-        self.mutable_state.call(id, rows)
+        let left = match left
+            .expressions
+            .iter()
+            .map(|e| rows.evaluate(e))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(expressions) => expressions,
+            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
+        };
+
+        self.mutable_state.call(id, &left, rows)
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.
@@ -104,11 +112,11 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
             .ok_or(EvalError::Generic("Selector is not 1!".to_string()))?;
 
         let range_constraint =
-            CombinedRangeConstraintSet::new(outer_query.caller_rows, current_rows);
+            CombinedRangeConstraintSet::new(outer_query.range_constraints, current_rows);
 
         let mut updates = EvalValue::complete(vec![]);
 
-        for (l, r) in outer_query.left.iter().zip(right.expressions.iter()) {
+        for (l, r) in outer_query.arguments.iter().zip(right.expressions.iter()) {
             match current_rows.evaluate(r) {
                 Ok(r) => {
                     let result = (l.clone() - r).solve_with_range_constraints(&range_constraint)?;
