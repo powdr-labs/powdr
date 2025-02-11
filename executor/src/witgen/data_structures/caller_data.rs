@@ -2,8 +2,8 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    machines::LookupCell, processor::OuterQuery, AffineExpression, AlgebraicVariable, EvalError,
-    EvalResult, EvalValue,
+    global_constraints::RangeConstraintSet, machines::LookupCell, processor::OuterQuery,
+    AffineExpression, AlgebraicVariable, EvalError, EvalResult, EvalValue,
 };
 
 /// A representation of the caller's data.
@@ -14,6 +14,8 @@ pub struct CallerData<'a, 'b, T> {
     data: Vec<T>,
     /// The affine expressions of the caller.
     arguments: &'b [AffineExpression<AlgebraicVariable<'a>, T>],
+    /// Range constraints coming from the caller.
+    range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
 }
 
 impl<'a, 'b, T: FieldElement> From<&'b OuterQuery<'a, '_, T>> for CallerData<'a, 'b, T> {
@@ -27,20 +29,25 @@ impl<'a, 'b, T: FieldElement> From<&'b OuterQuery<'a, '_, T>> for CallerData<'a,
         Self {
             data,
             arguments: &outer_query.arguments,
+            range_constraints: outer_query.range_constraints,
         }
     }
 }
 
-impl<'a, 'b, T: FieldElement> From<&'b [AffineExpression<AlgebraicVariable<'a>, T>]>
-    for CallerData<'a, 'b, T>
-{
-    /// Builds a `CallerData` from an `Arguments`.
-    fn from(arguments: &'b [AffineExpression<AlgebraicVariable<'a>, T>]) -> Self {
+impl<'a, 'b, T: FieldElement> CallerData<'a, 'b, T> {
+    pub fn new(
+        arguments: &'b [AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
+    ) -> Self {
         let data = arguments
             .iter()
             .map(|l| l.constant_value().unwrap_or_default())
             .collect();
-        Self { data, arguments }
+        Self {
+            data,
+            arguments,
+            range_constraints,
+        }
     }
 }
 
@@ -67,7 +74,7 @@ impl<'a, 'b, T: FieldElement> From<CallerData<'a, 'b, T>> for EvalResult<'a, T> 
         for (l, v) in data.arguments.iter().zip_eq(data.data.iter()) {
             if !l.is_constant() {
                 let evaluated = l.clone() - (*v).into();
-                match evaluated.solve() {
+                match evaluated.solve_with_range_constraints(data.range_constraints) {
                     Ok(constraints) => {
                         result.combine(constraints);
                     }

@@ -7,8 +7,8 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     jit::{
-        processor::Processor, prover_function_heuristics::decode_prover_functions,
-        witgen_inference::Assignment,
+        identity_queue::QueueItem, processor::Processor,
+        prover_function_heuristics::decode_prover_functions,
     },
     machines::MachineParts,
     FixedData,
@@ -54,6 +54,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_args: &BitVec,
+        known_concrete: Option<(usize, T)>,
     ) -> Result<(ProcessorResult<T>, Vec<ProverFunction<'a, T>>), String> {
         let connection = self.machine_parts.connections[&identity_id];
         assert_eq!(connection.right.expressions.len(), known_args.len());
@@ -68,33 +69,43 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
         let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
 
+        let mut queue_items = vec![];
+
         // In the latch row, set the RHS selector to 1.
-        let mut assignments = vec![];
         let selector = &connection.right.selector;
-        assignments.push(Assignment::assign_constant(
+        queue_items.push(QueueItem::constant_assignment(
             selector,
-            self.latch_row as i32,
             T::one(),
+            self.latch_row as i32,
         ));
+
+        if let Some((index, value)) = known_concrete {
+            // Set the known argument to the concrete value.
+            queue_items.push(QueueItem::constant_assignment(
+                &connection.right.expressions[index],
+                value,
+                self.latch_row as i32,
+            ));
+        }
 
         // Set all other selectors to 0 in the latch row.
         for other_connection in self.machine_parts.connections.values() {
             let other_selector = &other_connection.right.selector;
             if other_selector != selector {
-                assignments.push(Assignment::assign_constant(
+                queue_items.push(QueueItem::constant_assignment(
                     other_selector,
-                    self.latch_row as i32,
                     T::zero(),
+                    self.latch_row as i32,
                 ));
             }
         }
 
         // For each argument, connect the expression on the RHS with the formal parameter.
         for (index, expr) in connection.right.expressions.iter().enumerate() {
-            assignments.push(Assignment::assign_variable(
+            queue_items.push(QueueItem::variable_assignment(
                 expr,
-                self.latch_row as i32,
                 Variable::Param(index),
+                self.latch_row as i32,
             ));
         }
 
@@ -132,6 +143,11 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .collect_vec()
         });
 
+        // Add the prover functions
+        queue_items.extend(prover_functions.iter().flat_map(|f| {
+            (0..self.block_size).map(move |row| QueueItem::ProverFunction(f.clone(), row as i32))
+        }));
+
         let requested_known = known_args
             .iter()
             .enumerate()
@@ -140,19 +156,13 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             self.fixed_data,
             self,
             identities,
-            assignments,
+            queue_items,
             requested_known,
             BLOCK_MACHINE_MAX_BRANCH_DEPTH,
         )
         .with_block_shape_check()
         .with_block_size(self.block_size)
         .with_requested_range_constraints((0..known_args.len()).map(Variable::Param))
-        .with_prover_functions(
-            prover_functions
-                .iter()
-                .flat_map(|f| (0..self.block_size).map(move |row| (f.clone(), row as i32)))
-                .collect_vec()
-        )
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string_with_variable_formatter(|var| match var {
@@ -263,7 +273,7 @@ mod test {
         );
 
         processor
-            .generate_code(&mutable_state, connection_id, &known_values)
+            .generate_code(&mutable_state, connection_id, &known_values, None)
             .map(|(result, _)| result)
     }
 
@@ -330,10 +340,10 @@ params[2] = Add::c[0];"
         assert_eq!(c_rc, &RangeConstraint::from_mask(0xffffffffu64));
         assert_eq!(
             format_code(&result.code),
-            "main_binary::operation_id[3] = params[0];
+            "main_binary::sel[0][3] = 1;
+main_binary::operation_id[3] = params[0];
 main_binary::A[3] = params[1];
 main_binary::B[3] = params[2];
-main_binary::sel[0][3] = 1;
 main_binary::operation_id[2] = main_binary::operation_id[3];
 main_binary::operation_id[1] = main_binary::operation_id[2];
 main_binary::operation_id[0] = main_binary::operation_id[1];
