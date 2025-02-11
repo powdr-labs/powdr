@@ -321,20 +321,6 @@ let bus_multi_receive_batch_lookup_permutation: (expr, expr, expr[], int)[] -> (
     bus_multi_receive(inputs_inner);
 };
 
-
-/// Batched version of `lookup_receive` that uses the more column-saving `bus_multi_receive`.
-/// Ideally, should use `bus_multi_receive` to batch both lookup and permutation receives.
-let lookup_multi_receive: (expr, expr, expr[])[] -> () = constr |inputs| {
-    let inputs_inner: (expr, expr[], expr, expr)[] = array::fold(inputs, [], constr |acc, input| {
-        let (id, selector, tuple) = input;
-        let multiplicity;
-        (1 - selector) * multiplicity = 0;
-        acc + [(id, tuple, multiplicity, selector)]
-    });
-    bus_multi_receive(inputs_inner);
-};
-
-
 /// Builds a single bus interaction by using `bus_multi_interaction` for optimized performance.
 /// This is for user's convenience to supply inputs directly rather than a vector of tuples of inputs in the multi version.
 let bus_interaction: expr, expr[], expr, expr -> () = constr |id, payload, multiplicity, latch| {
