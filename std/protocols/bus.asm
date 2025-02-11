@@ -299,6 +299,42 @@ let bus_multi_receive: (expr, expr[], expr, expr)[] -> () = constr |bus_inputs| 
     bus_multi_interaction(ids, payloads, negated_multiplicities, latches);
 };
 
+/// Exposed to the linker and not intended for end user because it requires expert knowledge of Powdr's bus protocol.
+/// Inputs in the order of: id, selector, payload, is_permutation for both lookup and permutation.
+let bus_multi_receive_batch_lookup_permutation: (expr, expr, expr[], int)[] -> () = constr |inputs| {
+    // Lookup requires adding a multiplicity column and constraining it to zero if selector is zero.
+    // Permutation passes the selector to both multiplicity and latch fields as well.
+    let inputs_inner: (expr, expr[], expr, expr)[] = array::fold(inputs, [], constr |acc, input| {
+        // Converted to input format for the inner function `bus_multi_receive`:
+        // For lookup, format is id, payload, multiplicity, selector
+        // For permutation, format is id, payload, selector, selector
+        let (id, selector, payload, is_permutation) = input;
+        let multiplicity = if is_permutation == 1 {
+            selector
+        } else {
+            let multiplicity;
+            (1 - selector) * multiplicity = 0;
+            multiplicity
+        };
+        acc + [(id, payload, multiplicity, selector)]
+    });
+    bus_multi_receive(inputs_inner);
+};
+
+
+/// Batched version of `lookup_receive` that uses the more column-saving `bus_multi_receive`.
+/// Ideally, should use `bus_multi_receive` to batch both lookup and permutation receives.
+let lookup_multi_receive: (expr, expr, expr[])[] -> () = constr |inputs| {
+    let inputs_inner: (expr, expr[], expr, expr)[] = array::fold(inputs, [], constr |acc, input| {
+        let (id, selector, tuple) = input;
+        let multiplicity;
+        (1 - selector) * multiplicity = 0;
+        acc + [(id, tuple, multiplicity, selector)]
+    });
+    bus_multi_receive(inputs_inner);
+};
+
+
 /// Builds a single bus interaction by using `bus_multi_interaction` for optimized performance.
 /// This is for user's convenience to supply inputs directly rather than a vector of tuples of inputs in the multi version.
 let bus_interaction: expr, expr[], expr, expr -> () = constr |id, payload, multiplicity, latch| {
