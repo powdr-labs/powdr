@@ -10,6 +10,7 @@ use crate::witgen::{machines::MachineParts, FixedData};
 
 use super::{
     effect::Effect,
+    identity_queue::QueueItem,
     processor::Processor,
     prover_function_heuristics::decode_prover_functions,
     variable::{Cell, Variable},
@@ -74,18 +75,17 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?
             .into_iter()
             // Process prover functions only on the next row.
-            .map(|f| (f, 1))
+            .map(|f| QueueItem::ProverFunction(f, 1))
             .collect_vec();
 
         Processor::new(
             self.fixed_data,
             self,
             identities,
-            vec![],
+            prover_functions,
             requested_known,
             SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
-        .with_prover_functions(prover_functions)
         .generate_code(can_process, witgen)
         .map_err(|e| e.to_string())
         .map(|r| r.code)

@@ -56,6 +56,16 @@ pub struct AffineSymbolicExpression<T: FieldElement, V> {
     range_constraints: BTreeMap<V, RangeConstraint<T>>,
 }
 
+impl<T: FieldElement, V> Default for AffineSymbolicExpression<T, V> {
+    fn default() -> Self {
+        Self {
+            coefficients: Default::default(),
+            offset: T::zero().into(),
+            range_constraints: Default::default(),
+        }
+    }
+}
+
 /// Display for affine symbolic expressions, for informational purposes only.
 impl<T: FieldElement, V: Display> Display for AffineSymbolicExpression<T, V> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

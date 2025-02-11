@@ -36,12 +36,12 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval> {
     branches_taken: Vec<(Variable, RangeConstraint<T>)>,
     derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
     known_variables: HashSet<Variable>,
-    /// Identities that have already been completed.
-    /// Completed identities are still processed to propagate range constraints
+    /// Submachine calls that have already been completed.
+    /// These are still processed to propagate range constraints
     /// and concrete values.
-    /// This mainly avoids generating multiple submachine calls for the same
+    /// This avoids generating multiple submachine calls for the same
     /// connection on the same row.
-    complete_identities: HashSet<(u64, i32)>,
+    complete_calls: HashSet<(u64, i32)>,
     code: Vec<Effect<T, Variable>>,
 }
 
@@ -77,7 +77,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         fixed_data: &'a FixedData<'a, T>,
         fixed_evaluator: FixedEval,
         known_variables: impl IntoIterator<Item = Variable>,
-        complete_identities: impl IntoIterator<Item = (u64, i32)>,
+        complete_calls: impl IntoIterator<Item = (u64, i32)>,
     ) -> Self {
         Self {
             fixed_data,
@@ -85,7 +85,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             branches_taken: Default::default(),
             derived_range_constraints: Default::default(),
             known_variables: known_variables.into_iter().collect(),
-            complete_identities: complete_identities.into_iter().collect(),
+            complete_calls: complete_calls.into_iter().collect(),
             code: Default::default(),
         }
     }
@@ -114,9 +114,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    pub fn is_complete(&self, identity: &Identity<T>, row_offset: i32) -> bool {
-        self.complete_identities
-            .contains(&(identity.id(), row_offset))
+    pub fn is_complete_call(&self, identity: &Identity<T>, row_offset: i32) -> bool {
+        assert!(matches!(identity, Identity::BusSend(_)));
+        self.complete_calls.contains(&(identity.id(), row_offset))
     }
 
     pub fn value(&self, variable: &Variable) -> Value<T> {
@@ -165,20 +165,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.add_range_constraint(var.clone(), range_constraint);
     }
 
-    pub fn process_polynomial_identity(
-        &mut self,
-        identity_id: u64,
-        expression: &'a Expression<T>,
-        row_offset: i32,
-    ) -> Result<Vec<Variable>, Error> {
-        let result = self.process_equality_on_row(
-            expression,
-            row_offset,
-            &VariableOrValue::Value(T::from(0)),
-        )?;
-        self.ingest_effects(result, Some((identity_id, row_offset)))
-    }
-
     pub fn process_call(
         &mut self,
         can_process_call: impl CanProcessCall<T>,
@@ -195,15 +181,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             row_offset,
         );
         self.ingest_effects(result, Some((lookup_id, row_offset)))
-    }
-
-    pub fn process_assignment(
-        &mut self,
-        assignment: &Assignment<'a, T>,
-    ) -> Result<Vec<Variable>, Error> {
-        let result =
-            self.process_equality_on_row(assignment.lhs, assignment.row_offset, &assignment.rhs)?;
-        self.ingest_effects(result, None)
     }
 
     /// Process a prover function on a row, i.e. determine if we can execute it and if it will
@@ -259,31 +236,46 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         )
     }
 
-    /// Processes an equality constraint.
+    /// Processes the equality constraint `lhs = variable + offset` with row offset `row_offset`.
+    /// If `variable` is `None`, it is treated as zero.
     /// If this returns an error, it means we have conflicting constraints.
-    fn process_equality_on_row(
-        &self,
+    pub fn process_equation_on_row(
+        &mut self,
         lhs: &Expression<T>,
-        offset: i32,
-        rhs: &VariableOrValue<T, Variable>,
-    ) -> Result<ProcessResult<T, Variable>, Error> {
+        variable: Option<Variable>,
+        offset: T,
+        row_offset: i32,
+    ) -> Result<Vec<Variable>, Error> {
         // Try to find a new assignment to a variable in the equality.
-        let mut result = self.process_equality_on_row_using_evaluator(lhs, offset, rhs, false)?;
+        let mut result = self.process_equation_on_row_using_evaluator(
+            lhs,
+            variable.clone(),
+            offset,
+            row_offset,
+            false,
+        )?;
         // Try to propagate range constraints.
         let result_concrete =
-            self.process_equality_on_row_using_evaluator(lhs, offset, rhs, true)?;
+            self.process_equation_on_row_using_evaluator(lhs, variable, offset, row_offset, true)?;
 
         // We only use the effects of the second evaluation,
         // its `complete` flag is ignored.
         result.effects.extend(result_concrete.effects);
-        Ok(result)
+
+        self.ingest_effects(result, None)
     }
 
-    fn process_equality_on_row_using_evaluator(
+    /// Processes the equality constraint `lhs = variable + offset`.
+    /// If `variable` is `None`, it is treated as zero.
+    /// If `only_concrete_known` is true, then only variables that are known to have a fixed value
+    /// are considered known.
+    /// If this returns an error, it means we have conflicting constraints.
+    fn process_equation_on_row_using_evaluator(
         &self,
         lhs: &Expression<T>,
-        offset: i32,
-        rhs: &VariableOrValue<T, Variable>,
+        variable: Option<Variable>,
+        offset: T,
+        row_offset: i32,
         only_concrete_known: bool,
     ) -> Result<ProcessResult<T, Variable>, Error> {
         let evaluator = if only_concrete_known {
@@ -291,14 +283,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         } else {
             Evaluator::new(self)
         };
-        let Some(lhs_evaluated) = evaluator.evaluate(lhs, offset) else {
+        let Some(lhs_evaluated) = evaluator.evaluate(lhs, row_offset) else {
             return Ok(ProcessResult::empty());
         };
-        let rhs_evaluated = match rhs {
-            VariableOrValue::Variable(v) => evaluator.evaluate_variable(v.clone()),
-            VariableOrValue::Value(v) => (*v).into(),
-        };
-        (lhs_evaluated - rhs_evaluated).solve()
+        let variable = variable
+            .map(|v| evaluator.evaluate_variable(v.clone()))
+            .unwrap_or_default();
+
+        (lhs_evaluated - variable - offset.into()).solve()
     }
 
     fn process_call_inner(
@@ -415,7 +407,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     // If the machine call is already complete, it means that we should
                     // not create another submachine call. We might still process it
                     // multiple times to get better range constraints.
-                    if self.complete_identities.insert(identity_id.unwrap()) {
+                    if self.complete_calls.insert(identity_id.unwrap()) {
                         log::trace!("Machine call: {:?}", identity_id.unwrap());
                         assert!(process_result.complete);
                         for v in vars {
@@ -429,15 +421,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 }
                 Effect::Assertion(_) => self.code.push(e),
                 Effect::Branch(..) => unreachable!(),
-            }
-        }
-        if process_result.complete {
-            if let Some(identity_id) = identity_id {
-                // We actually only need to store completeness for submachine calls,
-                // but we do it for all identities.
-                // TODO this is not correct, somehow we get problems if we do not provide
-                // IDs for poly identities. Need to revisit this.
-                self.complete_identities.insert(identity_id);
             }
         }
         Ok(updated_variables)
@@ -620,56 +603,6 @@ fn is_known_zero<T: FieldElement>(x: &Option<AffineSymbolicExpression<T, Variabl
         .unwrap_or(false)
 }
 
-// TODO  we could split theassignmnet into variable and constant now.
-
-/// An equality constraint between an algebraic expression evaluated
-/// on a certain row offset and a variable or fixed constant value.
-#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]
-pub struct Assignment<'a, T: FieldElement> {
-    pub lhs: &'a Expression<T>,
-    pub row_offset: i32,
-    pub rhs: VariableOrValue<T, Variable>,
-}
-
-impl<'a, T: FieldElement> Assignment<'a, T> {
-    pub fn assign_constant(lhs: &'a Expression<T>, row_offset: i32, rhs: T) -> Self {
-        Self {
-            lhs,
-            row_offset,
-            rhs: VariableOrValue::Value(rhs),
-        }
-    }
-
-    pub fn assign_variable(lhs: &'a Expression<T>, row_offset: i32, rhs: Variable) -> Self {
-        Self {
-            lhs,
-            row_offset,
-            rhs: VariableOrValue::Variable(rhs),
-        }
-    }
-}
-
-#[derive(Clone, derive_more::Display, Ord, PartialOrd, Eq, PartialEq, Debug)]
-pub enum VariableOrValue<T, V> {
-    Variable(V),
-    Value(T),
-}
-
-impl<T: FieldElement> Display for Assignment<'_, T> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{} = {} [row {}]",
-            self.lhs,
-            match &self.rhs {
-                VariableOrValue::Variable(v) => v.to_string(),
-                VariableOrValue::Value(v) => v.to_string(),
-            },
-            self.row_offset
-        )
-    }
-}
-
 pub trait FixedEvaluator<T: FieldElement>: Clone {
     /// Evaluate a fixed column cell and returns its value if it is
     /// compile-time constant, otherwise return None.
@@ -776,8 +709,8 @@ mod test {
             for row in rows {
                 for id in fixed_data.identities.iter() {
                     let updated_vars = match id {
-                        Identity::Polynomial(PolynomialIdentity { id, expression, .. }) => witgen
-                            .process_polynomial_identity(*id, expression, *row)
+                        Identity::Polynomial(PolynomialIdentity { expression, .. }) => witgen
+                            .process_equation_on_row(expression, None, 0.into(), *row)
                             .unwrap(),
                         Identity::BusSend(BusSend {
                             bus_id: _,
@@ -793,11 +726,7 @@ mod test {
                                 });
                                 updated_vars.extend(
                                     witgen
-                                        .process_assignment(&Assignment {
-                                            lhs: arg,
-                                            row_offset: *row,
-                                            rhs: VariableOrValue::Variable(var),
-                                        })
+                                        .process_equation_on_row(arg, Some(var), 0.into(), *row)
                                         .unwrap(),
                                 );
                             }
