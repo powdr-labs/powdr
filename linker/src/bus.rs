@@ -171,71 +171,29 @@ impl LinkerBackend for BusLinker {
             self.process_operation(name, operation, location, object);
         }
 
-        // add pil for bus multi send
-        if !self.bus_multi_send_args.items.is_empty() {
-            self.pil.push(PilStatement::Expression(
-                SourceRef::unknown(),
-                Expression::FunctionCall(
+        // add pil for bus_multi_send, lookup_multi_receive, and permutation_multi_receive
+        for (args, path) in [
+            (&mut self.bus_multi_send_args, "std::protocols::bus::bus_multi_send"),
+            (&mut self.lookup_multi_receive_args, "std::protocols::lookup_via_bus::lookup_multi_receive"),
+            (&mut self.permutation_multi_receive_args, "std::protocols::permutation_via_bus::permutation_multi_receive"),
+        ] {
+            if !args.items.is_empty() {
+                self.pil.push(PilStatement::Expression(
                     SourceRef::unknown(),
-                    FunctionCall {
-                        function: Box::new(Expression::Reference(
-                            SourceRef::unknown(),
-                            SymbolPath::from_str("std::protocols::bus::bus_multi_send")
-                                .unwrap()
-                                .into(),
-                        )),
-                        arguments: vec![self.bus_multi_send_args.clone().into()],
-                    },
-                ),
-            ));
+                    Expression::FunctionCall(
+                        SourceRef::unknown(),
+                        FunctionCall {
+                            function: Box::new(Expression::Reference(
+                                SourceRef::unknown(),
+                                SymbolPath::from_str(path).unwrap().into(),
+                            )),
+                            arguments: vec![args.clone().into()],
+                        },
+                    ),
+                ));
+                args.items.clear();
+            }
         }
-
-        // add pil for lookup multi receive
-        if !self.lookup_multi_receive_args.items.is_empty() {
-            self.pil.push(PilStatement::Expression(
-                SourceRef::unknown(),
-                Expression::FunctionCall(
-                    SourceRef::unknown(),
-                    FunctionCall {
-                        function: Box::new(Expression::Reference(
-                            SourceRef::unknown(),
-                            SymbolPath::from_str(
-                                "std::protocols::lookup_via_bus::lookup_multi_receive",
-                            )
-                            .unwrap()
-                            .into(),
-                        )),
-                        arguments: vec![self.lookup_multi_receive_args.clone().into()],
-                    },
-                ),
-            ));
-        }
-
-        // add pil for permutation multi receive
-        if !self.permutation_multi_receive_args.items.is_empty() {
-            self.pil.push(PilStatement::Expression(
-                SourceRef::unknown(),
-                Expression::FunctionCall(
-                    SourceRef::unknown(),
-                    FunctionCall {
-                        function: Box::new(Expression::Reference(
-                            SourceRef::unknown(),
-                            SymbolPath::from_str(
-                                "std::protocols::permutation_via_bus::permutation_multi_receive",
-                            )
-                            .unwrap()
-                            .into(),
-                        )),
-                        arguments: vec![self.permutation_multi_receive_args.clone().into()],
-                    },
-                ),
-            ));
-        }
-
-        // clean up args for next object
-        self.lookup_multi_receive_args.items.clear();
-        self.permutation_multi_receive_args.items.clear();
-        self.bus_multi_send_args.items.clear();
 
         // if this is the main object, call the main operation
         if *location == Location::main() {
