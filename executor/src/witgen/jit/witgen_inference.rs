@@ -341,12 +341,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .collect_vec();
         let known: BitVec = arguments.iter().map(|v| self.is_known(v)).collect();
 
-        let (can_process, new_range_constraints) =
-            can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints);
+        let (can_process, range_constraints) =
+            can_process_call.can_process_call_fully(lookup_id, &known, range_constraints);
 
         let mut effects = arguments
             .iter()
-            .zip_eq(new_range_constraints)
+            .zip_eq(range_constraints)
             .map(|(var, new_rc)| Effect::RangeConstraint(var.clone(), new_rc.clone()))
             .collect_vec();
         if can_process {
@@ -691,7 +691,7 @@ pub trait CanProcessCall<T: FieldElement>: Clone {
         &self,
         _identity_id: u64,
         _known_inputs: &BitVec,
-        _range_constraints: &[RangeConstraint<T>],
+        _range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>);
 }
 
@@ -700,7 +700,7 @@ impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'
         &self,
         identity_id: u64,
         known_inputs: &BitVec,
-        range_constraints: &[RangeConstraint<T>],
+        range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
         MutableState::can_process_call_fully(self, identity_id, known_inputs, range_constraints)
     }

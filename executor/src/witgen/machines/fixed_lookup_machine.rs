@@ -312,10 +312,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         _can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_arguments: &BitVec,
-        range_constraints: &[RangeConstraint<T>],
+        range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
         if !Self::is_responsible(&self.connections[&identity_id]) {
-            return (false, range_constraints.to_vec());
+            return (false, range_constraints);
         }
         let index = self
             .indices
@@ -328,7 +328,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             });
         let input_range_constraints = known_arguments
             .iter()
-            .zip_eq(range_constraints)
+            .zip_eq(&range_constraints)
             .filter_map(|(is_known, range_constraint)| is_known.then_some(range_constraint.clone()))
             .collect_vec();
 
@@ -344,7 +344,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .collect_vec();
         let cache_key = RangeConstraintCacheKey {
             columns: columns.clone(),
-            range_constraints: range_constraints.to_vec(),
+            range_constraints: range_constraints.clone(),
         };
         let new_range_constraints = self
             .range_constraint_indices
@@ -360,7 +360,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
 
                 (0..degree)
                     .map(|row| columns.iter().map(|col| col[row]).collect::<Vec<_>>())
-                    .filter(|values| matches_range_constraint(values, range_constraints))
+                    .filter(|values| matches_range_constraint(values, &range_constraints))
                     .map(|values| {
                         values
                             .into_iter()
@@ -385,7 +385,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             // no way to signal this in the return type, yet.
             // TODO(#2324): change this.
             // We just return the input range constraints to signal "everything allright".
-            (can_answer, range_constraints.to_vec())
+            (can_answer, range_constraints)
         }
     }
 

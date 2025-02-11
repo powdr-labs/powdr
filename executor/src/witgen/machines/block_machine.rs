@@ -170,7 +170,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_arguments: &BitVec,
-        range_constraints: &[RangeConstraint<T>],
+        range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
         // We use the input range constraints to see if there is a column
         // containing the substring "operation_id" which is constrained to a
@@ -186,7 +186,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             operation_id,
         ) {
             Some(entry) => (true, entry.range_constraints.clone()),
-            None => (false, range_constraints.to_vec()),
+            None => (false, range_constraints),
         }
     }
 

@@ -71,9 +71,9 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         _can_process: impl CanProcessCall<T>,
         _identity_id: u64,
         _known_arguments: &BitVec,
-        range_constraints: &[RangeConstraint<T>],
+        range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
-        (false, range_constraints.to_vec())
+        (false, range_constraints)
     }
 
     /// Like `process_plookup`, but also records the time spent in this machine.
@@ -201,7 +201,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_arguments: &BitVec,
-        range_constraints: &[RangeConstraint<T>],
+        range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
         match_variant!(
             self,

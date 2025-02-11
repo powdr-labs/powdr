@@ -197,7 +197,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
         _can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_arguments: &BitVec,
-        range_constraints: &[RangeConstraint<T>],
+        range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
         assert!(self.parts.connections.contains_key(&identity_id));
         assert_eq!(known_arguments.len(), 4);
@@ -207,7 +207,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
 
         // We need to known operation_id, step and address for all calls.
         if !known_arguments[0] || !known_arguments[1] || !known_arguments[2] {
-            return (false, range_constraints.to_vec());
+            return (false, range_constraints);
         }
 
         // For the value, it depends: If we write, we need to know it, if we read we do not need to know it.
@@ -219,7 +219,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
             !range_constraints[0].allows_value(T::from(OPERATION_ID_BOOTLOADER_WRITE))
                 && !range_constraints[0].allows_value(T::from(OPERATION_ID_WRITE))
         };
-        (can_answer, range_constraints.to_vec())
+        (can_answer, range_constraints)
     }
 
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
