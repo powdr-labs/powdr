@@ -15,6 +15,7 @@ use crate::witgen::{
 };
 
 use super::{
+    effect::Effect,
     processor::ProcessorResult,
     prover_function_heuristics::ProverFunction,
     variable::{Cell, Variable},
@@ -117,29 +118,20 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .identities
             .iter()
             .any(|id| id.contains_next_ref(&intermediate_definitions));
-        let start_row = if !have_next_ref {
+        let (start_row, end_row) = if !have_next_ref {
             // No identity contains a next reference - we do not need to consider row -1,
             // and the block has to be rectangular-shaped.
-            0
+            (0, self.block_size as i32 - 1)
         } else {
             // A machine that might have a non-rectangular shape.
             // We iterate over all rows of the block +/- one row.
-            -1
+            (-1, self.block_size as i32)
         };
-        let identities = (start_row..self.block_size as i32).flat_map(|row| {
+        let identities = (start_row..=end_row).flat_map(|row| {
             self.machine_parts
                 .identities
                 .iter()
-                .filter_map(|id| {
-                    // Filter out identities with next references on the last row.
-                    if row as usize == self.block_size - 1
-                        && id.contains_next_ref(&intermediate_definitions)
-                    {
-                        None
-                    } else {
-                        Some((*id, row))
-                    }
-                })
+                .map(|id| (*id, row))
                 .collect_vec()
         });
 
@@ -160,7 +152,6 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             requested_known,
             BLOCK_MACHINE_MAX_BRANCH_DEPTH,
         )
-        .with_block_shape_check()
         .with_block_size(self.block_size)
         .with_requested_range_constraints((0..known_args.len()).map(Variable::Param))
         .generate_code(can_process, witgen)
@@ -183,7 +174,38 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .format("\n  ");
             format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
         })?;
+        self.check_block_shape(&result.code)?;
         Ok((result, prover_functions))
+    }
+
+    fn check_block_shape(&self, code: &[Effect<T, Variable>]) -> Result<(), String> {
+        for (column_id, row_offsets) in code
+            .iter()
+            .flat_map(|e| e.written_vars())
+            .filter_map(|(v, _)| match v {
+                Variable::WitnessCell(cell) => Some((cell.id, cell.row_offset)),
+                _ => None,
+            })
+            .unique()
+            .into_group_map()
+        {
+            let row_offsets: BTreeSet<_> = row_offsets.into_iter().collect();
+            for offset in &row_offsets {
+                if row_offsets.contains(&(*offset + self.block_size as i32)) {
+                    return Err(format!(
+                        "Column {} is not stackable in a {}-row block, conflict in rows {} and {}.",
+                        self.fixed_data.column_name(&PolyID {
+                            id: column_id,
+                            ptype: PolynomialType::Committed
+                        }),
+                        self.block_size,
+                        offset,
+                        offset + self.block_size as i32
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 }
 
