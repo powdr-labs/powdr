@@ -392,10 +392,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
     ) -> EvalResult<'a, T> {
         let identity = self.connections[&identity_id];
 
-        let outer_query = match OuterQuery::try_new(arguments, range_constraints, identity) {
-            Ok(outer_query) => outer_query,
-            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
-        };
+        let outer_query = OuterQuery::new(arguments, range_constraints, identity);
         self.process_plookup_internal(mutable_state, identity_id, outer_query)
     }
 
