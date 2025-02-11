@@ -333,24 +333,20 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .collect_vec();
         let known: BitVec = arguments.iter().map(|v| self.is_known(v)).collect();
 
-        let Some(new_range_constraints) =
-            can_process_call.can_process_call_fully(lookup_id, &known, &range_constraints)
-        else {
-            return ProcessResult::empty();
-        };
-        let effects = arguments
+        let (can_process, range_constraints) =
+            can_process_call.can_process_call_fully(lookup_id, &known, range_constraints);
+
+        let mut effects = arguments
             .iter()
-            .zip_eq(new_range_constraints)
+            .zip_eq(range_constraints)
             .map(|(var, new_rc)| Effect::RangeConstraint(var.clone(), new_rc.clone()))
-            .chain(std::iter::once(Effect::MachineCall(
-                lookup_id,
-                known,
-                arguments.to_vec(),
-            )))
-            .collect();
+            .collect_vec();
+        if can_process {
+            effects.push(Effect::MachineCall(lookup_id, known, arguments.to_vec()));
+        }
         ProcessResult {
             effects,
-            complete: true,
+            complete: can_process,
         }
     }
 
@@ -619,17 +615,17 @@ pub trait FixedEvaluator<T: FieldElement>: Clone {
 }
 
 pub trait CanProcessCall<T: FieldElement>: Clone {
-    /// Returns Some(..) if a call to the machine that handles the given identity
+    /// Returns (true, _) if a call to the machine that handles the given identity
     /// can always be processed with the given known inputs and range constraints
     /// on the parameters.
-    /// The value in the Option is a vector of new range constraints.
+    /// The second return value is a vector of new range constraints.
     /// @see Machine::can_process_call
     fn can_process_call_fully(
         &self,
         _identity_id: u64,
         _known_inputs: &BitVec,
-        _range_constraints: &[RangeConstraint<T>],
-    ) -> Option<Vec<RangeConstraint<T>>>;
+        _range_constraints: Vec<RangeConstraint<T>>,
+    ) -> (bool, Vec<RangeConstraint<T>>);
 }
 
 impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'_, T, Q> {
@@ -637,8 +633,8 @@ impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'
         &self,
         identity_id: u64,
         known_inputs: &BitVec,
-        range_constraints: &[RangeConstraint<T>],
-    ) -> Option<Vec<RangeConstraint<T>>> {
+        range_constraints: Vec<RangeConstraint<T>>,
+    ) -> (bool, Vec<RangeConstraint<T>>) {
         MutableState::can_process_call_fully(self, identity_id, known_inputs, range_constraints)
     }
 }
