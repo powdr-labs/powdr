@@ -1,5 +1,5 @@
 use std::machines::large_field::memory::Memory;
-use super::SplitGL;
+use super::split_gl::SplitGL;
 
 machine SplitGLVec8(mem: Memory, split_gl: SplitGL) with
     latch: latch,

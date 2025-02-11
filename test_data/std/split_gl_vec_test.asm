@@ -25,14 +25,14 @@ machine Main with degree: main_degree {
     col fixed STEP(i) { 2 * i };
 
     instr mstore X0, X1 ->
-        link ~> memory.mstore(ADDR1, STEP, X1);
+        link ~> memory.mstore(X0, STEP, X1);
 
     instr split X0, X1
         link ~> split_vec_machine.split(X0, X1, STEP);
 
     col witness val;
     instr assert_eq X0, X1 ->
-        link ~> val = memory.mload(ADDR1, STEP)
+        link ~> val = memory.mload(X0, STEP)
     {
         val = X1
     }
