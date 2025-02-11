@@ -696,7 +696,12 @@ pub fn assert_proofs_fail_for_invalid_witnesses_stwo(
 pub fn test_stwo(_file_name: &str, _inputs: Vec<u32>) {}
 
 #[cfg(not(feature = "stwo"))]
-pub fn test_stwo_stage1_public(_file_name: &str, _inputs: Vec<u32>, _publics: Vec<u32>) {}
+pub fn test_stwo_stage1_public(
+    _file_name: &str,
+    _inputs: Vec<u32>,
+    _publics: Vec<Mersenne31Field>,
+) {
+}
 
 #[cfg(not(feature = "stwo"))]
 pub fn test_stwo_pipeline(_pipeline: Pipeline<Mersenne31Field>) {}
