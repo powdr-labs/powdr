@@ -59,7 +59,7 @@ pub struct PowdrEval {
     // this offset represents the index of the first pre-processed column in this component
     preprocess_col_offset: usize,
     // The name of the public, the poly-id of the witness poly that this public is related to, the public value
-    pub(crate) publics_by_stage: Vec<Vec<(String, PolyID, M31)>>,
+    pub(crate) publics_values: Vec<(String, PolyID, M31)>,
     stage0_witness_columns: BTreeMap<PolyID, usize>,
     stage1_witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
@@ -110,13 +110,11 @@ impl PowdrEval {
             .map(|(index, (_, id))| (id, index))
             .collect();
 
-        let publics_by_stage = analyzed.get_publics().into_iter().fold(
-            vec![vec![]; analyzed.stage_count()],
-            |mut acc, (name, _, id, _, stage)| {
-                acc[stage as usize].push((name.clone(), id, *public_values.get(&name).unwrap()));
-                acc
-            },
-        );
+        let publics_values = analyzed
+            .get_publics()
+            .into_iter()
+            .map(|(name, _, id, _, _)| (name.clone(), id, *public_values.get(&name).unwrap()))
+            .collect();
 
         let poly_stage_map: BTreeMap<PolyID, usize> = stage0_witness_columns
             .keys()
@@ -128,7 +126,7 @@ impl PowdrEval {
             log_degree,
             analyzed,
             preprocess_col_offset,
-            publics_by_stage,
+            publics_values,
             stage0_witness_columns,
             stage1_witness_columns,
             constant_shifted,
@@ -144,6 +142,7 @@ struct Data<'a, F> {
     stage1_witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
     constant_shifted_eval: &'a BTreeMap<PolyID, F>,
     constant_eval: &'a BTreeMap<PolyID, F>,
+    publics_values: &'a BTreeMap<String, F>,
     // challenges for stage 1
     challenges: &'a BTreeMap<u64, F>,
     poly_stage_map: &'a BTreeMap<PolyID, usize>,
@@ -169,8 +168,11 @@ impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
         }
     }
 
-    fn get_public(&self, _public: &str) -> F {
-        unimplemented!("Public references are not supported in stwo yet")
+    fn get_public(&self, public: &str) -> F {
+        self.publics_values
+            .get(public)
+            .expect("Referenced public value does not exist")
+            .clone()
     }
 
     fn get_challenge(&self, challenge: &Challenge) -> F {
@@ -242,9 +244,15 @@ impl FrameworkEval for PowdrEval {
             .collect();
 
         let intermediate_definitions = self.analyzed.intermediate_definitions();
+        let public_values_terminal = self
+            .publics_values
+            .iter()
+            .map(|(name, _, value)| (name.clone(), E::F::from(into_stwo_field(value))))
+            .collect();
         let data = Data {
             stage0_witness_eval: &stage0_witness_eval,
             stage1_witness_eval: &stage1_witness_eval,
+            publics_values: &public_values_terminal,
             constant_shifted_eval: &constant_shifted_eval,
             constant_eval: &constant_eval,
             challenges: &challenges,
@@ -252,8 +260,10 @@ impl FrameworkEval for PowdrEval {
         };
 
         // build selector columns and constraints for publics
-        self.publics_by_stage.iter().flatten().enumerate().for_each(
-            |(index, (_, poly_id, value))| {
+        self.publics_values
+            .iter()
+            .enumerate()
+            .for_each(|(index, (_, poly_id, value))| {
                 let selector = eval.get_preprocessed_column(PreprocessedColumn::Plonk(
                     index
                         + constant_eval.len()
@@ -270,8 +280,7 @@ impl FrameworkEval for PowdrEval {
 
                 // constraining s(i) * (pub[i] - x(i)) = 0
                 eval.add_constraint(selector * (E::F::from(into_stwo_field(value)) - witness_col));
-            },
-        );
+            });
 
         let mut evaluator =
             ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {
