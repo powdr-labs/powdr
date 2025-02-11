@@ -85,7 +85,9 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         known_args: &BitVec,
         known_concrete: Option<(usize, T)>,
     ) -> Option<&CacheEntry<T>> {
-        return None;
+        if std::env::var("POWDR_JIT_SKIP").is_ok() {
+            return None;
+        }
         let cache_key = CacheKey {
             identity_id,
             known_args: known_args.clone(),
@@ -96,7 +98,9 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
     }
 
     fn ensure_cache(&mut self, can_process: impl CanProcessCall<T>, cache_key: &CacheKey<T>) {
-        return;
+        if std::env::var("POWDR_JIT_SKIP").is_ok() {
+            return;
+        }
         if self.witgen_functions.contains_key(cache_key) {
             return;
         }
