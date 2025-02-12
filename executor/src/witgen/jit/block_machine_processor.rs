@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
@@ -18,7 +18,7 @@ use super::{
     effect::Effect,
     processor::ProcessorResult,
     prover_function_heuristics::ProverFunction,
-    variable::{Cell, Variable},
+    variable::{Cell, MachineCallVariable, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
 
@@ -178,17 +178,11 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         Ok((result, prover_functions))
     }
 
+    /// Verifies that each column and each bus send is stackable in the block.
+    /// This means that if we have a cell write or a bus send in row `i`, we cannot
+    /// have another one in row `i + block_size`.
     fn check_block_shape(&self, code: &[Effect<T, Variable>]) -> Result<(), String> {
-        for (column_id, row_offsets) in code
-            .iter()
-            .flat_map(|e| e.written_vars())
-            .filter_map(|(v, _)| match v {
-                Variable::WitnessCell(cell) => Some((cell.id, cell.row_offset)),
-                _ => None,
-            })
-            .unique()
-            .into_group_map()
-        {
+        for (column_id, row_offsets) in written_rows_per_column(&code) {
             let row_offsets: BTreeSet<_> = row_offsets.into_iter().collect();
             for offset in &row_offsets {
                 if row_offsets.contains(&(*offset + self.block_size as i32)) {
@@ -205,8 +199,58 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 }
             }
         }
+        for (identity_id, row_offsets) in completed_rows_for_bus_send(&code) {
+            let row_offsets: BTreeSet<_> = row_offsets.into_iter().collect();
+            for offset in &row_offsets {
+                if row_offsets.contains(&(*offset + self.block_size as i32)) {
+                    return Err(format!(
+                        "Bus send for identity {} is not stackable in a {}-row block, conflict in rows {} and {}.",
+                        identity_id,
+                        self.block_size,
+                        offset,
+                        offset + self.block_size as i32
+                    ));
+                }
+            }
+        }
         Ok(())
     }
+}
+
+fn written_rows_per_column<T: FieldElement>(
+    code: &[Effect<T, Variable>],
+) -> BTreeMap<u64, BTreeSet<i32>> {
+    code.iter()
+        .flat_map(|e| e.written_vars())
+        .filter_map(|(v, _)| match v {
+            Variable::WitnessCell(cell) => Some((cell.id, cell.row_offset)),
+            _ => None,
+        })
+        .fold(BTreeMap::new(), |mut map, (id, row)| {
+            map.entry(id).or_insert_with(BTreeSet::new).insert(row);
+            map
+        })
+}
+
+fn completed_rows_for_bus_send<T: FieldElement>(
+    code: &[Effect<T, Variable>],
+) -> BTreeMap<u64, BTreeSet<i32>> {
+    code.iter()
+        .filter_map(|e| match e {
+            Effect::MachineCall(id, _, arguments) => match &arguments[0] {
+                Variable::MachineCallParam(MachineCallVariable {
+                    identity_id,
+                    row_offset,
+                    ..
+                }) => Some((*identity_id, *row_offset)),
+                _ => panic!("Expected machine call variable."),
+            },
+            _ => None,
+        })
+        .fold(BTreeMap::new(), |mut map, (id, row)| {
+            map.entry(id).or_insert_with(BTreeSet::new).insert(row);
+            map
+        })
 }
 
 impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
