@@ -278,7 +278,10 @@ impl BusLinker {
 
             let arguments = match selector_index {
                 // a selector index of None means this operation is called via lookup
-                None => vec![(interaction_id as u32).into(), latch, tuple, 0.into()],
+                None => {
+                    println!("operation latch {:?}", latch);
+                    vec![(interaction_id as u32).into(), latch, tuple, 0.into()]
+                },
                 // a selector index of Some means this operation is called via permutation
                 Some(selector_index) => {
                     let call_selector_array = namespaced_reference(
@@ -290,6 +293,8 @@ impl BusLinker {
                         );
                     let call_selector =
                         index_access(call_selector_array, Some((*selector_index).into()));
+                    println!("operation call_selector {:?}", call_selector);
+                    println!("operation latch {:?}", latch);
                     let rhs_selector = latch * call_selector;
                     vec![
                         (interaction_id as u32).into(),
