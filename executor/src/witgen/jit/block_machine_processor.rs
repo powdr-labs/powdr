@@ -15,7 +15,7 @@ use crate::witgen::{
 };
 
 use super::{
-    effect::Effect,
+    effect::{format_code, Effect},
     processor::ProcessorResult,
     prover_function_heuristics::ProverFunction,
     variable::{Cell, MachineCallVariable, Variable},
@@ -186,15 +186,17 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             let row_offsets: BTreeSet<_> = row_offsets.into_iter().collect();
             for offset in &row_offsets {
                 if row_offsets.contains(&(*offset + self.block_size as i32)) {
+                    println!("{}", format_code(code));
                     return Err(format!(
-                        "Column {} is not stackable in a {}-row block, conflict in rows {} and {}.",
+                        "Column {} is not stackable in a {}-row block, conflict in rows {} and {}. Full code:\n{}",
                         self.fixed_data.column_name(&PolyID {
                             id: column_id,
                             ptype: PolynomialType::Committed
                         }),
                         self.block_size,
                         offset,
-                        offset + self.block_size as i32
+                        offset + self.block_size as i32,
+                        format_code(code)
                     ));
                 }
             }
@@ -203,12 +205,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             let row_offsets: BTreeSet<_> = row_offsets.into_iter().collect();
             for offset in &row_offsets {
                 if row_offsets.contains(&(*offset + self.block_size as i32)) {
+                    println!("{}", format_code(code));
                     return Err(format!(
-                        "Bus send for identity {} is not stackable in a {}-row block, conflict in rows {} and {}.",
+                        "Bus send for identity {} is not stackable in a {}-row block, conflict in rows {} and {}. Full code:\n{}",
                         identity_id,
                         self.block_size,
                         offset,
-                        offset + self.block_size as i32
+                        offset + self.block_size as i32,
+                        format_code(code)
                     ));
                 }
             }
