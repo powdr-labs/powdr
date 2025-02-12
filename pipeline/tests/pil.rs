@@ -277,33 +277,23 @@ fn stwo_fixed_columns() {
 #[test]
 fn stwo_stage1_publics() {
     let f = "pil/stage1_publics.pil";
-
-    let first_result = std::panic::catch_unwind(|| {
-        test_stwo_stage1_public(
-            f,
-            Default::default(),
-            vec![Mersenne31Field::from(1191445910), Mersenne31Field::from(8)],
-            true,
-        );
-    });
-
-    assert!(
-        first_result.is_ok(),
-        "Expected the first call to succeed, but it panicked!"
+    test_stwo_stage1_public(
+        f,
+        Default::default(),
+        vec![Mersenne31Field::from(1191445910), Mersenne31Field::from(8)],
+        true,
     );
+}
 
-    let second_result = std::panic::catch_unwind(|| {
-        test_stwo_stage1_public(
-            f,
-            Default::default(),
-            vec![Mersenne31Field::from(100), Mersenne31Field::from(80)],
-            false, // This makes the call panic when stwo feature is not enabled.
-        );
-    });
-
-    assert!(
-        second_result.is_err(),
-        "Expected the second call to panic, but it did not!"
+#[test]
+#[should_panic]
+fn stwo_stage1_publics_invalid() {
+    let f = "pil/stage1_publics.pil";
+    test_stwo_stage1_public(
+        f,
+        Default::default(),
+        vec![Mersenne31Field::from(119144591), Mersenne31Field::from(8)],
+        false,
     );
 }
 

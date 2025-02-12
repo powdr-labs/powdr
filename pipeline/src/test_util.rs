@@ -703,7 +703,6 @@ pub fn test_stwo_stage1_public(
     _publics: Vec<Mersenne31Field>,
     valid: bool,
 ) {
-    // invalid publics should panic
     assert!(valid);
 }
 
