@@ -231,19 +231,10 @@ fn riscv_machine(
         .into_iter()
         .map(|s| format!("    {s}"))
         .join("\n");
-    let submachine_extra_registers = runtime
-        .submachines_extra_registers()
-        .into_iter()
-        .map(|s| format!("\t\t{s}\n"))
-        .join("");
 
     RISCV_ASM_TEMPLATE
         .to_string()
         .replace("{{IMPORTS}}", &runtime.submachines_import())
-        .replace(
-            "{{SUBMACHINE_EXTRA_REGISTERS}}",
-            &submachine_extra_registers,
-        )
         .replace("{{MIN_DEGREE_LOG}}", &format!("{}", options.min_degree_log))
         .replace("{{MAX_DEGREE_LOG}}", &format!("{}", options.max_degree_log))
         // We're passing this as well because continuations requires

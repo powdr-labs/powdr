@@ -21,6 +21,8 @@ mod extension_field;
 mod fp2;
 mod fp4;
 
+pub type InteractionColumns<T> = (Vec<Vec<T>>, Vec<Vec<T>>, Vec<Vec<T>>);
+
 /// Generates the second-stage columns for the bus accumulator.
 pub fn generate_bus_accumulator_columns<'a, T>(
     pil: &'a Analyzed<T>,
@@ -122,17 +124,44 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
     }
 
     pub fn generate(&self) -> Vec<(String, Vec<T>)> {
-        let mut columns = self
+        // First, collect all (PolyID, Vec<T>) pairs from all bus interactions.
+        let mut columns: BTreeMap<PolyID, Vec<T>> = self
             .bus_interactions
             .par_iter()
             .flat_map(|bus_interaction| {
-                let (folded, acc) = self.interaction_columns(bus_interaction);
+                let (folded, helper, acc) = self.interaction_columns(bus_interaction);
                 collect_folded_columns(bus_interaction, folded)
+                    .chain(collect_helper_columns(bus_interaction, helper))
                     .chain(collect_acc_columns(bus_interaction, acc))
                     .collect::<Vec<_>>()
             })
-            .collect::<BTreeMap<_, _>>();
+            // Each thread builds its own BTreeMap.
+            .fold(BTreeMap::new, |mut acc, (poly_id, column)| {
+                acc.entry(poly_id)
+                    .and_modify(|existing: &mut Vec<T>| {
+                        // Element-wise addition. We assume both vectors have the same length.
+                        for (a, b) in existing.iter_mut().zip_eq(&column) {
+                            *a += *b;
+                        }
+                    })
+                    .or_insert(column);
+                acc
+            })
+            // Merge the thread-local BTreeMaps.
+            .reduce(BTreeMap::new, |mut map1, map2| {
+                for (poly_id, column) in map2 {
+                    map1.entry(poly_id)
+                        .and_modify(|existing| {
+                            for (a, b) in existing.iter_mut().zip_eq(&column) {
+                                *a += *b;
+                            }
+                        })
+                        .or_insert(column);
+                }
+                map1
+            });
 
+        // Finally, for each committed poly from the PIL in stage 1, remove its column from the map.
         let result = self
             .pil
             .committed_polys_in_source_order()
@@ -153,14 +182,20 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
         result
     }
 
+    /// Given a bus interaction and existing witness values,
+    /// calculates and returns a triple tuple of:
+    /// - the folded columns (one per bus interaction)
+    /// - one helper column per pair of bus interactions
+    /// - the accumulator column (shared by all interactions)
     fn interaction_columns(
         &self,
         bus_interaction: &PhantomBusInteractionIdentity<T>,
-    ) -> (Vec<Vec<T>>, Vec<Vec<T>>) {
+    ) -> InteractionColumns<T> {
         let intermediate_definitions = self.pil.intermediate_definitions();
 
         let size = self.values.height();
         let mut folded_list = vec![Ext::zero(); size];
+        let mut helper_list = vec![Ext::zero(); size];
         let mut acc_list = vec![Ext::zero(); size];
 
         for i in 0..size {
@@ -180,28 +215,40 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
                 .collect::<Vec<_>>();
             let folded = self.beta - self.fingerprint(&tuple);
 
+            let to_add = folded.inverse() * multiplicity;
+
+            let helper = match bus_interaction.helper_columns {
+                Some(_) => to_add,
+                None => Ext::zero(),
+            };
+
             let new_acc = match multiplicity.is_zero() {
                 true => current_acc,
-                false => current_acc + folded.inverse() * multiplicity,
+                false => current_acc + to_add,
             };
 
             folded_list[i] = folded;
+            helper_list[i] = helper;
             acc_list[i] = new_acc;
         }
 
         // Transpose from row-major to column-major & flatten.
         let mut folded = vec![Vec::with_capacity(size); Ext::size()];
+        let mut helper = vec![Vec::with_capacity(size); Ext::size()];
         let mut acc = vec![Vec::with_capacity(size); Ext::size()];
         for row_index in 0..size {
             for (col_index, x) in folded_list[row_index].to_vec().into_iter().enumerate() {
                 folded[col_index].push(x);
+            }
+            for (col_index, x) in helper_list[row_index].to_vec().into_iter().enumerate() {
+                helper[col_index].push(x);
             }
             for (col_index, x) in acc_list[row_index].to_vec().into_iter().enumerate() {
                 acc[col_index].push(x);
             }
         }
 
-        (folded, acc)
+        (folded, helper, acc)
     }
 
     /// Fingerprints a tuples of field elements, using the pre-computed powers of alpha.
@@ -252,4 +299,21 @@ fn collect_acc_columns<T>(
         .iter()
         .zip_eq(acc)
         .map(|(column_reference, column)| (column_reference.poly_id, column))
+}
+
+fn collect_helper_columns<T>(
+    bus_interaction: &PhantomBusInteractionIdentity<T>,
+    helper: Vec<Vec<T>>,
+) -> impl Iterator<Item = (PolyID, Vec<T>)> {
+    match &bus_interaction.helper_columns {
+        Some(helper_columns) => {
+            let pairs: Vec<_> = helper_columns
+                .iter()
+                .zip_eq(helper)
+                .map(|(column_reference, column)| (column_reference.poly_id, column))
+                .collect();
+            pairs.into_iter()
+        }
+        None => Vec::new().into_iter(),
+    }
 }
