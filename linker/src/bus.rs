@@ -187,7 +187,10 @@ impl LinkerBackend for BusLinker {
                                 SourceRef::unknown(),
                                 SymbolPath::from_str(path).unwrap().into(),
                             )),
-                            arguments: vec![args.clone().into()],
+                            arguments: vec![ArrayLiteral {
+                                items: std::mem::take(&mut args.items),
+                            }
+                            .into()],
                         },
                     ),
                 ));
@@ -260,14 +263,9 @@ impl BusLinker {
 
             let latch = namespaced_reference(namespace.clone(), object.latch.clone().unwrap());
 
-            match selector_index {
+            let arguments = match selector_index {
                 // a selector index of None means this operation is called via lookup
-                None => {
-                    self.bus_multi_receive_args.items.push(Expression::Tuple(
-                        SourceRef::unknown(),
-                        vec![(interaction_id as u32).into(), latch, tuple, 0.into()],
-                    ));
-                }
+                None => vec![(interaction_id as u32).into(), latch, tuple, 0.into()],
                 // a selector index of Some means this operation is called via permutation
                 Some(selector_index) => {
                     let call_selector_array = namespaced_reference(
@@ -280,18 +278,13 @@ impl BusLinker {
                     let call_selector =
                         index_access(call_selector_array, Some((*selector_index).into()));
                     let rhs_selector = latch * call_selector;
-
-                    self.bus_multi_receive_args.items.push(Expression::Tuple(
-                        SourceRef::unknown(),
-                        vec![
-                            (interaction_id as u32).into(),
-                            rhs_selector,
-                            tuple,
-                            1.into(),
-                        ],
-                    ));
+                    vec![(interaction_id as u32).into(), rhs_selector, tuple, 1.into()]
                 }
             };
+
+            self.bus_multi_receive_args
+                .items
+                .push(Expression::Tuple(SourceRef::unknown(), arguments));
         }
     }
 }
