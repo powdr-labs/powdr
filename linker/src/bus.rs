@@ -35,6 +35,12 @@ pub struct BusLinker {
     selector_array_size_by_instance: BTreeMap<Location, usize>,
     /// for each used operation, the index in the selector array. For operations accessed via lookups, this is None.
     selector_array_index_by_operation: BTreeMap<LinkTo, Option<usize>>,
+    /// arguments for `lookup_multi_receive`
+    lookup_multi_receive_args: ArrayLiteral,
+    /// arguments for `permutation_multi_receive`
+    permutation_multi_receive_args: ArrayLiteral,
+    /// arguments for `bus_multi_send`
+    bus_multi_send_args: ArrayLiteral,
 }
 
 impl LinkerBackend for BusLinker {
@@ -87,6 +93,15 @@ impl LinkerBackend for BusLinker {
             pil: Default::default(),
             selector_array_size_by_instance,
             selector_array_index_by_operation,
+            lookup_multi_receive_args: ArrayLiteral {
+                items: Default::default(),
+            },
+            permutation_multi_receive_args: ArrayLiteral {
+                items: Default::default(),
+            },
+            bus_multi_send_args: ArrayLiteral {
+                items: Default::default(),
+            },
         })
     }
 
@@ -111,20 +126,9 @@ impl LinkerBackend for BusLinker {
         }
         .into();
 
-        self.pil.push(PilStatement::Expression(
+        self.bus_multi_send_args.items.push(Expression::Tuple(
             SourceRef::unknown(),
-            Expression::FunctionCall(
-                SourceRef::unknown(),
-                FunctionCall {
-                    function: Box::new(Expression::Reference(
-                        SourceRef::unknown(),
-                        SymbolPath::from_str("std::protocols::bus::bus_send")
-                            .unwrap()
-                            .into(),
-                    )),
-                    arguments: vec![(interaction_id as u32).into(), tuple, selector],
-                },
-            ),
+            vec![(interaction_id as u32).into(), tuple, selector],
         ));
     }
 
@@ -165,6 +169,41 @@ impl LinkerBackend for BusLinker {
         // receive incoming links
         for (name, operation) in &object.operations {
             self.process_operation(name, operation, location, object);
+        }
+
+        // add pil for bus_multi_send, lookup_multi_receive, and permutation_multi_receive
+        for (args, path) in [
+            (
+                &mut self.bus_multi_send_args,
+                "std::protocols::bus::bus_multi_send",
+            ),
+            (
+                &mut self.lookup_multi_receive_args,
+                "std::protocols::lookup_via_bus::lookup_multi_receive",
+            ),
+            (
+                &mut self.permutation_multi_receive_args,
+                "std::protocols::permutation_via_bus::permutation_multi_receive",
+            ),
+        ] {
+            if !args.items.is_empty() {
+                self.pil.push(PilStatement::Expression(
+                    SourceRef::unknown(),
+                    Expression::FunctionCall(
+                        SourceRef::unknown(),
+                        FunctionCall {
+                            function: Box::new(Expression::Reference(
+                                SourceRef::unknown(),
+                                SymbolPath::from_str(path).unwrap().into(),
+                            )),
+                            arguments: vec![ArrayLiteral {
+                                items: std::mem::take(&mut args.items),
+                            }
+                            .into()],
+                        },
+                    ),
+                ));
+            }
         }
 
         // if this is the main object, call the main operation
@@ -232,52 +271,34 @@ impl BusLinker {
 
             let latch = namespaced_reference(namespace.clone(), object.latch.clone().unwrap());
 
-            let (function, arguments) = match selector_index {
+            let arguments = match selector_index {
                 // a selector index of None means this operation is called via lookup
-                None => (
-                    SymbolPath::from_str("std::protocols::lookup_via_bus::lookup_receive")
-                        .unwrap()
-                        .into(),
-                    vec![(interaction_id as u32).into(), latch, tuple],
-                ),
+                None => vec![(interaction_id as u32).into(), latch, tuple],
                 // a selector index of Some means this operation is called via permutation
-                Some(selector_index) => (
-                    SymbolPath::from_str(
-                        "std::protocols::permutation_via_bus::permutation_receive",
-                    )
-                    .unwrap()
-                    .into(),
-                    {
-                        let call_selector_array = namespaced_reference(
-                            location.to_string(),
-                            object
-                                .call_selectors
-                                .as_ref()
-                                .unwrap_or_else(|| panic!("{location} has incoming permutations but doesn't declare call_selectors")),
-                            );
-                        let call_selector =
-                            index_access(call_selector_array, Some((*selector_index).into()));
-                        let rhs_selector = latch * call_selector;
-
-                        vec![(interaction_id as u32).into(), rhs_selector, tuple]
-                    },
-                ),
+                Some(selector_index) => {
+                    let call_selector_array = namespaced_reference(
+                        location.to_string(),
+                        object
+                            .call_selectors
+                            .as_ref()
+                            .unwrap_or_else(|| panic!("{location} has incoming permutations but doesn't declare call_selectors")),
+                        );
+                    let call_selector =
+                        index_access(call_selector_array, Some((*selector_index).into()));
+                    let rhs_selector = latch * call_selector;
+                    vec![(interaction_id as u32).into(), rhs_selector, tuple]
+                }
             };
 
-            // receive from the bus
-            self.pil
-                .push(PilStatement::Expression(SourceRef::unknown(), {
-                    Expression::FunctionCall(
-                        SourceRef::unknown(),
-                        FunctionCall {
-                            function: Box::new(Expression::Reference(
-                                SourceRef::unknown(),
-                                function,
-                            )),
-                            arguments,
-                        },
-                    )
-                }));
+            if selector_index.is_none() {
+                self.lookup_multi_receive_args
+                    .items
+                    .push(Expression::Tuple(SourceRef::unknown(), arguments));
+            } else {
+                self.permutation_multi_receive_args
+                    .items
+                    .push(Expression::Tuple(SourceRef::unknown(), arguments));
+            }
         }
     }
 }
@@ -334,7 +355,7 @@ mod test {
     pc' = (1 - first_step') * pc_update;
     pol commit call_selectors[0];
     std::array::map(call_selectors, std::utils::force_bool);
-    std::protocols::bus::bus_send(12064, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1);
+    std::protocols::bus::bus_multi_send([(12064, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1)]);
 namespace main__rom(4);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
@@ -343,7 +364,7 @@ namespace main__rom(4);
     pol constant p_instr_return = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-    std::protocols::lookup_via_bus::lookup_receive(12064, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return]);
+    std::protocols::lookup_via_bus::lookup_multi_receive([(12064, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return])]);
 "#;
 
         let file_name = "../test_data/asm/empty_vm.asm";
