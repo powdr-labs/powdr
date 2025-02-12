@@ -1,3 +1,4 @@
+use std::array;
 use std::machines::large_field::memory::Memory;
 use super::split_gl::SplitGL;
 
@@ -40,14 +41,14 @@ machine SplitGLVec8(mem: Memory, split_gl: SplitGL) with
     let output_high: col[8];
 
     // TODO: turn this into array operations
-    link if is_used ~> (output_low[0], output_high[0]) = split_GL.split(input[0]);
-    link if is_used ~> (output_low[1], output_high[1]) = split_GL.split(input[1]);
-    link if is_used ~> (output_low[2], output_high[2]) = split_GL.split(input[2]);
-    link if is_used ~> (output_low[3], output_high[3]) = split_GL.split(input[3]);
-    link if is_used ~> (output_low[4], output_high[4]) = split_GL.split(input[4]);
-    link if is_used ~> (output_low[5], output_high[5]) = split_GL.split(input[5]);
-    link if is_used ~> (output_low[6], output_high[6]) = split_GL.split(input[6]);
-    link if is_used ~> (output_low[7], output_high[7]) = split_GL.split(input[7]);
+    link if is_used ~> (output_low[0], output_high[0]) = split_gl.split(input[0]);
+    link if is_used ~> (output_low[1], output_high[1]) = split_gl.split(input[1]);
+    link if is_used ~> (output_low[2], output_high[2]) = split_gl.split(input[2]);
+    link if is_used ~> (output_low[3], output_high[3]) = split_gl.split(input[3]);
+    link if is_used ~> (output_low[4], output_high[4]) = split_gl.split(input[4]);
+    link if is_used ~> (output_low[5], output_high[5]) = split_gl.split(input[5]);
+    link if is_used ~> (output_low[6], output_high[6]) = split_gl.split(input[6]);
+    link if is_used ~> (output_low[7], output_high[7]) = split_gl.split(input[7]);
 
     // TODO: turn this into array operations
     link if is_used ~> mem.mstore(output_addr + 0, time_step + 1, output_low[0]);
