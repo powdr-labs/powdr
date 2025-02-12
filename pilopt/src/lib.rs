@@ -665,18 +665,22 @@ fn substitute_polynomial_references<T: FieldElement>(
 ) {
     let poly_id_to_name = pil_file
         .committed_polys_in_source_order()
-        .filter_map(|(s, _)| if let SymbolKind::Poly(kind) = s.kind {
-            Some(((kind, s.id), s.absolute_name.clone()))
-        } else {
-            None
+        .filter_map(|(s, _)| {
+            if let SymbolKind::Poly(kind) = s.kind {
+                Some(((kind, s.id), s.absolute_name.clone()))
+            } else {
+                None
+            }
         })
         .chain(
             pil_file
                 .intermediate_polys_in_source_order()
-                .filter_map(|(s, _)| if let SymbolKind::Poly(kind) = s.kind {
-                    Some(((kind, s.id), s.absolute_name.clone()))
-                } else {
-                    None
+                .filter_map(|(s, _)| {
+                    if let SymbolKind::Poly(kind) = s.kind {
+                        Some(((kind, s.id), s.absolute_name.clone()))
+                    } else {
+                        None
+                    }
                 }),
         )
         .collect::<BTreeMap<_, _>>();
