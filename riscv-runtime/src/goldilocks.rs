@@ -4,12 +4,12 @@ use powdr_riscv_syscalls::Syscall;
 pub const PRIME: u64 = 0xffffffff00000001;
 
 /// Goldilocks field element.
-/// 
+///
 /// Not a legal value in RISC-V, as it uses a supposedly
 /// 32-bit memory word to store a full field element.
-/// 
+///
 /// But it is more efficient when handled by Powdr machines.
-/// 
+///
 /// TODO: remove the other Golilocks and the functions that use it,
 /// and replace it with this one.
 #[repr(transparent)]
