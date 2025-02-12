@@ -210,70 +210,15 @@ pub fn get_asm<F: Field>(
 ) -> String {
     let mut pil = format!(
         "
-machine Keccakf16 with
-	latch: final_step,
+machine {name} with
+	latch: latch,
     call_selectors: sel, {{
 
     col fixed is_first_row = [1] + [0]*;
     col fixed is_last_row = [0] + [1]*;
     col fixed is_transition = [0] + [1]* + [0];
 
-    let NUM_ROUNDS: int = 24;
-    let step_flags: col[NUM_ROUNDS] = std::array::new(NUM_ROUNDS, |i| |row| if row % NUM_ROUNDS == i {{ 1 }} else {{ 0 }} );
-    let final_step: expr = step_flags[NUM_ROUNDS - 1];
-
-    operation keccakf16
-        w3, w2, w1, w0, 
-        w7, w6, w5, w4, 
-        w11, w10, w9, w8, 
-        w15, w14, w13, w12, 
-        w19, w18, w17, w16, 
-        w23, w22, w21, w20, 
-        w27, w26, w25, w24, 
-        w31, w30, w29, w28, 
-        w35, w34, w33, w32, 
-        w39, w38, w37, w36, 
-        w43, w42, w41, w40, 
-        w47, w46, w45, w44, 
-        w51, w50, w49, w48, 
-        w55, w54, w53, w52, 
-        w59, w58, w57, w56, 
-        w63, w62, w61, w60, 
-        w67, w66, w65, w64, 
-        w71, w70, w69, w68, 
-        w75, w74, w73, w72, 
-        w79, w78, w77, w76, 
-        w83, w82, w81, w80, 
-        w87, w86, w85, w84, 
-        w91, w90, w89, w88, 
-        w95, w94, w93, w92, 
-        w99, w98, w97, w96 
-        ->
-        w2536, w2535, w2534, w2533,
-        w2540, w2539, w2538, w2537,
-        w2544, w2543, w2542, w2541,
-        w2548, w2547, w2546, w2545,
-        w2552, w2551, w2550, w2549,
-        w2556, w2555, w2554, w2553,
-        w2560, w2559, w2558, w2557,
-        w2564, w2563, w2562, w2561,
-        w2568, w2567, w2566, w2565,
-        w2572, w2571, w2570, w2569,
-        w2576, w2575, w2574, w2573,
-        w2580, w2579, w2578, w2577,
-        w2584, w2583, w2582, w2581,
-        w2588, w2587, w2586, w2585,
-        w2592, w2591, w2590, w2589,
-        w2596, w2595, w2594, w2593,
-        w2600, w2599, w2598, w2597,
-        w2604, w2603, w2602, w2601,
-        w2608, w2607, w2606, w2605,
-        w2612, w2611, w2610, w2609,
-        w2616, w2615, w2614, w2613,
-        w2620, w2619, w2618, w2617,
-        w2624, w2623, w2622, w2621,
-        w2628, w2627, w2626, w2625,
-        w2632, w2631, w2630, w2629;
+    col fixed latch = [1]*;
 
 "
     );
@@ -541,55 +486,96 @@ fn is_trivial_constraint<F: Field>(expr: &SymbolicExpression<F>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use openvm_circuit::{
-        arch::testing::{VmChipTestBuilder, BITWISE_OP_LOOKUP_BUS},
-        openvm_stark_sdk::p3_baby_bear::BabyBear,
+    use openvm_circuit::arch::{
+        BasicAdapterInterface, DynAdapterInterface, MinimalInstruction, VmAdapterInterface,
+        VmCoreAir,
     };
+    //use openvm_circuit::openvm_stark_sdk::p3_baby_bear::BabyBearParameters;
+    use openvm_circuit::arch::testing::{VmChipTestBuilder, BITWISE_OP_LOOKUP_BUS};
+    use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::AirBuilder;
+    use openvm_circuit::openvm_stark_sdk::p3_baby_bear::BabyBear;
     use openvm_circuit_primitives::bitwise_op_lookup::{
         BitwiseOperationLookupBus, SharedBitwiseOperationLookupChip,
     };
-    use openvm_instructions::LocalOpcode;
-    use openvm_keccak256_circuit::KeccakVmChip;
-    use openvm_keccak256_transpiler::Rv32KeccakOpcode;
-    //use p3_baby_bear::BabyBear as P3BabyBear;
+    use openvm_rv32im_circuit::adapters::Rv32LoadStoreAdapterAirInterface;
+    //use openvm_keccak256_circuit::KeccakVmChip;
+    //use openvm_keccak256_transpiler::Rv32KeccakOpcode;
+    use openvm_rv32im_circuit::Rv32AuipcCoreAir;
+    use openvm_rv32im_circuit::Rv32AuipcCoreChip;
+    //use p3_baby_bear::BabyBear;
 
     #[test]
 
     fn test_keccak_air_to_pil() {
-        let bitwise_bus = BitwiseOperationLookupBus::new(BITWISE_OP_LOOKUP_BUS);
-        let bitwise_chip = SharedBitwiseOperationLookupChip::<8>::new(bitwise_bus);
+        //let bitwise_bus = BitwiseOperationLookupBus::new(BITWISE_OP_LOOKUP_BUS);
+        //let bitwise_chip = SharedBitwiseOperationLookupChip::<8>::new(bitwise_bus);
 
-        let tester = VmChipTestBuilder::<BabyBear>::default();
-        let chip = KeccakVmChip::new(
-            tester.execution_bus(),
-            tester.program_bus(),
-            tester.memory_bridge(),
-            tester.address_bits(),
-            bitwise_chip.clone(),
-            Rv32KeccakOpcode::CLASS_OFFSET,
-            tester.offline_memory_mutex_arc(),
-        );
+        //let n_columns = 2633;
+        let mut builder = SymbolicAirBuilder::<BabyBear>::new(0, 11, 0);
 
-        // Create our symbolic builder that implements AirBuilder
-        let n_columns = 2633;
-        let mut builder = SymbolicAirBuilder::<BabyBear>::new(0, n_columns, 0);
-        chip.air.eval_keccak_f(&mut builder);
+        let bitwise_lu_bus = BitwiseOperationLookupBus::new(10);
+        let bitwise_lu_chip = SharedBitwiseOperationLookupChip::new(bitwise_lu_bus);
 
-        // Use eval to generate actual Keccak constraints
+        //let tester = VmChipTestBuilder::<BabyBear>::default();
+        // let chip = KeccakVmChip::new(
+        //     tester.execution_bus(),
+        //     tester.program_bus(),
+        //     tester.memory_bridge(),
+        //     tester.address_bits(),
+        //     bitwise_chip.clone(),
+        //     Rv32KeccakOpcode::CLASS_OFFSET,
+        //     tester.offline_memory_mutex_arc(),
+        // );
+
+        // let chip = Rv32AuipcChip::new(
+        //     Rv32RdWriteAdapterChip::new(
+        //         tester.execution_bus(),
+        //         tester.program_bus(),
+        //         tester.memory_bridge(),
+        //     ),
+        //     Rv32AuipcCoreChip::new(bitwise_lu_chip.clone()),
+        //     tester.offline_memory_mutex_arc(),
+        // );
+
+        let chip = Rv32AuipcCoreChip::new(bitwise_lu_chip.clone());
+
+        let from_pc = SymbolicVariable::new(symbolic_variable::Entry::Main { offset: 0 }, 0);
+        //chip.air.eval(&mut builder, &[], from_pc);
+
+        // <Rv32AuipcCoreAir as VmCoreAir<
+        //     symbolic_builder::SymbolicAirBuilder<BabyBear>,
+        //     Rv32LoadStoreAdapterAirInterface<symbolic_builder::SymbolicAirBuilder<BabyBear>>,
+        // >>::eval(&chip.air, &mut builder, &[], from_pc);
+
+        //let columns = (0..11).map(|i| format!("w{}", i)).collect::<Vec<String>>();
+
+        // Allocate variables using those names
+        //let cols = columns.iter().map(|name| name).collect::<Vec<_>>();
+        let cols = builder.main().values;
+
+        <Rv32AuipcCoreAir as VmCoreAir<
+            symbolic_builder::SymbolicAirBuilder<BabyBear>,
+            DynAdapterInterface<symbolic_expression::SymbolicExpression<BabyBear>>,
+        >>::eval(&chip.air, &mut builder, &cols, from_pc);
+
+        // <Rv32AuipcCoreAir as VmCoreAir<
+        //     symbolic_builder::SymbolicAirBuilder<BabyBear>,
+        //     BasicAdapterInterface<Expr, MinimalInstruction<Expr>, 0, 0, 0, 0>,
+        // >>::eval(&chip.air, &mut builder, &[], from_pc);
+
+        // Use eval to generate actual Keccak constraint
         //keccak.eval(&mut builder);
 
         // Define column names
-        let columns = (0..=n_columns)
-            .map(|i| format!("w{}", i))
-            .collect::<Vec<String>>();
+        let columns = (0..=12).map(|i| format!("w{}", i)).collect::<Vec<String>>();
 
         // Generate PIL with the actual constraints from eval
         let cs = builder.constraints();
-        let opt_cs = optimize_constraints(cs.clone());
+        //let opt_cs = optimize_constraints(cs.clone());
 
-        let pil = get_asm("Keccakf16", opt_cs, columns);
+        let pil = get_asm("Rv32Auipc", cs, columns);
 
-        std::fs::write("openvm_keccak.asm", pil).unwrap();
-        println!("PIL written to sp1.pil");
+        std::fs::write("openvm_rv32auipc.asm", pil).unwrap();
+        println!("PIL written to openvm_rv32auipc.asm");
     }
 }

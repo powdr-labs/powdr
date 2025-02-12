@@ -17,18 +17,20 @@ openvm-circuit = { git = "https://github.com/openvm-org/openvm", features = ["te
 openvm-circuit-derive = { git = "https://github.com/openvm-org/openvm" }
 openvm-circuit-primitives = { git = "https://github.com/openvm-org/openvm" }
 openvm-circuit-primitives-derive = { git = "https://github.com/openvm-org/openvm" }
+openvm-rv32im-circuit = { git = "https://github.com/openvm-org/openvm" }
 tracing = "0.1.40"
 itertools = "0.13"
 sp1-stark = "3.4.0"
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
+p3-monty-31 = { git = "https://github.com/Plonky3/Plonky3.git", rev = "b0591e9" }
 
-[dev-dependencies]
-p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-p3-challenger = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-p3-commit = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4", features = ["test-utils"] }
-p3-dft = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-p3-fri = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-p3-keccak = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-p3-matrix = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-p3-merkle-tree = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
-p3-symmetric = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+#[dev-dependencies]
+#p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+#p3-challenger = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+#p3-commit = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4", features = ["test-utils"] }
+#p3-dft = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+#p3-fri = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+#p3-keccak = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+#p3-matrix = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+#p3-merkle-tree = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+#p3-symmetric = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }

@@ -1,4 +1,6 @@
 use crate::symbolic_variable::Entry;
+use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::InteractionBuilder;
+use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::InteractionType;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::Air;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::AirBuilder;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::AirBuilderWithPublicValues;
@@ -6,9 +8,9 @@ use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::PairBuilder;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_field::Field;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_matrix::dense::RowMajorMatrix;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_util::log2_ceil_usize;
-use sp1_stark::air::AirInteraction;
-use sp1_stark::air::InteractionScope;
-use sp1_stark::air::MessageBuilder;
+//use sp1_stark::air::AirInteraction;
+//use sp1_stark::air::InteractionScope;
+//use sp1_stark::air::MessageBuilder;
 use std::iter;
 use tracing::instrument;
 
@@ -97,7 +99,7 @@ impl<F: Field> SymbolicAirBuilder<F> {
                     .map(move |index| SymbolicVariable::new(Entry::Main { offset }, index))
             })
             .collect();
-        let main_values = [0, 1]
+        let main_values = [0]
             .into_iter()
             .flat_map(|offset| {
                 (0..width).map(move |index| SymbolicVariable::new(Entry::Main { offset }, index))
@@ -165,22 +167,45 @@ impl<F: Field> PairBuilder for SymbolicAirBuilder<F> {
     }
 }
 
-impl<F: Field> MessageBuilder<AirInteraction<SymbolicExpression<F>>> for SymbolicAirBuilder<F> {
-    fn send(&mut self, message: AirInteraction<SymbolicExpression<F>>, _scope: InteractionScope) {
-        let interaction_kind =
-            SymbolicExpression::Constant(F::from_canonical_u64(message.kind as u64));
-        self.bus_sends
-            .push((interaction_kind, message.values, message.multiplicity));
+// impl<F: Field> MessageBuilder<AirInteraction<SymbolicExpression<F>>> for SymbolicAirBuilder<F> {
+//     fn send(&mut self, message: AirInteraction<SymbolicExpression<F>>, _scope: InteractionScope) {
+//         let interaction_kind =
+//             SymbolicExpression::Constant(F::from_canonical_u64(message.kind as u64));
+//         self.bus_sends
+//             .push((interaction_kind, message.values, message.multiplicity));
+//     }
+
+//     fn receive(
+//         &mut self,
+//         message: AirInteraction<SymbolicExpression<F>>,
+//         _scope: InteractionScope,
+//     ) {
+//         let interaction_kind =
+//             SymbolicExpression::Constant(F::from_canonical_u64(message.kind as u64));
+//         self.bus_receives
+//             .push((interaction_kind, message.values, message.multiplicity));
+//     }
+// }
+
+impl<F: Field> InteractionBuilder for SymbolicAirBuilder<F> {
+    fn push_interaction<E: Into<Self::Expr>>(
+        &mut self,
+        bus_index: usize,
+        fields: impl IntoIterator<Item = E>,
+        count: impl Into<Self::Expr>,
+        interaction_type: openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::InteractionType,
+    ) {
     }
 
-    fn receive(
-        &mut self,
-        message: AirInteraction<SymbolicExpression<F>>,
-        _scope: InteractionScope,
-    ) {
-        let interaction_kind =
-            SymbolicExpression::Constant(F::from_canonical_u64(message.kind as u64));
-        self.bus_receives
-            .push((interaction_kind, message.values, message.multiplicity));
+    fn num_interactions(&self) -> usize {
+        0
+    }
+
+    fn all_interactions(
+        &self,
+    ) -> &[openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::Interaction<
+        Self::Expr,
+    >] {
+        &[]
     }
 }
