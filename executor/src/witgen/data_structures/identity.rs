@@ -295,7 +295,7 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
         _ => (false, bus_interaction.multiplicity.clone()),
     };
     let bus_id = match bus_interaction.bus_id {
-        AlgebraicExpression::Number(id) => id,
+        AlgebraicExpression::Number(id) => {println!("bus_id: {}", id); id},
         // TODO: Relax this for sends when implementing dynamic sends
         _ => panic!("Expected first payload entry to be a static ID"),
     };
@@ -304,12 +304,19 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
         expressions: bus_interaction.payload.0.clone(),
     };
     if is_receive {
+        println!("bus_id: {}", bus_id);
+        println!("multiplicity: {}", multiplicity);
+        println!("selected_payload: {}", selected_payload);
         IdentityOrReceive::Receive(BusReceive {
             bus_id,
             multiplicity: Some(multiplicity),
             selected_payload,
         })
     } else {
+        println!("bus_id: {}", bus_id);
+        println!("multiplicity: {}", multiplicity);
+        println!("latch: {}", bus_interaction.latch);
+        println!("selected_payload: {}", selected_payload);
         assert_eq!(multiplicity, bus_interaction.latch);
         IdentityOrReceive::Identity(Identity::BusSend(BusSend {
             identity_id: bus_interaction.id,

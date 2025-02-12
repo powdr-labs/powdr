@@ -325,7 +325,7 @@ let bus_multi_receive: BusInteraction[] -> () = constr |bus_inputs| {
 let bus_multi_receive_batch_lookup_permutation: (expr, expr, expr[], int)[] -> () = constr |inputs| {
     // Lookup requires adding a multiplicity column and constraining it to zero if selector is zero.
     // Permutation passes the selector to both multiplicity and latch fields as well.
-    let inputs_inner: (expr, expr[], expr, expr)[] = array::fold(inputs, [], constr |acc, input| {
+    let inputs_inner = array::fold(inputs, [], constr |acc, input| {
         // Converted to input format for the inner function `bus_multi_receive`:
         // For lookup, format is id, payload, multiplicity, selector
         // For permutation, format is id, payload, selector, selector
@@ -337,7 +337,7 @@ let bus_multi_receive_batch_lookup_permutation: (expr, expr, expr[], int)[] -> (
             (1 - selector) * multiplicity = 0;
             multiplicity
         };
-        acc + [(id, payload, multiplicity, selector)]
+        acc + [BusInteraction::Receive(id, payload, multiplicity, selector)]
     });
     bus_multi_receive(inputs_inner);
 };

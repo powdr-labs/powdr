@@ -1,0 +1,2348 @@
+ASMProgram {
+    main: ASMModule {
+        statements: [
+            SymbolDefinition(
+                SymbolDefinition {
+                    name: "bus_multi_receive",
+                    value: Import(
+                        Import {
+                            path: SymbolPath {
+                                parts: [
+                                    Named(
+                                        "std",
+                                    ),
+                                    Named(
+                                        "protocols",
+                                    ),
+                                    Named(
+                                        "bus",
+                                    ),
+                                    Named(
+                                        "bus_multi_receive",
+                                    ),
+                                ],
+                            },
+                        },
+                    ),
+                },
+            ),
+            SymbolDefinition(
+                SymbolDefinition {
+                    name: "bus_multi_send",
+                    value: Import(
+                        Import {
+                            path: SymbolPath {
+                                parts: [
+                                    Named(
+                                        "std",
+                                    ),
+                                    Named(
+                                        "protocols",
+                                    ),
+                                    Named(
+                                        "bus",
+                                    ),
+                                    Named(
+                                        "bus_multi_send",
+                                    ),
+                                ],
+                            },
+                        },
+                    ),
+                },
+            ),
+            SymbolDefinition(
+                SymbolDefinition {
+                    name: "BusInteraction",
+                    value: Import(
+                        Import {
+                            path: SymbolPath {
+                                parts: [
+                                    Named(
+                                        "std",
+                                    ),
+                                    Named(
+                                        "protocols",
+                                    ),
+                                    Named(
+                                        "bus",
+                                    ),
+                                    Named(
+                                        "BusInteraction",
+                                    ),
+                                ],
+                            },
+                        },
+                    ),
+                },
+            ),
+            PilStatement(
+                LetStatement(
+                    ../test_data/asm/static_bus_multi.asm:127-147,
+                    "ADD_BUS_ID",
+                    None,
+                    Some(
+                        Number(
+                            ../test_data/asm/static_bus_multi.asm:144-147,
+                            Number {
+                                value: 123,
+                                type_: None,
+                            },
+                        ),
+                    ),
+                ),
+            ),
+            PilStatement(
+                LetStatement(
+                    ../test_data/asm/static_bus_multi.asm:149-169,
+                    "MUL_BUS_ID",
+                    None,
+                    Some(
+                        Number(
+                            ../test_data/asm/static_bus_multi.asm:166-169,
+                            Number {
+                                value: 456,
+                                type_: None,
+                            },
+                        ),
+                    ),
+                ),
+            ),
+            PilStatement(
+                LetStatement(
+                    ../test_data/asm/static_bus_multi.asm:171-191,
+                    "SUB_BUS_ID",
+                    None,
+                    Some(
+                        Number(
+                            ../test_data/asm/static_bus_multi.asm:188-191,
+                            Number {
+                                value: 789,
+                                type_: None,
+                            },
+                        ),
+                    ),
+                ),
+            ),
+            PilStatement(
+                LetStatement(
+                    ../test_data/asm/static_bus_multi.asm:193-216,
+                    "DOUBLE_BUS_ID",
+                    None,
+                    Some(
+                        Number(
+                            ../test_data/asm/static_bus_multi.asm:213-216,
+                            Number {
+                                value: 234,
+                                type_: None,
+                            },
+                        ),
+                    ),
+                ),
+            ),
+            PilStatement(
+                LetStatement(
+                    ../test_data/asm/static_bus_multi.asm:218-241,
+                    "TRIPLE_BUS_ID",
+                    None,
+                    Some(
+                        Number(
+                            ../test_data/asm/static_bus_multi.asm:238-241,
+                            Number {
+                                value: 321,
+                                type_: None,
+                            },
+                        ),
+                    ),
+                ),
+            ),
+            SymbolDefinition(
+                SymbolDefinition {
+                    name: "Main",
+                    value: Machine(
+                        Machine {
+                            params: MachineParams(
+                                [],
+                            ),
+                            properties: MachineProperties {
+                                degree: Some(
+                                    Number(
+                                        ../test_data/asm/static_bus_multi.asm:274-275,
+                                        Number {
+                                            value: 8,
+                                            type_: None,
+                                        },
+                                    ),
+                                ),
+                                min_degree: None,
+                                max_degree: None,
+                                latch: Some(
+                                    "latch",
+                                ),
+                                operation_id: Some(
+                                    "operation_id",
+                                ),
+                                call_selectors: None,
+                            },
+                            statements: [
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:575-616,
+                                    PolynomialCommitDeclaration(
+                                        ../test_data/asm/static_bus_multi.asm:575-615,
+                                        None,
+                                        [
+                                            PolynomialName {
+                                                name: "add_a",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "add_b",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "add_c",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "add_sel",
+                                                array_size: None,
+                                            },
+                                        ],
+                                        None,
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:621-653,
+                                    Expression(
+                                        ../test_data/asm/static_bus_multi.asm:621-652,
+                                        FunctionCall(
+                                            ../test_data/asm/static_bus_multi.asm:621-652,
+                                            FunctionCall {
+                                                function: Reference(
+                                                    ../test_data/asm/static_bus_multi.asm:621-643,
+                                                    NamespacedPolynomialReference {
+                                                        path: SymbolPath {
+                                                            parts: [
+                                                                Named(
+                                                                    "std",
+                                                                ),
+                                                                Named(
+                                                                    "utils",
+                                                                ),
+                                                                Named(
+                                                                    "force_bool",
+                                                                ),
+                                                            ],
+                                                        },
+                                                        type_args: None,
+                                                    },
+                                                ),
+                                                arguments: [
+                                                    Reference(
+                                                        ../test_data/asm/static_bus_multi.asm:644-651,
+                                                        NamespacedPolynomialReference {
+                                                            path: SymbolPath {
+                                                                parts: [
+                                                                    Named(
+                                                                        "add_sel",
+                                                                    ),
+                                                                ],
+                                                            },
+                                                            type_args: None,
+                                                        },
+                                                    ),
+                                                ],
+                                            },
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:658-680,
+                                    Expression(
+                                        ../test_data/asm/static_bus_multi.asm:658-679,
+                                        BinaryOperation(
+                                            ../test_data/asm/static_bus_multi.asm:658-679,
+                                            BinaryOperation {
+                                                left: Reference(
+                                                    ../test_data/asm/static_bus_multi.asm:658-663,
+                                                    NamespacedPolynomialReference {
+                                                        path: SymbolPath {
+                                                            parts: [
+                                                                Named(
+                                                                    "add_c",
+                                                                ),
+                                                            ],
+                                                        },
+                                                        type_args: None,
+                                                    },
+                                                ),
+                                                op: Identity,
+                                                right: BinaryOperation(
+                                                    ../test_data/asm/static_bus_multi.asm:666-679,
+                                                    BinaryOperation {
+                                                        left: Reference(
+                                                            ../test_data/asm/static_bus_multi.asm:666-671,
+                                                            NamespacedPolynomialReference {
+                                                                path: SymbolPath {
+                                                                    parts: [
+                                                                        Named(
+                                                                            "add_a",
+                                                                        ),
+                                                                    ],
+                                                                },
+                                                                type_args: None,
+                                                            },
+                                                        ),
+                                                        op: Add,
+                                                        right: Reference(
+                                                            ../test_data/asm/static_bus_multi.asm:674-679,
+                                                            NamespacedPolynomialReference {
+                                                                path: SymbolPath {
+                                                                    parts: [
+                                                                        Named(
+                                                                            "add_b",
+                                                                        ),
+                                                                    ],
+                                                                },
+                                                                type_args: None,
+                                                            },
+                                                        ),
+                                                    },
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:711-752,
+                                    PolynomialCommitDeclaration(
+                                        ../test_data/asm/static_bus_multi.asm:711-751,
+                                        None,
+                                        [
+                                            PolynomialName {
+                                                name: "mul_a",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "mul_b",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "mul_c",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "mul_sel",
+                                                array_size: None,
+                                            },
+                                        ],
+                                        None,
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:757-789,
+                                    Expression(
+                                        ../test_data/asm/static_bus_multi.asm:757-788,
+                                        FunctionCall(
+                                            ../test_data/asm/static_bus_multi.asm:757-788,
+                                            FunctionCall {
+                                                function: Reference(
+                                                    ../test_data/asm/static_bus_multi.asm:757-779,
+                                                    NamespacedPolynomialReference {
+                                                        path: SymbolPath {
+                                                            parts: [
+                                                                Named(
+                                                                    "std",
+                                                                ),
+                                                                Named(
+                                                                    "utils",
+                                                                ),
+                                                                Named(
+                                                                    "force_bool",
+                                                                ),
+                                                            ],
+                                                        },
+                                                        type_args: None,
+                                                    },
+                                                ),
+                                                arguments: [
+                                                    Reference(
+                                                        ../test_data/asm/static_bus_multi.asm:780-787,
+                                                        NamespacedPolynomialReference {
+                                                            path: SymbolPath {
+                                                                parts: [
+                                                                    Named(
+                                                                        "mul_sel",
+                                                                    ),
+                                                                ],
+                                                            },
+                                                            type_args: None,
+                                                        },
+                                                    ),
+                                                ],
+                                            },
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:794-816,
+                                    Expression(
+                                        ../test_data/asm/static_bus_multi.asm:794-815,
+                                        BinaryOperation(
+                                            ../test_data/asm/static_bus_multi.asm:794-815,
+                                            BinaryOperation {
+                                                left: Reference(
+                                                    ../test_data/asm/static_bus_multi.asm:794-799,
+                                                    NamespacedPolynomialReference {
+                                                        path: SymbolPath {
+                                                            parts: [
+                                                                Named(
+                                                                    "mul_c",
+                                                                ),
+                                                            ],
+                                                        },
+                                                        type_args: None,
+                                                    },
+                                                ),
+                                                op: Identity,
+                                                right: BinaryOperation(
+                                                    ../test_data/asm/static_bus_multi.asm:802-815,
+                                                    BinaryOperation {
+                                                        left: Reference(
+                                                            ../test_data/asm/static_bus_multi.asm:802-807,
+                                                            NamespacedPolynomialReference {
+                                                                path: SymbolPath {
+                                                                    parts: [
+                                                                        Named(
+                                                                            "mul_a",
+                                                                        ),
+                                                                    ],
+                                                                },
+                                                                type_args: None,
+                                                            },
+                                                        ),
+                                                        op: Mul,
+                                                        right: Reference(
+                                                            ../test_data/asm/static_bus_multi.asm:810-815,
+                                                            NamespacedPolynomialReference {
+                                                                path: SymbolPath {
+                                                                    parts: [
+                                                                        Named(
+                                                                            "mul_b",
+                                                                        ),
+                                                                    ],
+                                                                },
+                                                                type_args: None,
+                                                            },
+                                                        ),
+                                                    },
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:847-888,
+                                    PolynomialCommitDeclaration(
+                                        ../test_data/asm/static_bus_multi.asm:847-887,
+                                        None,
+                                        [
+                                            PolynomialName {
+                                                name: "sub_a",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "sub_b",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "sub_c",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "sub_sel",
+                                                array_size: None,
+                                            },
+                                        ],
+                                        None,
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:893-925,
+                                    Expression(
+                                        ../test_data/asm/static_bus_multi.asm:893-924,
+                                        FunctionCall(
+                                            ../test_data/asm/static_bus_multi.asm:893-924,
+                                            FunctionCall {
+                                                function: Reference(
+                                                    ../test_data/asm/static_bus_multi.asm:893-915,
+                                                    NamespacedPolynomialReference {
+                                                        path: SymbolPath {
+                                                            parts: [
+                                                                Named(
+                                                                    "std",
+                                                                ),
+                                                                Named(
+                                                                    "utils",
+                                                                ),
+                                                                Named(
+                                                                    "force_bool",
+                                                                ),
+                                                            ],
+                                                        },
+                                                        type_args: None,
+                                                    },
+                                                ),
+                                                arguments: [
+                                                    Reference(
+                                                        ../test_data/asm/static_bus_multi.asm:916-923,
+                                                        NamespacedPolynomialReference {
+                                                            path: SymbolPath {
+                                                                parts: [
+                                                                    Named(
+                                                                        "sub_sel",
+                                                                    ),
+                                                                ],
+                                                            },
+                                                            type_args: None,
+                                                        },
+                                                    ),
+                                                ],
+                                            },
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:930-952,
+                                    Expression(
+                                        ../test_data/asm/static_bus_multi.asm:930-951,
+                                        BinaryOperation(
+                                            ../test_data/asm/static_bus_multi.asm:930-951,
+                                            BinaryOperation {
+                                                left: Reference(
+                                                    ../test_data/asm/static_bus_multi.asm:930-935,
+                                                    NamespacedPolynomialReference {
+                                                        path: SymbolPath {
+                                                            parts: [
+                                                                Named(
+                                                                    "sub_c",
+                                                                ),
+                                                            ],
+                                                        },
+                                                        type_args: None,
+                                                    },
+                                                ),
+                                                op: Identity,
+                                                right: BinaryOperation(
+                                                    ../test_data/asm/static_bus_multi.asm:938-951,
+                                                    BinaryOperation {
+                                                        left: Reference(
+                                                            ../test_data/asm/static_bus_multi.asm:938-943,
+                                                            NamespacedPolynomialReference {
+                                                                path: SymbolPath {
+                                                                    parts: [
+                                                                        Named(
+                                                                            "sub_a",
+                                                                        ),
+                                                                    ],
+                                                                },
+                                                                type_args: None,
+                                                            },
+                                                        ),
+                                                        op: Sub,
+                                                        right: Reference(
+                                                            ../test_data/asm/static_bus_multi.asm:946-951,
+                                                            NamespacedPolynomialReference {
+                                                                path: SymbolPath {
+                                                                    parts: [
+                                                                        Named(
+                                                                            "sub_b",
+                                                                        ),
+                                                                    ],
+                                                                },
+                                                                type_args: None,
+                                                            },
+                                                        ),
+                                                    },
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:986-1039,
+                                    PolynomialCommitDeclaration(
+                                        ../test_data/asm/static_bus_multi.asm:986-1038,
+                                        None,
+                                        [
+                                            PolynomialName {
+                                                name: "double_a",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "double_b",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "double_c",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "double_sel",
+                                                array_size: None,
+                                            },
+                                        ],
+                                        None,
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:1044-1079,
+                                    Expression(
+                                        ../test_data/asm/static_bus_multi.asm:1044-1078,
+                                        FunctionCall(
+                                            ../test_data/asm/static_bus_multi.asm:1044-1078,
+                                            FunctionCall {
+                                                function: Reference(
+                                                    ../test_data/asm/static_bus_multi.asm:1044-1066,
+                                                    NamespacedPolynomialReference {
+                                                        path: SymbolPath {
+                                                            parts: [
+                                                                Named(
+                                                                    "std",
+                                                                ),
+                                                                Named(
+                                                                    "utils",
+                                                                ),
+                                                                Named(
+                                                                    "force_bool",
+                                                                ),
+                                                            ],
+                                                        },
+                                                        type_args: None,
+                                                    },
+                                                ),
+                                                arguments: [
+                                                    Reference(
+                                                        ../test_data/asm/static_bus_multi.asm:1067-1077,
+                                                        NamespacedPolynomialReference {
+                                                            path: SymbolPath {
+                                                                parts: [
+                                                                    Named(
+                                                                        "double_sel",
+                                                                    ),
+                                                                ],
+                                                            },
+                                                            type_args: None,
+                                                        },
+                                                    ),
+                                                ],
+                                            },
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:1084-1123,
+                                    Expression(
+                                        ../test_data/asm/static_bus_multi.asm:1084-1122,
+                                        BinaryOperation(
+                                            ../test_data/asm/static_bus_multi.asm:1084-1122,
+                                            BinaryOperation {
+                                                left: Reference(
+                                                    ../test_data/asm/static_bus_multi.asm:1084-1092,
+                                                    NamespacedPolynomialReference {
+                                                        path: SymbolPath {
+                                                            parts: [
+                                                                Named(
+                                                                    "double_c",
+                                                                ),
+                                                            ],
+                                                        },
+                                                        type_args: None,
+                                                    },
+                                                ),
+                                                op: Identity,
+                                                right: BinaryOperation(
+                                                    ../test_data/asm/static_bus_multi.asm:1095-1122,
+                                                    BinaryOperation {
+                                                        left: BinaryOperation(
+                                                            ../test_data/asm/static_bus_multi.asm:1095-1107,
+                                                            BinaryOperation {
+                                                                left: Number(
+                                                                    ../test_data/asm/static_bus_multi.asm:1095-1096,
+                                                                    Number {
+                                                                        value: 2,
+                                                                        type_: None,
+                                                                    },
+                                                                ),
+                                                                op: Mul,
+                                                                right: Reference(
+                                                                    ../test_data/asm/static_bus_multi.asm:1099-1107,
+                                                                    NamespacedPolynomialReference {
+                                                                        path: SymbolPath {
+                                                                            parts: [
+                                                                                Named(
+                                                                                    "double_a",
+                                                                                ),
+                                                                            ],
+                                                                        },
+                                                                        type_args: None,
+                                                                    },
+                                                                ),
+                                                            },
+                                                        ),
+                                                        op: Add,
+                                                        right: BinaryOperation(
+                                                            ../test_data/asm/static_bus_multi.asm:1110-1122,
+                                                            BinaryOperation {
+                                                                left: Number(
+                                                                    ../test_data/asm/static_bus_multi.asm:1110-1111,
+                                                                    Number {
+                                                                        value: 2,
+                                                                        type_: None,
+                                                                    },
+                                                                ),
+                                                                op: Mul,
+                                                                right: Reference(
+                                                                    ../test_data/asm/static_bus_multi.asm:1114-1122,
+                                                                    NamespacedPolynomialReference {
+                                                                        path: SymbolPath {
+                                                                            parts: [
+                                                                                Named(
+                                                                                    "double_b",
+                                                                                ),
+                                                                            ],
+                                                                        },
+                                                                        type_args: None,
+                                                                    },
+                                                                ),
+                                                            },
+                                                        ),
+                                                    },
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:1157-1210,
+                                    PolynomialCommitDeclaration(
+                                        ../test_data/asm/static_bus_multi.asm:1157-1209,
+                                        None,
+                                        [
+                                            PolynomialName {
+                                                name: "triple_a",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "triple_b",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "triple_c",
+                                                array_size: None,
+                                            },
+                                            PolynomialName {
+                                                name: "triple_sel",
+                                                array_size: None,
+                                            },
+                                        ],
+                                        None,
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:1215-1250,
+                                    Expression(
+                                        ../test_data/asm/static_bus_multi.asm:1215-1249,
+                                        FunctionCall(
+                                            ../test_data/asm/static_bus_multi.asm:1215-1249,
+                                            FunctionCall {
+                                                function: Reference(
+                                                    ../test_data/asm/static_bus_multi.asm:1215-1237,
+                                                    NamespacedPolynomialReference {
+                                                        path: SymbolPath {
+                                                            parts: [
+                                                                Named(
+                                                                    "std",
+                                                                ),
+                                                                Named(
+                                                                    "utils",
+                                                                ),
+                                                                Named(
+                                                                    "force_bool",
+                                                                ),
+                                                            ],
+                                                        },
+                                                        type_args: None,
+                                                    },
+                                                ),
+                                                arguments: [
+                                                    Reference(
+                                                        ../test_data/asm/static_bus_multi.asm:1238-1248,
+                                                        NamespacedPolynomialReference {
+                                                            path: SymbolPath {
+                                                                parts: [
+                                                                    Named(
+                                                                        "triple_sel",
+                                                                    ),
+                                                                ],
+                                                            },
+                                                            type_args: None,
+                                                        },
+                                                    ),
+                                                ],
+                                            },
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:1255-1294,
+                                    Expression(
+                                        ../test_data/asm/static_bus_multi.asm:1255-1293,
+                                        BinaryOperation(
+                                            ../test_data/asm/static_bus_multi.asm:1255-1293,
+                                            BinaryOperation {
+                                                left: Reference(
+                                                    ../test_data/asm/static_bus_multi.asm:1255-1263,
+                                                    NamespacedPolynomialReference {
+                                                        path: SymbolPath {
+                                                            parts: [
+                                                                Named(
+                                                                    "triple_c",
+                                                                ),
+                                                            ],
+                                                        },
+                                                        type_args: None,
+                                                    },
+                                                ),
+                                                op: Identity,
+                                                right: BinaryOperation(
+                                                    ../test_data/asm/static_bus_multi.asm:1266-1293,
+                                                    BinaryOperation {
+                                                        left: BinaryOperation(
+                                                            ../test_data/asm/static_bus_multi.asm:1266-1278,
+                                                            BinaryOperation {
+                                                                left: Number(
+                                                                    ../test_data/asm/static_bus_multi.asm:1266-1267,
+                                                                    Number {
+                                                                        value: 3,
+                                                                        type_: None,
+                                                                    },
+                                                                ),
+                                                                op: Mul,
+                                                                right: Reference(
+                                                                    ../test_data/asm/static_bus_multi.asm:1270-1278,
+                                                                    NamespacedPolynomialReference {
+                                                                        path: SymbolPath {
+                                                                            parts: [
+                                                                                Named(
+                                                                                    "triple_a",
+                                                                                ),
+                                                                            ],
+                                                                        },
+                                                                        type_args: None,
+                                                                    },
+                                                                ),
+                                                            },
+                                                        ),
+                                                        op: Add,
+                                                        right: BinaryOperation(
+                                                            ../test_data/asm/static_bus_multi.asm:1281-1293,
+                                                            BinaryOperation {
+                                                                left: Number(
+                                                                    ../test_data/asm/static_bus_multi.asm:1281-1282,
+                                                                    Number {
+                                                                        value: 3,
+                                                                        type_: None,
+                                                                    },
+                                                                ),
+                                                                op: Mul,
+                                                                right: Reference(
+                                                                    ../test_data/asm/static_bus_multi.asm:1285-1293,
+                                                                    NamespacedPolynomialReference {
+                                                                        path: SymbolPath {
+                                                                            parts: [
+                                                                                Named(
+                                                                                    "triple_b",
+                                                                                ),
+                                                                            ],
+                                                                        },
+                                                                        type_args: None,
+                                                                    },
+                                                                ),
+                                                            },
+                                                        ),
+                                                    },
+                                                ),
+                                            },
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:1325-1831,
+                                    Expression(
+                                        ../test_data/asm/static_bus_multi.asm:1325-1830,
+                                        FunctionCall(
+                                            ../test_data/asm/static_bus_multi.asm:1325-1830,
+                                            FunctionCall {
+                                                function: Reference(
+                                                    ../test_data/asm/static_bus_multi.asm:1325-1342,
+                                                    NamespacedPolynomialReference {
+                                                        path: SymbolPath {
+                                                            parts: [
+                                                                Named(
+                                                                    "bus_multi_receive",
+                                                                ),
+                                                            ],
+                                                        },
+                                                        type_args: None,
+                                                    },
+                                                ),
+                                                arguments: [
+                                                    ArrayLiteral(
+                                                        ../test_data/asm/static_bus_multi.asm:1350-1824,
+                                                        ArrayLiteral {
+                                                            items: [
+                                                                FunctionCall(
+                                                                    ../test_data/asm/static_bus_multi.asm:1360-1436,
+                                                                    FunctionCall {
+                                                                        function: Reference(
+                                                                            ../test_data/asm/static_bus_multi.asm:1360-1383,
+                                                                            NamespacedPolynomialReference {
+                                                                                path: SymbolPath {
+                                                                                    parts: [
+                                                                                        Named(
+                                                                                            "BusInteraction",
+                                                                                        ),
+                                                                                        Named(
+                                                                                            "Receive",
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                                type_args: None,
+                                                                            },
+                                                                        ),
+                                                                        arguments: [
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1384-1394,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "ADD_BUS_ID",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            ArrayLiteral(
+                                                                                ../test_data/asm/static_bus_multi.asm:1396-1417,
+                                                                                ArrayLiteral {
+                                                                                    items: [
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1397-1402,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "add_a",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1404-1409,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "add_b",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1411-1416,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "add_c",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1419-1426,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "add_sel",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1428-1435,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "add_sel",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                        ],
+                                                                    },
+                                                                ),
+                                                                FunctionCall(
+                                                                    ../test_data/asm/static_bus_multi.asm:1446-1522,
+                                                                    FunctionCall {
+                                                                        function: Reference(
+                                                                            ../test_data/asm/static_bus_multi.asm:1446-1469,
+                                                                            NamespacedPolynomialReference {
+                                                                                path: SymbolPath {
+                                                                                    parts: [
+                                                                                        Named(
+                                                                                            "BusInteraction",
+                                                                                        ),
+                                                                                        Named(
+                                                                                            "Receive",
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                                type_args: None,
+                                                                            },
+                                                                        ),
+                                                                        arguments: [
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1470-1480,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "MUL_BUS_ID",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            ArrayLiteral(
+                                                                                ../test_data/asm/static_bus_multi.asm:1482-1503,
+                                                                                ArrayLiteral {
+                                                                                    items: [
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1483-1488,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "mul_a",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1490-1495,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "mul_b",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1497-1502,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "mul_c",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1505-1512,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "mul_sel",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1514-1521,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "mul_sel",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                        ],
+                                                                    },
+                                                                ),
+                                                                FunctionCall(
+                                                                    ../test_data/asm/static_bus_multi.asm:1532-1608,
+                                                                    FunctionCall {
+                                                                        function: Reference(
+                                                                            ../test_data/asm/static_bus_multi.asm:1532-1555,
+                                                                            NamespacedPolynomialReference {
+                                                                                path: SymbolPath {
+                                                                                    parts: [
+                                                                                        Named(
+                                                                                            "BusInteraction",
+                                                                                        ),
+                                                                                        Named(
+                                                                                            "Receive",
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                                type_args: None,
+                                                                            },
+                                                                        ),
+                                                                        arguments: [
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1556-1566,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "SUB_BUS_ID",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            ArrayLiteral(
+                                                                                ../test_data/asm/static_bus_multi.asm:1568-1589,
+                                                                                ArrayLiteral {
+                                                                                    items: [
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1569-1574,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "sub_a",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1576-1581,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "sub_b",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1583-1588,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "sub_c",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1591-1598,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "sub_sel",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1600-1607,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "sub_sel",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                        ],
+                                                                    },
+                                                                ),
+                                                                FunctionCall(
+                                                                    ../test_data/asm/static_bus_multi.asm:1618-1712,
+                                                                    FunctionCall {
+                                                                        function: Reference(
+                                                                            ../test_data/asm/static_bus_multi.asm:1618-1641,
+                                                                            NamespacedPolynomialReference {
+                                                                                path: SymbolPath {
+                                                                                    parts: [
+                                                                                        Named(
+                                                                                            "BusInteraction",
+                                                                                        ),
+                                                                                        Named(
+                                                                                            "Receive",
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                                type_args: None,
+                                                                            },
+                                                                        ),
+                                                                        arguments: [
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1642-1655,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "DOUBLE_BUS_ID",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            ArrayLiteral(
+                                                                                ../test_data/asm/static_bus_multi.asm:1657-1687,
+                                                                                ArrayLiteral {
+                                                                                    items: [
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1658-1666,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "double_a",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1668-1676,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "double_b",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1678-1686,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "double_c",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1689-1699,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "double_sel",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1701-1711,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "double_sel",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                        ],
+                                                                    },
+                                                                ),
+                                                                FunctionCall(
+                                                                    ../test_data/asm/static_bus_multi.asm:1722-1816,
+                                                                    FunctionCall {
+                                                                        function: Reference(
+                                                                            ../test_data/asm/static_bus_multi.asm:1722-1745,
+                                                                            NamespacedPolynomialReference {
+                                                                                path: SymbolPath {
+                                                                                    parts: [
+                                                                                        Named(
+                                                                                            "BusInteraction",
+                                                                                        ),
+                                                                                        Named(
+                                                                                            "Receive",
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                                type_args: None,
+                                                                            },
+                                                                        ),
+                                                                        arguments: [
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1746-1759,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "TRIPLE_BUS_ID",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            ArrayLiteral(
+                                                                                ../test_data/asm/static_bus_multi.asm:1761-1791,
+                                                                                ArrayLiteral {
+                                                                                    items: [
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1762-1770,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "triple_a",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1772-1780,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "triple_b",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:1782-1790,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "triple_c",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1793-1803,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "triple_sel",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:1805-1815,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "triple_sel",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                        ],
+                                                                    },
+                                                                ),
+                                                            ],
+                                                        },
+                                                    ),
+                                                ],
+                                            },
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:1861-1900,
+                                    PolynomialConstantDefinition(
+                                        ../test_data/asm/static_bus_multi.asm:1861-1899,
+                                        "is_add",
+                                        Array(
+                                            RepeatedValue(
+                                                [
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1884-1885,
+                                                        Number {
+                                                            value: 1,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1887-1888,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1890-1891,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1893-1894,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1896-1897,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                ],
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:1905-1944,
+                                    PolynomialConstantDefinition(
+                                        ../test_data/asm/static_bus_multi.asm:1905-1943,
+                                        "is_mul",
+                                        Array(
+                                            RepeatedValue(
+                                                [
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1928-1929,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1931-1932,
+                                                        Number {
+                                                            value: 1,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1934-1935,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1937-1938,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1940-1941,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                ],
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:1949-1988,
+                                    PolynomialConstantDefinition(
+                                        ../test_data/asm/static_bus_multi.asm:1949-1987,
+                                        "is_sub",
+                                        Array(
+                                            RepeatedValue(
+                                                [
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1972-1973,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1975-1976,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1978-1979,
+                                                        Number {
+                                                            value: 1,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1981-1982,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:1984-1985,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                ],
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:1993-2032,
+                                    PolynomialConstantDefinition(
+                                        ../test_data/asm/static_bus_multi.asm:1993-2031,
+                                        "is_double",
+                                        Array(
+                                            RepeatedValue(
+                                                [
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:2016-2017,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:2019-2020,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:2022-2023,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:2025-2026,
+                                                        Number {
+                                                            value: 1,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:2028-2029,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                ],
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:2037-2076,
+                                    PolynomialConstantDefinition(
+                                        ../test_data/asm/static_bus_multi.asm:2037-2075,
+                                        "is_triple",
+                                        Array(
+                                            RepeatedValue(
+                                                [
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:2060-2061,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:2063-2064,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:2066-2067,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:2069-2070,
+                                                        Number {
+                                                            value: 0,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                    Number(
+                                                        ../test_data/asm/static_bus_multi.asm:2072-2073,
+                                                        Number {
+                                                            value: 1,
+                                                            type_: None,
+                                                        },
+                                                    ),
+                                                ],
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:2081-2105,
+                                    PolynomialConstantDefinition(
+                                        ../test_data/asm/static_bus_multi.asm:2081-2104,
+                                        "x",
+                                        Expression(
+                                            LambdaExpression(
+                                                ../test_data/asm/static_bus_multi.asm:2092-2104,
+                                                LambdaExpression {
+                                                    kind: Pure,
+                                                    params: [
+                                                        Enum(
+                                                            ../test_data/asm/static_bus_multi.asm:2093-2094,
+                                                            SymbolPath {
+                                                                parts: [
+                                                                    Named(
+                                                                        "i",
+                                                                    ),
+                                                                ],
+                                                            },
+                                                            None,
+                                                        ),
+                                                    ],
+                                                    body: BlockExpression(
+                                                        ../test_data/asm/static_bus_multi.asm:2096-2104,
+                                                        BlockExpression {
+                                                            statements: [],
+                                                            expr: Some(
+                                                                BinaryOperation(
+                                                                    ../test_data/asm/static_bus_multi.asm:2097-2103,
+                                                                    BinaryOperation {
+                                                                        left: Reference(
+                                                                            ../test_data/asm/static_bus_multi.asm:2097-2098,
+                                                                            NamespacedPolynomialReference {
+                                                                                path: SymbolPath {
+                                                                                    parts: [
+                                                                                        Named(
+                                                                                            "i",
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                                type_args: None,
+                                                                            },
+                                                                        ),
+                                                                        op: Mul,
+                                                                        right: Number(
+                                                                            ../test_data/asm/static_bus_multi.asm:2101-2103,
+                                                                            Number {
+                                                                                value: 42,
+                                                                                type_: None,
+                                                                            },
+                                                                        ),
+                                                                    },
+                                                                ),
+                                                            ),
+                                                        },
+                                                    ),
+                                                    param_types: [],
+                                                },
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:2110-2137,
+                                    PolynomialConstantDefinition(
+                                        ../test_data/asm/static_bus_multi.asm:2110-2136,
+                                        "y",
+                                        Expression(
+                                            LambdaExpression(
+                                                ../test_data/asm/static_bus_multi.asm:2121-2136,
+                                                LambdaExpression {
+                                                    kind: Pure,
+                                                    params: [
+                                                        Enum(
+                                                            ../test_data/asm/static_bus_multi.asm:2122-2123,
+                                                            SymbolPath {
+                                                                parts: [
+                                                                    Named(
+                                                                        "i",
+                                                                    ),
+                                                                ],
+                                                            },
+                                                            None,
+                                                        ),
+                                                    ],
+                                                    body: BlockExpression(
+                                                        ../test_data/asm/static_bus_multi.asm:2125-2136,
+                                                        BlockExpression {
+                                                            statements: [],
+                                                            expr: Some(
+                                                                BinaryOperation(
+                                                                    ../test_data/asm/static_bus_multi.asm:2126-2135,
+                                                                    BinaryOperation {
+                                                                        left: Reference(
+                                                                            ../test_data/asm/static_bus_multi.asm:2126-2127,
+                                                                            NamespacedPolynomialReference {
+                                                                                path: SymbolPath {
+                                                                                    parts: [
+                                                                                        Named(
+                                                                                            "i",
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                                type_args: None,
+                                                                            },
+                                                                        ),
+                                                                        op: Add,
+                                                                        right: Number(
+                                                                            ../test_data/asm/static_bus_multi.asm:2130-2135,
+                                                                            Number {
+                                                                                value: 12345,
+                                                                                type_: None,
+                                                                            },
+                                                                        ),
+                                                                    },
+                                                                ),
+                                                            ),
+                                                        },
+                                                    ),
+                                                    param_types: [],
+                                                },
+                                            ),
+                                        ),
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:2142-2156,
+                                    PolynomialCommitDeclaration(
+                                        ../test_data/asm/static_bus_multi.asm:2142-2155,
+                                        None,
+                                        [
+                                            PolynomialName {
+                                                name: "z",
+                                                array_size: None,
+                                            },
+                                        ],
+                                        None,
+                                    ),
+                                ),
+                                Pil(
+                                    ../test_data/asm/static_bus_multi.asm:2338-2692,
+                                    Expression(
+                                        ../test_data/asm/static_bus_multi.asm:2338-2691,
+                                        FunctionCall(
+                                            ../test_data/asm/static_bus_multi.asm:2338-2691,
+                                            FunctionCall {
+                                                function: Reference(
+                                                    ../test_data/asm/static_bus_multi.asm:2338-2352,
+                                                    NamespacedPolynomialReference {
+                                                        path: SymbolPath {
+                                                            parts: [
+                                                                Named(
+                                                                    "bus_multi_send",
+                                                                ),
+                                                            ],
+                                                        },
+                                                        type_args: None,
+                                                    },
+                                                ),
+                                                arguments: [
+                                                    ArrayLiteral(
+                                                        ../test_data/asm/static_bus_multi.asm:2360-2685,
+                                                        ArrayLiteral {
+                                                            items: [
+                                                                FunctionCall(
+                                                                    ../test_data/asm/static_bus_multi.asm:2370-2421,
+                                                                    FunctionCall {
+                                                                        function: Reference(
+                                                                            ../test_data/asm/static_bus_multi.asm:2370-2390,
+                                                                            NamespacedPolynomialReference {
+                                                                                path: SymbolPath {
+                                                                                    parts: [
+                                                                                        Named(
+                                                                                            "BusInteraction",
+                                                                                        ),
+                                                                                        Named(
+                                                                                            "Send",
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                                type_args: None,
+                                                                            },
+                                                                        ),
+                                                                        arguments: [
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:2391-2401,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "MUL_BUS_ID",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            ArrayLiteral(
+                                                                                ../test_data/asm/static_bus_multi.asm:2403-2412,
+                                                                                ArrayLiteral {
+                                                                                    items: [
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2404-2405,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "x",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2407-2408,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "y",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2410-2411,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "z",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:2414-2420,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "is_mul",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                        ],
+                                                                    },
+                                                                ),
+                                                                FunctionCall(
+                                                                    ../test_data/asm/static_bus_multi.asm:2431-2482,
+                                                                    FunctionCall {
+                                                                        function: Reference(
+                                                                            ../test_data/asm/static_bus_multi.asm:2431-2451,
+                                                                            NamespacedPolynomialReference {
+                                                                                path: SymbolPath {
+                                                                                    parts: [
+                                                                                        Named(
+                                                                                            "BusInteraction",
+                                                                                        ),
+                                                                                        Named(
+                                                                                            "Send",
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                                type_args: None,
+                                                                            },
+                                                                        ),
+                                                                        arguments: [
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:2452-2462,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "ADD_BUS_ID",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            ArrayLiteral(
+                                                                                ../test_data/asm/static_bus_multi.asm:2464-2473,
+                                                                                ArrayLiteral {
+                                                                                    items: [
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2465-2466,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "x",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2468-2469,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "y",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2471-2472,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "z",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:2475-2481,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "is_add",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                        ],
+                                                                    },
+                                                                ),
+                                                                FunctionCall(
+                                                                    ../test_data/asm/static_bus_multi.asm:2492-2549,
+                                                                    FunctionCall {
+                                                                        function: Reference(
+                                                                            ../test_data/asm/static_bus_multi.asm:2492-2512,
+                                                                            NamespacedPolynomialReference {
+                                                                                path: SymbolPath {
+                                                                                    parts: [
+                                                                                        Named(
+                                                                                            "BusInteraction",
+                                                                                        ),
+                                                                                        Named(
+                                                                                            "Send",
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                                type_args: None,
+                                                                            },
+                                                                        ),
+                                                                        arguments: [
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:2513-2526,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "DOUBLE_BUS_ID",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            ArrayLiteral(
+                                                                                ../test_data/asm/static_bus_multi.asm:2528-2537,
+                                                                                ArrayLiteral {
+                                                                                    items: [
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2529-2530,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "x",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2532-2533,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "y",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2535-2536,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "z",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:2539-2548,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "is_double",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                        ],
+                                                                    },
+                                                                ),
+                                                                FunctionCall(
+                                                                    ../test_data/asm/static_bus_multi.asm:2559-2610,
+                                                                    FunctionCall {
+                                                                        function: Reference(
+                                                                            ../test_data/asm/static_bus_multi.asm:2559-2579,
+                                                                            NamespacedPolynomialReference {
+                                                                                path: SymbolPath {
+                                                                                    parts: [
+                                                                                        Named(
+                                                                                            "BusInteraction",
+                                                                                        ),
+                                                                                        Named(
+                                                                                            "Send",
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                                type_args: None,
+                                                                            },
+                                                                        ),
+                                                                        arguments: [
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:2580-2590,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "SUB_BUS_ID",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            ArrayLiteral(
+                                                                                ../test_data/asm/static_bus_multi.asm:2592-2601,
+                                                                                ArrayLiteral {
+                                                                                    items: [
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2593-2594,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "x",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2596-2597,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "y",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2599-2600,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "z",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:2603-2609,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "is_sub",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                        ],
+                                                                    },
+                                                                ),
+                                                                FunctionCall(
+                                                                    ../test_data/asm/static_bus_multi.asm:2620-2677,
+                                                                    FunctionCall {
+                                                                        function: Reference(
+                                                                            ../test_data/asm/static_bus_multi.asm:2620-2640,
+                                                                            NamespacedPolynomialReference {
+                                                                                path: SymbolPath {
+                                                                                    parts: [
+                                                                                        Named(
+                                                                                            "BusInteraction",
+                                                                                        ),
+                                                                                        Named(
+                                                                                            "Send",
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                                type_args: None,
+                                                                            },
+                                                                        ),
+                                                                        arguments: [
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:2641-2654,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "TRIPLE_BUS_ID",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                            ArrayLiteral(
+                                                                                ../test_data/asm/static_bus_multi.asm:2656-2665,
+                                                                                ArrayLiteral {
+                                                                                    items: [
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2657-2658,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "x",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2660-2661,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "y",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                        Reference(
+                                                                                            ../test_data/asm/static_bus_multi.asm:2663-2664,
+                                                                                            NamespacedPolynomialReference {
+                                                                                                path: SymbolPath {
+                                                                                                    parts: [
+                                                                                                        Named(
+                                                                                                            "z",
+                                                                                                        ),
+                                                                                                    ],
+                                                                                                },
+                                                                                                type_args: None,
+                                                                                            },
+                                                                                        ),
+                                                                                    ],
+                                                                                },
+                                                                            ),
+                                                                            Reference(
+                                                                                ../test_data/asm/static_bus_multi.asm:2667-2676,
+                                                                                NamespacedPolynomialReference {
+                                                                                    path: SymbolPath {
+                                                                                        parts: [
+                                                                                            Named(
+                                                                                                "is_triple",
+                                                                                            ),
+                                                                                        ],
+                                                                                    },
+                                                                                    type_args: None,
+                                                                                },
+                                                                            ),
+                                                                        ],
+                                                                    },
+                                                                ),
+                                                            ],
+                                                        },
+                                                    ),
+                                                ],
+                                            },
+                                        ),
+                                    ),
+                                ),
+                            ],
+                        },
+                    ),
+                },
+            ),
+        ],
+    },
+}

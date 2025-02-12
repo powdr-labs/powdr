@@ -121,10 +121,24 @@ impl LinkerBackend for BusLinker {
         }
         .into();
 
-        self.bus_multi_send_args.items.push(Expression::Tuple(
-            SourceRef::unknown(),
-            vec![(interaction_id as u32).into(), tuple, selector],
-        ));
+        println!("selector {:?}", selector);
+
+        self.bus_multi_send_args.items.push(
+            Expression::FunctionCall(
+                SourceRef::unknown(),
+                FunctionCall {
+                    function: Box::new(Expression::Reference(
+                        SourceRef::unknown(),
+                        SymbolPath::from_str("std::protocols::bus::BusInteraction::Send").unwrap().into(),
+                    )),
+                    arguments: vec![
+                        (interaction_id as u32).into(),
+                        tuple,
+                        selector,
+                    ],
+                },
+            )
+        );
     }
 
     fn process_object(&mut self, location: &Location, objects: &BTreeMap<Location, Object>) {
@@ -324,6 +338,20 @@ mod test {
     fn extract_main(code: &str) -> &str {
         let start = code.find("namespace main").unwrap();
         &code[start..]
+    }
+
+    #[test]
+    fn parse_enum() {
+        use std::io::Write;
+        let file = "../test_data/asm/static_bus_multi.asm";
+        let contents = fs::read_to_string(file).unwrap();
+        let parsed = parse_asm(Some(file), &contents).unwrap_or_else(|e| {
+            e.output_to_stderr();
+            panic!();
+        });
+        // print parsed to a file
+        let mut output = fs::File::create("../test_data/asm/static_bus_multi.txt").unwrap();
+        writeln!(output, "{:#?}", parsed).unwrap();
     }
 
     #[test]
