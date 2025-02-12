@@ -672,6 +672,7 @@ pub fn test_stwo_stage1_public(
     file_name: &str,
     inputs: Vec<Mersenne31Field>,
     publics: Vec<Mersenne31Field>,
+    _valid: bool,
 ) {
     let backend = powdr_backend::BackendType::Stwo;
 
@@ -700,7 +701,10 @@ pub fn test_stwo_stage1_public(
     _file_name: &str,
     _inputs: Vec<u32>,
     _publics: Vec<Mersenne31Field>,
+    valid: bool,
 ) {
+    // invalid publics should panic
+    assert!(valid);
 }
 
 #[cfg(not(feature = "stwo"))]
