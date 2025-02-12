@@ -506,6 +506,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         if self
             .process_until_no_progress(can_process, &mut modified_witgen, identity_queue)
             .is_ok()
+            && self.incomplete_machine_calls(&modified_witgen).is_empty()
         {
             *witgen = modified_witgen;
             true
