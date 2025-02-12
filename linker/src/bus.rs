@@ -277,7 +277,12 @@ impl BusLinker {
                     let call_selector =
                         index_access(call_selector_array, Some((*selector_index).into()));
                     let rhs_selector = latch * call_selector;
-                    vec![(interaction_id as u32).into(), rhs_selector, tuple, 1.into()]
+                    vec![
+                        (interaction_id as u32).into(),
+                        rhs_selector,
+                        tuple,
+                        1.into(),
+                    ]
                 }
             };
 
