@@ -457,6 +457,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         }
     }
 
+    /// If the only missing sends all only have a single argument, try to set those arguments
+    /// to zero.
     fn try_fix_simple_sends(
         &self,
         incomplete_machine_calls: &[(&Identity<T>, i32)],
