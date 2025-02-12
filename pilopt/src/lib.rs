@@ -663,10 +663,23 @@ fn substitute_polynomial_references<T: FieldElement>(
     pil_file: &mut Analyzed<T>,
     substitutions: Vec<((String, PolyID), AlgebraicExpression<T>)>,
 ) {
-    let poly_id_to_name = substitutions
-        .iter()
-        .map(|((name, id), _)| ((id.ptype, id.id), name.clone()))
-        .collect();
+    let poly_id_to_name = pil_file
+        .committed_polys_in_source_order()
+        .filter_map(|(s, _)| if let SymbolKind::Poly(kind) = s.kind {
+            Some(((kind, s.id), s.absolute_name.clone()))
+        } else {
+            None
+        })
+        .chain(
+            pil_file
+                .intermediate_polys_in_source_order()
+                .filter_map(|(s, _)| if let SymbolKind::Poly(kind) = s.kind {
+                    Some(((kind, s.id), s.absolute_name.clone()))
+                } else {
+                    None
+                }),
+        )
+        .collect::<BTreeMap<_, _>>();
     let substitutions_by_id = substitutions
         .iter()
         .map(|((_, id), value)| (*id, value.clone()))
@@ -682,7 +695,7 @@ fn substitute_polynomial_references<T: FieldElement>(
         ) = e
         {
             if let Some(value) = substitutions_by_name.get(name) {
-                *e = try_algebraic_expression_to_expression(&poly_id_to_name, value).unwrap();
+                *e = dbg!(try_algebraic_expression_to_expression(&poly_id_to_name, value).unwrap());
             }
         }
     });
