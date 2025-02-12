@@ -182,7 +182,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
     /// This means that if we have a cell write or a bus send in row `i`, we cannot
     /// have another one in row `i + block_size`.
     fn check_block_shape(&self, code: &[Effect<T, Variable>]) -> Result<(), String> {
-        for (column_id, row_offsets) in written_rows_per_column(&code) {
+        for (column_id, row_offsets) in written_rows_per_column(code) {
             let row_offsets: BTreeSet<_> = row_offsets.into_iter().collect();
             for offset in &row_offsets {
                 if row_offsets.contains(&(*offset + self.block_size as i32)) {
@@ -199,7 +199,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 }
             }
         }
-        for (identity_id, row_offsets) in completed_rows_for_bus_send(&code) {
+        for (identity_id, row_offsets) in completed_rows_for_bus_send(code) {
             let row_offsets: BTreeSet<_> = row_offsets.into_iter().collect();
             for offset in &row_offsets {
                 if row_offsets.contains(&(*offset + self.block_size as i32)) {
@@ -227,7 +227,7 @@ fn written_rows_per_column<T: FieldElement>(
             _ => None,
         })
         .fold(BTreeMap::new(), |mut map, (id, row)| {
-            map.entry(id).or_insert_with(BTreeSet::new).insert(row);
+            map.entry(id).or_default().insert(row);
             map
         })
 }
@@ -242,13 +242,16 @@ fn completed_rows_for_bus_send<T: FieldElement>(
                     identity_id,
                     row_offset,
                     ..
-                }) => Some((*identity_id, *row_offset)),
+                }) => {
+                    assert_eq!(*id, *identity_id);
+                    Some((*identity_id, *row_offset))
+                }
                 _ => panic!("Expected machine call variable."),
             },
             _ => None,
         })
         .fold(BTreeMap::new(), |mut map, (id, row)| {
-            map.entry(id).or_insert_with(BTreeSet::new).insert(row);
+            map.entry(id).or_default().insert(row);
             map
         })
 }
