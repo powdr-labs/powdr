@@ -203,7 +203,6 @@ impl LinkerBackend for BusLinker {
                         },
                     ),
                 ));
-                args.items.clear();
             }
         }
 
