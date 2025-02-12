@@ -1214,6 +1214,16 @@ impl From<&AlgebraicReference> for AlgebraicReferenceThin {
     }
 }
 
+impl AlgebraicReferenceThin {
+    pub fn with_name(&self, name: String) -> AlgebraicReference {
+        AlgebraicReference {
+            name,
+            poly_id: self.poly_id,
+            next: self.next,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AlgebraicReference {
     /// Name of the polynomial - just for informational purposes.

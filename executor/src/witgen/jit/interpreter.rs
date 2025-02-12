@@ -535,7 +535,7 @@ mod test {
 
         // TODO we cannot compile the prover functions here, but we can evaluate them.
         let (result, _prover_functions) = processor
-            .generate_code(&mutable_state, connection_id, &known_values)
+            .generate_code(&mutable_state, connection_id, &known_values, None)
             .unwrap();
 
         let known_inputs = (0..12).map(Variable::Param).collect::<Vec<_>>();
