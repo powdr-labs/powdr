@@ -2,10 +2,8 @@ use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    global_constraints::RangeConstraintSet,
-    machines::LookupCell,
-    processor::{Arguments, OuterQuery},
-    AlgebraicVariable, EvalError, EvalResult, EvalValue,
+    global_constraints::RangeConstraintSet, machines::LookupCell, processor::OuterQuery,
+    AffineExpression, AlgebraicVariable, EvalError, EvalResult, EvalValue,
 };
 
 /// A representation of the caller's data.
@@ -15,7 +13,7 @@ pub struct CallerData<'a, 'b, T> {
     /// The raw data of the caller. Unknown values should be ignored.
     data: Vec<T>,
     /// The affine expressions of the caller.
-    arguments: &'b Arguments<'a, T>,
+    arguments: &'b [AffineExpression<AlgebraicVariable<'a>, T>],
     /// Range constraints coming from the caller.
     range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
 }
@@ -32,6 +30,23 @@ impl<'a, 'b, T: FieldElement> From<&'b OuterQuery<'a, '_, T>> for CallerData<'a,
             data,
             arguments: &outer_query.arguments,
             range_constraints: outer_query.range_constraints,
+        }
+    }
+}
+
+impl<'a, 'b, T: FieldElement> CallerData<'a, 'b, T> {
+    pub fn new(
+        arguments: &'b [AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
+    ) -> Self {
+        let data = arguments
+            .iter()
+            .map(|l| l.constant_value().unwrap_or_default())
+            .collect();
+        Self {
+            data,
+            arguments,
+            range_constraints,
         }
     }
 }

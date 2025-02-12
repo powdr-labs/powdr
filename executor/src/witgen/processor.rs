@@ -61,16 +61,16 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
 }
 
 impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
-    pub fn try_new(
+    pub fn new(
         arguments: &'b [AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
         connection: Connection<'a, T>,
-    ) -> Result<Self, IncompleteCause<AlgebraicVariable<'a>>> {
-        Ok(Self {
+    ) -> Self {
+        Self {
             range_constraints,
             connection,
             arguments: arguments.to_vec(),
-        })
+        }
     }
 
     pub fn is_complete(&self) -> bool {

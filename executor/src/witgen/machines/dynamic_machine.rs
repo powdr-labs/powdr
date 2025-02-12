@@ -69,10 +69,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         let identity = *self.parts.connections.get(&identity_id).unwrap();
-        let outer_query = match OuterQuery::try_new(arguments, range_constraints, identity) {
-            Ok(outer_query) => outer_query,
-            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
-        };
+        let outer_query = OuterQuery::new(arguments, range_constraints, identity);
 
         log::trace!("Start processing secondary VM '{}'", self.name());
         log::trace!("Arguments:");
