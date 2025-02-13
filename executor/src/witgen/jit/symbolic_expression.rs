@@ -54,7 +54,7 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
     /// Does specifically not implement the `Children` trait, because it does not go
     /// well with recursive types.
     #[auto_enum(Iterator)]
-    fn children(&self) -> impl Iterator<Item = &SymbolicExpression<T, S>> {
+    pub fn children(&self) -> impl Iterator<Item = &SymbolicExpression<T, S>> {
         match self {
             SymbolicExpression::BinaryOperation(lhs, _, rhs, _) => {
                 [lhs.as_ref(), rhs.as_ref()].into_iter()

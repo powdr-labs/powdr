@@ -3,34 +3,35 @@
 resolver = "2"
 
 members = [
-    "powdr",
-    "powdr-test",
-    "number",
-    "parser",
-    "cargo-powdr",
-    "cli",
-    "cli-rs",
-    "executor",
-    "jit-compiler",
-    "riscv",
-    "parser-util",
-    "pil-analyzer",
-    "pipeline",
-    "pilopt",
-    "plonky3",
-    "asm-to-pil",
-    "asmopt",
-    "backend",
-    "ast",
-    "analysis",
-    "linker",
-    "isa-utils",
-    "airgen",
-    "riscv-executor",
-    "riscv-syscalls",
-    "schemas",
-    "backend-utils",
-    "executor-utils",
+  "powdr",
+  "powdr-test",
+  "number",
+  "parser",
+  "cargo-powdr",
+  "cli",
+  "cli-rs",
+  "executor",
+  "jit-compiler",
+  "riscv",
+  "parser-util",
+  "pil-analyzer",
+  "pipeline",
+  "pilopt",
+  "plonky3",
+  "asm-to-pil",
+  "asmopt",
+  "backend",
+  "ast",
+  "analysis",
+  "linker",
+  "isa-utils",
+  "airgen",
+  "riscv-executor",
+  "riscv-syscalls",
+  "schemas",
+  "backend-utils",
+  "executor-utils",
+  "static-analysis",
 ]
 
 exclude = ["riscv-runtime"]
@@ -69,6 +70,7 @@ powdr-riscv = { path = "./riscv", version = "0.1.4" }
 powdr-riscv-executor = { path = "./riscv-executor", version = "0.1.4" }
 powdr-riscv-syscalls = { path = "./riscv-syscalls", version = "0.1.4" }
 powdr-schemas = { path = "./schemas", version = "0.1.4" }
+powdr-static-analysis = { path = "./static-analysis", version = "0.1.4" }
 
 [profile.pr-tests]
 inherits = "dev"

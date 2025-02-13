@@ -31,17 +31,17 @@ mod affine_expression;
 pub(crate) mod analysis;
 mod block_processor;
 mod bus_accumulator;
-mod data_structures;
+pub mod data_structures;
 mod eval_result;
 pub mod evaluators;
 mod global_constraints;
 mod identity_processor;
-mod jit;
+pub mod jit;
 mod machines;
 mod multiplicity_column_generator;
 mod processor;
 mod query_processor;
-mod range_constraints;
+pub mod range_constraints;
 mod rows;
 mod sequence_iterator;
 mod util;
@@ -200,6 +200,78 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         }
     }
 
+    pub fn compute_range_constraints(self) -> FixedData<'a, T>
+    where
+        'b: 'a,
+    {
+        let fixed = FixedData::new(
+            self.analyzed,
+            self.fixed_col_values,
+            self.external_witness_values,
+            self.challenges,
+            self.stage,
+        );
+        let fixed = fixed.filter_identities(|fixed, identity| {
+            let references_later_stage_challenge = identity.expr_any(|expr| {
+                if let AlgebraicExpression::Challenge(challenge) = expr {
+                    challenge.stage >= self.stage.into()
+                } else {
+                    false
+                }
+            });
+            let references_later_stage_witness = fixed
+                .polynomial_references(identity)
+                .into_iter()
+                .any(|poly_id| {
+                    (poly_id.ptype == PolynomialType::Committed)
+                        && fixed.witness_cols[&poly_id].stage > self.stage as u32
+                });
+
+            let discard = references_later_stage_challenge || references_later_stage_witness;
+
+            if discard {
+                log::trace!("Skipping identity that references later-stage items: {identity}",);
+            }
+            !discard
+        });
+
+        let fixed = global_constraints::set_global_constraints(fixed);
+
+        fixed
+            .witness_cols
+            .iter()
+            //.filter(|(poly_id, _)| poly_id.ptype == PolynomialType::Committed)
+            .for_each(|(poly_id, _col)| {
+                let con = &fixed.global_range_constraints.witness_constraints[&poly_id];
+                let col_name = fixed.column_name(&poly_id);
+                match con {
+                    Some(con) => {
+                        log::info!("Range constraint for {col_name}: {con}");
+                    }
+                    None => {
+                        log::warn!(
+                            "No range constraint for {col_name}! You might wanna get that checked."
+                        );
+                    }
+                }
+            });
+        fixed.fixed_cols.iter().for_each(|(poly_id, _col)| {
+            let con = &fixed.global_range_constraints.fixed_constraints[&poly_id];
+            let col_name = fixed.column_name(&poly_id);
+            match con {
+                Some(con) => {
+                    log::info!("Range constraint for {col_name}: {con}");
+                }
+                None => {
+                    log::warn!(
+                        "No range constraint for {col_name}! You might wanna get that checked."
+                    );
+                }
+            }
+        });
+
+        fixed
+    }
     /// Generates the committed polynomial values
     /// @returns the values (in source order) and the degree of the polynomials.
     pub fn generate(self) -> Vec<(String, Vec<T>)> {
@@ -310,13 +382,13 @@ pub struct FixedData<'a, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
     /// The identities to be processed, not including those that are fully
     /// represented by the global range constraints (e.g. [X] in [BYTE]).
-    identities: Vec<Identity<T>>,
+    pub identities: Vec<Identity<T>>,
     bus_receives: BTreeMap<T, BusReceive<T>>,
-    fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
-    witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
-    column_by_name: HashMap<String, PolyID>,
+    pub fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
+    pub witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
+    pub column_by_name: HashMap<String, PolyID>,
     challenges: BTreeMap<u64, T>,
-    global_range_constraints: GlobalConstraints<T>,
+    pub global_range_constraints: GlobalConstraints<T>,
     intermediate_definitions: BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     stage: u8,
 }

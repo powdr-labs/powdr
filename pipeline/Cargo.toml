@@ -34,6 +34,7 @@ powdr-parser-util.workspace = true
 powdr-pilopt.workspace = true
 powdr-pil-analyzer.workspace = true
 powdr-schemas.workspace = true
+powdr-static-analysis.workspace = true
 
 itertools = "0.13"
 log = "0.4.17"

@@ -179,6 +179,10 @@ enum Commands {
         #[arg(default_value_t = CsvRenderModeCLI::Hex)]
         #[arg(value_parser = clap_enum_variants!(CsvRenderModeCLI))]
         csv_mode: CsvRenderModeCLI,
+
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        static_analysis: bool,
     },
     Prove {
         /// Input PIL file
@@ -479,6 +483,7 @@ fn run_command(command: Commands) {
             export_witness_csv,
             export_all_columns_csv,
             csv_mode,
+            static_analysis,
         } => {
             call_with_field!(run_pil::<field>(
                 file,
@@ -494,7 +499,8 @@ fn run_command(command: Commands) {
                 degree_mode,
                 export_witness_csv,
                 export_all_columns_csv,
-                csv_mode
+                csv_mode,
+                static_analysis
             ))
         }
         Commands::Test { file, field } => {
@@ -687,6 +693,7 @@ fn run_pil<F: FieldElement>(
     export_witness: bool,
     export_all_columns: bool,
     csv_mode: CsvRenderModeCLI,
+    static_analysis: bool,
 ) -> Result<(), Vec<String>> {
     let inputs = split_inputs::<F>(&inputs);
 
@@ -706,7 +713,13 @@ fn run_pil<F: FieldElement>(
         export_all_columns,
         csv_mode,
     );
-    run(pipeline, prove_with, params, backend_options)?;
+
+    if static_analysis {
+        let mut pipeline = pipeline;
+        pipeline.compute_range_constraints()?;
+    } else {
+        run(pipeline, prove_with, params, backend_options)?;
+    }
     Ok(())
 }
 

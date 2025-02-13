@@ -1,0 +1,18 @@
+[package]
+name = "powdr-static-analysis"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+powdr-ast.workspace = true
+powdr-executor.workspace = true
+powdr-executor-utils.workspace = true
+powdr-number.workspace = true
+powdr-parser-util.workspace = true
+powdr-pil-analyzer.workspace = true
+
+[lints]
+workspace = true

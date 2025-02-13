@@ -137,21 +137,30 @@ pub fn set_global_constraints<T: FieldElement>(fixed_data: FixedData<T>) -> Fixe
 
     let mut retained_identities = vec![];
     let mut removed_identities = vec![];
-    for identity in fixed_data.identities.iter() {
-        let remove = propagate_constraints(
-            &fixed_data.intermediate_definitions,
-            &mut known_constraints,
-            identity,
-            &full_span,
-            &fixed_data.bus_receives,
-        );
 
-        (if remove {
-            &mut removed_identities
-        } else {
-            &mut retained_identities
-        })
-        .push(identity);
+    let mut con_len;
+    loop {
+        con_len = known_constraints.len();
+        for identity in fixed_data.identities.iter() {
+            let remove = propagate_constraints(
+                &fixed_data.intermediate_definitions,
+                &mut known_constraints,
+                identity,
+                &full_span,
+                &fixed_data.bus_receives,
+            );
+
+            (if remove {
+                &mut removed_identities
+            } else {
+                &mut retained_identities
+            })
+            .push(identity);
+        }
+
+        if con_len == known_constraints.len() {
+            break;
+        }
     }
 
     log::debug!("Determined the following global range constraints:");

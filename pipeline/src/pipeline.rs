@@ -813,7 +813,8 @@ impl<T: FieldElement> Pipeline<T> {
         let analyzed_asm = self.artifact.analyzed_asm.take().unwrap();
 
         self.log("Optimizing asm...");
-        let optimized = powdr_asmopt::optimize(analyzed_asm);
+        //let optimized = powdr_asmopt::optimize(analyzed_asm);
+        let optimized = analyzed_asm;
         self.artifact.optimized_asm = Some(optimized);
 
         Ok(self.artifact.optimized_asm.as_ref().unwrap())
@@ -1003,6 +1004,54 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn fixed_cols(&self) -> Result<Arc<VariablySizedColumns<T>>, Vec<String>> {
         Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
+    }
+
+    pub fn compute_range_constraints(&mut self) -> Result<(), Vec<String>> {
+        let pil = self.compute_optimized_pil()?;
+        let fixed_cols = self.compute_fixed_cols()?;
+
+        assert_eq!(pil.constant_count(), fixed_cols.len());
+
+        let witness_cols: Vec<_> = pil
+            .committed_polys_in_source_order()
+            .flat_map(|(s, _)| s.array_elements().map(|(name, _)| name))
+            .collect();
+
+        let mut external_witness_values =
+            std::mem::take(&mut self.arguments.external_witness_values);
+        // witgen needs external witness columns sorted by source order
+        external_witness_values.sort_by_key(|(name, _)| {
+            witness_cols
+                .iter()
+                .position(|n| n == name)
+                .unwrap_or_else(|| {
+                    panic!("external witness {name} does not exist in the optimized PIL")
+                })
+        });
+
+        self.log("Deducing range constraints...");
+        let start = Instant::now();
+
+        let query_callback = self
+            .arguments
+            .query_callback
+            .clone()
+            .unwrap_or_else(|| Arc::new(unused_query_callback()));
+        let data = WitnessGenerator::new(&pil, &fixed_cols, query_callback.borrow())
+            .with_external_witness_values(&external_witness_values)
+            .compute_range_constraints();
+
+        self.log(&format!(
+            "Range constraints generation took {}s",
+            start.elapsed().as_secs_f32()
+        ));
+
+        let s = powdr_static_analysis::StaticAnalyzer::new(&data);
+        s.analyze();
+        //println!("{:?}", s.symbolic_identities);
+        //println!("Ranges:\n{ranges:?}");
+
+        Ok(())
     }
 
     pub fn compute_witness(&mut self) -> Result<Arc<Columns<T>>, Vec<String>> {
