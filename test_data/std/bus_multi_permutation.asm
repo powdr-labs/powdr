@@ -8,7 +8,7 @@ machine Main with degree: 8 {
     col witness z;
 
     // A small block machine that computes f(x) = x + 42 and g(x) = x + 21
-    col witness sub_x, sub_y, sub_z, sub_sel_0, sub_sel_1;
+    col witness sub_x, sub_y, sub_z, sub_sel_0;
     sub_y = sub_x + 42;
     sub_z = sub_x + 21;
 
@@ -24,6 +24,6 @@ machine Main with degree: 8 {
     ]);
     permutation_multi_receive([
       (ID_0, sub_sel_0, [sub_x, sub_y]),
-      (ID_1, sub_sel_1, [sub_x, sub_z])
+      (ID_1, sub_sel_0, [sub_x, sub_z])
     ]);
 }

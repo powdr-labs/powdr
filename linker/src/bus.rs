@@ -177,6 +177,7 @@ impl LinkerBackend for BusLinker {
         }
         // receive incoming links
         for (name, operation) in &object.operations {
+            println!("process object operation {:?}", name);
             self.process_operation(name, operation, location, object);
         }
 
@@ -247,10 +248,15 @@ impl BusLinker {
             operation: operation_name.to_string(),
         };
 
-        let selector_index = self.selector_array_index_by_operation.get(&link_to);
+        let selector_index_opt = self.selector_array_index_by_operation.get(&link_to);
+
+        println!("process_operation {:?}", operation_name);
+        println!("selector_index_opt {:?}", selector_index_opt);
 
         // By construction, all operations *which are called* have an optional selector index. The others can be safely ignored.
-        if let Some(selector_index) = selector_index {
+        if let Some(selector_index) = selector_index_opt {
+            println!("has selector_index ");
+            println!("selector_index {:?}", selector_index);
             // compute the unique interaction id
             let interaction_id = interaction_id(&link_to);
 
@@ -279,11 +285,13 @@ impl BusLinker {
             let arguments = match selector_index {
                 // a selector index of None means this operation is called via lookup
                 None => {
-                    println!("operation latch {:?}", latch);
+                    println!("selector index none");
+                    println!("latch {:?}", latch);
                     vec![(interaction_id as u32).into(), latch, tuple, 0.into()]
                 },
                 // a selector index of Some means this operation is called via permutation
                 Some(selector_index) => {
+                    println!("selector index some");
                     let call_selector_array = namespaced_reference(
                         location.to_string(),
                         object

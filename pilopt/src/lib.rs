@@ -26,9 +26,33 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let mut pil_hash = hash_pil_state(&pil_file);
     loop {
         remove_unreferenced_definitions(&mut pil_file);
+        // print phantom bus interaction
+        pil_file.identities.iter().for_each(|identity| {
+            if let powdr_ast::analyzed::Identity::PhantomBusInteraction(bus) = identity {
+                println!("0 Phantom bus interaction: {bus}");
+            }
+        });
         remove_constant_fixed_columns(&mut pil_file);
+        // print phantom bus interaction
+        pil_file.identities.iter().for_each(|identity| {
+            if let powdr_ast::analyzed::Identity::PhantomBusInteraction(bus) = identity {
+                println!("1 Phantom bus interaction: {bus}");
+            }
+        });
         deduplicate_fixed_columns(&mut pil_file);
+        // print phantom bus interaction
+        pil_file.identities.iter().for_each(|identity| {
+            if let powdr_ast::analyzed::Identity::PhantomBusInteraction(bus) = identity {
+                println!("2 Phantom bus interaction: {bus}");
+            }
+        });
         simplify_identities(&mut pil_file);
+        // print phantom bus interaction
+        pil_file.identities.iter().for_each(|identity| {
+            if let powdr_ast::analyzed::Identity::PhantomBusInteraction(bus) = identity {
+                println!("3 Phantom bus interaction: {bus}");
+            }
+        });
         extract_constant_lookups(&mut pil_file);
         remove_constant_witness_columns(&mut pil_file);
         remove_constant_intermediate_columns(&mut pil_file);

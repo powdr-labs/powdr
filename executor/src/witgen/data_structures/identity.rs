@@ -288,6 +288,7 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
     // Detect receives by having a unary minus in the multiplicity
     // TODO: We should instead analyze the range constraints of the
     // multiplicity expression.
+    println!("convert_phantom_bus_interaction multiplicity: {}", bus_interaction.multiplicity);
     let (is_receive, multiplicity) = match &bus_interaction.multiplicity {
         AlgebraicExpression::UnaryOperation(op) => match op.op {
             AlgebraicUnaryOperator::Minus => (true, (*op.expr).clone()),
