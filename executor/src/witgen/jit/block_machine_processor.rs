@@ -183,7 +183,6 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
     /// have another one in row `i + block_size`.
     fn check_block_shape(&self, code: &[Effect<T, Variable>]) -> Result<(), String> {
         for (column_id, row_offsets) in written_rows_per_column(code) {
-            let row_offsets: BTreeSet<_> = row_offsets.into_iter().collect();
             for offset in &row_offsets {
                 if row_offsets.contains(&(*offset + self.block_size as i32)) {
                     return Err(format!(
@@ -217,6 +216,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
     }
 }
 
+/// Returns, for each column ID, the collection of row offsets that have a cell write.
+/// Combines writes from branches.
 fn written_rows_per_column<T: FieldElement>(
     code: &[Effect<T, Variable>],
 ) -> BTreeMap<u64, BTreeSet<i32>> {
@@ -232,28 +233,41 @@ fn written_rows_per_column<T: FieldElement>(
         })
 }
 
+/// Returns, for each bus send ID, the collection of row offsets that have a machine call.
+/// Combines calls from branches.
 fn completed_rows_for_bus_send<T: FieldElement>(
     code: &[Effect<T, Variable>],
 ) -> BTreeMap<u64, BTreeSet<i32>> {
     code.iter()
-        .filter_map(|e| match e {
-            Effect::MachineCall(id, _, arguments) => match &arguments[0] {
-                Variable::MachineCallParam(MachineCallVariable {
-                    identity_id,
-                    row_offset,
-                    ..
-                }) => {
-                    assert_eq!(*id, *identity_id);
-                    Some((*identity_id, *row_offset))
-                }
-                _ => panic!("Expected machine call variable."),
-            },
-            _ => None,
-        })
+        .flat_map(machine_calls)
         .fold(BTreeMap::new(), |mut map, (id, row)| {
             map.entry(id).or_default().insert(row);
             map
         })
+}
+
+/// Returns all machine calls (bus identity and row offset) found in the effect.
+/// Recurses into branches.
+fn machine_calls<T: FieldElement>(
+    e: &Effect<T, Variable>,
+) -> Box<dyn Iterator<Item = (u64, i32)> + '_> {
+    match e {
+        Effect::MachineCall(id, _, arguments) => match &arguments[0] {
+            Variable::MachineCallParam(MachineCallVariable {
+                identity_id,
+                row_offset,
+                ..
+            }) => {
+                assert_eq!(*id, *identity_id);
+                Box::new(std::iter::once((*identity_id, *row_offset)))
+            }
+            _ => panic!("Expected machine call variable."),
+        },
+        Effect::Branch(_, first, second) => {
+            Box::new(first.iter().chain(second.iter()).flat_map(machine_calls))
+        }
+        _ => Box::new(std::iter::empty()),
+    }
 }
 
 impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
