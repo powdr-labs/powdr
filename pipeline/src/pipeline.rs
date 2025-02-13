@@ -965,22 +965,9 @@ impl<T: FieldElement> Pipeline<T> {
 
         self.compute_analyzed_pil()?;
         let analyzed_pil = self.artifact.analyzed_pil.take().unwrap();
-        // print phantom bus interaction
-        analyzed_pil.identities.iter().for_each(|identity| {
-            if let powdr_ast::analyzed::Identity::PhantomBusInteraction(bus) = identity {
-                println!("PRE OPTIMIZE Phantom bus interaction: {bus}");
-            }
-        });
 
         self.log("Optimizing pil...");
         let optimized = powdr_pilopt::optimize(analyzed_pil);
-        
-        // print phantom bus interaction
-        optimized.identities.iter().for_each(|identity| {
-            if let powdr_ast::analyzed::Identity::PhantomBusInteraction(bus) = identity {
-                println!("POST OPTIMIZE Phantom bus interaction: {bus}");
-            }
-        });
 
         self.maybe_write_pil(&optimized, "_opt")?;
         self.maybe_write_pil_object(&optimized, "_opt")?;
@@ -1063,7 +1050,6 @@ impl<T: FieldElement> Pipeline<T> {
                 .query_callback
                 .clone()
                 .unwrap_or_else(|| Arc::new(unused_query_callback()));
-            // 
             let witness = WitnessGenerator::new(&pil, &fixed_cols, query_callback.borrow())
                 .with_external_witness_values(&external_witness_values)
                 .generate();

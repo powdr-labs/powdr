@@ -288,15 +288,14 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
     // Detect receives by having a unary minus in the multiplicity
     // TODO: We should instead analyze the range constraints of the
     // multiplicity expression.
-    println!("convert_phantom_bus_interaction multiplicity: {}", bus_interaction.multiplicity);
     let (is_receive, multiplicity) = match &bus_interaction.multiplicity {
         AlgebraicExpression::UnaryOperation(op) => match op.op {
             AlgebraicUnaryOperator::Minus => (true, (*op.expr).clone()),
         },
-        _ => {println!("multiplicity: {}", bus_interaction.multiplicity); (false, bus_interaction.multiplicity.clone())},
+        _ => (false, bus_interaction.multiplicity.clone()),
     };
     let bus_id = match bus_interaction.bus_id {
-        AlgebraicExpression::Number(id) => {println!("bus_id: {}", id); id},
+        AlgebraicExpression::Number(id) => id,
         // TODO: Relax this for sends when implementing dynamic sends
         _ => panic!("Expected first payload entry to be a static ID"),
     };
@@ -305,19 +304,12 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
         expressions: bus_interaction.payload.0.clone(),
     };
     if is_receive {
-        println!("receive bus_id: {}", bus_id);
-        println!("receive multiplicity: {}", multiplicity);
-        println!("receive selected_payload: {}", selected_payload);
         IdentityOrReceive::Receive(BusReceive {
             bus_id,
             multiplicity: Some(multiplicity),
             selected_payload,
         })
     } else {
-        println!("send bus_id: {}", bus_id);
-        println!("send multiplicity: {}", multiplicity);
-        println!("send latch: {}", bus_interaction.latch);
-        println!("send selected_payload: {}", selected_payload);
         assert_eq!(multiplicity, bus_interaction.latch);
         IdentityOrReceive::Identity(Identity::BusSend(BusSend {
             identity_id: bus_interaction.id,

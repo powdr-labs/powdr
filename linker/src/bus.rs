@@ -121,8 +121,6 @@ impl LinkerBackend for BusLinker {
         }
         .into();
 
-        println!("selector {:?}", selector);
-
         self.bus_multi_send_args.items.push(
             Expression::FunctionCall(
                 SourceRef::unknown(),
@@ -177,7 +175,6 @@ impl LinkerBackend for BusLinker {
         }
         // receive incoming links
         for (name, operation) in &object.operations {
-            println!("process object operation {:?}", name);
             self.process_operation(name, operation, location, object);
         }
 
@@ -250,13 +247,8 @@ impl BusLinker {
 
         let selector_index_opt = self.selector_array_index_by_operation.get(&link_to);
 
-        println!("process_operation {:?}", operation_name);
-        println!("selector_index_opt {:?}", selector_index_opt);
-
         // By construction, all operations *which are called* have an optional selector index. The others can be safely ignored.
         if let Some(selector_index) = selector_index_opt {
-            println!("has selector_index ");
-            println!("selector_index {:?}", selector_index);
             // compute the unique interaction id
             let interaction_id = interaction_id(&link_to);
 
@@ -284,14 +276,10 @@ impl BusLinker {
 
             let arguments = match selector_index {
                 // a selector index of None means this operation is called via lookup
-                None => {
-                    println!("selector index none");
-                    println!("latch {:?}", latch);
-                    vec![(interaction_id as u32).into(), latch, tuple, 0.into()]
-                },
+                None => vec![(interaction_id as u32).into(), latch, tuple, 0.into()],
                 // a selector index of Some means this operation is called via permutation
                 Some(selector_index) => {
-                    println!("selector index some");
+
                     let call_selector_array = namespaced_reference(
                         location.to_string(),
                         object
@@ -301,8 +289,6 @@ impl BusLinker {
                         );
                     let call_selector =
                         index_access(call_selector_array, Some((*selector_index).into()));
-                    println!("operation call_selector {:?}", call_selector);
-                    println!("operation latch {:?}", latch);
                     let rhs_selector = latch * call_selector;
                     vec![
                         (interaction_id as u32).into(),

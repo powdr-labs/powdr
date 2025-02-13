@@ -330,8 +330,6 @@ let bus_multi_receive_batch_lookup_permutation: (expr, expr, expr[], int)[] -> (
         // For lookup, format is id, payload, multiplicity, selector
         // For permutation, format is id, payload, selector, selector
         let (id, selector, payload, is_permutation) = input;
-        let _ = std::debug::print("is_permutation:");
-        let _ = std::debug::println(is_permutation);
         let multiplicity = if is_permutation == 1 {
             selector
         } else {
@@ -339,8 +337,6 @@ let bus_multi_receive_batch_lookup_permutation: (expr, expr, expr[], int)[] -> (
             (1 - selector) * multiplicity = 0;
             multiplicity
         };
-        let _ = std::debug::print("multiplicity asm:");
-        let _ = std::debug::println(multiplicity);
         acc + [BusInteraction::Receive(id, payload, multiplicity, selector)]
     });
     bus_multi_receive(inputs_inner);

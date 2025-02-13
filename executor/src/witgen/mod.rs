@@ -384,13 +384,6 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             fixed_constraints: FixedColumnMap::new(None, fixed_cols.len()),
         };
 
-        // print all phantombusinteractions
-        analyzed.identities.iter().for_each(|identity| {
-            if let powdr_ast::analyzed::Identity::PhantomBusInteraction(bus) = identity {
-                println!("ANALYZED Phantom bus interaction: {bus}");
-            }
-        });
-
         let (mut identities, bus_receives) = convert_identities(analyzed);
         if stage > 0 {
             // Unfortunately, with the composite backend, we won't have the matching
