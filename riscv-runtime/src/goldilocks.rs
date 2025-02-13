@@ -1,4 +1,4 @@
-use core::arch::asm;
+use core::{arch::asm, mem::MaybeUninit};
 use powdr_riscv_syscalls::Syscall;
 
 pub const PRIME: u64 = 0xffffffff00000001;
@@ -28,7 +28,7 @@ impl From<u32> for OpaqueGoldilocks {
 pub fn extract_opaque_vec8(vec: &[OpaqueGoldilocks; 8]) -> [u64; 8] {
     unsafe {
         let mut output: MaybeUninit<[u64; 8]> = MaybeUninit::uninit();
-        ecall!(Syscall::SplitGlVec, in("a0") vec, in("a1") output);
+        ecall!(Syscall::SplitGlVec, in("a0") vec, in("a1") output.as_mut_ptr());
         output.assume_init()
     }
 }

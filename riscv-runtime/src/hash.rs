@@ -2,7 +2,7 @@ use core::arch::asm;
 use core::convert::TryInto;
 use core::mem::MaybeUninit;
 
-use crate::goldilocks::Goldilocks;
+use crate::goldilocks::{Goldilocks, OpaqueGoldilocks};
 use powdr_riscv_syscalls::Syscall;
 
 pub fn native_hash(data: &mut [u64; 12]) -> &[u64; 4] {
