@@ -297,6 +297,7 @@ impl Runtime {
                 "split_gl",
                 "MIN_DEGREE",
                 "LARGE_SUBMACHINES_MAX_DEGREE",
+                "MAIN_MAX_DEGREE",
             ],
             [r#"instr poseidon2_gl X, Y
                     link ~> tmp1_col = regs.mload(X, STEP)
@@ -306,7 +307,7 @@ impl Runtime {
                     // make sure tmp1_col and tmp2_col are aligned memory addresses
                     tmp3_col * 4 = tmp1_col,
                     tmp4_col * 4 = tmp2_col,
-                    // make sure the factors fit in 32 bits
+                    // make sure the addresses are 32 bits
                     tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
                     tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
                 }
@@ -319,6 +320,52 @@ impl Runtime {
         let implementation = std::iter::once("poseidon2_gl 10, 11;".to_string());
 
         self.add_syscall(Syscall::Poseidon2GL, implementation);
+        self
+    }
+
+    fn with_split_gl_vec(mut self) -> Self {
+        self.add_submachine(
+            "std::machines::split::split_gl_vec::SplitGLVec8",
+            None,
+            "split_gl_vec",
+            vec!["memory", "split_gl", "MIN_DEGREE", "MAIN_MAX_DEGREE"],
+            [
+                r#"instr split_gl_vec X, Y
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                {
+                    // make sure tmp1_col and tmp2_col are aligned memory addresses
+                    tmp3_col * 4 = tmp1_col,
+                    tmp4_col * 4 = tmp2_col,
+                    // make sure the addresses are 32 bits
+                    tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+                    tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+                }
+            "#,
+                r#"instr merge_gl X, Y
+                    // load lower limb
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    // load higher limb
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    // store the result
+                    link ~> regs.mstore(X, STEP + 2, tmp3_col)
+                {
+                    tmp3_col = tmp1_col + tmp2_col * 0x100000000
+                }
+            "#,
+            ],
+            0,
+        );
+
+        self.add_syscall(
+            Syscall::SplitGLVec,
+            std::iter::once("split_gl_vec 10, 11;".to_string()),
+        );
+        self.add_syscall(
+            Syscall::MergeGL,
+            std::iter::once("merge_gl 10, 11;".to_string()),
+        );
+
         self
     }
 

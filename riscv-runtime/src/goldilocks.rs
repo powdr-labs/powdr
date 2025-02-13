@@ -24,11 +24,24 @@ impl From<u32> for OpaqueGoldilocks {
     }
 }
 
+impl From<Goldilocks> for OpaqueGoldilocks {
+    fn from(value: Goldilocks) -> Self {
+        let mut low_and_output = value.0 as u32;
+        let high = (value.0 >> 32) as u32;
+        unsafe {
+            ecall!(Syscall::MergeGL,
+                inout("a0") low_and_output,
+                in("a1") high);
+            Self(low_and_output)
+        }
+    }
+}
+
 /// Extract the Goldilocks values from the opaque Goldilocks values.
 pub fn extract_opaque_vec8(vec: &[OpaqueGoldilocks; 8]) -> [u64; 8] {
     unsafe {
         let mut output: MaybeUninit<[u64; 8]> = MaybeUninit::uninit();
-        ecall!(Syscall::SplitGlVec, in("a0") vec, in("a1") output.as_mut_ptr());
+        ecall!(Syscall::SplitGLVec, in("a0") vec, in("a1") output.as_mut_ptr());
         output.assume_init()
     }
 }
@@ -36,8 +49,7 @@ pub fn extract_opaque_vec8(vec: &[OpaqueGoldilocks; 8]) -> [u64; 8] {
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Goldilocks(
-    // TODO: maybe represent this as a u32, which ends up as a full word in Powdr.
-    // (the conversion to and from u64 would require ecalls)
+    /// Canonical representation, only Goldilocks values are valid.
     u64,
 );
 
