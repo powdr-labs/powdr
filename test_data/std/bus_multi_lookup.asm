@@ -1,4 +1,5 @@
 use std::protocols::bus::bus_multi_send;
+use std::protocols::bus::BusInteraction;
 use std::protocols::lookup_via_bus::lookup_multi_receive;
 
 machine Main with degree: 8 {
@@ -17,8 +18,8 @@ machine Main with degree: 8 {
     let LOOKUP_ID_1 = 53;
 
     bus_multi_send([
-      (LOOKUP_ID_0, [x, y], 1),
-      (LOOKUP_ID_1, [x, z], 1)
+      BusInteraction::Send(LOOKUP_ID_0, [x, y], 1),
+      BusInteraction::Send(LOOKUP_ID_1, [x, z], 1)
     ]);
 
     lookup_multi_receive([
