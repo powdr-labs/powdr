@@ -55,9 +55,9 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
         &self,
         identity_id: u64,
         known_inputs: &BitVec,
-        range_constraints: &[RangeConstraint<T>],
-    ) -> Option<Vec<RangeConstraint<T>>> {
-        let mut machine = self.responsible_machine(identity_id).unwrap();
+        range_constraints: Vec<RangeConstraint<T>>,
+    ) -> (bool, Vec<RangeConstraint<T>>) {
+        let mut machine = self.responsible_machine(identity_id).ok().unwrap();
         machine.can_process_call_fully(self, identity_id, known_inputs, range_constraints)
     }
 
