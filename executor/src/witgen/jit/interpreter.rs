@@ -697,6 +697,9 @@ namespace arith(8);
             .generate_code(&mutable_state, connection_id, &known_values, None)
             .unwrap();
 
+        // ensure there's a branch in the code
+        assert!(result.code.iter().any(|a| matches!(a, Effect::Branch(..))));
+
         // generate and call the interpreter
         let interpreter = EffectsInterpreter::new(&known_inputs, &result.code);
 
@@ -808,9 +811,6 @@ namespace arith(8);
         let (result, _prover_functions) = processor
             .generate_code(&mutable_state, connection_id, &known_values, None)
             .unwrap();
-
-        // ensure there's a branch in the code
-        assert!(result.code.iter().any(|a| matches!(a, Effect::Branch(..))));
 
         // generate and call the interpreter
         let interpreter = EffectsInterpreter::new(&known_inputs, &result.code);
