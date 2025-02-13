@@ -355,7 +355,7 @@ mod test {
     pc' = (1 - first_step') * pc_update;
     pol commit call_selectors[0];
     std::array::map(call_selectors, std::utils::force_bool);
-    std::protocols::bus::bus_multi_send([(12064, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1)]);
+    std::protocols::bus::bus_multi_send([std::protocols::bus::BusInteraction::Send(12064, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1)]);
 namespace main__rom(4);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
