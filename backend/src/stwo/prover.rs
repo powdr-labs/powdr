@@ -10,6 +10,7 @@ use powdr_number::{FieldElement, LargeInt, Mersenne31Field as M31};
 
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
+use tracing::{span, Level};
 
 extern crate alloc;
 use alloc::collections::{btree_map::BTreeMap, btree_set::BTreeSet};
@@ -221,7 +222,10 @@ where
         witness: &[(String, Vec<M31>)],
         witgen_callback: WitgenCallback<M31>,
     ) -> Result<Vec<u8>, String> {
+        let prove_span = span!(Level::INFO, "stwo backend prover").entered();
         let config = get_config();
+
+        let span = span!(Level::INFO, "Generate circle domain map").entered();
         let domain_degree_range = DegreeRange {
             min: self
                 .analyzed
@@ -248,7 +252,13 @@ where
                 )
             })
             .collect();
+        span.exit();
 
+        let span = span!(
+            Level::INFO,
+            "Commit to stage 0 witnesses and constant columns"
+        )
+        .entered();
         // Generate witness for stage 0, build constant columns in circle domain at the same time
         let mut machine_log_sizes: BTreeMap<String, u32> = BTreeMap::new();
         let mut constant_cols = Vec::new();
@@ -331,13 +341,14 @@ where
         tree_builder.extend_evals(stage0_witness_cols_circle_domain_eval);
 
         tree_builder.commit(prover_channel);
-
+        span.exit();
         // Generate challenges for stage 1 based on stage 0 traces.
         // Stwo supports a maximum of 2 stages, and challenges are created only after stage 0.
         let stage0_challenges = get_challenges::<MC>(&self.analyzed, prover_channel);
 
         if self.analyzed.stage_count() > 1 {
             // Build witness columns for stage 1 using the callback function, with the generated challenges
+            let span = span!(Level::INFO, "Generate stage 1 witnesses").entered();
             let stage1_witness_cols_circle_domain_eval = witness_by_machine
                 .into_iter()
                 .map(|(machine_name, machine_witness)| {
@@ -371,10 +382,13 @@ where
                         })
                         .collect_vec()
                 });
+            span.exit();
+            let span = span!(Level::INFO, "Commit to stage 1 witnesses").entered();
 
             let mut tree_builder = commitment_scheme.tree_builder();
             tree_builder.extend_evals(stage1_witness_cols_circle_domain_eval);
             tree_builder.commit(prover_channel);
+            span.exit();
         }
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
@@ -427,6 +441,7 @@ where
             stark_proof,
             machine_log_sizes,
         };
+        prove_span.exit();
         Ok(bincode::serialize(&proof).unwrap())
     }
 

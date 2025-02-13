@@ -426,4 +426,42 @@ params[3] = main_binary::C[3];"
 params[1] = Sub::b[0];"
         );
     }
+
+    #[test]
+    fn complex_fixed_lookup_range_constraint() {
+        let input = "
+        namespace main(256);
+            col witness a, b, c;
+            [a, b, c] is SubM.sel $ [SubM.a, SubM.b, SubM.c]; 
+        namespace SubM(256);
+            col witness a, b, c;
+            let sel: col = |i| (i + 1) % 2;
+            let clock_0: col = |i| i % 2;
+            let clock_1: col = |i| (i + 1) % 2;
+            let byte: col = |i| i & 0xff;
+            [ b * clock_0 + c * clock_1 ] in [ byte ];
+            (b' - b) * sel = 0;
+            (c' - c) * sel = 0;
+            a = b * 256 + c;
+        ";
+        let code = generate_for_block_machine(input, "SubM", 1, 2)
+            .unwrap()
+            .code;
+        assert_eq!(
+            format_code(&code),
+            "SubM::a[0] = params[0];
+SubM::b[0] = ((SubM::a[0] & 0xff00) // 256);
+SubM::c[0] = (SubM::a[0] & 0xff);
+assert (SubM::a[0] & 0xffffffffffff0000) == 0;
+params[1] = SubM::b[0];
+params[2] = SubM::c[0];
+call_var(1, 0, 0) = SubM::c[0];
+machine_call(1, [Known(call_var(1, 0, 0))]);
+SubM::b[1] = SubM::b[0];
+call_var(1, 1, 0) = SubM::b[1];
+SubM::c[1] = SubM::c[0];
+machine_call(1, [Known(call_var(1, 1, 0))]);
+SubM::a[1] = ((SubM::b[1] * 256) + SubM::c[1]);"
+        );
+    }
 }

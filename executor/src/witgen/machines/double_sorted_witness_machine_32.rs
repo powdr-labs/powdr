@@ -197,8 +197,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
         _can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_arguments: &BitVec,
-        range_constraints: &[RangeConstraint<T>],
-    ) -> Option<Vec<RangeConstraint<T>>> {
+        range_constraints: Vec<RangeConstraint<T>>,
+    ) -> (bool, Vec<RangeConstraint<T>>) {
         assert!(self.parts.connections.contains_key(&identity_id));
         assert_eq!(known_arguments.len(), 4);
         assert_eq!(range_constraints.len(), 4);
@@ -207,19 +207,19 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
 
         // We need to known operation_id, step and address for all calls.
         if !known_arguments[0] || !known_arguments[1] || !known_arguments[2] {
-            return None;
+            return (false, range_constraints);
         }
 
         // For the value, it depends: If we write, we need to know it, if we read we do not need to know it.
-        if known_arguments[3] {
+        let can_answer = if known_arguments[3] {
             // It is known, so we are good anyway.
-            Some(vec![RangeConstraint::unconstrained(); 4])
+            true
         } else {
             // It is not known, so we can only process if we do not write.
-            (!range_constraints[0].allows_value(T::from(OPERATION_ID_BOOTLOADER_WRITE))
-                && !range_constraints[0].allows_value(T::from(OPERATION_ID_WRITE)))
-            .then(|| vec![RangeConstraint::unconstrained(); 4])
-        }
+            !range_constraints[0].allows_value(T::from(OPERATION_ID_BOOTLOADER_WRITE))
+                && !range_constraints[0].allows_value(T::from(OPERATION_ID_WRITE))
+        };
+        (can_answer, range_constraints)
     }
 
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
@@ -247,10 +247,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         let connection = self.parts.connections[&identity_id];
-        let outer_query = match OuterQuery::try_new(arguments, range_constraints, connection) {
-            Ok(outer_query) => outer_query,
-            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
-        };
+        let outer_query = OuterQuery::new(arguments, range_constraints, connection);
         let mut data = CallerData::from(&outer_query);
         if self.process_lookup_direct(mutable_state, identity_id, &mut data.as_lookup_cells())? {
             Ok(EvalResult::from(data)?.report_side_effect())
