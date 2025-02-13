@@ -18,13 +18,13 @@ machine Main with
     col witness add_a, add_b, add_c, add_sel;
     std::utils::force_bool(add_sel);
     add_c = add_a + add_b;
-    bus_receive(BusInteraction(ADD_BUS_ID, [add_a, add_b, add_c], add_sel, add_sel));
+    bus_receive(BusInteraction::Receive(ADD_BUS_ID, [add_a, add_b, add_c], add_sel, add_sel));
 
     // Mul block machine
     col witness mul_a, mul_b, mul_c, mul_sel;
     std::utils::force_bool(mul_sel);
     mul_c = mul_a * mul_b;
-    bus_receive(BusInteraction(MUL_BUS_ID, [mul_a, mul_b, mul_c], mul_sel, mul_sel));
+    bus_receive(BusInteraction::Receive(MUL_BUS_ID, [mul_a, mul_b, mul_c], mul_sel, mul_sel));
     
     // Main machine
     col fixed is_mul = [0, 1]*;
