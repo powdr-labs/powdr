@@ -35,10 +35,8 @@ pub struct BusLinker {
     selector_array_size_by_instance: BTreeMap<Location, usize>,
     /// for each used operation, the index in the selector array. For operations accessed via lookups, this is None.
     selector_array_index_by_operation: BTreeMap<LinkTo, Option<usize>>,
-    /// arguments for `lookup_multi_receive`
-    lookup_multi_receive_args: ArrayLiteral,
-    /// arguments for `permutation_multi_receive`
-    permutation_multi_receive_args: ArrayLiteral,
+    /// arguments for `bus_multi_receive`
+    bus_multi_receive_args: ArrayLiteral,
     /// arguments for `bus_multi_send`
     bus_multi_send_args: ArrayLiteral,
 }
@@ -93,10 +91,7 @@ impl LinkerBackend for BusLinker {
             pil: Default::default(),
             selector_array_size_by_instance,
             selector_array_index_by_operation,
-            lookup_multi_receive_args: ArrayLiteral {
-                items: Default::default(),
-            },
-            permutation_multi_receive_args: ArrayLiteral {
+            bus_multi_receive_args: ArrayLiteral {
                 items: Default::default(),
             },
             bus_multi_send_args: ArrayLiteral {
@@ -171,19 +166,15 @@ impl LinkerBackend for BusLinker {
             self.process_operation(name, operation, location, object);
         }
 
-        // add pil for bus_multi_send, lookup_multi_receive, and permutation_multi_receive
+        // add pil for bus_multi_send and bus_multi_receive_batch_lookup_permutation
         for (args, path) in [
             (
                 &mut self.bus_multi_send_args,
                 "std::protocols::bus::bus_multi_send",
             ),
             (
-                &mut self.lookup_multi_receive_args,
-                "std::protocols::lookup_via_bus::lookup_multi_receive",
-            ),
-            (
-                &mut self.permutation_multi_receive_args,
-                "std::protocols::permutation_via_bus::permutation_multi_receive",
+                &mut self.bus_multi_receive_args,
+                "std::protocols::bus::bus_multi_receive_batch_lookup_permutation",
             ),
         ] {
             if !args.items.is_empty() {
@@ -273,7 +264,7 @@ impl BusLinker {
 
             let arguments = match selector_index {
                 // a selector index of None means this operation is called via lookup
-                None => vec![(interaction_id as u32).into(), latch, tuple],
+                None => vec![(interaction_id as u32).into(), latch, tuple, 0.into()],
                 // a selector index of Some means this operation is called via permutation
                 Some(selector_index) => {
                     let call_selector_array = namespaced_reference(
@@ -286,19 +277,18 @@ impl BusLinker {
                     let call_selector =
                         index_access(call_selector_array, Some((*selector_index).into()));
                     let rhs_selector = latch * call_selector;
-                    vec![(interaction_id as u32).into(), rhs_selector, tuple]
+                    vec![
+                        (interaction_id as u32).into(),
+                        rhs_selector,
+                        tuple,
+                        1.into(),
+                    ]
                 }
             };
 
-            if selector_index.is_none() {
-                self.lookup_multi_receive_args
-                    .items
-                    .push(Expression::Tuple(SourceRef::unknown(), arguments));
-            } else {
-                self.permutation_multi_receive_args
-                    .items
-                    .push(Expression::Tuple(SourceRef::unknown(), arguments));
-            }
+            self.bus_multi_receive_args
+                .items
+                .push(Expression::Tuple(SourceRef::unknown(), arguments));
         }
     }
 }
@@ -364,7 +354,7 @@ namespace main__rom(4);
     pol constant p_instr_return = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-    std::protocols::lookup_via_bus::lookup_multi_receive([(12064, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return])]);
+    std::protocols::bus::bus_multi_receive_batch_lookup_permutation([(12064, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], 0)]);
 "#;
 
         let file_name = "../test_data/asm/empty_vm.asm";

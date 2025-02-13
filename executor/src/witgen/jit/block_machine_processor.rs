@@ -547,4 +547,34 @@ machine_call(1, [Known(call_var(1, 1, 0))]);
 SubM::a[1] = ((SubM::b[1] * 256) + SubM::c[1]);"
         );
     }
+
+    #[test]
+    fn unused_fixed_lookup() {
+        // Checks that irrelevant fixed lookups are still performed
+        // in the generated code.
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is [S.a, S.b, S.c];
+        namespace S(256);
+            col witness a, b, c, x, y;
+            let B: col = |i| i & 0xff;
+            a * (a - 1) = 0;
+            [ a * x ] in [ B ];
+            [ (a - 1) * y ] in [ B ];
+            a + b = c;
+        ";
+        let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        assert_eq!(
+            code,
+            "S::a[0] = params[0];
+S::b[0] = params[1];
+S::c[0] = (S::a[0] + S::b[0]);
+params[2] = S::c[0];
+call_var(2, 0, 0) = 0;
+call_var(3, 0, 0) = 0;
+machine_call(2, [Known(call_var(2, 0, 0))]);
+machine_call(3, [Known(call_var(3, 0, 0))]);"
+        );
+    }
 }
