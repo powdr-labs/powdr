@@ -53,9 +53,7 @@ machine Arith256Memory(mem: Memory) with
     // Get an intermediate column that indicates that we're in an
     // actual block, not a default block. Its value is constant
     // within the block.
-    // TODO: Witgen fails if this is an intermediate column.
-    col witness used;
-    used = array::sum(sel);
+    col used = array::sum(sel);
     array::map(sel, |s| unchanged_until(s, CLK32[31]));
     std::utils::force_bool(used);
 
