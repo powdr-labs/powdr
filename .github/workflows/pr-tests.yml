@@ -1,7 +1,5 @@
 name: PR tests
 
-##### TODO: REVERT THIS FILE ###########
-
 on:
   workflow_dispatch:
   pull_request:
@@ -116,7 +114,6 @@ jobs:
       - name: Run default tests
         run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/2
         env:
-          POWDR_JIT_INTERPRETER: 1
           PILCOM: ${{ github.workspace }}/pilcom/
           POWDR_STD: ${{ github.workspace }}/std/
 
@@ -150,20 +147,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Run examples that cargo accepts as examples
         run: cargo run --profile pr-tests --example hello_world && cargo run --profile pr-tests --example sqrt_with_publics
-        env:
-          POWDR_JIT_INTERPRETER: 1
       - name: Run crate example serialized_inputs with the given branch
         run: cd powdr-test/examples/serialized-inputs && cargo run -r
-        env:
-          POWDR_JIT_INTERPRETER: 1
       - name: Run crate example fibonacci with the given branch
         run: cd powdr-test/examples/fibonacci && cargo run -r
-        env:
-          POWDR_JIT_INTERPRETER: 1
       - name: Run crate example fibonacci with the latest powdr release
         run: cd examples/fibonacci && cargo run -r
-        env:
-          POWDR_JIT_INTERPRETER: 1
 
   test_estark_polygon:
     needs: build
@@ -200,7 +189,6 @@ jobs:
       - name: Run EStark Polygon test
         run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only --no-capture -E "test(=vec_median_estark_polygon)"
         env:
-          POWDR_JIT_INTERPRETER: 1
           PILCOM: ${{ github.workspace }}/pilcom/
           POWDR_STD: ${{ github.workspace }}/std/
 
@@ -253,7 +241,6 @@ jobs:
           cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 2 --partition hash:"${{ matrix.test }}"/8
         shell: bash
         env:
-          POWDR_JIT_INTERPRETER: 1
           PILCOM: ${{ github.workspace }}/pilcom/
           POWDR_STD: ${{ github.workspace }}/std/
 

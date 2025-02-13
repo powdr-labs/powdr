@@ -22,6 +22,7 @@ pub struct EffectsInterpreter<T: FieldElement> {
 
 /// Witgen effects compiled into instructions for a stack machine.
 /// Variables have been removed and replaced by their index in the variable list.
+#[derive(Debug)]
 enum InterpreterAction<T: FieldElement> {
     ReadCell(usize, Cell),
     ReadParam(usize, usize),
@@ -36,48 +37,6 @@ enum InterpreterAction<T: FieldElement> {
         Vec<InterpreterAction<T>>,
         Vec<InterpreterAction<T>>,
     ),
-}
-
-// ------------------- TODO: REMOVE -----------------------------
-impl<T: FieldElement> std::fmt::Debug for InterpreterAction<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            InterpreterAction::ReadCell(idx, cell) => {
-                writeln!(f, "var[{idx}] = {cell:?} // ReadCell")
-            }
-            InterpreterAction::ReadParam(idx, i) => {
-                writeln!(f, "var[{idx}] = param({i:?}) // ReadParam")
-            }
-            InterpreterAction::ReadFixedColumn(idx, cell) => {
-                writeln!(f, "var[{idx}] = {cell:?} // ReadFixedColumn")
-            }
-            InterpreterAction::AssignExpression(idx, expr) => {
-                writeln!(f, "var[{idx}] = {expr:?} // AssignExpression")
-            }
-            InterpreterAction::WriteCell(idx, cell) => {
-                writeln!(f, "{cell:?} = var[{idx}] // WriteCell")
-            }
-            InterpreterAction::WriteParam(idx, i) => {
-                writeln!(f, "param({i}) = var[{idx}] // WriteParam")
-            }
-            InterpreterAction::MachineCall(id, args) => {
-                writeln!(f, "machine_call_{id}({args:?}) // MachineCall")
-            }
-            InterpreterAction::Assertion(e1, e2, eq) => {
-                writeln!(
-                    f,
-                    "assert({e1:?} {} {e2:?}) // Assertion",
-                    if *eq { "==" } else { "!=" },
-                )
-            }
-            InterpreterAction::Branch(branch_test, vec, vec1) => {
-                writeln!(
-                    f,
-                    "if {branch_test:?} then \n\t{vec:?}\n else \n\t{vec1:?}\n",
-                )
-            }
-        }
-    }
 }
 
 #[derive(Debug)]
