@@ -121,22 +121,20 @@ impl LinkerBackend for BusLinker {
         }
         .into();
 
-        self.bus_multi_send_args.items.push(
-            Expression::FunctionCall(
+        self.bus_multi_send_args
+            .items
+            .push(Expression::FunctionCall(
                 SourceRef::unknown(),
                 FunctionCall {
                     function: Box::new(Expression::Reference(
                         SourceRef::unknown(),
-                        SymbolPath::from_str("std::protocols::bus::BusInteraction::Send").unwrap().into(),
+                        SymbolPath::from_str("std::protocols::bus::BusInteraction::Send")
+                            .unwrap()
+                            .into(),
                     )),
-                    arguments: vec![
-                        (interaction_id as u32).into(),
-                        tuple,
-                        selector,
-                    ],
+                    arguments: vec![(interaction_id as u32).into(), tuple, selector],
                 },
-            )
-        );
+            ));
     }
 
     fn process_object(&mut self, location: &Location, objects: &BTreeMap<Location, Object>) {
@@ -245,10 +243,10 @@ impl BusLinker {
             operation: operation_name.to_string(),
         };
 
-        let selector_index_opt = self.selector_array_index_by_operation.get(&link_to);
+        let selector_index = self.selector_array_index_by_operation.get(&link_to);
 
         // By construction, all operations *which are called* have an optional selector index. The others can be safely ignored.
-        if let Some(selector_index) = selector_index_opt {
+        if let Some(selector_index) = selector_index {
             // compute the unique interaction id
             let interaction_id = interaction_id(&link_to);
 
@@ -279,7 +277,6 @@ impl BusLinker {
                 None => vec![(interaction_id as u32).into(), latch, tuple, 0.into()],
                 // a selector index of Some means this operation is called via permutation
                 Some(selector_index) => {
-
                     let call_selector_array = namespaced_reference(
                         location.to_string(),
                         object
@@ -337,20 +334,6 @@ mod test {
     fn extract_main(code: &str) -> &str {
         let start = code.find("namespace main").unwrap();
         &code[start..]
-    }
-
-    #[test]
-    fn parse_enum() {
-        use std::io::Write;
-        let file = "../test_data/asm/static_bus_multi.asm";
-        let contents = fs::read_to_string(file).unwrap();
-        let parsed = parse_asm(Some(file), &contents).unwrap_or_else(|e| {
-            e.output_to_stderr();
-            panic!();
-        });
-        // print parsed to a file
-        let mut output = fs::File::create("../test_data/asm/static_bus_multi.txt").unwrap();
-        writeln!(output, "{:#?}", parsed).unwrap();
     }
 
     #[test]

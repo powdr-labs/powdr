@@ -1,4 +1,5 @@
 use std::protocols::bus::bus_multi_send;
+use std::protocols::bus::BusInteraction;
 use std::protocols::permutation_via_bus::permutation_multi_receive;
 
 machine Main with degree: 8 {
@@ -8,7 +9,7 @@ machine Main with degree: 8 {
     col witness z;
 
     // A small block machine that computes f(x) = x + 42 and g(x) = x + 21
-    col witness sub_x, sub_y, sub_z, sub_sel_0;
+    col witness sub_x, sub_y, sub_z, sub_sel_0, sub_sel_1;
     sub_y = sub_x + 42;
     sub_z = sub_x + 21;
 
@@ -19,11 +20,11 @@ machine Main with degree: 8 {
     let ID_0 = 123;
     let ID_1 = 456;
     bus_multi_send([
-      (ID_0, [x, y], sel),
-      (ID_1, [x, z], sel)
+      BusInteraction::Send(ID_0, [x, y], sel),
+      BusInteraction::Send(ID_1, [x, z], sel)
     ]);
     permutation_multi_receive([
       (ID_0, sub_sel_0, [sub_x, sub_y]),
-      (ID_1, sub_sel_0, [sub_x, sub_z])
+      (ID_1, sub_sel_1, [sub_x, sub_z])
     ]);
 }
