@@ -237,6 +237,13 @@ fn static_bus() {
 }
 
 #[test]
+fn static_bus_multi() {
+    let f = "asm/static_bus_multi.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
+}
+
+#[test]
 #[should_panic = "Expected first payload entry to be a static ID"]
 fn dynamic_bus() {
     // Witgen does not currently support this.

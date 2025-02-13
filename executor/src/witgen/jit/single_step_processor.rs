@@ -10,6 +10,7 @@ use crate::witgen::{machines::MachineParts, FixedData};
 
 use super::{
     effect::Effect,
+    identity_queue::QueueItem,
     processor::Processor,
     prover_function_heuristics::decode_prover_functions,
     variable::{Cell, Variable},
@@ -74,17 +75,17 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?
             .into_iter()
             // Process prover functions only on the next row.
-            .map(|f| (f, 1))
+            .map(|f| QueueItem::ProverFunction(f, 1))
             .collect_vec();
 
         Processor::new(
             self.fixed_data,
             self,
             identities,
+            prover_functions,
             requested_known,
             SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
-        .with_prover_functions(prover_functions)
         .generate_code(can_process, witgen)
         .map_err(|e| e.to_string())
         .map(|r| r.code)
@@ -237,12 +238,12 @@ namespace M(256);
         assert_eq!(
             format_code(&code),
             "\
-VM::pc[1] = (VM::pc[0] + 1);
-call_var(1, 0, 0) = VM::pc[0];
 call_var(1, 0, 1) = VM::instr_add[0];
 call_var(1, 0, 2) = VM::instr_mul[0];
-VM::B[1] = VM::B[0];
+call_var(1, 0, 0) = VM::pc[0];
+VM::pc[1] = (VM::pc[0] + 1);
 call_var(1, 1, 0) = VM::pc[1];
+VM::B[1] = VM::B[0];
 machine_call(1, [Known(call_var(1, 1, 0)), Unknown(call_var(1, 1, 1)), Unknown(call_var(1, 1, 2))]);
 VM::instr_add[1] = call_var(1, 1, 1);
 VM::instr_mul[1] = call_var(1, 1, 2);
@@ -280,12 +281,12 @@ if (VM::instr_add[0] == 1) {
         assert_eq!(
             format_code(&code),
             "\
-VM::pc[1] = VM::pc[0];
-call_var(2, 0, 0) = VM::pc[0];
-call_var(2, 0, 1) = 0;
+call_var(2, 0, 1) = VM::instr_add[0];
 call_var(2, 0, 2) = VM::instr_mul[0];
-VM::instr_add[1] = 0;
+call_var(2, 0, 0) = VM::pc[0];
+VM::pc[1] = VM::pc[0];
 call_var(2, 1, 0) = VM::pc[1];
+VM::instr_add[1] = 0;
 call_var(2, 1, 1) = 0;
 call_var(2, 1, 2) = 1;
 machine_call(2, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(call_var(2, 1, 2))]);
@@ -324,9 +325,7 @@ VM::instr_mul[1] = 1;"
                 let start = e
                     .find("The following identities have not been fully processed:")
                     .unwrap();
-                let end = e
-                    .find("The following branch decisions were taken:")
-                    .unwrap();
+                let end = e.find("Generated code so far:").unwrap();
                 let expected = "\
 The following identities have not been fully processed:
 --------------[ identity 1 on row 1: ]--------------

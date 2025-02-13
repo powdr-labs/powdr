@@ -19,6 +19,7 @@ pub const PAGE_SIZE_BYTES_LOG: usize = 11;
 /// 32-Bit architecture -> 4 bytes per word
 pub const BYTES_PER_WORD: usize = 4;
 
+use crate::code_gen::{REGISTER_MEMORY_NAMES, REGISTER_NAMES};
 use crate::large_field;
 
 // Derived constants
@@ -134,50 +135,6 @@ pub fn bootloader_and_shutdown_routine(field: KnownField) -> String {
         FieldSize::Large => large_field::bootloader::bootloader_and_shutdown_routine(),
     }
 }
-
-/// The names of the registers in the order in which they are expected by the bootloader.
-/// These are the names of the RISCV registers that are stored in memory.
-pub const REGISTER_MEMORY_NAMES: [&str; 36] = [
-    "main::x1",
-    "main::x2",
-    "main::x3",
-    "main::x4",
-    "main::x5",
-    "main::x6",
-    "main::x7",
-    "main::x8",
-    "main::x9",
-    "main::x10",
-    "main::x11",
-    "main::x12",
-    "main::x13",
-    "main::x14",
-    "main::x15",
-    "main::x16",
-    "main::x17",
-    "main::x18",
-    "main::x19",
-    "main::x20",
-    "main::x21",
-    "main::x22",
-    "main::x23",
-    "main::x24",
-    "main::x25",
-    "main::x26",
-    "main::x27",
-    "main::x28",
-    "main::x29",
-    "main::x30",
-    "main::x31",
-    "main::tmp1",
-    "main::tmp2",
-    "main::tmp3",
-    "main::tmp4",
-    "main::lr_sc_reservation",
-];
-
-/// List of machine registers, declared in the asm machine.
-pub const REGISTER_NAMES: [&str; 3] = ["main::query_arg_1", "main::query_arg_2", "main::pc"];
 
 /// Index of the PC in the bootloader input.
 pub const PC_INDEX: usize = REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len() - 1;

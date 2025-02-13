@@ -12,6 +12,7 @@ use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 
 use super::data_structures::identity::Identity;
+use super::global_constraints::RangeConstraintSet;
 use super::machines::{Connection, MachineParts};
 use super::FixedData;
 use super::{
@@ -25,7 +26,7 @@ use super::{
     Constraints, EvalError, EvalValue, IncompleteCause, QueryCallback,
 };
 
-pub type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
+pub type Arguments<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
 
 /// The data mutated by the processor
 pub(crate) struct SolverState<'a, T: FieldElement> {
@@ -51,35 +52,29 @@ impl<'a, T: FieldElement> SolverState<'a, T> {
 /// Data needed to handle an outer query.
 #[derive(Clone)]
 pub struct OuterQuery<'a, 'b, T: FieldElement> {
-    /// Rows of the calling machine.
-    pub caller_rows: &'b RowPair<'b, 'a, T>,
+    /// Range constraints of the caller.
+    pub range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     /// Connection.
     pub connection: Connection<'a, T>,
-    /// The left side of the connection, evaluated.
-    pub left: Left<'a, T>,
+    /// The payload of the calling bus send, evaluated.
+    pub arguments: Arguments<'a, T>,
 }
 
 impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
-    pub fn try_new(
-        caller_rows: &'b RowPair<'b, 'a, T>,
+    pub fn new(
+        arguments: &'b [AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
         connection: Connection<'a, T>,
-    ) -> Result<Self, IncompleteCause<AlgebraicVariable<'a>>> {
-        // Evaluate once, for performance reasons.
-        let left = connection
-            .left
-            .expressions
-            .iter()
-            .map(|e| caller_rows.evaluate(e))
-            .collect::<Result<_, _>>()?;
-        Ok(Self {
-            caller_rows,
+    ) -> Self {
+        Self {
+            range_constraints,
             connection,
-            left,
-        })
+            arguments: arguments.to_vec(),
+        }
     }
 
     pub fn is_complete(&self) -> bool {
-        self.left.iter().all(|l| l.is_constant())
+        self.arguments.iter().all(|l| l.is_constant())
     }
 }
 
@@ -167,7 +162,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
         log::trace!("  Extracting inputs:");
         let mut inputs = vec![];
         for (l, r) in outer_query
-            .left
+            .arguments
             .iter()
             .zip(&outer_query.connection.right.expressions)
         {
@@ -355,7 +350,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             .map_err(|e| {
                 log::warn!("Error in outer query: {e}");
                 log::warn!("Some of the following entries could not be matched:");
-                for (l, r) in outer_query.left.iter().zip(right.expressions.iter()) {
+                for (l, r) in outer_query.arguments.iter().zip(right.expressions.iter()) {
                     if let Ok(r) = row_pair.evaluate(r) {
                         log::warn!("  => {} = {}", l, r);
                     }
@@ -475,7 +470,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                         progress = true;
                         self.propagate_along_copy_constraints(row_index, poly, c);
                     } else if let Constraint::Assignment(v) = c {
-                        let left = &mut self.outer_query.as_mut().unwrap().left;
+                        let left = &mut self.outer_query.as_mut().unwrap().arguments;
                         log::trace!("      => {} (outer) = {}", poly, v);
                         for l in left.iter_mut() {
                             l.assign(*var, *v);
