@@ -325,6 +325,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
     }
 }
 
+/// Check if an action is valid: it doesn't overwrite a variable and doesn't read it before it's been written to
 fn action_is_valid<T: FieldElement>(
     action: &InterpreterAction<T>,
     prev_writes: &BTreeSet<usize>,
@@ -338,7 +339,6 @@ fn action_is_valid<T: FieldElement>(
     }
 }
 
-/// if actions are valid, returns the set of writes, otherwise, None
 fn actions_are_valid<T: FieldElement>(
     actions: &Vec<InterpreterAction<T>>,
     mut prev_writes: BTreeSet<usize>,
@@ -599,22 +599,24 @@ mod test {
     fn branching() {
         let pil = r"
 namespace main(128);
-    col witness a, b, add, mul, res;
-    [a, b, add, mul, res] is [arith::a, arith::b, arith::add, arith::mul, arith::res];
+    col witness a, b, add, mul, sub, res;
+    [a, b, add, mul, sub, res] is [arith::a, arith::b, arith::add, arith::mul, arith::sub, arith::res];
 
 namespace arith(8);
     let a;
     let b;
     let add;
     let mul;
+    let sub;
     let res;
 
-    add + mul = 1;
+    add + mul + sub = 1;
 
     add * (1 - add) = 0;
     mul * (1 - mul) = 0;
+    sub * (1 - sub) = 0;
 
-    add * (res - (a + b)) + mul * (res - (a * b)) = 0;
+    add * (res - (a + b)) + mul * (res - (a * b)) + sub * (res - (a - b)) = 0;
 ";
         let machine_name = "arith";
 
@@ -644,7 +646,7 @@ namespace arith(8);
         // generate code for the call
         assert_eq!(machine_parts.connections.len(), 1);
         let connection_id = *machine_parts.connections.keys().next().unwrap();
-        let (num_inputs, num_outputs) = (4, 1);
+        let (num_inputs, num_outputs) = (5, 1);
         let known_values = BitVec::from_iter(
             (0..num_inputs)
                 .map(|_| true)
@@ -663,7 +665,7 @@ namespace arith(8);
         let interpreter = EffectsInterpreter::new(&known_inputs, &result.code);
 
         // 2 + 3
-        let mut params = [2.into(), 3.into(), 1.into(), 0.into(), 0.into()];
+        let mut params = [2.into(), 3.into(), 1.into(), 0.into(), 0.into(), 0.into()];
         let poly_ids = analyzed
             .committed_polys_in_source_order()
             .flat_map(|p| p.0.array_elements().map(|e| e.1))
@@ -693,6 +695,7 @@ namespace arith(8);
                     GoldilocksField::from(3),
                     GoldilocksField::from(1),
                     GoldilocksField::from(0),
+                    GoldilocksField::from(0),
                     GoldilocksField::from(5),
                 ]
             );
@@ -701,6 +704,7 @@ namespace arith(8);
         // 2 * 3
         params[2] = 0.into();
         params[3] = 1.into();
+        params[4] = 0.into();
 
         let data_ref = CompactDataRef::new(&mut data, 0);
         let mut param_lookups = params
@@ -723,7 +727,41 @@ namespace arith(8);
                 GoldilocksField::from(3),
                 GoldilocksField::from(0),
                 GoldilocksField::from(1),
+                GoldilocksField::from(0),
                 GoldilocksField::from(6),
+            ]
+        );
+
+        // 3 - 2
+        params[0] = 3.into();
+        params[1] = 2.into();
+        params[2] = 0.into();
+        params[3] = 0.into();
+        params[4] = 1.into();
+
+        let data_ref = CompactDataRef::new(&mut data, 0);
+        let mut param_lookups = params
+            .iter_mut()
+            .enumerate()
+            .map(|(i, p)| {
+                if i < num_inputs {
+                    LookupCell::Input(p)
+                } else {
+                    LookupCell::Output(p)
+                }
+            })
+            .collect::<Vec<_>>();
+        interpreter.call(&fixed_data, &mutable_state, &mut param_lookups, data_ref);
+
+        assert_eq!(
+            &params,
+            &[
+                GoldilocksField::from(3),
+                GoldilocksField::from(2),
+                GoldilocksField::from(0),
+                GoldilocksField::from(0),
+                GoldilocksField::from(1),
+                GoldilocksField::from(1),
             ]
         );
     }
