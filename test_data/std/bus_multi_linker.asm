@@ -1,6 +1,6 @@
 use std::protocols::bus::BusInteraction;
 use std::protocols::bus::bus_multi;
-use std::protocols::bus::bus_multi_receive_batch_lookup_permutation;
+use std::protocols::bus::bus_multi_linker;
 
 machine Main with degree: 8 {
     // Lookup LHS
@@ -41,19 +41,20 @@ machine Main with degree: 8 {
     PERM_B = PERM_X + 21;
     col fixed perm_latch = [1]*;
 
-    // Multi send (same API for both lookup and permutation)
-    bus_multi([
-      BusInteraction::Send(LOOKUP_ID_0, [x, y], lookup_latch), // latch is always the same as multiplicity for sends (for both lookup and permutation)
-      BusInteraction::Send(LOOKUP_ID_1, [x, z], lookup_latch),
-      BusInteraction::Send(PERMUTATION_ID_0, [x, a], sel),
-      BusInteraction::Send(PERMUTATION_ID_1, [x, b], sel)
-    ]);
-    
-    // Multi receive (last argument `is_permutation` is 1 for permutation and 0 for lookup)
-    bus_multi_receive_batch_lookup_permutation([
-      (LOOKUP_ID_0, lookup_latch, [LOOKUP_X, LOOKUP_Y], 0), // selector is lookup_latch, multiplicity is a witness column (not an input here)
-      (LOOKUP_ID_1, lookup_latch, [LOOKUP_X, LOOKUP_Z], 0), // selector is lookup_latch, multiplicity is a witness column (not an input here)
-      (PERMUTATION_ID_0, sub_sel_0 * perm_latch, [PERM_X, PERM_A], 1), // selector is sub_sel_0 * perm_latch, multiplicity is `-selector`
-      (PERMUTATION_ID_1, sub_sel_1 * perm_latch, [PERM_X, PERM_B], 1) // selector is sub_sel_1 * perm_latch, multiplicity is `-selector`
+    // Batch all sends, lookup receives, and permutation receives
+    // Input format: id, selector, payload, type
+    bus_multi_linker([
+      // Bus send (type param == 0)
+      // Latch is always the same as multiplicity for sends (for both lookup and permutation)
+      (LOOKUP_ID_0, lookup_latch, [x, y], 0),
+      (LOOKUP_ID_1, lookup_latch, [x, z], 0),
+      (PERMUTATION_ID_0, sel, [x, a], 0),
+      (PERMUTATION_ID_1, sel, [x, b], 0),
+      // Lookup receive (type param == 1)
+      (LOOKUP_ID_0, lookup_latch, [LOOKUP_X, LOOKUP_Y], 1), // selector is lookup_latch, multiplicity is a witness column (not an input here)
+      (LOOKUP_ID_1, lookup_latch, [LOOKUP_X, LOOKUP_Z], 1), // selector is lookup_latch, multiplicity is a witness column (not an input here)
+      // Permutation receive (type param == 2)
+      (PERMUTATION_ID_0, sub_sel_0 * perm_latch, [PERM_X, PERM_A], 2), // selector is sub_sel_0 * perm_latch, multiplicity is `-selector`
+      (PERMUTATION_ID_1, sub_sel_1 * perm_latch, [PERM_X, PERM_B], 2) // selector is sub_sel_1 * perm_latch, multiplicity is `-selector`
     ]);
 }

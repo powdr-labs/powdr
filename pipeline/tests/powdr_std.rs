@@ -245,8 +245,8 @@ fn bus_multi_permutation() {
 }
 
 #[test]
-fn bus_multi_batch_lookup_permutation() {
-    let f = "std/bus_multi_batch_lookup_permutation.asm";
+fn bus_multi_linker() {
+    let f = "std/bus_multi_linker.asm";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);

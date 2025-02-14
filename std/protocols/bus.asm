@@ -259,23 +259,30 @@ let bus_multi: BusInteraction[] -> () = constr |bus_inputs| {
 };
 
 /// Exposed to the linker and not intended for end user because it requires expert knowledge of Powdr's bus protocol.
-/// Inputs in the order of: id, selector, payload, is_permutation for both lookup and permutation.
-let bus_multi_receive_batch_lookup_permutation: (expr, expr, expr[], int)[] -> () = constr |inputs| {
+/// Inputs in the order of: id, selector, payload, type for both lookup and permutation.
+/// where type == 0 corresponds to bus send, type == 1 lookup bus receive, and type == 2 permutation bus receive.
+let bus_multi_linker: (expr, expr, expr[], int)[] -> () = constr |inputs| {
     // Lookup requires adding a multiplicity column and constraining it to zero if selector is zero.
     // Permutation passes the selector to both multiplicity and latch fields as well.
     let inputs_inner = array::fold(inputs, [], constr |acc, input| {
         // Converted to input format for the inner function `bus_multi`:
-        // For lookup, format is id, payload, multiplicity, selector
-        // For permutation, format is id, payload, selector, selector
-        let (id, selector, payload, is_permutation) = input;
-        let multiplicity = if is_permutation == 1 {
-            selector
-        } else {
-            let multiplicity;
-            (1 - selector) * multiplicity = 0;
-            multiplicity
-        };
-        acc + [BusInteraction::Receive(id, payload, multiplicity, selector)]
+        // For lookup bus receive, format is id, payload, multiplicity, selector
+        // For permutation bus receive, format is id, payload, selector, selector
+        let (id, selector, payload, type) = input;
+        match type {
+            // Bus send
+            0 => acc + [BusInteraction::Send(id, payload, selector)],
+            // Lookup bus receive
+            1 => {
+                let multiplicity;
+                (1 - selector) * multiplicity = 0;
+                acc + [BusInteraction::Receive(id, payload, multiplicity, selector)]
+            },
+            // Permutation bus receive
+            2 => acc + [BusInteraction::Receive(id, payload, selector, selector)],
+            // Practically this can never be reached because `bus_multi_linker` should be used by the linker only.
+            _ => std::check::panic("`bus_multi_linker`: type param must be 0, 1, or 2")
+        }
     });
     bus_multi(inputs_inner);
 };
