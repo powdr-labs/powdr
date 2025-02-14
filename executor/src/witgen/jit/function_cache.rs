@@ -27,7 +27,7 @@ use super::{
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct CacheKey<T: FieldElement> {
-    identity_id: u64,
+    bus_id: T,
     /// If `Some((index, value))`, then this function is used only if the
     /// `index`th argument is set to `value`.
     known_concrete: Option<(usize, T)>,
@@ -81,12 +81,12 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
     pub fn compile_cached(
         &mut self,
         can_process: impl CanProcessCall<T>,
-        identity_id: u64,
+        bus_id: T,
         known_args: &BitVec,
         known_concrete: Option<(usize, T)>,
     ) -> Option<&CacheEntry<T>> {
         let cache_key = CacheKey {
-            identity_id,
+            bus_id,
             known_args: known_args.clone(),
             known_concrete,
         };
@@ -119,7 +119,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         log::debug!(
             "Compiling JIT function for\n  Machine: {}\n  Connection: {}\n   Inputs: {:?}{}",
             self.machine_name,
-            self.parts.connections[&cache_key.identity_id],
+            self.parts.bus_receives[&cache_key.bus_id],
             cache_key.known_args,
             cache_key
                 .known_concrete
@@ -137,7 +137,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .processor
             .generate_code(
                 can_process,
-                cache_key.identity_id,
+                cache_key.bus_id,
                 &cache_key.known_args,
                 cache_key.known_concrete,
             )
@@ -214,7 +214,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
     pub fn process_lookup_direct<'c, 'd, Q: QueryCallback<T>>(
         &self,
         mutable_state: &MutableState<'a, T, Q>,
-        connection_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
         data: CompactDataRef<'d, T>,
         known_concrete: Option<(usize, T)>,
@@ -225,7 +225,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .collect::<BitVec>();
 
         let cache_key = CacheKey {
-            identity_id: connection_id,
+            bus_id,
             known_args,
             known_concrete,
         };

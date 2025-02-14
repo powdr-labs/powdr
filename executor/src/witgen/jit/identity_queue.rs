@@ -25,7 +25,7 @@ use super::{prover_function_heuristics::ProverFunction, variable::Variable};
 #[derive(Clone)]
 pub struct IdentityQueue<'a, T: FieldElement> {
     queue: BTreeSet<QueueItem<'a, T>>,
-    occurrences: Rc<HashMap<Variable, Vec<QueueItem<'a, T>>>>,
+    occurrences: Rc<HashMap<Variable<T>, Vec<QueueItem<'a, T>>>>,
 }
 
 impl<'a, T: FieldElement> IdentityQueue<'a, T> {
@@ -58,7 +58,7 @@ impl<'a, T: FieldElement> IdentityQueue<'a, T> {
 
     pub fn variables_updated(
         &mut self,
-        variables: impl IntoIterator<Item = Variable>,
+        variables: impl IntoIterator<Item = Variable<T>>,
         skip_item: Option<QueueItem<'a, T>>,
     ) {
         self.queue.extend(
@@ -108,7 +108,7 @@ impl<'a, T: FieldElement> QueueItem<'a, T> {
         })
     }
 
-    pub fn variable_assignment(lhs: &'a Expression<T>, rhs: Variable, row_offset: i32) -> Self {
+    pub fn variable_assignment(lhs: &'a Expression<T>, rhs: Variable<T>, row_offset: i32) -> Self {
         QueueItem::VariableAssignment(VariableAssignment {
             lhs,
             row_offset,
@@ -146,7 +146,7 @@ impl<T: FieldElement> Eq for QueueItem<'_, T> {}
 pub struct VariableAssignment<'a, T: FieldElement> {
     pub lhs: &'a Expression<T>,
     pub row_offset: i32,
-    pub rhs: Variable,
+    pub rhs: Variable<T>,
 }
 
 /// An equality constraint between an algebraic expression evaluated
@@ -176,7 +176,7 @@ impl<'a, T: FieldElement> ReferencesComputer<'a, T> {
             references_per_identity: HashMap::new(),
         }
     }
-    pub fn references(&mut self, item: &QueueItem<'a, T>) -> Vec<Variable> {
+    pub fn references(&mut self, item: &QueueItem<'a, T>) -> Vec<Variable<T>> {
         let vars: Box<dyn Iterator<Item = _>> = match item {
             QueueItem::Identity(id, row) => match id {
                 Identity::Polynomial(poly_id) => Box::new(
@@ -190,7 +190,7 @@ impl<'a, T: FieldElement> ReferencesComputer<'a, T> {
                         .chain(
                             (0..bus_send.selected_payload.expressions.len()).map(|index| {
                                 Variable::MachineCallParam(MachineCallVariable {
-                                    identity_id: bus_send.identity_id,
+                                    bus_id: bus_send.bus_id().unwrap(),
                                     index,
                                     row_offset: *row,
                                 })
@@ -221,7 +221,11 @@ impl<'a, T: FieldElement> ReferencesComputer<'a, T> {
         vars.unique().collect_vec()
     }
 
-    fn variables_in_expression(&mut self, expression: &Expression<T>, row: i32) -> Vec<Variable> {
+    fn variables_in_expression(
+        &mut self,
+        expression: &Expression<T>,
+        row: i32,
+    ) -> Vec<Variable<T>> {
         self.references_in_expression(expression)
             .iter()
             .map(|r| {
@@ -232,7 +236,7 @@ impl<'a, T: FieldElement> ReferencesComputer<'a, T> {
     }
 
     /// Turns AlgebraicReferenceThin to Variable, by including the row offset.
-    fn reference_to_variable(&self, reference: &AlgebraicReferenceThin, row: i32) -> Variable {
+    fn reference_to_variable(&self, reference: &AlgebraicReferenceThin, row: i32) -> Variable<T> {
         let name = self.fixed_data.column_name(&reference.poly_id).to_string();
         Variable::from_reference(&reference.with_name(name), row)
     }
