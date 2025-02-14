@@ -173,7 +173,7 @@ where
                                 > = fixed_columns
                                     .iter()
                                     .map(|(_, vec)| {
-                                        gen_stwo_circle_column::<_>(
+                                        gen_stwo_circle_column(
                                             *domain_map.get(&(log_size as usize)).unwrap(),
                                             vec,
                                         )
