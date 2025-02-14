@@ -219,6 +219,9 @@ impl LinkerBackend for NativeLinker {
         }
     }
 
+    // Only applies to the bus linker.
+    fn process_side_effects(&mut self, objects: &BTreeMap<Location, Object>) {}
+
     fn into_pil(self) -> Vec<PilStatement> {
         self.namespaces
             .into_iter()

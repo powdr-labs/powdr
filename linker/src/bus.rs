@@ -163,7 +163,27 @@ impl LinkerBackend for BusLinker {
             self.process_operation(name, operation, location, object);
         }
 
-        // add pil for bus_multi_linker
+        // if this is the main object, call the main operation
+        if *location == Location::main() {
+            let operation_id = object.operation_id.clone();
+            let main_operation_id = object
+                .operations
+                .get(MAIN_OPERATION_NAME)
+                .and_then(|operation| operation.id.as_ref());
+
+            if let (Some(operation_id_name), Some(operation_id_value)) =
+                (operation_id, main_operation_id)
+            {
+                self.pil
+                    .extend(call(&operation_id_name, operation_id_value));
+            }
+        }
+    }
+
+    fn process_side_effects(&mut self, objects: &BTreeMap<Location, Object>) {
+        // Find the self.pil index of the main machine right before the "call the main operation" statement 
+
+        // Add pil for bus_multi_linker (adapt the following code to "insert" rather than "push")
         if !self.bus_multi_linker_args.items.is_empty() {
             self.pil.push(PilStatement::Expression(
                 SourceRef::unknown(),
@@ -183,22 +203,6 @@ impl LinkerBackend for BusLinker {
                     },
                 ),
             ));
-        }
-
-        // if this is the main object, call the main operation
-        if *location == Location::main() {
-            let operation_id = object.operation_id.clone();
-            let main_operation_id = object
-                .operations
-                .get(MAIN_OPERATION_NAME)
-                .and_then(|operation| operation.id.as_ref());
-
-            if let (Some(operation_id_name), Some(operation_id_value)) =
-                (operation_id, main_operation_id)
-            {
-                self.pil
-                    .extend(call(&operation_id_name, operation_id_value));
-            }
         }
     }
 

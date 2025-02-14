@@ -41,6 +41,8 @@ trait LinkerBackend: Sized {
             linker.process_object(location, &graph.objects);
         }
 
+        linker.process_side_effects(&graph.objects);
+
         Ok(PILFile(
             common_definitions
                 .into_iter()
@@ -54,6 +56,10 @@ trait LinkerBackend: Sized {
 
     /// Process a link between two machines, also passing the location at which the link is defined.
     fn process_link(&mut self, link: &Link, from: &Location, objects: &BTreeMap<Location, Object>);
+
+    /// Process side effects from the linker, which cannot be processed on the object level.
+    /// Currently used by the bus linker only.
+    fn process_side_effects(&mut self, objects: &BTreeMap<Location, Object>);
 
     /// Convert the linker's internal state into PIL statements.
     fn into_pil(self) -> Vec<PilStatement>;
