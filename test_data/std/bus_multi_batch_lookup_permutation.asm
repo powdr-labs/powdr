@@ -18,7 +18,7 @@ machine Main with degree: 8 {
     col fixed LOOKUP_X = [1, 2, 3, 4, 5, 6, 7, 8];
     col fixed LOOKUP_Y = [2, 3, 4, 5, 6, 7, 8, 9];
     col fixed LOOKUP_Z = [3, 4, 5, 6, 7, 8, 9, 10];
-    // Note that latch for lookup RHS is provided as a constant in BusInteraction::Send
+    // Note that the the latch for the lookup RHS is provided as a constant in BusInteraction::Send
     col fixed lookup_latch = [1]*;
 
     // Permutation LHS
@@ -53,7 +53,7 @@ machine Main with degree: 8 {
     bus_multi_receive_batch_lookup_permutation([
       (LOOKUP_ID_0, lookup_latch, [LOOKUP_X, LOOKUP_Y], 0), // selector is lookup_latch, multiplicity is a witness column (not an input here)
       (LOOKUP_ID_1, lookup_latch, [LOOKUP_X, LOOKUP_Z], 0), // selector is lookup_latch, multiplicity is a witness column (not an input here)
-      (PERMUTATION_ID_0, sub_sel_0 * perm_latch, [PERM_X, PERM_A], 1), // selector is sub_sel_0 * perm_latch, multiplicity is selector negated
-      (PERMUTATION_ID_1, sub_sel_1 * perm_latch, [PERM_X, PERM_B], 1) // selector is sub_sel_1 * perm_latch, multiplicity is selector negated
+      (PERMUTATION_ID_0, sub_sel_0 * perm_latch, [PERM_X, PERM_A], 1), // selector is sub_sel_0 * perm_latch, multiplicity is `-selector`
+      (PERMUTATION_ID_1, sub_sel_1 * perm_latch, [PERM_X, PERM_B], 1) // selector is sub_sel_1 * perm_latch, multiplicity is `-selector`
     ]);
 }
