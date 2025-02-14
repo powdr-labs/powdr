@@ -25,6 +25,9 @@ ibig = { version = "0.3.6", default-features = false }
 powdr-airgen.workspace = true
 powdr-importer.workspace = true
 powdr-parser.workspace = true
+powdr-pil-analyzer.workspace = true
+powdr-pilopt.workspace = true
+powdr-executor.workspace = true
 
 [lints]
 workspace = true

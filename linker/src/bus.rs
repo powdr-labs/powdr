@@ -348,5 +348,10 @@ namespace main__rom(4);
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = BusLinker::link(graph, crate::DegreeMode::Vadcop).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
+        let analyzed_pil = powdr_pil_analyzer::analyze_string(pil_string).unwrap();
+        powdr_pilopt::optimize(analyzed_pil);
+        let fixed_cols = powdr_executor::constant_evaluator::generate(&pil);
+        // let witness = WitnessGenerator::new(&pil, &fixed_cols);
+
     }
 }
