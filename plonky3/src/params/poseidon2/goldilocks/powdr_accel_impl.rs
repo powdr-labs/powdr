@@ -3,7 +3,7 @@ use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use p3_symmetric::CryptographicPermutation;
 use powdr_riscv_runtime::{
-    goldilocks::Goldilocks as PowdrGoldilocks,
+    goldilocks::OpaqueGoldilocks as PowdrGoldilocks,
     hash::{poseidon2_gl, poseidon2_gl_inplace},
 };
 
@@ -11,14 +11,14 @@ use powdr_riscv_runtime::{
 pub struct Permutation;
 
 impl p3_symmetric::Permutation<[Goldilocks; 8]> for Permutation {
-    // Both Goldilocks and PowdrGoldilocks are repr(transparent), and both use
-    // canonical representation internally, so it is safe to cast between their
-    // array's references.
-    //
-    // TODO: We are relying on implementation detail. So, ideally, we should
-    // static assert that std::mem::transmute(Goldilocks::one()) == 1u64.
-
     fn permute(&self, input: [Goldilocks; 8]) -> [Goldilocks; 8] {
+        // TODO: as of this writing, I am temporarily introducing a performance regression to convert
+        // p3_goldilocks::Goldilocks to and from PowdrGoldilocks in software. We must actually patch the p3's
+        // Merkle Tree implementation to do the conversion only once, in the output, from PowdrGoldilocks to
+        // p3_goldilocks::Goldilocks, to actually get an improvement
+
+        todo!();
+
         let input = unsafe { &*(&input as *const _ as *const [PowdrGoldilocks; 8]) };
         let output = poseidon2_gl(input);
         // Let's hope the compiler optimizes this into a no-op.
