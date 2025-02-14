@@ -9,11 +9,10 @@ use alloc::collections::btree_map::BTreeMap;
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, Identity};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::Mersenne31Field as M31;
-use stwo_prover::constraint_framework::preprocessed_columns::PreprocessedColumn;
+use stwo_prover::constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use stwo_prover::core::backend::{Column, ColumnOps};
 use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::{ExtensionOf, FieldOps};
 use stwo_prover::core::poly::circle::{CircleDomain, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
@@ -24,14 +23,12 @@ pub const STAGE1_TRACE_IDX: usize = 2;
 
 pub type PowdrComponent = FrameworkComponent<PowdrEval>;
 
-pub fn gen_stwo_circle_column<B, F>(
+pub fn gen_stwo_circle_column<B>(
     domain: CircleDomain,
     slice: &[M31],
 ) -> CircleEvaluation<B, BaseField, BitReversedOrder>
 where
-    B: FieldOps<BaseField> + ColumnOps<F>,
-
-    F: ExtensionOf<BaseField>,
+    B: ColumnOps<BaseField>,
 {
     assert!(
         slice.len().ilog2() == domain.size().ilog2(),
@@ -217,9 +214,9 @@ impl FrameworkEval for PowdrEval {
             .map(|(i, poly_id)| {
                 (
                     *poly_id,
-                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(
-                        i + self.preprocess_col_offset,
-                    )),
+                    eval.get_preprocessed_column(PreProcessedColumnId {
+                        id: (i + self.preprocess_col_offset).to_string(),
+                    }),
                 )
             })
             .collect();
@@ -231,9 +228,9 @@ impl FrameworkEval for PowdrEval {
             .map(|(i, poly_id)| {
                 (
                     *poly_id,
-                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(
-                        i + constant_eval.len() + self.preprocess_col_offset,
-                    )),
+                    eval.get_preprocessed_column(PreProcessedColumnId {
+                        id: (i + constant_eval.len() + self.preprocess_col_offset).to_string(),
+                    }),
                 )
             })
             .collect();
@@ -264,12 +261,13 @@ impl FrameworkEval for PowdrEval {
             .iter()
             .enumerate()
             .for_each(|(index, (_, poly_id, value))| {
-                let selector = eval.get_preprocessed_column(PreprocessedColumn::Plonk(
-                    index
+                let selector = eval.get_preprocessed_column(PreProcessedColumnId {
+                    id: (index
                         + constant_eval.len()
                         + self.preprocess_col_offset
-                        + constant_shifted_eval.len(),
-                ));
+                        + constant_shifted_eval.len())
+                    .to_string(),
+                });
 
                 let stage = self.poly_stage_map[poly_id];
                 let witness_col = match stage {
