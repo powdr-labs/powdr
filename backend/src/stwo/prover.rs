@@ -190,7 +190,7 @@ where
                                     .map(|(_, values)| {
                                         let mut rotated_values = values.to_vec();
                                         rotated_values.rotate_left(1);
-                                        gen_stwo_circle_column::<_>(
+                                        gen_stwo_circle_column(
                                             *domain_map.get(&(log_size as usize)).unwrap(),
                                             &rotated_values,
                                         )
