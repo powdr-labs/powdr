@@ -1,13 +1,8 @@
 #![allow(dead_code)]
-use std::{
-    collections::BTreeSet,
-    fmt::{self, Display, Formatter, Write},
-};
+use std::fmt::{self, Display, Formatter, Write};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, PolyID, PolynomialIdentity, PolynomialType,
-};
+use powdr_ast::analyzed::PolynomialIdentity;
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -21,8 +16,8 @@ use super::{
     affine_symbolic_expression,
     effect::{format_code, Effect},
     identity_queue::{IdentityQueue, QueueItem},
-    variable::{Cell, MachineCallVariable, Variable},
-    witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, Value, WitgenInference},
+    variable::{MachineCallVariable, Variable},
+    witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, WitgenInference},
 };
 
 /// A generic processor for generating JIT code.
@@ -36,8 +31,6 @@ pub struct Processor<'a, T: FieldElement, FixedEval> {
     initial_queue: Vec<QueueItem<'a, T>>,
     /// The size of a block.
     block_size: usize,
-    /// If the processor should check for correctly stackable block shapes.
-    check_block_shape: bool,
     /// List of variables we want to be known at the end. One of them not being known
     /// is a failure.
     requested_known_vars: Vec<Variable>,
@@ -71,7 +64,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             identities,
             initial_queue,
             block_size: 1,
-            check_block_shape: false,
             requested_known_vars: requested_known_vars.into_iter().collect(),
             requested_range_constraints: vec![],
             max_branch_depth,
@@ -90,13 +82,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
     /// Sets the block size.
     pub fn with_block_size(mut self, block_size: usize) -> Self {
         self.block_size = block_size;
-        self
-    }
-
-    /// Activates the check to see if the code for two subsequently generated
-    /// blocks conflicts.
-    pub fn with_block_shape_check(mut self) -> Self {
-        self.check_block_shape = true;
         self
     }
 
@@ -141,16 +126,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 witgen,
                 self.fixed_evaluator.clone(),
             ));
-        }
-
-        if self.check_block_shape {
-            // Check that the "spill" into the previous block is compatible
-            // with the "missing pieces" in the next block.
-            // If this is not the case, this is a hard error
-            // (i.e. cannot be fixed by runtime witgen) and thus we panic inside.
-            // We could do this only at the end of each branch, but it's a bit
-            // more convenient to do it here.
-            self.check_block_shape(&witgen);
         }
 
         // Check that we could derive all requested variables.
@@ -347,27 +322,23 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             .unique()
             .flat_map(|&call| {
                 let rows = self.rows_for_identity(call);
-                let complete_rows = rows
+                if rows
                     .iter()
                     .filter(|&&row| witgen.is_complete_call(call, row))
-                    .collect::<Vec<_>>();
-                // We might process more rows than `self.block_size`, so we check
-                // that the complete calls are on consecutive rows.
-                if complete_rows.len() >= self.block_size {
-                    let (min, max) = complete_rows.iter().minmax().into_option().unwrap();
-                    // TODO instead of checking for consecutive rows, we could also check
-                    // that they "fit" the next block.
-                    // TODO actually I think that we should not allow more than block size
-                    // completed calls.
-                    let is_consecutive = *max - *min == complete_rows.len() as i32 - 1;
-                    if is_consecutive {
-                        return vec![];
-                    }
+                    .count()
+                    >= self.block_size
+                {
+                    // We might process more rows than `self.block_size`, so we check
+                    // that we have the reqired amount of calls.
+                    // The block shape check done by block_machine_processor will do a more
+                    // thorough check later on.
+                    vec![]
+                } else {
+                    rows.iter()
+                        .filter(|&row| !witgen.is_complete_call(call, *row))
+                        .map(|row| (call, *row))
+                        .collect_vec()
                 }
-                rows.iter()
-                    .filter(|&row| !witgen.is_complete_call(call, *row))
-                    .map(|row| (call, *row))
-                    .collect::<Vec<_>>()
             })
             .collect::<Vec<_>>()
     }
@@ -384,77 +355,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
                 }
             })
             .collect()
-    }
-
-    /// After solving, the known cells should be such that we can stack different blocks.
-    /// If this is not the case, this function panics.
-    /// TODO the same is actually true for machine calls.
-    fn check_block_shape(&self, witgen: &WitgenInference<'a, T, FixedEval>) {
-        let known_columns: BTreeSet<_> = witgen
-            .known_variables()
-            .iter()
-            .filter_map(|var| match var {
-                Variable::WitnessCell(cell) => Some(cell.id),
-                _ => None,
-            })
-            .collect();
-        for column_id in known_columns {
-            let known_rows = witgen
-                .known_variables()
-                .iter()
-                .filter_map(|var| match var {
-                    Variable::WitnessCell(cell) if cell.id == column_id => Some(cell.row_offset),
-                    _ => None,
-                })
-                .collect::<BTreeSet<_>>();
-
-            // Two values that refer to the same row (modulo block size) are compatible if:
-            // - One of them is unknown, or
-            // - Both are concrete and equal
-            let is_compatible = |v1: Value<T>, v2: Value<T>| match (v1, v2) {
-                (Value::Unknown, _) | (_, Value::Unknown) => true,
-                (Value::Concrete(a), Value::Concrete(b)) => a == b,
-                _ => false,
-            };
-            let cell_var = |row_offset| {
-                Variable::WitnessCell(Cell {
-                    // Column name does not matter.
-                    column_name: "".to_string(),
-                    id: column_id,
-                    row_offset,
-                })
-            };
-
-            // A column is stackable if all rows equal to each other modulo
-            // the block size are compatible.
-            for row in &known_rows {
-                let this_val = witgen.value(&cell_var(*row));
-                let next_block_val = witgen.value(&cell_var(row + self.block_size as i32));
-                if !is_compatible(this_val, next_block_val) {
-                    let column_name = self.fixed_data.column_name(&PolyID {
-                        id: column_id,
-                        ptype: PolynomialType::Committed,
-                    });
-                    let row_vals = known_rows
-                        .iter()
-                        .map(|&r| format!("  row {r}: {}\n", witgen.value(&cell_var(r))))
-                        .format("");
-                    log::debug!(
-                        "Code generated so far:\n{}\n\
-                        Column {column_name} is not stackable in a {}-row block, \
-                        conflict in rows {row} and {}.\n{row_vals}",
-                        format_code(witgen.code()),
-                        self.block_size,
-                        row + self.block_size as i32
-                    );
-                    panic!(
-                        "Column {column_name} is not stackable in a {}-row block, conflict in rows {row} and {}.\n{row_vals}",
-                        self.block_size,
-                        row + self.block_size as i32
-                    );
-                }
-            }
-        }
     }
 
     /// If the only missing sends all only have a single argument, try to set those arguments
@@ -494,7 +394,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             };
             assert!(!witgen.is_known(param));
             match modified_witgen.process_equation_on_row(
-                &Expression::Number(T::from(0)),
+                &T::from(0).into(),
                 Some(param.clone()),
                 0.into(),
                 row,
