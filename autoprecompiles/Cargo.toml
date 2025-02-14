@@ -1,0 +1,24 @@
+[package]
+name = "powdr-autoprecompiles"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+powdr-asm-to-pil.workspace = true
+powdr-ast.workspace = true
+powdr-number.workspace = true
+powdr-parser.workspace = true
+powdr-parser-util.workspace = true
+
+itertools = "0.13"
+lazy_static = "1.4.0"
+log = "0.4.18"
+
+[package.metadata.cargo-udeps.ignore]
+development = ["env_logger"]
+
+[lints]
+workspace = true
