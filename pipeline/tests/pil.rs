@@ -1,5 +1,5 @@
 use powdr_linker::LinkerMode;
-use powdr_number::GoldilocksField;
+use powdr_number::{GoldilocksField, Mersenne31Field};
 use powdr_pipeline::{
     test_util::{
         assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
@@ -7,7 +7,8 @@ use powdr_pipeline::{
         assert_proofs_fail_for_invalid_witnesses_pilcom,
         assert_proofs_fail_for_invalid_witnesses_stwo, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test_all_fields, regular_test_gl,
-        test_halo2_with_backend_variant, test_mock_backend, test_stwo, BackendVariant,
+        test_halo2_with_backend_variant, test_mock_backend, test_stwo, test_stwo_stage1_public,
+        BackendVariant,
     },
     Pipeline,
 };
@@ -105,6 +106,7 @@ fn permutation_with_selector_starky() {
 fn fibonacci() {
     let f = "pil/fibonacci.pil";
     regular_test_all_fields(f, Default::default());
+    test_stwo(f, Default::default());
 }
 
 #[test]
@@ -129,6 +131,7 @@ fn fibonacci_invalid_witness() {
     ];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
     assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
+    assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness);
 
     // All constraints are valid, except the initial row.
     // The following constraint should fail in row 3:
@@ -139,6 +142,7 @@ fn fibonacci_invalid_witness() {
     ];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
     assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
+    assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness);
 }
 
 #[test]
@@ -265,15 +269,32 @@ fn add() {
 }
 
 #[test]
-fn stwo_fibonacci() {
-    let f = "pil/fibo_no_publics.pil";
+fn stwo_fixed_columns() {
+    let f = "pil/fixed_columns.pil";
     test_stwo(f, Default::default());
 }
 
 #[test]
-fn stwo_fixed_columns() {
-    let f = "pil/fixed_columns.pil";
-    test_stwo(f, Default::default());
+fn stwo_stage1_publics() {
+    let f = "pil/stage1_publics.pil";
+    test_stwo_stage1_public(
+        f,
+        Default::default(),
+        vec![Mersenne31Field::from(1191445910), Mersenne31Field::from(8)],
+        true,
+    );
+}
+
+#[test]
+#[should_panic]
+fn stwo_stage1_publics_invalid() {
+    let f = "pil/stage1_publics.pil";
+    test_stwo_stage1_public(
+        f,
+        Default::default(),
+        vec![Mersenne31Field::from(119144591), Mersenne31Field::from(8)],
+        false,
+    );
 }
 
 #[test]
@@ -287,28 +308,7 @@ fn stwo_constant_next_test() {
     let f = "pil/fixed_with_incremental.pil";
     test_stwo(f, Default::default());
 }
-#[test]
-fn fibonacci_invalid_witness_stwo() {
-    let f = "pil/fibo_no_publics.pil";
 
-    // Changed one value and then continued.
-    // The following constraint should fail in row 1:
-    //     (1-ISLAST) * (x' - y) = 0;
-    let witness = vec![
-        ("Fibonacci::x".to_string(), vec![1, 1, 10, 3]),
-        ("Fibonacci::y".to_string(), vec![1, 2, 3, 13]),
-    ];
-    assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness);
-
-    // All constraints are valid, except the initial row.
-    // The following constraint should fail in row 3:
-    //     ISLAST * (y' - 1) = 0;
-    let witness = vec![
-        ("Fibonacci::x".to_string(), vec![1, 2, 3, 5]),
-        ("Fibonacci::y".to_string(), vec![2, 3, 5, 8]),
-    ];
-    assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness);
-}
 #[test]
 fn simple_div() {
     let f = "pil/simple_div.pil";

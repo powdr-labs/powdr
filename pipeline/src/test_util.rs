@@ -667,6 +667,25 @@ pub fn test_stwo_pipeline(pipeline: Pipeline<Mersenne31Field>) {
     pipeline.verify(&proof, &[publics]).unwrap();
 }
 
+#[cfg(feature = "stwo")]
+pub fn test_stwo_stage1_public(
+    file_name: &str,
+    inputs: Vec<Mersenne31Field>,
+    publics: Vec<Mersenne31Field>,
+    _valid: bool,
+) {
+    let backend = powdr_backend::BackendType::Stwo;
+
+    let mut pipeline = Pipeline::default()
+        .with_tmp_output()
+        .from_file(resolve_test_file(file_name))
+        .with_prover_inputs(inputs)
+        .with_backend(backend, None);
+
+    let proof = pipeline.compute_proof().cloned().unwrap();
+    pipeline.verify(&proof, &[publics]).unwrap();
+}
+
 #[cfg(not(feature = "stwo"))]
 pub fn assert_proofs_fail_for_invalid_witnesses_stwo(
     _file_name: &str,
@@ -676,6 +695,16 @@ pub fn assert_proofs_fail_for_invalid_witnesses_stwo(
 
 #[cfg(not(feature = "stwo"))]
 pub fn test_stwo(_file_name: &str, _inputs: Vec<u32>) {}
+
+#[cfg(not(feature = "stwo"))]
+pub fn test_stwo_stage1_public(
+    _file_name: &str,
+    _inputs: Vec<u32>,
+    _publics: Vec<Mersenne31Field>,
+    valid: bool,
+) {
+    assert!(valid);
+}
 
 #[cfg(not(feature = "stwo"))]
 pub fn test_stwo_pipeline(_pipeline: Pipeline<Mersenne31Field>) {}
