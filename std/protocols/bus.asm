@@ -309,20 +309,12 @@ let bus_interaction: expr, expr[], expr, expr -> () = constr |id, payload, multi
     bus_multi_interaction([id], [payload], [multiplicity], [latch]);
 };
 
-/// Convenience function for single bus interaction to send columns
-let bus_send: BusInteraction -> () = constr |bus_input| {
+/// Convenience function for single bus interaction to send/receive columns
+let bus: BusInteraction -> () = constr |bus_input| {
     match bus_input {
         // For bus sends, the multiplicity always equals the latch
         BusInteraction::Send(id, payload, multiplicity) => bus_interaction(id, payload, multiplicity, multiplicity),
-        _ => std::check::panic("Requires BusInteraction::Send.")
+        BusInteraction::Receive(id, payload, multiplicity, latch) => bus_interaction(id, payload, -multiplicity, latch)
     }
-};
+}
 
-/// Convenience function for single bus interaction to receive columns
-let bus_receive: BusInteraction -> () = constr |bus_input| {
-    match bus_input {
-        BusInteraction::Receive(id, payload, multiplicity, latch) => bus_interaction(id, payload, -multiplicity, latch),
-        _ => std::check::panic("Requires BusInteraction::Receive.")
-    }
-    ;
-};
