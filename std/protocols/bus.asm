@@ -21,6 +21,7 @@ use std::check::panic;
 
 enum BusInteraction {
     // id, payload, multiplicity
+    // For bus sends, the multiplicity always equals the latch
     Send(expr, expr[], expr),
     // id, payload, multiplicity, latch
     Receive(expr, expr[], expr, expr)
@@ -236,31 +237,15 @@ let compute_next_z: expr, expr, expr[], expr, Ext<expr>, Ext<expr>, Ext<expr> ->
 /// to constraint building friendly bus send input format `expr[], expr[][], expr[]`, i.e. id, payload, multiplicity.
 /// This is because Rust-style tuple indexing, e.g. tuple.0, isn't supported yet.
 let transpose_bus_send_inputs: BusInteraction[] -> (expr[], expr[][], expr[]) = |bus_inputs| {
-    let ids: expr[] = array::map(bus_inputs, 
-        |bus_input| {
+    array::fold(
+        bus_inputs, ([], [], []), 
+        |(ids, payloads, multiplicities), bus_input| {
             match bus_input {
-                BusInteraction::Send(id, _, _) => id,
-                _ => std::check::panic("Requires BusInteraction::Send.")
+                BusInteraction::Send(id, payload, multiplicity) => (ids + [id], payloads + [payload], multiplicities + [multiplicity]),
+                _ => std::check::panic("Requires BusInteraction::Send")
             }
         }
-    );
-    let payloads: expr[][] = array::map(bus_inputs, 
-        |bus_input| {
-            match bus_input {
-                BusInteraction::Send(_, payload, _) => payload,
-                _ => std::check::panic("Requires BusInteraction::Send.")
-            }
-        }
-    );
-    let multiplicities: expr[] = array::map(bus_inputs, 
-        |bus_input| {
-            match bus_input {
-                BusInteraction::Send(_, _, multiplicity) => multiplicity,
-                _ => std::check::panic("Requires BusInteraction::Send.")
-            }
-        }
-    );
-    (ids, payloads, multiplicities)
+    )
 };
 
 /// Convenience function for batching multiple bus sends.
@@ -276,39 +261,15 @@ let bus_multi_send: BusInteraction[] -> () = constr |bus_inputs| {
 /// to constraint building friendly bus send input format `expr[], expr[][], expr[], expr[]`, i.e. id, payload, multiplicity, latch.
 /// This is because Rust-style tuple indexing, e.g. tuple.0, isn't supported yet.
 let transpose_bus_receive_inputs: BusInteraction[] -> (expr[], expr[][], expr[], expr[]) = |bus_inputs| {
-    let ids: expr[] = array::map(bus_inputs, 
-        |bus_input| {
+    array::fold(
+        bus_inputs, ([], [], [], []), 
+        |(ids, payloads, multiplicities, latches), bus_input| {
             match bus_input {
-                BusInteraction::Receive(id, _, _, _) => id,
-                _ => std::check::panic("Requires BusInteraction::Receive.")
+                BusInteraction::Receive(id, payload, multiplicity, latch) => (ids + [id], payloads + [payload], multiplicities + [-multiplicity], latches + [latch]),
+                _ => std::check::panic("Requires BusInteraction::Receive")
             }
         }
-    );
-    let payloads: expr[][] = array::map(bus_inputs, 
-        |bus_input| {
-            match bus_input {
-                BusInteraction::Receive(_, payload, _, _) => payload,
-                _ => std::check::panic("Requires BusInteraction::Receive.")
-            }
-        }
-    );
-    let negated_multiplicities: expr[] = array::map(bus_inputs, 
-        |bus_input| {
-            match bus_input {
-                BusInteraction::Receive(_, _, multiplicity, _) => -multiplicity,
-                _ => std::check::panic("Requires BusInteraction::Receive.")
-            }
-        }
-    );
-    let latches: expr[] = array::map(bus_inputs,
-        |bus_input| {
-            match bus_input {
-                BusInteraction::Receive(_, _, _, latch) => latch,
-                _ => std::check::panic("Requires BusInteraction::Receive.")
-            }
-        }
-    );
-    (ids, payloads, negated_multiplicities, latches)
+    )
 };
 
 /// Convenience function for batching multiple bus receives.
