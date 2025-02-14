@@ -359,7 +359,7 @@ where
                 witness_cols
                     .iter()
                     .map(|(_name, col)| {
-                        gen_stwo_circle_column::<_>(
+                        gen_stwo_circle_column(
                             *domain_map
                                 .get(&(col.len().ilog2() as usize))
                                 .expect("Domain not found for given size"),
