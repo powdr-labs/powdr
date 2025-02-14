@@ -230,6 +230,13 @@ fn block_to_block_with_bus_composite() {
 }
 
 #[test]
+fn block_to_block_lookup_and_permutation() {
+    let f = "asm/block_to_block_lookup_and_permutation.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
+}
+
+#[test]
 fn static_bus() {
     let f = "asm/static_bus.asm";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
