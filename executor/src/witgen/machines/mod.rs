@@ -334,10 +334,9 @@ impl Display for ConnectionKind {
 #[derive(Clone)]
 pub struct MachineParts<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
-    /// Connecting identities, indexed by their ID.
-    /// These are the identities that connect another machine to this one,
-    /// where this one is on the RHS of a lookup.
-    pub connections: BTreeMap<u64, Connection<'a, T>>,
+    /// Bus receives, indexed by their bus ID.
+    /// These represent the machine listening on a specific bus to receive calls.
+    pub bus_receives: BTreeMap<T, &'a BusReceive<T>>,
     /// Identities relevant to this machine and only this machine.
     pub identities: Vec<&'a Identity<T>>,
     /// Witness columns relevant to this machine.
@@ -349,14 +348,14 @@ pub struct MachineParts<'a, T: FieldElement> {
 impl<'a, T: FieldElement> MachineParts<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        connections: BTreeMap<u64, Connection<'a, T>>,
+        bus_receives: BTreeMap<T, &'a BusReceive<T>>,
         identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
         prover_functions: Vec<&'a analyzed::Expression>,
     ) -> Self {
         Self {
             fixed_data,
-            connections,
+            bus_receives,
             identities,
             witnesses,
             prover_functions,
@@ -388,8 +387,8 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
     }
 
     /// Returns the IDs of the connecting identities.
-    pub fn identity_ids(&self) -> Vec<u64> {
-        self.connections.keys().cloned().collect()
+    pub fn bus_ids(&self) -> Vec<T> {
+        self.bus_receives.keys().cloned().collect()
     }
 
     /// Returns the name of a column.
