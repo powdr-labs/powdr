@@ -20,7 +20,7 @@ use crate::witgen::{
 
 use super::{
     block_machine_processor::BlockMachineProcessor,
-    compiler::{compile_effects, WitgenFunction},
+    compiler::{compile_effects, interpret_effects, WitgenFunction},
     variable::Variable,
     witgen_inference::CanProcessCall,
 };
@@ -194,15 +194,22 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .filter_map(|(i, b)| if b { Some(Variable::Param(i)) } else { None })
             .collect::<Vec<_>>();
 
-        log::trace!("Compiling effects...");
-        let function = compile_effects(
-            self.fixed_data.analyzed,
-            self.column_layout.clone(),
-            &known_inputs,
-            &code,
-            prover_functions,
-        )
-        .unwrap();
+        let compiled_jit = !matches!(std::env::var("POWDR_JIT_INTERPRETER"), Ok(val) if val == "1");
+
+        let function = if compiled_jit {
+            log::trace!("Compiling effects...");
+            compile_effects(
+                self.fixed_data.analyzed,
+                self.column_layout.clone(),
+                &known_inputs,
+                &code,
+                prover_functions,
+            )
+            .unwrap()
+        } else {
+            log::trace!("Building effects interpreter...");
+            interpret_effects(&known_inputs, &code).unwrap()
+        };
         log::trace!("Compilation done.");
 
         Some(CacheEntry {
