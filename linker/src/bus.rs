@@ -352,7 +352,7 @@ mod test {
     pc' = (1 - first_step') * pc_update;
     pol commit call_selectors[0];
     std::array::map(call_selectors, std::utils::force_bool);
-    std::protocols::bus::bus_multi_send([std::protocols::bus::BusInteraction::Send(742731552, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1)]);
+    std::protocols::bus::bus_multi_send([std::protocols::bus::BusInteraction::Send(454118344, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1)]);
 namespace main__rom(4);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
@@ -361,7 +361,7 @@ namespace main__rom(4);
     pol constant p_instr_return = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-    std::protocols::bus::bus_multi_receive_batch_lookup_permutation([(742731552, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], 0)]);
+    std::protocols::bus::bus_multi_receive_batch_lookup_permutation([(454118344, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], 0)]);
 "#;
 
         let file_name = "../test_data/asm/empty_vm.asm";
