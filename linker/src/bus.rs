@@ -37,10 +37,10 @@ pub struct BusLinker {
     selector_array_size_by_instance: BTreeMap<Location, usize>,
     /// for each used operation, the index in the selector array. For operations accessed via lookups, this is None.
     selector_array_index_by_operation: BTreeMap<LinkTo, Option<usize>>,
-    /// arguments for `bus_multi_receive`
-    bus_multi_receive_args: ArrayLiteral,
-    /// arguments for `bus_multi_send`
-    bus_multi_send_args: ArrayLiteral,
+    /// arguments for `bus_multi_receive_batch_lookup_permutation`
+    bus_multi_receive_batch_lookup_permutation_args: ArrayLiteral,
+    /// arguments for `bus_multi`
+    bus_multi_args: ArrayLiteral,
 }
 
 impl LinkerBackend for BusLinker {
@@ -93,10 +93,10 @@ impl LinkerBackend for BusLinker {
             pil: Default::default(),
             selector_array_size_by_instance,
             selector_array_index_by_operation,
-            bus_multi_receive_args: ArrayLiteral {
+            bus_multi_receive_batch_lookup_permutation_args: ArrayLiteral {
                 items: Default::default(),
             },
-            bus_multi_send_args: ArrayLiteral {
+            bus_multi_args: ArrayLiteral {
                 items: Default::default(),
             },
         })
@@ -123,20 +123,18 @@ impl LinkerBackend for BusLinker {
         }
         .into();
 
-        self.bus_multi_send_args
-            .items
-            .push(Expression::FunctionCall(
-                SourceRef::unknown(),
-                FunctionCall {
-                    function: Box::new(Expression::Reference(
-                        SourceRef::unknown(),
-                        SymbolPath::from_str("std::protocols::bus::BusInteraction::Send")
-                            .unwrap()
-                            .into(),
-                    )),
-                    arguments: vec![interaction_id.into(), tuple, selector],
-                },
-            ));
+        self.bus_multi_args.items.push(Expression::FunctionCall(
+            SourceRef::unknown(),
+            FunctionCall {
+                function: Box::new(Expression::Reference(
+                    SourceRef::unknown(),
+                    SymbolPath::from_str("std::protocols::bus::BusInteraction::Send")
+                        .unwrap()
+                        .into(),
+                )),
+                arguments: vec![interaction_id.into(), tuple, selector],
+            },
+        ));
     }
 
     fn process_object(&mut self, location: &Location, objects: &BTreeMap<Location, Object>) {
@@ -178,14 +176,11 @@ impl LinkerBackend for BusLinker {
             self.process_operation(name, operation, location, object);
         }
 
-        // add pil for bus_multi_send and bus_multi_receive_batch_lookup_permutation
+        // add pil for bus_multi and bus_multi_receive_batch_lookup_permutation
         for (args, path) in [
+            (&mut self.bus_multi_args, "std::protocols::bus::bus_multi"),
             (
-                &mut self.bus_multi_send_args,
-                "std::protocols::bus::bus_multi_send",
-            ),
-            (
-                &mut self.bus_multi_receive_args,
+                &mut self.bus_multi_receive_batch_lookup_permutation_args,
                 "std::protocols::bus::bus_multi_receive_batch_lookup_permutation",
             ),
         ] {
@@ -293,7 +288,7 @@ impl BusLinker {
                 }
             };
 
-            self.bus_multi_receive_args
+            self.bus_multi_receive_batch_lookup_permutation_args
                 .items
                 .push(Expression::Tuple(SourceRef::unknown(), arguments));
         }
@@ -352,7 +347,7 @@ mod test {
     pc' = (1 - first_step') * pc_update;
     pol commit call_selectors[0];
     std::array::map(call_selectors, std::utils::force_bool);
-    std::protocols::bus::bus_multi_send([std::protocols::bus::BusInteraction::Send(454118344, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1)]);
+    std::protocols::bus::bus_multi([std::protocols::bus::BusInteraction::Send(454118344, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1)]);
 namespace main__rom(4);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
