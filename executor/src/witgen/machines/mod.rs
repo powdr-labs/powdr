@@ -69,7 +69,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn can_process_call_fully(
         &mut self,
         _can_process: impl CanProcessCall<T>,
-        _identity_id: u64,
+        _bus_id: T,
         _known_arguments: &BitVec,
         range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
@@ -80,12 +80,12 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn process_plookup_timed<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         record_start(self.name());
-        let result = self.process_plookup(mutable_state, identity_id, arguments, range_constraints);
+        let result = self.process_plookup(mutable_state, bus_id, arguments, range_constraints);
         record_end(self.name());
         result
     }
@@ -94,11 +94,11 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn process_lookup_direct_timed<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         record_start(self.name());
-        let result = self.process_lookup_direct(mutable_state, identity_id, values);
+        let result = self.process_lookup_direct(mutable_state, bus_id, values);
         record_end(self.name());
         result
     }
@@ -112,7 +112,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T>;
@@ -130,7 +130,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>>;
 
@@ -141,7 +141,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     ) -> HashMap<String, Vec<T>>;
 
     /// Returns the identity IDs of the connecting identities that this machine is responsible for.
-    fn identity_ids(&self) -> Vec<u64>;
+    fn bus_ids(&self) -> Vec<T>;
 }
 
 #[repr(C)]
@@ -199,33 +199,33 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     fn can_process_call_fully(
         &mut self,
         can_process: impl CanProcessCall<T>,
-        identity_id: u64,
+        bus_id: T,
         known_arguments: &BitVec,
         range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
         match_variant!(
             self,
-            m => m.can_process_call_fully(can_process, identity_id, known_arguments, range_constraints)
+            m => m.can_process_call_fully(can_process, bus_id, known_arguments, range_constraints)
         )
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        match_variant!(self, m => m.process_plookup(mutable_state, identity_id, arguments, range_constraints))
+        match_variant!(self, m => m.process_plookup(mutable_state, bus_id, arguments, range_constraints))
     }
 
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
-        match_variant!(self, m => m.process_lookup_direct(mutable_state, identity_id, values))
+        match_variant!(self, m => m.process_lookup_direct(mutable_state, bus_id, values))
     }
 
     fn name(&self) -> &str {
@@ -239,8 +239,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         match_variant!(self, m => m.take_witness_col_values(mutable_state))
     }
 
-    fn identity_ids(&self) -> Vec<u64> {
-        match_variant!(self, m => m.identity_ids())
+    fn bus_ids(&self) -> Vec<T> {
+        match_variant!(self, m => m.bus_ids())
     }
 }
 
