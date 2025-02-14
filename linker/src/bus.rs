@@ -25,11 +25,9 @@ fn interaction_id(link_to: &LinkTo) -> u32 {
     let result = hasher.finalize();
     let mut bytes = [0u8; 4];
     bytes.copy_from_slice(&result[..4]);
-    // Mask the most significant two bits of the most significant limb
-    // to ensure that interaction_id is at most 30-bits, in order to
+    // Ensure that interaction_id is at most 30-bits, in order to
     // fill in a single field element for BabyBear and M31.
-    bytes[3] &= 0b0011_1111;
-    u32::from_le_bytes(bytes)
+    u32::from_le_bytes(bytes) >> 2
 }
 
 pub struct BusLinker {
