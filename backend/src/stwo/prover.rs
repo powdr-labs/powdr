@@ -450,7 +450,7 @@ where
                             if stage0_witness_name_list.contains(witness_name) {
                                 None
                             } else {
-                                Some(gen_stwo_circle_column::<B>(
+                                Some(gen_stwo_circle_column(
                                     *domain_map
                                         .get(&(vec.len().ilog2() as usize))
                                         .expect("Domain not found for given size"),
