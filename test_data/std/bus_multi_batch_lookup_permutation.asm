@@ -18,7 +18,7 @@ machine Main with degree: 8 {
     col fixed LOOKUP_X = [1, 2, 3, 4, 5, 6, 7, 8];
     col fixed LOOKUP_Y = [2, 3, 4, 5, 6, 7, 8, 9];
     col fixed LOOKUP_Z = [3, 4, 5, 6, 7, 8, 9, 10];
-    // Note that the the latch for the lookup RHS is provided as a constant in BusInteraction::Send
+    // Note that the latch for the lookup RHS is provided as a constant in BusInteraction::Send
     col fixed lookup_latch = [1]*;
 
     // Permutation LHS
