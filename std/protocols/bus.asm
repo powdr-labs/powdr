@@ -267,7 +267,7 @@ enum BusLinkerType {
 
 /// Exposed to the linker and not intended for end user because it requires expert knowledge of Powdr's bus protocol.
 /// Inputs in the order of: id, selector, payload, type for both lookup and permutation.
-/// where type include bus send, lookup bus receive, and permutation bus receive.
+/// where type can be: bus send, lookup bus receive, or permutation bus receive.
 let bus_multi_linker: (expr, expr, expr[], BusLinkerType)[] -> () = constr |inputs| {
     // Lookup requires adding a multiplicity column and constraining it to zero if selector is zero.
     // Permutation passes the selector to both multiplicity and latch fields as well.

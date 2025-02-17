@@ -4,7 +4,9 @@ use powdr_ast::{
     asm_analysis::combine_flags,
     object::{Link, LinkTo, Location, MachineInstanceGraph, Object, Operation},
     parsed::{
-        asm::SymbolPath, build::{index_access, namespaced_reference}, ArrayLiteral, Expression, FunctionCall, NamespacedPolynomialReference, PilStatement
+        asm::SymbolPath,
+        build::{index_access, namespaced_reference},
+        ArrayLiteral, Expression, FunctionCall, NamespacedPolynomialReference, PilStatement,
     },
 };
 use powdr_parser_util::SourceRef;
@@ -116,7 +118,10 @@ impl LinkerBackend for BusLinker {
         }
         .into();
 
-        let bus_linker_type = NamespacedPolynomialReference::from(SymbolPath::from_str("std::protocols::bus::BusLinkerType::Send").unwrap()).into();
+        let bus_linker_type = NamespacedPolynomialReference::from(
+            SymbolPath::from_str("std::protocols::bus::BusLinkerType::Send").unwrap(),
+        )
+        .into();
 
         self.bus_multi_linker_args.items.push(Expression::Tuple(
             SourceRef::unknown(),
@@ -252,7 +257,16 @@ impl BusLinker {
 
             let arguments = match selector_index {
                 // a selector index of None means this operation is called via lookup
-                None => vec![interaction_id.into(), latch, tuple, NamespacedPolynomialReference::from(SymbolPath::from_str("std::protocols::bus::BusLinkerType::LookupReceive").unwrap()).into()],
+                None => vec![
+                    interaction_id.into(),
+                    latch,
+                    tuple,
+                    NamespacedPolynomialReference::from(
+                        SymbolPath::from_str("std::protocols::bus::BusLinkerType::LookupReceive")
+                            .unwrap(),
+                    )
+                    .into(),
+                ],
                 // a selector index of Some means this operation is called via permutation
                 Some(selector_index) => {
                     let call_selector_array = namespaced_reference(
@@ -265,7 +279,13 @@ impl BusLinker {
                     let call_selector =
                         index_access(call_selector_array, Some((*selector_index).into()));
                     let rhs_selector = latch * call_selector;
-                    let bus_linker_type = NamespacedPolynomialReference::from(SymbolPath::from_str("std::protocols::bus::BusLinkerType::PermutationReceive").unwrap()).into();
+                    let bus_linker_type = NamespacedPolynomialReference::from(
+                        SymbolPath::from_str(
+                            "std::protocols::bus::BusLinkerType::PermutationReceive",
+                        )
+                        .unwrap(),
+                    )
+                    .into();
                     vec![interaction_id.into(), rhs_selector, tuple, bus_linker_type]
                 }
             };
@@ -329,7 +349,7 @@ mod test {
     pc' = (1 - first_step') * pc_update;
     pol commit call_selectors[0];
     std::array::map(call_selectors, std::utils::force_bool);
-    std::protocols::bus::bus_multi_linker([(454118344, 1, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 0)]);
+    std::protocols::bus::bus_multi_linker([(454118344, 1, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], std::protocols::bus::BusLinkerType::Send)]);
 namespace main__rom(4);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
@@ -338,27 +358,12 @@ namespace main__rom(4);
     pol constant p_instr_return = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-    std::protocols::bus::bus_multi_linker([(454118344, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], 1)]);
+    std::protocols::bus::bus_multi_linker([(454118344, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], std::protocols::bus::BusLinkerType::LookupReceive)]);
 "#;
 
-        let file_name = "../test_data/std/permutation_via_challenges.asm";
+        let file_name = "../test_data/asm/empty_vm.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = BusLinker::link(graph, crate::DegreeMode::Vadcop).unwrap();
-        println!("{}", pil);
-        // assert_eq!(extract_main(&format!("{pil}")), expectation);
-    }
-
-    #[test]
-    fn parse_enum() {
-        use std::io::Write;
-        let file = "../test_data/std/bus_multi_linker.asm";
-        let contents = fs::read_to_string(file).unwrap();
-        let parsed = parse_asm(Some(file), &contents).unwrap_or_else(|e| {
-            e.output_to_stderr();
-            panic!();
-        });
-        // print parsed to a file
-        let mut output = fs::File::create("../std/bus.txt").unwrap();
-        writeln!(output, "{:#?}", parsed).unwrap();
+        assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 }
