@@ -7,7 +7,7 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     jit::{
-        identity_queue::QueueItem, processor::Processor,
+        effect::format_code, identity_queue::QueueItem, processor::Processor,
         prover_function_heuristics::decode_prover_functions,
     },
     machines::MachineParts,
@@ -565,6 +565,35 @@ SubM::a[1] = ((SubM::b[1] * 256) + SubM::c[1]);"
             a + b = c;
         ";
         let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        assert_eq!(
+            code,
+            "S::a[0] = params[0];
+S::b[0] = params[1];
+S::c[0] = (S::a[0] + S::b[0]);
+params[2] = S::c[0];
+call_var(2, 0, 0) = 0;
+call_var(3, 0, 0) = 0;
+machine_call(2, [Known(call_var(2, 0, 0))]);
+machine_call(3, [Known(call_var(3, 0, 0))]);"
+        );
+    }
+
+    #[test]
+    fn stackable_with_same_value() {
+        // In the following, we assign b[0] = 0 and b[4] = 0, which is a stackable
+        // error only if we are not able to compare the actual values.
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is S.sel $ [S.a, S.b, S.c];
+        namespace S(256);
+            col witness a, b, c;
+            let sel: col = |i| if i % 4 == 0 { 1 } else { 0 };
+            col fixed FACTOR = [0, 0, 1, 0]*;
+            b' = FACTOR * 8;
+            c = b + 1;
+        ";
+        let code = format_code(&generate_for_block_machine(input, "S", 1, 2).unwrap().code);
         assert_eq!(
             code,
             "S::a[0] = params[0];
