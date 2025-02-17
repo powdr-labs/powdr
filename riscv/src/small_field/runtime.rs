@@ -29,6 +29,9 @@ impl Runtime {
         if libs.arith {
             runtime = runtime.with_arith();
         }
+        if libs.splt_vec {
+            runtime = runtime.with_split_vec();
+        }
         runtime
     }
 
@@ -230,6 +233,10 @@ impl Runtime {
     }
 
     fn with_arith(self) -> Self {
+        todo!()
+    }
+
+    fn with_split_vec(self) -> Self {
         todo!()
     }
 

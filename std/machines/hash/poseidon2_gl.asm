@@ -17,7 +17,11 @@ use super::poseidon2_common::poseidon2;
 //
 // Differently from our Poseidon Goldilocks implementation, we will use a
 // state size of 8 field elements instead of 12, matching Plonky3's implementation.
-machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
+//
+// This machine assumes each memory word contains a full field element, and it
+// writes one field element per memory word. Use SplitGLVec8 to split the output
+// into 32-bit words. 
+machine Poseidon2GL(mem: Memory) with
     latch: latch,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
@@ -32,6 +36,8 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     // Similarly, the output data is written to memory at the provided pointer.
     //
     // Reads happen at the provided time step; writes happen at the next time step.
+    //
+    // The addresses must be multiple of 4.
     operation poseidon2_permutation
         input_addr,
         output_addr,
@@ -111,35 +117,17 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     ];
 
     let input_addr;
-    let input_low: col[STATE_SIZE];
-    let input_high: col[STATE_SIZE];
+    let input: col[STATE_SIZE];
+
     // TODO: when link is available inside functions, we can turn this into array operations.
-    link if is_used ~> input_low[0] = mem.mload(input_addr + 0, time_step);
-    link if is_used ~> input_high[0] = mem.mload(input_addr + 4, time_step);
-
-    link if is_used ~> input_low[1] = mem.mload(input_addr + 8, time_step);
-    link if is_used ~> input_high[1] = mem.mload(input_addr + 12, time_step);
-
-    link if is_used ~> input_low[2] = mem.mload(input_addr + 16, time_step);
-    link if is_used ~> input_high[2] = mem.mload(input_addr + 20, time_step);
-
-    link if is_used ~> input_low[3] = mem.mload(input_addr + 24, time_step);
-    link if is_used ~> input_high[3] = mem.mload(input_addr + 28, time_step);
-
-    link if is_used ~> input_low[4] = mem.mload(input_addr + 32, time_step);
-    link if is_used ~> input_high[4] = mem.mload(input_addr + 36, time_step);
-
-    link if is_used ~> input_low[5] = mem.mload(input_addr + 40, time_step);
-    link if is_used ~> input_high[5] = mem.mload(input_addr + 44, time_step);
-
-    link if is_used ~> input_low[6] = mem.mload(input_addr + 48, time_step);
-    link if is_used ~> input_high[6] = mem.mload(input_addr + 52, time_step);
-
-    link if is_used ~> input_low[7] = mem.mload(input_addr + 56, time_step);
-    link if is_used ~> input_high[7] = mem.mload(input_addr + 60, time_step);
-
-    // Assemble the two limbs of the input
-    let input = array::zip(input_low, input_high, |low, high| low + 2**32 * high);
+    link if is_used ~> input[0] = mem.mload(input_addr + 0, time_step);
+    link if is_used ~> input[1] = mem.mload(input_addr + 4, time_step);
+    link if is_used ~> input[2] = mem.mload(input_addr + 8, time_step);
+    link if is_used ~> input[3] = mem.mload(input_addr + 12, time_step);
+    link if is_used ~> input[4] = mem.mload(input_addr + 16, time_step);
+    link if is_used ~> input[5] = mem.mload(input_addr + 20, time_step);
+    link if is_used ~> input[6] = mem.mload(input_addr + 24, time_step);
+    link if is_used ~> input[7] = mem.mload(input_addr + 28, time_step);
 
     // Generate the Poseidon2 permutation
     let output = poseidon2(
@@ -155,43 +143,16 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
         input,
     );
 
-    // Split the output into high and low limbs
-    let output_low: col[STATE_SIZE];
-    let output_high: col[STATE_SIZE];
-    // TODO: turn this into array operations
-    link if is_used ~> (output_low[0], output_high[0]) = split_GL.split(output[0]);
-    link if is_used ~> (output_low[1], output_high[1]) = split_GL.split(output[1]);
-    link if is_used ~> (output_low[2], output_high[2]) = split_GL.split(output[2]);
-    link if is_used ~> (output_low[3], output_high[3]) = split_GL.split(output[3]);
-    link if is_used ~> (output_low[4], output_high[4]) = split_GL.split(output[4]);
-    link if is_used ~> (output_low[5], output_high[5]) = split_GL.split(output[5]);
-    link if is_used ~> (output_low[6], output_high[6]) = split_GL.split(output[6]);
-    link if is_used ~> (output_low[7], output_high[7]) = split_GL.split(output[7]);
-
     // Write the output to memory at the next time step
     let output_addr;
+
     // TODO: turn this into array operations
-    link if is_used ~> mem.mstore(output_addr + 0, time_step + 1, output_low[0]);
-    link if is_used ~> mem.mstore(output_addr + 4, time_step + 1, output_high[0]);
-
-    link if is_used ~> mem.mstore(output_addr + 8, time_step + 1, output_low[1]);
-    link if is_used ~> mem.mstore(output_addr + 12, time_step + 1, output_high[1]);
-
-    link if is_used ~> mem.mstore(output_addr + 16, time_step + 1, output_low[2]);
-    link if is_used ~> mem.mstore(output_addr + 20, time_step + 1, output_high[2]);
-
-    link if is_used ~> mem.mstore(output_addr + 24, time_step + 1, output_low[3]);
-    link if is_used ~> mem.mstore(output_addr + 28, time_step + 1, output_high[3]);
-
-    link if is_used ~> mem.mstore(output_addr + 32, time_step + 1, output_low[4]);
-    link if is_used ~> mem.mstore(output_addr + 36, time_step + 1, output_high[4]);
-
-    link if is_used ~> mem.mstore(output_addr + 40, time_step + 1, output_low[5]);
-    link if is_used ~> mem.mstore(output_addr + 44, time_step + 1, output_high[5]);
-
-    link if is_used ~> mem.mstore(output_addr + 48, time_step + 1, output_low[6]);
-    link if is_used ~> mem.mstore(output_addr + 52, time_step + 1, output_high[6]);
-
-    link if is_used ~> mem.mstore(output_addr + 56, time_step + 1, output_low[7]);
-    link if is_used ~> mem.mstore(output_addr + 60, time_step + 1, output_high[7]);
+    link if is_used ~> mem.mstore(output_addr + 0, time_step + 1, output[0]);
+    link if is_used ~> mem.mstore(output_addr + 4, time_step + 1, output[1]);
+    link if is_used ~> mem.mstore(output_addr + 8, time_step + 1, output[2]);
+    link if is_used ~> mem.mstore(output_addr + 12, time_step + 1, output[3]);
+    link if is_used ~> mem.mstore(output_addr + 16, time_step + 1, output[4]);
+    link if is_used ~> mem.mstore(output_addr + 20, time_step + 1, output[5]);
+    link if is_used ~> mem.mstore(output_addr + 24, time_step + 1, output[6]);
+    link if is_used ~> mem.mstore(output_addr + 28, time_step + 1, output[7]);
 }

@@ -1,5 +1,6 @@
 mod split_bn254;
 mod split_gl;
+mod split_gl_vec;
 mod split_bb;
 
 use std::utils::cross_product;
