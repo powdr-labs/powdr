@@ -103,6 +103,12 @@ impl<T> Analyzed<T> {
     pub fn commitment_count(&self) -> usize {
         self.declaration_type_count(PolynomialType::Committed)
     }
+
+    /// @returns the number of committed polynomials (with multiplicities for arrays) in a specific stage
+    pub fn stage_commitment_count(&self, stage: u32) -> usize {
+        self.stage_declaration_type_count(PolynomialType::Committed, stage)
+    }
+
     /// @returns the number of intermediate polynomials (with multiplicities for arrays)
     pub fn intermediate_count(&self) -> usize {
         self.intermediate_columns
@@ -194,6 +200,19 @@ impl<T> Analyzed<T> {
         self.definitions
             .iter()
             .filter_map(move |(_name, (symbol, _))| match symbol.kind {
+                SymbolKind::Poly(ptype) if ptype == poly_type => {
+                    Some(symbol.length.unwrap_or(1) as usize)
+                }
+                _ => None,
+            })
+            .sum()
+    }
+
+    fn stage_declaration_type_count(&self, poly_type: PolynomialType, stage: u32) -> usize {
+        self.definitions
+            .values()
+            .filter(|(symbol, _)| symbol.stage.unwrap_or(0) == stage)
+            .filter_map(move |(symbol, _)| match symbol.kind {
                 SymbolKind::Poly(ptype) if ptype == poly_type => {
                     Some(symbol.length.unwrap_or(1) as usize)
                 }
@@ -1018,25 +1037,31 @@ pub struct PhantomBusInteractionIdentity<T> {
     pub payload: ExpressionList<T>,
     pub latch: AlgebraicExpression<T>,
     pub folded_expressions: ExpressionList<T>,
-    // Note that in PIL, this is a list of expressions, but we'd
-    // always expect direct column references, so this is unpacked
-    // when converting from PIL to this struct.
-    pub accumulator_columns: Vec<AlgebraicReference>,
+    pub accumulator_columns: Vec<AlgebraicExpression<T>>,
+    pub helper_columns: Option<Vec<AlgebraicExpression<T>>>,
 }
 
 impl<T> Children<AlgebraicExpression<T>> for PhantomBusInteractionIdentity<T> {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
         Box::new(
             once(&mut self.multiplicity)
+                .chain(once(&mut self.bus_id))
                 .chain(self.payload.children_mut())
-                .chain(once(&mut self.latch)),
+                .chain(once(&mut self.latch))
+                .chain(self.folded_expressions.children_mut())
+                .chain(self.accumulator_columns.iter_mut())
+                .chain(self.helper_columns.iter_mut().flat_map(|v| v.iter_mut())),
         )
     }
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(
             once(&self.multiplicity)
+                .chain(once(&self.bus_id))
                 .chain(self.payload.children())
-                .chain(once(&self.latch)),
+                .chain(once(&self.latch))
+                .chain(self.folded_expressions.children())
+                .chain(self.accumulator_columns.iter())
+                .chain(self.helper_columns.iter().flat_map(|v| v.iter())),
         )
     }
 }
@@ -1187,6 +1212,16 @@ pub struct AlgebraicReferenceThin {
 impl From<&AlgebraicReference> for AlgebraicReferenceThin {
     fn from(value: &AlgebraicReference) -> Self {
         value.to_thin()
+    }
+}
+
+impl AlgebraicReferenceThin {
+    pub fn with_name(&self, name: String) -> AlgebraicReference {
+        AlgebraicReference {
+            name,
+            poly_id: self.poly_id,
+            next: self.next,
+        }
     }
 }
 

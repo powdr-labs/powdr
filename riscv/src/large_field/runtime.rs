@@ -6,7 +6,7 @@ use itertools::Itertools;
 
 use crate::code_gen::Register;
 
-use crate::runtime::{parse_instruction_declaration, SubMachine, SyscallImpl, EXTRA_REG_PREFIX};
+use crate::runtime::{parse_instruction_declaration, SubMachine, SyscallImpl};
 use crate::RuntimeLibs;
 
 /// RISCV powdr assembly runtime.
@@ -65,7 +65,6 @@ impl Runtime {
                     link ~> tmp3_col = binary.xor(tmp1_col, tmp2_col + Z)
                     link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
             ],
-            0,
         );
 
         r.add_submachine(
@@ -85,7 +84,6 @@ impl Runtime {
                     link ~> tmp3_col = shift.shr(tmp1_col, tmp2_col + Z)
                     link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
             ],
-            0,
         );
 
         r.add_submachine(
@@ -98,18 +96,17 @@ impl Runtime {
                     link ~> (tmp3_col, tmp4_col) = split_gl.split(tmp1_col)
                     link ~> regs.mstore(Z, STEP + 2, tmp3_col)
                     link ~> regs.mstore(W, STEP + 3, tmp4_col);"#],
-            0,
         );
 
-        r.add_submachine::<&str, _>("std::machines::range::Bit2", None, "bit2", vec![], [], 0);
+        r.add_submachine::<&str, _>("std::machines::range::Bit2", None, "bit2", vec![], []);
 
-        r.add_submachine::<&str, _>("std::machines::range::Bit6", None, "bit6", vec![], [], 0);
+        r.add_submachine::<&str, _>("std::machines::range::Bit6", None, "bit6", vec![], []);
 
-        r.add_submachine::<&str, _>("std::machines::range::Bit7", None, "bit7", vec![], [], 0);
+        r.add_submachine::<&str, _>("std::machines::range::Bit7", None, "bit7", vec![], []);
 
-        r.add_submachine::<&str, _>("std::machines::range::Byte", None, "byte", vec![], [], 0);
+        r.add_submachine::<&str, _>("std::machines::range::Byte", None, "byte", vec![], []);
 
-        r.add_submachine::<&str, _>("std::machines::range::Byte2", None, "byte2", vec![], [], 0);
+        r.add_submachine::<&str, _>("std::machines::range::Byte2", None, "byte2", vec![], []);
 
         r.add_submachine::<&str, _>(
             "std::machines::binary::ByteBinary",
@@ -117,7 +114,6 @@ impl Runtime {
             "byte_binary",
             vec![],
             [],
-            0,
         );
 
         r.add_submachine::<&str, _>(
@@ -126,7 +122,6 @@ impl Runtime {
             "byte_shift",
             vec![],
             [],
-            0,
         );
 
         r.add_submachine::<&str, _>(
@@ -135,7 +130,6 @@ impl Runtime {
             "byte_compare",
             vec![],
             [],
-            0,
         );
 
         // Base syscalls
@@ -190,7 +184,6 @@ impl Runtime {
             }
             "#
             .to_string()],
-            0,
         );
 
         // The keccakf syscall has a two arguments passed on x10 and x11,
@@ -210,7 +203,6 @@ impl Runtime {
         instance_name: &str,
         arguments: Vec<&str>,
         instructions: I1,
-        extra_registers: u8,
     ) {
         let subm = SubMachine {
             path: str::parse(path).expect("invalid submachine path"),
@@ -221,7 +213,6 @@ impl Runtime {
                 .into_iter()
                 .map(|s| parse_instruction_declaration(s.as_ref()))
                 .collect(),
-            extra_registers,
         };
         assert!(
             self.submachines
@@ -277,7 +268,6 @@ impl Runtime {
                     tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
                 }
             "#],
-            0,
         );
 
         // The poseidon syscall has a single argument passed on x10, the
@@ -315,7 +305,6 @@ impl Runtime {
                     tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
                 }
             "#],
-            0,
         );
 
         // The poseidon2 syscall has input address passed on x10 and output address passed on x11,
@@ -408,7 +397,6 @@ impl Runtime {
                     link ~> arith.mod_256(STEP, tmp1_col, tmp2_col, tmp4_col);
             "#,
             ],
-            0,
         );
 
         let affine256 = std::iter::once("affine_256 10, 11, 12, 13;".to_string());
@@ -442,19 +430,6 @@ impl Runtime {
             .values()
             .flat_map(|m| m.instructions.iter())
             .map(|s| s.to_string())
-            .collect()
-    }
-
-    pub fn submachines_extra_registers(&self) -> Vec<String> {
-        let count = self
-            .submachines
-            .values()
-            .map(|m| m.extra_registers)
-            .max()
-            .unwrap_or(0);
-
-        (0..count)
-            .map(|i| format!("reg {EXTRA_REG_PREFIX}{i};"))
             .collect()
     }
 

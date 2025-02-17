@@ -200,7 +200,7 @@ where
     /// we can deduce the values of all components from the offset part.
     pub fn solve_with_range_constraints(
         &self,
-        known_constraints: &impl RangeConstraintSet<K, T>,
+        known_constraints: &dyn RangeConstraintSet<K, T>,
     ) -> EvalResult<T, K> {
         // Try to solve directly.
         let value = self.solve()?;
@@ -272,7 +272,7 @@ where
     /// where `dividend` and `divisor` are known and `remainder` is range-constrained to be smaller than `divisor`.
     fn try_solve_division(
         &self,
-        known_constraints: &impl RangeConstraintSet<K, T>,
+        known_constraints: &dyn RangeConstraintSet<K, T>,
     ) -> Option<EvalResult<T, K>> {
         // Detect pattern: `dividend = divisor * quotient + remainder`
         let (first, second, offset) = match self {
@@ -332,7 +332,7 @@ where
 
     fn try_transfer_constraints(
         &self,
-        known_constraints: &impl RangeConstraintSet<K, T>,
+        known_constraints: &dyn RangeConstraintSet<K, T>,
     ) -> Option<(K, RangeConstraint<T>)> {
         // We are looking for X = a * Y + b * Z + ... or -X = a * Y + b * Z + ...
         // where X is least constrained.
@@ -378,7 +378,7 @@ where
     /// Returns an empty vector if it is not able to solve the equation.
     fn try_solve_through_constraints(
         &self,
-        known_constraints: &impl RangeConstraintSet<K, T>,
+        known_constraints: &dyn RangeConstraintSet<K, T>,
     ) -> EvalResult<T, K> {
         // Get constraints from coefficients and also collect unconstrained indices.
         let (constraints, unconstrained): (Vec<_>, Vec<K>) = self

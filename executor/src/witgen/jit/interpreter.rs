@@ -533,15 +533,15 @@ mod test {
                 .chain((0..num_outputs).map(|_| false)),
         );
 
-        let effects = processor
-            .generate_code(&mutable_state, connection_id, &known_values)
-            .unwrap()
-            .code;
+        // TODO we cannot compile the prover functions here, but we can evaluate them.
+        let (result, _prover_functions) = processor
+            .generate_code(&mutable_state, connection_id, &known_values, None)
+            .unwrap();
 
         let known_inputs = (0..12).map(Variable::Param).collect::<Vec<_>>();
 
         // generate interpreter
-        let interpreter = EffectsInterpreter::new(&known_inputs, &effects);
+        let interpreter = EffectsInterpreter::new(&known_inputs, &result.code);
         // call it
         let mut params = [GoldilocksField::default(); 16];
         let mut param_lookups = params

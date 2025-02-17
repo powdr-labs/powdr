@@ -3,8 +3,6 @@ use powdr_ast::parsed::asm::{FunctionStatement, MachineStatement, SymbolPath};
 use powdr_parser::ParserContext;
 use powdr_riscv_syscalls::Syscall;
 
-pub static EXTRA_REG_PREFIX: &str = "xtra";
-
 lazy_static::lazy_static! {
     static ref INSTRUCTION_DECLARATION_PARSER: powdr_parser::powdr::InstructionDeclarationParser
         = powdr_parser::powdr::InstructionDeclarationParser::new();
@@ -38,8 +36,6 @@ pub struct SubMachine {
     pub arguments: Vec<String>,
     /// Instruction declarations
     pub instructions: Vec<MachineStatement>,
-    /// Number of registers needed by this machine's instruction declarations if > 4.
-    pub extra_registers: u8,
 }
 
 impl SubMachine {
