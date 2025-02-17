@@ -1,5 +1,5 @@
 use std::protocols::bus::BusInteraction;
-use std::protocols::bus::bus_multi_send;
+use std::protocols::bus::bus_multi;
 use std::protocols::bus::bus_multi_receive_batch_lookup_permutation;
 
 machine Main with degree: 8 {
@@ -42,7 +42,7 @@ machine Main with degree: 8 {
     col fixed perm_latch = [1]*;
 
     // Multi send (same API for both lookup and permutation)
-    bus_multi_send([
+    bus_multi([
       BusInteraction::Send(LOOKUP_ID_0, [x, y], lookup_latch), // latch is always the same as multiplicity for sends (for both lookup and permutation)
       BusInteraction::Send(LOOKUP_ID_1, [x, z], lookup_latch),
       BusInteraction::Send(PERMUTATION_ID_0, [x, a], sel),

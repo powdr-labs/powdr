@@ -1,5 +1,4 @@
-use std::protocols::bus::bus_receive;
-use std::protocols::bus::bus_send;
+use std::protocols::bus::bus;
 use std::protocols::bus::BusInteraction;
 use std::prelude::Query;
 use std::prover::challenge;
@@ -21,7 +20,7 @@ machine Arith with
 
     col witness bus_selector;
     std::utils::force_bool(bus_selector);
-    bus_receive(BusInteraction::Receive(ARITH_INTERACTION_ID, [0, x, y, z], latch * bus_selector, latch * bus_selector));
+    bus(BusInteraction::Receive(ARITH_INTERACTION_ID, [0, x, y, z], latch * bus_selector, latch * bus_selector));
 
     // TODO: Expose final value of acc as public.
 
@@ -53,7 +52,7 @@ machine Main with
     // Need a constraint so that it's not optimized away
     dummy = dummy';
 
-    bus_send(BusInteraction::Send(ARITH_INTERACTION_ID, [0, x, y, z], instr_add));
+    bus(BusInteraction::Send(ARITH_INTERACTION_ID, [0, x, y, z], instr_add));
 
     // TODO: Expose final value of acc as public.
 
