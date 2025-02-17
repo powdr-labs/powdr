@@ -1,12 +1,13 @@
+use crate::openvm_stark_backend::air_builders::symbolic::symbolic_expression::SymbolicExpression as SymbolicExpressionOVM;
 use core::fmt::Debug;
 use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub, SubAssign};
-use std::rc::Rc;
-
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_field::{
     Field, FieldAlgebra, PackedField,
 };
-use p3_field::AbstractField;
+use std::rc::Rc;
+use std::sync::Arc;
+
 //use p3_field::Field as P3Field;
 
 use crate::symbolic_variable::SymbolicVariable;
@@ -20,24 +21,67 @@ pub enum SymbolicExpression<F: Field> {
     IsTransition,
     Constant(F),
     Add {
-        x: Rc<Self>,
-        y: Rc<Self>,
+        x: Arc<Self>,
+        y: Arc<Self>,
         degree_multiple: usize,
     },
     Sub {
-        x: Rc<Self>,
-        y: Rc<Self>,
+        x: Arc<Self>,
+        y: Arc<Self>,
         degree_multiple: usize,
     },
     Neg {
-        x: Rc<Self>,
+        x: Arc<Self>,
         degree_multiple: usize,
     },
     Mul {
-        x: Rc<Self>,
-        y: Rc<Self>,
+        x: Arc<Self>,
+        y: Arc<Self>,
         degree_multiple: usize,
     },
+}
+
+impl<F: Field> From<SymbolicExpressionOVM<F>> for SymbolicExpression<F> {
+    fn from(expr: SymbolicExpressionOVM<F>) -> Self {
+        match expr {
+            SymbolicExpressionOVM::Variable(var) => SymbolicExpression::Variable(var.into()),
+            SymbolicExpressionOVM::IsFirstRow => SymbolicExpression::IsFirstRow,
+            SymbolicExpressionOVM::IsLastRow => SymbolicExpression::IsLastRow,
+            SymbolicExpressionOVM::IsTransition => SymbolicExpression::IsTransition,
+            SymbolicExpressionOVM::Constant(c) => SymbolicExpression::Constant(c),
+            SymbolicExpressionOVM::Add {
+                x,
+                y,
+                degree_multiple,
+            } => SymbolicExpression::Add {
+                x: Arc::new((*x).clone().into()),
+                y: Arc::new((*y).clone().into()),
+                degree_multiple,
+            },
+            SymbolicExpressionOVM::Sub {
+                x,
+                y,
+                degree_multiple,
+            } => SymbolicExpression::Sub {
+                x: Arc::new((*x).clone().into()),
+                y: Arc::new((*y).clone().into()),
+                degree_multiple,
+            },
+            SymbolicExpressionOVM::Neg { x, degree_multiple } => SymbolicExpression::Neg {
+                x: Arc::new((*x).clone().into()),
+                degree_multiple,
+            },
+            SymbolicExpressionOVM::Mul {
+                x,
+                y,
+                degree_multiple,
+            } => SymbolicExpression::Mul {
+                x: Arc::new((*x).clone().into()),
+                y: Arc::new((*y).clone().into()),
+                degree_multiple,
+            },
+        }
+    }
 }
 
 impl<F: Field> SymbolicExpression<F> {
@@ -77,22 +121,22 @@ impl<F: Field> From<F> for SymbolicExpression<F> {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct PackedPowers<F, P: PackedField<Scalar = F>> {
-    // base ** P::WIDTH
-    pub multiplier: P,
-    pub current: P,
-}
+// #[derive(Clone, Debug)]
+// pub struct PackedPowers<F, P: PackedField<Scalar = F>> {
+//     // base ** P::WIDTH
+//     pub multiplier: P,
+//     pub current: P,
+// }
 
-impl<AF: AbstractField, P: PackedField<Scalar = AF>> Iterator for PackedPowers<AF, P> {
-    type Item = P;
+// impl<AF: AbstractField, P: PackedField<Scalar = AF>> Iterator for PackedPowers<AF, P> {
+//     type Item = P;
 
-    fn next(&mut self) -> Option<P> {
-        let result = self.current;
-        self.current *= self.multiplier;
-        Some(result)
-    }
-}
+//     fn next(&mut self) -> Option<P> {
+//         let result = self.current;
+//         self.current *= self.multiplier;
+//         Some(result)
+//     }
+// }
 
 impl<F: Field> FieldAlgebra for SymbolicExpression<F> {
     type F = F;
@@ -206,8 +250,8 @@ impl<F: Field> Add for SymbolicExpression<F> {
     fn add(self, rhs: Self) -> Self {
         let degree_multiple = self.degree_multiple().max(rhs.degree_multiple());
         Self::Add {
-            x: Rc::new(self),
-            y: Rc::new(rhs),
+            x: Arc::new(self),
+            y: Arc::new(rhs),
             degree_multiple,
         }
     }
@@ -251,8 +295,8 @@ impl<F: Field> Sub for SymbolicExpression<F> {
     fn sub(self, rhs: Self) -> Self {
         let degree_multiple = self.degree_multiple().max(rhs.degree_multiple());
         Self::Sub {
-            x: Rc::new(self),
-            y: Rc::new(rhs),
+            x: Arc::new(self),
+            y: Arc::new(rhs),
             degree_multiple,
         }
     }
@@ -284,7 +328,7 @@ impl<F: Field> Neg for SymbolicExpression<F> {
     fn neg(self) -> Self {
         let degree_multiple = self.degree_multiple();
         Self::Neg {
-            x: Rc::new(self),
+            x: Arc::new(self),
             degree_multiple,
         }
     }
@@ -297,8 +341,8 @@ impl<F: Field> Mul for SymbolicExpression<F> {
         #[allow(clippy::suspicious_arithmetic_impl)]
         let degree_multiple = self.degree_multiple() + rhs.degree_multiple();
         Self::Mul {
-            x: Rc::new(self),
-            y: Rc::new(rhs),
+            x: Arc::new(self),
+            y: Arc::new(rhs),
             degree_multiple,
         }
     }

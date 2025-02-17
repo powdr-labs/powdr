@@ -24,6 +24,29 @@ pub struct SymbolicVariable<F: Field> {
     pub(crate) _phantom: PhantomData<F>,
 }
 
+use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::air_builders::symbolic::symbolic_variable as openvm_var;
+impl<F: Field> From<openvm_var::SymbolicVariable<F>> for SymbolicVariable<F> {
+    fn from(var: openvm_var::SymbolicVariable<F>) -> Self {
+        let entry = match var.entry {
+            openvm_var::Entry::Preprocessed { offset } => Entry::Main { offset },
+            openvm_var::Entry::Main {
+                part_index: _,
+                offset,
+            } => Entry::Main { offset },
+            openvm_var::Entry::Permutation { offset } => Entry::Main { offset },
+            openvm_var::Entry::Public => Entry::Public,
+            openvm_var::Entry::Challenge => Entry::Public, // Map Challenge to Public since we don't have a direct equivalent
+            openvm_var::Entry::Exposed => Entry::Public, // Map Exposed to Public since we don't have a direct equivalent
+        };
+
+        SymbolicVariable {
+            entry,
+            index: var.index,
+            _phantom: PhantomData,
+        }
+    }
+}
+
 impl<F: Field> SymbolicVariable<F> {
     pub const fn new(entry: Entry, index: usize) -> Self {
         Self {

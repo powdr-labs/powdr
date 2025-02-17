@@ -1,16 +1,20 @@
+use crate::symbolic_variable;
 use crate::symbolic_variable::Entry;
+use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::Interaction;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::InteractionBuilder;
-use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::InteractionType;
+use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::SymbolicInteraction;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::Air;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::AirBuilder;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::AirBuilderWithPublicValues;
+use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::BaseAir;
+use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::ExtensionBuilder;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::PairBuilder;
+use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::PermutationAirBuilder;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_field::Field;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_matrix::dense::RowMajorMatrix;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_util::log2_ceil_usize;
-//use sp1_stark::air::AirInteraction;
-//use sp1_stark::air::InteractionScope;
-//use sp1_stark::air::MessageBuilder;
+use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::rap::PermutationAirBuilderWithExposedValues;
+use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::rap::Rap;
 use std::iter;
 use tracing::instrument;
 
@@ -78,16 +82,17 @@ pub struct SymbolicAirBuilder<F: Field> {
     main: RowMajorMatrix<SymbolicVariable<F>>,
     public_values: Vec<SymbolicVariable<F>>,
     pub constraints: Vec<SymbolicExpression<F>>,
-    pub bus_sends: Vec<(
-        SymbolicExpression<F>,
-        Vec<SymbolicExpression<F>>,
-        SymbolicExpression<F>,
-    )>,
-    pub bus_receives: Vec<(
-        SymbolicExpression<F>,
-        Vec<SymbolicExpression<F>>,
-        SymbolicExpression<F>,
-    )>,
+    // pub bus_sends: Vec<(
+    //     SymbolicExpression<F>,
+    //     Vec<SymbolicExpression<F>>,
+    //     SymbolicExpression<F>,
+    // )>,
+    // pub bus_receives: Vec<(
+    //     SymbolicExpression<F>,
+    //     Vec<SymbolicExpression<F>>,
+    //     SymbolicExpression<F>,
+    // )>,
+    pub bus_interactions: Vec<Interaction<SymbolicExpression<F>>>,
 }
 
 impl<F: Field> SymbolicAirBuilder<F> {
@@ -113,8 +118,7 @@ impl<F: Field> SymbolicAirBuilder<F> {
             main: RowMajorMatrix::new(main_values, width),
             public_values,
             constraints: vec![],
-            bus_sends: vec![],
-            bus_receives: vec![],
+            bus_interactions: vec![],
         }
     }
 
@@ -195,10 +199,16 @@ impl<F: Field> InteractionBuilder for SymbolicAirBuilder<F> {
         count: impl Into<Self::Expr>,
         interaction_type: openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::InteractionType,
     ) {
+        self.bus_interactions.push(Interaction {
+            fields: fields.into_iter().map(|e| e.into()).collect(),
+            count: count.into(),
+            bus_index,
+            interaction_type,
+        });
     }
 
     fn num_interactions(&self) -> usize {
-        0
+        self.bus_interactions.len()
     }
 
     fn all_interactions(
@@ -206,6 +216,6 @@ impl<F: Field> InteractionBuilder for SymbolicAirBuilder<F> {
     ) -> &[openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::Interaction<
         Self::Expr,
     >] {
-        &[]
+        &self.bus_interactions
     }
 }

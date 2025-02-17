@@ -8,7 +8,7 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-p3-field = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
+#p3-field = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
 openvm-keccak256-circuit = { git = "https://github.com/openvm-org/openvm" }
 openvm-keccak256-transpiler = { git = "https://github.com/openvm-org/openvm" }
 openvm-keccak256-guest  = { git = "https://github.com/openvm-org/openvm" }
@@ -22,7 +22,10 @@ tracing = "0.1.40"
 itertools = "0.13"
 sp1-stark = "3.4.0"
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
-p3-monty-31 = { git = "https://github.com/Plonky3/Plonky3.git", rev = "b0591e9" }
+#p3-monty-31 = { git = "https://github.com/Plonky3/Plonky3.git", rev = "b0591e9" }
+#p3-poseidon2 = { git = "https://github.com/Plonky3/Plonky3.git", rev = "b0591e9" }
+#p3-fri = { git = "https://github.com/Plonky3/Plonky3", rev = "b0591e9" }
+
 
 #[dev-dependencies]
 #p3-baby-bear = { git = "https://github.com/Plonky3/Plonky3", branch = "sp1-v4" }
