@@ -16,7 +16,6 @@ pub trait TrySymbolByName: Copy {
     fn try_symbol_by_name<'a>(&'a self, name: &str) -> Option<&'a Symbol>;
 }
 
-#[allow(unused)]
 #[derive(Clone)]
 pub struct ProverFunction<'a, T> {
     pub index: usize,
@@ -29,7 +28,6 @@ pub struct ProverFunction<'a, T> {
     pub computation: ProverFunctionComputation<'a>,
 }
 
-#[allow(unused)]
 #[derive(Clone)]
 pub enum ProverFunctionComputation<'a> {
     /// The expression `f` in `query |i| std::prover::provide_if_unknown(Y, i, f)`,
