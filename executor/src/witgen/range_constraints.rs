@@ -146,6 +146,19 @@ impl<T: FieldElement> RangeConstraint<T> {
         Self { min, max, mask }
     }
 
+    /// The range constraint of the product of two expressions.
+    pub fn combine_product(&self, other: &Self) -> Self {
+        if self.min <= self.max
+            && other.min <= other.max
+            && self.max.to_arbitrary_integer() * other.max.to_arbitrary_integer()
+                < T::modulus().to_arbitrary_integer()
+        {
+            Self::from_range(self.min * other.min, self.max * other.max)
+        } else {
+            Default::default()
+        }
+    }
+
     /// Returns the conjunction of this constraint and the other.
     pub fn conjunction(&self, other: &Self) -> Self {
         let mut mask = self.mask & other.mask;
