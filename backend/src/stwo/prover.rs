@@ -20,8 +20,8 @@ use std::sync::Arc;
 use std::{fmt, io};
 
 use crate::stwo::circuit_builder::{
-    gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
-    PREPROCESSED_TRACE_IDX, STAGE0_TRACE_IDX, STAGE1_TRACE_IDX,
+    gen_interaction_trace, gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent,
+    PowdrEval, PowdrLookupElement, PREPROCESSED_TRACE_IDX, STAGE0_TRACE_IDX, STAGE1_TRACE_IDX,
 };
 use crate::stwo::proof::{
     Proof, SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
@@ -29,6 +29,7 @@ use crate::stwo::proof::{
 
 use stwo_prover::constraint_framework::TraceLocationAllocator;
 
+use stwo_prover::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
 use stwo_prover::core::air::{Component, ComponentProver};
 use stwo_prover::core::backend::{Backend, BackendForChannel, Col, Column};
 use stwo_prover::core::channel::{Channel, MerkleChannel};
@@ -328,6 +329,7 @@ where
             })
             .collect::<BTreeMap<_, _>>();
 
+        println!("witness_by_machine: {:?}", witness_by_machine);
         // get publics of stage0
         let publics_by_stage = self.analyzed.get_publics().into_iter().fold(
             vec![vec![]; self.analyzed.stage_count()],
@@ -391,8 +393,40 @@ where
 
         tree_builder.commit(prover_channel);
         span.exit();
+
+        // Draw lookup challenges.
+        let lookup_elements = PowdrLookupElement::draw(prover_channel);
+
+        // Build acc columns for the bus/logup
+        let mut bus_accumulators = Vec::new();
+
+        let machine_claimed_sum: BTreeMap<String, SecureField> = self
+            .split
+            .iter()
+            .zip_eq(machine_log_sizes.iter())
+            .map(
+                |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
+                    assert_eq!(machine_name, proof_machine_name);
+                    let machine_witness = witness_by_machine.get(machine_name).unwrap();
+                    let (trace, claimed_sum) = gen_interaction_trace(
+                        machine_log_size,
+                        &pil,
+                        &machine_witness,
+                        &lookup_elements,
+                    );
+                    bus_accumulators.extend(trace);
+                    (machine_name.clone(), claimed_sum)
+                },
+            )
+            .collect();
+
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(bus_accumulators);
+        tree_builder.commit(prover_channel);
+
         // Generate challenges for stage 1 based on stage 0 traces.
         // Stwo supports a maximum of 2 stages, and challenges are created only after stage 0.
+        // maybe put this line to the if cluse below
         let stage0_challenges = get_challenges::<MC>(&self.analyzed, prover_channel);
 
         if self.analyzed.stage_count() > 1 {
@@ -489,6 +523,7 @@ where
                             constant_cols_offset_acc,
                             machine_log_size,
                             stage0_challenges.clone(),
+                            lookup_elements.clone(),
                             public_values.clone(),
                         ),
                         SecureField::zero(),
@@ -607,6 +642,7 @@ where
 
         // Get challenges based on the commitments of constant columns and stage 0 witness columns
         let stage0_challenges = get_challenges::<MC>(&self.analyzed, verifier_channel);
+        let lookup_elements = PowdrLookupElement::draw(verifier_channel);
 
         let components = iter
             .clone()
@@ -618,6 +654,7 @@ where
                         constant_cols_offset_acc,
                         machine_log_size,
                         stage0_challenges.clone(),
+                        lookup_elements.clone(),
                         public_values.clone(),
                     ),
                     SecureField::zero(),
