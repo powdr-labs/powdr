@@ -4,9 +4,7 @@ use powdr_ast::{
     asm_analysis::combine_flags,
     object::{Link, LinkTo, Location, MachineInstanceGraph, Object, Operation},
     parsed::{
-        asm::SymbolPath,
-        build::{index_access, namespaced_reference},
-        ArrayLiteral, Expression, FunctionCall, PilStatement,
+        asm::SymbolPath, build::{index_access, namespaced_reference}, ArrayLiteral, Expression, FunctionCall, NamespacedPolynomialReference, PilStatement
     },
 };
 use powdr_parser_util::SourceRef;
@@ -118,9 +116,11 @@ impl LinkerBackend for BusLinker {
         }
         .into();
 
+        let bus_linker_type = NamespacedPolynomialReference::from(SymbolPath::from_str("std::protocols::bus::BusLinkerType::Send").unwrap()).into();
+
         self.bus_multi_linker_args.items.push(Expression::Tuple(
             SourceRef::unknown(),
-            vec![interaction_id.into(), selector, tuple, 0.into()],
+            vec![interaction_id.into(), selector, tuple, bus_linker_type],
         ));
     }
 
@@ -252,7 +252,7 @@ impl BusLinker {
 
             let arguments = match selector_index {
                 // a selector index of None means this operation is called via lookup
-                None => vec![interaction_id.into(), latch, tuple, 1.into()],
+                None => vec![interaction_id.into(), latch, tuple, NamespacedPolynomialReference::from(SymbolPath::from_str("std::protocols::bus::BusLinkerType::LookupReceive").unwrap()).into()],
                 // a selector index of Some means this operation is called via permutation
                 Some(selector_index) => {
                     let call_selector_array = namespaced_reference(
@@ -265,7 +265,8 @@ impl BusLinker {
                     let call_selector =
                         index_access(call_selector_array, Some((*selector_index).into()));
                     let rhs_selector = latch * call_selector;
-                    vec![interaction_id.into(), rhs_selector, tuple, 2.into()]
+                    let bus_linker_type = NamespacedPolynomialReference::from(SymbolPath::from_str("std::protocols::bus::BusLinkerType::PermutationReceive").unwrap()).into();
+                    vec![interaction_id.into(), rhs_selector, tuple, bus_linker_type]
                 }
             };
 
@@ -350,7 +351,7 @@ namespace main__rom(4);
     #[test]
     fn parse_enum() {
         use std::io::Write;
-        let file = "../std/protocols/bus.asm";
+        let file = "../test_data/std/bus_multi_linker.asm";
         let contents = fs::read_to_string(file).unwrap();
         let parsed = parse_asm(Some(file), &contents).unwrap_or_else(|e| {
             e.output_to_stderr();
