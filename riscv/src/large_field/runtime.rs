@@ -29,6 +29,9 @@ impl Runtime {
         if libs.arith {
             runtime = runtime.with_arith();
         }
+        if libs.splt_vec {
+            runtime = runtime.with_split_vec();
+        }
         runtime
     }
 
@@ -323,7 +326,7 @@ impl Runtime {
         self
     }
 
-    fn with_split_gl_vec(mut self) -> Self {
+    fn with_split_vec(mut self) -> Self {
         self.add_submachine(
             "std::machines::split::split_gl_vec::SplitGLVec8",
             None,
