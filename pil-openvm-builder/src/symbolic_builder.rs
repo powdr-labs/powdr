@@ -1,21 +1,13 @@
-use crate::symbolic_variable;
 use crate::symbolic_variable::Entry;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::Interaction;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::InteractionBuilder;
-use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::SymbolicInteraction;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::Air;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::AirBuilder;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::AirBuilderWithPublicValues;
-use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::BaseAir;
-use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::ExtensionBuilder;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::PairBuilder;
-use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::PermutationAirBuilder;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_field::Field;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_matrix::dense::RowMajorMatrix;
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_util::log2_ceil_usize;
-use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::rap::PermutationAirBuilderWithExposedValues;
-use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::rap::Rap;
-use std::iter;
 use tracing::instrument;
 
 // Mostly copied from Plonky3!
@@ -82,16 +74,6 @@ pub struct SymbolicAirBuilder<F: Field> {
     main: RowMajorMatrix<SymbolicVariable<F>>,
     public_values: Vec<SymbolicVariable<F>>,
     pub constraints: Vec<SymbolicExpression<F>>,
-    // pub bus_sends: Vec<(
-    //     SymbolicExpression<F>,
-    //     Vec<SymbolicExpression<F>>,
-    //     SymbolicExpression<F>,
-    // )>,
-    // pub bus_receives: Vec<(
-    //     SymbolicExpression<F>,
-    //     Vec<SymbolicExpression<F>>,
-    //     SymbolicExpression<F>,
-    // )>,
     pub bus_interactions: Vec<Interaction<SymbolicExpression<F>>>,
 }
 
@@ -171,26 +153,6 @@ impl<F: Field> PairBuilder for SymbolicAirBuilder<F> {
     }
 }
 
-// impl<F: Field> MessageBuilder<AirInteraction<SymbolicExpression<F>>> for SymbolicAirBuilder<F> {
-//     fn send(&mut self, message: AirInteraction<SymbolicExpression<F>>, _scope: InteractionScope) {
-//         let interaction_kind =
-//             SymbolicExpression::Constant(F::from_canonical_u64(message.kind as u64));
-//         self.bus_sends
-//             .push((interaction_kind, message.values, message.multiplicity));
-//     }
-
-//     fn receive(
-//         &mut self,
-//         message: AirInteraction<SymbolicExpression<F>>,
-//         _scope: InteractionScope,
-//     ) {
-//         let interaction_kind =
-//             SymbolicExpression::Constant(F::from_canonical_u64(message.kind as u64));
-//         self.bus_receives
-//             .push((interaction_kind, message.values, message.multiplicity));
-//     }
-// }
-
 impl<F: Field> InteractionBuilder for SymbolicAirBuilder<F> {
     fn push_interaction<E: Into<Self::Expr>>(
         &mut self,
@@ -220,37 +182,232 @@ impl<F: Field> InteractionBuilder for SymbolicAirBuilder<F> {
     }
 }
 
-// impl<F: Field> ExtensionBuilder for SymbolicAirBuilder<F> {
-//     type EF = F;
-
-//     type ExprEF = SymbolicExpression<F>;
-
-//     type VarEF = SymbolicVariable<F>;
-
-//     fn assert_zero_ext<I>(&mut self, x: I)
-//     where
-//         I: Into<Self::ExprEF>,
-//     {
-//         todo!()
-//     }
+// fn optimize_constraints<F: Field>(
+//     constraints: Vec<SymbolicExpression<F>>,
+// ) -> Vec<SymbolicExpression<F>> {
+//     constraints
+//         .into_iter()
+//         .map(|c| optimize_expression(&c))
+//         .filter(|c| !is_trivial_constraint(c))
+//         .collect()
 // }
 
-// impl<F: Field> PermutationAirBuilder for SymbolicAirBuilder<F> {
-//     type MP = RowMajorMatrix<SymbolicVariable<F>>;
+// fn optimize_expression<F: Field>(expr: &SymbolicExpression<F>) -> SymbolicExpression<F> {
+//     match expr {
+//         SymbolicExpression::Mul {
+//             x,
+//             y,
+//             degree_multiple,
+//         } => {
+//             let opt_x = optimize_expression(x);
+//             let opt_y = optimize_expression(y);
 
-//     type RandomVar = SymbolicVariable<F>;
+//             match (&opt_x, &opt_y) {
+//                 // Basic constant folding
+//                 (SymbolicExpression::Constant(c1), SymbolicExpression::Constant(c2)) => {
+//                     SymbolicExpression::Constant(c1.mul(*c2))
+//                 }
+//                 (SymbolicExpression::Constant(c), expr)
+//                 | (expr, SymbolicExpression::Constant(c)) => {
+//                     if c.is_zero() {
+//                         SymbolicExpression::Constant(F::ZERO)
+//                     } else if c.is_one() {
+//                         expr.clone()
+//                     } else {
+//                         // Try to extract nested constant from multiplication
+//                         match expr {
+//                             SymbolicExpression::Mul { x, y, .. } => {
+//                                 if let SymbolicExpression::Constant(c2) = x.as_ref() {
+//                                     // c * (c2 * expr) -> (c * c2) * expr
+//                                     SymbolicExpression::Mul {
+//                                         x: Arc::new(SymbolicExpression::Constant(c.mul(*c2))),
+//                                         y: y.clone(),
+//                                         degree_multiple: *degree_multiple,
+//                                     }
+//                                 } else if let SymbolicExpression::Constant(c2) = y.as_ref() {
+//                                     // c * (expr * c2) -> (c * c2) * expr
+//                                     SymbolicExpression::Mul {
+//                                         x: Arc::new(SymbolicExpression::Constant(c.mul(*c2))),
+//                                         y: x.clone(),
+//                                         degree_multiple: *degree_multiple,
+//                                     }
+//                                 } else {
+//                                     // No nested constant to combine with
+//                                     SymbolicExpression::Mul {
+//                                         x: Arc::new(opt_x),
+//                                         y: Arc::new(opt_y),
+//                                         degree_multiple: *degree_multiple,
+//                                     }
+//                                 }
+//                             }
+//                             _ => SymbolicExpression::Mul {
+//                                 x: Arc::new(opt_x),
+//                                 y: Arc::new(opt_y),
+//                                 degree_multiple: *degree_multiple,
+//                             },
+//                         }
+//                     }
+//                 }
+//                 // Double negation elimination
+//                 (
+//                     SymbolicExpression::Neg { x: neg_x, .. },
+//                     SymbolicExpression::Neg { x: neg_y, .. },
+//                 ) => optimize_expression(&SymbolicExpression::Mul {
+//                     x: neg_x.clone(),
+//                     y: neg_y.clone(),
+//                     degree_multiple: *degree_multiple,
+//                 }),
+//                 _ => SymbolicExpression::Mul {
+//                     x: Arc::new(opt_x),
+//                     y: Arc::new(opt_y),
+//                     degree_multiple: *degree_multiple,
+//                 },
+//             }
+//         }
+//         SymbolicExpression::Add {
+//             x,
+//             y,
+//             degree_multiple,
+//         } => {
+//             let opt_x = optimize_expression(x);
+//             let opt_y = optimize_expression(y);
 
-//     fn permutation(&self) -> Self::MP {
-//         todo!()
-//     }
+//             match (&opt_x, &opt_y) {
+//                 // Basic constant folding
+//                 (SymbolicExpression::Constant(c1), SymbolicExpression::Constant(c2)) => {
+//                     SymbolicExpression::Constant(c1.add(*c2))
+//                 }
+//                 // Same variable addition -> multiplication by 2
+//                 (expr1, expr2) if expr1 == expr2 => SymbolicExpression::Mul {
+//                     x: Arc::new(SymbolicExpression::Constant(F::TWO)),
+//                     y: Arc::new(expr1.clone()),
+//                     degree_multiple: *degree_multiple,
+//                 },
+//                 // Handle nested additions with constants
+//                 (
+//                     SymbolicExpression::Add { x: x1, y: y1, .. },
+//                     SymbolicExpression::Constant(c2),
+//                 ) => {
+//                     if let SymbolicExpression::Constant(c1) = y1.as_ref() {
+//                         // Combine constants: (a + c1) + c2 -> a + (c1 + c2)
+//                         SymbolicExpression::Add {
+//                             x: x1.clone(),
+//                             y: Arc::new(SymbolicExpression::Constant(c1.add(*c2))),
+//                             degree_multiple: *degree_multiple,
+//                         }
+//                     } else if let SymbolicExpression::Constant(c1) = x1.as_ref() {
+//                         // Combine constants when x1 is constant
+//                         SymbolicExpression::Add {
+//                             x: y1.clone(),
+//                             y: Arc::new(SymbolicExpression::Constant(c1.add(*c2))),
+//                             degree_multiple: *degree_multiple,
+//                         }
+//                     } else {
+//                         // Default case
+//                         SymbolicExpression::Add {
+//                             x: Arc::new(opt_x),
+//                             y: Arc::new(opt_y),
+//                             degree_multiple: *degree_multiple,
+//                         }
+//                     }
+//                 }
+//                 // Handle constant + expression
+//                 (SymbolicExpression::Constant(c), expr) => {
+//                     if c.is_zero() {
+//                         expr.clone()
+//                     } else {
+//                         // Move constant to the right
+//                         SymbolicExpression::Add {
+//                             x: Arc::new(expr.clone()),
+//                             y: Arc::new(SymbolicExpression::Constant(*c)),
+//                             degree_multiple: *degree_multiple,
+//                         }
+//                     }
+//                 }
+//                 // Handle expression + constant
+//                 (expr, SymbolicExpression::Constant(c)) => {
+//                     if c.is_zero() {
+//                         expr.clone()
+//                     } else {
+//                         SymbolicExpression::Add {
+//                             x: Arc::new(opt_x),
+//                             y: Arc::new(opt_y),
+//                             degree_multiple: *degree_multiple,
+//                         }
+//                     }
+//                 }
+//                 // Rest of existing matches remain the same
+//                 _ => SymbolicExpression::Add {
+//                     x: Arc::new(opt_x),
+//                     y: Arc::new(opt_y),
+//                     degree_multiple: *degree_multiple,
+//                 },
+//             }
+//         }
+//         SymbolicExpression::Sub {
+//             x,
+//             y,
+//             degree_multiple,
+//         } => {
+//             let opt_x = optimize_expression(x);
+//             let opt_y = optimize_expression(y);
 
-//     fn permutation_randomness(&self) -> &[Self::RandomVar] {
-//         todo!()
+//             match (&opt_x, &opt_y) {
+//                 //(SymbolicExpression::Constant(c1), SymbolicExpression::Constant(c2)) => {
+//                 //    SymbolicExpression::Constant(c1.sub(*c2))
+//                 //}
+//                 (expr, SymbolicExpression::Constant(c)) => {
+//                     if c.is_zero() {
+//                         expr.clone()
+//                     } else {
+//                         SymbolicExpression::Sub {
+//                             x: Arc::new(opt_x),
+//                             y: Arc::new(opt_y),
+//                             degree_multiple: *degree_multiple,
+//                         }
+//                     }
+//                 }
+//                 (e1, e2) if e1 == e2 => SymbolicExpression::Constant(F::ZERO),
+//                 _ => SymbolicExpression::Sub {
+//                     x: Arc::new(opt_x),
+//                     y: Arc::new(opt_y),
+//                     degree_multiple: *degree_multiple,
+//                 },
+//             }
+//         }
+//         SymbolicExpression::Neg { x, degree_multiple } => {
+//             let opt_x = optimize_expression(x);
+//             match &opt_x {
+//                 SymbolicExpression::Constant(c) => SymbolicExpression::Constant(c.neg()),
+//                 SymbolicExpression::Neg { x, .. } => (*x).as_ref().clone(),
+//                 _ => SymbolicExpression::Neg {
+//                     x: Arc::new(opt_x),
+//                     degree_multiple: *degree_multiple,
+//                 },
+//             }
+//         }
+//         // Base cases that don't need optimization
+//         SymbolicExpression::Variable(_)
+//         | SymbolicExpression::IsFirstRow
+//         | SymbolicExpression::IsLastRow
+//         | SymbolicExpression::IsTransition
+//         | SymbolicExpression::Constant(_) => expr.clone(),
 //     }
 // }
-
-// impl<F: Field> PermutationAirBuilderWithExposedValues for SymbolicAirBuilder<F> {
-//     fn permutation_exposed_values(&self) -> &[Self::VarEF] {
-//         &self.public_values
+// fn is_trivial_constraint<F: Field>(expr: &SymbolicExpression<F>) -> bool {
+//     match expr {
+//         SymbolicExpression::Constant(c) => c.is_zero(),
+//         SymbolicExpression::Mul { x, y, .. } => {
+//             matches!(x.as_ref(), SymbolicExpression::Constant(c) if c.is_zero())
+//                 || matches!(y.as_ref(), SymbolicExpression::Constant(c) if c.is_zero())
+//         }
+//         SymbolicExpression::Add { x, y, .. } => {
+//             is_trivial_constraint(x) && is_trivial_constraint(y)
+//         }
+//         SymbolicExpression::Sub { x, y, .. } => {
+//             x.as_ref() == y.as_ref() || (is_trivial_constraint(x) && is_trivial_constraint(y))
+//         }
+//         SymbolicExpression::Neg { x, .. } => is_trivial_constraint(x),
+//         _ => false,
 //     }
 // }

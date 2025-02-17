@@ -15,83 +15,6 @@ pub use symbolic_builder::*;
 use symbolic_expression::SymbolicExpression;
 use symbolic_variable::{Entry, SymbolicVariable};
 
-// pub fn get_pil<F: Field>(
-//     name: &str,
-//     ab: SymbolicAirBuilder<F>,
-//     columns: Vec<String>,
-//     public_values: Vec<String>,
-// ) -> String {
-//     let mut pil = format!(
-//         "
-// namespace {name};
-//     // Preamble
-//     col fixed is_first_row = [1] + [0]*;
-//     col fixed is_last_row = [0] + [1]*;
-//     col fixed is_transition = [0] + [1]* + [0];
-
-//     // Bus receives (interaction_id, tuple, multiplicity)
-// "
-//     );
-
-//     for (interaction_id, values, multiplicity) in ab.bus_receives {
-//         pil.push_str(&format!(
-//             "    std::protocols::bus::bus_receive({}, [{}], {});\n",
-//             format_expr(&interaction_id, &columns, &public_values),
-//             values
-//                 .iter()
-//                 .map(|value| format_expr(value, &columns, &public_values))
-//                 .collect::<Vec<String>>()
-//                 .join(", "),
-//             format_expr(&multiplicity, &columns, &public_values)
-//         ));
-//     }
-
-//     pil.push_str(
-//         "
-//     // Bus sends (interaction_id, tuple, multiplicity)
-// ",
-//     );
-
-//     for (interaction_id, values, multiplicity) in ab.bus_sends {
-//         pil.push_str(&format!(
-//             "    std::protocols::bus::bus_send({}, [{}], {});\n",
-//             format_expr(&interaction_id, &columns, &public_values),
-//             values
-//                 .iter()
-//                 .map(|value| format_expr(value, &columns, &public_values))
-//                 .collect::<Vec<String>>()
-//                 .join(", "),
-//             format_expr(&multiplicity, &columns, &public_values)
-//         ));
-//     }
-
-//     pil.push_str(
-//         "
-//     // Witness columns
-// ",
-//     );
-
-//     // Declare witness columns
-//     for column in &columns {
-//         pil.push_str(&format!("    col witness {column};\n"));
-//     }
-
-//     pil.push_str(
-//         "
-//     // Constraints
-// ",
-//     );
-
-//     for constraint in &ab.constraints {
-//         // println!("{}", format_expr(constraint, &columns));
-//         pil.push_str(&format!(
-//             "    {} = 0;\n",
-//             format_expr(constraint, &columns, &public_values)
-//         ));
-//     }
-//     pil
-// }
-
 fn format_expr<F: Field>(
     expr: &SymbolicExpression<F>,
     columns: &[String],
@@ -182,7 +105,8 @@ machine {name} with
     col fixed is_transition = [0] + [1]* + [0];
 
     col fixed latch = [1]*;
-    // Bus receives (interaction_id, tuple, multiplicity)
+
+    // Bus receives (bus_index, fields, count)
 "
     );
 
@@ -266,239 +190,239 @@ machine {name} with
     pil
 }
 
-fn optimize_constraints<F: Field>(
-    constraints: Vec<SymbolicExpression<F>>,
-) -> Vec<SymbolicExpression<F>> {
-    constraints
-        .into_iter()
-        .map(|c| optimize_expression(&c))
-        .filter(|c| !is_trivial_constraint(c))
-        .collect()
-}
+// fn optimize_constraints<F: Field>(
+//     constraints: Vec<SymbolicExpression<F>>,
+// ) -> Vec<SymbolicExpression<F>> {
+//     constraints
+//         .into_iter()
+//         .map(|c| optimize_expression(&c))
+//         .filter(|c| !is_trivial_constraint(c))
+//         .collect()
+// }
 
-fn optimize_expression<F: Field>(expr: &SymbolicExpression<F>) -> SymbolicExpression<F> {
-    match expr {
-        SymbolicExpression::Mul {
-            x,
-            y,
-            degree_multiple,
-        } => {
-            let opt_x = optimize_expression(x);
-            let opt_y = optimize_expression(y);
+// fn optimize_expression<F: Field>(expr: &SymbolicExpression<F>) -> SymbolicExpression<F> {
+//     match expr {
+//         SymbolicExpression::Mul {
+//             x,
+//             y,
+//             degree_multiple,
+//         } => {
+//             let opt_x = optimize_expression(x);
+//             let opt_y = optimize_expression(y);
 
-            match (&opt_x, &opt_y) {
-                // Basic constant folding
-                (SymbolicExpression::Constant(c1), SymbolicExpression::Constant(c2)) => {
-                    SymbolicExpression::Constant(c1.mul(*c2))
-                }
-                (SymbolicExpression::Constant(c), expr)
-                | (expr, SymbolicExpression::Constant(c)) => {
-                    if c.is_zero() {
-                        SymbolicExpression::Constant(F::ZERO)
-                    } else if c.is_one() {
-                        expr.clone()
-                    } else {
-                        // Try to extract nested constant from multiplication
-                        match expr {
-                            SymbolicExpression::Mul { x, y, .. } => {
-                                if let SymbolicExpression::Constant(c2) = x.as_ref() {
-                                    // c * (c2 * expr) -> (c * c2) * expr
-                                    SymbolicExpression::Mul {
-                                        x: Arc::new(SymbolicExpression::Constant(c.mul(*c2))),
-                                        y: y.clone(),
-                                        degree_multiple: *degree_multiple,
-                                    }
-                                } else if let SymbolicExpression::Constant(c2) = y.as_ref() {
-                                    // c * (expr * c2) -> (c * c2) * expr
-                                    SymbolicExpression::Mul {
-                                        x: Arc::new(SymbolicExpression::Constant(c.mul(*c2))),
-                                        y: x.clone(),
-                                        degree_multiple: *degree_multiple,
-                                    }
-                                } else {
-                                    // No nested constant to combine with
-                                    SymbolicExpression::Mul {
-                                        x: Arc::new(opt_x),
-                                        y: Arc::new(opt_y),
-                                        degree_multiple: *degree_multiple,
-                                    }
-                                }
-                            }
-                            _ => SymbolicExpression::Mul {
-                                x: Arc::new(opt_x),
-                                y: Arc::new(opt_y),
-                                degree_multiple: *degree_multiple,
-                            },
-                        }
-                    }
-                }
-                // Double negation elimination
-                (
-                    SymbolicExpression::Neg { x: neg_x, .. },
-                    SymbolicExpression::Neg { x: neg_y, .. },
-                ) => optimize_expression(&SymbolicExpression::Mul {
-                    x: neg_x.clone(),
-                    y: neg_y.clone(),
-                    degree_multiple: *degree_multiple,
-                }),
-                _ => SymbolicExpression::Mul {
-                    x: Arc::new(opt_x),
-                    y: Arc::new(opt_y),
-                    degree_multiple: *degree_multiple,
-                },
-            }
-        }
-        SymbolicExpression::Add {
-            x,
-            y,
-            degree_multiple,
-        } => {
-            let opt_x = optimize_expression(x);
-            let opt_y = optimize_expression(y);
+//             match (&opt_x, &opt_y) {
+//                 // Basic constant folding
+//                 (SymbolicExpression::Constant(c1), SymbolicExpression::Constant(c2)) => {
+//                     SymbolicExpression::Constant(c1.mul(*c2))
+//                 }
+//                 (SymbolicExpression::Constant(c), expr)
+//                 | (expr, SymbolicExpression::Constant(c)) => {
+//                     if c.is_zero() {
+//                         SymbolicExpression::Constant(F::ZERO)
+//                     } else if c.is_one() {
+//                         expr.clone()
+//                     } else {
+//                         // Try to extract nested constant from multiplication
+//                         match expr {
+//                             SymbolicExpression::Mul { x, y, .. } => {
+//                                 if let SymbolicExpression::Constant(c2) = x.as_ref() {
+//                                     // c * (c2 * expr) -> (c * c2) * expr
+//                                     SymbolicExpression::Mul {
+//                                         x: Arc::new(SymbolicExpression::Constant(c.mul(*c2))),
+//                                         y: y.clone(),
+//                                         degree_multiple: *degree_multiple,
+//                                     }
+//                                 } else if let SymbolicExpression::Constant(c2) = y.as_ref() {
+//                                     // c * (expr * c2) -> (c * c2) * expr
+//                                     SymbolicExpression::Mul {
+//                                         x: Arc::new(SymbolicExpression::Constant(c.mul(*c2))),
+//                                         y: x.clone(),
+//                                         degree_multiple: *degree_multiple,
+//                                     }
+//                                 } else {
+//                                     // No nested constant to combine with
+//                                     SymbolicExpression::Mul {
+//                                         x: Arc::new(opt_x),
+//                                         y: Arc::new(opt_y),
+//                                         degree_multiple: *degree_multiple,
+//                                     }
+//                                 }
+//                             }
+//                             _ => SymbolicExpression::Mul {
+//                                 x: Arc::new(opt_x),
+//                                 y: Arc::new(opt_y),
+//                                 degree_multiple: *degree_multiple,
+//                             },
+//                         }
+//                     }
+//                 }
+//                 // Double negation elimination
+//                 (
+//                     SymbolicExpression::Neg { x: neg_x, .. },
+//                     SymbolicExpression::Neg { x: neg_y, .. },
+//                 ) => optimize_expression(&SymbolicExpression::Mul {
+//                     x: neg_x.clone(),
+//                     y: neg_y.clone(),
+//                     degree_multiple: *degree_multiple,
+//                 }),
+//                 _ => SymbolicExpression::Mul {
+//                     x: Arc::new(opt_x),
+//                     y: Arc::new(opt_y),
+//                     degree_multiple: *degree_multiple,
+//                 },
+//             }
+//         }
+//         SymbolicExpression::Add {
+//             x,
+//             y,
+//             degree_multiple,
+//         } => {
+//             let opt_x = optimize_expression(x);
+//             let opt_y = optimize_expression(y);
 
-            match (&opt_x, &opt_y) {
-                // Basic constant folding
-                (SymbolicExpression::Constant(c1), SymbolicExpression::Constant(c2)) => {
-                    SymbolicExpression::Constant(c1.add(*c2))
-                }
-                // Same variable addition -> multiplication by 2
-                (expr1, expr2) if expr1 == expr2 => SymbolicExpression::Mul {
-                    x: Arc::new(SymbolicExpression::Constant(F::TWO)),
-                    y: Arc::new(expr1.clone()),
-                    degree_multiple: *degree_multiple,
-                },
-                // Handle nested additions with constants
-                (
-                    SymbolicExpression::Add { x: x1, y: y1, .. },
-                    SymbolicExpression::Constant(c2),
-                ) => {
-                    if let SymbolicExpression::Constant(c1) = y1.as_ref() {
-                        // Combine constants: (a + c1) + c2 -> a + (c1 + c2)
-                        SymbolicExpression::Add {
-                            x: x1.clone(),
-                            y: Arc::new(SymbolicExpression::Constant(c1.add(*c2))),
-                            degree_multiple: *degree_multiple,
-                        }
-                    } else if let SymbolicExpression::Constant(c1) = x1.as_ref() {
-                        // Combine constants when x1 is constant
-                        SymbolicExpression::Add {
-                            x: y1.clone(),
-                            y: Arc::new(SymbolicExpression::Constant(c1.add(*c2))),
-                            degree_multiple: *degree_multiple,
-                        }
-                    } else {
-                        // Default case
-                        SymbolicExpression::Add {
-                            x: Arc::new(opt_x),
-                            y: Arc::new(opt_y),
-                            degree_multiple: *degree_multiple,
-                        }
-                    }
-                }
-                // Handle constant + expression
-                (SymbolicExpression::Constant(c), expr) => {
-                    if c.is_zero() {
-                        expr.clone()
-                    } else {
-                        // Move constant to the right
-                        SymbolicExpression::Add {
-                            x: Arc::new(expr.clone()),
-                            y: Arc::new(SymbolicExpression::Constant(*c)),
-                            degree_multiple: *degree_multiple,
-                        }
-                    }
-                }
-                // Handle expression + constant
-                (expr, SymbolicExpression::Constant(c)) => {
-                    if c.is_zero() {
-                        expr.clone()
-                    } else {
-                        SymbolicExpression::Add {
-                            x: Arc::new(opt_x),
-                            y: Arc::new(opt_y),
-                            degree_multiple: *degree_multiple,
-                        }
-                    }
-                }
-                // Rest of existing matches remain the same
-                _ => SymbolicExpression::Add {
-                    x: Arc::new(opt_x),
-                    y: Arc::new(opt_y),
-                    degree_multiple: *degree_multiple,
-                },
-            }
-        }
-        SymbolicExpression::Sub {
-            x,
-            y,
-            degree_multiple,
-        } => {
-            let opt_x = optimize_expression(x);
-            let opt_y = optimize_expression(y);
+//             match (&opt_x, &opt_y) {
+//                 // Basic constant folding
+//                 (SymbolicExpression::Constant(c1), SymbolicExpression::Constant(c2)) => {
+//                     SymbolicExpression::Constant(c1.add(*c2))
+//                 }
+//                 // Same variable addition -> multiplication by 2
+//                 (expr1, expr2) if expr1 == expr2 => SymbolicExpression::Mul {
+//                     x: Arc::new(SymbolicExpression::Constant(F::TWO)),
+//                     y: Arc::new(expr1.clone()),
+//                     degree_multiple: *degree_multiple,
+//                 },
+//                 // Handle nested additions with constants
+//                 (
+//                     SymbolicExpression::Add { x: x1, y: y1, .. },
+//                     SymbolicExpression::Constant(c2),
+//                 ) => {
+//                     if let SymbolicExpression::Constant(c1) = y1.as_ref() {
+//                         // Combine constants: (a + c1) + c2 -> a + (c1 + c2)
+//                         SymbolicExpression::Add {
+//                             x: x1.clone(),
+//                             y: Arc::new(SymbolicExpression::Constant(c1.add(*c2))),
+//                             degree_multiple: *degree_multiple,
+//                         }
+//                     } else if let SymbolicExpression::Constant(c1) = x1.as_ref() {
+//                         // Combine constants when x1 is constant
+//                         SymbolicExpression::Add {
+//                             x: y1.clone(),
+//                             y: Arc::new(SymbolicExpression::Constant(c1.add(*c2))),
+//                             degree_multiple: *degree_multiple,
+//                         }
+//                     } else {
+//                         // Default case
+//                         SymbolicExpression::Add {
+//                             x: Arc::new(opt_x),
+//                             y: Arc::new(opt_y),
+//                             degree_multiple: *degree_multiple,
+//                         }
+//                     }
+//                 }
+//                 // Handle constant + expression
+//                 (SymbolicExpression::Constant(c), expr) => {
+//                     if c.is_zero() {
+//                         expr.clone()
+//                     } else {
+//                         // Move constant to the right
+//                         SymbolicExpression::Add {
+//                             x: Arc::new(expr.clone()),
+//                             y: Arc::new(SymbolicExpression::Constant(*c)),
+//                             degree_multiple: *degree_multiple,
+//                         }
+//                     }
+//                 }
+//                 // Handle expression + constant
+//                 (expr, SymbolicExpression::Constant(c)) => {
+//                     if c.is_zero() {
+//                         expr.clone()
+//                     } else {
+//                         SymbolicExpression::Add {
+//                             x: Arc::new(opt_x),
+//                             y: Arc::new(opt_y),
+//                             degree_multiple: *degree_multiple,
+//                         }
+//                     }
+//                 }
+//                 // Rest of existing matches remain the same
+//                 _ => SymbolicExpression::Add {
+//                     x: Arc::new(opt_x),
+//                     y: Arc::new(opt_y),
+//                     degree_multiple: *degree_multiple,
+//                 },
+//             }
+//         }
+//         SymbolicExpression::Sub {
+//             x,
+//             y,
+//             degree_multiple,
+//         } => {
+//             let opt_x = optimize_expression(x);
+//             let opt_y = optimize_expression(y);
 
-            match (&opt_x, &opt_y) {
-                //(SymbolicExpression::Constant(c1), SymbolicExpression::Constant(c2)) => {
-                //    SymbolicExpression::Constant(c1.sub(*c2))
-                //}
-                (expr, SymbolicExpression::Constant(c)) => {
-                    if c.is_zero() {
-                        expr.clone()
-                    } else {
-                        SymbolicExpression::Sub {
-                            x: Arc::new(opt_x),
-                            y: Arc::new(opt_y),
-                            degree_multiple: *degree_multiple,
-                        }
-                    }
-                }
-                (e1, e2) if e1 == e2 => SymbolicExpression::Constant(F::ZERO),
-                _ => SymbolicExpression::Sub {
-                    x: Arc::new(opt_x),
-                    y: Arc::new(opt_y),
-                    degree_multiple: *degree_multiple,
-                },
-            }
-        }
-        SymbolicExpression::Neg { x, degree_multiple } => {
-            let opt_x = optimize_expression(x);
-            match &opt_x {
-                SymbolicExpression::Constant(c) => SymbolicExpression::Constant(c.neg()),
-                SymbolicExpression::Neg { x, .. } => (*x).as_ref().clone(),
-                _ => SymbolicExpression::Neg {
-                    x: Arc::new(opt_x),
-                    degree_multiple: *degree_multiple,
-                },
-            }
-        }
-        // Base cases that don't need optimization
-        SymbolicExpression::Variable(_)
-        | SymbolicExpression::IsFirstRow
-        | SymbolicExpression::IsLastRow
-        | SymbolicExpression::IsTransition
-        | SymbolicExpression::Constant(_) => expr.clone(),
-    }
-}
-fn is_trivial_constraint<F: Field>(expr: &SymbolicExpression<F>) -> bool {
-    match expr {
-        SymbolicExpression::Constant(c) => c.is_zero(),
-        SymbolicExpression::Mul { x, y, .. } => {
-            matches!(x.as_ref(), SymbolicExpression::Constant(c) if c.is_zero())
-                || matches!(y.as_ref(), SymbolicExpression::Constant(c) if c.is_zero())
-        }
-        SymbolicExpression::Add { x, y, .. } => {
-            is_trivial_constraint(x) && is_trivial_constraint(y)
-        }
-        SymbolicExpression::Sub { x, y, .. } => {
-            x.as_ref() == y.as_ref() || (is_trivial_constraint(x) && is_trivial_constraint(y))
-        }
-        SymbolicExpression::Neg { x, .. } => is_trivial_constraint(x),
-        _ => false,
-    }
-}
+//             match (&opt_x, &opt_y) {
+//                 //(SymbolicExpression::Constant(c1), SymbolicExpression::Constant(c2)) => {
+//                 //    SymbolicExpression::Constant(c1.sub(*c2))
+//                 //}
+//                 (expr, SymbolicExpression::Constant(c)) => {
+//                     if c.is_zero() {
+//                         expr.clone()
+//                     } else {
+//                         SymbolicExpression::Sub {
+//                             x: Arc::new(opt_x),
+//                             y: Arc::new(opt_y),
+//                             degree_multiple: *degree_multiple,
+//                         }
+//                     }
+//                 }
+//                 (e1, e2) if e1 == e2 => SymbolicExpression::Constant(F::ZERO),
+//                 _ => SymbolicExpression::Sub {
+//                     x: Arc::new(opt_x),
+//                     y: Arc::new(opt_y),
+//                     degree_multiple: *degree_multiple,
+//                 },
+//             }
+//         }
+//         SymbolicExpression::Neg { x, degree_multiple } => {
+//             let opt_x = optimize_expression(x);
+//             match &opt_x {
+//                 SymbolicExpression::Constant(c) => SymbolicExpression::Constant(c.neg()),
+//                 SymbolicExpression::Neg { x, .. } => (*x).as_ref().clone(),
+//                 _ => SymbolicExpression::Neg {
+//                     x: Arc::new(opt_x),
+//                     degree_multiple: *degree_multiple,
+//                 },
+//             }
+//         }
+//         // Base cases that don't need optimization
+//         SymbolicExpression::Variable(_)
+//         | SymbolicExpression::IsFirstRow
+//         | SymbolicExpression::IsLastRow
+//         | SymbolicExpression::IsTransition
+//         | SymbolicExpression::Constant(_) => expr.clone(),
+//     }
+// }
+// fn is_trivial_constraint<F: Field>(expr: &SymbolicExpression<F>) -> bool {
+//     match expr {
+//         SymbolicExpression::Constant(c) => c.is_zero(),
+//         SymbolicExpression::Mul { x, y, .. } => {
+//             matches!(x.as_ref(), SymbolicExpression::Constant(c) if c.is_zero())
+//                 || matches!(y.as_ref(), SymbolicExpression::Constant(c) if c.is_zero())
+//         }
+//         SymbolicExpression::Add { x, y, .. } => {
+//             is_trivial_constraint(x) && is_trivial_constraint(y)
+//         }
+//         SymbolicExpression::Sub { x, y, .. } => {
+//             x.as_ref() == y.as_ref() || (is_trivial_constraint(x) && is_trivial_constraint(y))
+//         }
+//         SymbolicExpression::Neg { x, .. } => is_trivial_constraint(x),
+//         _ => false,
+//     }
+// }
 
 pub fn get_bus_asm<F: Field>(
     name: &str,
-    mut builder: SymbolicRapBuilder<F>,
+    builder: SymbolicRapBuilder<F>,
     columns: Vec<String>,
     public_values: Vec<String>,
 ) -> String {
@@ -622,21 +546,12 @@ mod tests {
     use openvm_circuit::arch::testing::{VmChipTestBuilder, BITWISE_OP_LOOKUP_BUS};
     use openvm_circuit::arch::{DynAdapterInterface, VmCoreAir};
     use openvm_circuit::openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Config;
-    //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::air_builders::debug::DebugConstraintBuilder;
     use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::air_builders::symbolic::{
         get_symbolic_builder, SymbolicRapBuilder,
     };
-    //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::config::StarkConfig;
     use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::RapPhaseSeqKind;
-    //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::RapPhaseSeqKind;
     use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::keygen::types::TraceWidth;
-    //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::interaction::InteractionBuilder;
     use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::AirBuilder;
-    //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_challenger::DuplexChallenger;
-    //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_commit::ExtensionMmcs;
-    //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_field::extension::BinomialExtensionField;
-    //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::BaseAir;
-    //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::rap::Rap;
     use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::Chip;
     use openvm_circuit::openvm_stark_sdk::p3_baby_bear::BabyBear;
     use openvm_circuit_primitives::bitwise_op_lookup::{
@@ -648,10 +563,6 @@ mod tests {
     use openvm_rv32im_circuit::adapters::Rv32RdWriteAdapterChip;
     use openvm_rv32im_circuit::Rv32AuipcCoreChip;
     use openvm_rv32im_circuit::{Rv32AuipcChip, Rv32AuipcCoreAir};
-    //use p3_fri::TwoAdicFriPcs;
-    //use p3_field::extension::binomial_extension::BinomialExtensionField;
-    //use p3_field::PrimeCharacteristicRing;
-    //use sp1_stark::baby_bear_poseidon2::{ChallengeMmcs, Dft, Perm, ValMmcs};
 
     #[test]
 
@@ -696,18 +607,16 @@ mod tests {
             after_challenge: vec![],
         };
 
+        // get_symbolic_builder returns a builder that was already evaluated using the air passed as parameter
         let bus_builder: SymbolicRapBuilder<_> =
             get_symbolic_builder(air, &width, &[], &[], RapPhaseSeqKind::FriLogUp, 2);
 
-        //air.eval(&mut bus_builder);
-        //Rap::eval(air, &mut bus_builder);
-        //<BitwiseOperationLookupAir<RV32_CELL_BITS> as Rap<_>>::eval(air, &mut bus_builder);
         let bus_columns = (0..=2).map(|i| format!("w{}", i)).collect::<Vec<String>>();
         let asm_bus = get_bus_asm::<BabyBear>(
             "BitwiseOperationLookupBus",
             bus_builder,
             bus_columns,
-            vec!["Pub1".to_string(), "Pub2".to_string()],
+            vec!["Pub1".to_string(), "Pub2".to_string()], // Fake public values
         );
 
         let asm = pil + "\n" + &asm_bus;
