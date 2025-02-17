@@ -1,9 +1,6 @@
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 
-use itertools::Itertools;
 use powdr_number::FieldElement;
-
-use crate::witgen::jit::effect::format_code;
 
 use super::{effect::Effect, variable::Variable};
 
@@ -21,12 +18,13 @@ pub fn optional_vars<T: FieldElement>(
     optional
 }
 
+/// Removes the given variables from the code and all variables that depend on them.
 pub fn remove_variables<T: FieldElement>(
     code: Vec<Effect<T, Variable>>,
-    mut variables: HashSet<Variable>,
+    mut to_remove: HashSet<Variable>,
 ) -> Vec<Effect<T, Variable>> {
     code.into_iter()
-        .filter_map(|effect| remove_variables_from_effect(effect, &mut variables))
+        .filter_map(|effect| remove_variables_from_effect(effect, &mut to_remove))
         .collect()
 }
 
@@ -39,20 +37,30 @@ fn optional_vars_in_effect<T: FieldElement>(
     requested_variables: &mut HashSet<Variable>,
 ) -> HashSet<Variable> {
     let needed = match &effect {
-        Effect::Assignment(written, _) => requested_variables.contains(written),
-        Effect::Assertion(_) | Effect::MachineCall(..) | Effect::ProverFunctionCall(_) => {
-            // We could do another pass and remove assertions that only contain
-            //
-            // variables that we have not computed, but we just mark
-            // all variables as required for now.
-            // For the others, we always mark them as required for now.
+        Effect::Assignment(..) | Effect::ProverFunctionCall(..) => effect
+            .written_vars()
+            .any(|(v, _)| requested_variables.contains(v)),
+        Effect::Assertion(_) => {
+            // If none of the variables in the assertion are required, we can
+            // remove the assertion.
+            !effect
+                .referenced_variables()
+                .any(|v| requested_variables.contains(v))
+        }
+        Effect::MachineCall(..) => {
+            // We always require machine calls.
             true
         }
         Effect::Branch(condition, left, right) => {
+            let mut requested_left = requested_variables.clone();
+            let optional_left = optional_vars_in_branch(left, &mut requested_left);
+            let mut requested_right = requested_variables.clone();
+            let optional_right = optional_vars_in_branch(right, &mut requested_right);
+            requested_variables
+                .extend(requested_left.iter().chain(requested_right.iter()).cloned());
             requested_variables.insert(condition.variable.clone());
-            // TODO do we need to create two indpependent copies of requested vars
-            return optional_vars_in_branch(left, requested_variables)
-                .union(&optional_vars_in_branch(right, requested_variables))
+            return optional_left
+                .intersection(&optional_right)
                 .cloned()
                 .collect();
         }
@@ -79,20 +87,12 @@ fn optional_vars_in_branch<T: FieldElement>(
 
 fn remove_variables_from_effect<T: FieldElement>(
     effect: Effect<T, Variable>,
-    variables: &mut HashSet<Variable>,
+    to_remove: &mut HashSet<Variable>,
 ) -> Option<Effect<T, Variable>> {
-    let keep = match &effect {
-        Effect::Assignment(written, expr) => !variables.contains(&written),
-        Effect::Assertion(_) | Effect::MachineCall(..) | Effect::ProverFunctionCall(_) => true,
-        Effect::Branch(condition, left, right) => {
-            todo!()
-        }
-        Effect::RangeConstraint(..) => unreachable!(),
-    };
-    if keep {
-        variables.extend(effect.referenced_variables().cloned());
-        Some(effect)
-    } else {
+    if effect.referenced_variables().any(|v| to_remove.contains(v)) {
+        to_remove.extend(effect.written_vars().map(|(v, _)| v).cloned());
         None
+    } else {
+        Some(effect)
     }
 }
