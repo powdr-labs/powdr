@@ -13,7 +13,7 @@ use crate::witgen::{
 };
 
 use super::{
-    affine_symbolic_expression,
+    affine_symbolic_expression, code_cleaner,
     effect::{format_code, Effect},
     identity_queue::{IdentityQueue, QueueItem},
     variable::{MachineCallVariable, Variable},
