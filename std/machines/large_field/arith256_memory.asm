@@ -202,10 +202,6 @@ machine Arith256Memory(mem: Memory) with
     let limbs_to_ints: fe[] -> int[] = |l| array::new(array::len(l) / 16, |i| limbs_to_int(array::sub_array(l, i * 16, 16)));
     let int_to_limbs: int -> fe[] = |x| array::new(16, |i| fe(select_limb(x, i)));
 
-    let provide_values = query |column_arr, row, value| {
-        let _ = array::map_enumerated(column_arr, |j, column| std::prover::provide_value(column, row, fe(select_limb(value, j))));
-    };
-
     let get_operation = query || match eval(operation_id) {
         1 => "affine_256",
         2 => "mod_256",
