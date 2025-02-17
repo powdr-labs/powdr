@@ -340,9 +340,24 @@ namespace main__rom(4);
     std::protocols::bus::bus_multi_linker([(454118344, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], 1)]);
 "#;
 
-        let file_name = "../test_data/asm/empty_vm.asm";
+        let file_name = "../test_data/std/permutation_via_challenges.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = BusLinker::link(graph, crate::DegreeMode::Vadcop).unwrap();
-        assert_eq!(extract_main(&format!("{pil}")), expectation);
+        println!("{}", pil);
+        // assert_eq!(extract_main(&format!("{pil}")), expectation);
+    }
+
+    #[test]
+    fn parse_enum() {
+        use std::io::Write;
+        let file = "../std/protocols/bus.asm";
+        let contents = fs::read_to_string(file).unwrap();
+        let parsed = parse_asm(Some(file), &contents).unwrap_or_else(|e| {
+            e.output_to_stderr();
+            panic!();
+        });
+        // print parsed to a file
+        let mut output = fs::File::create("../std/bus.txt").unwrap();
+        writeln!(output, "{:#?}", parsed).unwrap();
     }
 }

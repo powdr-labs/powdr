@@ -258,10 +258,17 @@ let bus_multi: BusInteraction[] -> () = constr |bus_inputs| {
     bus_multi_interaction(ids, payloads, multiplicities, latches);
 };
 
+/// Input parameter only used in `bus_multi_linker`, not intended for end user.
+enum BusLinkerType {
+    Send,
+    LookupReceive,
+    PermutationReceive
+}
+
 /// Exposed to the linker and not intended for end user because it requires expert knowledge of Powdr's bus protocol.
 /// Inputs in the order of: id, selector, payload, type for both lookup and permutation.
-/// where type == 0 corresponds to bus send, type == 1 lookup bus receive, and type == 2 permutation bus receive.
-let bus_multi_linker: (expr, expr, expr[], int)[] -> () = constr |inputs| {
+/// where type include bus send, lookup bus receive, and permutation bus receive.
+let bus_multi_linker: (expr, expr, expr[], BusLinkerType)[] -> () = constr |inputs| {
     // Lookup requires adding a multiplicity column and constraining it to zero if selector is zero.
     // Permutation passes the selector to both multiplicity and latch fields as well.
     let inputs_inner = array::fold(inputs, [], constr |acc, input| {
@@ -270,18 +277,15 @@ let bus_multi_linker: (expr, expr, expr[], int)[] -> () = constr |inputs| {
         // For permutation bus receive, format is id, payload, selector, selector
         let (id, selector, payload, type) = input;
         match type {
-            // Bus send
-            0 => acc + [BusInteraction::Send(id, payload, selector)],
-            // Lookup bus receive
-            1 => {
+            BusLinkerType::Send => acc + [BusInteraction::Send(id, payload, selector)],
+            BusLinkerType::LookupReceive => {
                 let multiplicity;
                 (1 - selector) * multiplicity = 0;
                 acc + [BusInteraction::Receive(id, payload, multiplicity, selector)]
             },
-            // Permutation bus receive
-            2 => acc + [BusInteraction::Receive(id, payload, selector, selector)],
+            BusLinkerType::PermutationReceive => acc + [BusInteraction::Receive(id, payload, selector, selector)],
             // Practically this can never be reached because `bus_multi_linker` should be used by the linker only.
-            _ => std::check::panic("`bus_multi_linker`: type param must be 0, 1, or 2")
+            _ => std::check::panic("`bus_multi_linker`: type param not valid")
         }
     });
     bus_multi(inputs_inner);
