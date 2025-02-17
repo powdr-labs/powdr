@@ -169,24 +169,26 @@ impl LinkerBackend for BusLinker {
         }
 
         // add pil for bus_multi_linker
-        self.pil.push(PilStatement::Expression(
-            SourceRef::unknown(),
-            Expression::FunctionCall(
+        if !self.bus_multi_linker_args.items.is_empty() {
+            self.pil.push(PilStatement::Expression(
                 SourceRef::unknown(),
-                FunctionCall {
-                    function: Box::new(Expression::Reference(
-                        SourceRef::unknown(),
-                        SymbolPath::from_str("std::protocols::bus::bus_multi_linker")
-                            .unwrap()
-                            .into(),
-                    )),
-                    arguments: vec![ArrayLiteral {
-                        items: std::mem::take(&mut self.bus_multi_linker_args.items),
-                    }
-                    .into()],
-                },
-            ),
-        ));
+                Expression::FunctionCall(
+                    SourceRef::unknown(),
+                    FunctionCall {
+                        function: Box::new(Expression::Reference(
+                            SourceRef::unknown(),
+                            SymbolPath::from_str("std::protocols::bus::bus_multi_linker")
+                                .unwrap()
+                                .into(),
+                        )),
+                        arguments: vec![ArrayLiteral {
+                            items: std::mem::take(&mut self.bus_multi_linker_args.items),
+                        }
+                        .into()],
+                    },
+                ),
+            ));
+        }
 
         // if this is the main object, call the main operation
         if *location == Location::main() {
