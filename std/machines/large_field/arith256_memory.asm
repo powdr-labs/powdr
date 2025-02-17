@@ -32,8 +32,7 @@ machine Arith256Memory(mem: Memory) with
     let operation_selectors = [is_affine, is_mod, is_ec_add, is_ec_double];
     array::map(operation_selectors, |s| force_bool(s));
     array::map(operation_selectors, fixed_inside_32_block);
-    col witness operation_id;
-    operation_id = sum(4, |i| 2 ** i * operation_selectors[i]);
+    let operation_id = sum(4, |i| 2 ** i * operation_selectors[i]);
 
     // affine_256(a, b, c) = a * b + c, where a, b, and c are 256-bit words. The result is a 512-bit word.
     operation affine_256<1> time_step, addr1, addr2, addr3, addr4 ->;
@@ -204,17 +203,9 @@ machine Arith256Memory(mem: Memory) with
     let limbs_to_ints: fe[] -> int[] = |l| array::new(array::len(l) / 16, |i| limbs_to_int(array::sub_array(l, i * 16, 16)));
     let int_to_limbs: int -> fe[] = |x| array::new(16, |i| fe(select_limb(x, i)));
 
-    let get_operation = query || match eval(operation_id) {
-        1 => "affine_256",
-        2 => "mod_256",
-        4 => "ec_add",
-        8 => "ec_double",
-        _ => panic("Unknown operation")
-    };
-
     // Prover function for affine_256
     query |i| std::prover::compute_from_multi_if(
-        operation_id = 1,
+        is_affine = 1,
         y1 + x2,
         i,
         y2 + y3 + x1,
@@ -229,7 +220,7 @@ machine Arith256Memory(mem: Memory) with
 
     // Prover function for mod_256
     query |i| std::prover::compute_from_multi_if(
-        operation_id = 2,
+        is_mod = 1,
         y1 + x2,
         i,
         y2 + y3 + x1,
@@ -244,7 +235,7 @@ machine Arith256Memory(mem: Memory) with
 
     // Prover function for ec_add
     query |i| std::prover::compute_from_multi_if(
-        operation_id = 4,
+        is_ec_add = 1,
         s + q0 + q1 + q2 + x3 + y3,
         i,
         x1 + x2 + y1 + y2,
@@ -269,7 +260,7 @@ machine Arith256Memory(mem: Memory) with
 
     // Prover function for ec_double
     query |i| std::prover::compute_from_multi_if(
-        operation_id = 8,
+        is_ec_double = 1,
         s + q0 + q1 + q2 + x3 + y3,
         i,
         x1 + x2 + y1,
