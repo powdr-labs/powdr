@@ -1,4 +1,5 @@
-use std::protocols::bus::bus_multi_send;
+use std::protocols::bus::bus_multi;
+use std::protocols::bus::BusInteraction;
 use std::protocols::permutation_via_bus::permutation_multi_receive;
 
 machine Main with degree: 8 {
@@ -18,9 +19,9 @@ machine Main with degree: 8 {
     // Add the bus permutation constraints
     let ID_0 = 123;
     let ID_1 = 456;
-    bus_multi_send([
-      (ID_0, [x, y], sel),
-      (ID_1, [x, z], sel)
+    bus_multi([
+      BusInteraction::Send(ID_0, [x, y], sel),
+      BusInteraction::Send(ID_1, [x, z], sel)
     ]);
     permutation_multi_receive([
       (ID_0, sub_sel_0, [sub_x, sub_y]),

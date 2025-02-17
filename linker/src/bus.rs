@@ -19,13 +19,15 @@ use std::{
 use crate::{call, try_into_namespace_degree, DegreeMode, LinkerBackend, MAIN_OPERATION_NAME};
 
 /// Compute a unique identifier for an interaction
-fn interaction_id(link_to: &LinkTo) -> u16 {
+fn interaction_id(link_to: &LinkTo) -> u32 {
     let mut hasher = Sha256::default();
     hasher.update(format!("{}/{}", link_to.machine, link_to.operation));
     let result = hasher.finalize();
-    let mut bytes = [0u8; 2];
-    bytes.copy_from_slice(&result[..2]);
-    u16::from_le_bytes(bytes)
+    let mut bytes = [0u8; 4];
+    bytes.copy_from_slice(&result[..4]);
+    // Ensure that interaction_id is at most 30-bits, in order to
+    // fill in a single field element for BabyBear and M31.
+    u32::from_le_bytes(bytes) >> 2
 }
 
 pub struct BusLinker {
@@ -35,10 +37,10 @@ pub struct BusLinker {
     selector_array_size_by_instance: BTreeMap<Location, usize>,
     /// for each used operation, the index in the selector array. For operations accessed via lookups, this is None.
     selector_array_index_by_operation: BTreeMap<LinkTo, Option<usize>>,
-    /// arguments for `bus_multi_receive`
-    bus_multi_receive_args: ArrayLiteral,
-    /// arguments for `bus_multi_send`
-    bus_multi_send_args: ArrayLiteral,
+    /// arguments for `bus_multi_receive_batch_lookup_permutation`
+    bus_multi_receive_batch_lookup_permutation_args: ArrayLiteral,
+    /// arguments for `bus_multi`
+    bus_multi_args: ArrayLiteral,
 }
 
 impl LinkerBackend for BusLinker {
@@ -91,10 +93,10 @@ impl LinkerBackend for BusLinker {
             pil: Default::default(),
             selector_array_size_by_instance,
             selector_array_index_by_operation,
-            bus_multi_receive_args: ArrayLiteral {
+            bus_multi_receive_batch_lookup_permutation_args: ArrayLiteral {
                 items: Default::default(),
             },
-            bus_multi_send_args: ArrayLiteral {
+            bus_multi_args: ArrayLiteral {
                 items: Default::default(),
             },
         })
@@ -121,9 +123,17 @@ impl LinkerBackend for BusLinker {
         }
         .into();
 
-        self.bus_multi_send_args.items.push(Expression::Tuple(
+        self.bus_multi_args.items.push(Expression::FunctionCall(
             SourceRef::unknown(),
-            vec![(interaction_id as u32).into(), tuple, selector],
+            FunctionCall {
+                function: Box::new(Expression::Reference(
+                    SourceRef::unknown(),
+                    SymbolPath::from_str("std::protocols::bus::BusInteraction::Send")
+                        .unwrap()
+                        .into(),
+                )),
+                arguments: vec![interaction_id.into(), tuple, selector],
+            },
         ));
     }
 
@@ -166,14 +176,11 @@ impl LinkerBackend for BusLinker {
             self.process_operation(name, operation, location, object);
         }
 
-        // add pil for bus_multi_send and bus_multi_receive_batch_lookup_permutation
+        // add pil for bus_multi and bus_multi_receive_batch_lookup_permutation
         for (args, path) in [
+            (&mut self.bus_multi_args, "std::protocols::bus::bus_multi"),
             (
-                &mut self.bus_multi_send_args,
-                "std::protocols::bus::bus_multi_send",
-            ),
-            (
-                &mut self.bus_multi_receive_args,
+                &mut self.bus_multi_receive_batch_lookup_permutation_args,
                 "std::protocols::bus::bus_multi_receive_batch_lookup_permutation",
             ),
         ] {
@@ -264,7 +271,7 @@ impl BusLinker {
 
             let arguments = match selector_index {
                 // a selector index of None means this operation is called via lookup
-                None => vec![(interaction_id as u32).into(), latch, tuple, 0.into()],
+                None => vec![interaction_id.into(), latch, tuple, 0.into()],
                 // a selector index of Some means this operation is called via permutation
                 Some(selector_index) => {
                     let call_selector_array = namespaced_reference(
@@ -277,16 +284,11 @@ impl BusLinker {
                     let call_selector =
                         index_access(call_selector_array, Some((*selector_index).into()));
                     let rhs_selector = latch * call_selector;
-                    vec![
-                        (interaction_id as u32).into(),
-                        rhs_selector,
-                        tuple,
-                        1.into(),
-                    ]
+                    vec![interaction_id.into(), rhs_selector, tuple, 1.into()]
                 }
             };
 
-            self.bus_multi_receive_args
+            self.bus_multi_receive_batch_lookup_permutation_args
                 .items
                 .push(Expression::Tuple(SourceRef::unknown(), arguments));
         }
@@ -345,7 +347,7 @@ mod test {
     pc' = (1 - first_step') * pc_update;
     pol commit call_selectors[0];
     std::array::map(call_selectors, std::utils::force_bool);
-    std::protocols::bus::bus_multi_send([(12064, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1)]);
+    std::protocols::bus::bus_multi([std::protocols::bus::BusInteraction::Send(454118344, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], 1)]);
 namespace main__rom(4);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
@@ -354,7 +356,7 @@ namespace main__rom(4);
     pol constant p_instr_return = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-    std::protocols::bus::bus_multi_receive_batch_lookup_permutation([(12064, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], 0)]);
+    std::protocols::bus::bus_multi_receive_batch_lookup_permutation([(454118344, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], 0)]);
 "#;
 
         let file_name = "../test_data/asm/empty_vm.asm";

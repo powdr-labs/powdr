@@ -5,7 +5,9 @@ use std::{
 };
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{PolyID, PolynomialIdentity, PolynomialType};
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, PolyID, PolynomialIdentity, PolynomialType,
+};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -108,18 +110,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             match &id {
                 Identity::BusSend(bus_send) => {
                     // Create variable assignments for the arguments of bus send identities.
-                    let arguments = &bus_send.selected_payload.expressions;
-                    arguments
-                        .iter()
-                        .enumerate()
-                        .map(move |(index, arg)| {
-                            let var = Variable::MachineCallParam(MachineCallVariable {
-                                identity_id: bus_send.identity_id,
-                                row_offset: *row_offset,
-                                index,
-                            });
-                            QueueItem::variable_assignment(arg, var, *row_offset)
-                        })
+                    machine_call_params(bus_send, *row_offset)
+                        .zip(&bus_send.selected_payload.expressions)
+                        .map(|(var, arg)| QueueItem::variable_assignment(arg, var, *row_offset))
                         .chain(std::iter::once(QueueItem::Identity(id, *row_offset)))
                         .collect_vec()
                 }
@@ -141,7 +134,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         branch_depth: usize,
     ) -> Result<ProcessorResult<T>, Error<'a, T, FixedEval>> {
         if self
-            .process_until_no_progress(can_process.clone(), &mut witgen, &mut identity_queue)
+            .process_until_no_progress(can_process.clone(), &mut witgen, identity_queue.clone())
             .is_err()
         {
             return Err(Error::conflicting_constraints(
@@ -171,7 +164,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             .collect_vec();
 
         let incomplete_machine_calls = self.incomplete_machine_calls(&witgen);
-        if missing_variables.is_empty() && incomplete_machine_calls.is_empty() {
+        if missing_variables.is_empty()
+            && self.try_fix_simple_sends(
+                &incomplete_machine_calls,
+                can_process.clone(),
+                &mut witgen,
+                identity_queue.clone(),
+            )
+        {
             let range_constraints = self
                 .requested_range_constraints
                 .iter()
@@ -199,6 +199,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             .as_ref()
             .map(|(_, rc)| (rc.range_width() >> self.max_branch_depth) > 0.into())
             .unwrap_or(true);
+
         if branch_depth >= self.max_branch_depth || no_viable_branch_variable {
             let reason = if no_viable_branch_variable {
                 ErrorReason::NoBranchVariable
@@ -289,7 +290,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         &self,
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        identity_queue: &mut IdentityQueue<'a, T>,
+        mut identity_queue: IdentityQueue<'a, T>,
     ) -> Result<(), affine_symbolic_expression::Error> {
         while let Some(item) = identity_queue.next() {
             let updated_vars = match &item {
@@ -455,6 +456,66 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             }
         }
     }
+
+    /// If the only missing sends all only have a single argument, try to set those arguments
+    /// to zero.
+    fn try_fix_simple_sends(
+        &self,
+        incomplete_machine_calls: &[(&Identity<T>, i32)],
+        can_process: impl CanProcessCall<T>,
+        witgen: &mut WitgenInference<'a, T, FixedEval>,
+        mut identity_queue: IdentityQueue<'a, T>,
+    ) -> bool {
+        let missing_sends_in_block = incomplete_machine_calls
+            .iter()
+            .filter(|(_, row)| 0 <= *row && *row < self.block_size as i32)
+            .map(|(id, row)| match id {
+                Identity::BusSend(bus_send) => (bus_send, *row),
+                _ => unreachable!(),
+            })
+            .collect_vec();
+        // If the send has more than one parameter, we do not want to touch it.
+        // Same if we do not know that the selector is 1.
+        if missing_sends_in_block.iter().any(|(bus_send, row)| {
+            bus_send.selected_payload.expressions.len() > 1
+                || !witgen
+                    .evaluate(&bus_send.selected_payload.selector, *row)
+                    .and_then(|v| v.try_to_known().map(|v| v.is_known_one()))
+                    .unwrap_or(false)
+        }) {
+            return false;
+        }
+        // Create a copy in case we fail.
+        let mut modified_witgen = witgen.clone();
+        // Now set all parameters to zero.
+        for (bus_send, row) in missing_sends_in_block {
+            let [param] = &machine_call_params(bus_send, row).collect_vec()[..] else {
+                unreachable!()
+            };
+            assert!(!witgen.is_known(param));
+            match modified_witgen.process_equation_on_row(
+                &Expression::Number(T::from(0)),
+                Some(param.clone()),
+                0.into(),
+                row,
+            ) {
+                Err(_) => return false,
+                Ok(updated_vars) => {
+                    identity_queue.variables_updated(updated_vars, None);
+                }
+            };
+        }
+        if self
+            .process_until_no_progress(can_process, &mut modified_witgen, identity_queue)
+            .is_ok()
+            && self.incomplete_machine_calls(&modified_witgen).is_empty()
+        {
+            *witgen = modified_witgen;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 fn is_machine_call<T>(identity: &Identity<T>) -> bool {
@@ -470,6 +531,19 @@ fn combine_range_constraints<T: FieldElement>(
         .zip(second.iter())
         .map(|(rc1, rc2)| rc1.disjunction(rc2))
         .collect()
+}
+
+fn machine_call_params<T: FieldElement>(
+    bus_send: &BusSend<T>,
+    row_offset: i32,
+) -> impl Iterator<Item = Variable> + '_ {
+    (0..bus_send.selected_payload.expressions.len()).map(move |index| {
+        Variable::MachineCallParam(MachineCallVariable {
+            identity_id: bus_send.identity_id,
+            row_offset,
+            index,
+        })
+    })
 }
 
 pub struct Error<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
