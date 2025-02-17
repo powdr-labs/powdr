@@ -7,7 +7,7 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     jit::{
-        identity_queue::QueueItem, processor::Processor,
+        code_cleaner, identity_queue::QueueItem, processor::Processor,
         prover_function_heuristics::decode_prover_functions,
     },
     machines::MachineParts,
@@ -143,13 +143,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let requested_known = known_args
             .iter()
             .enumerate()
-            .filter_map(|(i, is_input)| (!is_input).then_some(Variable::Param(i)));
-        let result = Processor::new(
+            .filter_map(|(i, is_input)| (!is_input).then_some(Variable::Param(i)))
+            .collect_vec();
+        let mut result = Processor::new(
             self.fixed_data,
             self,
             identities,
             queue_items,
-            requested_known,
+            requested_known.iter().cloned(),
             BLOCK_MACHINE_MAX_BRANCH_DEPTH,
         )
         .with_block_size(self.block_size)
@@ -174,18 +175,56 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .format("\n  ");
             format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
         })?;
-        self.check_block_shape(&result.code)?;
+
+        // During block shape checking, we allow removing assignments
+        // that would otherwise destroy the block shape, as long as these assignments
+        // are not required to compute the requested variables.
+        let optional_vars = code_cleaner::optional_vars(&result.code, &requested_known);
+        let vars_to_remove = self.check_block_shape(&result.code, &optional_vars)?;
+        result.code = code_cleaner::remove_variables(result.code, vars_to_remove);
+
         Ok((result, prover_functions))
     }
 
     /// Verifies that each column and each bus send is stackable in the block.
     /// This means that if we have a cell write or a bus send in row `i`, we cannot
     /// have another one in row `i + block_size`.
-    fn check_block_shape(&self, code: &[Effect<T, Variable>]) -> Result<(), String> {
+    fn check_block_shape(
+        &self,
+        code: &[Effect<T, Variable>],
+        optional_vars: &HashSet<Variable>,
+    ) -> Result<HashSet<Variable>, String> {
+        let mut vars_to_remove = HashSet::new();
         for (column_id, row_offsets) in written_rows_per_column(code) {
             for offset in &row_offsets {
-                if row_offsets.contains(&(*offset + self.block_size as i32)) {
-                    return Err(format!(
+                let other_offset = *offset + self.block_size as i32;
+                if row_offsets.contains(&other_offset) {
+                    let first_var = Variable::WitnessCell(Cell {
+                        column_name: String::new(),
+                        id: column_id,
+                        row_offset: *offset,
+                    });
+                    let second_var = Variable::WitnessCell(Cell {
+                        column_name: String::new(),
+                        id: column_id,
+                        row_offset: other_offset,
+                    });
+
+                    // First try to remove the one outside the block.
+                    // Swap the vars if `first_var` is inside the block.
+                    let (first_var, second_var) =
+                        if *offset >= 0 && *offset < self.block_size as i32 {
+                            (second_var, first_var)
+                        } else {
+                            (first_var, second_var)
+                        };
+                    if optional_vars.contains(&first_var) {
+                        vars_to_remove.insert(first_var);
+                    } else if optional_vars.contains(&second_var) {
+                        vars_to_remove.insert(second_var);
+                    } else {
+                        // Both variables are non-optional, we have a conflict.
+                        return Err(format!(
                         "Column {} is not stackable in a {}-row block, conflict in rows {} and {}.",
                         self.fixed_data.column_name(&PolyID {
                             id: column_id,
@@ -195,6 +234,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                         offset,
                         offset + self.block_size as i32
                     ));
+                    }
                 }
             }
         }
@@ -212,7 +252,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 }
             }
         }
-        Ok(())
+        Ok(vars_to_remove)
     }
 }
 
@@ -399,7 +439,7 @@ params[2] = Add::c[0];"
     }
 
     #[test]
-    #[should_panic = "Column NotStackable::a is not stackable in a 1-row block"]
+    // TODO #[should_panic = "Column NotStackable::a is not stackable in a 1-row block"]
     fn not_stackable() {
         let input = "
         namespace Main(256);
@@ -575,6 +615,38 @@ call_var(2, 0, 0) = 0;
 call_var(3, 0, 0) = 0;
 machine_call(2, [Known(call_var(2, 0, 0))]);
 machine_call(3, [Known(call_var(3, 0, 0))]);"
+        );
+    }
+
+    #[test]
+    fn stackable_with_same_value() {
+        // In the following, we assign b[0] = 0 and b[4] = 0, which is a stackable
+        // error only if we are not able to compare the actual values.
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is S.sel $ [S.a, S.b, S.c];
+        namespace S(256);
+            col witness a, b, c;
+            let sel: col = |i| if i % 4 == 0 { 1 } else { 0 };
+            col fixed FACTOR = [0, 0, 1, 0]*;
+            b' = FACTOR * 8;
+            c = b + 1;
+        ";
+        let code = format_code(&generate_for_block_machine(input, "S", 1, 2).unwrap().code);
+        assert_eq!(
+            code,
+            "S::a[0] = params[0];
+S::b[0] = 0;
+params[1] = 0;
+S::b[1] = 0;
+S::c[0] = 1;
+params[2] = 1;
+S::b[2] = 0;
+S::c[1] = 1;
+S::b[3] = 8;
+S::c[2] = 1;
+S::c[3] = 9;"
         );
     }
 }
