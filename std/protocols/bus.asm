@@ -284,8 +284,6 @@ let bus_multi_linker: (expr, expr, expr[], BusLinkerType)[] -> () = constr |inpu
                 acc + [BusInteraction::Receive(id, payload, multiplicity, selector)]
             },
             BusLinkerType::PermutationReceive => acc + [BusInteraction::Receive(id, payload, selector, selector)],
-            // Practically this can never be reached because `bus_multi_linker` should be used by the linker only.
-            _ => std::check::panic("`bus_multi_linker`: type param not valid")
         }
     });
     bus_multi(inputs_inner);

@@ -45,16 +45,13 @@ machine Main with degree: 8 {
     // Batch all sends, lookup receives, and permutation receives
     // Input format: id, selector, payload, type
     bus_multi_linker([
-      // Bus send (type param == 0)
       // Latch is always the same as multiplicity for sends (for both lookup and permutation)
       (LOOKUP_ID_0, lookup_latch, [x, y], BusLinkerType::Send),
       (LOOKUP_ID_1, lookup_latch, [x, z], BusLinkerType::Send),
       (PERMUTATION_ID_0, sel, [x, a], BusLinkerType::Send),
       (PERMUTATION_ID_1, sel, [x, b], BusLinkerType::Send),
-      // Lookup receive (type param == 1)
       (LOOKUP_ID_0, lookup_latch, [LOOKUP_X, LOOKUP_Y], BusLinkerType::LookupReceive), // selector is lookup_latch, multiplicity is a witness column (not an input here)
       (LOOKUP_ID_1, lookup_latch, [LOOKUP_X, LOOKUP_Z], BusLinkerType::LookupReceive), // selector is lookup_latch, multiplicity is a witness column (not an input here)
-      // Permutation receive (type param == 2)
       (PERMUTATION_ID_0, sub_sel_0 * perm_latch, [PERM_X, PERM_A], BusLinkerType::PermutationReceive), // selector is sub_sel_0 * perm_latch, multiplicity is `-selector`
       (PERMUTATION_ID_1, sub_sel_1 * perm_latch, [PERM_X, PERM_B], BusLinkerType::PermutationReceive) // selector is sub_sel_1 * perm_latch, multiplicity is `-selector`
     ]);
