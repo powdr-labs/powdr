@@ -32,7 +32,8 @@ machine Arith256Memory(mem: Memory) with
     let operation_selectors = [is_affine, is_mod, is_ec_add, is_ec_double];
     array::map(operation_selectors, |s| force_bool(s));
     array::map(operation_selectors, fixed_inside_32_block);
-    let operation_id = sum(4, |i| 2 ** i * operation_selectors[i]);
+    col witness operation_id;
+    operation_id = sum(4, |i| 2 ** i * operation_selectors[i]);
 
     // affine_256(a, b, c) = a * b + c, where a, b, and c are 256-bit words. The result is a 512-bit word.
     operation affine_256<1> time_step, addr1, addr2, addr3, addr4 ->;
@@ -53,7 +54,8 @@ machine Arith256Memory(mem: Memory) with
     // Get an intermediate column that indicates that we're in an
     // actual block, not a default block. Its value is constant
     // within the block.
-    col used = array::sum(sel);
+    col witness used;
+    used = array::sum(sel);
     array::map(sel, |s| unchanged_until(s, CLK32[31]));
     std::utils::force_bool(used);
 
