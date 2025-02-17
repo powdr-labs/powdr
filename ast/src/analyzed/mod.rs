@@ -1037,30 +1037,31 @@ pub struct PhantomBusInteractionIdentity<T> {
     pub payload: ExpressionList<T>,
     pub latch: AlgebraicExpression<T>,
     pub folded_expressions: ExpressionList<T>,
-    // Note that in PIL, `accumulator_columns` and
-    // `helper_columns` are lists of expressions, but we'd
-    // always expect direct column references, because
-    // they always materialize as witness columns,
-    // so they are unpacked when converting from PIL
-    // to this struct, whereas `folded_expressions`
-    // can be linear and thus optimized away by pilopt.
-    pub accumulator_columns: Vec<AlgebraicReference>,
-    pub helper_columns: Option<Vec<AlgebraicReference>>,
+    pub accumulator_columns: Vec<AlgebraicExpression<T>>,
+    pub helper_columns: Option<Vec<AlgebraicExpression<T>>>,
 }
 
 impl<T> Children<AlgebraicExpression<T>> for PhantomBusInteractionIdentity<T> {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
         Box::new(
             once(&mut self.multiplicity)
+                .chain(once(&mut self.bus_id))
                 .chain(self.payload.children_mut())
-                .chain(once(&mut self.latch)),
+                .chain(once(&mut self.latch))
+                .chain(self.folded_expressions.children_mut())
+                .chain(self.accumulator_columns.iter_mut())
+                .chain(self.helper_columns.iter_mut().flat_map(|v| v.iter_mut())),
         )
     }
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(
             once(&self.multiplicity)
+                .chain(once(&self.bus_id))
                 .chain(self.payload.children())
-                .chain(once(&self.latch)),
+                .chain(once(&self.latch))
+                .chain(self.folded_expressions.children())
+                .chain(self.accumulator_columns.iter())
+                .chain(self.helper_columns.iter().flat_map(|v| v.iter())),
         )
     }
 }
