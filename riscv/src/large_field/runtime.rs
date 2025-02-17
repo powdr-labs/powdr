@@ -346,7 +346,6 @@ impl Runtime {
                 }
             "#,
             ],
-            0,
         );
 
         self.add_syscall(
