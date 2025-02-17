@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
@@ -15,9 +15,10 @@ use crate::witgen::{
 };
 
 use super::{
+    effect::Effect,
     processor::ProcessorResult,
     prover_function_heuristics::ProverFunction,
-    variable::{Cell, Variable},
+    variable::{Cell, MachineCallVariable, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
 
@@ -117,29 +118,20 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .identities
             .iter()
             .any(|id| id.contains_next_ref(&intermediate_definitions));
-        let start_row = if !have_next_ref {
+        let (start_row, end_row) = if !have_next_ref {
             // No identity contains a next reference - we do not need to consider row -1,
             // and the block has to be rectangular-shaped.
-            0
+            (0, self.block_size as i32 - 1)
         } else {
             // A machine that might have a non-rectangular shape.
             // We iterate over all rows of the block +/- one row.
-            -1
+            (-1, self.block_size as i32)
         };
-        let identities = (start_row..self.block_size as i32).flat_map(|row| {
+        let identities = (start_row..=end_row).flat_map(|row| {
             self.machine_parts
                 .identities
                 .iter()
-                .filter_map(|id| {
-                    // Filter out identities with next references on the last row.
-                    if row as usize == self.block_size - 1
-                        && id.contains_next_ref(&intermediate_definitions)
-                    {
-                        None
-                    } else {
-                        Some((*id, row))
-                    }
-                })
+                .map(|id| (*id, row))
                 .collect_vec()
         });
 
@@ -160,7 +152,6 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             requested_known,
             BLOCK_MACHINE_MAX_BRANCH_DEPTH,
         )
-        .with_block_shape_check()
         .with_block_size(self.block_size)
         .with_requested_range_constraints((0..known_args.len()).map(Variable::Param))
         .generate_code(can_process, witgen)
@@ -183,7 +174,99 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .format("\n  ");
             format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
         })?;
+        self.check_block_shape(&result.code)?;
         Ok((result, prover_functions))
+    }
+
+    /// Verifies that each column and each bus send is stackable in the block.
+    /// This means that if we have a cell write or a bus send in row `i`, we cannot
+    /// have another one in row `i + block_size`.
+    fn check_block_shape(&self, code: &[Effect<T, Variable>]) -> Result<(), String> {
+        for (column_id, row_offsets) in written_rows_per_column(code) {
+            for offset in &row_offsets {
+                if row_offsets.contains(&(*offset + self.block_size as i32)) {
+                    return Err(format!(
+                        "Column {} is not stackable in a {}-row block, conflict in rows {} and {}.",
+                        self.fixed_data.column_name(&PolyID {
+                            id: column_id,
+                            ptype: PolynomialType::Committed
+                        }),
+                        self.block_size,
+                        offset,
+                        offset + self.block_size as i32
+                    ));
+                }
+            }
+        }
+        for (identity_id, row_offsets) in completed_rows_for_bus_send(code) {
+            let row_offsets: BTreeSet<_> = row_offsets.into_iter().collect();
+            for offset in &row_offsets {
+                if row_offsets.contains(&(*offset + self.block_size as i32)) {
+                    return Err(format!(
+                        "Bus send for identity {} is not stackable in a {}-row block, conflict in rows {} and {}.",
+                        identity_id,
+                        self.block_size,
+                        offset,
+                        offset + self.block_size as i32
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Returns, for each column ID, the collection of row offsets that have a cell write.
+/// Combines writes from branches.
+fn written_rows_per_column<T: FieldElement>(
+    code: &[Effect<T, Variable>],
+) -> BTreeMap<u64, BTreeSet<i32>> {
+    code.iter()
+        .flat_map(|e| e.written_vars())
+        .filter_map(|(v, _)| match v {
+            Variable::WitnessCell(cell) => Some((cell.id, cell.row_offset)),
+            _ => None,
+        })
+        .fold(BTreeMap::new(), |mut map, (id, row)| {
+            map.entry(id).or_default().insert(row);
+            map
+        })
+}
+
+/// Returns, for each bus send ID, the collection of row offsets that have a machine call.
+/// Combines calls from branches.
+fn completed_rows_for_bus_send<T: FieldElement>(
+    code: &[Effect<T, Variable>],
+) -> BTreeMap<u64, BTreeSet<i32>> {
+    code.iter()
+        .flat_map(machine_calls)
+        .fold(BTreeMap::new(), |mut map, (id, row)| {
+            map.entry(id).or_default().insert(row);
+            map
+        })
+}
+
+/// Returns all machine calls (bus identity and row offset) found in the effect.
+/// Recurses into branches.
+fn machine_calls<T: FieldElement>(
+    e: &Effect<T, Variable>,
+) -> Box<dyn Iterator<Item = (u64, i32)> + '_> {
+    match e {
+        Effect::MachineCall(id, _, arguments) => match &arguments[0] {
+            Variable::MachineCallParam(MachineCallVariable {
+                identity_id,
+                row_offset,
+                ..
+            }) => {
+                assert_eq!(*id, *identity_id);
+                Box::new(std::iter::once((*identity_id, *row_offset)))
+            }
+            _ => panic!("Expected machine call variable."),
+        },
+        Effect::Branch(_, first, second) => {
+            Box::new(first.iter().chain(second.iter()).flat_map(machine_calls))
+        }
+        _ => Box::new(std::iter::empty()),
     }
 }
 
@@ -424,6 +507,74 @@ params[3] = main_binary::C[3];"
             "Sub::a[0] = params[0];
 [Sub::b[0]] = prover_function_0(0, [Sub::a[0]]);
 params[1] = Sub::b[0];"
+        );
+    }
+
+    #[test]
+    fn complex_fixed_lookup_range_constraint() {
+        let input = "
+        namespace main(256);
+            col witness a, b, c;
+            [a, b, c] is SubM.sel $ [SubM.a, SubM.b, SubM.c]; 
+        namespace SubM(256);
+            col witness a, b, c;
+            let sel: col = |i| (i + 1) % 2;
+            let clock_0: col = |i| i % 2;
+            let clock_1: col = |i| (i + 1) % 2;
+            let byte: col = |i| i & 0xff;
+            [ b * clock_0 + c * clock_1 ] in [ byte ];
+            (b' - b) * sel = 0;
+            (c' - c) * sel = 0;
+            a = b * 256 + c;
+        ";
+        let code = generate_for_block_machine(input, "SubM", 1, 2)
+            .unwrap()
+            .code;
+        assert_eq!(
+            format_code(&code),
+            "SubM::a[0] = params[0];
+SubM::b[0] = ((SubM::a[0] & 0xff00) // 256);
+SubM::c[0] = (SubM::a[0] & 0xff);
+assert (SubM::a[0] & 0xffffffffffff0000) == 0;
+params[1] = SubM::b[0];
+params[2] = SubM::c[0];
+call_var(1, 0, 0) = SubM::c[0];
+machine_call(1, [Known(call_var(1, 0, 0))]);
+SubM::b[1] = SubM::b[0];
+call_var(1, 1, 0) = SubM::b[1];
+SubM::c[1] = SubM::c[0];
+machine_call(1, [Known(call_var(1, 1, 0))]);
+SubM::a[1] = ((SubM::b[1] * 256) + SubM::c[1]);"
+        );
+    }
+
+    #[test]
+    fn unused_fixed_lookup() {
+        // Checks that irrelevant fixed lookups are still performed
+        // in the generated code.
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is [S.a, S.b, S.c];
+        namespace S(256);
+            col witness a, b, c, x, y;
+            let B: col = |i| i & 0xff;
+            a * (a - 1) = 0;
+            [ a * x ] in [ B ];
+            [ (a - 1) * y ] in [ B ];
+            a + b = c;
+        ";
+        let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        assert_eq!(
+            code,
+            "S::a[0] = params[0];
+S::b[0] = params[1];
+S::c[0] = (S::a[0] + S::b[0]);
+params[2] = S::c[0];
+call_var(2, 0, 0) = 0;
+call_var(3, 0, 0) = 0;
+machine_call(2, [Known(call_var(2, 0, 0))]);
+machine_call(3, [Known(call_var(3, 0, 0))]);"
         );
     }
 }

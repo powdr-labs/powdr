@@ -12,7 +12,7 @@ use powdr_number::{log2_exact, FieldElement, LargeInt};
 /// and bit masks. The actual constraint is the conjunction of the two.
 ///
 /// Note that the same constraint can have multiple representations.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct RangeConstraint<T: FieldElement> {
     /// Bit-mask.
     mask: T::Integer,
@@ -144,6 +144,19 @@ impl<T: FieldElement> RangeConstraint<T> {
             (T::one(), T::zero())
         };
         Self { min, max, mask }
+    }
+
+    /// The range constraint of the product of two expressions.
+    pub fn combine_product(&self, other: &Self) -> Self {
+        if self.min <= self.max
+            && other.min <= other.max
+            && self.max.to_arbitrary_integer() * other.max.to_arbitrary_integer()
+                < T::modulus().to_arbitrary_integer()
+        {
+            Self::from_range(self.min * other.min, self.max * other.max)
+        } else {
+            Default::default()
+        }
     }
 
     /// Returns the conjunction of this constraint and the other.
