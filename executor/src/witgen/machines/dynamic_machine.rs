@@ -44,7 +44,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
     }
 
     fn identity_ids(&self) -> Vec<u64> {
-        self.parts.identity_ids()
+        self.parts.bus_ids()
     }
 
     fn name(&self) -> &str {

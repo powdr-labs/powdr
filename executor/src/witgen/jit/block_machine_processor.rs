@@ -53,12 +53,15 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
     pub fn generate_code(
         &self,
         can_process: impl CanProcessCall<T>,
-        identity_id: u64,
+        bus_id: T,
         known_args: &BitVec,
         known_concrete: Option<(usize, T)>,
     ) -> Result<(ProcessorResult<T>, Vec<ProverFunction<'a, T>>), String> {
-        let connection = self.machine_parts.connections[&identity_id];
-        assert_eq!(connection.right.expressions.len(), known_args.len());
+        let bus_receive = self.machine_parts.bus_receives[&bus_id];
+        assert_eq!(
+            bus_receive.selected_payload.expressions.len(),
+            known_args.len()
+        );
 
         // Set up WitgenInference with known arguments.
         let known_variables = known_args
@@ -73,7 +76,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let mut queue_items = vec![];
 
         // In the latch row, set the RHS selector to 1.
-        let selector = &connection.right.selector;
+        let selector = &bus_receive.selected_payload.selector;
         queue_items.push(QueueItem::constant_assignment(
             selector,
             T::one(),
@@ -83,15 +86,15 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         if let Some((index, value)) = known_concrete {
             // Set the known argument to the concrete value.
             queue_items.push(QueueItem::constant_assignment(
-                &connection.right.expressions[index],
+                &bus_receive.selected_payload.expressions[index],
                 value,
                 self.latch_row as i32,
             ));
         }
 
         // Set all other selectors to 0 in the latch row.
-        for other_connection in self.machine_parts.connections.values() {
-            let other_selector = &other_connection.right.selector;
+        for other_connection in self.machine_parts.bus_receives.values() {
+            let other_selector = &other_connection.selected_payload.selector;
             if other_selector != selector {
                 queue_items.push(QueueItem::constant_assignment(
                     other_selector,
@@ -102,7 +105,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         }
 
         // For each argument, connect the expression on the RHS with the formal parameter.
-        for (index, expr) in connection.right.expressions.iter().enumerate() {
+        for (index, expr) in bus_receive.selected_payload.expressions.iter().enumerate() {
             queue_items.push(QueueItem::variable_assignment(
                 expr,
                 Variable::Param(index),
@@ -157,14 +160,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string_with_variable_formatter(|var| match var {
-                Variable::Param(i) => format!("{} (connection param)", &connection.right.expressions[*i]),
+                Variable::Param(i) => format!("{} (connection param)", &bus_receive.selected_payload.expressions[*i]),
                 _ => var.to_string(),
             });
-            log::trace!("\nCode generation failed for connection:\n  {connection}");
+            log::trace!("\nCode generation failed for connection:\n  {bus_receive}");
             let known_args_str = known_args
                 .iter()
                 .enumerate()
-                .filter_map(|(i, b)| b.then_some(connection.right.expressions[i].to_string()))
+                .filter_map(|(i, b)| b.then_some(bus_receive.selected_payload.expressions[i].to_string()))
                 .join("\n  ");
             log::trace!("Known arguments:\n  {known_args_str}");
             log::trace!("Error:\n  {err_str}");
@@ -336,8 +339,8 @@ mod test {
             panic!("Expected exactly one matching block machine")
         };
         let (machine_parts, block_size, latch_row) = machine.machine_info();
-        assert_eq!(machine_parts.connections.len(), 1);
-        let connection_id = *machine_parts.connections.keys().next().unwrap();
+        assert_eq!(machine_parts.bus_receives.len(), 1);
+        let bus_id = *machine_parts.bus_receives.keys().next().unwrap();
         let processor = BlockMachineProcessor {
             fixed_data: &fixed_data,
             machine_parts: machine_parts.clone(),
@@ -356,7 +359,7 @@ mod test {
         );
 
         processor
-            .generate_code(&mutable_state, connection_id, &known_values, None)
+            .generate_code(&mutable_state, bus_id, &known_values, None)
             .map(|(result, _)| result)
     }
 
