@@ -513,12 +513,13 @@ machine {name} with
     col fixed is_transition = [0] + [1]* + [0];
 
     col fixed latch = [1]*;
+
     // Bus receives (bus_index, fields, count)
 "
     );
 
     // Get constraints from the builder
-    //let constraints = builder.constraints();
+    //let constraints = ;
     let interactions = builder.all_interactions();
     let all_receives = interactions
         .iter()
@@ -576,6 +577,16 @@ machine {name} with
 
     pil.push_str(
         "
+    // Public values
+",
+    );
+
+    for i in &public_values {
+        pil.push_str(&format!("    col fixed {i};\n"));
+    }
+
+    pil.push_str(
+        "
     // Witness columns
 ",
     );
@@ -592,13 +603,13 @@ machine {name} with
     );
 
     // Add constraints
-    // for constraint in constraints.constraints {
-    //     let new_const = constraint.into();
-    //     pil.push_str(&format!(
-    //         "    {} = 0;\n",
-    //         format_expr(&new_const, &columns, &[])
-    //     ));
-    // }
+    for constraint in builder.constraints().constraints {
+        let new_const = constraint.into();
+        pil.push_str(&format!(
+            "    {} = 0;\n",
+            format_expr(&new_const, &columns, &public_values)
+        ));
+    }
 
     pil.push_str("}");
 
@@ -611,7 +622,7 @@ mod tests {
     use openvm_circuit::arch::testing::{VmChipTestBuilder, BITWISE_OP_LOOKUP_BUS};
     use openvm_circuit::arch::{DynAdapterInterface, VmCoreAir};
     use openvm_circuit::openvm_stark_sdk::config::baby_bear_poseidon2::BabyBearPoseidon2Config;
-    use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::air_builders::debug::DebugConstraintBuilder;
+    //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::air_builders::debug::DebugConstraintBuilder;
     use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::air_builders::symbolic::{
         get_symbolic_builder, SymbolicRapBuilder,
     };
@@ -624,8 +635,8 @@ mod tests {
     //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_challenger::DuplexChallenger;
     //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_commit::ExtensionMmcs;
     //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_field::extension::BinomialExtensionField;
-    use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::BaseAir;
-    use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::rap::Rap;
+    //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::p3_air::BaseAir;
+    //use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::rap::Rap;
     use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::Chip;
     use openvm_circuit::openvm_stark_sdk::p3_baby_bear::BabyBear;
     use openvm_circuit_primitives::bitwise_op_lookup::{
@@ -668,7 +679,7 @@ mod tests {
             DynAdapterInterface<symbolic_expression::SymbolicExpression<BabyBear>>,
         >>::eval(&chip.core.air, &mut builder, &cols, from_pc);
 
-        let columns = (0..=12).map(|i| format!("w{}", i)).collect::<Vec<String>>();
+        let columns = (0..=11).map(|i| format!("w{}", i)).collect::<Vec<String>>();
         let pil = get_asm("Rv32Auipc", builder, columns.clone(), vec![]);
 
         // Bus
@@ -685,15 +696,19 @@ mod tests {
             after_challenge: vec![],
         };
 
-        let mut bus_builder: SymbolicRapBuilder<_> =
+        let bus_builder: SymbolicRapBuilder<_> =
             get_symbolic_builder(air, &width, &[], &[], RapPhaseSeqKind::FriLogUp, 2);
 
         //air.eval(&mut bus_builder);
         //Rap::eval(air, &mut bus_builder);
-        <BitwiseOperationLookupAir<RV32_CELL_BITS> as Rap<_>>::eval(air, &mut bus_builder);
-
-        let asm_bus =
-            get_bus_asm::<BabyBear>("BitwiseOperationLookupBus", bus_builder, columns, vec![]);
+        //<BitwiseOperationLookupAir<RV32_CELL_BITS> as Rap<_>>::eval(air, &mut bus_builder);
+        let bus_columns = (0..=2).map(|i| format!("w{}", i)).collect::<Vec<String>>();
+        let asm_bus = get_bus_asm::<BabyBear>(
+            "BitwiseOperationLookupBus",
+            bus_builder,
+            bus_columns,
+            vec!["Pub1".to_string(), "Pub2".to_string()],
+        );
 
         let asm = pil + "\n" + &asm_bus;
         std::fs::write("openvm_rv32auipc.asm", asm).unwrap();

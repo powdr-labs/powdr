@@ -219,3 +219,38 @@ impl<F: Field> InteractionBuilder for SymbolicAirBuilder<F> {
         &self.bus_interactions
     }
 }
+
+// impl<F: Field> ExtensionBuilder for SymbolicAirBuilder<F> {
+//     type EF = F;
+
+//     type ExprEF = SymbolicExpression<F>;
+
+//     type VarEF = SymbolicVariable<F>;
+
+//     fn assert_zero_ext<I>(&mut self, x: I)
+//     where
+//         I: Into<Self::ExprEF>,
+//     {
+//         todo!()
+//     }
+// }
+
+// impl<F: Field> PermutationAirBuilder for SymbolicAirBuilder<F> {
+//     type MP = RowMajorMatrix<SymbolicVariable<F>>;
+
+//     type RandomVar = SymbolicVariable<F>;
+
+//     fn permutation(&self) -> Self::MP {
+//         todo!()
+//     }
+
+//     fn permutation_randomness(&self) -> &[Self::RandomVar] {
+//         todo!()
+//     }
+// }
+
+// impl<F: Field> PermutationAirBuilderWithExposedValues for SymbolicAirBuilder<F> {
+//     fn permutation_exposed_values(&self) -> &[Self::VarEF] {
+//         &self.public_values
+//     }
+// }
