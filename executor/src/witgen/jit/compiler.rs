@@ -552,7 +552,7 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
         }
     };
     let code = if f.compute_multi {
-        code
+        format!("({code}).as_slice().try_into().unwrap()")
     } else {
         assert_eq!(f.target.len(), 1);
         format!("[{code}]")
