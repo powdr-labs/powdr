@@ -409,7 +409,7 @@ LabelStatement: FunctionStatement = {
 
 // ---------------------------- Expressions -----------------------------
 // Expressions are parameterized with StructOption because in some cases, we want to disallow the parsing of struct expressions.
-// This allow us to use expression in two diferrent ways:
+// This allow us to use expression in two different ways:
 //  Expression<TermWithStruct> allows structs (renamed as Expression)
 //  Expression<TermWithoutStruct> does not allow structs (renamed as RestrictedExpression).
 //  Same for BoxedExpression.
