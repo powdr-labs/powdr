@@ -18,7 +18,7 @@ use super::{
     compiler::WitgenFunction,
     effect::Effect,
     identity_queue::QueueItem,
-    processor::Processor,
+    processor::{Processor, ProcessorResult},
     prover_function_heuristics::decode_prover_functions,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
@@ -68,9 +68,13 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 log::debug!("=> Error generating JIT code: {e}\n...");
                 false
             }
+
             Ok(code) => {
                 log::debug!("Generated code ({} steps)", code.len());
                 log::debug!("Compiling effects...");
+
+                // TODO
+                let prover_functions = vec![];
 
                 let known_inputs = self
                     .machine_parts
@@ -80,10 +84,11 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                     .collect_vec();
                 self.single_step_function = Some(Some(
                     compile_effects(
-                        self.column_layout.first_column_id,
-                        self.column_layout.column_count,
+                        self.fixed_data.analyzed,
+                        self.column_layout.clone(),
                         &known_inputs,
                         &code,
+                        prover_functions,
                     )
                     .unwrap(),
                 ));
@@ -112,7 +117,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
     fn generate_code(
         &self,
         can_process: impl CanProcessCall<T>,
-    ) -> Result<Vec<Effect<T, Variable>>, String> {
+    ) -> Result<ProcessorResult<T>, String> {
         let intermediate_definitions = self.fixed_data.analyzed.intermediate_definitions();
         let all_witnesses = self
             .machine_parts
@@ -174,7 +179,6 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 .format("\n  ");
             format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
         })
-        .map(|r| r.code)
     }
 
     fn cell(&self, id: PolyID, row_offset: i32) -> Variable {
