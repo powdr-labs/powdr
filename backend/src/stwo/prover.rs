@@ -177,7 +177,7 @@ where
                                 > = fixed_columns
                                     .iter()
                                     .map(|(_, vec)| {
-                                        gen_stwo_circle_column::<_>(
+                                        gen_stwo_circle_column(
                                             *domain_map.get(&(log_size as usize)).unwrap(),
                                             vec,
                                         )
@@ -194,7 +194,7 @@ where
                                     .map(|(_, values)| {
                                         let mut rotated_values = values.to_vec();
                                         rotated_values.rotate_left(1);
-                                        gen_stwo_circle_column::<_>(
+                                        gen_stwo_circle_column(
                                             *domain_map.get(&(log_size as usize)).unwrap(),
                                             &rotated_values,
                                         )
@@ -369,7 +369,7 @@ where
                 witness_cols
                     .iter()
                     .map(|(_name, col)| {
-                        gen_stwo_circle_column::<_>(
+                        gen_stwo_circle_column(
                             *domain_map
                                 .get(&(col.len().ilog2() as usize))
                                 .expect("Domain not found for given size"),
@@ -527,7 +527,7 @@ where
                             if stage0_witness_name_list.contains(witness_name) {
                                 None
                             } else {
-                                Some(gen_stwo_circle_column::<SimdBackend>(
+                                Some(gen_stwo_circle_column(
                                     *domain_map
                                         .get(&(vec.len().ilog2() as usize))
                                         .expect("Domain not found for given size"),

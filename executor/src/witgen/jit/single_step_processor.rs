@@ -323,11 +323,11 @@ VM::instr_mul[1] = 1;"
             Ok(_) => panic!("Expected error"),
             Err(e) => {
                 let start = e
-                    .find("The following identities have not been fully processed:")
+                    .find("The following machine calls have not been fully processed:")
                     .unwrap();
                 let end = e.find("Generated code so far:").unwrap();
                 let expected = "\
-The following identities have not been fully processed:
+The following machine calls have not been fully processed:
 --------------[ identity 1 on row 1: ]--------------
 Main::is_arith $ [ Main::a, Main::b, Main::c ]
      ???              2       ???      ???    

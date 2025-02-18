@@ -245,6 +245,14 @@ fn bus_multi_permutation() {
 }
 
 #[test]
+fn bus_multi_linker() {
+    let f = "std/bus_multi_linker.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    test_mock_backend(pipeline.clone());
+    test_plonky3_pipeline(pipeline);
+}
+
+#[test]
 fn write_once_memory_test() {
     let f = "std/write_once_memory_test.asm";
     regular_test_gl(f, &[]);

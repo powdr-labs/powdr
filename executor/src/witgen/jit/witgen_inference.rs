@@ -423,6 +423,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 Effect::Branch(..) => unreachable!(),
             }
         }
+        if process_result.complete {
+            // If a machine call is complete because its selector is zero,
+            // we will not get an `Effect::MachineCall` above and need to
+            // insert here.
+            if let Some((identity_id, row_offset)) = identity_id {
+                self.complete_calls.insert((identity_id, row_offset));
+            }
+        }
         Ok(updated_variables)
     }
 
