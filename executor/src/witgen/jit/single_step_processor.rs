@@ -10,7 +10,10 @@ use crate::witgen::{
         mutable_state::MutableState,
     },
     jit::compiler::compile_effects,
-    machines::MachineParts,
+    machines::{
+        profiling::{record_end, record_start},
+        MachineParts,
+    },
     FixedData, QueryCallback,
 };
 
@@ -60,7 +63,9 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             Some(Some(_)) => return true,
             None => {}
         }
-        match self.generate_code(can_process.clone()) {
+
+        record_start("Auto-witgen code derivation");
+        let r = match self.generate_code(can_process.clone()) {
             Err(e) => {
                 // These errors can be pretty verbose and are quite common currently.
                 let e = e.to_string().lines().take(5).join("\n");
@@ -92,7 +97,9 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 log::trace!("Compilation done.");
                 true
             }
-        }
+        };
+        record_end("Auto-witgen code derivation");
+        r
     }
 
     /// Computes the next row from the previous row.
