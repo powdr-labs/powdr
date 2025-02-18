@@ -89,7 +89,19 @@ fn remove_variables_from_effect<T: FieldElement>(
     effect: Effect<T, Variable>,
     to_remove: &mut HashSet<Variable>,
 ) -> Option<Effect<T, Variable>> {
-    if effect.referenced_variables().any(|v| to_remove.contains(v)) {
+    if let Effect::Branch(condition, left, right) = effect {
+        let mut remove_left = to_remove.clone();
+        let left = left
+            .into_iter()
+            .filter_map(|effect| remove_variables_from_effect(effect, &mut remove_left))
+            .collect();
+        let right = right
+            .into_iter()
+            .filter_map(|effect| remove_variables_from_effect(effect, to_remove))
+            .collect();
+        to_remove.extend(remove_left);
+        Some(Effect::Branch(condition, left, right))
+    } else if effect.referenced_variables().any(|v| to_remove.contains(v)) {
         to_remove.extend(effect.written_vars().map(|(v, _)| v).cloned());
         None
     } else {
