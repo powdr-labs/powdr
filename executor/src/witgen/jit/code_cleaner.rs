@@ -37,7 +37,7 @@ pub fn remove_machine_calls<T: FieldElement>(
     to_remove: &HashSet<(u64, i32)>,
 ) -> Vec<Effect<T, Variable>> {
     code.into_iter()
-        .filter_map(|effect| remove_machine_calls_from_effect(effect, &to_remove))
+        .filter_map(|effect| remove_machine_calls_from_effect(effect, to_remove))
         .collect()
 }
 

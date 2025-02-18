@@ -1,13 +1,13 @@
-use std::collections::{btree_map::Entry, BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_ast::analyzed::{ContainsNextRef, Identity, PolyID, PolynomialType};
+use powdr_ast::analyzed::{ContainsNextRef, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
     jit::{
-        code_cleaner, effect::format_code, identity_queue::QueueItem, processor::Processor,
+        code_cleaner, identity_queue::QueueItem, processor::Processor,
         prover_function_heuristics::decode_prover_functions,
     },
     machines::MachineParts,
@@ -259,7 +259,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
     ) -> impl Iterator<Item = (i32, i32)> + 'b {
         row_offsets.iter().copied().flat_map(|offset| {
             let other_offset = offset + self.block_size as i32;
-            row_offsets.contains(&other_offset).then(|| {
+            row_offsets.contains(&other_offset).then_some({
                 if offset >= 0 && offset < self.block_size as i32 {
                     (other_offset, offset)
                 } else {
