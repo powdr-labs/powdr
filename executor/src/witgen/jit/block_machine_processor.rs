@@ -180,8 +180,10 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         // that would otherwise destroy the block shape, as long as these assignments
         // are not required to compute the requested variables.
         let optional_vars = code_cleaner::optional_vars(&result.code, &requested_known);
-        let (vars_to_remove, machine_calls_to_remove) =
-            self.check_block_shape(&result.code, &optional_vars)?;
+        let ItemsToRemove {
+            vars_to_remove,
+            machine_calls_to_remove,
+        } = self.check_block_shape(&result.code, &optional_vars)?;
         result.code = code_cleaner::remove_variables(result.code, vars_to_remove);
         result.code = code_cleaner::remove_machine_calls(result.code, &machine_calls_to_remove);
 
@@ -197,7 +199,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         &self,
         code: &[Effect<T, Variable>],
         optional_vars: &HashSet<Variable>,
-    ) -> Result<(HashSet<Variable>, HashSet<(u64, i32)>), String> {
+    ) -> Result<ItemsToRemove, String> {
         let mut vars_to_remove = HashSet::new();
         let mut machine_calls_to_remove = HashSet::new();
         for (column_id, row_offsets) in written_rows_per_column(code) {
@@ -247,7 +249,10 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 }
             }
         }
-        Ok((vars_to_remove, machine_calls_to_remove))
+        Ok(ItemsToRemove {
+            vars_to_remove,
+            machine_calls_to_remove,
+        })
     }
 
     /// Returns a list of pairs of conflicting row offsets in `row_offsets`
@@ -268,6 +273,13 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             })
         })
     }
+}
+
+/// Helper struct to store the variables and machine calls to remove
+/// after a block shape check.
+struct ItemsToRemove {
+    vars_to_remove: HashSet<Variable>,
+    machine_calls_to_remove: HashSet<(u64, i32)>,
 }
 
 /// Returns, for each column ID, the collection of row offsets that have a cell write.
