@@ -1,18 +1,13 @@
 use std::{collections::HashMap, sync::Mutex};
 
 use lazy_static::lazy_static;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, PolynomialIdentity,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, PolynomialIdentity};
 use powdr_number::FieldElement;
 
 use crate::witgen::data_structures::mutable_state::MutableState;
-use crate::{
-    witgen::{global_constraints::CombinedRangeConstraintSet, EvalError},
-    Identity,
-};
+use crate::witgen::{global_constraints::CombinedRangeConstraintSet, EvalError};
 
+use super::data_structures::identity::Identity;
 use super::{
     affine_expression::AlgebraicVariable, processor::OuterQuery, rows::RowPair, EvalResult,
     EvalValue, IncompleteCause, QueryCallback,
@@ -42,12 +37,11 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
     ) -> EvalResult<'a, T> {
         let result = match identity {
             Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
-            Identity::Lookup(LookupIdentity { left, id, .. })
-            | Identity::Permutation(PermutationIdentity { left, id, .. })
-            | Identity::PhantomLookup(PhantomLookupIdentity { left, id, .. })
-            | Identity::PhantomPermutation(PhantomPermutationIdentity { left, id, .. }) => {
-                self.process_lookup_or_permutation(*id, left, rows)
-            }
+            Identity::BusSend(bus_interaction) => self.process_lookup_or_permutation(
+                bus_interaction.identity_id,
+                &bus_interaction.selected_payload,
+                rows,
+            ),
             Identity::Connect(..) => {
                 // TODO this is not the right cause.
                 Ok(EvalValue::incomplete(IncompleteCause::SolvingFailed))
@@ -55,8 +49,6 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
                 //     "Identity of kind {kind:?} is not supported by the identity processor."
                 // )
             }
-            // TODO(bus_interaction)
-            Identity::PhantomBusInteraction(..) => Ok(EvalValue::complete(Vec::new())),
         };
         report_identity_solving(identity, &result);
         result
@@ -83,7 +75,17 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
             return Ok(status);
         }
 
-        self.mutable_state.call(id, rows)
+        let left = match left
+            .expressions
+            .iter()
+            .map(|e| rows.evaluate(e))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(expressions) => expressions,
+            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
+        };
+
+        self.mutable_state.call(id, &left, rows)
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.
@@ -110,11 +112,11 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
             .ok_or(EvalError::Generic("Selector is not 1!".to_string()))?;
 
         let range_constraint =
-            CombinedRangeConstraintSet::new(outer_query.caller_rows, current_rows);
+            CombinedRangeConstraintSet::new(outer_query.range_constraints, current_rows);
 
         let mut updates = EvalValue::complete(vec![]);
 
-        for (l, r) in outer_query.left.iter().zip(right.expressions.iter()) {
+        for (l, r) in outer_query.arguments.iter().zip(right.expressions.iter()) {
             match current_rows.evaluate(r) {
                 Ok(r) => {
                     let result = (l.clone() - r).solve_with_range_constraints(&range_constraint)?;

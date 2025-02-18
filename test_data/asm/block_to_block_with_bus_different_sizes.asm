@@ -1,5 +1,5 @@
-use std::protocols::bus::bus_receive;
-use std::protocols::bus::bus_send;
+use std::protocols::bus::bus;
+use std::protocols::bus::BusInteraction;
 use std::prelude::Query;
 use std::prover::challenge;
 
@@ -18,7 +18,9 @@ machine Arith with
 
     let used = std::array::sum(sel);
 
-    bus_receive(ARITH_INTERACTION_ID, [0, x, y, z], latch * used, latch);
+    col witness bus_selector;
+    std::utils::force_bool(bus_selector);
+    bus(BusInteraction::Receive(ARITH_INTERACTION_ID, [0, x, y, z], latch * bus_selector, latch * bus_selector));
 
     // TODO: Expose final value of acc as public.
 
@@ -32,9 +34,9 @@ machine Arith with
 
 machine Main with
     // HACK: We need to provide a range here, because otherwise the linker will set all machines to the same degree.
-    // Witgen will choose the degree 8.
-    min_degree: 4,
-    max_degree: 8,
+    // Witgen will choose the degree 4.
+    min_degree: 2,
+    max_degree: 4,
     latch: latch,
     operation_id: operation_id
 {
@@ -50,7 +52,7 @@ machine Main with
     // Need a constraint so that it's not optimized away
     dummy = dummy';
 
-    bus_send(ARITH_INTERACTION_ID, [0, x, y, z], instr_add);
+    bus(BusInteraction::Send(ARITH_INTERACTION_ID, [0, x, y, z], instr_add));
 
     // TODO: Expose final value of acc as public.
 

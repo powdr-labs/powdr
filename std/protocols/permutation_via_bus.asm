@@ -1,25 +1,21 @@
-use std::protocols::bus::bus_send;
-use std::protocols::bus::bus_receive;
-use std::protocols::permutation::unpack_permutation_constraint;
-use std::constraints::to_phantom_permutation;
+use std::protocols::bus::bus;
+use std::protocols::bus::bus_multi;
+use std::protocols::bus::BusInteraction;
+use std::array;
 
-
-/// Given an ID and permutation constraints, sends the (ID, permutation_constraint.lhs...) tuple to the bus
-/// if permutation_constraint.lhs_selector is 1.
-let permutation_send: expr, Constr -> () = constr |id, permutation_constraint| {
-    let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
-
-    bus_send(id, lhs, lhs_selector);
+/// Given an ID, selector, and tuple, receives (ID, ...tuple) tuple from the bus
+/// with multiplicity 1 if the selector is 1.
+let permutation_receive: expr, expr, expr[] -> () = constr |id, selector, tuple| {
+    bus(BusInteraction::Receive(id, tuple, selector, selector));
 };
 
-/// Given an ID and permutation constraints, receives the (ID, permutation_constraint.rhs...) tuple from the bus
-/// with a prover-provided multiplicity if permutation_constraint.rhs_selector is 1.
-/// Also adds an annotation for witness generation.
-let permutation_receive: expr, Constr -> () = constr |id, permutation_constraint| {
-    let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
-    
-    bus_receive(id, rhs, rhs_selector, rhs_selector);
-    
-    // Add an annotation for witness generation
-    to_phantom_permutation(permutation_constraint);
+/// Batched version of `permutation_receive` that uses the more column-saving `bus_multi`.
+/// Ideally, should use `bus_multi` to batch both lookup and permutation receives.
+/// Note that we cannot input BusInteraction::Receive, which is defined differently.
+let permutation_multi_receive: (expr, expr, expr[])[] -> () = constr |inputs| {
+    let inputs_inner = array::fold(inputs, [], |acc, input| {
+        let (id, selector, tuple) = input;
+        acc + [BusInteraction::Receive(id, tuple, selector, selector)]
+    });
+    bus_multi(inputs_inner);
 };

@@ -1,22 +1,19 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::super::affine_expression::AffineExpression;
-use super::{Connection, EvalResult, FixedData, LookupCell};
+use super::{EvalResult, FixedData, LookupCell};
 use super::{Machine, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
+use crate::witgen::data_structures::identity::Identity;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::evaluators::fixed_evaluator::FixedEvaluator;
 use crate::witgen::evaluators::partial_expression_evaluator::PartialExpressionEvaluator;
 use crate::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
-use crate::witgen::rows::RowPair;
+use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause, QueryCallback};
-use crate::Identity;
 use itertools::Itertools;
 use num_traits::One;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, LookupIdentity, PhantomLookupIdentity,
-    PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 
 /// A machine that can support a lookup in a set of columns that are sorted
@@ -29,7 +26,6 @@ use powdr_number::{DegreeType, FieldElement};
 pub struct SortedWitnesses<'a, T: FieldElement> {
     degree: DegreeType,
     rhs_references: BTreeMap<u64, Vec<&'a AlgebraicReference>>,
-    connections: BTreeMap<u64, Connection<'a, T>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
@@ -44,7 +40,11 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        if parts.identities.len() != 1 {
+        let mut identities_iter = parts.identities.iter();
+        let identity = identities_iter.next()?;
+
+        if identities_iter.next().is_some() {
+            // Expecting exactly one identity
             return None;
         }
         if parts.connections.is_empty() {
@@ -53,7 +53,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
 
         let degree = parts.common_degree_range().max;
 
-        check_identity(fixed_data, parts.identities.first().unwrap(), degree).and_then(|key_col| {
+        check_identity(fixed_data, identity, degree).and_then(|key_col| {
             let witness_positions = parts
                 .witnesses
                 .iter()
@@ -98,7 +98,6 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
             Some(SortedWitnesses {
                 degree,
                 rhs_references,
-                connections: parts.connections.clone(),
                 name,
                 key_col,
                 witness_positions,
@@ -115,13 +114,18 @@ fn check_identity<T: FieldElement>(
     degree: DegreeType,
 ) -> Option<PolyID> {
     // Looking for a lookup
-    let (left, right) = match id {
-        Identity::Lookup(LookupIdentity { left, right, .. })
-        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => (left, right),
+    let send = match id {
+        Identity::BusSend(bus_interaction) => bus_interaction,
         _ => return None,
     };
+    let receive = send.try_match_static(&fixed_data.bus_receives)?;
+    if !receive.has_arbitrary_multiplicity() {
+        return None;
+    }
 
     // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
+    let left = &send.selected_payload;
+    let right = &receive.selected_payload;
     if !right.selector.is_one() || left.expressions.len() != 1 {
         return None;
     }
@@ -216,9 +220,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
         &mut self,
         _mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        _range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, caller_rows)
+        self.process_plookup_internal(identity_id, arguments)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -256,21 +261,15 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     fn process_plookup_internal(
         &mut self,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
     ) -> EvalResult<'a, T> {
-        let left = self.connections[&identity_id]
-            .left
-            .expressions
-            .iter()
-            .map(|e| caller_rows.evaluate(e).unwrap())
-            .collect::<Vec<_>>();
         let rhs = self.rhs_references.get(&identity_id).unwrap();
         let key_index = rhs.iter().position(|&x| x.poly_id == self.key_col).unwrap();
 
-        let key_value = left[key_index].constant_value().ok_or_else(|| {
+        let key_value = arguments[key_index].constant_value().ok_or_else(|| {
             format!(
                 "Value of unique key must be known: {} = {}",
-                left[key_index], rhs[key_index]
+                arguments[key_index], rhs[key_index]
             )
         })?;
 
@@ -279,7 +278,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
             .data
             .entry(key_value)
             .or_insert_with(|| vec![None; self.witness_positions.len()]);
-        for (l, &r) in left.iter().zip(rhs.iter()).skip(1) {
+        for (l, &r) in arguments.iter().zip(rhs.iter()).skip(1) {
             let stored_value = &mut stored_values[self.witness_positions[&r.poly_id]];
             match stored_value {
                 // There is a stored value

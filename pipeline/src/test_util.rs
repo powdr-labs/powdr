@@ -2,6 +2,7 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_linker::{DegreeMode, LinkerMode, LinkerParams};
 use powdr_number::{
     BabyBearField, BigInt, Bn254Field, FieldElement, GoldilocksField, KoalaBearField,
+    Mersenne31Field,
 };
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use std::env;
@@ -583,6 +584,8 @@ pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(Str
     assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness);
     #[cfg(feature = "halo2")]
     assert_proofs_fail_for_invalid_witnesses_halo2(file_name, witness);
+    #[cfg(feature = "stwo")]
+    assert_proofs_fail_for_invalid_witnesses_stwo(file_name, witness);
 }
 
 pub fn run_reparse_test(file: &str) {
@@ -613,8 +616,6 @@ pub fn run_reparse_test_with_blacklist(file: &str, blacklist: &[&str]) {
         .unwrap();
 }
 
-#[cfg(feature = "stwo")]
-use powdr_number::Mersenne31Field;
 #[cfg(feature = "stwo")]
 pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
     let backend = powdr_backend::BackendType::Stwo;
@@ -651,6 +652,40 @@ pub fn assert_proofs_fail_for_invalid_witnesses_stwo(
         .is_err());
 }
 
+#[cfg(feature = "stwo")]
+pub fn test_stwo_pipeline(pipeline: Pipeline<Mersenne31Field>) {
+    let mut pipeline = pipeline.with_backend(powdr_backend::BackendType::Stwo, None);
+
+    let proof = pipeline.compute_proof().cloned().unwrap();
+    let publics: Vec<Mersenne31Field> = pipeline
+        .publics()
+        .clone()
+        .unwrap()
+        .iter()
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
+        .collect();
+    pipeline.verify(&proof, &[publics]).unwrap();
+}
+
+#[cfg(feature = "stwo")]
+pub fn test_stwo_stage1_public(
+    file_name: &str,
+    inputs: Vec<Mersenne31Field>,
+    publics: Vec<Mersenne31Field>,
+    _valid: bool,
+) {
+    let backend = powdr_backend::BackendType::Stwo;
+
+    let mut pipeline = Pipeline::default()
+        .with_tmp_output()
+        .from_file(resolve_test_file(file_name))
+        .with_prover_inputs(inputs)
+        .with_backend(backend, None);
+
+    let proof = pipeline.compute_proof().cloned().unwrap();
+    pipeline.verify(&proof, &[publics]).unwrap();
+}
+
 #[cfg(not(feature = "stwo"))]
 pub fn assert_proofs_fail_for_invalid_witnesses_stwo(
     _file_name: &str,
@@ -660,3 +695,16 @@ pub fn assert_proofs_fail_for_invalid_witnesses_stwo(
 
 #[cfg(not(feature = "stwo"))]
 pub fn test_stwo(_file_name: &str, _inputs: Vec<u32>) {}
+
+#[cfg(not(feature = "stwo"))]
+pub fn test_stwo_stage1_public(
+    _file_name: &str,
+    _inputs: Vec<u32>,
+    _publics: Vec<Mersenne31Field>,
+    valid: bool,
+) {
+    assert!(valid);
+}
+
+#[cfg(not(feature = "stwo"))]
+pub fn test_stwo_pipeline(_pipeline: Pipeline<Mersenne31Field>) {}

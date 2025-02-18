@@ -1,24 +1,34 @@
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicUnaryOperation, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, PolynomialIdentity, PolynomialType, SelectedExpressions,
+    AlgebraicUnaryOperation, PolynomialIdentity, PolynomialType, SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::range_constraints::RangeConstraint;
+use crate::witgen::{
+    data_structures::identity::{BusSend, Identity},
+    range_constraints::RangeConstraint,
+};
 
 use super::{
     variable::Variable,
     witgen_inference::{FixedEvaluator, WitgenInference},
 };
 
-/// Returns a human-readable summary of the identities.
-pub fn format_identities<T: FieldElement, FixedEval: FixedEvaluator<T>>(
+/// Returns a human-readable summary of the polynomial identities.
+pub fn format_polynomial_identities<T: FieldElement, FixedEval: FixedEvaluator<T>>(
     identities: &[(&Identity<T>, i32)],
     witgen: &WitgenInference<'_, T, FixedEval>,
 ) -> String {
-    DebugFormatter { identities, witgen }.format_identities()
+    DebugFormatter { identities, witgen }.format_polynomial_identities()
+}
+
+/// Returns a human-readable summary of incomplete bus sends.
+pub fn format_incomplete_bus_sends<T: FieldElement, FixedEval: FixedEvaluator<T>>(
+    identities: &[(&Identity<T>, i32)],
+    witgen: &WitgenInference<'_, T, FixedEval>,
+) -> String {
+    DebugFormatter { identities, witgen }.format_incomplete_bus_sends()
 }
 
 struct DebugFormatter<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
@@ -27,10 +37,54 @@ struct DebugFormatter<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
 }
 
 impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedEval> {
-    fn format_identities(&self) -> String {
+    fn format_polynomial_identities(&self) -> String {
         self.identities
             .iter()
-            .filter(|(id, row)| !self.witgen.is_complete(id, *row))
+            .filter(|(id, _)| matches!(id, Identity::Polynomial(_)))
+            .sorted_by_key(|(id, row)| (row, id.id()))
+            .flat_map(|(id, row)| {
+                let (skip, conflicting) = match &id {
+                    Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
+                        let value = self
+                            .witgen
+                            .evaluate(expression, *row)
+                            .and_then(|v| v.try_to_known().cloned());
+                        let conflict = value
+                            .as_ref()
+                            .and_then(|v| v.try_to_number().map(|n| n != 0.into()))
+                            .unwrap_or(false);
+                        // We can skip the identity if it does not have unknown variables
+                        // but only if there is no conflict.
+                        (value.is_some() && !conflict, conflict)
+                    }
+                    _ => unreachable!(),
+                };
+                if skip {
+                    None
+                } else {
+                    Some(format!(
+                        "{}--------------[ identity {} on row {row}: ]--------------\n{}",
+                        if conflicting {
+                            "--------------[ !!! CONFLICT !!! ]--------------\n"
+                        } else {
+                            ""
+                        },
+                        id.id(),
+                        self.format_identity(id, *row)
+                    ))
+                }
+            })
+            .join("\n")
+    }
+
+    fn format_incomplete_bus_sends(&self) -> String {
+        self.identities
+            .iter()
+            .filter(|(id, row)| match id {
+                Identity::BusSend(..) => !self.witgen.is_complete_call(id, *row),
+                Identity::Connect(..) => true,
+                Identity::Polynomial(..) => false,
+            })
             .sorted_by_key(|(id, row)| (row, id.id()))
             .map(|(id, row)| {
                 format!(
@@ -46,14 +100,12 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     /// about the sub-expressions as possible.
     fn format_identity(&self, identity: &Identity<T>, row_offset: i32) -> String {
         match identity {
-            Identity::Lookup(LookupIdentity { left, .. })
-            | Identity::Permutation(PermutationIdentity { left, .. })
-            | Identity::PhantomPermutation(PhantomPermutationIdentity { left, .. })
-            | Identity::PhantomLookup(PhantomLookupIdentity { left, .. }) => {
-                self.format_connection(left, row_offset)
+            Identity::BusSend(BusSend {
+                selected_payload, ..
+            }) => self.format_bus_send(selected_payload, row_offset),
+            Identity::Connect(_) => {
+                format!("{identity}")
             }
-            // TODO(bus_interaction)
-            Identity::PhantomBusInteraction(_) | Identity::Connect(_) => format!("{identity}"),
             Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                 if let Expression::BinaryOperation(AlgebraicBinaryOperation {
                     left,
@@ -73,9 +125,14 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
         }
     }
 
-    fn format_connection(&self, left: &SelectedExpressions<T>, row_offset: i32) -> String {
-        let sel = self.format_expression_full_and_simplified(&left.selector, row_offset);
-        let exprs = left
+    fn format_bus_send(
+        &self,
+        selected_payload: &SelectedExpressions<T>,
+        row_offset: i32,
+    ) -> String {
+        let sel =
+            self.format_expression_full_and_simplified(&selected_payload.selector, row_offset);
+        let exprs = selected_payload
             .expressions
             .iter()
             .map(|e| self.format_expression_full_and_simplified(e, row_offset))
@@ -83,7 +140,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
                 let lines = a.into_iter().zip(b).enumerate();
                 lines
                     .map(|(i, (a, b))| {
-                        let comma = if i == 0 { "," } else { " " };
+                        let comma = if i % 3 == 0 { "," } else { " " };
                         format!("{a}{comma} {b}")
                     })
                     .collect_vec()
@@ -95,7 +152,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
             .zip(exprs)
             .enumerate()
             .map(|(i, (sel, exprs))| {
-                if i == 0 {
+                if i % 3 == 0 {
                     format!("{sel} $ [ {exprs} ]")
                 } else {
                     format!("{sel}     {exprs}  ")
@@ -127,7 +184,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     ) -> [String; 6] {
         let full = self.format_expression(e, row_offset, false);
         let simplified = self.format_expression(e, row_offset, true);
-        pad_center([full, simplified].concat().try_into().unwrap())
+        [full, simplified].concat().try_into().unwrap()
     }
 
     /// Returns three formatted strings of the same length.

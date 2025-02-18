@@ -1,17 +1,20 @@
 use itertools::Itertools;
-use powdr_ast::analyzed::Identity;
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap};
 
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
+use crate::witgen::data_structures::identity::Identity;
 use crate::witgen::data_structures::mutable_state::MutableState;
+use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::machines::{Machine, MachineParts};
 use crate::witgen::processor::SolverState;
-use crate::witgen::rows::{Row, RowIndex, RowPair};
+use crate::witgen::rows::{Row, RowIndex};
 use crate::witgen::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use crate::witgen::vm_processor::VmProcessor;
-use crate::witgen::{EvalError, EvalResult, FixedData, QueryCallback};
+use crate::witgen::{
+    AffineExpression, AlgebraicVariable, EvalError, EvalResult, FixedData, QueryCallback,
+};
 
 use super::LookupCell;
 
@@ -55,7 +58,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for SecondStageMachine<'a, T> {
         &mut self,
         _mutable_state: &MutableState<'a, T, Q>,
         _identity_id: u64,
-        _caller_rows: &'b RowPair<'b, 'a, T>,
+        _arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        _range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         panic!("SecondStageMachine can't be called by other machines!")
     }

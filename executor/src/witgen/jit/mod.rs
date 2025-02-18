@@ -4,6 +4,7 @@ mod compiler;
 mod debug_formatter;
 mod effect;
 pub(crate) mod function_cache;
+mod identity_queue;
 mod interpreter;
 pub(crate) mod processor;
 mod prover_function_heuristics;

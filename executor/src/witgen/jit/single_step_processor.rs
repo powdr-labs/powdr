@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, PolyID, PolynomialType,
+    AlgebraicExpression as Expression, AlgebraicReference, ContainsNextRef, PolyID, PolynomialType,
 };
 use powdr_number::{FieldElement, KnownField};
 
@@ -17,7 +17,9 @@ use crate::witgen::{
 use super::{
     compiler::WitgenFunction,
     effect::Effect,
+    identity_queue::QueueItem,
     processor::Processor,
+    prover_function_heuristics::decode_prover_functions,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -111,6 +113,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         &self,
         can_process: impl CanProcessCall<T>,
     ) -> Result<Vec<Effect<T, Variable>>, String> {
+        let intermediate_definitions = self.fixed_data.analyzed.intermediate_definitions();
         let all_witnesses = self
             .machine_parts
             .witnesses
@@ -130,7 +133,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             .identities
             .iter()
             .flat_map(|&id| {
-                if id.contains_next_ref() {
+                if id.contains_next_ref(&intermediate_definitions) {
                     vec![(id, 0)]
                 } else {
                     // Process it on both rows, but mark it as complete on row 0,
@@ -144,20 +147,17 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         let witgen =
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
 
-        // let prover_assignments = decode_simple_prover_functions(&self.machine_parts)
-        //     .into_iter()
-        //     .map(|(col_name, value)| (self.column(&col_name), value))
-        //     .collect_vec();
-
-        // // TODO we should only do it if other methods fail, because it is "provide_if_unknown"
-        // for (col, value) in &prover_assignments {
-        //     witgen.assign_constant(col, 1, *value);
-        // }
+        let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?
+            .into_iter()
+            // Process prover functions only on the next row.
+            .map(|f| QueueItem::ProverFunction(f, 1))
+            .collect_vec();
 
         Processor::new(
             self.fixed_data,
             self,
             identities,
+            prover_functions,
             requested_known,
             SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
@@ -237,9 +237,8 @@ mod test {
         let (analyzed, fixed_col_vals) = read_pil(input_pil);
 
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
-        let (fixed_data, retained_identities) =
-            global_constraints::set_global_constraints(fixed_data, &analyzed.identities);
-        let machines = MachineExtractor::new(&fixed_data).split_out_machines(retained_identities);
+        let fixed_data = global_constraints::set_global_constraints(fixed_data);
+        let machines = MachineExtractor::new(&fixed_data).split_out_machines();
         let [KnownMachine::DynamicMachine(machine)] = machines
             .iter()
             .filter(|m| m.name().contains(machine_name))
@@ -328,12 +327,12 @@ Run with RUST_LOG=trace to see the code generated so far."
         assert_eq!(
             format_code(&code),
             "\
-VM::pc[1] = (VM::pc[0] + 1);
-call_var(1, 0, 0) = VM::pc[0];
 call_var(1, 0, 1) = VM::instr_add[0];
 call_var(1, 0, 2) = VM::instr_mul[0];
-VM::B[1] = VM::B[0];
+call_var(1, 0, 0) = VM::pc[0];
+VM::pc[1] = (VM::pc[0] + 1);
 call_var(1, 1, 0) = VM::pc[1];
+VM::B[1] = VM::B[0];
 machine_call(1, [Known(call_var(1, 1, 0)), Unknown(call_var(1, 1, 1)), Unknown(call_var(1, 1, 2))]);
 VM::instr_add[1] = call_var(1, 1, 1);
 VM::instr_mul[1] = call_var(1, 1, 2);
@@ -371,12 +370,12 @@ if (VM::instr_add[0] == 1) {
         assert_eq!(
             format_code(&code),
             "\
-VM::pc[1] = VM::pc[0];
-call_var(2, 0, 0) = VM::pc[0];
-call_var(2, 0, 1) = 0;
+call_var(2, 0, 1) = VM::instr_add[0];
 call_var(2, 0, 2) = VM::instr_mul[0];
-VM::instr_add[1] = 0;
+call_var(2, 0, 0) = VM::pc[0];
+VM::pc[1] = VM::pc[0];
 call_var(2, 1, 0) = VM::pc[1];
+VM::instr_add[1] = 0;
 call_var(2, 1, 1) = 0;
 call_var(2, 1, 2) = 1;
 machine_call(2, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(call_var(2, 1, 2))]);
@@ -412,14 +411,22 @@ VM::instr_mul[1] = 1;"
         match generate_single_step(input, "Main") {
             Ok(_) => panic!("Expected error"),
             Err(e) => {
+                let start = e
+                    .find("The following machine calls have not been fully processed:")
+                    .unwrap();
+                let end = e.find("Generated code so far:").unwrap();
                 let expected = "\
-  Main::is_arith $ [ Main::a, Main::b, Main::c ]
-       ???              2       ???      ???    
-                                                
-  Main::is_arith        2     Main::b  Main::c  
-       ???                      ???      ???";
-                assert!(
-                    e.contains(expected),
+The following machine calls have not been fully processed:
+--------------[ identity 1 on row 1: ]--------------
+Main::is_arith $ [ Main::a, Main::b, Main::c ]
+     ???              2       ???      ???    
+                                              
+Main::is_arith $ [ 2, Main::b, Main::c ]
+     ???                ???      ???    
+                                        \n";
+                assert_eq!(
+                    &e[start..end],
+                    expected,
                     "Error did not contain expected substring. Error:\n{e}\nExpected substring:\n{expected}"
                 );
             }

@@ -59,6 +59,9 @@ machine Arith with
     pol commit y1[16], y2[16], y3[16];
     pol commit s[16], q0[16], q1[16], q2[16];
 
+    let limbs_to_int: fe[] -> int = |limbs| array::sum(array::map_enumerated(limbs, |i, limb| int(limb) << (i * 16)));
+    let limbs_to_ints: fe[] -> int[] = |l| array::new(array::len(l) / 16, |i| limbs_to_int(array::sub_array(l, i * 16, 16)));
+
     // Selects the ith limb of x (little endian)
     // Note that the most significant limb can be up to 32 bits; all others are 16 bits.
     let select_limb = |x, i| if i >= 0 {
@@ -66,83 +69,73 @@ machine Arith with
     } else {
         0
     };
+    let int_to_limbs: int -> fe[] = |x| array::new(16, |i| fe(select_limb(x, i)));
 
-    let limbs_to_int: expr[] -> int = query |limbs| array::sum(array::map_enumerated(limbs, |i, limb| int(eval(limb)) << (i * 16)));
-
-    let x1_int = query || limbs_to_int(x1);
-    let y1_int = query || limbs_to_int(y1);
-    let x2_int = query || limbs_to_int(x2);
-    let y2_int = query || limbs_to_int(y2);
-    let x3_int = query || limbs_to_int(x3);
-    let y3_int = query || limbs_to_int(y3);
-    let s_int = query || limbs_to_int(s);
-
-    let get_operation = query || match eval(operation_id) {
-        1 => "affine_256",
-        10 => "ec_add",
-        12 => "ec_double",
-        _ => panic("Unknown operation")
-    };
-
-
-    let provide_values = query |column_arr, row, value| {
-        let _ = array::map_enumerated(column_arr, |j, column| std::prover::provide_value(column, row, fe(select_limb(value, j))));
-    };
-    query |i| {
-        let op = get_operation();
-        match op {
-            "affine_256" =>  {
-                match std::prover::try_eval(y1[0]) {
-                    Option::Some(_) => {
-                        // y1 is an input, in this case we do not need a hint.
-                    },
-                    Option::None => {
-                        // y1 is not an input, which means we are probably computing
-                        // division or modulo.
-                        let y2 = y2_int();
-                        let y3 = y3_int();
-                        let x1 = x1_int();
-                        let dividend = (y2 << 256) + y3;
-                        provide_values(y1, i, dividend / x1);
-                        provide_values(x2, i, dividend % x1);
-                    }
-                }
+    // Prover function in case we are computing division or modulo (y1 is not an input).
+    query |i| std::prover::compute_from_multi_if(
+        operation_id = 1,
+        y1 + x2,
+        i,
+        y2 + y3 + x1,
+        |values| match limbs_to_ints(values) {
+            [y2, y3, x1] => {
+                let dividend = (y2 << 256) + y3;
+                int_to_limbs(dividend / x1) + int_to_limbs(dividend % x1)
             },
-            _ => {
-                let y1 = y1_int();
-                // y2 is unused for ec_double
-                let y2 = if op == "ec_add" { y2_int() } else { 0 };
-                let x1 = x1_int();
-                let x2 = x2_int();
-                let s_val = if op == "ec_add" {
-                    div(sub(y2, y1), sub(x2, x1))
-                } else {
-                    div(mul(3, mul(x1, x1)), mul(2, y1))
-                };
-                provide_values(s, i, s_val);
+            _ => panic("Unexpected number of values")
+        }
+    );
+
+    // Prover function for elliptic curve addition.
+    query |i| std::prover::compute_from_multi_if(
+        operation_id = 10, // ec_add
+        s + q0 + q1 + q2 + x3 + y3,
+        i,
+        x1 + x2 + y1 + y2,
+        |values| match limbs_to_ints(values) {
+            [x1, x2, y1, y2] => {
+                let s = div(sub(y2, y1), sub(x2, x1));
                 // Compute quotients.
                 // Note that we add 2**258 to it, to move it from the (-2**258, 2**258) to the (0, 2**259) range, so it can
                 // be represented as an unsigned 272-bit integer.
                 // See the comment for `product_with_p` below.
-                let q0_val = if op == "ec_add" {
-                    -(s_val * x2 - s_val * x1 - y2 + y1) / secp_modulus + (1 << 258)
-                } else {
-                    -(2 * s_val * y1 - 3 * x1 * x1) / secp_modulus + (1 << 258)
-                };
-                provide_values(q0, i, q0_val);
-
+                let q0 = -(s * x2 - s * x1 - y2 + y1) / secp_modulus + (1 << 258);
                 // Adding secp_modulus to make sure that all numbers are positive when % is applied to it.
-                let x3_val = (s_val * s_val - x1 - x2 + 2 * secp_modulus) % secp_modulus;
-                provide_values(x3, i, x3_val);
-                let y3_val = (s_val * ((x1 - x3_val) + secp_modulus) - y1 + secp_modulus) % secp_modulus;
-                provide_values(y3, i, y3_val);
-
-                provide_values(q1, i, -(s_val * s_val - x1 - x2 - x3_val) / secp_modulus + (1 << 258));
-                provide_values(q2, i, -(s_val * x1 - s_val * x3_val - y1 - y3_val) / secp_modulus + (1 << 258));
+                let x3 = (s * s - x1 - x2 + 2 * secp_modulus) % secp_modulus;
+                let y3 = (s * ((x1 - x3) + secp_modulus) - y1 + secp_modulus) % secp_modulus;
+                let q1 = -(s * s - x1 - x2 - x3) / secp_modulus + (1 << 258);
+                let q2 = -(s * x1 - s * x3 - y1 - y3) / secp_modulus + (1 << 258);
+                int_to_limbs(s) + int_to_limbs(q0) + int_to_limbs(q1) + int_to_limbs(q2) + int_to_limbs(x3) + int_to_limbs(y3)
             },
-        };
-    };
-
+            _ => panic("Unexpected number of values")
+        }
+    );
+    
+    // Prover function for elliptic curve doubling.
+    query |i| std::prover::compute_from_multi_if(
+        operation_id = 12, // ec_double
+        s + q0 + q1 + q2 + x3 + y3,
+        i,
+        x1 + x2 + y1,
+        |values| match limbs_to_ints(values) {
+            [x1, x2, y1] => {
+                let s = div(mul(3, mul(x1, x1)), mul(2, y1));
+                // Compute quotients.
+                // Note that we add 2**258 to it, to move it from the (-2**258, 2**258) to the (0, 2**259) range, so it can
+                // be represented as an unsigned 272-bit integer.
+                // See the comment for `product_with_p` below.
+                let q0 = -(2 * s * y1 - 3 * x1 * x1) / secp_modulus + (1 << 258);
+                // Adding secp_modulus to make sure that all numbers are positive when % is applied to it.
+                let x3 = (s * s - x1 - x2 + 2 * secp_modulus) % secp_modulus;
+                let y3 = (s * ((x1 - x3) + secp_modulus) - y1 + secp_modulus) % secp_modulus;
+                let q1 = -(s * s - x1 - x2 - x3) / secp_modulus + (1 << 258);
+                let q2 = -(s * x1 - s * x3 - y1 - y3) / secp_modulus + (1 << 258);
+                int_to_limbs(s) + int_to_limbs(q0) + int_to_limbs(q1) + int_to_limbs(q2) + int_to_limbs(x3) + int_to_limbs(y3)
+            },
+            _ => panic("Unexpected number of values")
+        }
+    );
+    
     let combine: expr[] -> expr[] = |x| array::new(array::len(x) / 2, |i| x[2 * i + 1] * 2**16 + x[2 * i]);
     // Intermediate polynomials, arrays of 8 columns, 32 bit per column.
     col x1c[8] = combine(x1);

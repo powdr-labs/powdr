@@ -14,7 +14,6 @@ use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
 use crate::witgen::jit::witgen_inference::CanProcessCall;
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::range_constraints::RangeConstraint;
-use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause, QueryCallback};
 use crate::witgen::{EvalResult, FixedData};
@@ -47,7 +46,7 @@ impl<T> IndexValue<T> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Hash, Eq, PartialEq, Ord, PartialOrd, Clone)]
 enum FixedColOrConstant<T, C> {
     FixedCol(C),
     Constant(T),
@@ -66,6 +65,36 @@ impl<T: Clone> TryFrom<&AlgebraicExpression<T>> for FixedColOrConstant<T, PolyID
                 AlgebraicExpression::Number(c) => Ok(FixedColOrConstant::Constant(c.clone())),
                 _ => Err(()),
             })
+    }
+}
+
+impl<T: FieldElement> FixedColOrConstant<T, PolyID> {
+    fn into_values<'a>(self, fixed_data: &'a FixedData<T>) -> FixedColOrConstant<T, &'a [T]> {
+        match self {
+            FixedColOrConstant::FixedCol(poly_id) => {
+                FixedColOrConstant::FixedCol(fixed_data.fixed_cols[&poly_id].values_max_size())
+            }
+            FixedColOrConstant::Constant(c) => FixedColOrConstant::Constant(c),
+        }
+    }
+}
+
+impl<T: FieldElement> FixedColOrConstant<T, &[T]> {
+    fn degree(&self) -> Option<usize> {
+        match self {
+            FixedColOrConstant::FixedCol(values) => Some(values.len()),
+            FixedColOrConstant::Constant(_) => None,
+        }
+    }
+}
+
+impl<T: FieldElement> std::ops::Index<usize> for FixedColOrConstant<T, &[T]> {
+    type Output = T;
+    fn index(&self, row: usize) -> &Self::Output {
+        match self {
+            FixedColOrConstant::FixedCol(values) => &values[row],
+            FixedColOrConstant::Constant(c) => c,
+        }
     }
 }
 
@@ -108,31 +137,18 @@ fn create_index<T: FieldElement>(
     // get all values for the columns to be indexed
     let input_column_values = input_fixed_columns
         .into_iter()
-        .map(|id| match id {
-            FixedColOrConstant::FixedCol(poly_id) => {
-                FixedColOrConstant::FixedCol(fixed_data.fixed_cols[&poly_id].values_max_size())
-            }
-            FixedColOrConstant::Constant(c) => FixedColOrConstant::Constant(c),
-        })
+        .map(|col| col.into_values(fixed_data))
         .collect::<Vec<_>>();
 
     let output_column_values = output_fixed_columns
         .into_iter()
-        .map(|id| match id {
-            FixedColOrConstant::FixedCol(poly_id) => {
-                FixedColOrConstant::FixedCol(fixed_data.fixed_cols[&poly_id].values_max_size())
-            }
-            FixedColOrConstant::Constant(c) => FixedColOrConstant::Constant(c),
-        })
+        .map(|col| col.into_values(fixed_data))
         .collect::<Vec<_>>();
 
     let degree = input_column_values
         .iter()
         .chain(output_column_values.iter())
-        .filter_map(|p| match p {
-            FixedColOrConstant::FixedCol(values) => Some(values.len()),
-            FixedColOrConstant::Constant(_) => None,
-        })
+        .filter_map(|p| p.degree())
         .unique()
         .exactly_one()
         .expect("all columns in a given lookup are expected to have the same degree");
@@ -146,18 +162,12 @@ fn create_index<T: FieldElement>(
             |(mut acc, mut set), row| {
                 let input: Vec<_> = input_column_values
                     .iter()
-                    .map(|column| match column {
-                        FixedColOrConstant::FixedCol(values) => values[row],
-                        FixedColOrConstant::Constant(c) => *c,
-                    })
+                    .map(|column| column[row])
                     .collect();
 
                 let output: Vec<_> = output_column_values
                     .iter()
-                    .map(|column| match column {
-                        FixedColOrConstant::FixedCol(values) => values[row],
-                        FixedColOrConstant::Constant(c) => *c,
-                    })
+                    .map(|column| column[row])
                     .collect();
 
                 let input_output = (input, output);
@@ -196,6 +206,7 @@ fn create_index<T: FieldElement>(
 pub struct FixedLookup<'a, T: FieldElement> {
     global_constraints: GlobalConstraints<T>,
     indices: HashMap<Application, Index<T>>,
+    range_constraint_indices: BTreeMap<RangeConstraintCacheKey<T>, Option<Vec<RangeConstraint<T>>>>,
     connections: BTreeMap<u64, Connection<'a, T>>,
     fixed_data: &'a FixedData<'a, T>,
 }
@@ -222,6 +233,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         Self {
             global_constraints,
             indices: Default::default(),
+            range_constraint_indices: Default::default(),
             connections,
             fixed_data,
         }
@@ -231,17 +243,17 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        rows: &RowPair<'_, 'a, T>,
         outer_query: OuterQuery<'a, '_, T>,
     ) -> EvalResult<'a, T> {
         let right = self.connections[&identity_id].right;
 
-        if outer_query.left.len() == 1 && !outer_query.left.first().unwrap().is_constant() {
+        if outer_query.arguments.len() == 1 && !outer_query.arguments.first().unwrap().is_constant()
+        {
             if let Some(column_reference) = try_to_simple_poly(&right.expressions[0]) {
                 // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
                 return self.process_range_check(
-                    rows,
-                    outer_query.left.first().unwrap(),
+                    outer_query.range_constraints,
+                    outer_query.arguments.first().unwrap(),
                     AlgebraicVariable::Column(column_reference),
                 );
             }
@@ -262,7 +274,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
 
     fn process_range_check(
         &self,
-        rows: &RowPair<'_, '_, T>,
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
         lhs: &AffineExpression<AlgebraicVariable<'a>, T>,
         rhs: AlgebraicVariable<'a>,
     ) -> EvalResult<'a, T> {
@@ -270,7 +282,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         // from the rhs to the lhs.
         let equation = lhs.clone() - AffineExpression::from_variable_id(rhs);
         let range_constraints = UnifiedRangeConstraints {
-            witness_constraints: rows,
+            witness_constraints: range_constraints,
             global_constraints: &self.global_constraints,
         };
         let updates = equation.solve_with_range_constraints(&range_constraints)?;
@@ -300,10 +312,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         _can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_arguments: &BitVec,
-        range_constraints: &[RangeConstraint<T>],
-    ) -> Option<Vec<RangeConstraint<T>>> {
+        range_constraints: Vec<RangeConstraint<T>>,
+    ) -> (bool, Vec<RangeConstraint<T>>) {
         if !Self::is_responsible(&self.connections[&identity_id]) {
-            return None;
+            return (false, range_constraints);
         }
         let index = self
             .indices
@@ -316,87 +328,78 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             });
         let input_range_constraints = known_arguments
             .iter()
-            .zip_eq(range_constraints)
+            .zip_eq(&range_constraints)
             .filter_map(|(is_known, range_constraint)| is_known.then_some(range_constraint.clone()))
             .collect_vec();
 
-        // Now only consider the index entries that match the input range constraints,
-        // see that the result is unique and determine new range constraints.
-        let items_matching_input_constraints = index
+        // Now only consider the index entries that match the input range constraints and
+        // check if the results are always is unique.
+        let can_answer = !index
             .iter()
             .filter(|(inputs, _)| matches_range_constraint(inputs, &input_range_constraints))
-            .map(|(inputs, value)| {
-                let (_, outputs) = value.get()?;
-                // Now re-order the items according to the connection (instead of
-                // by input/output).
-                let mut inputs = inputs.iter();
-                let mut outputs = outputs.iter();
-                let unpartition = |is_known| {
-                    if is_known {
-                        *inputs.next().unwrap()
-                    } else {
-                        *outputs.next().unwrap()
-                    }
-                };
-                Some(known_arguments.iter().map(unpartition).collect_vec())
-            });
-        let mut new_range_constraints: Option<Vec<(T, T, T::Integer)>> = None;
-        for values in items_matching_input_constraints {
-            // If any value is None, it means the lookup does not have a unique answer,
-            // and thus we cannot process the call.
-            let values = values?;
-            new_range_constraints = Some(match new_range_constraints {
-                // First item, turn each value into (min, max, mask).
-                None => values
-                    .iter()
-                    .map(|v| (*v, *v, v.to_integer()))
-                    .collect_vec(),
-                // Reduce range constraint by disjunction.
-                Some(mut acc) => {
-                    for ((min, max, mask), v) in acc.iter_mut().zip_eq(values) {
-                        *min = (*min).min(v);
-                        *max = (*max).max(v);
-                        *mask |= v.to_integer();
-                    }
-                    acc
-                }
+            .any(|(_, value)| value.0.is_none());
+
+        let columns = (self.connections[&identity_id].right.expressions.iter())
+            .map(|e| FixedColOrConstant::try_from(e).unwrap())
+            .collect_vec();
+        let cache_key = RangeConstraintCacheKey {
+            columns: columns.clone(),
+            range_constraints: range_constraints.clone(),
+        };
+        let new_range_constraints = self
+            .range_constraint_indices
+            .entry(cache_key)
+            .or_insert_with(|| {
+                let columns = columns
+                    .into_iter()
+                    .map(|col| col.into_values(self.fixed_data))
+                    .collect_vec();
+                let degree = (columns.iter().filter_map(|p| p.degree()).unique())
+                    .exactly_one()
+                    .expect("all columns in a given lookup are expected to have the same degree");
+
+                (0..degree)
+                    .map(|row| columns.iter().map(|col| col[row]).collect::<Vec<_>>())
+                    .filter(|values| matches_range_constraint(values, &range_constraints))
+                    .map(|values| {
+                        values
+                            .into_iter()
+                            .map(RangeConstraint::from_value)
+                            .collect_vec()
+                    })
+                    .reduce(|mut acc, values| {
+                        acc.iter_mut()
+                            .zip_eq(values)
+                            .for_each(|(rc, v)| *rc = rc.disjunction(&v));
+                        acc
+                    })
             })
+            .clone();
+        if let Some(new_range_constraints) = new_range_constraints {
+            (can_answer, new_range_constraints)
+        } else {
+            // The iterator was empty, i.e. there are no inputs in the index matching the
+            // range constraints.
+            // This means that every call like this will lead to a fatal error, but there is
+            // enough information in the inputs to handle the call. Unfortunately, there is
+            // no way to signal this in the return type, yet.
+            // TODO(#2324): change this.
+            // We just return the input range constraints to signal "everything allright".
+            (can_answer, range_constraints)
         }
-        Some(match new_range_constraints {
-            None => {
-                // The iterator was empty, i.e. there are no inputs in the index matching the
-                // range constraints.
-                // This means that every call like this will lead to a fatal error, but there is
-                // enough information in the inputs to hanlde the call. Unfortunately, there is
-                // no way to signal this in the return type, yet.
-                // TODO(#2324): change this.
-                // We just return the input range constraints to signal "everything allright".
-                log::trace!("Call to FixedLookup resulted in no match.");
-                range_constraints.to_vec()
-            }
-            Some(new_range_constraints) => new_range_constraints
-                .into_iter()
-                .map(|(min, max, mask)| {
-                    RangeConstraint::from_range(min, max)
-                        .conjunction(&RangeConstraint::from_mask(mask))
-                })
-                .collect(),
-        })
     }
 
     fn process_plookup<Q: crate::witgen::QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &RowPair<'_, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         let identity = self.connections[&identity_id];
 
-        let outer_query = match OuterQuery::try_new(caller_rows, identity) {
-            Ok(outer_query) => outer_query,
-            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
-        };
-        self.process_plookup_internal(mutable_state, identity_id, caller_rows, outer_query)
+        let outer_query = OuterQuery::new(arguments, range_constraints, identity);
+        self.process_plookup_internal(mutable_state, identity_id, outer_query)
     }
 
     fn process_lookup_direct<'c, Q: QueryCallback<T>>(
@@ -477,17 +480,23 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
     }
 }
 
+#[derive(Eq, PartialEq, Ord, PartialOrd, Clone)]
+struct RangeConstraintCacheKey<T: FieldElement> {
+    pub columns: Vec<FixedColOrConstant<T, PolyID>>,
+    pub range_constraints: Vec<RangeConstraint<T>>,
+}
+
 /// Combines witness constraints on a concrete row with global range constraints
 /// (used for fixed columns).
 /// This is useful in order to transfer range constraints from fixed columns to
 /// witness columns (see [FixedLookup::process_range_check]).
 pub struct UnifiedRangeConstraints<'a, 'b, T: FieldElement> {
-    witness_constraints: &'b RowPair<'b, 'a, T>,
+    witness_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     global_constraints: &'b GlobalConstraints<T>,
 }
 
 impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
-    for UnifiedRangeConstraints<'_, '_, T>
+    for UnifiedRangeConstraints<'a, '_, T>
 {
     fn range_constraint(&self, var: AlgebraicVariable<'a>) -> Option<RangeConstraint<T>> {
         let poly = match var {

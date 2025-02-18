@@ -7,7 +7,10 @@ use powdr_number::{FieldElement, KnownField};
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
     jit::{effect::format_code, processor::ProcessorResult},
-    machines::{LookupCell, MachineParts},
+    machines::{
+        profiling::{record_end, record_start},
+        LookupCell, MachineParts,
+    },
     range_constraints::RangeConstraint,
     EvalError, FixedData, MutableState, QueryCallback,
 };
@@ -20,8 +23,11 @@ use super::{
 };
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-struct CacheKey {
+struct CacheKey<T: FieldElement> {
     identity_id: u64,
+    /// If `Some((index, value))`, then this function is used only if the
+    /// `index`th argument is set to `value`.
+    known_concrete: Option<(usize, T)>,
     known_args: BitVec,
 }
 
@@ -31,7 +37,7 @@ pub struct FunctionCache<'a, T: FieldElement> {
     processor: BlockMachineProcessor<'a, T>,
     /// The cache of JIT functions and the returned range constraints.
     /// If the entry is None, we attempted to generate the function but failed.
-    witgen_functions: HashMap<CacheKey, Option<CacheEntry<T>>>,
+    witgen_functions: HashMap<CacheKey<T>, Option<CacheEntry<T>>>,
     column_layout: ColumnLayout,
     block_size: usize,
     machine_name: String,
@@ -66,27 +72,31 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         }
     }
 
-    /// Compiles the JIT function for the given identity and known arguments.
+    /// Compiles the JIT function for the given identity and known arguments, and a potentially
+    /// fully known argument.
     /// Returns the function and the output range constraints if the function was successfully compiled.
     pub fn compile_cached(
         &mut self,
         can_process: impl CanProcessCall<T>,
         identity_id: u64,
         known_args: &BitVec,
+        known_concrete: Option<(usize, T)>,
     ) -> Option<&CacheEntry<T>> {
         let cache_key = CacheKey {
             identity_id,
             known_args: known_args.clone(),
+            known_concrete,
         };
         self.ensure_cache(can_process, &cache_key);
         self.witgen_functions.get(&cache_key).unwrap().as_ref()
     }
 
-    fn ensure_cache(&mut self, can_process: impl CanProcessCall<T>, cache_key: &CacheKey) {
+    fn ensure_cache(&mut self, can_process: impl CanProcessCall<T>, cache_key: &CacheKey<T>) {
         if self.witgen_functions.contains_key(cache_key) {
             return;
         }
 
+        record_start("Auto-witgen code derivation");
         let f = match T::known_field() {
             // Currently, we only support the Goldilocks fields
             Some(KnownField::GoldilocksField) => {
@@ -94,27 +104,40 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             }
             _ => None,
         };
-        assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none())
+        assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none());
+        record_end("Auto-witgen code derivation");
     }
 
     fn compile_witgen_function(
         &self,
         can_process: impl CanProcessCall<T>,
-        cache_key: &CacheKey,
+        cache_key: &CacheKey<T>,
     ) -> Option<CacheEntry<T>> {
         log::debug!(
-            "Compiling JIT function for\n  Machine: {}\n  Connection: {}\n   Inputs: {:?}",
+            "Compiling JIT function for\n  Machine: {}\n  Connection: {}\n   Inputs: {:?}{}",
             self.machine_name,
             self.parts.connections[&cache_key.identity_id],
-            cache_key.known_args
+            cache_key.known_args,
+            cache_key
+                .known_concrete
+                .map(|(i, v)| format!("\n   Input {i} = {v}"))
+                .unwrap_or_default()
         );
 
-        let ProcessorResult {
-            code,
-            range_constraints,
-        } = self
+        let (
+            ProcessorResult {
+                code,
+                range_constraints,
+            },
+            prover_functions,
+        ) = self
             .processor
-            .generate_code(can_process, cache_key.identity_id, &cache_key.known_args)
+            .generate_code(
+                can_process,
+                cache_key.identity_id,
+                &cache_key.known_args,
+                cache_key.known_concrete,
+            )
             .map_err(|e| {
                 // These errors can be pretty verbose and are quite common currently.
                 log::debug!(
@@ -154,10 +177,11 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
 
         log::trace!("Compiling effects...");
         let function = compile_effects(
-            self.column_layout.first_column_id,
-            self.column_layout.column_count,
+            self.fixed_data.analyzed,
+            self.column_layout.clone(),
             &known_inputs,
             &code,
+            prover_functions,
         )
         .unwrap();
         log::trace!("Compilation done.");
@@ -174,6 +198,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         connection_id: u64,
         values: &mut [LookupCell<'c, T>],
         data: CompactDataRef<'d, T>,
+        known_concrete: Option<(usize, T)>,
     ) -> Result<bool, EvalError<T>> {
         let known_args = values
             .iter()
@@ -183,7 +208,11 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         let cache_key = CacheKey {
             identity_id: connection_id,
             known_args,
+            known_concrete,
         };
+
+        // TODO If the function is not in the cache, we should also try with
+        // known_concrete set to None.
 
         self.witgen_functions
             .get(&cache_key)

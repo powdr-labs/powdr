@@ -6,13 +6,14 @@ use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::jit::single_step_processor::SingleStepProcessor;
+use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::machines::{compute_size_and_log, Machine, MachineParts};
 use crate::witgen::processor::{OuterQuery, SolverState};
-use crate::witgen::rows::{Row, RowIndex, RowPair};
+use crate::witgen::rows::{Row, RowIndex};
 use crate::witgen::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use crate::witgen::vm_processor::VmProcessor;
 use crate::witgen::{
-    AlgebraicVariable, EvalError, EvalResult, EvalValue, FixedData, QueryCallback,
+    AffineExpression, AlgebraicVariable, EvalError, EvalResult, EvalValue, FixedData, QueryCallback,
 };
 
 use super::LookupCell;
@@ -71,17 +72,20 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
-        caller_rows: &'b RowPair<'b, 'a, T>,
+        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
+        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         let identity = *self.parts.connections.get(&identity_id).unwrap();
-        let outer_query = match OuterQuery::try_new(caller_rows, identity) {
-            Ok(outer_query) => outer_query,
-            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
-        };
+        let outer_query = OuterQuery::new(arguments, range_constraints, identity);
 
         log::trace!("Start processing secondary VM '{}'", self.name());
         log::trace!("Arguments:");
-        for (r, l) in identity.right.expressions.iter().zip(&outer_query.left) {
+        for (r, l) in identity
+            .right
+            .expressions
+            .iter()
+            .zip(&outer_query.arguments)
+        {
             log::trace!("  {r} = {l}");
         }
 
