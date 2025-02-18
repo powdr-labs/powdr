@@ -561,12 +561,15 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     }
 }
 
-/// Identifies witness columns that are constrained to a (multi)linear expression, replaces the witness column by an intermediate polynomial
+/// Identifies witness columns that are constrained to a non-shifted (multi)linear expression, replaces the witness column by an intermediate polynomial
+/// TODO: the optimization is *NOT* applied to witness columns which are boolean constrained: intermediate polynomials get inlined in witness generation and
+/// the boolean constraint gets lost. Remove this limitation once intermediate polynomials are handled correctly in witness generation.
 fn replace_linear_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let intermediate_definitions = pil_file.intermediate_definitions();
 
     // We cannot remove arrays or array elements, so we filter them out.
     // Also, we filter out columns that are used in public declarations.
+    // Also, we filter out columns that are boolean constrained.
 
     let in_publics: HashSet<_> = pil_file
         .public_declarations
@@ -574,9 +577,79 @@ fn replace_linear_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .map(|pubd| pubd.polynomial.name.clone())
         .collect();
 
+    // pattern match identities looking for `w * (1 - w) = 0` and `(1 - w) * w = 0` constraints
+    let boolean_constrained_witnesses = pil_file
+        .identities
+        .iter()
+        .filter_map(|id| {
+            // we are only interested in polynomial identities
+            let expression =
+                if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
+                    expression
+                } else {
+                    return None;
+                };
+
+            // we are only interested in `a * b = 0` constraints
+            let (a, b) = match expression {
+                AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                    left: a,
+                    op: AlgebraicBinaryOperator::Mul,
+                    right: b,
+                }) => (a, b),
+                _ => return None,
+            };
+
+            // we are only interested in `b := (1 - a)` or `a := (1 - b)`
+            let a = match (a.as_ref(), b.as_ref()) {
+                (
+                    a_0,
+                    AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                        left: one,
+                        op: AlgebraicBinaryOperator::Sub,
+                        right: a_1,
+                    }),
+                )
+                | (
+                    AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                        left: one,
+                        op: AlgebraicBinaryOperator::Sub,
+                        right: a_1,
+                    }),
+                    a_0,
+                ) if **one == AlgebraicExpression::Number(T::one()) && *a_0 == **a_1 => a_0,
+                _ => return None,
+            };
+
+            // we are only interested in `a` being a column
+            let a = match a {
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    poly_id,
+                    next: false,
+                    ..
+                }) => poly_id,
+                _ => return None,
+            };
+
+            // we are only interested in `a` being a witness column
+            if matches!(a.ptype, PolynomialType::Committed) {
+                Some(*a)
+            } else {
+                None
+            }
+        })
+        .collect::<HashSet<_>>();
+
     let keep = pil_file
         .committed_polys_in_source_order()
-        .filter(|&(s, _)| s.is_array() || in_publics.contains(&s.absolute_name))
+        .filter(|&(s, _)| {
+            s.is_array()
+                || in_publics.contains(&s.absolute_name)
+                || boolean_constrained_witnesses
+                    .intersection(&s.array_elements().map(|(_, poly_id)| poly_id).collect())
+                    .count()
+                    > 0
+        })
         .map(|(s, _)| s.into())
         .collect::<HashSet<PolyID>>();
 
