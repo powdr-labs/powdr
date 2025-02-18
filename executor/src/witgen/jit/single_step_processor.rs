@@ -16,10 +16,9 @@ use crate::witgen::{
 
 use super::{
     compiler::WitgenFunction,
-    effect::Effect,
     identity_queue::QueueItem,
     processor::{Processor, ProcessorResult},
-    prover_function_heuristics::decode_prover_functions,
+    prover_function_heuristics::{decode_prover_functions, ProverFunction},
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -69,12 +68,10 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 false
             }
 
-            Ok(code) => {
+            Ok((processing_result, prover_functions)) => {
+                let code = processing_result.code;
                 log::debug!("Generated code ({} steps)", code.len());
                 log::debug!("Compiling effects...");
-
-                // TODO
-                let prover_functions = vec![];
 
                 let known_inputs = self
                     .machine_parts
@@ -117,7 +114,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
     fn generate_code(
         &self,
         can_process: impl CanProcessCall<T>,
-    ) -> Result<ProcessorResult<T>, String> {
+    ) -> Result<(ProcessorResult<T>, Vec<ProverFunction<'a, T>>), String> {
         let intermediate_definitions = self.fixed_data.analyzed.intermediate_definitions();
         let all_witnesses = self
             .machine_parts
@@ -152,17 +149,18 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         let witgen =
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
 
-        let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?
-            .into_iter()
+        let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
+        let queue_items = prover_functions
+            .iter()
             // Process prover functions only on the next row.
-            .map(|f| QueueItem::ProverFunction(f, 1))
-            .collect_vec();
+            .map(|f| QueueItem::ProverFunction(f.clone(), 1))
+            .collect();
 
-        Processor::new(
+        let processor_result = Processor::new(
             self.fixed_data,
             self,
             identities,
-            prover_functions,
+            queue_items,
             requested_known,
             SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
@@ -178,7 +176,8 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 .take(10)
                 .format("\n  ");
             format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
-        })
+        })?;
+        Ok((processor_result, prover_functions))
     }
 
     fn cell(&self, id: PolyID, row_offset: i32) -> Variable {
@@ -259,6 +258,7 @@ mod test {
         SingleStepProcessor::new(&fixed_data, machine_parts, layout)
             .generate_code(&mutable_state)
             .map_err(|e| e.to_string())
+            .map(|(result, _)| result.code)
     }
 
     #[test]
@@ -418,16 +418,14 @@ VM::instr_mul[1] = 1;"
                 let start = e
                     .find("The following machine calls have not been fully processed:")
                     .unwrap();
-                let end = e.find("Generated code so far:").unwrap();
+                let end = e.find("Run with RUST_LOG").unwrap();
                 let expected = "\
-The following machine calls have not been fully processed:
---------------[ identity 1 on row 1: ]--------------
-Main::is_arith $ [ Main::a, Main::b, Main::c ]
-     ???              2       ???      ???    
-                                              
-Main::is_arith $ [ 2, Main::b, Main::c ]
-     ???                ???      ???    
-                                        \n";
+  The following machine calls have not been fully processed:
+  --------------[ identity 1 on row 1: ]--------------
+  Main::is_arith $ [ Main::a, Main::b, Main::c ]
+       ???              2       ???      ???    
+                                                
+  Main::is_arith $ [ 2, Main::b, Main::c ]\n";
                 assert_eq!(
                     &e[start..end],
                     expected,
