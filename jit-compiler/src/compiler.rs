@@ -106,14 +106,10 @@ pub fn call_cargo(code: &str, opt_level: Option<u32>) -> Result<PathInTempDir, S
         .output()
         .unwrap();
     if !out.status.success() {
-        if log::log_enabled!(log::Level::Debug) {
-            let stderr = from_utf8(&out.stderr).unwrap_or("UTF-8 error in error message.");
-            return Err(format!(
+        let stderr = from_utf8(&out.stderr).unwrap_or("UTF-8 error in error message.");
+        return Err(format!(
                 "Rust compiler error when JIT-compiling. Will use interpreter instead. Error message:\n{stderr}."
             ));
-        } else {
-            return Err("Rust compiler error when JIT-compiling. Will use interpreter instead. Set log level to DEBUG for reason.".to_string());
-        }
     }
     #[allow(clippy::print_stdout)]
     if output_asm {

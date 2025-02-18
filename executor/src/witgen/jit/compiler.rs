@@ -547,13 +547,20 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
             codegen.generate_code_for_expression(code)?
         ),
         ProverFunctionComputation::ProvideIfUnknown(code) => {
+            assert!(!f.compute_multi);
             format!("({}).call()", codegen.generate_code_for_expression(code)?)
         }
     };
-
+    let code = if f.compute_multi {
+        format!("({code}).as_slice().try_into().unwrap()")
+    } else {
+        assert_eq!(f.target.len(), 1);
+        format!("[{code}]")
+    };
+    let length = f.target.len();
     let index = f.index;
     Ok(format!(
-        "fn prover_function_{index}(i: u64, args: &[FieldElement]) -> FieldElement {{\n\
+        "fn prover_function_{index}(i: u64, args: &[FieldElement]) -> [FieldElement; {length}] {{\n\
             let i: ibig::IBig = i.into();\n\
             {code}
         }}"
