@@ -1,11 +1,11 @@
 use core::unreachable;
 use num_traits::One;
-use num_traits::Pow;
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, TerminalAccess};
+use std::collections::HashSet;
+use stwo_prover::core::backend::simd::column::BaseColumn;
 use stwo_prover::core::backend::simd::qm31::PackedQM31;
 use stwo_prover::core::backend::simd::SimdBackend;
-use std::collections::HashSet;
 use tracing::{span, Level};
 
 extern crate alloc;
@@ -16,11 +16,12 @@ use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::Mersenne31Field as M31;
 use stwo_prover::constraint_framework::logup::{LogupTraceGenerator, LookupElements};
 use stwo_prover::constraint_framework::preprocessed_columns::PreProcessedColumnId;
+use stwo_prover::constraint_framework::Relation;
 use stwo_prover::constraint_framework::RelationEntry;
 use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use stwo_prover::core::backend::simd::m31::LOG_N_LANES;
 use stwo_prover::core::backend::simd::qm31::PackedSecureField;
-use stwo_prover::core::backend::{Backend, Column, ColumnOps};
+use stwo_prover::core::backend::{Backend, Column, ColumnOps,Col};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::poly::circle::{CircleDomain, CircleEvaluation};
@@ -28,7 +29,6 @@ use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use stwo_prover::core::ColumnVec;
 use stwo_prover::relation;
-use stwo_prover::constraint_framework::Relation;
 
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 pub const STAGE0_TRACE_IDX: usize = 1;
@@ -314,15 +314,11 @@ impl FrameworkEval for PowdrEval {
                     unimplemented!("Connect is not implemented in stwo yet")
                 }
                 Identity::Lookup(id) => {
-                    println!("lookup id looks like this {:?}", id);
                     let left: Vec<<E as EvalAtRow>::F> = id
                         .left
                         .expressions
                         .iter()
-                        .map(|e| {
-                            println!("expression looks like this {:?}", e);
-                            evaluator.evaluate(e)
-                        })
+                        .map(|e| evaluator.evaluate(e))
                         .collect();
 
                     eval.add_to_relation(RelationEntry::new(
@@ -346,8 +342,6 @@ impl FrameworkEval for PowdrEval {
                         -E::EF::one(),
                         &right,
                     ));
-
-                    unimplemented!("Lookup is not implemented in stwo yet")
                 }
                 Identity::Permutation(..) => {
                     unimplemented!("Permutation is not implemented in stwo yet")
@@ -357,6 +351,7 @@ impl FrameworkEval for PowdrEval {
                 | Identity::PhantomBusInteraction(..) => {}
             }
         }
+        eval.finalize_logup();
         eval
     }
 }
@@ -393,27 +388,55 @@ pub fn gen_interaction_trace(
     let mut logup_gen = LogupTraceGenerator::new(log_size);
 
     for id in &analyzed.identities {
-        let mut left_cols=Vec::new();
-        let mut right_cols=Vec::new();
+        let mut left_cols = Vec::<BaseColumn>::new();
+        let mut right_cols = Vec::<BaseColumn>::new();
         if let Identity::Lookup(id) = id {
             id.left.expressions.iter().for_each(|e| {
                 if let AlgebraicExpression::Reference(AlgebraicReference {
                     name,
                     poly_id,
                     next,
-                }) = e{
-                    let left_col= witness_by_machine.iter().find(|(n, _)| n == name).unwrap().1;
-                    left_cols.push(left_col);
+                }) = e
+                {
+                    println!("name for lookup left side is {:?}", name);
+
+                    let mut bitreverse_left_col =Col::<SimdBackend, BaseField>::zeros(1 << log_size);
+                    let left_col: BaseColumn = witness_by_machine
+                        .iter()
+                        .find(|(n, _)| n == name)
+                        .unwrap()
+                        .1
+                        .iter()
+                        .enumerate()
+                        .map(|(index,value)| {
+                            
+                            bitreverse_left_col.set(
+                                            bit_reverse_index(
+                                                coset_index_to_circle_domain_index(
+                                                    index, log_size,
+                                                ),
+                                                log_size,
+                                            ),
+                                            into_stwo_field(value),
+                                        );
+                            into_stwo_field(value)
+                        })
+                        .collect();
+
+                    println!("left_col is {:?}", left_col);
+
+                   
+                    
+
+                    left_cols.push(bitreverse_left_col);
                 };
-            
             });
             let mut col_gen = logup_gen.new_col();
             for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
                 let q: PackedSecureField = lookup_elements
-                    .combine(&PackedQM31::from([left_cols[0][vec_row]), left_cols[1][vec_row].into()]);
-               
-                col_gen.write_frac(vec_row, PackedSecureField::one(), q);
+                    .combine(&[left_cols[0].data[vec_row], left_cols[1].data[vec_row]]);
 
+                col_gen.write_frac(vec_row, PackedSecureField::one(), q);
             }
             col_gen.finalize_col();
 
@@ -422,24 +445,50 @@ pub fn gen_interaction_trace(
                     name,
                     poly_id,
                     next,
-                }) = e{
-                    let right_col= witness_by_machine.iter().find(|(n, _)| n == name).unwrap().1;
-                    right_cols.push(right_col);
+                }) = e
+                {
+                    println!("name for lookup right side is {:?}", name);
+                    let mut bitreverse_right_col =Col::<SimdBackend, BaseField>::zeros(1 << log_size);
+                    let right_col: BaseColumn = witness_by_machine
+                        .iter()
+                        .find(|(n, _)| n == name)
+                        .unwrap()
+                        .1
+                        .iter()
+                        .enumerate()
+                        .map(|(index,value)| {
+                            
+                            bitreverse_right_col.set(
+                                            bit_reverse_index(
+                                                coset_index_to_circle_domain_index(
+                                                    index, log_size,
+                                                ),
+                                                log_size,
+                                            ),
+                                            into_stwo_field(value),
+                                        );
+                            into_stwo_field(value)
+                        })
+                        .collect();
+
+                    println!("left_col is {:?}", right_col);
+
+                   
+                    
+
+                    right_cols.push(bitreverse_right_col);
                 };
-            
             });
             let mut col_gen = logup_gen.new_col();
             for vec_row in 0..(1 << (log_size - LOG_N_LANES)) {
                 let q: PackedSecureField = lookup_elements
-                    .combine(&[right_cols[0][vec_row].into(), right_cols[1][vec_row].into()]);
-               
-                col_gen.write_frac(vec_row, PackedSecureField::one(), q);
+                    .combine(&[right_cols[0].data[vec_row], right_cols[1].data[vec_row]]);
 
+                col_gen.write_frac(vec_row, -PackedSecureField::one(), q);
             }
             col_gen.finalize_col();
         }
     }
-
 
     logup_gen.finalize_last()
 }
