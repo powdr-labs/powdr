@@ -56,20 +56,15 @@ impl<'a, T: FieldElement> IdentityQueue<'a, T> {
         self.queue.pop_first()
     }
 
-    pub fn variables_updated(
-        &mut self,
-        variables: impl IntoIterator<Item = Variable>,
-        skip_item: Option<QueueItem<'a, T>>,
-    ) {
+    pub fn variables_updated(&mut self, variables: impl IntoIterator<Item = Variable>) {
+        // Note that this will usually re-add the item that caused the update,
+        // which is fine, since there are situations where we can further process
+        // it from an update (for example a range constraint).
         self.queue.extend(
             variables
                 .into_iter()
                 .flat_map(|var| self.occurrences.get(&var))
                 .flatten()
-                .filter(|item| match &skip_item {
-                    Some(it) => *item != it,
-                    None => true,
-                })
                 .cloned(),
         )
     }
