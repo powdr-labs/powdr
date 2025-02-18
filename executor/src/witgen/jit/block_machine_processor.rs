@@ -1,8 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{btree_map::Entry, BTreeMap, BTreeSet, HashSet};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_ast::analyzed::{ContainsNextRef, PolyID, PolynomialType};
+use powdr_ast::analyzed::{ContainsNextRef, Identity, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -180,8 +180,10 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         // that would otherwise destroy the block shape, as long as these assignments
         // are not required to compute the requested variables.
         let optional_vars = code_cleaner::optional_vars(&result.code, &requested_known);
-        let vars_to_remove = self.check_block_shape(&result.code, &optional_vars)?;
+        let (vars_to_remove, machine_calls_to_remove) =
+            self.check_block_shape(&result.code, &optional_vars)?;
         result.code = code_cleaner::remove_variables(result.code, vars_to_remove);
+        result.code = code_cleaner::remove_machine_calls(result.code, &machine_calls_to_remove);
 
         Ok((result, prover_functions))
     }
@@ -189,12 +191,15 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
     /// Verifies that each column and each bus send is stackable in the block.
     /// This means that if we have a cell write or a bus send in row `i`, we cannot
     /// have another one in row `i + block_size`.
+    /// Returns a set of (unnecessary) variables and machine calls to remove to maintain
+    /// proper block shape.
     fn check_block_shape(
         &self,
         code: &[Effect<T, Variable>],
         optional_vars: &HashSet<Variable>,
-    ) -> Result<HashSet<Variable>, String> {
+    ) -> Result<(HashSet<Variable>, HashSet<(u64, i32)>), String> {
         let mut vars_to_remove = HashSet::new();
+        let mut machine_calls_to_remove = HashSet::new();
         for (column_id, row_offsets) in written_rows_per_column(code) {
             for (outside, inside) in self.conflicting_row_offsets(&row_offsets) {
                 let first_var = Variable::WitnessCell(Cell {
@@ -226,16 +231,23 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             }
         }
         for (identity_id, row_offsets) in completed_rows_for_bus_send(code) {
-            for (inside, outside) in self.conflicting_row_offsets(&row_offsets) {
-                println!("{}", format_code(code));
-                return Err(format!(
+            for (outside, inside) in
+                self.conflicting_row_offsets(&row_offsets.keys().copied().collect())
+            {
+                if row_offsets[&outside] {
+                    machine_calls_to_remove.insert((identity_id, outside));
+                } else if row_offsets[&inside] {
+                    machine_calls_to_remove.insert((identity_id, inside));
+                } else {
+                    return Err(format!(
                     "Bus send for identity {} is not stackable in a {}-row block, conflict in rows {inside} and {outside}.",
                     identity_id,
                     self.block_size,
                 ));
+                }
             }
         }
-        Ok(vars_to_remove)
+        Ok((vars_to_remove, machine_calls_to_remove))
     }
 
     /// Returns a list of pairs of conflicting row offsets in `row_offsets`
@@ -275,24 +287,35 @@ fn written_rows_per_column<T: FieldElement>(
         })
 }
 
-/// Returns, for each bus send ID, the collection of row offsets that have a machine call.
+/// Returns, for each bus send ID, the collection of row offsets that have a machine call
+/// and if in all the calls or that row, all the arguments are known.
 /// Combines calls from branches.
 fn completed_rows_for_bus_send<T: FieldElement>(
     code: &[Effect<T, Variable>],
-) -> BTreeMap<u64, BTreeSet<i32>> {
+) -> BTreeMap<u64, BTreeMap<i32, bool>> {
     code.iter()
         .flat_map(machine_calls)
-        .fold(BTreeMap::new(), |mut map, (id, row)| {
-            map.entry(id).or_default().insert(row);
+        .fold(BTreeMap::new(), |mut map, (id, row, call)| {
+            let rows = map.entry(id).or_default();
+            let entry = rows.entry(row).or_insert_with(|| true);
+            *entry &= fully_known_call(call);
             map
         })
+}
+
+/// Returns true if the effect is a machine call where all arguments are known.
+fn fully_known_call<T: FieldElement>(e: &Effect<T, Variable>) -> bool {
+    match e {
+        Effect::MachineCall(_, known, _) => known.iter().all(|v| v),
+        _ => false,
+    }
 }
 
 /// Returns all machine calls (bus identity and row offset) found in the effect.
 /// Recurses into branches.
 fn machine_calls<T: FieldElement>(
     e: &Effect<T, Variable>,
-) -> Box<dyn Iterator<Item = (u64, i32)> + '_> {
+) -> Box<dyn Iterator<Item = (u64, i32, &Effect<T, Variable>)> + '_> {
     match e {
         Effect::MachineCall(id, _, arguments) => match &arguments[0] {
             Variable::MachineCallParam(MachineCallVariable {
@@ -301,7 +324,7 @@ fn machine_calls<T: FieldElement>(
                 ..
             }) => {
                 assert_eq!(*id, *identity_id);
-                Box::new(std::iter::once((*identity_id, *row_offset)))
+                Box::new(std::iter::once((*identity_id, *row_offset, e)))
             }
             _ => panic!("Expected machine call variable."),
         },

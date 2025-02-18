@@ -2,7 +2,10 @@ use std::collections::HashSet;
 
 use powdr_number::FieldElement;
 
-use super::{effect::Effect, variable::Variable};
+use super::{
+    effect::Effect,
+    variable::{MachineCallVariable, Variable},
+};
 
 /// Returns the list of variables that are not needed to compute the requested
 /// variables.
@@ -25,6 +28,16 @@ pub fn remove_variables<T: FieldElement>(
 ) -> Vec<Effect<T, Variable>> {
     code.into_iter()
         .filter_map(|effect| remove_variables_from_effect(effect, &mut to_remove))
+        .collect()
+}
+
+/// Removes all calls to machines with the given IDs on the given row offsets.
+pub fn remove_machine_calls<T: FieldElement>(
+    code: Vec<Effect<T, Variable>>,
+    to_remove: &HashSet<(u64, i32)>,
+) -> Vec<Effect<T, Variable>> {
+    code.into_iter()
+        .filter_map(|effect| remove_machine_calls_from_effect(effect, &to_remove))
         .collect()
 }
 
@@ -94,5 +107,35 @@ fn remove_variables_from_effect<T: FieldElement>(
         None
     } else {
         Some(effect)
+    }
+}
+
+fn remove_machine_calls_from_effect<T: FieldElement>(
+    effect: Effect<T, Variable>,
+    to_remove: &HashSet<(u64, i32)>,
+) -> Option<Effect<T, Variable>> {
+    match effect {
+        Effect::MachineCall(id, known, arguments) => {
+            let Variable::MachineCallParam(MachineCallVariable {
+                identity_id,
+                row_offset,
+                ..
+            }) = &arguments[0]
+            else {
+                panic!()
+            };
+            assert_eq!(id, *identity_id);
+            if to_remove.contains(&(id, *row_offset)) {
+                None
+            } else {
+                Some(Effect::MachineCall(id, known, arguments))
+            }
+        }
+        Effect::Branch(condition, first, second) => {
+            let first = remove_machine_calls(first, to_remove);
+            let second = remove_machine_calls(second, to_remove);
+            Some(Effect::Branch(condition, first, second))
+        }
+        _ => Some(effect),
     }
 }
