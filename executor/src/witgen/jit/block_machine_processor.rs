@@ -1,13 +1,13 @@
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{btree_map::Entry, BTreeMap, BTreeSet, HashSet};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_ast::analyzed::{ContainsNextRef, PolyID, PolynomialType};
+use powdr_ast::analyzed::{ContainsNextRef, Identity, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
     jit::{
-        code_cleaner, identity_queue::QueueItem, processor::Processor,
+        code_cleaner, effect::format_code, identity_queue::QueueItem, processor::Processor,
         prover_function_heuristics::decode_prover_functions,
     },
     machines::MachineParts,
@@ -180,8 +180,10 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         // that would otherwise destroy the block shape, as long as these assignments
         // are not required to compute the requested variables.
         let optional_vars = code_cleaner::optional_vars(&result.code, &requested_known);
-        let vars_to_remove = self.check_block_shape(&result.code, &optional_vars)?;
+        let (vars_to_remove, machine_calls_to_remove) =
+            self.check_block_shape(&result.code, &optional_vars)?;
         result.code = code_cleaner::remove_variables(result.code, vars_to_remove);
+        result.code = code_cleaner::remove_machine_calls(result.code, &machine_calls_to_remove);
 
         Ok((result, prover_functions))
     }
@@ -189,70 +191,82 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
     /// Verifies that each column and each bus send is stackable in the block.
     /// This means that if we have a cell write or a bus send in row `i`, we cannot
     /// have another one in row `i + block_size`.
+    /// Returns a set of (unnecessary) variables and machine calls to remove to maintain
+    /// proper block shape.
     fn check_block_shape(
         &self,
         code: &[Effect<T, Variable>],
         optional_vars: &HashSet<Variable>,
-    ) -> Result<HashSet<Variable>, String> {
+    ) -> Result<(HashSet<Variable>, HashSet<(u64, i32)>), String> {
         let mut vars_to_remove = HashSet::new();
+        let mut machine_calls_to_remove = HashSet::new();
         for (column_id, row_offsets) in written_rows_per_column(code) {
-            for offset in &row_offsets {
-                let other_offset = *offset + self.block_size as i32;
-                if row_offsets.contains(&other_offset) {
-                    let first_var = Variable::WitnessCell(Cell {
-                        column_name: String::new(),
-                        id: column_id,
-                        row_offset: *offset,
-                    });
-                    let second_var = Variable::WitnessCell(Cell {
-                        column_name: String::new(),
-                        id: column_id,
-                        row_offset: other_offset,
-                    });
+            for (outside, inside) in self.conflicting_row_offsets(&row_offsets) {
+                let first_var = Variable::WitnessCell(Cell {
+                    column_name: String::new(),
+                    id: column_id,
+                    row_offset: outside,
+                });
+                let second_var = Variable::WitnessCell(Cell {
+                    column_name: String::new(),
+                    id: column_id,
+                    row_offset: inside,
+                });
 
-                    // First try to remove the one outside the block.
-                    // Swap the vars if `first_var` is inside the block.
-                    let (first_var, second_var) =
-                        if *offset >= 0 && *offset < self.block_size as i32 {
-                            (second_var, first_var)
-                        } else {
-                            (first_var, second_var)
-                        };
-                    if optional_vars.contains(&first_var) {
-                        vars_to_remove.insert(first_var);
-                    } else if optional_vars.contains(&second_var) {
-                        vars_to_remove.insert(second_var);
-                    } else {
-                        // Both variables are non-optional, we have a conflict.
-                        return Err(format!(
-                        "Column {} is not stackable in a {}-row block, conflict in rows {} and {}.",
+                if optional_vars.contains(&first_var) {
+                    vars_to_remove.insert(first_var);
+                } else if optional_vars.contains(&second_var) {
+                    vars_to_remove.insert(second_var);
+                } else {
+                    // Both variables are non-optional, we have a conflict.
+                    return Err(format!(
+                        "Column {} is not stackable in a {}-row block, conflict in rows {inside} and {outside}.",
                         self.fixed_data.column_name(&PolyID {
                             id: column_id,
                             ptype: PolynomialType::Committed
                         }),
                         self.block_size,
-                        offset,
-                        offset + self.block_size as i32
                     ));
-                    }
                 }
             }
         }
         for (identity_id, row_offsets) in completed_rows_for_bus_send(code) {
-            let row_offsets: BTreeSet<_> = row_offsets.into_iter().collect();
-            for offset in &row_offsets {
-                if row_offsets.contains(&(*offset + self.block_size as i32)) {
+            for (outside, inside) in
+                self.conflicting_row_offsets(&row_offsets.keys().copied().collect())
+            {
+                if row_offsets[&outside] {
+                    machine_calls_to_remove.insert((identity_id, outside));
+                } else if row_offsets[&inside] {
+                    machine_calls_to_remove.insert((identity_id, inside));
+                } else {
                     return Err(format!(
-                        "Bus send for identity {} is not stackable in a {}-row block, conflict in rows {} and {}.",
-                        identity_id,
-                        self.block_size,
-                        offset,
-                        offset + self.block_size as i32
-                    ));
+                    "Bus send for identity {} is not stackable in a {}-row block, conflict in rows {inside} and {outside}.",
+                    identity_id,
+                    self.block_size,
+                ));
                 }
             }
         }
-        Ok(vars_to_remove)
+        Ok((vars_to_remove, machine_calls_to_remove))
+    }
+
+    /// Returns a list of pairs of conflicting row offsets in `row_offsets`
+    /// (i.e. equal modulo block size) where the first is always the one
+    /// outside the "regular" block range.
+    fn conflicting_row_offsets<'b>(
+        &'b self,
+        row_offsets: &'b BTreeSet<i32>,
+    ) -> impl Iterator<Item = (i32, i32)> + 'b {
+        row_offsets.iter().copied().flat_map(|offset| {
+            let other_offset = offset + self.block_size as i32;
+            row_offsets.contains(&other_offset).then(|| {
+                if offset >= 0 && offset < self.block_size as i32 {
+                    (other_offset, offset)
+                } else {
+                    (offset, other_offset)
+                }
+            })
+        })
     }
 }
 
@@ -273,24 +287,35 @@ fn written_rows_per_column<T: FieldElement>(
         })
 }
 
-/// Returns, for each bus send ID, the collection of row offsets that have a machine call.
+/// Returns, for each bus send ID, the collection of row offsets that have a machine call
+/// and if in all the calls or that row, all the arguments are known.
 /// Combines calls from branches.
 fn completed_rows_for_bus_send<T: FieldElement>(
     code: &[Effect<T, Variable>],
-) -> BTreeMap<u64, BTreeSet<i32>> {
+) -> BTreeMap<u64, BTreeMap<i32, bool>> {
     code.iter()
         .flat_map(machine_calls)
-        .fold(BTreeMap::new(), |mut map, (id, row)| {
-            map.entry(id).or_default().insert(row);
+        .fold(BTreeMap::new(), |mut map, (id, row, call)| {
+            let rows = map.entry(id).or_default();
+            let entry = rows.entry(row).or_insert_with(|| true);
+            *entry &= fully_known_call(call);
             map
         })
+}
+
+/// Returns true if the effect is a machine call where all arguments are known.
+fn fully_known_call<T: FieldElement>(e: &Effect<T, Variable>) -> bool {
+    match e {
+        Effect::MachineCall(_, known, _) => known.iter().all(|v| v),
+        _ => false,
+    }
 }
 
 /// Returns all machine calls (bus identity and row offset) found in the effect.
 /// Recurses into branches.
 fn machine_calls<T: FieldElement>(
     e: &Effect<T, Variable>,
-) -> Box<dyn Iterator<Item = (u64, i32)> + '_> {
+) -> Box<dyn Iterator<Item = (u64, i32, &Effect<T, Variable>)> + '_> {
     match e {
         Effect::MachineCall(id, _, arguments) => match &arguments[0] {
             Variable::MachineCallParam(MachineCallVariable {
@@ -299,7 +324,7 @@ fn machine_calls<T: FieldElement>(
                 ..
             }) => {
                 assert_eq!(*id, *identity_id);
-                Box::new(std::iter::once((*identity_id, *row_offset)))
+                Box::new(std::iter::once((*identity_id, *row_offset, e)))
             }
             _ => panic!("Expected machine call variable."),
         },

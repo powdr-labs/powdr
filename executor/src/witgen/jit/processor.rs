@@ -7,13 +7,14 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     data_structures::identity::{BusSend, Identity},
-    jit::debug_formatter::format_identities,
+    jit::debug_formatter::format_polynomial_identities,
     range_constraints::RangeConstraint,
     FixedData,
 };
 
 use super::{
     affine_symbolic_expression,
+    debug_formatter::format_incomplete_bus_sends,
     effect::{format_code, Effect},
     identity_queue::{IdentityQueue, QueueItem},
     variable::{MachineCallVariable, Variable},
@@ -530,11 +531,20 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
                 .join("\n")
         )
         .unwrap();
-        let formatted_identities = format_identities(&self.identities, &self.witgen);
+        let formatted_incomplete_sends =
+            format_incomplete_bus_sends(&self.identities, &self.witgen);
+        if !formatted_incomplete_sends.is_empty() {
+            write!(
+                    s,
+                    "\nThe following machine calls have not been fully processed:\n{formatted_incomplete_sends}",
+                )
+                .unwrap();
+        };
+        let formatted_identities = format_polynomial_identities(&self.identities, &self.witgen);
         if !formatted_identities.is_empty() {
             write!(
                 s,
-                "\nThe following identities have not been fully processed:\n{formatted_identities}",
+                "\nThe following polynomial identities have not been fully processed:\n{formatted_identities}",
             )
             .unwrap();
         };
