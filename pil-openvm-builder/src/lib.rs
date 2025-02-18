@@ -3,13 +3,14 @@ mod symbolic_expression;
 mod symbolic_variable;
 
 use core::panic;
-use std::sync::Arc;
 
 use openvm_circuit::openvm_stark_sdk::openvm_stark_backend::{
     self,
-    air_builders::symbolic::SymbolicRapBuilder,
+    air_builders::symbolic::{
+        symbolic_expression::SymbolicExpression as SymbolicExpressionOVM, SymbolicRapBuilder,
+    },
     interaction::{InteractionBuilder, InteractionType},
-    p3_field::Field,
+    p3_field::{Field, FieldAlgebra},
 };
 pub use symbolic_builder::*;
 use symbolic_expression::SymbolicExpression;
@@ -90,13 +91,27 @@ fn format_expr<F: Field>(
 
 pub fn get_asm<F: Field>(
     name: &str,
+    imports: &[(&str, &str, usize, usize)],
     ab: SymbolicAirBuilder<F>,
     columns: Vec<String>,
     public_values: Vec<String>,
 ) -> String {
+    let machine_name = if imports.len() > 0 {
+        format!(
+            "{name}({})",
+            imports
+                .iter()
+                .map(|(name, kind, _, _)| format!("{name}:{kind}"))
+                .collect::<Vec<String>>()
+                .join(",")
+        )
+    } else {
+        name.to_string()
+    };
+
     let mut pil = format!(
         "
-machine {name} with
+machine {machine_name} with
 	latch: latch,
     call_selectors: sel, {{
 
@@ -105,59 +120,45 @@ machine {name} with
     col fixed is_transition = [0] + [1]* + [0];
 
     col fixed latch = [1]*;
-
-    // Bus receives (bus_index, fields, count)
 "
     );
 
-    for interaction in ab
-        .bus_interactions
-        .iter()
-        .filter(|i| i.interaction_type == InteractionType::Receive)
-    {
-        pil.push_str(&format!(
-            "    std::protocols::bus::bus_receive({}, [{}], {});\n",
-            format_expr(
-                &SymbolicExpression::Constant(F::from_canonical_u64(interaction.bus_index as u64)),
-                &columns,
-                &public_values
-            ),
-            interaction
+    for (_, _, index, size) in imports {
+        for (n, interaction) in ab
+            .bus_interactions
+            .iter()
+            .filter(|i| (i.bus_index == *index) && (i.interaction_type == InteractionType::Receive))
+            .enumerate()
+        {
+            pil.push_str(&format!("    col witness r{n};\n"));
+            let vals = interaction
                 .fields
                 .iter()
-                .map(|value| format_expr(value, &columns, &public_values))
+                .take(*size)
+                .map(|value| format_expr(&value.clone().into(), &columns, &[]))
                 .collect::<Vec<String>>()
-                .join(", "),
-            format_expr(&interaction.count, &columns, &public_values)
-        ));
+                .join(", ");
+            pil.push_str(&format!("    OPERATION WITH {vals}\n"));
+        }
     }
 
-    pil.push_str(
-        "
-    // Bus sends (bus_index, fields, count)
-",
-    );
-
-    for interaction in ab
-        .bus_interactions
-        .iter()
-        .filter(|i| i.interaction_type == InteractionType::Send)
-    {
-        pil.push_str(&format!(
-            "    std::protocols::bus::bus_send({}, [{}], {});\n",
-            format_expr(
-                &SymbolicExpression::Constant(F::from_canonical_u64(interaction.bus_index as u64)),
-                &columns,
-                &public_values
-            ),
-            interaction
+    for (_, _, index, size) in imports {
+        for (n, interaction) in ab
+            .bus_interactions
+            .iter()
+            .filter(|i| (i.bus_index == *index) && (i.interaction_type == InteractionType::Send))
+            .enumerate()
+        {
+            pil.push_str(&format!("    col witness r{n};\n"));
+            let vals = interaction
                 .fields
                 .iter()
-                .map(|value| format_expr(value, &columns, &public_values))
+                .take(*size)
+                .map(|value| format_expr(&value.clone().into(), &columns, &[]))
                 .collect::<Vec<String>>()
-                .join(", "),
-            format_expr(&interaction.count, &columns, &public_values)
-        ));
+                .join(", ");
+            pil.push_str(&format!("    link => r{n} = byte.run({vals});\n"));
+        }
     }
 
     pil.push_str(
@@ -178,7 +179,6 @@ machine {name} with
     );
 
     for constraint in &ab.constraints {
-        // println!("{}", format_expr(constraint, &columns));
         pil.push_str(&format!(
             "    {} = 0;\n",
             format_expr(constraint, &columns, &[])
@@ -192,120 +192,89 @@ machine {name} with
 
 pub fn get_bus_asm<F: Field>(
     name: &str,
-    builder: SymbolicRapBuilder<F>,
-    columns: Vec<String>,
-    public_values: Vec<String>,
+    bus_builder: SymbolicRapBuilder<F>,
+    bus_index: usize,
+    num_lookup_cols: usize,
 ) -> String {
     let mut pil = format!(
         "
+
+use std::convert::int;
+use std::utils::cross_product;
+
 machine {name} with
     latch: latch,
+    degree: 65536,
+    operation_id: operation_id,
     call_selectors: sel, {{
 
     col fixed is_first_row = [1] + [0]*;
     col fixed is_last_row = [0] + [1]*;
     col fixed is_transition = [0] + [1]* + [0];
 
+    let operation_id;
     col fixed latch = [1]*;
-
-    // Bus receives (bus_index, fields, count)
+    
 "
     );
 
-    // Get constraints from the builder
-    //let constraints = ;
-    let interactions = builder.all_interactions();
-    let all_receives = interactions
+    let all_sends = bus_builder
+        .all_interactions()
         .iter()
-        .filter(|i| i.interaction_type == InteractionType::Receive)
-        .collect::<Vec<_>>();
+        .filter(|i| i.interaction_type == InteractionType::Send);
 
-    let all_sends = interactions
+    let all_receives = bus_builder
+        .all_interactions()
         .iter()
-        .filter(|i| i.interaction_type == InteractionType::Send)
-        .collect::<Vec<_>>();
+        .filter(|i| i.interaction_type == InteractionType::Receive);
 
-    // Handle receives
-    for interaction in all_receives {
-        pil.push_str(&format!(
-            "    std::protocols::bus::bus_receive({}, [{}], {});\n",
-            format_expr(
-                &SymbolicExpression::Constant(F::from_canonical_u64(interaction.bus_index as u64)),
-                &columns,
-                &public_values
-            ),
-            interaction
-                .fields
-                .iter()
-                .map(|value| format_expr(&value.clone().into(), &columns, &public_values))
-                .collect::<Vec<String>>()
-                .join(", "),
-            format_expr(&interaction.count.clone().into(), &columns, &public_values)
-        ));
+    let columns = ["p1", "p2", "p3"] //Hardcoded columns in this case
+        .iter()
+        .map(|i| i.to_string())
+        .collect::<Vec<String>>();
+    for (n, interaction) in all_receives
+        .filter(|i| (i.bus_index == bus_index) && (i.interaction_type == InteractionType::Receive))
+        .take(1) // Take first to avoid range_check op
+        .enumerate()
+    {
+        //pil.push_str(&format!("    col witness r{n};\n"));
+        let vals = interaction
+            .fields
+            .iter()
+            .take(num_lookup_cols)
+            .map(|value| format_expr(&value.clone().into(), &columns, &[]))
+            .collect::<Vec<String>>()
+            .join(", ");
+        pil.push_str(&format!("    operation run<0> {vals} -> p3 \n"));
     }
 
-    pil.push_str(
+    pil.push_str(&format!(
         "
-    // Bus sends (bus_index, fields, count)
-",
-    );
+    let bit_counts = [256, 256];
+    let min_degree = std::array::product(bit_counts);
+    let inputs: (int -> int)[] = cross_product(bit_counts);
+    let a = inputs[0];
+    let b = inputs[1];
+    let p1: col = a;
+    let p2: col = b;
+    let p3: col = |i| {{
+        a(i) ^ b(i)
+    }};
+    "
+    ));
 
-    // Handle sends
-    for interaction in all_sends {
-        pil.push_str(&format!(
-            "    std::protocols::bus::bus_send({}, [{}], {});\n",
-            format_expr(
-                &SymbolicExpression::Constant(F::from_canonical_u64(interaction.bus_index as u64)),
-                &columns,
-                &public_values
-            ),
-            interaction
-                .fields
-                .iter()
-                .map(|value| format_expr(&value.clone().into(), &columns, &public_values))
-                .collect::<Vec<String>>()
-                .join(", "),
-            format_expr(&interaction.count.clone().into(), &columns, &public_values)
-        ));
+    for (n, interaction) in all_sends.enumerate() {
+        let vals = interaction
+            .fields
+            .iter()
+            .take(num_lookup_cols)
+            .map(|value| format_expr(&value.clone().into(), &columns, &[]))
+            .collect::<Vec<String>>()
+            .join(", ");
+        pil.push_str(&format!("    link => r{n} = byte.run({vals});\n"));
     }
 
-    pil.push_str(
-        "
-    // Public values
-",
-    );
-
-    for i in &public_values {
-        pil.push_str(&format!("    col fixed {i};\n"));
-    }
-
-    pil.push_str(
-        "
-    // Witness columns
-",
-    );
-
-    // Declare witness columns
-    for column in columns.iter() {
-        pil.push_str(&format!("    col witness {column};\n"));
-    }
-
-    pil.push_str(
-        "
-    // Constraints
-",
-    );
-
-    // Add constraints
-    for constraint in builder.constraints().constraints {
-        let new_const = constraint.into();
-        pil.push_str(&format!(
-            "    {} = 0;\n",
-            format_expr(&new_const, &columns, &public_values)
-        ));
-    }
-
-    pil.push_str("}");
+    pil.push_str("\n}");
 
     pil
 }
@@ -361,7 +330,13 @@ mod tests {
         >>::eval(&chip.core.air, &mut builder, &cols, from_pc);
 
         let columns = (0..=11).map(|i| format!("w{}", i)).collect::<Vec<String>>();
-        let pil = get_asm("Rv32Auipc", builder, columns.clone(), vec![]);
+        let imports = vec![(
+            "byte",
+            "BitwiseOperationLookupBus",
+            BITWISE_OP_LOOKUP_BUS,
+            NUM_BITWISE_OP_LOOKUP_COLS,
+        )];
+        let pil = get_asm("Rv32Auipc", &imports, builder, columns.clone(), vec![]);
 
         // Bus
         let binding = Chip::<BabyBearPoseidon2Config>::air(&bitwise_lu_chip);
@@ -381,15 +356,20 @@ mod tests {
         let bus_builder: SymbolicRapBuilder<_> =
             get_symbolic_builder(air, &width, &[], &[], RapPhaseSeqKind::FriLogUp, 2);
 
-        let bus_columns = (0..=2).map(|i| format!("w{}", i)).collect::<Vec<String>>();
         let asm_bus = get_bus_asm::<BabyBear>(
             "BitwiseOperationLookupBus",
             bus_builder,
-            bus_columns,
-            vec!["Pub1".to_string(), "Pub2".to_string()], // Fake public values
+            BITWISE_OP_LOOKUP_BUS,
+            NUM_BITWISE_OP_LOOKUP_COLS,
         );
 
-        let asm = pil + "\n" + &asm_bus;
+        let main = "machine Main with degree: 32 {
+  BitwiseOperationLookupBus byte;
+	Rv32Auipc r(byte, 32, 32);
+}"
+        .to_string();
+
+        let asm = main + "\n" + &pil + "\n" + &asm_bus;
         std::fs::write("openvm_rv32auipc.asm", asm).unwrap();
 
         println!("PIL written to openvm_rv32auipc.asm");
