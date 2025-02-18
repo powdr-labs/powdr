@@ -1374,7 +1374,7 @@ fn zip_expressions_for_op<'a, T>(
     .into())
 }
 
-/// Turns a value that can be interpreted as a seleceted expressions (either "a $ [b, c]" or "[b, c]")
+/// Turns a value that can be interpreted as a selected expressions (either "a $ [b, c]" or "[b, c]")
 /// into the selector and the exprs. The selector is already wrappend into a std::prelude::Option.
 fn to_selected_exprs_expanded<'a, 'b, T>(
     selected_exprs: &'a Value<'b, T>,
