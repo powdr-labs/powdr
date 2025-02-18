@@ -69,7 +69,7 @@ impl<F: FieldElement> Backend<F> for PolygonBackend<F> {
 
         // Generate the proof.
         let proof_paths = pil_stark_prover::generate_proof(
-            &input_paths.contraints,
+            &input_paths.constraints,
             &input_paths.stark_struct,
             &input_paths.constants,
             &input_paths.commits,
