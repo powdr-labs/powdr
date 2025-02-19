@@ -207,15 +207,19 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
 
         let cache_key = CacheKey {
             identity_id: connection_id,
-            known_args,
+            known_args: known_args.clone(),
             known_concrete,
         };
 
-        // TODO If the function is not in the cache, we should also try with
-        // known_concrete set to None.
-
         self.witgen_functions
             .get(&cache_key)
+            .or_else(|| {
+                self.witgen_functions.get(&CacheKey {
+                    identity_id: connection_id,
+                    known_args: known_args.clone(),
+                    known_concrete: None,
+                })
+            })
             .expect("Need to call compile_cached() first!")
             .as_ref()
             .expect("compile_cached() returned false!")
