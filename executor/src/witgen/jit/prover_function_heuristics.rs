@@ -1,3 +1,4 @@
+#![allow(unused)]
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, AlgebraicReference, Analyzed, Expression, PolynomialReference,
