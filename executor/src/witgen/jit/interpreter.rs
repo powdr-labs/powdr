@@ -368,9 +368,12 @@ impl<T: FieldElement> InterpreterAction<T> {
                 }
             }),
             InterpreterAction::Branch(_branch_test, if_actions, else_actions) => {
-                if_actions.iter().chain(else_actions).for_each(|a| {
-                    set.extend(a.writes());
-                });
+                set.extend(
+                    if_actions
+                        .iter()
+                        .chain(else_actions)
+                        .flat_map(InterpreterAction::writes),
+                );
             }
             InterpreterAction::WriteCell(_, _)
             | InterpreterAction::WriteParam(_, _)
@@ -411,9 +414,13 @@ impl<T: FieldElement> InterpreterAction<T> {
             }
             InterpreterAction::Branch(branch_test, if_actions, else_actions) => {
                 set.insert(branch_test.var());
-                if_actions.iter().chain(else_actions).for_each(|a| {
-                    set.extend(a.reads());
-                });
+
+                set.extend(
+                    if_actions
+                        .iter()
+                        .chain(else_actions)
+                        .flat_map(InterpreterAction::reads),
+                );
             }
             InterpreterAction::ReadCell(_, _)
             | InterpreterAction::ReadParam(_, _)
@@ -664,16 +671,24 @@ namespace arith(8);
         // generate and call the interpreter
         let interpreter = EffectsInterpreter::new(&known_inputs, &result.code);
 
-        // 2 + 3
-        let mut params = [2.into(), 3.into(), 1.into(), 0.into(), 0.into(), 0.into()];
         let poly_ids = analyzed
             .committed_polys_in_source_order()
             .flat_map(|p| p.0.array_elements().map(|e| e.1))
             .collect_vec();
 
-        let mut data = CompactData::new(poly_ids.iter());
-        data.append_new_rows(1);
-        {
+        // helper function to check input/output values of a call
+        let test = |params: Vec<u32>, expected_out: Vec<u32>| {
+            let mut params = params
+                .into_iter()
+                .map(GoldilocksField::from)
+                .collect::<Vec<_>>();
+            let expected_out = expected_out
+                .into_iter()
+                .map(GoldilocksField::from)
+                .collect::<Vec<_>>();
+            let mut data = CompactData::new(poly_ids.iter());
+            data.append_new_rows(1);
+
             let data_ref = CompactDataRef::new(&mut data, 0);
             let mut param_lookups = params
                 .iter_mut()
@@ -688,82 +703,15 @@ namespace arith(8);
                 .collect::<Vec<_>>();
             interpreter.call(&fixed_data, &mutable_state, &mut param_lookups, data_ref);
 
-            assert_eq!(
-                &params,
-                &[
-                    GoldilocksField::from(2),
-                    GoldilocksField::from(3),
-                    GoldilocksField::from(1),
-                    GoldilocksField::from(0),
-                    GoldilocksField::from(0),
-                    GoldilocksField::from(5),
-                ]
-            );
-        }
+            assert_eq!(params, expected_out);
+        };
 
-        // 2 * 3
-        params[2] = 0.into();
-        params[3] = 1.into();
-        params[4] = 0.into();
-
-        let data_ref = CompactDataRef::new(&mut data, 0);
-        let mut param_lookups = params
-            .iter_mut()
-            .enumerate()
-            .map(|(i, p)| {
-                if i < num_inputs {
-                    LookupCell::Input(p)
-                } else {
-                    LookupCell::Output(p)
-                }
-            })
-            .collect::<Vec<_>>();
-        interpreter.call(&fixed_data, &mutable_state, &mut param_lookups, data_ref);
-
-        assert_eq!(
-            &params,
-            &[
-                GoldilocksField::from(2),
-                GoldilocksField::from(3),
-                GoldilocksField::from(0),
-                GoldilocksField::from(1),
-                GoldilocksField::from(0),
-                GoldilocksField::from(6),
-            ]
-        );
-
-        // 3 - 2
-        params[0] = 3.into();
-        params[1] = 2.into();
-        params[2] = 0.into();
-        params[3] = 0.into();
-        params[4] = 1.into();
-
-        let data_ref = CompactDataRef::new(&mut data, 0);
-        let mut param_lookups = params
-            .iter_mut()
-            .enumerate()
-            .map(|(i, p)| {
-                if i < num_inputs {
-                    LookupCell::Input(p)
-                } else {
-                    LookupCell::Output(p)
-                }
-            })
-            .collect::<Vec<_>>();
-        interpreter.call(&fixed_data, &mutable_state, &mut param_lookups, data_ref);
-
-        assert_eq!(
-            &params,
-            &[
-                GoldilocksField::from(3),
-                GoldilocksField::from(2),
-                GoldilocksField::from(0),
-                GoldilocksField::from(0),
-                GoldilocksField::from(1),
-                GoldilocksField::from(1),
-            ]
-        );
+        // 2 + 3 = 5
+        test(vec![2, 3, 1, 0, 0, 0], vec![2, 3, 1, 0, 0, 5]);
+        // 2 * 3 = 6
+        test(vec![2, 3, 0, 1, 0, 0], vec![2, 3, 0, 1, 0, 6]);
+        // 3 - 2 = 1
+        test(vec![3, 2, 0, 0, 1, 0], vec![3, 2, 0, 0, 1, 1]);
     }
 
     #[test]
