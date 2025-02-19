@@ -5,13 +5,17 @@ namespace main(N);
     // This column is not needed, but currently Powdr fails if there isn't at least one fied column
     col fixed L1 = [1] + [0]*;
 
+    // We introduce `one` to make the constraints quadratic so that they are not removed by the optimizer
+    // We set its values to 1 at runtime
+    col witness one;
+
     col witness a, b, c;
     // Note that by itself this constraint system is under-constrained and can't be
     // satisfied by filling everything with zero.
     // However, providing values for a or b externally should lead witgen to find a
     // unique witness.
-    b = a + 1;
+    b = one * (a + 1);
 
     // The pipeline skips witgen if the full witness is provided.
     // The `c` column is here only so that the provided external witness becomes partial, making witgen run.
-    c = b + 1;
+    c = one * (b + 1);

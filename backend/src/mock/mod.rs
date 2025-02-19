@@ -8,6 +8,7 @@ use std::{
 
 use bus_checker::{BusChecker, BusInteraction};
 use connection_constraint_checker::{Connection, ConnectionConstraintChecker};
+use itertools::Itertools;
 use machine::Machine;
 use polynomial_constraint_checker::PolynomialConstraintChecker;
 use powdr_ast::{
@@ -86,8 +87,18 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
         let challenges = self
             .machine_to_pil
             .values()
-            .flat_map(|pil| pil.identities.iter())
-            .flat_map(|identity| identity.all_children())
+            .flat_map(|pil| {
+                pil.identities
+                    .iter()
+                    .flat_map(|identity| identity.all_children())
+                    .chain(
+                        // Note: we iterate on a `HashMap` so the ordering is not guaranteed, but this is ok since we're building another map.
+                        pil.intermediate_columns
+                            .values()
+                            .flat_map(|(_, def)| def.iter().flat_map(|d| d.all_children())),
+                    )
+                    .collect_vec()
+            })
             .filter_map(|expr| match expr {
                 AlgebraicExpression::Challenge(challenge) => {
                     // Use the hash of the ID as the challenge.

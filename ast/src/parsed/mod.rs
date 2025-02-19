@@ -738,6 +738,7 @@ impl<Ref> From<u32> for Expression<Ref> {
         BigUint::from(value).into()
     }
 }
+
 pub type ExpressionPrecedence = u64;
 
 impl<Ref> Expression<Ref> {
