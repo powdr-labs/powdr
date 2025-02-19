@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use std::fmt::{self, Display, Formatter, Write};
 
 use itertools::Itertools;
@@ -22,10 +21,8 @@ use super::{
 };
 
 /// A generic processor for generating JIT code.
-pub struct Processor<'a, T: FieldElement, FixedEval> {
+pub struct Processor<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
-    /// An evaluator for fixed columns
-    fixed_evaluator: FixedEval,
     /// List of identities and row offsets to process them on.
     identities: Vec<(&'a Identity<T>, i32)>,
     /// List of assignments (or other queue items) provided from outside.
@@ -49,10 +46,9 @@ pub struct ProcessorResult<T: FieldElement> {
     pub range_constraints: Vec<RangeConstraint<T>>,
 }
 
-impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEval> {
+impl<'a, T: FieldElement> Processor<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        fixed_evaluator: FixedEval,
         identities: impl IntoIterator<Item = (&'a Identity<T>, i32)>,
         initial_queue: Vec<QueueItem<'a, T>>,
         requested_known_vars: impl IntoIterator<Item = Variable>,
@@ -61,7 +57,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         let identities = identities.into_iter().collect_vec();
         Self {
             fixed_data,
-            fixed_evaluator,
             identities,
             initial_queue,
             block_size: 1,
@@ -86,7 +81,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         self
     }
 
-    pub fn generate_code(
+    pub fn generate_code<FixedEval: FixedEvaluator<T>>(
         self,
         can_process: impl CanProcessCall<T>,
         witgen: WitgenInference<'a, T, FixedEval>,
@@ -112,7 +107,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
     }
 
-    fn generate_code_for_branch(
+    fn generate_code_for_branch<FixedEval: FixedEvaluator<T>>(
         &self,
         can_process: impl CanProcessCall<T>,
         mut witgen: WitgenInference<'a, T, FixedEval>,
@@ -123,10 +118,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             .process_until_no_progress(can_process.clone(), &mut witgen, identity_queue.clone())
             .is_err()
         {
-            return Err(Error::conflicting_constraints(
-                witgen,
-                self.fixed_evaluator.clone(),
-            ));
+            return Err(Error::conflicting_constraints(witgen));
         }
 
         // Check that we could derive all requested variables.
@@ -185,7 +177,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
             return Err(Error {
                 reason,
                 witgen,
-                fixed_evaluator: self.fixed_evaluator.clone(),
                 missing_variables,
                 identities: self.identities.clone(),
             });
@@ -262,7 +253,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
         Ok(result)
     }
 
-    fn process_until_no_progress(
+    fn process_until_no_progress<FixedEval: FixedEvaluator<T>>(
         &self,
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
@@ -312,7 +303,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
     /// So, the underlying lookup / permutation / bus argument likely does not hold.
     /// This function checks that all machine calls are complete, at least for a window of <block_size> rows.
     /// It returns the list of incomplete calls, if any.
-    fn incomplete_machine_calls(
+    fn incomplete_machine_calls<FixedEval: FixedEvaluator<T>>(
         &self,
         witgen: &WitgenInference<'a, T, FixedEval>,
     ) -> Vec<(&Identity<T>, i32)> {
@@ -360,7 +351,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Processor<'a, T, FixedEv
 
     /// If the only missing sends all only have a single argument, try to set those arguments
     /// to zero.
-    fn try_fix_simple_sends(
+    fn try_fix_simple_sends<FixedEval: FixedEvaluator<T>>(
         &self,
         incomplete_machine_calls: &[(&Identity<T>, i32)],
         can_process: impl CanProcessCall<T>,
@@ -448,7 +439,6 @@ fn machine_call_params<T: FieldElement>(
 pub struct Error<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     pub reason: ErrorReason,
     pub witgen: WitgenInference<'a, T, FixedEval>,
-    pub fixed_evaluator: FixedEval,
     /// Required variables that could not be determined
     pub missing_variables: Vec<Variable>,
     pub identities: Vec<(&'a Identity<T>, i32)>,
@@ -478,13 +468,9 @@ impl<T: FieldElement, FE: FixedEvaluator<T>> Display for Error<'_, T, FE> {
 }
 
 impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
-    pub fn conflicting_constraints(
-        witgen: WitgenInference<'a, T, FE>,
-        fixed_evaluator: FE,
-    ) -> Self {
+    pub fn conflicting_constraints(witgen: WitgenInference<'a, T, FE>) -> Self {
         Self {
             witgen,
-            fixed_evaluator,
             reason: ErrorReason::ConflictingConstraints,
             missing_variables: vec![],
             identities: vec![],

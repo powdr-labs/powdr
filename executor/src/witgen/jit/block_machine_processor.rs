@@ -147,7 +147,6 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .collect_vec();
         let mut result = Processor::new(
             self.fixed_data,
-            self,
             identities,
             queue_items,
             requested_known.iter().cloned(),
