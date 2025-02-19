@@ -444,6 +444,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         if let Some(v) = rc.try_to_single_value() {
             // Special case: Variable is fixed to a constant by range constraints only.
             if self.record_known(variable.clone()) {
+                log::trace!("{variable} := {v}");
                 self.code
                     .push(Effect::Assignment(variable.clone(), v.into()));
             }
