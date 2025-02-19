@@ -287,7 +287,6 @@ impl Runtime {
             "poseidon2_gl",
             vec![
                 "memory",
-                "split_gl",
                 "MIN_DEGREE",
                 "LARGE_SUBMACHINES_MAX_DEGREE",
                 "MAIN_MAX_DEGREE",

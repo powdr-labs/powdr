@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashMap},
     fs::{create_dir_all, hard_link, remove_file},
 };
 
@@ -9,7 +9,7 @@ use powdr_ast::{
 };
 use powdr_number::{FieldElement, KnownField, LargeInt};
 use powdr_pipeline::Pipeline;
-use powdr_riscv_executor::{get_main_machine, MemoryState, ProfilerOptions};
+use powdr_riscv_executor::{get_main_machine, Elem, MemoryState, ProfilerOptions};
 
 pub mod bootloader;
 mod memory_merkle_tree;
@@ -173,7 +173,10 @@ fn expr_to_u32(expr: &Expression) -> Option<u32> {
     }
 }
 
-pub fn load_initial_memory(program: &AnalysisASMFile, prover_data: &[Vec<u8>]) -> MemoryState {
+pub fn load_initial_memory(
+    program: &AnalysisASMFile,
+    prover_data: &[Vec<u8>],
+) -> HashMap<u32, u32> {
     const PAGE_SIZE_BYTES: u32 = bootloader::PAGE_SIZE_BYTES as u32;
 
     let machine = get_main_machine(program);
@@ -220,13 +223,13 @@ pub fn load_initial_memory(program: &AnalysisASMFile, prover_data: &[Vec<u8>]) -
             .collect()
     } else {
         log::warn!("No initial_memory variable found in the machine. Assuming zeroed memory.");
-        MemoryState::default()
+        HashMap::new()
     };
 
     // Fill the first page with random data to be the salt.
     // TODO: the random value should be the "hash" of the merkle tree leaf itself,
     // and the preimage of such hash should be unknown. But to implement that it would
-    // require some inteligence on the MemoryState type.
+    // require some intelligence on the MemoryState type.
     let mut rng = rand::rngs::OsRng;
     for i in 0..(PAGE_SIZE_BYTES / 4) {
         initial_memory.insert(prover_data_start + i * 4, rng.gen::<u32>());
@@ -353,7 +356,10 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // In the first full run, we use it as the memory contents of the executor;
     // on the independent chunk runs, the executor uses zeroed initial memory,
     // and the pages are loaded via the bootloader.
-    let initial_memory = load_initial_memory(&asm, pipeline.initial_memory());
+    let initial_memory: MemoryState<F> = load_initial_memory(&asm, pipeline.initial_memory())
+        .into_iter()
+        .map(|(k, v)| (k, Elem::Binary(v as i64)))
+        .collect();
 
     let mut merkle_tree = MerkleTree::<F>::new();
     merkle_tree.update(initial_memory.iter().map(|(k, v)| (*k, *v)));

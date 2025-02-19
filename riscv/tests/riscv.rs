@@ -131,7 +131,7 @@ fn runtime_poseidon_gl() {
 #[ignore = "Too slow"]
 fn runtime_poseidon2_gl() {
     let case = "poseidon2_gl_via_coprocessor";
-    let options = CompilerOptions::new_gl().with_poseidon2();
+    let options = CompilerOptions::new_gl().with_poseidon2().with_splt_vec();
     verify_riscv_crate_gl_with_options(case, Default::default(), options, false);
 }
 

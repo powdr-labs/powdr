@@ -151,6 +151,13 @@ impl CompilerOptions {
             ..self
         }
     }
+
+    pub fn with_splt_vec(self) -> Self {
+        Self {
+            libs: self.libs.with_splt_vec(),
+            ..self
+        }
+    }
 }
 
 /// Compiles a rust file to Powdr asm.
