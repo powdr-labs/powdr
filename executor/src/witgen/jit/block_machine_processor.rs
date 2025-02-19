@@ -146,7 +146,6 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .filter_map(|(i, is_input)| (!is_input).then_some(Variable::Param(i)));
         let result = Processor::new(
             self.fixed_data,
-            self,
             identities,
             queue_items,
             requested_known,
