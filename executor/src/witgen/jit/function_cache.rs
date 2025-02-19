@@ -17,7 +17,8 @@ use crate::witgen::{
 
 use super::{
     block_machine_processor::BlockMachineProcessor,
-    compiler::{compile_effects, interpret_effects, WitgenFunction},
+    compiler::{compile_effects, CompiledFunction},
+    interpreter::EffectsInterpreter,
     variable::Variable,
     witgen_inference::CanProcessCall,
 };
@@ -44,8 +45,39 @@ pub struct FunctionCache<'a, T: FieldElement> {
     parts: MachineParts<'a, T>,
 }
 
+enum WitgenFunction<T: FieldElement> {
+    // TODO We might want to pass arguments as direct function parameters
+    // (instead of a struct), so that
+    // they are stored in registers instead of the stack. Should be checked.
+    Compiled(CompiledFunction<T>),
+    Interpreted(EffectsInterpreter<T>),
+}
+
+impl<T: FieldElement> WitgenFunction<T> {
+    /// Call the witgen function to fill the data and "known" tables
+    /// given a slice of parameters.
+    /// The `row_offset` is the index inside `data` of the row considered to be "row zero".
+    /// This function always succeeds (unless it panics).
+    pub fn call<Q: QueryCallback<T>>(
+        &self,
+        fixed_data: &FixedData<'_, T>,
+        mutable_state: &MutableState<'_, T, Q>,
+        params: &mut [LookupCell<T>],
+        data: CompactDataRef<'_, T>,
+    ) {
+        match self {
+            WitgenFunction::Compiled(compiled_function) => {
+                compiled_function.call(fixed_data, mutable_state, params, data);
+            }
+            WitgenFunction::Interpreted(interpreter) => {
+                interpreter.call::<Q>(fixed_data, mutable_state, params, data)
+            }
+        }
+    }
+}
+
 pub struct CacheEntry<T: FieldElement> {
-    pub function: WitgenFunction<T>,
+    function: WitgenFunction<T>,
     pub range_constraints: Vec<RangeConstraint<T>>,
 }
 
@@ -179,17 +211,19 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
 
         let function = if compiled_jit {
             log::trace!("Compiling effects...");
-            compile_effects(
-                self.fixed_data.analyzed,
-                self.column_layout.clone(),
-                &known_inputs,
-                &code,
-                prover_functions,
+            WitgenFunction::Compiled(
+                compile_effects(
+                    self.fixed_data.analyzed,
+                    self.column_layout.clone(),
+                    &known_inputs,
+                    &code,
+                    prover_functions,
+                )
+                .unwrap(),
             )
-            .unwrap()
         } else {
             log::trace!("Building effects interpreter...");
-            interpret_effects(&known_inputs, &code).unwrap()
+            WitgenFunction::Interpreted(EffectsInterpreter::new(&known_inputs, &code))
         };
         log::trace!("Compilation done.");
 
