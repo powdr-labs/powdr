@@ -515,7 +515,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
     /// considered "known". This means even if we know how to compute a variable,
     /// as long as we cannot determine it to have a fixed value at compile-time,
     /// it is considered "unknown" and we can solve for it.
-    #[allow(unused)]
     pub fn only_concrete_known(self) -> Self {
         Self {
             witgen_inference: self.witgen_inference,
