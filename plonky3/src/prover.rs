@@ -402,6 +402,7 @@ pub fn prove<T: FieldElementMap>(
     proving_key: Option<&StarkProvingKey<T::Config>>,
     program: &PowdrCircuit<T>,
     witness_by_machine: &mut BTreeMap<String, Vec<(String, Vec<T>)>>,
+    public: &BTreeMap<String, T>,
     challenger: &mut Challenger<T>,
 ) -> Proof<T::Config>
 where
@@ -500,7 +501,7 @@ where
         // get the challenges drawn at the end of the previous stage
         let local_challenges = &state.processed_stages.last().unwrap().challenge_values;
         let CallbackResult { air_stages } =
-            program.compute_stage(stage_id, local_challenges, witness_by_machine);
+            program.compute_stage(stage_id, local_challenges, witness_by_machine, public);
 
         assert_eq!(air_stages.len(), multi_table.table_count());
 

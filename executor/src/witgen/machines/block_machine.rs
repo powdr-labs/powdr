@@ -394,6 +394,15 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
+
+    fn take_public_values(
+        &mut self,
+    ) -> BTreeMap<String, T> {
+        std::mem::take(&mut self.publics)
+        .into_iter()
+        .map(|(key, value)| (key.to_string(), value))
+        .collect()
+    }
 }
 
 impl<'a, T: FieldElement> BlockMachine<'a, T> {

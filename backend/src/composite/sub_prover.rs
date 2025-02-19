@@ -44,7 +44,7 @@ where
         // proof, even if it's not needed anymore. We should probably change
         // this API so the Vec is moved into the prover, and returned in the
         // callback and result.
-        prover.lock().unwrap().prove(&witness, None, callback)
+        prover.lock().unwrap().prove(&witness, &BTreeMap::default(), None, callback)
     });
 
     SubProver {

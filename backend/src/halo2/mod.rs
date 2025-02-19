@@ -144,6 +144,7 @@ impl Backend<Bn254Field> for Halo2Prover {
     fn prove(
         &self,
         witness: &[(String, Vec<Bn254Field>)],
+        _public: &BTreeMap<String, Bn254Field>,
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<Bn254Field>,
     ) -> Result<Proof, Error> {

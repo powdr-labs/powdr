@@ -76,6 +76,8 @@ pub struct Artifacts<T: FieldElement> {
     fixed_cols: Option<Arc<VariablySizedColumns<T>>>,
     /// Generated witnesses.
     witness: Option<Arc<Columns<T>>>,
+    /// Generated publics (from public references).
+    publics: Option<Arc<BTreeMap<String, T>>>,
     /// Instantiated backend.
     backend: Option<Box<dyn Backend<T>>>,
     /// The proof (if successful).
@@ -1049,7 +1051,7 @@ impl<T: FieldElement> Pipeline<T> {
                 .query_callback
                 .clone()
                 .unwrap_or_else(|| Arc::new(unused_query_callback()));
-            let witness = WitnessGenerator::new(&pil, &fixed_cols, query_callback.borrow())
+            let (witness, public) = WitnessGenerator::new(&pil, &fixed_cols, query_callback.borrow())
                 .with_external_witness_values(&external_witness_values)
                 .generate();
 
@@ -1061,6 +1063,7 @@ impl<T: FieldElement> Pipeline<T> {
             self.maybe_write_witness(&fixed_cols, &witness)?;
 
             self.artifact.witness = Some(Arc::new(witness));
+            self.artifact.public = Some(Arc::new(public));
         }
         self.artifact.proof = None;
 
@@ -1160,6 +1163,7 @@ impl<T: FieldElement> Pipeline<T> {
         }
 
         let witness = self.compute_witness()?;
+        let public = 
         let witgen_callback = self.witgen_callback()?;
 
         // Reads the existing proof file, if set.
@@ -1174,7 +1178,7 @@ impl<T: FieldElement> Pipeline<T> {
         let start = Instant::now();
         let proof = {
             let backend = self.backend()?;
-            match backend.prove(&witness, existing_proof, witgen_callback) {
+            match backend.prove(&witness, public, existing_proof, witgen_callback) {
                 Ok(proof) => proof,
                 Err(powdr_backend::Error::BackendError(e)) => {
                     return Err(vec![e.to_string()]);

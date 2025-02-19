@@ -261,6 +261,7 @@ impl<F: FieldElement> Backend<F> for DumpBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
+        _public: &BTreeMap<String, F>,
         prev_proof: Option<Proof>,
         // TODO: Implement challenges
         _witgen_callback: WitgenCallback<F>,

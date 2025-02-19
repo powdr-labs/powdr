@@ -44,11 +44,11 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
 
     /// Runs the first machine (unless there are no machines) end returns the generated columns.
     /// The first machine might call other machines, which is handled automatically.
-    pub fn run(self) -> HashMap<String, Vec<T>> {
+    pub fn run(self) -> (HashMap<String, Vec<T>>, BTreeMap<String, T>) {
         if let Some(first_machine) = self.machines.first() {
             first_machine.try_borrow_mut().unwrap().run_timed(&self);
         }
-        self.take_witness_col_values()
+        (self.take_witness_col_values(), self.take_public_col_values())
     }
 
     pub fn can_process_call_fully(
@@ -100,7 +100,7 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
     }
 
     /// Extracts the witness column values from the machines.
-    fn take_witness_col_values(self) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_and_public_values(self) -> (HashMap<String, Vec<T>>, BTreeMap<String, T>) {
         // We keep the already processed machines mutably borrowed so that
         // "later" machines do not try to create new rows in already processed
         // machines.
@@ -117,6 +117,24 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
                 let columns = machine.take_witness_col_values(&self).into_iter();
                 processed.push(machine);
                 columns
+            })
+            .collect()
+    }
+
+    fn take_public_col_values(self) -> BTreeMap<String, T> {
+        let mut processed = vec![];
+        self.machines
+            .iter()
+            .flat_map(|machine| {
+                let mut machine = machine
+                    .try_borrow_mut()
+                    .map_err(|_| {
+                        panic!("Recursive machine dependencies while finishing machines.");
+                    })
+                    .unwrap();
+                let public = machine.take_public_values().into_iter();
+                processed.push(machine);
+                public
             })
             .collect()
     }

@@ -202,7 +202,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
     /// Generates the committed polynomial values
     /// @returns the values (in source order) and the degree of the polynomials.
-    pub fn generate(self) -> Vec<(String, Vec<T>)> {
+    pub fn generate(self) -> (Vec<(String, Vec<T>)>, BTreeMap<String, T>) {
         record_start(OUTER_CODE_NAME);
         let fixed = FixedData::new(
             self.analyzed,
@@ -241,8 +241,9 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let machines = MachineExtractor::new(&fixed).split_out_machines();
 
         // Run main machine and extract columns from all machines.
-        let columns = MutableState::new(machines.into_iter(), &self.query_callback).run();
+        let (columns, publics) = MutableState::new(machines.into_iter(), &self.query_callback).run();
 
+        // Extracted publics from witness
         let publics = extract_publics(&columns, self.analyzed);
         if !publics.is_empty() {
             log::debug!("Publics:");
@@ -255,6 +256,8 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                     .unwrap_or_else(|| "Not yet known at this stage".to_string())
             );
         }
+
+        let publics = 
 
         let mut columns = if self.stage == 0 {
             // Multiplicities should be computed in the first stage
@@ -279,7 +282,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 (name, column)
             })
             .collect::<Vec<_>>();
-        witness_cols
+        (witness_cols, publics)
     }
 }
 
