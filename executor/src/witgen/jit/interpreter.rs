@@ -42,8 +42,8 @@ enum InterpreterAction<T: FieldElement> {
 #[derive(Debug)]
 enum BranchTest<T: FieldElement> {
     Equal { var: usize, value: T },
-    Less { var: usize, min: T, max: T },
-    Greater { var: usize, min: T, max: T },
+    Inside { var: usize, min: T, max: T },
+    Outside { var: usize, min: T, max: T },
 }
 
 impl<T: FieldElement> BranchTest<T> {
@@ -58,16 +58,16 @@ impl<T: FieldElement> BranchTest<T> {
         let var = var_mapper.map_var(variable);
         match min.cmp(&max) {
             Ordering::Equal => BranchTest::Equal { var, value: min },
-            Ordering::Less => BranchTest::Less { var, min, max },
-            Ordering::Greater => BranchTest::Greater { var, min, max },
+            Ordering::Less => BranchTest::Inside { var, min, max },
+            Ordering::Greater => BranchTest::Outside { var, min, max },
         }
     }
 
     fn var(&self) -> usize {
         match self {
             BranchTest::Equal { var, .. }
-            | BranchTest::Less { var, .. }
-            | BranchTest::Greater { var, .. } => *var,
+            | BranchTest::Inside { var, .. }
+            | BranchTest::Outside { var, .. } => *var,
         }
     }
 }
@@ -303,18 +303,18 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                         // test the condition
                         let condition = match test {
                             BranchTest::Equal { var, value } => vars[*var] == *value,
-                            BranchTest::Less { var, min, max } => {
+                            BranchTest::Inside { var, min, max } => {
                                 *min <= vars[*var] && vars[*var] <= *max
                             }
-                            BranchTest::Greater { var, min, max } => {
+                            BranchTest::Outside { var, min, max } => {
                                 vars[*var] <= *min || vars[*var] >= *max
                             }
                         };
-                        if condition {
-                            block_stack.push(if_branch.iter());
+                        block_stack.push(if condition {
+                            if_branch.iter()
                         } else {
-                            block_stack.push(else_branch.iter());
-                        }
+                            else_branch.iter()
+                        });
                         // stop the currently executing block
                         break;
                     }
