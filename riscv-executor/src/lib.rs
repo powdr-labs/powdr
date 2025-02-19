@@ -3308,3 +3308,7 @@ pub fn write_executor_csv<F: FieldElement, P: AsRef<Path>>(
 fn is_multiple_of_4(n: u32) -> bool {
     n % 4 == 0
 }
+
+pub fn hash_map_to_memory_state<F: FieldElement>(map: HashMap<u32, u32>) -> MemoryState<F> {
+    map.into_iter().map(|(k, v)| (k, v.into())).collect()
+}

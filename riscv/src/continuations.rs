@@ -9,7 +9,9 @@ use powdr_ast::{
 };
 use powdr_number::{FieldElement, KnownField, LargeInt};
 use powdr_pipeline::Pipeline;
-use powdr_riscv_executor::{get_main_machine, Elem, MemoryState, ProfilerOptions};
+use powdr_riscv_executor::{
+    get_main_machine, hash_map_to_memory_state, MemoryState, ProfilerOptions,
+};
 
 pub mod bootloader;
 mod memory_merkle_tree;
@@ -356,10 +358,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // In the first full run, we use it as the memory contents of the executor;
     // on the independent chunk runs, the executor uses zeroed initial memory,
     // and the pages are loaded via the bootloader.
-    let initial_memory: MemoryState<F> = load_initial_memory(&asm, pipeline.initial_memory())
-        .into_iter()
-        .map(|(k, v)| (k, Elem::Binary(v as i64)))
-        .collect();
+    let initial_memory = load_initial_memory(&asm, pipeline.initial_memory());
+    let initial_memory = hash_map_to_memory_state(initial_memory);
 
     let mut merkle_tree = MerkleTree::<F>::new();
     merkle_tree.update(initial_memory.iter().map(|(k, v)| (*k, *v)));
