@@ -172,10 +172,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         known_arguments: &BitVec,
         range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
-        let operation_id = known_arguments[0]
-            .then(|| range_constraints[0].try_to_single_value())
-            .flatten()
-            .map(|v| (0, v));
+        let operation_id = if !known_arguments.is_empty() && known_arguments[0] {
+            range_constraints[0].try_to_single_value().map(|v| (0, v))
+        } else {
+            None
+        };
         match self.function_cache.compile_cached(
             can_process,
             identity_id,
@@ -197,9 +198,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
-        let operation_id = match &values[0] {
-            LookupCell::Input(v) => Some((0, **v)),
-            LookupCell::Output(_) => None,
+        let operation_id = match &values.first() {
+            Some(LookupCell::Input(v)) => Some((0, **v)),
+            None | Some(LookupCell::Output(_)) => None,
         };
 
         self.data.finalize_all();
@@ -447,7 +448,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
 
         let known_inputs = arguments.iter().map(|e| e.is_constant()).collect();
-        let operation_id = arguments[0].constant_value().map(|v| (0, v));
+        let operation_id = arguments
+            .first()
+            .and_then(|a| a.constant_value().map(|v| (0, v)));
         if self
             .function_cache
             .compile_cached(mutable_state, identity_id, &known_inputs, operation_id)
@@ -529,9 +532,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         self.data.finalize_all();
 
         let mut lookup_cells = caller_data.as_lookup_cells();
-        let operation_id = match &lookup_cells[0] {
-            LookupCell::Input(v) => Some((0, **v)),
-            LookupCell::Output(_) => None,
+        let operation_id = match &lookup_cells.first() {
+            Some(LookupCell::Input(v)) => Some((0, **v)),
+            None | Some(LookupCell::Output(_)) => None,
         };
         let data = self.data.append_new_finalized_rows(self.block_size);
 
