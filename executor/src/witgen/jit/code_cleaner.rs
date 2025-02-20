@@ -7,13 +7,13 @@ use super::{
     variable::{MachineCallVariable, Variable},
 };
 
-/// Returns the list of variables that are not needed to compute the requested
+/// Returns the list of variables that are not needed to compute the required
 /// variables.
 pub fn optional_vars<T: FieldElement>(
     code: &[Effect<T, Variable>],
-    requested_variables: &[Variable],
+    required: &[Variable],
 ) -> HashSet<Variable> {
-    let mut required: HashSet<_> = requested_variables.iter().cloned().collect();
+    let mut required: HashSet<_> = required.iter().cloned().collect();
     let mut optional: HashSet<_> = Default::default();
     for effect in code.iter().rev() {
         optional.extend(optional_vars_in_effect(effect, &mut required));
@@ -42,7 +42,7 @@ pub fn remove_machine_calls<T: FieldElement>(
 }
 
 /// Returns the variables in the effect that are not needed
-/// to compute the requested variables and also updates the requested
+/// to compute the required variables and also updates the required
 /// variables.
 /// This is intended to be used in reverse on a list of effects.
 fn optional_vars_in_effect<T: FieldElement>(
@@ -59,11 +59,11 @@ fn optional_vars_in_effect<T: FieldElement>(
             true
         }
         Effect::Branch(condition, left, right) => {
-            let mut requested_left = required.clone();
-            let optional_left = optional_vars_in_branch(left, &mut requested_left);
-            let mut requested_right = required.clone();
-            let optional_right = optional_vars_in_branch(right, &mut requested_right);
-            required.extend(requested_left.iter().chain(requested_right.iter()).cloned());
+            let mut required_left = required.clone();
+            let optional_left = optional_vars_in_branch(left, &mut required_left);
+            let mut required_right = required.clone();
+            let optional_right = optional_vars_in_branch(right, &mut required_right);
+            required.extend(required_left.iter().chain(required_right.iter()).cloned());
             required.insert(condition.variable.clone());
             return optional_left
                 .intersection(&optional_right)
@@ -82,12 +82,12 @@ fn optional_vars_in_effect<T: FieldElement>(
 
 fn optional_vars_in_branch<T: FieldElement>(
     branch: &[Effect<T, Variable>],
-    requested_variables: &mut HashSet<Variable>,
+    required: &mut HashSet<Variable>,
 ) -> HashSet<Variable> {
     branch
         .iter()
         .rev()
-        .flat_map(|effect| optional_vars_in_effect(effect, requested_variables))
+        .flat_map(|effect| optional_vars_in_effect(effect, required))
         .collect()
 }
 
