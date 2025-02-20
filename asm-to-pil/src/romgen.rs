@@ -4,9 +4,8 @@ use std::{collections::HashMap, iter::repeat};
 
 use powdr_ast::asm_analysis::{
     Batch, CallableSymbol, FunctionStatement, FunctionSymbol, Incompatible, IncompatibleSet,
-    InstructionDefinitionStatement, Machine, OperationSymbol, Rom,
+    Machine, OperationSymbol, Rom,
 };
-use powdr_ast::parsed::asm::{Instruction, InstructionBody};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::NamespacedPolynomialReference;
 use powdr_ast::parsed::{
@@ -82,15 +81,12 @@ pub fn generate_machine_rom<T: FieldElement>(
         assert!(function.params.inputs.is_empty());
         // the function must have no outputs
         assert!(function.params.outputs.is_empty());
-        // we implement `return` as an infinite loop. We cannot use the parser here, since `return` is a protected keyword.
-        machine.instructions.push(InstructionDefinitionStatement {
-            source: SourceRef::unknown(),
-            name: RETURN_NAME.into(),
-            instruction: Instruction {
-                params: Params::default(),
-                links: vec![],
-                body: InstructionBody(vec![parse_pil_statement(&format!("{pc}' = {pc};"))]),
-            },
+        // we implement `return` as an infinite loop
+        machine.instructions.push({
+            // `return` is a protected keyword, so we use a dummy name and replace it afterwards
+            let mut d = parse_instruction_definition(&format!("instr dummy {{ {pc}' = {pc} }}",));
+            d.name = RETURN_NAME.into();
+            d
         });
 
         let rom = std::mem::take(&mut function.body.statements)
@@ -170,8 +166,9 @@ pub fn generate_machine_rom<T: FieldElement>(
             )),
             parse_instruction_definition(&format!("instr _loop {{ {pc}' = {pc} }}")),
             {
+                // `return` is a protected keyword, so we use a dummy name and replace it afterwards
                 let mut d = parse_instruction_definition(&format!(
-                    "instr _{RETURN_NAME} {} {{ {pc}' = 0 }}",
+                    "instr dummy {} {{ {pc}' = 0 }}",
                     output_registers(output_count).join(", ")
                 ));
                 d.name = RETURN_NAME.into();
