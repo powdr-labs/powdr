@@ -12,6 +12,10 @@ pub const PRIME: u64 = 0xffffffff00000001;
 ///
 /// TODO: remove the other Golilocks and the functions that use it,
 /// and replace it with this one.
+///
+/// TODO: it might be necessary to do some Pin black magic to prevent
+/// the compiler from trying to move this value using normal RISC-V
+/// instructions.
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct OpaqueGoldilocks(u32);
@@ -26,13 +30,15 @@ impl From<u32> for OpaqueGoldilocks {
 
 impl From<Goldilocks> for OpaqueGoldilocks {
     fn from(value: Goldilocks) -> Self {
-        let mut low_and_output = value.0 as u32;
+        let low = value.0 as u32;
         let high = (value.0 >> 32) as u32;
         unsafe {
+            let mut output = MaybeUninit::uninit();
             ecall!(Syscall::MergeGL,
-                inout("a0") low_and_output,
-                in("a1") high);
-            Self(low_and_output)
+                in("a0") low,
+                in("a1") high,
+                in("a2") output.as_mut_ptr());
+            output.assume_init()
         }
     }
 }

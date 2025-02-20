@@ -2672,20 +2672,21 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                     .collect::<Vec<_>>();
 
                 result.into_iter().enumerate().for_each(|(i, v)| {
-                    self.proc.set_mem(output_ptr + i as u32 * 4, v, 0, 0);
+                    self.proc.set_mem(output_ptr + i as u32 * 4, v.into(), 1, 0);
                 });
 
                 None
             }
             Instruction::merge_gl => {
-                let lo_and_output_reg = args[0].u();
-                let lo = self.proc.get_reg_mem(lo_and_output_reg).u();
-                let hi = self.proc.get_reg_mem(args[1].u()).u();
+                let lo = self.proc.get_reg_mem(args[0].u()).into_fe();
+                let hi = self.proc.get_reg_mem(args[1].u()).into_fe();
 
-                // Write the result to the original lo register.
-                let result = F::from((hi as u64) << 32 | lo as u64);
-                self.proc
-                    .set_reg_mem(lo_and_output_reg, Elem::Field(result));
+                let output_ptr = self.proc.get_reg_mem(args[2].u()).u();
+                assert!(is_multiple_of_4(output_ptr));
+
+                // Write the result to memory
+                let result = hi * F::from(0x1_0000_0000_u64) + lo;
+                self.proc.set_mem(output_ptr, Elem::Field(result), 2, 0);
 
                 None
             }

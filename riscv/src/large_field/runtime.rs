@@ -285,12 +285,7 @@ impl Runtime {
             "std::machines::hash::poseidon2_gl::Poseidon2GL",
             None,
             "poseidon2_gl",
-            vec![
-                "memory",
-                "MIN_DEGREE",
-                "LARGE_SUBMACHINES_MAX_DEGREE",
-                "MAIN_MAX_DEGREE",
-            ],
+            vec!["memory", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
             [r#"instr poseidon2_gl X, Y
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
@@ -333,15 +328,23 @@ impl Runtime {
                     tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
                 }
             "#,
-                r#"instr merge_gl X, Y
+                r#"
+                // Computes val(X) * 2**32 + val(Y) as a field operation and stores the result
+                // at memory address val(Z)
+                // val(Z) can be between in range [0, 2**32).
+                // val(Z) should be a multiple of 4, but this instruction does not enforce it.
+                instr merge_gl X, Y, Z
                     // load lower limb
                     link ~> tmp1_col = regs.mload(X, STEP)
                     // load higher limb
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
-                    // store the result
-                    link ~> regs.mstore(X, STEP + 2, tmp3_col)
+                    // load the result address
+                    link ~> tmp3_col = regs.mload(Z, STEP + 2)
+                    // store the result at the result address
+                    link ~> memory.mstore(X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP + 3, tmp1_col + tmp2_col * 0x100000000)
                 {
-                    tmp3_col = tmp1_col + tmp2_col * 0x100000000
+                    // Byte decompose the address
+                    tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
                 }
             "#,
             ],
@@ -353,7 +356,7 @@ impl Runtime {
         );
         self.add_syscall(
             Syscall::MergeGL,
-            std::iter::once("merge_gl 10, 11;".to_string()),
+            std::iter::once("merge_gl 10, 11, 12;".to_string()),
         );
 
         self
