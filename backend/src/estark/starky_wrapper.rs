@@ -1,6 +1,6 @@
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
+use std::{collections::BTreeMap, path::PathBuf};
 
 use crate::{field_filter::generalize_factory, Backend, BackendFactory, BackendOptions, Error};
 use powdr_ast::analyzed::Analyzed;
@@ -192,6 +192,7 @@ impl Backend<GoldilocksField> for EStark {
     fn prove(
         &self,
         witness: &[(String, Vec<GoldilocksField>)],
+        _public: &BTreeMap<String, GoldilocksField>,
         prev_proof: Option<crate::Proof>,
         // TODO: Implement challenges
         _witgen_callback: WitgenCallback<GoldilocksField>,

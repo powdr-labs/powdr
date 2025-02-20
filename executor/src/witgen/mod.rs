@@ -141,6 +141,7 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
                 .with_external_witness_values(current_witness)
                 .with_challenges(stage, challenges)
                 .generate()
+                .0
         }
     }
 }
@@ -241,27 +242,21 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let machines = MachineExtractor::new(&fixed).split_out_machines();
 
         // Run main machine and extract columns from all machines.
-        let (columns, publics) = MutableState::new(machines.into_iter(), &self.query_callback).run();
+        let (columns, publics) =
+            MutableState::new(machines.into_iter(), &self.query_callback).run();
 
-        // Extracted publics from witness
-        let publics = extract_publics(&columns, self.analyzed);
+        // // Extracted publics from witness
+        // let publics = extract_publics(&columns, self.analyzed);
         if !publics.is_empty() {
             log::debug!("Publics:");
         }
         for (name, value) in publics.iter() {
-            log::debug!(
-                "  {name:>30}: {}",
-                value
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "Not yet known at this stage".to_string())
-            );
+            log::debug!("  {name:>30}: {}", value.to_string());
         }
-
-        let publics = 
 
         let mut columns = if self.stage == 0 {
             // Multiplicities should be computed in the first stage
-            MultiplicityColumnGenerator::new(&fixed).generate(columns, publics)
+            MultiplicityColumnGenerator::new(&fixed).generate(columns, &publics)
         } else {
             columns
         };

@@ -431,6 +431,8 @@ where
                 );
             }
 
+            println!("all publics: {:?}", public);
+
             (
                 (name.clone(), table),
                 (
@@ -441,14 +443,19 @@ where
                         ),
                         public_values: constraint_system.publics_by_stage[0]
                             .iter()
-                            .map(|(_, column_name, _, row)| {
-                                witness_by_machine
-                                    .get(name)
-                                    .unwrap()
-                                    .iter()
-                                    .find_map(|(n, v)| (n == column_name).then(|| v[*row]))
-                                    .unwrap()
-                                    .into_p3_field()
+                            .map(|(name, column_name, _, _)| {
+                                println!("name: {:?}", name); // absolute name, need to get local name
+                                println!("column_name: {:?}", column_name);
+                                let local_name = name.rsplit("::").next().unwrap_or(name);
+                                println!("local_name: {:?}", local_name);
+                                public.get(local_name).unwrap().into_p3_field()
+                                // witness_by_machine
+                                //     .get(name)
+                                //     .unwrap()
+                                //     .iter()
+                                //     .find_map(|(n, v)| (n == column_name).then(|| v[*row]))
+                                //     .unwrap()
+                                //     .into_p3_field()
                             })
                             .collect(),
                     },

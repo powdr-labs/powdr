@@ -76,7 +76,7 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
-        public: &BTreeMap<String, F>,
+        _public: &BTreeMap<String, F>,
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error> {

@@ -71,7 +71,7 @@ where
     fn prove(
         &self,
         witness: &[(String, Vec<T>)],
-        public: &BTreeMap<String, Vec<T>>,
+        public: &BTreeMap<String, T>,
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Proof, Error> {

@@ -2,7 +2,7 @@ use p3_air::{Air, AirBuilder};
 
 pub trait MultistageAirBuilder: AirBuilder {
     type Challenge: Clone + Into<Self::Expr>;
-    type PublicVar: Into<Self::Expr> + Copy;
+    type PublicVar: Into<Self::Expr> + Copy + alloc::fmt::Debug;
 
     /// Traces from each stage.
     fn stage_trace(&self, stage: u8) -> Self::M;

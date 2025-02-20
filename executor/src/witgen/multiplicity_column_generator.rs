@@ -34,7 +34,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
     pub fn generate(
         &self,
         witness_columns: HashMap<String, Vec<T>>,
-        publics: BTreeMap<String, Option<T>>,
+        publics: &BTreeMap<String, T>,
     ) -> HashMap<String, Vec<T>> {
         record_start(MULTIPLICITY_WITGEN_NAME);
 
@@ -70,11 +70,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             .collect::<BTreeMap<_, _>>();
         let terminal_values = OwnedTerminalValues {
             trace: all_columns,
-            public_values: publics
-                .into_iter()
-                // Publics might be unavailable if they are later-stage publics.
-                .filter_map(|(k, v)| v.map(|v| (k, v)))
-                .collect(),
+            public_values: publics.clone(),
             challenge_values: self.fixed.challenges.clone(),
         };
 

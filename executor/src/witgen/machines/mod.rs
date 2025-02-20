@@ -140,10 +140,11 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>>;
 
-    fn take_public_values(
-        &mut self,
-    ) -> BTreeMap<String, T> {
-        unimplemented!("Public values are not supported for machine {}", self.name());
+    fn take_public_values(&mut self) -> BTreeMap<String, T> {
+        unimplemented!(
+            "Public values are not supported for machine {}",
+            self.name()
+        );
     }
 
     /// Returns the identity IDs of the connecting identities that this machine is responsible for.
@@ -245,9 +246,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         match_variant!(self, m => m.take_witness_col_values(mutable_state))
     }
 
-    fn take_public_values(
-        &mut self,
-    ) -> BTreeMap<String, T> {
+    fn take_public_values(&mut self) -> BTreeMap<String, T> {
         match self {
             KnownMachine::BlockMachine(m) => m.take_public_values(),
             KnownMachine::DynamicMachine(m) => m.take_public_values(),

@@ -77,7 +77,7 @@ pub struct Artifacts<T: FieldElement> {
     /// Generated witnesses.
     witness: Option<Arc<Columns<T>>>,
     /// Generated publics (from public references).
-    publics: Option<Arc<BTreeMap<String, T>>>,
+    public: Option<Arc<BTreeMap<String, T>>>,
     /// Instantiated backend.
     backend: Option<Box<dyn Backend<T>>>,
     /// The proof (if successful).
@@ -172,6 +172,7 @@ impl<T: FieldElement> Clone for Artifacts<T> {
             optimized_pil: self.optimized_pil.clone(),
             fixed_cols: self.fixed_cols.clone(),
             witness: self.witness.clone(),
+            public: self.public.clone(),
             proof: self.proof.clone(),
             // Backend is not cloneable, so we clear it instead
             backend: None,
@@ -1007,9 +1008,11 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
     }
 
-    pub fn compute_witness(&mut self) -> Result<Arc<Columns<T>>, Vec<String>> {
-        if let Some(ref witness) = self.artifact.witness {
-            return Ok(witness.clone());
+    pub fn compute_witness(
+        &mut self,
+    ) -> Result<(Arc<Columns<T>>, Arc<BTreeMap<String, T>>), Vec<String>> {
+        if let (Some(witness), Some(public)) = (&self.artifact.witness, &self.artifact.public) {
+            return Ok((witness.clone(), public.clone()));
         }
 
         self.host_context.clear();
@@ -1051,9 +1054,12 @@ impl<T: FieldElement> Pipeline<T> {
                 .query_callback
                 .clone()
                 .unwrap_or_else(|| Arc::new(unused_query_callback()));
-            let (witness, public) = WitnessGenerator::new(&pil, &fixed_cols, query_callback.borrow())
-                .with_external_witness_values(&external_witness_values)
-                .generate();
+            let (witness, public) =
+                WitnessGenerator::new(&pil, &fixed_cols, query_callback.borrow())
+                    .with_external_witness_values(&external_witness_values)
+                    .generate();
+
+            println!("WitnessGenerator::generate public: {:?}", public);
 
             self.log(&format!(
                 "Witness generation took {}s",
@@ -1067,7 +1073,10 @@ impl<T: FieldElement> Pipeline<T> {
         }
         self.artifact.proof = None;
 
-        Ok(self.artifact.witness.as_ref().unwrap().clone())
+        Ok((
+            self.artifact.witness.as_ref().unwrap().clone(),
+            self.artifact.public.as_ref().unwrap().clone(),
+        ))
     }
 
     pub fn witness(&self) -> Result<Arc<Columns<T>>, Vec<String>> {
@@ -1162,8 +1171,9 @@ impl<T: FieldElement> Pipeline<T> {
             return Ok(self.artifact.proof.as_ref().unwrap());
         }
 
-        let witness = self.compute_witness()?;
-        let public = 
+        let (witness, public) = self.compute_witness()?;
+
+        println!("compute_proof public: {:?}", public);
         let witgen_callback = self.witgen_callback()?;
 
         // Reads the existing proof file, if set.
@@ -1178,7 +1188,7 @@ impl<T: FieldElement> Pipeline<T> {
         let start = Instant::now();
         let proof = {
             let backend = self.backend()?;
-            match backend.prove(&witness, public, existing_proof, witgen_callback) {
+            match backend.prove(&witness, &public, existing_proof, witgen_callback) {
                 Ok(proof) => proof,
                 Err(powdr_backend::Error::BackendError(e)) => {
                     return Err(vec![e.to_string()]);

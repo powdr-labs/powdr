@@ -153,7 +153,7 @@ pub fn referenced_namespaces_algebraic_expression<F: FieldElement>(
         .all_children()
         .filter_map(|expr| match expr {
             AlgebraicExpression::Reference(reference) => Some(extract_namespace(&reference.name)),
-            AlgebraicExpression::PublicReference(_) => unimplemented!(),
+            AlgebraicExpression::PublicReference(_) => None,
             AlgebraicExpression::Challenge(_)
             | AlgebraicExpression::Number(_)
             | AlgebraicExpression::BinaryOperation(_)
@@ -215,7 +215,17 @@ fn split_by_namespace<F: FieldElement>(
                 let namespaces = referenced_namespaces_algebraic_expression(identity);
 
                 match namespaces.len() {
-                    0 => panic!("Identity references no namespace: {identity}"),
+                    0 => {
+                        if identity
+                            .all_children()
+                            .all(|expr| matches!(expr, AlgebraicExpression::PublicReference(_)))
+                        {
+                            None
+                        } else {
+                            // panic if any of the children isn't a public reference
+                            panic!("Identity references no namespace: {identity}");
+                        }
+                    }
                     // add this identity to the only referenced namespace
                     1 => (namespaces.into_iter().next().unwrap() == current_namespace)
                         .then(|| (current_namespace.clone(), statement)),

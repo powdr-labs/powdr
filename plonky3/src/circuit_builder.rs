@@ -172,12 +172,18 @@ where
             .iter()
             .map(|(name, (_, table))| {
                 let res = table
-                    .publics_by_stage
+                    .publics_by_stage // these are public declarations because stage info is needed, must be associated with some poly var
                     .iter()
                     .map(|publics| {
                         publics
                             .iter()
-                            .map(|(_, name, _, _)| {public.get(name).cloned()})
+                            .map(|(name, _, _, _)| {
+                                println!("public_values_so_far publics: {:?}", public);
+                                println!("public_values_so_far public: {:?}", name);
+                                public
+                                    .get(name.rsplit("::").next().unwrap_or(name))
+                                    .cloned()
+                            }) // not sure if the name from public is the same as the name from the publics_by_stage
                             .collect()
                     })
                     .collect();
@@ -259,7 +265,7 @@ struct Data<'a, T, AB: MultistageAirBuilder> {
     constraint_system: &'a ConstraintSystem<T>,
     traces_by_stage: &'a [AB::M],
     fixed: &'a AB::M,
-    publics: &'a BTreeMap<&'a str, <AB as MultistageAirBuilder>::PublicVar>,
+    publics: &'a BTreeMap<&'a str, <AB as MultistageAirBuilder>::PublicVar>, // currently these are public declarations
     challenges: &'a [BTreeMap<&'a u64, <AB as MultistageAirBuilder>::Challenge>],
 }
 
@@ -286,11 +292,17 @@ impl<T, AB: MultistageAirBuilder> TerminalAccess<AB::Expr> for &Data<'_, T, AB> 
     }
 
     fn get_public(&self, public: &str) -> AB::Expr {
+        println!("get_public all publics: {:?}", self.publics); // these are from public declarations
+        println!("get_public public: {:?}", public); // these are from public references and are local names
+                                                     // need a way to match the local names
+
         (*self
             .publics
-            .get(public)
+            .iter()
+            .find(|(abs_name, _)| abs_name.rsplit("::").next().unwrap_or(abs_name) == public)
+            .map(|(_, value)| value)
             .expect("Referenced public value does not exist"))
-        .into()
+        .into() // here only the first matching entry is returned
     }
 }
 
@@ -309,7 +321,7 @@ where
             .map(|i| builder.stage_public_values(i))
             .collect_vec();
 
-        // public constraints
+        // public constraints (these are initially from ConstraintSystem, which comes from split pil, which contain public declarations rather than public references)
         let public_vals_by_name = self
             .constraint_system
             .publics_by_stage

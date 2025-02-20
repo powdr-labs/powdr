@@ -55,10 +55,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
     fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
         assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self
+        let process_result = self
             .process(first_row, 0, mutable_state, None, true)
-            .updated_data
-            .block;
+            .updated_data;
+        self.data = process_result.block;
+        self.publics.extend(process_result.publics); // at least for the fibonacci example, this is required here to pass the publics to witgen results (i think it might be that the main machine is the dynamic machine and it's not called via a lookup, so we have to also extend publics here as well if it's called via run(), which means the first machine called i think, typically the main)
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -125,13 +126,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
             .collect()
     }
 
-    fn take_public_values(
-        &mut self,
-    ) -> BTreeMap<String, T> {
+    fn take_public_values(&mut self) -> BTreeMap<String, T> {
+        println!("dynamic macine take public values: {:?}", self.publics);
         std::mem::take(&mut self.publics)
-        .into_iter()
-        .map(|(key, value)| (key.to_string(), value))
-        .collect()
+            .into_iter()
+            .map(|(key, value)| (key.to_string(), value))
+            .collect()
     }
 }
 

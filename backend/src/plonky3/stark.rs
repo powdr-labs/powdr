@@ -209,6 +209,7 @@ where
         public: &BTreeMap<String, T>,
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
+        println!("Plonky3Prover::prove public: {:?}", public);
         let mut witness_by_machine = self
             .split
             .iter()
@@ -325,189 +326,189 @@ where
     }
 }
 
-// #[cfg(test)]
-// mod tests {
+#[cfg(test)]
+mod tests {
 
-//     use super::Plonky3Prover;
-//     use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
-//     use powdr_pipeline::Pipeline;
-//     use test_log::test;
+    use super::Plonky3Prover;
+    use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
+    use powdr_pipeline::Pipeline;
+    use test_log::test;
 
-//     use powdr_plonky3::{Commitment, FieldElementMap, ProverData};
+    use powdr_plonky3::{Commitment, FieldElementMap, ProverData};
 
-//     /// Prove and verify execution over all supported fields
-//     fn run_test(pil: &str) {
-//         run_test_publics(pil, &None);
-//     }
+    /// Prove and verify execution over all supported fields
+    fn run_test(pil: &str) {
+        run_test_publics(pil, &None);
+    }
 
-//     fn run_test_publics(pil: &str, malicious_publics: &Option<Vec<usize>>) {
-//         run_test_publics_aux::<GoldilocksField>(pil, malicious_publics);
-//         run_test_publics_aux::<BabyBearField>(pil, malicious_publics);
-//         run_test_publics_aux::<Mersenne31Field>(pil, malicious_publics);
-//     }
+    fn run_test_publics(pil: &str, malicious_publics: &Option<Vec<usize>>) {
+        run_test_publics_aux::<GoldilocksField>(pil, malicious_publics);
+        run_test_publics_aux::<BabyBearField>(pil, malicious_publics);
+        run_test_publics_aux::<Mersenne31Field>(pil, malicious_publics);
+    }
 
-//     fn run_test_publics_aux<F: FieldElementMap>(pil: &str, malicious_publics: &Option<Vec<usize>>)
-//     where
-//         ProverData<F>: Send + serde::Serialize + for<'a> serde::Deserialize<'a>,
-//         Commitment<F>: Send,
-//     {
-//         let mut pipeline = Pipeline::<F>::default().from_pil_string(pil.to_string());
-//         let pil = pipeline.compute_optimized_pil().unwrap();
-//         let witness_callback = pipeline.witgen_callback().unwrap();
-//         let witness = &mut pipeline.compute_witness().unwrap();
-//         let fixed = pipeline.compute_fixed_cols().unwrap();
+    fn run_test_publics_aux<F: FieldElementMap>(pil: &str, malicious_publics: &Option<Vec<usize>>)
+    where
+        ProverData<F>: Send + serde::Serialize + for<'a> serde::Deserialize<'a>,
+        Commitment<F>: Send,
+    {
+        let mut pipeline = Pipeline::<F>::default().from_pil_string(pil.to_string());
+        let pil = pipeline.compute_optimized_pil().unwrap();
+        let witness_callback = pipeline.witgen_callback().unwrap();
+        let (witness, public) = &mut pipeline.compute_witness().unwrap();
+        let fixed = pipeline.compute_fixed_cols().unwrap();
 
-//         let mut prover = Plonky3Prover::new(pil, fixed);
-//         prover.setup();
-//         let proof = prover.prove(witness, witness_callback);
+        let mut prover = Plonky3Prover::new(pil, fixed);
+        prover.setup();
+        let proof = prover.prove(witness, public,witness_callback);
 
-//         assert!(proof.is_ok());
+        assert!(proof.is_ok());
 
-//         if let Some(publics) = malicious_publics {
-//             prover
-//                 .verify(
-//                     &proof.unwrap(),
-//                     &publics
-//                         .iter()
-//                         .map(|i| F::from(*i as u64))
-//                         .collect::<Vec<_>>(),
-//                 )
-//                 .unwrap()
-//         }
-//     }
+        if let Some(publics) = malicious_publics {
+            prover
+                .verify(
+                    &proof.unwrap(),
+                    &publics
+                        .iter()
+                        .map(|i| F::from(*i as u64))
+                        .collect::<Vec<_>>(),
+                )
+                .unwrap()
+        }
+    }
 
-//     #[test]
-//     fn public_values() {
-//         let content = "
-//         namespace Global(8);
-//             pol fixed FIRST = [1] + [0]*;
-//             pol witness x;
-//             pol witness y;
-//             y * y = y;
-//             x' = (1 - FIRST') * (x + 1);
-//             public out0 = x(6);
-//             public out1 = x(7);
-//             public out2 = y(3);
-//             public out3 = y(5);
-//         ";
-//         run_test(content);
-//     }
+    #[test]
+    fn public_values() {
+        let content = "
+        namespace Global(8);
+            pol fixed FIRST = [1] + [0]*;
+            pol witness x;
+            pol witness y;
+            y * y = y;
+            x' = (1 - FIRST') * (x + 1);
+            public out0 = x(6);
+            public out1 = x(7);
+            public out2 = y(3);
+            public out3 = y(5);
+        ";
+        run_test(content);
+    }
 
-//     #[test]
-//     #[should_panic = "Witness generation failed."]
-//     fn public_reference() {
-//         let content = r#"
-//         namespace Global(8);
-//             col witness x;
-//             col witness y;
-//             public oldstate = x(0);
-//             x = 0;
-//             y = 1 + :oldstate;
-//         "#;
-//         run_test(content);
-//     }
+    #[test]
+    #[should_panic = "Witness generation failed."]
+    fn public_reference() {
+        let content = r#"
+        namespace Global(8);
+            col witness x;
+            col witness y;
+            public oldstate = x(0);
+            x = 0;
+            y = 1 + :oldstate;
+        "#;
+        run_test(content);
+    }
 
-//     #[test]
-//     #[should_panic = "fri err: InvalidPowWitness"]
-//     fn public_inputs_malicious() {
-//         let content = r#"
-//         namespace Add(8);
-//             col witness x;
-//             col witness y;
-//             col witness z;
-//             y - 1 = 0;
-//             x = 0;
-//             x + y = z;
+    #[test]
+    #[should_panic = "fri err: InvalidPowWitness"]
+    fn public_inputs_malicious() {
+        let content = r#"
+        namespace Add(8);
+            col witness x;
+            col witness y;
+            col witness z;
+            y - 1 = 0;
+            x = 0;
+            x + y = z;
 
-//             public outz = z(7);
-//         "#;
-//         let malicious_publics = Some(vec![0]);
-//         run_test_publics(content, &malicious_publics);
-//     }
+            public outz = z(7);
+        "#;
+        let malicious_publics = Some(vec![0]);
+        run_test_publics(content, &malicious_publics);
+    }
 
-//     #[test]
-//     #[should_panic = "No tables to prove"]
-//     fn empty() {
-//         let content = "namespace Global(8);";
-//         run_test(content);
-//     }
+    #[test]
+    #[should_panic = "No tables to prove"]
+    fn empty() {
+        let content = "namespace Global(8);";
+        run_test(content);
+    }
 
-//     #[test]
-//     fn add() {
-//         let content = r#"
-//         namespace Add(8);
-//             col witness x;
-//             col witness y;
-//             col witness z;
-//             x + y = z;
-//         "#;
-//         run_test(content);
-//     }
+    #[test]
+    fn add() {
+        let content = r#"
+        namespace Add(8);
+            col witness x;
+            col witness y;
+            col witness z;
+            x + y = z;
+        "#;
+        run_test(content);
+    }
 
-//     #[test]
-//     fn next() {
-//         let content = r#"
-//         namespace Next(8);
-//             col witness x;
-//             col witness y;
-//             x' + y = 0;
-//         "#;
-//         run_test(content);
-//     }
+    #[test]
+    fn next() {
+        let content = r#"
+        namespace Next(8);
+            col witness x;
+            col witness y;
+            x' + y = 0;
+        "#;
+        run_test(content);
+    }
 
-//     #[test]
-//     fn fixed() {
-//         let content = r#"
-//         namespace Add(8);
-//             col witness x;
-//             col fixed y = [1, 0]*;
-//             x * y = y;
-//         "#;
-//         run_test(content);
-//     }
+    #[test]
+    fn fixed() {
+        let content = r#"
+        namespace Add(8);
+            col witness x;
+            col fixed y = [1, 0]*;
+            x * y = y;
+        "#;
+        run_test(content);
+    }
 
-//     #[test]
-//     fn challenge() {
-//         let content = r#"
-//         let N: int = 8;
-        
-//         namespace Global(N); 
-//             let alpha: expr = std::prelude::challenge(0, 41);
-//             let beta: expr = std::prelude::challenge(0, 42);
-//             col witness x;
-//             col witness stage(1) y;
-//             x = y + beta * alpha;
-//         "#;
-//         run_test(content);
-//     }
+    #[test]
+    fn challenge() {
+        let content = r#"
+        let N: int = 8;
 
-//     #[test]
-//     fn stage_1_public() {
-//         let content = r#"
-//         let N: int = 8;
-        
-//         namespace Global(N); 
-//             let alpha: expr = std::prelude::challenge(0, 41);
-//             let beta: expr = std::prelude::challenge(0, 42);
-//             col witness stage(0) x;
-//             col witness stage(1) y;
-//             x = y + beta * alpha;
+        namespace Global(N);
+            let alpha: expr = std::prelude::challenge(0, 41);
+            let beta: expr = std::prelude::challenge(0, 42);
+            col witness x;
+            col witness stage(1) y;
+            x = y + beta * alpha;
+        "#;
+        run_test(content);
+    }
 
-//             public out = y(N - 1);
-//         "#;
-//         run_test(content);
-//     }
+    #[test]
+    fn stage_1_public() {
+        let content = r#"
+        let N: int = 8;
 
-//     #[test]
-//     fn polynomial_identity() {
-//         let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
-//         run_test(content);
-//     }
+        namespace Global(N);
+            let alpha: expr = std::prelude::challenge(0, 41);
+            let beta: expr = std::prelude::challenge(0, 42);
+            col witness stage(0) x;
+            col witness stage(1) y;
+            x = y + beta * alpha;
 
-//     #[test]
-//     #[should_panic = "not implemented"]
-//     fn lookup() {
-//         let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; [a] in [z];";
-//         run_test(content);
-//     }
-// }
+            public out = y(N - 1);
+        "#;
+        run_test(content);
+    }
+
+    #[test]
+    fn polynomial_identity() {
+        let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
+        run_test(content);
+    }
+
+    #[test]
+    #[should_panic = "not implemented"]
+    fn lookup() {
+        let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; [a] in [z];";
+        run_test(content);
+    }
+}
