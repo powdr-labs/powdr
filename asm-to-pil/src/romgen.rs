@@ -4,8 +4,9 @@ use std::{collections::HashMap, iter::repeat};
 
 use powdr_ast::asm_analysis::{
     Batch, CallableSymbol, FunctionStatement, FunctionSymbol, Incompatible, IncompatibleSet,
-    Machine, OperationSymbol, Rom,
+    InstructionDefinitionStatement, Machine, OperationSymbol, Rom,
 };
+use powdr_ast::parsed::asm::{Instruction, InstructionBody};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::NamespacedPolynomialReference;
 use powdr_ast::parsed::{
@@ -15,7 +16,7 @@ use powdr_ast::parsed::{
 use powdr_number::{BigUint, FieldElement};
 use powdr_parser_util::SourceRef;
 
-use crate::common::{instruction_flag, RETURN_NAME};
+use crate::common::{instruction_flag, output_registers, RETURN_NAME};
 use crate::{
     common::{input_at, output_at, RESET_NAME},
     utils::{
@@ -55,10 +56,58 @@ fn pad_return_arguments(s: &mut FunctionStatement, output_count: usize) {
     };
 }
 
-pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, Option<Rom>) {
+/// Generate the ROM for a machine
+/// Arguments:
+/// - `machine`: the machine to generate the ROM for
+/// - `is_callable`: whether the machine is callable.
+///     - If it is, a dispatcher is generated and this machine can be used as a submachine
+///     - If it is not, the machine must have a single function which never returns, so that the entire trace can be filled with a single block
+pub fn generate_machine_rom<T: FieldElement>(
+    mut machine: Machine,
+    is_callable: bool,
+) -> (Machine, Option<Rom>) {
     if !machine.has_pc() {
         // do nothing, there is no rom to be generated
         (machine, None)
+    } else if !is_callable {
+        let pc = machine.pc().unwrap();
+        // if the machine is not callable, it must have a single function
+        assert_eq!(machine.callable.0.len(), 1);
+        let callable = machine.callable.iter_mut().next().unwrap();
+        let function = match callable.symbol {
+            CallableSymbol::Function(ref mut f) => f,
+            CallableSymbol::Operation(_) => unreachable!(),
+        };
+        // the function must have no inputs
+        assert!(function.params.inputs.is_empty());
+        // the function must have no outputs
+        assert!(function.params.outputs.is_empty());
+        // we implement `return` as an infinite loop. We cannot use the parser here, since `return` is a protected keyword.
+        machine.instructions.push(InstructionDefinitionStatement {
+            source: SourceRef::unknown(),
+            name: RETURN_NAME.into(),
+            instruction: Instruction {
+                params: Params::default(),
+                links: vec![],
+                body: InstructionBody(vec![parse_pil_statement(&format!("{pc}' = {pc};"))]),
+            },
+        });
+
+        let rom = std::mem::take(&mut function.body.statements)
+            .into_iter_batches()
+            .collect();
+
+        *callable.symbol = OperationSymbol {
+            source: SourceRef::unknown(),
+            id: OperationId { id: None },
+            params: Params {
+                inputs: vec![],
+                outputs: vec![],
+            },
+        }
+        .into();
+
+        (machine, Some(Rom { statements: rom }))
     } else {
         // all callables in the machine must be functions
         assert!(machine.callable.is_only_functions());
@@ -66,24 +115,6 @@ pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, 
         let operation_id = "_operation_id";
 
         let pc = machine.pc().unwrap();
-
-        // add the necessary embedded instructions
-        let embedded_instructions = [
-            parse_instruction_definition(&format!(
-                "instr _jump_to_operation {{ {pc}' = {operation_id} }}",
-            )),
-            parse_instruction_definition(&format!(
-                "instr {RESET_NAME} {{ {} }}",
-                machine
-                    .write_register_names()
-                    .map(|w| format!("{w}' = 0"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )),
-            parse_instruction_definition(&format!("instr _loop {{ {pc}' = {pc} }}")),
-        ];
-
-        machine.instructions.extend(embedded_instructions);
 
         // generate the rom
         // the functions are already batched, we just batch the dispatcher manually here
@@ -123,6 +154,32 @@ pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, 
         machine.registers.extend(
             input_assignment_registers_declarations.chain(output_assignment_registers_declarations),
         );
+
+        // add the necessary embedded instructions
+        let embedded_instructions = [
+            parse_instruction_definition(&format!(
+                "instr _jump_to_operation {{ {pc}' = {operation_id} }}",
+            )),
+            parse_instruction_definition(&format!(
+                "instr {RESET_NAME} {{ {} }}",
+                machine
+                    .write_register_names()
+                    .map(|w| format!("{w}' = 0"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+            parse_instruction_definition(&format!("instr _loop {{ {pc}' = {pc} }}")),
+            {
+                let mut d = parse_instruction_definition(&format!(
+                    "instr _{RETURN_NAME} {} {{ {pc}' = 0 }}",
+                    output_registers(output_count).join(", ")
+                ));
+                d.name = RETURN_NAME.into();
+                d
+            },
+        ];
+
+        machine.instructions.extend(embedded_instructions);
 
         // turn each function into an operation, setting the operation_id to the current position in the ROM
         for callable in machine.callable.iter_mut() {
@@ -264,7 +321,7 @@ mod tests {
         let checked = powdr_analysis::machine_check::check(parsed).unwrap();
         checked
             .into_machines()
-            .map(|(name, m)| (name, generate_machine_rom::<T>(m)))
+            .map(|(name, m)| (name, generate_machine_rom::<T>(m, true)))
             .collect()
     }
 

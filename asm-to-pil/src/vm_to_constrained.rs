@@ -13,7 +13,6 @@ use powdr_ast::{
         RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
-        self,
         asm::{
             CallableParams, CallableRef, InstructionBody, InstructionParams, LinkDeclaration,
             OperationId, Param, Params,
@@ -29,7 +28,7 @@ use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_parser_util::SourceRef;
 
 use crate::{
-    common::{instruction_flag, return_instruction, RETURN_NAME},
+    common::{instruction_flag, RETURN_NAME},
     utils::parse_pil_statement,
 };
 
@@ -37,12 +36,7 @@ pub fn convert_machine<T: FieldElement>(
     machine: Machine,
     rom: Option<Rom>,
 ) -> (Machine, Option<Machine>) {
-    let output_count = machine
-        .operations()
-        .map(|f| f.params.outputs.len())
-        .max()
-        .unwrap_or_default();
-    VMConverter::<T>::with_output_count(output_count).convert_machine(machine, rom)
+    VMConverter::<T>::default().convert_machine(machine, rom)
 }
 
 pub enum Input {
@@ -128,19 +122,10 @@ struct VMConverter<T> {
     line_lookup: Vec<(String, String)>,
     /// Names of fixed columns that contain the rom.
     rom_constant_names: Vec<String>,
-    /// the maximum number of inputs in all functions
-    output_count: usize,
     _phantom: std::marker::PhantomData<T>,
 }
 
 impl<T: FieldElement> VMConverter<T> {
-    fn with_output_count(output_count: usize) -> Self {
-        Self {
-            output_count,
-            ..Default::default()
-        }
-    }
-
     fn convert_machine(
         mut self,
         mut input: Machine,
@@ -167,16 +152,6 @@ impl<T: FieldElement> VMConverter<T> {
         for instr in std::mem::take(&mut input.instructions) {
             self.handle_instruction_def(&mut input, instr);
         }
-
-        // introduce `return` instruction
-        self.handle_instruction_def(
-            &mut input,
-            InstructionDefinitionStatement {
-                source: SourceRef::unknown(),
-                name: RETURN_NAME.into(),
-                instruction: self.return_instruction(),
-            },
-        );
 
         let assignment_registers = self
             .assignment_register_names()
@@ -1136,10 +1111,6 @@ impl<T: FieldElement> VMConverter<T> {
         self.registers
             .iter()
             .filter_map(|(n, r)| r.ty.is_read_only().then_some(n))
-    }
-
-    fn return_instruction(&self) -> parsed::asm::Instruction {
-        return_instruction(self.output_count, self.pc_name.as_ref().unwrap())
     }
 
     /// Return an expression of degree at most 1 whose value matches that of `expr`.
