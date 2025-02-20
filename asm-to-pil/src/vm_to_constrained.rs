@@ -177,29 +177,22 @@ impl<T: FieldElement> VMConverter<T> {
                         use RegisterTy::*;
                         match reg.ty {
                             // Force pc to zero on first row.
-                            Pc => {
+                            Pc | Write => {
                                 // introduce an intermediate witness polynomial to keep the degree of polynomial identities at 2
                                 // this may not be optimal for backends which support higher degree constraints
-                                let pc_update_name = format!("{name}_update");
+                                let update_name = format!("{name}_update");
                                 vec![
-                                    witness_column(
-                                        SourceRef::unknown(),
-                                        pc_update_name.clone(),
-                                        None,
-                                    ),
+                                    witness_column(SourceRef::unknown(), update_name.clone(), None),
                                     PilStatement::Expression(
                                         SourceRef::unknown(),
-                                        build::identity(
-                                            direct_reference(pc_update_name.clone()),
-                                            rhs,
-                                        ),
+                                        build::identity(direct_reference(update_name.clone()), rhs),
                                     ),
                                     PilStatement::Expression(
                                         SourceRef::unknown(),
                                         build::identity(
                                             lhs,
                                             (Expression::from(1) - next_reference("first_step"))
-                                                * direct_reference(pc_update_name),
+                                                * direct_reference(update_name),
                                         ),
                                     ),
                                 ]
