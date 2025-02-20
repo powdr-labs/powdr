@@ -541,7 +541,7 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
     f: &ProverFunction<'_, T>,
     codegen: &mut CodeGenerator<'_, T, D>,
 ) -> Result<String, String> {
-    let code = match f.computation {
+    let code = match &f.computation {
         ProverFunctionComputation::ComputeFrom(code) => format!(
             "({}).call(args.to_vec().into())",
             codegen.generate_code_for_expression(code)?
@@ -549,6 +549,9 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
         ProverFunctionComputation::ProvideIfUnknown(code) => {
             assert!(!f.compute_multi);
             format!("({}).call()", codegen.generate_code_for_expression(code)?)
+        }
+        ProverFunctionComputation::HandleQueryInputOutput(_branches) => {
+            todo!()
         }
     };
     let code = if f.compute_multi {
