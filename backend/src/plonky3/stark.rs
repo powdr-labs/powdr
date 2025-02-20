@@ -209,7 +209,6 @@ where
         public: &BTreeMap<String, T>,
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
-        println!("Plonky3Prover::prove public: {:?}", public);
         let mut witness_by_machine = self
             .split
             .iter()
@@ -245,7 +244,7 @@ where
 
         let verifying_key = self.verifying_key.as_ref();
 
-        let public_values = circuit.public_values_so_far(&public);
+        let public_values = circuit.public_values_so_far(public);
 
         // extract the full map of public values by unwrapping all the options
         let public_values = public_values
@@ -360,7 +359,7 @@ mod tests {
 
         let mut prover = Plonky3Prover::new(pil, fixed);
         prover.setup();
-        let proof = prover.prove(witness, public,witness_callback);
+        let proof = prover.prove(witness, public, witness_callback);
 
         assert!(proof.is_ok());
 

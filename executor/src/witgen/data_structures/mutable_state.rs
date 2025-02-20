@@ -48,9 +48,7 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
         if let Some(first_machine) = self.machines.first() {
             first_machine.try_borrow_mut().unwrap().run_timed(&self);
         }
-        let (witness, public) = self.take_witness_col_and_public_values();
-        println!("MutableState::run public: {:?}", public);
-        (witness, public)
+        self.take_witness_col_and_public_values()
     }
 
     pub fn can_process_call_fully(

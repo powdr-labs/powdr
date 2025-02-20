@@ -61,6 +61,8 @@ impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String>
 
 pub use powdr_executor_utils::{WitgenCallback, WitgenCallbackFn};
 
+pub type Witness<T> = Vec<(String, Vec<T>)>;
+pub type Public<T> = BTreeMap<String, T>;
 pub struct WitgenCallbackContext<T> {
     /// TODO: all these fields probably don't need to be Arc anymore, since the
     /// Arc was moved one level up... but I have to investigate this further.
@@ -203,7 +205,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
     /// Generates the committed polynomial values
     /// @returns the values (in source order) and the degree of the polynomials.
-    pub fn generate(self) -> (Vec<(String, Vec<T>)>, BTreeMap<String, T>) {
+    pub fn generate(self) -> (Witness<T>, Public<T>) {
         record_start(OUTER_CODE_NAME);
         let fixed = FixedData::new(
             self.analyzed,
@@ -245,8 +247,6 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let (columns, publics) =
             MutableState::new(machines.into_iter(), &self.query_callback).run();
 
-        // // Extracted publics from witness
-        // let publics = extract_publics(&columns, self.analyzed);
         if !publics.is_empty() {
             log::debug!("Publics:");
         }

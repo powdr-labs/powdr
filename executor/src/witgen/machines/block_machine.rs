@@ -396,7 +396,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     }
 
     fn take_public_values(&mut self) -> BTreeMap<String, T> {
-        println!("blockmacine take_public_values: {:?}", self.publics);
         std::mem::take(&mut self.publics)
             .into_iter()
             .map(|(key, value)| (key.to_string(), value))

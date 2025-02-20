@@ -220,6 +220,7 @@ fn split_by_namespace<F: FieldElement>(
                             .all_children()
                             .all(|expr| matches!(expr, AlgebraicExpression::PublicReference(_)))
                         {
+                            // public references currently are local variable names only, and therefore cannot extract namespace from them, i.e. they don't belong to any namespace
                             None
                         } else {
                             // panic if any of the children isn't a public reference

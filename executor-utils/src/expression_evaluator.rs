@@ -184,10 +184,7 @@ where
                     }
                 }
             },
-            Expression::PublicReference(public) => {
-                println!("public: {}", public);
-                self.terminal_access.get_public(public)
-            }
+            Expression::PublicReference(public) => self.terminal_access.get_public(public),
             Expression::Number(n) => (self.to_expr)(n),
             Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => match op {
                 AlgebraicBinaryOperator::Add => self.evaluate(left) + self.evaluate(right),

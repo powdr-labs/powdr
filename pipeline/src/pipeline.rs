@@ -39,6 +39,8 @@ use crate::{
 use std::collections::BTreeMap;
 
 pub type Columns<T> = Vec<(String, Vec<T>)>;
+pub type Public<T> = BTreeMap<String, T>;
+pub type WitgenResult<T> = Result<(Arc<Columns<T>>, Arc<Public<T>>), Vec<String>>;
 pub type VariablySizedColumns<T> = Vec<(String, VariablySizedColumn<T>)>;
 
 #[derive(Default)]
@@ -1008,9 +1010,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.fixed_cols.as_ref().unwrap().clone())
     }
 
-    pub fn compute_witness(
-        &mut self,
-    ) -> Result<(Arc<Columns<T>>, Arc<BTreeMap<String, T>>), Vec<String>> {
+    pub fn compute_witness(&mut self) -> WitgenResult<T> {
         if let (Some(witness), Some(public)) = (&self.artifact.witness, &self.artifact.public) {
             return Ok((witness.clone(), public.clone()));
         }
@@ -1058,8 +1058,6 @@ impl<T: FieldElement> Pipeline<T> {
                 WitnessGenerator::new(&pil, &fixed_cols, query_callback.borrow())
                     .with_external_witness_values(&external_witness_values)
                     .generate();
-
-            println!("WitnessGenerator::generate public: {:?}", public);
 
             self.log(&format!(
                 "Witness generation took {}s",
@@ -1173,7 +1171,6 @@ impl<T: FieldElement> Pipeline<T> {
 
         let (witness, public) = self.compute_witness()?;
 
-        println!("compute_proof public: {:?}", public);
         let witgen_callback = self.witgen_callback()?;
 
         // Reads the existing proof file, if set.
