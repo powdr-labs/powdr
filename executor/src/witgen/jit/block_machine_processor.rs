@@ -465,8 +465,9 @@ params[2] = Add::c[0];"
     }
 
     #[test]
-    // TODO #[should_panic = "Column NotStackable::a is not stackable in a 1-row block"]
     fn not_stackable() {
+        // Note: This used to require a panic, but now we are just not assigning to
+        // a' any more. At some point, we need a better check for the block shape.
         let input = "
         namespace Main(256);
             col witness a, b, c;
