@@ -1,9 +1,9 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use powdr_ast::analyzed::Identity;
-use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, DegreeRange};
+use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, DegreeRange,AlgebraicReference};
 use powdr_ast::parsed::visitor::AllChildren;
-use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
+use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns, select_machine_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
 
@@ -22,8 +22,9 @@ use std::sync::Arc;
 use std::{fmt, io};
 
 use crate::stwo::circuit_builder::{
-    gen_interaction_trace, gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent,
-    PowdrEval, PowdrLookupElement, PREPROCESSED_TRACE_IDX, STAGE0_TRACE_IDX, STAGE1_TRACE_IDX,
+    gen_interaction_trace_from_bus, gen_stwo_circle_column, get_constant_with_next_list,
+    PowdrComponent, PowdrEval, PowdrLookupElement, PREPROCESSED_TRACE_IDX, STAGE0_TRACE_IDX,
+    STAGE1_TRACE_IDX,
 };
 use crate::stwo::proof::{
     Proof, SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
@@ -337,7 +338,6 @@ where
             })
             .collect::<BTreeMap<_, _>>();
 
-        println!("witness_by_machine: {:?}", witness_by_machine);
         // get publics of stage0
         let publics_by_stage = self.analyzed.get_publics().into_iter().fold(
             vec![vec![]; self.analyzed.stage_count()],
@@ -409,55 +409,60 @@ where
         let mut bus_accumulators = Vec::new();
 
         // TODO: this need to be optimized
-        let machine_claimed_sum: BTreeMap<String, SecureField> = self
+        // if all the lookup have sum 0, then the prarameter claimed can be removed.
+        let all_fixed_columns: Vec<(String, Vec<_>)> = self
             .split
             .iter()
-            .zip_eq(machine_log_sizes.iter())
-            .map(
-                |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
-                    assert_eq!(machine_name, proof_machine_name);
-
-                    let mut claimed_sum = SecureField::zero();
-
-                    for id in &pil.identities {
-                        if let Identity::Lookup(..) = id {
-                            println!("id is {}", id);
-                            println!("get machine lookup trace for machine: {}", machine_name);
-
-                            let fixed_columns = machine_fixed_columns(&self.fixed, pil);
-                            let fixed: Vec<(String, Vec<M31>)> = fixed_columns
-                                .values() // Get all values (Vec<(String, &[Mersenne31Field])>)
-                                .flat_map(|vec| vec.iter().map(|(s, w)| (s.clone(), w.to_vec()))) // Convert &[Mersenne31Field] to Vec<Mersenne31Field>
-                                .collect();
-
-                            let mut witness: Vec<(String, Vec<M31>)> = witness_by_machine
-                                .values()
-                                .flat_map(|v| v.iter().cloned()) // Flatten and clone values
-                                .collect();
-                            witness.extend(fixed);
-
-                            println!("witness for generate logup trace: {:?}", witness);
-                        
-
-                            let (trace, sum) = gen_interaction_trace(
-                                machine_log_size,
-                                &pil,
-                                &witness,
-                                &lookup_elements,
-                            );
-                            bus_accumulators.extend(trace);
-                            claimed_sum = sum; // Store the actual claimed sum
-                            break; // Stop checking once we find the first Lookup identity
-                        }
-                    }
-
-                    println!("claimed_sum: {:?}", claimed_sum);
-
-                    // If no Lookup identity was found, return (machine_name, SecureField::zero())
-                    (machine_name.clone(), claimed_sum)
-                },
-            )
+            .flat_map(|(machine_name, pil)| {
+                let machine_fixed_col = machine_fixed_columns(&self.fixed, pil);
+                machine_fixed_col
+                    .values()
+                    .flat_map(|vec| {
+                        vec.iter()
+                            .map(|(s, w)| (s.clone(), w.to_vec()))
+                            .collect_vec()
+                    })
+                    .collect_vec()
+            })
             .collect();
+
+        for id in &self.analyzed.identities {
+            // use PhantomBusInteraction or lookup or PhantomLookup
+            if let Identity::PhantomBusInteraction(id) = id {
+               
+                let mut witness: Vec<(String, Vec<M31>)> = witness_by_machine
+                    .values()
+                    .flat_map(|v| v.iter().cloned()) // Flatten and clone values
+                    .collect();
+                witness.extend(all_fixed_columns.clone());
+                let mut log_size_payload=0;
+
+                id.payload.0.iter().for_each(|e| {
+                    if let AlgebraicExpression::Reference(AlgebraicReference {
+                        name,
+                        poly_id: _,
+                        next: _,
+                    }) = e
+                    {
+                        log_size_payload = witness
+                            .iter()
+                            .find(|(n, _)| n == name)
+                            .unwrap()
+                            .1
+                            .len()
+                            .ilog2();
+                        }});
+
+                gen_interaction_trace_from_bus(
+                    log_size_payload as u32,
+                    &self.analyzed,
+                    &witness,
+                    &lookup_elements,
+                );
+                break; // Stop checking once we find the first Lookup identity
+            }
+        }
+
         println!("finish logup trace generation");
         let mut tree_builder = commitment_scheme.tree_builder();
         println!(
@@ -473,6 +478,7 @@ where
         let stage0_challenges = get_challenges::<MC>(&self.analyzed, prover_channel);
 
         if self.analyzed.stage_count() > 1 {
+            //stage 1 is disabled by 2
             // Build witness columns for stage 1 using the callback function, with the generated challenges
             let span = span!(Level::INFO, "Generate stage 1 witnesses").entered();
             let stage0_witness_name_list = witness_by_machine
@@ -584,6 +590,7 @@ where
             .iter()
             .map(|component| component as &dyn ComponentProver<SimdBackend>)
             .collect();
+        println!("finish components_slice generation");
 
         let proof_result = stwo_prover::core::prover::prove::<SimdBackend, MC>(
             &components_slice,
@@ -728,7 +735,7 @@ where
 
         commitment_scheme.commit(
             proof.stark_proof.commitments[2],
-            &[4,4,4,4,4,4,4,4],
+            &[4, 4, 4, 4, 4, 4, 4, 4],
             verifier_channel,
         );
 
