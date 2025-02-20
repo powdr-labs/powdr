@@ -447,7 +447,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
 
         let known_inputs = arguments.iter().map(|e| e.is_constant()).collect();
-        let operation_id = arguments[0].constant_value().map(|v| (0, v));
+        let operation_id = arguments
+            .get(0)
+            .and_then(|v| v.constant_value().map(|v| (0, v)));
         if self
             .function_cache
             .compile_cached(mutable_state, identity_id, &known_inputs, operation_id)
@@ -529,10 +531,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         self.data.finalize_all();
 
         let mut lookup_cells = caller_data.as_lookup_cells();
-        let operation_id = match &lookup_cells[0] {
+        let operation_id = lookup_cells.get(0).and_then(|c| match c {
             LookupCell::Input(v) => Some((0, **v)),
             LookupCell::Output(_) => None,
-        };
+        });
         let data = self.data.append_new_finalized_rows(self.block_size);
 
         let success = self.function_cache.process_lookup_direct(
