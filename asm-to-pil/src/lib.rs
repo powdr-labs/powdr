@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 
-use powdr_ast::asm_analysis::{AnalysisASMFile, Module, StatementReference, SubmachineDeclaration};
+use powdr_ast::{
+    asm_analysis::{AnalysisASMFile, Module, StatementReference, SubmachineDeclaration},
+    parsed::asm::{parse_absolute_path, SymbolPath},
+};
 use powdr_number::FieldElement;
 use romgen::generate_machine_rom;
 use vm_to_constrained::ROM_SUBMACHINE_NAME;
@@ -9,9 +12,12 @@ mod romgen;
 mod vm_to_constrained;
 
 pub const ROM_SUFFIX: &str = "ROM";
+const MAIN_MACHINE: &str = "::Main";
 
 /// Remove all ASM from the machine tree, leaving only constrained machines
 pub fn compile<T: FieldElement>(mut file: AnalysisASMFile) -> AnalysisASMFile {
+    let main_machine_path = parse_absolute_path(MAIN_MACHINE);
+
     for (path, module) in &mut file.modules {
         let mut new_machines = BTreeMap::default();
         let (mut machines, statements, ordering) = std::mem::take(module).into_inner();
@@ -21,7 +27,12 @@ pub fn compile<T: FieldElement>(mut file: AnalysisASMFile) -> AnalysisASMFile {
                 match r {
                     StatementReference::MachineDeclaration(name) => {
                         let m = machines.remove(&name).unwrap();
-                        let (m, rom) = generate_machine_rom::<T>(m);
+                        let machine_path =
+                            path.clone().join(SymbolPath::from_identifier(name.clone()));
+                        // A machine is callable if it is not the main machine
+                        // This is used to avoid generating a dispatcher for the main machine, since it's only called once, from the outside, and doesn't return
+                        let is_callable = machine_path != main_machine_path;
+                        let (m, rom) = generate_machine_rom::<T>(m, is_callable);
                         let (mut m, rom_machine) = vm_to_constrained::convert_machine::<T>(m, rom);
 
                         match rom_machine {
