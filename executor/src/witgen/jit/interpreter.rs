@@ -81,7 +81,25 @@ pub enum MachineCallArgumentIdx {
 }
 
 impl<T: FieldElement> EffectsInterpreter<T> {
-    pub fn new(known_inputs: &[Variable], effects: &[Effect<T, Variable>]) -> Self {
+    pub fn try_new(known_inputs: &[Variable], effects: &[Effect<T, Variable>]) -> Option<Self> {
+        // TODO: interpreter doesn't support prover functions yet
+        fn has_prover_fn<T: FieldElement>(effect: &Effect<T, Variable>) -> bool {
+            match effect {
+                Effect::ProverFunctionCall(..) => true,
+                Effect::Branch(_, if_branch, else_branch) => {
+                    if if_branch.iter().any(has_prover_fn) || else_branch.iter().any(has_prover_fn)
+                    {
+                        return true;
+                    }
+                    false
+                }
+                _ => false,
+            }
+        }
+        if effects.iter().any(has_prover_fn) {
+            return None;
+        }
+
         let mut actions = vec![];
         let mut var_mapper = VariableMapper::new();
 
@@ -95,7 +113,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
             actions,
         };
         assert!(actions_are_valid(&ret.actions, BTreeSet::new()));
-        ret
+        Some(ret)
     }
 
     fn load_fixed_column_values(
@@ -669,7 +687,7 @@ namespace arith(8);
         assert!(result.code.iter().any(|a| matches!(a, Effect::Branch(..))));
 
         // generate and call the interpreter
-        let interpreter = EffectsInterpreter::new(&known_inputs, &result.code);
+        let interpreter = EffectsInterpreter::try_new(&known_inputs, &result.code).unwrap();
 
         let poly_ids = analyzed
             .committed_polys_in_source_order()
@@ -758,7 +776,7 @@ namespace arith(8);
             .unwrap();
 
         // generate and call the interpreter
-        let interpreter = EffectsInterpreter::new(&known_inputs, &result.code);
+        let interpreter = EffectsInterpreter::try_new(&known_inputs, &result.code).unwrap();
         let mut params = [GoldilocksField::default(); 16];
         let mut param_lookups = params
             .iter_mut()

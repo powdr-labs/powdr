@@ -46,9 +46,6 @@ pub struct FunctionCache<'a, T: FieldElement> {
 }
 
 enum WitgenFunction<T: FieldElement> {
-    // TODO We might want to pass arguments as direct function parameters
-    // (instead of a struct), so that
-    // they are stored in registers instead of the stack. Should be checked.
     Compiled(CompiledFunction<T>),
     Interpreted(EffectsInterpreter<T>),
 }
@@ -129,13 +126,11 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         }
 
         record_start("Auto-witgen code derivation");
-        let f = match T::known_field() {
-            // Currently, we only support the Goldilocks fields
-            Some(KnownField::GoldilocksField) => {
-                self.compile_witgen_function(can_process, cache_key)
-            }
-            _ => None,
-        };
+
+        let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField));
+
+        let f = self.compile_witgen_function(can_process, cache_key, interpreted);
+
         assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none());
         record_end("Auto-witgen code derivation");
     }
@@ -144,6 +139,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         &self,
         can_process: impl CanProcessCall<T>,
         cache_key: &CacheKey<T>,
+        interpreted: bool,
     ) -> Option<CacheEntry<T>> {
         log::debug!(
             "Compiling JIT function for\n  Machine: {}\n  Connection: {}\n   Inputs: {:?}{}",
@@ -207,9 +203,10 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .filter_map(|(i, b)| if b { Some(Variable::Param(i)) } else { None })
             .collect::<Vec<_>>();
 
-        let compiled_jit = !matches!(std::env::var("POWDR_JIT_INTERPRETER"), Ok(val) if val == "1");
-
-        let function = if compiled_jit {
+        let function = if interpreted {
+            log::trace!("Building effects interpreter...");
+            WitgenFunction::Interpreted(EffectsInterpreter::try_new(&known_inputs, &code)?)
+        } else {
             log::trace!("Compiling effects...");
             WitgenFunction::Compiled(
                 compile_effects(
@@ -221,9 +218,6 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
                 )
                 .unwrap(),
             )
-        } else {
-            log::trace!("Building effects interpreter...");
-            WitgenFunction::Interpreted(EffectsInterpreter::new(&known_inputs, &code))
         };
         log::trace!("Compilation done.");
 
