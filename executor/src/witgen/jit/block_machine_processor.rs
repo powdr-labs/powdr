@@ -191,7 +191,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         code: Vec<Effect<T, Variable>>,
         requested_known: &[Variable],
     ) -> Result<Vec<Effect<T, Variable>>, String> {
-        let optional_vars = code_cleaner::optional_vars(&code, &requested_known);
+        let optional_vars = code_cleaner::optional_vars(&code, requested_known);
 
         // Determine conflicting variable assignments we can remove.
         let mut vars_to_remove = HashSet::new();

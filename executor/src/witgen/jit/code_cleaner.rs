@@ -47,31 +47,24 @@ pub fn remove_machine_calls<T: FieldElement>(
 /// This is intended to be used in reverse on a list of effects.
 fn optional_vars_in_effect<T: FieldElement>(
     effect: &Effect<T, Variable>,
-    requested_variables: &mut HashSet<Variable>,
+    required: &mut HashSet<Variable>,
 ) -> HashSet<Variable> {
     let needed = match &effect {
-        Effect::Assignment(..) | Effect::ProverFunctionCall(..) => effect
-            .written_vars()
-            .any(|(v, _)| requested_variables.contains(v)),
-        Effect::Assertion(_) => {
-            // If none of the variables in the assertion are required, we can
-            // remove the assertion.
-            !effect
-                .referenced_variables()
-                .any(|v| requested_variables.contains(v))
+        Effect::Assignment(..) | Effect::ProverFunctionCall(..) => {
+            effect.written_vars().any(|(v, _)| required.contains(v))
         }
+        Effect::Assertion(_) => false,
         Effect::MachineCall(..) => {
             // We always require machine calls.
             true
         }
         Effect::Branch(condition, left, right) => {
-            let mut requested_left = requested_variables.clone();
+            let mut requested_left = required.clone();
             let optional_left = optional_vars_in_branch(left, &mut requested_left);
-            let mut requested_right = requested_variables.clone();
+            let mut requested_right = required.clone();
             let optional_right = optional_vars_in_branch(right, &mut requested_right);
-            requested_variables
-                .extend(requested_left.iter().chain(requested_right.iter()).cloned());
-            requested_variables.insert(condition.variable.clone());
+            required.extend(requested_left.iter().chain(requested_right.iter()).cloned());
+            required.insert(condition.variable.clone());
             return optional_left
                 .intersection(&optional_right)
                 .cloned()
@@ -80,7 +73,7 @@ fn optional_vars_in_effect<T: FieldElement>(
         Effect::RangeConstraint(..) => unreachable!(),
     };
     if needed {
-        requested_variables.extend(effect.referenced_variables().cloned());
+        required.extend(effect.referenced_variables().cloned());
         HashSet::new()
     } else {
         effect.written_vars().map(|(v, _)| v).cloned().collect()
@@ -91,11 +84,11 @@ fn optional_vars_in_branch<T: FieldElement>(
     branch: &[Effect<T, Variable>],
     requested_variables: &mut HashSet<Variable>,
 ) -> HashSet<Variable> {
-    let mut optional = HashSet::new();
-    for effect in branch.iter().rev() {
-        optional.extend(optional_vars_in_effect(effect, requested_variables));
-    }
-    optional
+    branch
+        .iter()
+        .rev()
+        .flat_map(|effect| optional_vars_in_effect(effect, requested_variables))
+        .collect()
 }
 
 fn remove_variables_from_effect<T: FieldElement>(
