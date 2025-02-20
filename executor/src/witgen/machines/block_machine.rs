@@ -448,7 +448,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         let known_inputs = arguments.iter().map(|e| e.is_constant()).collect();
         let operation_id = arguments
-            .get(0)
+            .first()
             .and_then(|v| v.constant_value().map(|v| (0, v)));
         if self
             .function_cache
@@ -531,7 +531,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         self.data.finalize_all();
 
         let mut lookup_cells = caller_data.as_lookup_cells();
-        let operation_id = lookup_cells.get(0).and_then(|c| match c {
+        let operation_id = lookup_cells.first().and_then(|c| match c {
             LookupCell::Input(v) => Some((0, **v)),
             LookupCell::Output(_) => None,
         });
