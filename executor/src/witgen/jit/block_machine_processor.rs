@@ -175,33 +175,27 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
         })?;
 
-        // During block shape checking, we allow removing assignments
-        // that would otherwise destroy the block shape, as long as these assignments
-        // are not required to compute the requested variables.
-        let optional_vars = code_cleaner::optional_vars(&result.code, &requested_known);
-        let ItemsToRemove {
-            vars_to_remove,
-            machine_calls_to_remove,
-        } = self.check_block_shape(&result.code, &optional_vars)?;
-        result.code = code_cleaner::remove_variables(result.code, vars_to_remove);
-        result.code = code_cleaner::remove_machine_calls(result.code, &machine_calls_to_remove);
+        result.code = self.try_ensure_block_shape(result.code, &requested_known)?;
 
         Ok((result, prover_functions))
     }
 
-    /// Verifies that each column and each bus send is stackable in the block.
+    /// Tries to ensure that each column and each bus send is stackable in the block.
     /// This means that if we have a cell write or a bus send in row `i`, we cannot
     /// have another one in row `i + block_size`.
-    /// Returns a set of (unnecessary) variables and machine calls to remove to maintain
-    /// proper block shape.
-    fn check_block_shape(
+    /// In some situations, it removes assignments to variables that are not required,
+    /// but would conflict with other assignments.
+    /// Returns the potentially modified code.
+    fn try_ensure_block_shape(
         &self,
-        code: &[Effect<T, Variable>],
-        optional_vars: &HashSet<Variable>,
-    ) -> Result<ItemsToRemove, String> {
+        code: Vec<Effect<T, Variable>>,
+        requested_known: &[Variable],
+    ) -> Result<Vec<Effect<T, Variable>>, String> {
+        let optional_vars = code_cleaner::optional_vars(&code, &requested_known);
+
+        // Determine conflicting variable assignments we can remove.
         let mut vars_to_remove = HashSet::new();
-        let mut machine_calls_to_remove = HashSet::new();
-        for (column_id, row_offsets) in written_rows_per_column(code) {
+        for (column_id, row_offsets) in written_rows_per_column(&code) {
             for (outside, inside) in self.conflicting_row_offsets(&row_offsets) {
                 let first_var = Variable::WitnessCell(Cell {
                     column_name: String::new(),
@@ -231,7 +225,11 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 }
             }
         }
-        for (identity_id, row_offsets) in completed_rows_for_bus_send(code) {
+        let code = code_cleaner::remove_variables(code, vars_to_remove);
+
+        // Determine conflicting machine calls we can remove.
+        let mut machine_calls_to_remove = HashSet::new();
+        for (identity_id, row_offsets) in completed_rows_for_bus_send(&code) {
             for (outside, inside) in
                 self.conflicting_row_offsets(&row_offsets.keys().copied().collect())
             {
@@ -248,10 +246,9 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 }
             }
         }
-        Ok(ItemsToRemove {
-            vars_to_remove,
-            machine_calls_to_remove,
-        })
+        let code = code_cleaner::remove_machine_calls(code, &machine_calls_to_remove);
+
+        Ok(code)
     }
 
     /// Returns a list of pairs of conflicting row offsets in `row_offsets`
@@ -272,13 +269,6 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             })
         })
     }
-}
-
-/// Helper struct to store the variables and machine calls to remove
-/// after a block shape check.
-struct ItemsToRemove {
-    vars_to_remove: HashSet<Variable>,
-    machine_calls_to_remove: HashSet<(u64, i32)>,
 }
 
 /// Returns, for each column ID, the collection of row offsets that have a cell write.
