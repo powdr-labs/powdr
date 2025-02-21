@@ -319,6 +319,7 @@ impl Runtime {
                 r#"instr split_gl_vec X, Y
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> split_gl_vec.split(tmp1_col, tmp2_col, STEP + 2)
                 {
                     // make sure tmp1_col and tmp2_col are aligned memory addresses
                     tmp3_col * 4 = tmp1_col,
