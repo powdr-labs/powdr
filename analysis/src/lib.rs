@@ -57,7 +57,7 @@ pub fn analyze_precompiles(
         return analyzed_asm;
     }
 
-    powdr_autoprecompiles::create_precompiles(analyzed_asm, selected)
+    powdr_autoprecompiles::powdr::create_precompiles(analyzed_asm, selected)
 }
 
 pub fn analyze_only(file: AnalysisASMFile) -> Result<AnalysisASMFile, Vec<String>> {
