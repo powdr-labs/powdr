@@ -748,6 +748,7 @@ fn profiler_sanity_check() {
         pipeline.data_callback().unwrap(),
         &[],
         Some(profiler_opt),
+        Default::default(),
     );
 
     // check files were created in temp dir, and that they are not empty

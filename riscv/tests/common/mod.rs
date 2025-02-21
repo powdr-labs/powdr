@@ -41,6 +41,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
             pipeline.data_callback().unwrap(),
             &[],
             None,
+            Default::default(),
         );
     }
 
@@ -74,7 +75,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
             None,
         );
         pipeline.rollback_from_witness();
-        let executor_trace: Vec<_> = execution.trace.into_iter().collect();
+        let executor_trace: Vec<_> = execution.0.trace.into_iter().collect();
         let pipeline = pipeline.add_external_witness_values(executor_trace);
         test_mock_backend(pipeline);
     }
