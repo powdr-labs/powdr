@@ -663,7 +663,7 @@ pub fn generate_precompile(
     }
 }
 
-fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
+pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
     expr.visit_expressions_mut(
         &mut |expr| {
             match expr {
@@ -696,7 +696,7 @@ fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
     );
 }
 
-fn append_suffix_mut(expr: &mut Expression, suffix: &str) {
+pub fn append_suffix_mut(expr: &mut Expression, suffix: &str) {
     expr.visit_expressions_mut(
         &mut |expr| match expr {
             Expression::FunctionCall(_, ref mut fun_call) => {
