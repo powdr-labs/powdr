@@ -167,6 +167,7 @@ impl TypeChecker {
             latch,
             operation_id,
             call_selectors,
+            pc_update_disabled,
         } = machine.properties;
 
         let degree = match (degree, min_degree, max_degree) {
@@ -245,6 +246,11 @@ impl TypeChecker {
                     i.name
                 ))
             }
+            if pc_update_disabled.is_some() {
+                errors.push(format!(
+                    "Machine {ctx} can't set pc_update_disabled as it does not have a pc"
+                ));
+            }
         } else {
             if latch.is_some() {
                 errors.push(format!(
@@ -278,6 +284,7 @@ impl TypeChecker {
             latch,
             operation_id,
             call_selectors,
+            pc_update_disabled: pc_update_disabled.is_some(),
             params: machine.params,
             pc: registers
                 .iter()

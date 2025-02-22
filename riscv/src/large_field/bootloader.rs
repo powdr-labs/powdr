@@ -36,6 +36,12 @@ pub fn bootloader_preamble() -> String {
     let jump_to_shutdown_routine;
     jump_to_shutdown_routine * (1 - jump_to_shutdown_routine) = 0;
 
+    pol constant FIRST = [1] + [0]*;
+
+    // modified pc update rule that jumps to the shutdown routine when the flag is set
+    let shutdown_routine_start = 4;
+    pc' = (1 - FIRST' - jump_to_shutdown_routine') * pc_update + jump_to_shutdown_routine' * shutdown_routine_start;
+
     // Expose initial register values as public outputs
 "#.to_string();
 
