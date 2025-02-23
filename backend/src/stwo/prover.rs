@@ -1,15 +1,21 @@
+use halo2_curves::pasta::pallas::Base;
+use halo2_solidity_verifier::revm::primitives::bitvec::index;
 use itertools::Itertools;
 use num_traits::{One, Zero};
-use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, DegreeRange};
+use powdr_ast::analyzed::{
+    AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Identity,
+};
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
+use stwo_prover::core::backend::simd::qm31::PackedSecureField;
 
 use powdr_number::{FieldElement, LargeInt, Mersenne31Field as M31};
 
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
+use stwo_prover::core::backend::simd::SimdBackend;
 use tracing::{span, Level};
 
 extern crate alloc;
@@ -19,9 +25,10 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::{fmt, io};
 
+use crate::stwo::bus_acc_gen::PowdrLogupTraceGenerator;
 use crate::stwo::circuit_builder::{
-    gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
-    PREPROCESSED_TRACE_IDX, STAGE0_TRACE_IDX, STAGE1_TRACE_IDX,
+    evaluate, gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
+    PowdrLookupElement, PREPROCESSED_TRACE_IDX, STAGE0_TRACE_IDX, STAGE1_TRACE_IDX,
 };
 use crate::stwo::proof::{
     Proof, SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
@@ -29,13 +36,18 @@ use crate::stwo::proof::{
 
 use stwo_prover::constraint_framework::TraceLocationAllocator;
 
+use stwo_prover::constraint_framework::logup::LogupTraceGenerator;
+use stwo_prover::constraint_framework::Relation;
 use stwo_prover::core::air::{Component, ComponentProver};
+use stwo_prover::core::backend::simd::m31::PackedM31;
+use stwo_prover::core::backend::simd::m31::LOG_N_LANES;
 use stwo_prover::core::backend::{Backend, BackendForChannel, Col, Column};
 use stwo_prover::core::channel::{Channel, MerkleChannel};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::fri::FriConfig;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig};
+use stwo_prover::core::poly::circle::PolyOps;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleDomain, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
@@ -60,7 +72,7 @@ impl fmt::Display for KeyExportError {
     }
 }
 
-pub struct StwoProver<B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Channel> {
+pub struct StwoProver<MC: MerkleChannel, C: Channel> {
     pub analyzed: Arc<Analyzed<M31>>,
     /// The split analyzed PIL
     split: BTreeMap<String, Analyzed<M31>>,
@@ -68,20 +80,20 @@ pub struct StwoProver<B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Cha
     pub fixed: Arc<Vec<(String, VariablySizedColumn<M31>)>>,
 
     /// Proving key
-    proving_key: StarkProvingKey<B>,
+    proving_key: StarkProvingKey<SimdBackend>,
     /// TODO: Add verification key.
     _verifying_key: Option<()>,
     _channel_marker: PhantomData<C>,
     _merkle_channel_marker: PhantomData<MC>,
 }
-
-impl<B, MC, C> StwoProver<B, MC, C>
+// use SimdBackend directly due to compute bus accumulator witness in backend, needs simd feature for logup trace gen
+impl<MC, C> StwoProver<MC, C>
 where
-    B: Backend + Send + BackendForChannel<MC>,
     MC: MerkleChannel + Send,
     C: Channel + Send,
     MC::H: DeserializeOwned + Serialize,
-    PowdrComponent: ComponentProver<B>,
+    PowdrComponent: ComponentProver<SimdBackend>,
+    SimdBackend: BackendForChannel<MC>,
 {
     pub fn new(
         analyzed: Arc<Analyzed<M31>>,
@@ -148,7 +160,7 @@ where
             })
             .collect();
 
-        let preprocessed: BTreeMap<String, TableProvingKeyCollection<B>> = self
+        let preprocessed: BTreeMap<String, TableProvingKeyCollection<SimdBackend>> = self
             .split
             .iter()
             .filter_map(|(namespace, pil)| {
@@ -157,6 +169,8 @@ where
                     None
                 } else {
                     let fixed_columns = machine_fixed_columns(&self.fixed, pil);
+
+                  //  println!("in machine {}", namespace);
 
                     Some((
                         namespace.to_string(),
@@ -168,8 +182,16 @@ where
                                 //Group the fixed columns by size
                                 let fixed_columns = &fixed_columns[&size];
                                 let log_size = size.ilog2();
+                                println!("grouped fixed columns with log size: {}", log_size);
+                                println!(
+                                    "with fixed columns names are {:?}",
+                                    fixed_columns
+                                        .iter()
+                                        .map(|(name, vec)| (name, vec.len().ilog2()))
+                                        .collect::<Vec<_>>()
+                                );
                                 let mut constant_trace: ColumnVec<
-                                    CircleEvaluation<B, BaseField, BitReversedOrder>,
+                                    CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
                                 > = fixed_columns
                                     .iter()
                                     .map(|(_, vec)| {
@@ -183,7 +205,7 @@ where
                                 let constant_with_next_list = get_constant_with_next_list(pil);
 
                                 let constant_shifted_trace: ColumnVec<
-                                    CircleEvaluation<B, BaseField, BitReversedOrder>,
+                                    CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
                                 > = fixed_columns
                                     .iter()
                                     .filter(|(name, _)| constant_with_next_list.contains(name))
@@ -201,13 +223,14 @@ where
 
                                 // get selector columns for the public inputs
                                 let publics_selectors: ColumnVec<
-                                    CircleEvaluation<B, BaseField, BitReversedOrder>,
+                                    CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
                                 > = pil
                                     .get_publics()
                                     .into_iter()
                                     .map(|(_, _, _, row_id, _)| {
                                         // Create a column with a single 1 at the row_id-th (in circle domain bitreverse order) position
-                                        let mut col = Col::<B, BaseField>::zeros(1 << log_size);
+                                        let mut col =
+                                            Col::<SimdBackend, BaseField>::zeros(1 << log_size);
                                         col.set(
                                             bit_reverse_index(
                                                 coset_index_to_circle_domain_index(
@@ -217,14 +240,43 @@ where
                                             ),
                                             BaseField::one(),
                                         );
-                                        CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
-                                            *domain_map.get(&(log_size as usize)).unwrap(),
-                                            col,
-                                        )
+                                        CircleEvaluation::<
+                                                SimdBackend,
+                                                BaseField,
+                                                BitReversedOrder,
+                                            >::new(
+                                                *domain_map.get(&(log_size as usize)).unwrap(),
+                                                col,
+                                            )
                                     })
                                     .collect();
 
                                 constant_trace.extend(publics_selectors);
+
+                                // add selector columns for the bus accumulator
+                                let mut col = Col::<SimdBackend, BaseField>::zeros(1 << log_size);
+                                for index in 0..(1 << log_size) {
+                                    col.set(index, BaseField::one());
+                                }
+                                col.set(0, BaseField::zero());
+                                let selector = CircleEvaluation::<
+                                    SimdBackend,
+                                    BaseField,
+                                    BitReversedOrder,
+                                >::new(
+                                    *domain_map.get(&(log_size as usize)).unwrap(),
+                                    col,
+                                );
+
+                                constant_trace.push(selector);
+                                println!(
+                                    "set in proving key, size is {}, columns sizes are {:?}",
+                                    size.ilog2(),
+                                    constant_trace
+                                        .iter()
+                                        .map(|col| col.data.len().ilog2())
+                                        .collect::<Vec<_>>()
+                                );
 
                                 (
                                     size as usize,
@@ -320,6 +372,14 @@ where
                                 .clone()
                         })
                     {
+                        println!(
+                            "constant trace size by machine {}, sizes are: {:?}",
+                            machine,
+                            constant_trace
+                                .iter()
+                                .map(|col| col.data.len().ilog2())
+                                .collect::<Vec<_>>()
+                        );
                         constant_cols.extend(constant_trace)
                     }
                     machine_log_sizes.insert(machine.clone(), machine_length.ilog2());
@@ -352,13 +412,13 @@ where
 
         // Get witness columns in circle domain for stage 0
         let stage0_witness_cols_circle_domain_eval: ColumnVec<
-            CircleEvaluation<B, BaseField, BitReversedOrder>,
+            CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
         > = witness_by_machine
             .values()
             .flat_map(|witness_cols| {
                 witness_cols
                     .iter()
-                    .map(|(_name, col)| {
+                    .map(|(name, col)| {
                         gen_stwo_circle_column(
                             *domain_map
                                 .get(&(col.len().ilog2() as usize))
@@ -370,7 +430,7 @@ where
             })
             .collect_vec();
 
-        let twiddles_max_degree = B::precompute_twiddles(
+        let twiddles_max_degree = SimdBackend::precompute_twiddles(
             CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
                 .circle_domain()
                 .half_coset,
@@ -378,15 +438,29 @@ where
 
         let prover_channel = &mut <MC as MerkleChannel>::C::default();
         let mut commitment_scheme =
-            CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles_max_degree);
+            CommitmentSchemeProver::<'_, SimdBackend, MC>::new(config, &twiddles_max_degree);
 
         // commit to constant columns
         let mut tree_builder = commitment_scheme.tree_builder();
+        println!(
+            "constant trace size: {:?}",
+            constant_cols
+                .iter()
+                .map(|col| col.data.len().ilog2())
+                .collect::<Vec<_>>()
+        );
         tree_builder.extend_evals(constant_cols);
         tree_builder.commit(prover_channel);
 
         // commit to witness columns of stage 0
         let mut tree_builder = commitment_scheme.tree_builder();
+        println!(
+            "stage0 witness trace size: {:?}",
+            stage0_witness_cols_circle_domain_eval
+                .iter()
+                .map(|col| col.data.len().ilog2())
+                .collect::<Vec<_>>()
+        );
         tree_builder.extend_evals(stage0_witness_cols_circle_domain_eval);
 
         tree_builder.commit(prover_channel);
@@ -450,6 +524,11 @@ where
                             if stage0_witness_name_list.contains(witness_name) {
                                 None
                             } else {
+                                println!(
+                                    "stage 1 witness name {} and size {}",
+                                    witness_name,
+                                    vec.len().ilog2()
+                                );
                                 Some(gen_stwo_circle_column(
                                     *domain_map
                                         .get(&(vec.len().ilog2() as usize))
@@ -470,6 +549,170 @@ where
             span.exit();
         }
 
+        // Draw lookup challenges.
+        let lookup_elements = PowdrLookupElement::draw(prover_channel);
+
+        // Build bus to interation mapping map
+        let mut bus_id_to_interaction_map = BTreeMap::new();
+        let mut index = 2;
+
+        self.split.iter().for_each(|(machine_name, pil)| {
+            for identity in &pil.identities {
+                if let Identity::PhantomBusInteraction(id) = identity {
+                    // println!(
+                    //     "bus is found in machine: {}, with bus id {}",
+                    //     machine_name, id
+                    // );
+                    index += 1;
+                    bus_id_to_interaction_map
+                        .insert(index, (id.bus_id.clone(), machine_name.clone(), id.id));
+                }
+            }
+        });
+
+        println!("bus_id_to_interaction_map: {:?}", bus_id_to_interaction_map);
+
+        // find all the witness to build bus accumulator
+        // TODO: this need to be optimized, and it doesn't include shifted constant columns
+        let all_fixed_columns: Vec<(String, Vec<_>)> = self
+            .split
+            .iter()
+            .flat_map(|(machine_name, pil)| {
+                let machine_fixed_col = machine_fixed_columns(&self.fixed, pil);
+                machine_fixed_col
+                    .iter()
+                    .filter(|(size, vec)| size.ilog2() == machine_log_sizes[machine_name])
+                    .flat_map(|(size, vec)| {
+                        vec.iter()
+                            .map(|(s, w)| (s.clone(), w.to_vec()))
+                            .collect_vec()
+                    })
+                    .collect_vec()
+            })
+            .collect();
+
+        let mut all_witness: Vec<(String, Vec<M31>)> = witness_by_machine
+            .values()
+            .flat_map(|v| v.iter().cloned()) // Flatten and clone values
+            .collect();
+        all_witness.extend(all_fixed_columns.clone());
+
+        for (interaction_id, (bus_id, machine_name, identity_id)) in &bus_id_to_interaction_map {
+            let log_size_payload = machine_log_sizes.get(machine_name).unwrap().clone();
+
+            let mut payload_cols = Vec::<_>::new();
+            // the bus id.id can change if it is accessed from analyze or split pil
+            self.split
+                .iter()
+                .filter(|(machine_name_pil, _)| machine_name == *machine_name_pil)
+                .for_each(|(machine_name, pil)| {
+                  //  println!("machine name: {}", machine_name);
+                  //  println!("finding identity id: {}", identity_id);
+                    let intermediate_definitions = self.analyzed.intermediate_definitions();
+                    pil.identities.iter().for_each(|identity| {
+                        if let Identity::PhantomBusInteraction(id) = identity {
+                            if id.id == *identity_id {
+                                println!(
+                                    "coming to bus identity id: {}, with machine {}",
+                                    id.id, machine_name
+                                );
+
+                                let mut logup_gen = PowdrLogupTraceGenerator::new(log_size_payload);
+
+                                id.payload.0.iter().for_each(|e| {
+                                    
+                                    {
+                                        //println!("find reference e: {}", e);
+                                        let mut bitreverse_payload_col =
+                                            Col::<SimdBackend, BaseField>::zeros(
+                                                1 << log_size_payload,
+                                            );
+                                        for index in 0..(1 << log_size_payload) {
+                                            bitreverse_payload_col.set(
+                                                // bit_reverse_index(
+                                                //     coset_index_to_circle_domain_index(
+                                                //         index,
+                                                //         log_size_payload,
+                                                //     ),
+                                                //     log_size_payload,
+                                                // ),
+                                                index,
+                                                into_stwo_field(&evaluate(
+                                                    log_size_payload,
+                                                    index,
+                                                    &intermediate_definitions,
+                                                    &all_witness,
+                                                    &e,
+                                                )),//+BaseField::one(),
+                                            );
+                                        }
+
+                                        payload_cols.push(bitreverse_payload_col);
+                                    };
+                                });
+                                
+
+                                let mut bitreverse_multiplicity_col =
+                                    Col::<SimdBackend, BaseField>::zeros(1 << log_size_payload);
+
+                                for index in 0..(1 << log_size_payload) {
+                                    bitreverse_multiplicity_col.set(
+                                    //     bit_reverse_index(
+                                    //         coset_index_to_circle_domain_index(
+                                    //             index,
+                                    //             log_size_payload,
+                                    //         ),
+                                    //         log_size_payload,
+                                    //     ),
+                                    index,
+                                        into_stwo_field(&evaluate(
+                                            log_size_payload,
+                                            index,
+                                            &intermediate_definitions,
+                                            &all_witness,
+                                            &id.multiplicity,
+                                        )),
+                                    );
+                                }
+
+                             
+
+                                let mut col_gen = logup_gen.new_col();
+                                for vec_row in 0..(1 << (log_size_payload - LOG_N_LANES)) {
+                                    let p = bitreverse_multiplicity_col.data[vec_row];
+                                    let payload_denom_values: Vec<PackedM31> = payload_cols
+                                        .iter()
+                                        .map(|col| col.data[vec_row]) // Extract data at vec_row
+                                        .collect();
+                                  //  println!("payload denom values are {:?}", payload_denom_values);
+                                    let q: PackedSecureField =
+                                        lookup_elements.combine(&payload_denom_values);
+
+                                //  println!("multiplicity is {:?}", p);
+                                //   println!("payload  is {:?}", q);
+
+                                    col_gen.write_frac(vec_row, p.into(), q);
+                                }
+
+                                let trace = col_gen.finalize_col();
+                                //let trace=col_gen.compute_acc_col();
+                                // let (trace, claim_sum) = logup_gen.finalize_last();
+                                let mut tree_builder = commitment_scheme.tree_builder();
+                                // println!(
+                                //     "for interaction {}, supply totally {} number of acc witness",
+                                //     interaction_id,
+                                //     trace.len()
+                                // );
+                                //println!("\n at the end, the acc that is extended to the commit the acc trace is {:?}", trace);
+                                // println!("the acc sum is {:?}",claim_sum);
+                                tree_builder.extend_evals(trace.clone());
+                                tree_builder.commit(prover_channel);
+                            }
+                        };
+                    })
+                });
+        }
+
         let tree_span_provider = &mut TraceLocationAllocator::default();
 
         // Build the circuit. The circuit includes constraints of all the machines in both stage 0 and stage 1
@@ -485,28 +728,31 @@ where
                     let component = PowdrComponent::new(
                         tree_span_provider,
                         PowdrEval::new(
+                            &machine_name,
                             (*pil).clone(),
                             constant_cols_offset_acc,
                             machine_log_size,
                             stage0_challenges.clone(),
                             public_values.clone(),
+                            &bus_id_to_interaction_map,
+                            lookup_elements.clone(),
                         ),
                         SecureField::zero(),
                     );
 
                     constant_cols_offset_acc +=
-                        pil.constant_count() + get_constant_with_next_list(pil).len();
+                        pil.constant_count() + get_constant_with_next_list(pil).len() + 1;
                     component
                 },
             )
             .collect_vec();
 
-        let components_slice: Vec<&dyn ComponentProver<B>> = components
+        let components_slice: Vec<&dyn ComponentProver<SimdBackend>> = components
             .iter()
-            .map(|component| component as &dyn ComponentProver<B>)
+            .map(|component| component as &dyn ComponentProver<SimdBackend>)
             .collect();
 
-        let proof_result = stwo_prover::core::prover::prove::<B, MC>(
+        let proof_result = stwo_prover::core::prover::prove::<SimdBackend, MC>(
             &components_slice,
             prover_channel,
             commitment_scheme,
@@ -563,13 +809,13 @@ where
             .map(
                 |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
                     assert_eq!(machine_name, proof_machine_name);
-                    (pil, machine_log_size) // Keep only relevant values
+                    (pil, machine_log_size, machine_name) // Keep only relevant values
                 },
             );
 
         let constant_col_log_sizes = iter
             .clone()
-            .flat_map(|(pil, machine_log_size)| {
+            .flat_map(|(pil, machine_log_size, machine_name)| {
                 repeat(machine_log_size).take(
                     pil.constant_count()
                         + get_constant_with_next_list(pil).len()
@@ -580,14 +826,14 @@ where
 
         let stage0_witness_col_log_sizes = iter
             .clone()
-            .flat_map(|(pil, machine_log_size)| {
+            .flat_map(|(pil, machine_log_size, _)| {
                 repeat(machine_log_size).take(pil.stage_commitment_count(0))
             })
             .collect_vec();
 
         let stage1_witness_col_log_sizes = iter
             .clone()
-            .flat_map(|(pil, machine_log_size)| {
+            .flat_map(|(pil, machine_log_size, _)| {
                 repeat(machine_log_size).take(pil.stage_commitment_count(1))
             })
             .collect_vec();
@@ -608,17 +854,37 @@ where
         // Get challenges based on the commitments of constant columns and stage 0 witness columns
         let stage0_challenges = get_challenges::<MC>(&self.analyzed, verifier_channel);
 
+        // Draw lookup challenges.
+        let lookup_elements = PowdrLookupElement::draw(verifier_channel);
+
+        // Build bus to interation mapping map
+        let mut bus_id_to_interaction_map = BTreeMap::new();
+        let mut index = 2;
+
+        self.split.iter().for_each(|(machine_name, pil)| {
+            for id in &pil.identities {
+                if let Identity::PhantomBusInteraction(id) = id {
+                    index += 1;
+                    bus_id_to_interaction_map
+                        .insert(index, (id.bus_id.clone(), machine_name.clone(), id.id));
+                }
+            }
+        });
+
         let components = iter
             .clone()
-            .map(|(pil, machine_log_size)| {
+            .map(|(pil, machine_log_size, machine_name)| {
                 let machine_component = PowdrComponent::new(
                     tree_span_provider,
                     PowdrEval::new(
+                        &machine_name,
                         (*pil).clone(),
                         constant_cols_offset_acc,
                         machine_log_size,
                         stage0_challenges.clone(),
                         public_values.clone(),
+                        &bus_id_to_interaction_map,
+                        lookup_elements.clone(),
                     ),
                     SecureField::zero(),
                 );
@@ -626,6 +892,7 @@ where
                 constant_cols_offset_acc += pil.constant_count();
 
                 constant_cols_offset_acc += get_constant_with_next_list(pil).len();
+                constant_cols_offset_acc += 1; //for bus selector
                 machine_component
             })
             .collect_vec();
