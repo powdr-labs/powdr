@@ -666,6 +666,7 @@ pub fn generate_precompile(
     }
 }
 
+// After powdr and lib are adjusted, this function can be renamed and the old substitute removed
 pub fn substitute_algebraic<T: Clone>(
     expr: &mut AlgebraicExpression<T>,
     sub: &BTreeMap<String, AlgebraicExpression<T>>,
@@ -683,7 +684,7 @@ pub fn substitute_algebraic<T: Clone>(
                     }
                 }
                 AlgebraicExpression::UnaryOperation(ref mut un_op) => {
-                    //if matches!(un_op.op, AlgebraicUnaryOperator::Next) {         Next doesn't exists
+                    //if matches!(un_op.op, AlgebraicUnaryOperator::Next) {         Next doesn't exists. Check this
                     if let AlgebraicExpression::Reference(ref r) = &*un_op.expr {
                         if r.name == "pc" {
                             //let pc_next_symbol = SymbolPath::from_identifier("pc_next".to_string());

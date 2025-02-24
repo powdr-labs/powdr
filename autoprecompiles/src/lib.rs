@@ -6,27 +6,12 @@ use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, CallableRef, Instruction, InstructionBody,
     LinkDeclaration, MachineParams, OperationId, Param, Params, Part, SymbolPath,
 };
-use powdr_ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMProgram};
-use powdr_ast::{
-    asm_analysis::{
-        CallableSymbol, CallableSymbolDefinitions, FunctionStatement, FunctionStatements,
-        InstructionStatement, LabelStatement, LinkDefinition, Machine, MachineDegree, Module,
-        OperationSymbol, RegisterTy, SubmachineDeclaration,
-    },
-    parsed::{
-        visitor::{ExpressionVisitable, VisitOrder},
-        BinaryOperator, FunctionCall, NamespacedPolynomialReference, Number, PilStatement,
-        UnaryOperation, UnaryOperator,
-    },
-};
 
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
+    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
 };
 
-use powdr_number::{BigUint, FieldElement};
-use powdr_parser_util::SourceRef;
+use powdr_number::FieldElement;
 
 pub mod powdr;
 
@@ -220,7 +205,7 @@ pub fn generate_precompile<T: FieldElement>(
     };
     let pc_ref: AlgebraicExpression<T> = AlgebraicExpression::Reference(pc_ref);
 
-    for (i, instr) in statements.iter().enumerate() {
+    for instr in statements.iter() {
         match instruction_kinds.get(&instr.name).unwrap() {
             InstructionKind::Normal
             | InstructionKind::UnconditionalBranch
@@ -238,7 +223,7 @@ pub fn generate_precompile<T: FieldElement>(
                 let local_cols = machine
                     .cols
                     .iter()
-                    .map(|col| {
+                    .map(|_| {
                         let name = format!("w{col_counter}");
                         col_counter += 1;
                         name
@@ -249,12 +234,8 @@ pub fn generate_precompile<T: FieldElement>(
                 let local_identities = machine
                     .constraints
                     .iter()
-                    .map(|expr| {
-                        //let mut expr = expr.expr.clone();
-                        //powdr::append_suffix_mut(&mut expr, &ssa_counter.to_string());
-                        SymbolicConstraint {
-                            expr: expr.expr.clone(),
-                        }
+                    .map(|expr| SymbolicConstraint {
+                        expr: expr.expr.clone(),
                     })
                     .collect::<Vec<_>>();
 
@@ -268,12 +249,9 @@ pub fn generate_precompile<T: FieldElement>(
                         .chain(std::iter::once(&mut link.mult))
                         .for_each(|e| {
                             powdr::substitute_algebraic(e, &sub_map);
-                            //powdr::append_suffix_mut(e, &ssa_counter.to_string());
                         });
                     bus_interactions.push(link);
                 }
-
-                col_counter += 1;
             }
             _ => {}
         }
