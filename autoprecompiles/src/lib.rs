@@ -199,7 +199,7 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
     let pc_next_ref = AlgebraicReference {
         name: "pc_next".to_string(),
         poly_id: PolyID {
-            ptype: PolynomialType::Intermediate,
+            ptype: PolynomialType::Committed,
             id: 1,
         },
         next: false,
