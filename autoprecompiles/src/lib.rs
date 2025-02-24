@@ -265,12 +265,12 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
                 let local_cols = machine
                     .cols
                     .iter()
-                    .map(|_| {
+                    .map(|col| {
                         let name = format!("w{col_counter}");
                         col_counter += 1;
-                        name
+                        (col.clone(), name)
                     })
-                    .collect::<Vec<_>>();
+                    .collect::<BTreeMap<_, _>>();
 
                 // Constraints from main
                 let local_identities = machine
@@ -278,11 +278,12 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
                     .iter()
                     .map(|expr| {
                         let mut expr = expr.expr.clone();
-                        powdr::substitute_algebraic(&mut expr, &sub_map);
+                        powdr::substitute_name(&mut expr, &local_cols);
                         SymbolicConstraint { expr }
                     })
                     .collect::<Vec<_>>();
 
+                cols.extend(local_cols.values().cloned());
                 constraints.extend(local_identities);
 
                 for bus_int in &machine.bus_interactions {
