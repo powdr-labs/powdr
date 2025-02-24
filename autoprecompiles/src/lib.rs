@@ -19,20 +19,23 @@ use powdr_ast::{
         UnaryOperation, UnaryOperator,
     },
 };
+
+use powdr_ast::analyzed::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
+};
+
 use powdr_number::BigUint;
-use powdr_number::FieldElement;
 use powdr_parser_util::SourceRef;
 
 pub mod powdr;
 
-type Expression = powdr_ast::asm_analysis::Expression<NamespacedPolynomialReference>;
-
 const MAIN_MACHINE_STR: &str = "::Main";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SymbolicInstructionStatement {
+pub struct SymbolicInstructionStatement<T> {
     pub name: String,
-    pub args: Vec<Expression>,
+    pub args: Vec<AlgebraicExpression<T>>,
 }
 
 #[derive(Debug, Clone)]
@@ -43,22 +46,22 @@ pub struct SymbolicInstructionDefinition {
 }
 
 #[derive(Debug, Clone)]
-pub struct SymbolicConstraint {
-    pub expr: Expression,
+pub struct SymbolicConstraint<T> {
+    pub expr: AlgebraicExpression<T>,
 }
 
-impl From<Expression> for SymbolicConstraint {
-    fn from(expr: Expression) -> Self {
+impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
+    fn from(expr: AlgebraicExpression<T>) -> Self {
         SymbolicConstraint { expr }
     }
 }
 
 #[derive(Debug, Clone)]
-pub struct SymbolicBusInteraction {
+pub struct SymbolicBusInteraction<T> {
     pub kind: BusInteractionKind,
     pub id: u64,
-    pub mult: Expression,
-    pub args: Vec<Expression>,
+    pub mult: AlgebraicExpression<T>,
+    pub args: Vec<AlgebraicExpression<T>>,
 }
 
 #[derive(Debug, Clone)]
@@ -68,10 +71,10 @@ pub enum BusInteractionKind {
 }
 
 #[derive(Debug, Clone)]
-pub struct SymbolicMachine {
+pub struct SymbolicMachine<T> {
     pub cols: BTreeSet<String>,
-    pub constraints: Vec<SymbolicConstraint>,
-    pub bus_interactions: Vec<SymbolicBusInteraction>,
+    pub constraints: Vec<SymbolicConstraint<T>>,
+    pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
 }
 
 #[derive(Debug, Clone)]
@@ -83,24 +86,24 @@ pub enum InstructionKind {
 }
 
 #[derive(Debug, Clone)]
-pub struct Autoprecompiles {
-    pub program: Vec<SymbolicInstructionStatement>,
+pub struct Autoprecompiles<T> {
+    pub program: Vec<SymbolicInstructionStatement<T>>,
     pub instruction_kind: BTreeMap<String, InstructionKind>,
-    pub instruction_machines: BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine)>,
+    pub instruction_machines: BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
 }
 
 #[derive(Debug, Clone)]
-pub struct BasicBlock {
+pub struct BasicBlock<T> {
     pub start_idx: u64,
-    pub statements: Vec<SymbolicInstructionStatement>,
+    pub statements: Vec<SymbolicInstructionStatement<T>>,
 }
 
-impl Autoprecompiles {
+impl<T: Clone> Autoprecompiles<T> {
     pub fn run(
         &self,
     ) -> (
-        Vec<SymbolicInstructionStatement>,
-        Vec<(String, SymbolicMachine)>,
+        Vec<SymbolicInstructionStatement<T>>,
+        Vec<(String, SymbolicMachine<T>)>,
     ) {
         let blocks = self.collect_basic_blocks();
         let new_instr_name = "new_instr".to_string();
@@ -120,7 +123,7 @@ impl Autoprecompiles {
         (new_program, vec![(new_instr_name, machine)])
     }
 
-    pub fn collect_basic_blocks(&self) -> Vec<BasicBlock> {
+    pub fn collect_basic_blocks(&self) -> Vec<BasicBlock<T>> {
         let mut blocks = Vec::new();
         let mut curr_block = BasicBlock {
             start_idx: 0,
@@ -152,10 +155,10 @@ impl Autoprecompiles {
     }
 }
 
-pub fn replace_autoprecompile_basic_blocks(
-    blocks: &Vec<BasicBlock>,
-    selected: &BTreeMap<u64, SymbolicInstructionStatement>,
-) -> Vec<SymbolicInstructionStatement> {
+pub fn replace_autoprecompile_basic_blocks<T: Clone>(
+    blocks: &Vec<BasicBlock<T>>,
+    selected: &BTreeMap<u64, SymbolicInstructionStatement<T>>,
+) -> Vec<SymbolicInstructionStatement<T>> {
     let mut new_program = Vec::new();
     for (i, block) in blocks.iter().enumerate() {
         if let Some(instr) = selected.get(&(i as u64)) {
@@ -167,15 +170,15 @@ pub fn replace_autoprecompile_basic_blocks(
     new_program
 }
 
-pub fn generate_precompile(
-    statements: &Vec<SymbolicInstructionStatement>,
+pub fn generate_precompile<T>(
+    statements: &Vec<SymbolicInstructionStatement<T>>,
     instruction_kinds: &BTreeMap<String, InstructionKind>,
-    instruction_machines: &BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine)>,
-) -> SymbolicMachine {
+    instruction_machines: &BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
+) -> SymbolicMachine<T> {
     let mut ssa_counter = 0;
     let mut cols: BTreeSet<String> = BTreeSet::new();
-    let mut constraints: Vec<SymbolicConstraint> = Vec::new();
-    let mut bus_interactions: Vec<SymbolicBusInteraction> = Vec::new();
+    let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
+    let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
 
     // let dest;
     cols.insert("dest".to_string());
@@ -185,25 +188,27 @@ pub fn generate_precompile(
     cols.insert("pc".to_string());
     cols.insert("pc_next".to_string());
 
-    let dest_symbol = SymbolPath::from_identifier("dest".to_string());
-    let dest_ref: NamespacedPolynomialReference = dest_symbol.into();
-    let dest_ref = Expression::Reference(Default::default(), dest_ref);
+    /*
+        let dest_symbol = SymbolPath::from_identifier("dest".to_string());
+        let dest_ref: NamespacedPolynomialReference = dest_symbol.into();
+        let dest_ref = Expression::Reference(Default::default(), dest_ref);
 
-    let one = Expression::Number(
-        Default::default(),
-        Number {
-            value: BigUint::from(1u32),
-            type_: None,
-        },
-    );
+        let one = Expression::Number(
+            Default::default(),
+            Number {
+                value: BigUint::from(1u32),
+                type_: None,
+            },
+        );
 
-    let pc_next_symbol = SymbolPath::from_identifier("pc_next".to_string());
-    let pc_next_ref: NamespacedPolynomialReference = pc_next_symbol.into();
-    let pc_next_ref = Expression::Reference(Default::default(), pc_next_ref);
+        let pc_next_symbol = SymbolPath::from_identifier("pc_next".to_string());
+        let pc_next_ref: NamespacedPolynomialReference = pc_next_symbol.into();
+        let pc_next_ref = Expression::Reference(Default::default(), pc_next_ref);
 
-    let pc_symbol = SymbolPath::from_identifier("pc".to_string());
-    let pc_ref: NamespacedPolynomialReference = pc_symbol.into();
-    let pc_ref = Expression::Reference(Default::default(), pc_ref);
+        let pc_symbol = SymbolPath::from_identifier("pc".to_string());
+        let pc_ref: NamespacedPolynomialReference = pc_symbol.into();
+        let pc_ref = Expression::Reference(Default::default(), pc_ref);
+    */
 
     for (i, instr) in statements.iter().enumerate() {
         match instruction_kinds.get(&instr.name).unwrap() {
@@ -212,8 +217,9 @@ pub fn generate_precompile(
             | InstructionKind::ConditionalBranch => {
                 let (instr_def, machine) = instruction_machines.get(&instr.name).unwrap();
 
+                /*
                 // Create initial substitution map
-                let mut sub_map: BTreeMap<String, Expression> = instr_def
+                let mut sub_map: BTreeMap<String, AlgebraicExpression<T>> = instr_def
                     .inputs
                     .clone()
                     .into_iter()
@@ -226,31 +232,32 @@ pub fn generate_precompile(
                     .map(|col| format!("{}_{ssa_counter}", col.clone()))
                     .collect::<Vec<_>>();
 
-                // Constraints from main
-                let local_identities = machine
-                    .constraints
-                    .iter()
-                    .map(|expr| {
-                        let mut expr = expr.expr.clone();
-                        powdr::append_suffix_mut(&mut expr, &ssa_counter.to_string());
-                        SymbolicConstraint { expr }
-                    })
-                    .collect::<Vec<_>>();
+                                // Constraints from main
+                                let local_identities = machine
+                                    .constraints
+                                    .iter()
+                                    .map(|expr| {
+                                        let mut expr = expr.expr.clone();
+                                        powdr::append_suffix_mut(&mut expr, &ssa_counter.to_string());
+                                        SymbolicConstraint { expr }
+                                    })
+                                    .collect::<Vec<_>>();
 
-                cols.extend(local_cols);
-                constraints.extend(local_identities);
+                                cols.extend(local_cols);
+                                constraints.extend(local_identities);
 
-                for bus_int in &machine.bus_interactions {
-                    let mut link = bus_int.clone();
-                    link.args
-                        .iter_mut()
-                        .chain(std::iter::once(&mut link.mult))
-                        .for_each(|e| {
-                            powdr::substitute(e, &sub_map);
-                            powdr::append_suffix_mut(e, &ssa_counter.to_string());
-                        });
-                    bus_interactions.push(link);
-                }
+                                for bus_int in &machine.bus_interactions {
+                                    let mut link = bus_int.clone();
+                                    link.args
+                                        .iter_mut()
+                                        .chain(std::iter::once(&mut link.mult))
+                                        .for_each(|e| {
+                                            powdr::substitute(e, &sub_map);
+                                            powdr::append_suffix_mut(e, &ssa_counter.to_string());
+                                        });
+                                    bus_interactions.push(link);
+                                }
+                */
 
                 ssa_counter += 1;
             }
@@ -266,12 +273,14 @@ pub fn generate_precompile(
     );
 
     if !last_is_branch {
-        let pc_plus_one = Expression::new_binary(pc_ref.clone(), BinaryOperator::Add, one);
-        let pc_eq_pc_plus_one =
-            Expression::new_binary(pc_next_ref.clone(), BinaryOperator::Identity, pc_plus_one);
-        constraints.push(SymbolicConstraint {
-            expr: pc_eq_pc_plus_one,
-        });
+        /*
+                let pc_plus_one = Expression::new_binary(pc_ref.clone(), BinaryOperator::Add, one);
+                let pc_eq_pc_plus_one =
+                    Expression::new_binary(pc_next_ref.clone(), BinaryOperator::Identity, pc_plus_one);
+                constraints.push(SymbolicConstraint {
+                    expr: pc_eq_pc_plus_one,
+                });
+        */
     }
 
     SymbolicMachine {
@@ -281,6 +290,7 @@ pub fn generate_precompile(
     }
 }
 
+/*
 #[cfg(test)]
 mod test {
     use super::*;
@@ -472,3 +482,4 @@ mod test {
         println!("{:?}", new_machines);
     }
 }
+*/
