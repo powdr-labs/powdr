@@ -1,11 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use powdr_ast::asm_analysis::InstructionDefinitionStatement;
-use powdr_ast::parsed::asm::{
-    parse_absolute_path, AbsoluteSymbolPath, CallableRef, Instruction, InstructionBody,
-    LinkDeclaration, MachineParams, OperationId, Param, Params, Part, SymbolPath,
-};
-
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
 };
