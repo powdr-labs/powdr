@@ -160,7 +160,7 @@ pub fn generate_precompile<T: FieldElement>(
     instruction_kinds: &BTreeMap<String, InstructionKind>,
     instruction_machines: &BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
 ) -> SymbolicMachine<T> {
-    let mut col_counter = 0;
+    let mut col_counter = 3;
     let mut cols: BTreeSet<String> = BTreeSet::new();
     let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
@@ -188,7 +188,7 @@ pub fn generate_precompile<T: FieldElement>(
     let pc_next_ref = AlgebraicReference {
         name: "pc_next".to_string(),
         poly_id: PolyID {
-            ptype: PolynomialType::Intermediate,
+            ptype: PolynomialType::Committed,
             id: 1,
         },
         next: false,
