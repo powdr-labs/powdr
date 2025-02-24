@@ -7,6 +7,10 @@ machine Square with degree: 8 {
     // Expose the register value of A in the last time step
     public N = A(7);
 
+    // Public reference
+    col fixed ISLAST(i) { if i == N - 1 { 1 } else { 0 } };
+    ISLAST * (:N - A) = 0;
+
     instr square X -> Y {
         Y = X * X
     }
