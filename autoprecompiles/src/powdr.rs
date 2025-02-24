@@ -674,33 +674,10 @@ pub fn substitute_algebraic<T: Clone>(
     expr.visit_expressions_mut(
         &mut |expr| {
             match expr {
-                AlgebraicExpression::Reference(AlgebraicReference {
-                    name,
-                    poly_id,
-                    next,
-                }) => {
+                AlgebraicExpression::Reference(AlgebraicReference { name, .. }) => {
                     if let Some(sub_expr) = sub.get(name) {
                         *expr = sub_expr.clone();
                     }
-                }
-                AlgebraicExpression::UnaryOperation(ref mut un_op) => {
-                    //if matches!(un_op.op, AlgebraicUnaryOperator::Next) {         Next doesn't exists. Check this
-                    if let AlgebraicExpression::Reference(ref r) = &*un_op.expr {
-                        if r.name == "pc" {
-                            //let pc_next_symbol = SymbolPath::from_identifier("pc_next".to_string());
-                            let pc_next_ref: AlgebraicReference = AlgebraicReference {
-                                name: "pc_next".to_string(),
-                                poly_id: PolyID {
-                                    ptype: PolynomialType::Intermediate,
-                                    id: 0, // maybe global id?
-                                },
-                                next: false,
-                            };
-                            let pc_next_ref = AlgebraicExpression::Reference(pc_next_ref);
-                            *expr = pc_next_ref.clone();
-                        }
-                    }
-                    //}
                 }
                 _ => (),
             }
