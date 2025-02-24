@@ -423,6 +423,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 Effect::Branch(..) => unreachable!(),
             }
         }
+        if process_result.complete {
+            // If a machine call is complete because its selector is zero,
+            // we will not get an `Effect::MachineCall` above and need to
+            // insert here.
+            if let Some((identity_id, row_offset)) = identity_id {
+                self.complete_calls.insert((identity_id, row_offset));
+            }
+        }
         Ok(updated_variables)
     }
 
@@ -436,6 +444,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         if let Some(v) = rc.try_to_single_value() {
             // Special case: Variable is fixed to a constant by range constraints only.
             if self.record_known(variable.clone()) {
+                log::trace!("{variable} := {v}");
                 self.code
                     .push(Effect::Assignment(variable.clone(), v.into()));
             }
@@ -507,7 +516,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
     /// considered "known". This means even if we know how to compute a variable,
     /// as long as we cannot determine it to have a fixed value at compile-time,
     /// it is considered "unknown" and we can solve for it.
-    #[allow(unused)]
     pub fn only_concrete_known(self) -> Self {
         Self {
             witgen_inference: self.witgen_inference,

@@ -9,11 +9,10 @@ use alloc::collections::btree_map::BTreeMap;
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, Identity};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::Mersenne31Field as M31;
-use stwo_prover::constraint_framework::preprocessed_columns::PreprocessedColumn;
+use stwo_prover::constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use stwo_prover::core::backend::{Column, ColumnOps};
 use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::{ExtensionOf, FieldOps};
 use stwo_prover::core::poly::circle::{CircleDomain, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
@@ -24,14 +23,12 @@ pub const STAGE1_TRACE_IDX: usize = 2;
 
 pub type PowdrComponent = FrameworkComponent<PowdrEval>;
 
-pub fn gen_stwo_circle_column<B, F>(
+pub fn gen_stwo_circle_column<B>(
     domain: CircleDomain,
     slice: &[M31],
 ) -> CircleEvaluation<B, BaseField, BitReversedOrder>
 where
-    B: FieldOps<BaseField> + ColumnOps<F>,
-
-    F: ExtensionOf<BaseField>,
+    B: ColumnOps<BaseField>,
 {
     assert!(
         slice.len().ilog2() == domain.size().ilog2(),
@@ -58,6 +55,8 @@ pub struct PowdrEval {
     // the pre-processed are indexed in the whole proof, instead of in each component.
     // this offset represents the index of the first pre-processed column in this component
     preprocess_col_offset: usize,
+    // The name of the public, the poly-id of the witness poly that this public is related to, the public value
+    pub(crate) publics_values: Vec<(String, PolyID, M31)>,
     stage0_witness_columns: BTreeMap<PolyID, usize>,
     stage1_witness_columns: BTreeMap<PolyID, usize>,
     constant_shifted: BTreeMap<PolyID, usize>,
@@ -73,6 +72,7 @@ impl PowdrEval {
         preprocess_col_offset: usize,
         log_degree: u32,
         challenges: BTreeMap<u64, M31>,
+        public_values: BTreeMap<String, M31>,
     ) -> Self {
         let stage0_witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
@@ -107,6 +107,12 @@ impl PowdrEval {
             .map(|(index, (_, id))| (id, index))
             .collect();
 
+        let publics_values = analyzed
+            .get_publics()
+            .into_iter()
+            .map(|(name, _, id, _, _)| (name.clone(), id, *public_values.get(&name).unwrap()))
+            .collect();
+
         let poly_stage_map: BTreeMap<PolyID, usize> = stage0_witness_columns
             .keys()
             .map(|k| (*k, 0))
@@ -117,6 +123,7 @@ impl PowdrEval {
             log_degree,
             analyzed,
             preprocess_col_offset,
+            publics_values,
             stage0_witness_columns,
             stage1_witness_columns,
             constant_shifted,
@@ -132,6 +139,7 @@ struct Data<'a, F> {
     stage1_witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
     constant_shifted_eval: &'a BTreeMap<PolyID, F>,
     constant_eval: &'a BTreeMap<PolyID, F>,
+    publics_values: &'a BTreeMap<String, F>,
     // challenges for stage 1
     challenges: &'a BTreeMap<u64, F>,
     poly_stage_map: &'a BTreeMap<PolyID, usize>,
@@ -157,8 +165,11 @@ impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
         }
     }
 
-    fn get_public(&self, _public: &str) -> F {
-        unimplemented!("Public references are not supported in stwo yet")
+    fn get_public(&self, public: &str) -> F {
+        self.publics_values
+            .get(public)
+            .expect("Referenced public value does not exist")
+            .clone()
     }
 
     fn get_challenge(&self, challenge: &Challenge) -> F {
@@ -174,11 +185,6 @@ impl FrameworkEval for PowdrEval {
         self.log_degree + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        assert!(
-            self.analyzed.publics_count() == 0,
-            "Error: Expected no public inputs, as they are not supported yet.",
-        );
-
         let stage0_witness_eval: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
             .stage0_witness_columns
             .keys()
@@ -208,9 +214,9 @@ impl FrameworkEval for PowdrEval {
             .map(|(i, poly_id)| {
                 (
                     *poly_id,
-                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(
-                        i + self.preprocess_col_offset,
-                    )),
+                    eval.get_preprocessed_column(PreProcessedColumnId {
+                        id: (i + self.preprocess_col_offset).to_string(),
+                    }),
                 )
             })
             .collect();
@@ -222,9 +228,9 @@ impl FrameworkEval for PowdrEval {
             .map(|(i, poly_id)| {
                 (
                     *poly_id,
-                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(
-                        i + constant_eval.len() + self.preprocess_col_offset,
-                    )),
+                    eval.get_preprocessed_column(PreProcessedColumnId {
+                        id: (i + constant_eval.len() + self.preprocess_col_offset).to_string(),
+                    }),
                 )
             })
             .collect();
@@ -235,14 +241,45 @@ impl FrameworkEval for PowdrEval {
             .collect();
 
         let intermediate_definitions = self.analyzed.intermediate_definitions();
+        let public_values_terminal = self
+            .publics_values
+            .iter()
+            .map(|(name, _, value)| (name.clone(), E::F::from(into_stwo_field(value))))
+            .collect();
         let data = Data {
             stage0_witness_eval: &stage0_witness_eval,
             stage1_witness_eval: &stage1_witness_eval,
+            publics_values: &public_values_terminal,
             constant_shifted_eval: &constant_shifted_eval,
             constant_eval: &constant_eval,
             challenges: &challenges,
             poly_stage_map: &self.poly_stage_map,
         };
+
+        // build selector columns and constraints for publics
+        self.publics_values
+            .iter()
+            .enumerate()
+            .for_each(|(index, (_, poly_id, value))| {
+                let selector = eval.get_preprocessed_column(PreProcessedColumnId {
+                    id: (index
+                        + constant_eval.len()
+                        + self.preprocess_col_offset
+                        + constant_shifted_eval.len())
+                    .to_string(),
+                });
+
+                let stage = self.poly_stage_map[poly_id];
+                let witness_col = match stage {
+                    0 => stage0_witness_eval[poly_id][0].clone(),
+                    1 => stage1_witness_eval[poly_id][0].clone(),
+                    _ => unreachable!(),
+                };
+
+                // constraining s(i) * (pub[i] - x(i)) = 0
+                eval.add_constraint(selector * (E::F::from(into_stwo_field(value)) - witness_col));
+            });
+
         let mut evaluator =
             ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {
                 E::F::from(into_stwo_field(v))

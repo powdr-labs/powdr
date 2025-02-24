@@ -261,7 +261,8 @@ impl<T: FieldElement, V: Clone> Mul for &SymbolicExpression<T, V> {
                 Arc::new(self.clone()),
                 BinaryOperator::Mul,
                 Arc::new(rhs.clone()),
-                Default::default(),
+                self.range_constraint()
+                    .combine_product(&rhs.range_constraint()),
             )
         }
     }
