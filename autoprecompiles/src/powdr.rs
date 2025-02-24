@@ -690,6 +690,26 @@ pub fn substitute_algebraic<T: Clone>(
     );
 }
 
+pub fn substitute_name<T: Clone>(
+    expr: &mut AlgebraicExpression<T>,
+    sub: &BTreeMap<String, String>,
+) {
+    expr.visit_expressions_mut(
+        &mut |expr| {
+            match expr {
+                AlgebraicExpression::Reference(AlgebraicReference { name, .. }) => {
+                    if let Some(new_name) = sub.get(name) {
+                        *name = new_name.clone();
+                    }
+                }
+                _ => (),
+            }
+            ControlFlow::Continue::<()>(())
+        },
+        VisitOrder::Pre,
+    );
+}
+
 pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
     expr.visit_expressions_mut(
         &mut |expr| {
