@@ -270,7 +270,7 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
                         let expr = AlgebraicExpression::Reference(AlgebraicReference {
                             name: name.clone(),
                             poly_id: PolyID {
-                                ptype: PolynomialType::Intermediate,
+                                ptype: PolynomialType::Committed,
                                 id: col_counter,
                             },
                             next: false,
