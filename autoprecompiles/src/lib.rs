@@ -1,11 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::ops::ControlFlow;
-
-use powdr_ast::asm_analysis::InstructionDefinitionStatement;
-use powdr_ast::parsed::asm::{
-    parse_absolute_path, AbsoluteSymbolPath, CallableRef, Instruction, InstructionBody,
-    LinkDeclaration, MachineParams, OperationId, Param, Params, Part, SymbolPath,
-};
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
@@ -213,7 +206,7 @@ pub fn generate_precompile<T: FieldElement>(
                 let (instr_def, machine) = instruction_machines.get(&instr.name).unwrap();
 
                 // Create initial substitution map
-                let mut sub_map: BTreeMap<String, AlgebraicExpression<T>> = instr_def
+                let sub_map: BTreeMap<String, AlgebraicExpression<T>> = instr_def
                     .inputs
                     .clone()
                     .into_iter()
@@ -271,7 +264,7 @@ pub fn generate_precompile<T: FieldElement>(
             AlgebraicExpression::new_binary(pc_ref.clone(), AlgebraicBinaryOperator::Add, one);
         let pc_eq_pc_plus_one = AlgebraicExpression::new_binary(
             pc_next_ref.clone(),
-            AlgebraicBinaryOperator::Sub, // Sub?
+            AlgebraicBinaryOperator::Sub,
             pc_plus_one,
         );
         constraints.push(SymbolicConstraint {
