@@ -1,6 +1,31 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
+use powdr_ast::asm_analysis::InstructionDefinitionStatement;
+use powdr_ast::parsed::asm::{
+    parse_absolute_path, AbsoluteSymbolPath, CallableRef, Instruction, InstructionBody,
+    LinkDeclaration, MachineParams, OperationId, Param, Params, Part, SymbolPath,
+};
+use powdr_ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMProgram};
+use powdr_ast::{
+    asm_analysis::{
+        CallableSymbol, CallableSymbolDefinitions, FunctionStatement, FunctionStatements,
+        InstructionStatement, LabelStatement, LinkDefinition, Machine, MachineDegree, Module,
+        OperationSymbol, RegisterTy, SubmachineDeclaration,
+    },
+    parsed::{
+        visitor::{ExpressionVisitable, VisitOrder},
+        BinaryOperator, FunctionCall, NamespacedPolynomialReference, Number, PilStatement,
+        UnaryOperation, UnaryOperator,
+    },
+};
+
+use powdr_ast::analyzed::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
+};
+
+use powdr_number::{BigUint, FieldElement};
+use powdr_parser_util::SourceRef;
 use serde::{Deserialize, Serialize};
 
 pub mod powdr;
@@ -92,7 +117,7 @@ pub struct BasicBlock<T> {
     pub statements: Vec<SymbolicInstructionStatement<T>>,
 }
 
-impl<T: Clone + Ord + std::fmt::Debug> Autoprecompiles<T> {
+impl<T: FieldElement + Clone> Autoprecompiles<T> {
     pub fn run(
         &self,
     ) -> (
@@ -175,6 +200,8 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
     let mut col_subs: Vec<BTreeMap<String, String>> = Vec::new();
 
+    //let one = AlgebraicExpression::Number(T::from(1));
+
     let dest_ref = AlgebraicReference {
         name: "dest".to_string(),
         poly_id: PolyID {
@@ -185,12 +212,10 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
     };
     let dest_ref: AlgebraicExpression<T> = AlgebraicExpression::Reference(dest_ref);
 
-    //let one = AlgebraicExpression::Number(T::from(1));
-
     let pc_next_ref = AlgebraicReference {
         name: "pc_next".to_string(),
         poly_id: PolyID {
-            ptype: PolynomialType::Committed,
+            ptype: PolynomialType::Intermediate,
             id: 1,
         },
         next: false,
@@ -207,7 +232,7 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
     };
     let pc_ref: AlgebraicExpression<T> = AlgebraicExpression::Reference(pc_ref);
 
-    for instr in statements.iter() {
+    for (i, instr) in statements.iter().enumerate() {
         match instruction_kinds.get(&instr.name).unwrap() {
             InstructionKind::Normal
             | InstructionKind::UnconditionalBranch
