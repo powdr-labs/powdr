@@ -285,7 +285,7 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
                     .iter()
                     .map(|expr| {
                         let mut expr = expr.expr.clone();
-                        powdr::substitute_algebraic(&mut expr, &sub_map); // Combine both? Can we have overlappings?
+                        powdr::substitute_algebraic(&mut expr, &sub_map);
                         powdr::substitute_algebraic(&mut expr, &local_cols);
                         SymbolicConstraint { expr }
                     })
