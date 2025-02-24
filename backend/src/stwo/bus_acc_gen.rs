@@ -101,11 +101,7 @@ impl PowdrLogupColGenerator<'_> {
 
         self.gen.trace.push(self.numerator.clone());
 
-        // println!(
-        //     "\n fraction trace now in logup generator is {:?} ",
-        //     self.gen.trace
-        // );
-        // println!("length of gen.trace after fraction {}", self.gen.trace.len());
+        
 
         let mut last_value = QM31::zero();
 
@@ -132,7 +128,7 @@ impl PowdrLogupColGenerator<'_> {
         }
         self.gen.trace.push(self.numerator);
 
-        //println!("\n length of gen.trace after accumulator compute {}", self.gen.trace.len());
+   
 
         
 
@@ -162,62 +158,9 @@ impl PowdrLogupColGenerator<'_> {
                 })
             })
             .collect_vec();
-        // println!(
-        //     "\n the gen.trace trace in the bus acc gen is {:?}",
-        //     self.gen.trace
-        // );
-
-        // println!(
-        //     "\n the trace in the bus acc gen is {:?}",
-        //     trace
-        // );
+        
        trace[trace.len().saturating_sub(4)..].to_vec()
        
     }
 
-    // pub fn compute_acc_col(mut self)->
-    //     ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>>
-    //     {
-
-    //     // let mut last_col_coords = self.trace.pop().unwrap().columns;
-
-    //     // // Compute cumsum_shift.
-    //     // let coordinate_sums = last_col_coords.each_ref().map(|c| {
-    //     //     c.data
-    //     //         .iter()
-    //     //         .copied()
-    //     //         .sum::<PackedBaseField>()
-    //     //         .pointwise_sum()
-    //     // });
-
-    //     let mut acc=PackedQM31::zero();
-
-    //     #[allow(clippy::needless_range_loop)]
-    //     for vec_row in 0..(1 << (self.gen.log_size - LOG_N_LANES)) {
-    //         unsafe {
-    //             let value = self.gen.trace.last().unwrap().packed_at(vec_row);
-    //             acc=acc+value;
-    //             let prev_value = self
-    //                 .gen
-    //                 .trace
-    //                 .last()
-    //                 .map(|col| col.packed_at(vec_row))
-    //                 .unwrap_or_else(PackedSecureField::zero);
-    //             self.numerator.set_packed(vec_row, acc)
-    //         };
-    //     }
-    //     self.gen.trace.push(self.numerator);
-
-    //     let trace = self.gen
-    //     .trace.clone()
-    //     .into_iter()
-    //     .flat_map(|eval| {
-    //         eval.columns.map(|col| {
-    //             CircleEvaluation::new(CanonicCoset::new(self.log_size).circle_domain(), col)
-    //         })
-    //     })
-    //     .collect_vec();
-    //     trace
-
-    // }
 }

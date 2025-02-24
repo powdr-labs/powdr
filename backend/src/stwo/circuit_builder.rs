@@ -350,10 +350,10 @@ impl FrameworkEval for PowdrEval {
         for id in &self.analyzed.identities {
             match id {
                 Identity::Polynomial(identity) => {
-                    //   println!("evaluating normal constraint");
-                    //   let expr = evaluator.evaluate(&identity.expression);
-                    //   eval.add_constraint(expr);
-                    //   println!("constraint added");
+                 
+                       let expr = evaluator.evaluate(&identity.expression);
+                       eval.add_constraint(expr);
+                  
                 }
                 Identity::Connect(..) => {
                     unimplemented!("Connect is not implemented in stwo yet")
@@ -366,11 +366,9 @@ impl FrameworkEval for PowdrEval {
                 }
                 Identity::PhantomBusInteraction(id) => {
                     println!("machine name: {}", self.machine_name);
-                    // if id.id!=29{
-                    //     println!("bus id: {}, skip", id.id);
-                    //     continue;
-                    // }
-                    //println!("\n bus relation is: {}", id);
+                 
+                    
+                    println!("\n bus relation is: {}", id);
 
                     self.bus_info_to_interation_map
                         .iter()
@@ -388,20 +386,16 @@ impl FrameworkEval for PowdrEval {
 
                     let payload: Vec<<E as EvalAtRow>::F> =
                         id.payload.0.iter().map(|e| {
-                            println!("find expression {:?}", e);
+                        
                             evaluator.evaluate(e)}).collect();
 
                     let multiplicity =
                         <E as EvalAtRow>::EF::from(evaluator.evaluate(&id.multiplicity));
-                    println!("multiplicity is {:?}", multiplicity);
-                    println!("finish evaluating multiplicity");
+                   
 
                     let denominator: <E as EvalAtRow>::EF = self.lookup_elements.combine(&payload);
-                    println!("denominator is {:?}", denominator);
+                   
 
-                    // println!("finish evaluating denominator");
-
-                    // Is_not_First * ((acc-acc_prev)*payload_linear_combination - multiplicity) = 0
                     eval.add_constraint::<<E as EvalAtRow>::EF>(
                         <E as EvalAtRow>::EF::from(selector_not_first.clone())
                             * ((bus_accumulator_eval.get(&id.id).unwrap()[1].clone()
@@ -410,8 +404,8 @@ impl FrameworkEval for PowdrEval {
                                 - multiplicity),
                     );
 
-                    //  println!("finish adding constraint");
-                    // add boundary constraints for accumulator
+                   
+                    // TODO:add publics constraints for accumulator
                 }
                 Identity::PhantomPermutation(..) | Identity::PhantomLookup(..) => {}
             }

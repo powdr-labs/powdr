@@ -182,14 +182,14 @@ where
                                 //Group the fixed columns by size
                                 let fixed_columns = &fixed_columns[&size];
                                 let log_size = size.ilog2();
-                                println!("grouped fixed columns with log size: {}", log_size);
-                                println!(
-                                    "with fixed columns names are {:?}",
-                                    fixed_columns
-                                        .iter()
-                                        .map(|(name, vec)| (name, vec.len().ilog2()))
-                                        .collect::<Vec<_>>()
-                                );
+                                // println!("grouped fixed columns with log size: {}", log_size);
+                                // println!(
+                                //     "with fixed columns names are {:?}",
+                                //     fixed_columns
+                                //         .iter()
+                                //         .map(|(name, vec)| (name, vec.len().ilog2()))
+                                //         .collect::<Vec<_>>()
+                                // );
                                 let mut constant_trace: ColumnVec<
                                     CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
                                 > = fixed_columns
@@ -372,14 +372,14 @@ where
                                 .clone()
                         })
                     {
-                        println!(
-                            "constant trace size by machine {}, sizes are: {:?}",
-                            machine,
-                            constant_trace
-                                .iter()
-                                .map(|col| col.data.len().ilog2())
-                                .collect::<Vec<_>>()
-                        );
+                        // println!(
+                        //     "constant trace size by machine {}, sizes are: {:?}",
+                        //     machine,
+                        //     constant_trace
+                        //         .iter()
+                        //         .map(|col| col.data.len().ilog2())
+                        //         .collect::<Vec<_>>()
+                        // );
                         constant_cols.extend(constant_trace)
                     }
                     machine_log_sizes.insert(machine.clone(), machine_length.ilog2());
@@ -442,25 +442,25 @@ where
 
         // commit to constant columns
         let mut tree_builder = commitment_scheme.tree_builder();
-        println!(
-            "constant trace size: {:?}",
-            constant_cols
-                .iter()
-                .map(|col| col.data.len().ilog2())
-                .collect::<Vec<_>>()
-        );
+        // println!(
+        //     "constant trace size: {:?}",
+        //     constant_cols
+        //         .iter()
+        //         .map(|col| col.data.len().ilog2())
+        //         .collect::<Vec<_>>()
+        // );
         tree_builder.extend_evals(constant_cols);
         tree_builder.commit(prover_channel);
 
         // commit to witness columns of stage 0
         let mut tree_builder = commitment_scheme.tree_builder();
-        println!(
-            "stage0 witness trace size: {:?}",
-            stage0_witness_cols_circle_domain_eval
-                .iter()
-                .map(|col| col.data.len().ilog2())
-                .collect::<Vec<_>>()
-        );
+        // println!(
+        //     "stage0 witness trace size: {:?}",
+        //     stage0_witness_cols_circle_domain_eval
+        //         .iter()
+        //         .map(|col| col.data.len().ilog2())
+        //         .collect::<Vec<_>>()
+        // );
         tree_builder.extend_evals(stage0_witness_cols_circle_domain_eval);
 
         tree_builder.commit(prover_channel);
@@ -524,11 +524,11 @@ where
                             if stage0_witness_name_list.contains(witness_name) {
                                 None
                             } else {
-                                println!(
-                                    "stage 1 witness name {} and size {}",
-                                    witness_name,
-                                    vec.len().ilog2()
-                                );
+                                // println!(
+                                //     "stage 1 witness name {} and size {}",
+                                //     witness_name,
+                                //     vec.len().ilog2()
+                                // );
                                 Some(gen_stwo_circle_column(
                                     *domain_map
                                         .get(&(vec.len().ilog2() as usize))
@@ -657,13 +657,7 @@ where
 
                                 for index in 0..(1 << log_size_payload) {
                                     bitreverse_multiplicity_col.set(
-                                    //     bit_reverse_index(
-                                    //         coset_index_to_circle_domain_index(
-                                    //             index,
-                                    //             log_size_payload,
-                                    //         ),
-                                    //         log_size_payload,
-                                    //     ),
+                                
                                     index,
                                         into_stwo_field(&evaluate(
                                             log_size_payload,
@@ -684,27 +678,19 @@ where
                                         .iter()
                                         .map(|col| col.data[vec_row]) // Extract data at vec_row
                                         .collect();
-                                  //  println!("payload denom values are {:?}", payload_denom_values);
+                                 
                                     let q: PackedSecureField =
                                         lookup_elements.combine(&payload_denom_values);
 
-                                //  println!("multiplicity is {:?}", p);
-                                //   println!("payload  is {:?}", q);
+                                
 
                                     col_gen.write_frac(vec_row, p.into(), q);
                                 }
 
                                 let trace = col_gen.finalize_col();
-                                //let trace=col_gen.compute_acc_col();
-                                // let (trace, claim_sum) = logup_gen.finalize_last();
+                               
                                 let mut tree_builder = commitment_scheme.tree_builder();
-                                // println!(
-                                //     "for interaction {}, supply totally {} number of acc witness",
-                                //     interaction_id,
-                                //     trace.len()
-                                // );
-                                //println!("\n at the end, the acc that is extended to the commit the acc trace is {:?}", trace);
-                                // println!("the acc sum is {:?}",claim_sum);
+                                
                                 tree_builder.extend_evals(trace.clone());
                                 tree_builder.commit(prover_channel);
                             }
