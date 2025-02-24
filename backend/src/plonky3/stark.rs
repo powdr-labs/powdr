@@ -117,8 +117,8 @@ where
             .split
             .iter()
             .filter_map(|(namespace, (pil, _))| {
-                // if we have neither fixed columns nor publics, we don't need to commit to anything
-                if pil.constant_count() + pil.publics_count() == 0 {
+                // if we don't have fixed columns, we don't need to commit to anything
+                if pil.constant_count() == 0 {
                     None
                 } else {
                     let fixed_columns = machine_fixed_columns(&self.fixed, pil);
@@ -129,15 +129,6 @@ where
                             .unwrap()
                             .iter()
                             .map(|size| {
-                                // get selector columns for the public inputs, as closures
-                                let publics = pil
-                                    .get_publics()
-                                    .into_iter()
-                                    .map(|(_, _, _, row_id, _)| {
-                                        move |i| T::from(i == row_id as u64)
-                                    })
-                                    .collect::<Vec<_>>();
-
                                 // get the config
                                 let config = T::get_config();
 
@@ -153,11 +144,10 @@ where
                                             fixed_columns
                                                 .iter()
                                                 .map(move |(_, column)| column[i as usize])
-                                                .chain(publics.iter().map(move |f| f(i)))
                                                 .map(|value| value.into_p3_field())
                                         })
                                         .collect(),
-                                    fixed_columns.len() + publics.len(),
+                                    fixed_columns.len(),
                                 );
 
                                 let evaluations = vec![(domain, matrix)];

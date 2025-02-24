@@ -354,25 +354,6 @@ where
             |value| AB::Expr::from(value.into_p3_field()),
         );
 
-        // constrain public inputs using witness columns in stage 0
-        let fixed_local = fixed.row_slice(0);
-        let public_offset = self.constraint_system.constant_count;
-
-        self.constraint_system
-            .publics_by_stage
-            .iter()
-            .flatten()
-            .enumerate()
-            .for_each(|(index, (name, _, poly_id, _))| {
-                let selector = fixed_local[public_offset + index];
-                let (stage, index) = self.constraint_system.witness_columns[poly_id];
-                let witness_col = traces_by_stage[stage].row_slice(0)[index];
-                let public_value = public_vals_by_name[name.as_str()];
-
-                // constraining s(i) * (pub[i] - x(i)) = 0
-                builder.assert_zero(selector * (public_value.into() - witness_col));
-            });
-
         // circuit constraints
         for identity in &self.constraint_system.identities {
             match identity {
@@ -408,12 +389,6 @@ where
 
     fn preprocessed_width(&self) -> usize {
         self.constraint_system.constant_count
-            + self
-                .constraint_system
-                .publics_by_stage
-                .iter()
-                .map(|publics| publics.len())
-                .sum::<usize>()
     }
 
     fn stage_count(&self) -> u8 {
