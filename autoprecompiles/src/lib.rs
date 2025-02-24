@@ -217,8 +217,16 @@ pub fn generate_precompile<T: FieldElement>(
                     .iter()
                     .map(|col| {
                         let name = format!("w{col_counter}");
+                        let expr = AlgebraicExpression::Reference(AlgebraicReference {
+                            name: name.clone(),
+                            poly_id: PolyID {
+                                ptype: PolynomialType::Intermediate,
+                                id: col_counter,
+                            },
+                            next: false,
+                        });
                         col_counter += 1;
-                        (col.clone(), name)
+                        (col.clone(), expr)
                     })
                     .collect::<BTreeMap<_, _>>();
 
@@ -227,13 +235,16 @@ pub fn generate_precompile<T: FieldElement>(
                     .iter()
                     .map(|expr| {
                         let mut expr = expr.expr.clone();
-                        powdr::substitute_algebraic(&mut expr, &sub_map);
-                        powdr::substitute_name(&mut expr, &local_cols);
+                        powdr::substitute_algebraic(&mut expr, &sub_map); // Combine both? Can we have overlappings?
+                        powdr::substitute_algebraic(&mut expr, &local_cols);
                         SymbolicConstraint { expr }
                     })
                     .collect::<Vec<_>>();
 
-                cols.extend(local_cols.values().cloned());
+                cols.extend(local_cols.values().map(|e| match e {
+                    AlgebraicExpression::Reference(ref r) => r.name.clone(),
+                    _ => panic!("Expected reference"),
+                }));
                 constraints.extend(local_identities);
 
                 for bus_int in &machine.bus_interactions {
