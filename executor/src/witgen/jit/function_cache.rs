@@ -6,10 +6,7 @@ use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
-    jit::{
-        effect::{format_code, Effect},
-        processor::ProcessorResult,
-    },
+    jit::{effect::format_code, processor::ProcessorResult},
     machines::{
         profiling::{record_end, record_start},
         LookupCell, MachineParts,
@@ -176,22 +173,6 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             );
         }
 
-        // TODO remove this once code generation for prover functions is working.
-        if code
-            .iter()
-            .flat_map(|e| -> Box<dyn Iterator<Item = &Effect<_, _>>> {
-                if let Effect::Branch(_, first, second) = e {
-                    Box::new(first.iter().chain(second))
-                } else {
-                    Box::new(std::iter::once(e))
-                }
-            })
-            .any(|e| matches!(e, Effect::ProverFunctionCall { .. }))
-        {
-            log::debug!("Inferred code contains call to prover function, which is not yet implemented. Using runtime solving instead.");
-            return None;
-        }
-
         log::trace!("Generated code ({} steps)", code.len());
         let known_inputs = cache_key
             .known_args
@@ -232,15 +213,19 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
 
         let cache_key = CacheKey {
             identity_id: connection_id,
-            known_args,
+            known_args: known_args.clone(),
             known_concrete,
         };
 
-        // TODO If the function is not in the cache, we should also try with
-        // known_concrete set to None.
-
         self.witgen_functions
             .get(&cache_key)
+            .or_else(|| {
+                self.witgen_functions.get(&CacheKey {
+                    identity_id: connection_id,
+                    known_args: known_args.clone(),
+                    known_concrete: None,
+                })
+            })
             .expect("Need to call compile_cached() first!")
             .as_ref()
             .expect("compile_cached() returned false!")

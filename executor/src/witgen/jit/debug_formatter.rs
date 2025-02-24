@@ -15,12 +15,20 @@ use super::{
     witgen_inference::{FixedEvaluator, WitgenInference},
 };
 
-/// Returns a human-readable summary of the identities.
-pub fn format_identities<T: FieldElement, FixedEval: FixedEvaluator<T>>(
+/// Returns a human-readable summary of the polynomial identities.
+pub fn format_polynomial_identities<T: FieldElement, FixedEval: FixedEvaluator<T>>(
     identities: &[(&Identity<T>, i32)],
     witgen: &WitgenInference<'_, T, FixedEval>,
 ) -> String {
-    DebugFormatter { identities, witgen }.format_identities()
+    DebugFormatter { identities, witgen }.format_polynomial_identities()
+}
+
+/// Returns a human-readable summary of incomplete bus sends.
+pub fn format_incomplete_bus_sends<T: FieldElement, FixedEval: FixedEvaluator<T>>(
+    identities: &[(&Identity<T>, i32)],
+    witgen: &WitgenInference<'_, T, FixedEval>,
+) -> String {
+    DebugFormatter { identities, witgen }.format_incomplete_bus_sends()
 }
 
 struct DebugFormatter<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
@@ -29,13 +37,13 @@ struct DebugFormatter<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
 }
 
 impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedEval> {
-    fn format_identities(&self) -> String {
+    fn format_polynomial_identities(&self) -> String {
         self.identities
             .iter()
+            .filter(|(id, _)| matches!(id, Identity::Polynomial(_)))
             .sorted_by_key(|(id, row)| (row, id.id()))
             .flat_map(|(id, row)| {
                 let (skip, conflicting) = match &id {
-                    Identity::BusSend(..) => (self.witgen.is_complete_call(id, *row), false),
                     Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                         let value = self
                             .witgen
@@ -49,7 +57,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
                         // but only if there is no conflict.
                         (value.is_some() && !conflict, conflict)
                     }
-                    Identity::Connect(..) => (false, false),
+                    _ => unreachable!(),
                 };
                 if skip {
                     None
@@ -65,6 +73,25 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
                         self.format_identity(id, *row)
                     ))
                 }
+            })
+            .join("\n")
+    }
+
+    fn format_incomplete_bus_sends(&self) -> String {
+        self.identities
+            .iter()
+            .filter(|(id, row)| match id {
+                Identity::BusSend(..) => !self.witgen.is_complete_call(id, *row),
+                Identity::Connect(..) => true,
+                Identity::Polynomial(..) => false,
+            })
+            .sorted_by_key(|(id, row)| (row, id.id()))
+            .map(|(id, row)| {
+                format!(
+                    "--------------[ identity {} on row {row}: ]--------------\n{}",
+                    id.id(),
+                    self.format_identity(id, *row)
+                )
             })
             .join("\n")
     }
