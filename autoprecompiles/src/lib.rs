@@ -272,12 +272,12 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
                     })
                     .collect::<BTreeMap<_, _>>();
 
-                // Constraints from main
                 let local_identities = machine
                     .constraints
                     .iter()
                     .map(|expr| {
                         let mut expr = expr.expr.clone();
+                        powdr::substitute_algebraic(&mut expr, &sub_map);
                         powdr::substitute_name(&mut expr, &local_cols);
                         SymbolicConstraint { expr }
                     })
