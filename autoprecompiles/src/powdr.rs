@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::ControlFlow;
 
+use powdr_ast::analyzed::{
+    AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator, PolyID, PolynomialType,
+};
 use powdr_ast::asm_analysis::InstructionDefinitionStatement;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, CallableRef, Instruction, InstructionBody,
@@ -661,6 +664,49 @@ pub fn generate_precompile(
         callable: callable_defs,
         submachines: Vec::new(),
     }
+}
+
+pub fn substitute_algebraic<T: Clone>(
+    expr: &mut AlgebraicExpression<T>,
+    sub: &BTreeMap<String, AlgebraicExpression<T>>,
+) {
+    expr.visit_expressions_mut(
+        &mut |expr| {
+            match expr {
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    name,
+                    poly_id,
+                    next,
+                }) => {
+                    if let Some(sub_expr) = sub.get(name) {
+                        *expr = sub_expr.clone();
+                    }
+                }
+                AlgebraicExpression::UnaryOperation(ref mut un_op) => {
+                    //if matches!(un_op.op, AlgebraicUnaryOperator::Next) {         Next doesn't exists
+                    if let AlgebraicExpression::Reference(ref r) = &*un_op.expr {
+                        if r.name == "pc" {
+                            //let pc_next_symbol = SymbolPath::from_identifier("pc_next".to_string());
+                            let pc_next_ref: AlgebraicReference = AlgebraicReference {
+                                name: "pc_next".to_string(),
+                                poly_id: PolyID {
+                                    ptype: PolynomialType::Intermediate,
+                                    id: 0, // maybe global id?
+                                },
+                                next: false,
+                            };
+                            let pc_next_ref = AlgebraicExpression::Reference(pc_next_ref);
+                            *expr = pc_next_ref.clone();
+                        }
+                    }
+                    //}
+                }
+                _ => (),
+            }
+            ControlFlow::Continue::<()>(())
+        },
+        VisitOrder::Pre,
+    );
 }
 
 pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
