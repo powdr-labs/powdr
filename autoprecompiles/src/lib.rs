@@ -11,6 +11,7 @@ use powdr_ast::analyzed::{
 };
 
 use powdr_number::FieldElement;
+use serde::{Deserialize, Serialize};
 
 pub mod powdr;
 
