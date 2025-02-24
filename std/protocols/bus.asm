@@ -19,6 +19,14 @@ use std::field::known_field;
 use std::field::KnownField;
 use std::check::panic;
 
+enum BusInteraction {
+    // id, payload, multiplicity
+    // For bus sends, the multiplicity always equals the latch
+    Send(expr, expr[], expr),
+    // id, payload, multiplicity, latch
+    Receive(expr, expr[], expr, expr)
+}
+
 /// Helper function.
 /// Materialized as a witness column for two reasons:
 /// - It makes sure the constraint degree is independent of the input payload.
@@ -225,144 +233,74 @@ let compute_next_z: expr, expr, expr[], expr, Ext<expr>, Ext<expr>, Ext<expr> ->
 };
 
 /// Helper function.
-/// Transpose user interface friendly bus send input format `(expr, expr[], expr)[]` 
-/// to constraint building friendly bus send input format `expr[], expr[][], expr[]`, i.e. id, payload, multiplicity.
+/// Transpose user interface friendly `BusInteraction`
+/// to constraint building friendly `expr[], expr[][], expr[], expr[]`, i.e. id, payload, multiplicity, latch.
 /// This is because Rust-style tuple indexing, e.g. tuple.0, isn't supported yet.
-let transpose_bus_send_inputs: (expr, expr[], expr)[] -> (expr[], expr[][], expr[]) = |bus_inputs| {
-    let ids: expr[] = array::map(bus_inputs, 
-        |bus_input| {
-            let (id, _, _) = bus_input;
-            id
+let transpose_bus_inputs: BusInteraction[] -> (expr[], expr[][], expr[], expr[]) = |bus_inputs| {
+    array::fold(
+        bus_inputs, ([], [], [], []), 
+        |(ids, payloads, multiplicities, latches), bus_input| {
+            match bus_input {
+                BusInteraction::Send(id, payload, multiplicity) => 
+                    (ids + [id], payloads + [payload], multiplicities + [multiplicity], latches + [multiplicity]),
+                BusInteraction::Receive(id, payload, multiplicity, latch) => 
+                    (ids + [id], payloads + [payload], multiplicities + [-multiplicity], latches + [latch]),
+            }
         }
-    );
-    let payloads: expr[][] = array::map(bus_inputs, 
-        |bus_input| {
-            let (_, payload, _) = bus_input;
-            payload
-        }
-    );
-    let multiplicities: expr[] = array::map(bus_inputs, 
-        |bus_input| {
-            let (_, _, multiplicity) = bus_input;
-            multiplicity
-        }
-    );
-    (ids, payloads, multiplicities)
+    )
 };
 
-/// Convenience function for batching multiple bus sends.
+/// Convenience function for batching multiple bus interactions.
 /// Transposes user inputs and then calls the key logic for batch building bus interactions.
-let bus_multi_send: (expr, expr[], expr)[] -> () = constr |bus_inputs| {
-    let (ids, payloads, multiplicities) = transpose_bus_send_inputs(bus_inputs);
-    // For bus sends, the multiplicity always equals the latch
-    bus_multi_interaction(ids, payloads, multiplicities, multiplicities);
+/// Can batch both send and receive.
+let bus_multi: BusInteraction[] -> () = constr |bus_inputs| {
+    let (ids, payloads, multiplicities, latches) = transpose_bus_inputs(bus_inputs);
+    bus_multi_interaction(ids, payloads, multiplicities, latches);
 };
 
-/// Helper function.
-/// Transpose user interface friendly bus send input format `(expr, expr[], expr, expr)[]` 
-/// to constraint building friendly bus send input format `expr[], expr[][], expr[], expr[]`, i.e. id, payload, multiplicity, latch.
-/// This is because Rust-style tuple indexing, e.g. tuple.0, isn't supported yet.
-let transpose_bus_receive_inputs: (expr, expr[], expr, expr)[] -> (expr[], expr[][], expr[], expr[]) = |bus_inputs| {
-    let ids: expr[] = array::map(bus_inputs, 
-        |bus_input| {
-            let (id, _, _, _) = bus_input;
-            id
+/// Input parameter only used in `bus_multi_linker`, not intended for end user.
+enum BusLinkerType {
+    Send,
+    LookupReceive,
+    PermutationReceive
+}
+
+/// Exposed to the linker and not intended for end user because it requires expert knowledge of Powdr's bus protocol.
+/// Inputs in the order of: id, selector, payload, type for both lookup and permutation.
+/// where type can be: bus send, lookup bus receive, or permutation bus receive.
+let bus_multi_linker: (expr, expr, expr[], BusLinkerType)[] -> () = constr |inputs| {
+    // Lookup requires adding a multiplicity column and constraining it to zero if selector is zero.
+    // Permutation passes the selector to both multiplicity and latch fields as well.
+    let inputs_inner = array::fold(inputs, [], constr |acc, input| {
+        // Converted to input format for the inner function `bus_multi`:
+        // For lookup bus receive, format is id, payload, multiplicity, selector
+        // For permutation bus receive, format is id, payload, selector, selector
+        let (id, selector, payload, type) = input;
+        match type {
+            BusLinkerType::Send => acc + [BusInteraction::Send(id, payload, selector)],
+            BusLinkerType::LookupReceive => {
+                let multiplicity;
+                (1 - selector) * multiplicity = 0;
+                acc + [BusInteraction::Receive(id, payload, multiplicity, selector)]
+            },
+            BusLinkerType::PermutationReceive => acc + [BusInteraction::Receive(id, payload, selector, selector)],
         }
-    );
-    let payloads: expr[][] = array::map(bus_inputs, 
-        |bus_input| {
-            let (_, payload, _, _) = bus_input;
-            payload
-        }
-    );
-    let negated_multiplicities: expr[] = array::map(bus_inputs, 
-        |bus_input| {
-            let (_, _, multiplicity, _) = bus_input;
-            -multiplicity
-        }
-    );
-    let latches: expr[] = array::map(bus_inputs,
-        |bus_input| {
-            let (_, _, _, latch) = bus_input;
-            latch
-        }
-    );
-    (ids, payloads, negated_multiplicities, latches)
+    });
+    bus_multi(inputs_inner);
 };
 
-/// Convenience function for batching multiple bus receives.
-/// Transposes user inputs and then calls the key logic for batch building bus interactions.
-/// In practice, can also batch bus send and bus receive, but requires knowledge of this function and careful configuration of input parameters.
-/// E.g. sending negative multiplicity and multiplicity for "multiplicity" and "latch" parameters for bus sends.
-let bus_multi_receive: (expr, expr[], expr, expr)[] -> () = constr |bus_inputs| {
-    let (ids, payloads, negated_multiplicities, latches) = transpose_bus_receive_inputs(bus_inputs);
-    bus_multi_interaction(ids, payloads, negated_multiplicities, latches);
-};
-
-/// Sends the payload (id, payload...) to the bus by adding
-/// `multiplicity / (beta - fingerprint(id, payload...))` to `acc`
-/// It is the callers responsibility to properly constrain the multiplicity (e.g. constrain
-/// it to be boolean) if needed.
-///
-/// # Arguments:
-/// - id: Interaction Id
-/// - payload: An array of expressions to be sent to the bus
-/// - multiplicity: The multiplicity which shows how many times a column will be sent
-/// - latch: a binary expression which indicates where the multiplicity can be non-zero.
+/// Builds a single bus interaction by using `bus_multi_interaction` for optimized performance.
+/// This is for user's convenience to supply inputs directly rather than a vector of tuples of inputs in the multi version.
 let bus_interaction: expr, expr[], expr, expr -> () = constr |id, payload, multiplicity, latch| {
-
-    let extension_field_size = required_extension_size();
-
-    // Alpha is used to compress the LHS and RHS arrays.
-    let alpha = from_array(array::new(extension_field_size, |i| challenge(0, i + 1)));
-    // Beta is used to update the accumulator.
-    let beta = from_array(array::new(extension_field_size, |i| challenge(0, i + 1 + extension_field_size)));
-
-    // Implemented as: folded = (beta - fingerprint(id, payload...));
-    let folded = if materialize_folded() {
-        let folded = from_array(
-            array::new(extension_field_size,
-                    |i| std::prover::new_witness_col_at_stage("folded", 1))
-        );
-        constrain_eq_ext(folded, sub_ext(beta, fingerprint_with_id_inter(id, payload, alpha)));
-        folded
-    } else {
-        sub_ext(beta, fingerprint_with_id_inter(id, payload, alpha))
-    };
-
-    let folded_next = next_ext(folded);
-
-    let m_ext = from_base(multiplicity);
-    let m_ext_next = next_ext(m_ext);
-
-    let acc = array::new(extension_field_size, |i| std::prover::new_witness_col_at_stage("acc", 1));
-    let acc_ext = from_array(acc);
-    let next_acc = next_ext(acc_ext);
-
-    let is_first: col = std::well_known::is_first;
-    let is_first_next = from_base(is_first');
-
-    // Update rule:
-    // acc' =  acc * (1 - is_first') + multiplicity' / folded'
-    // or equivalently:
-    // folded' * (acc' - acc * (1 - is_first')) - multiplicity' = 0
-    let update_expr = sub_ext(
-        mul_ext(folded_next, sub_ext(next_acc, mul_ext(acc_ext, sub_ext(from_base(1), is_first_next)))), m_ext_next
-    );
-    
-    constrain_eq_ext(update_expr, from_base(0));
-
-    // Add phantom bus interaction
-    Constr::PhantomBusInteraction(multiplicity, id, payload, latch, unpack_ext_array(folded), acc, Option::None);
+    bus_multi_interaction([id], [payload], [multiplicity], [latch]);
 };
 
-/// Convenience function for single bus interaction to send columns
-let bus_send: expr, expr[], expr -> () = constr |id, payload, multiplicity| {
-    // For bus sends, the multiplicity always equals the latch
-    bus_interaction(id, payload, multiplicity, multiplicity);
+/// Convenience function for single bus interaction to send/receive columns
+let bus: BusInteraction -> () = constr |bus_input| {
+    match bus_input {
+        // For bus sends, the multiplicity always equals the latch
+        BusInteraction::Send(id, payload, multiplicity) => bus_interaction(id, payload, multiplicity, multiplicity),
+        BusInteraction::Receive(id, payload, multiplicity, latch) => bus_interaction(id, payload, -multiplicity, latch)
+    }
 };
 
-/// Convenience function for single bus interaction to receive columns
-let bus_receive: expr, expr[], expr, expr -> () = constr |id, payload, multiplicity, latch| {
-    bus_interaction(id, payload, -multiplicity, latch);
-};

@@ -27,6 +27,10 @@ impl<T> PilVec<T> {
     fn len(&self) -> usize {
         self.0.len()
     }
+
+    fn as_slice(&self) -> &[T] {
+        self.0.as_ref()
+    }
 }
 impl<T> From<Vec<T>> for PilVec<T> {
     fn from(v: Vec<T>) -> Self {

@@ -290,18 +290,25 @@ fn collect_folded_columns<T>(
         })
 }
 
-fn collect_acc_columns<T>(
+fn collect_acc_columns<T: FieldElement>(
     bus_interaction: &PhantomBusInteractionIdentity<T>,
     acc: Vec<Vec<T>>,
 ) -> impl Iterator<Item = (PolyID, Vec<T>)> + '_ {
     bus_interaction
         .accumulator_columns
         .iter()
+        .map(|e| {
+            if let AlgebraicExpression::Reference(r) = e {
+                r
+            } else {
+                unreachable!("Expected accumulator column to be a single reference, found {e}")
+            }
+        })
         .zip_eq(acc)
         .map(|(column_reference, column)| (column_reference.poly_id, column))
 }
 
-fn collect_helper_columns<T>(
+fn collect_helper_columns<T: FieldElement>(
     bus_interaction: &PhantomBusInteractionIdentity<T>,
     helper: Vec<Vec<T>>,
 ) -> impl Iterator<Item = (PolyID, Vec<T>)> {
@@ -309,6 +316,13 @@ fn collect_helper_columns<T>(
         Some(helper_columns) => {
             let pairs: Vec<_> = helper_columns
                 .iter()
+                .map(|e| {
+                    if let AlgebraicExpression::Reference(r) = e {
+                        r
+                    } else {
+                        unreachable!("Expected helper column to be a single reference, found {e}")
+                    }
+                })
                 .zip_eq(helper)
                 .map(|(column_reference, column)| (column_reference.poly_id, column))
                 .collect();
