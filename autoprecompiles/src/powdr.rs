@@ -698,8 +698,8 @@ pub fn substitute_name<T: Clone>(
         &mut |expr| {
             match expr {
                 AlgebraicExpression::Reference(AlgebraicReference { name, .. }) => {
-                    if let Some(new_name) = sub.get(name) {
-                        *name = new_name.clone();
+                    if let Some(sub_name) = sub.get(name) {
+                        *name = sub_name.clone();
                     }
                 }
                 _ => (),
