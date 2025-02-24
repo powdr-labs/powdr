@@ -234,8 +234,10 @@ pub fn generate_precompile<T: FieldElement>(
                 let local_identities = machine
                     .constraints
                     .iter()
-                    .map(|expr| SymbolicConstraint {
-                        expr: expr.expr.clone(),
+                    .map(|expr| {
+                        let mut expr = expr.expr.clone();
+                        powdr::substitute_algebraic(&mut expr, &sub_map);
+                        SymbolicConstraint { expr }
                     })
                     .collect::<Vec<_>>();
 
