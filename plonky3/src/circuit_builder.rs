@@ -479,7 +479,7 @@ where
                 .collect()
         });
 
-        let public_values = self.public_values_so_far(public);
+        let public_values = self.public_values_so_far(public); // will we have second stage publics then if our public values are no longer based on witness? // this recollects values for all stages from updated witness
 
         // generate the next trace in the format p3 expects
         let air_stages = witness_by_machine

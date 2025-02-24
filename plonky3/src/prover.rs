@@ -452,7 +452,7 @@ where
                 ),
             )
         })
-        .unzip();
+        .unzip(); // all witness go into stage 0
 
     if tables.is_empty() {
         panic!("No tables to prove");
