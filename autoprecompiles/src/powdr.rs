@@ -687,6 +687,34 @@ pub fn substitute_algebraic<T: Clone>(
     );
 }
 
+// After powdr and lib are adjusted, this function can be renamed and the old collect_cols removed
+pub fn collect_cols_algebraic<T: Clone + Ord>(
+    expr: &AlgebraicExpression<T>,
+) -> BTreeSet<AlgebraicExpression<T>> {
+    let mut cols: BTreeSet<AlgebraicExpression<T>> = Default::default();
+    expr.visit_expressions(
+        &mut |expr| {
+            match expr {
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    name,
+                    poly_id:
+                        PolyID {
+                            id,
+                            ptype: PolynomialType::Committed,
+                        },
+                    ..
+                }) => {
+                    cols.insert(expr.clone());
+                }
+                _ => (),
+            }
+            ControlFlow::Continue::<()>(())
+        },
+        VisitOrder::Pre,
+    );
+    cols
+}
+
 pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
     expr.visit_expressions_mut(
         &mut |expr| {
