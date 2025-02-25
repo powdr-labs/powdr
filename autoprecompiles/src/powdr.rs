@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::ControlFlow;
 
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, PhantomBusInteractionIdentity, PolyID, PolynomialType,
+    AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator, PhantomBusInteractionIdentity,
+    PolyID, PolynomialType,
 };
-use powdr_ast::asm_analysis::AnalysisASMFile;
 use powdr_ast::asm_analysis::InstructionDefinitionStatement;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, CallableRef, Instruction, InstructionBody,
