@@ -1,15 +1,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::ControlFlow;
 
-use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator, PolyID, PolynomialType,
-};
+use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
+use powdr_ast::asm_analysis::AnalysisASMFile;
 use powdr_ast::asm_analysis::InstructionDefinitionStatement;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, CallableRef, Instruction, InstructionBody,
     LinkDeclaration, MachineParams, OperationId, Param, Params, Part, SymbolPath,
 };
-use powdr_ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMProgram};
 use powdr_ast::{
     asm_analysis::{
         CallableSymbol, CallableSymbolDefinitions, FunctionStatement, FunctionStatements,
@@ -23,7 +21,6 @@ use powdr_ast::{
     },
 };
 use powdr_number::BigUint;
-use powdr_number::FieldElement;
 use powdr_parser_util::SourceRef;
 
 type Expression = powdr_ast::asm_analysis::Expression<NamespacedPolynomialReference>;
@@ -102,8 +99,8 @@ pub fn transform_autoprecompile_blocks(
                     _ => {
                         let label_symbol = SymbolPath::from_identifier("main".to_string());
                         let main_ref: NamespacedPolynomialReference = label_symbol.into();
-                        let main_ref = Expression::Reference(Default::default(), main_ref);
-                        main_ref
+
+                        Expression::Reference(Default::default(), main_ref)
                     }
                 };
 
@@ -673,13 +670,10 @@ pub fn substitute_algebraic<T: Clone>(
 ) {
     expr.visit_expressions_mut(
         &mut |expr| {
-            match expr {
-                AlgebraicExpression::Reference(AlgebraicReference { name, .. }) => {
-                    if let Some(sub_expr) = sub.get(name) {
-                        *expr = sub_expr.clone();
-                    }
+            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = expr {
+                if let Some(sub_expr) = sub.get(name) {
+                    *expr = sub_expr.clone();
                 }
-                _ => (),
             }
             ControlFlow::Continue::<()>(())
         },
@@ -694,19 +688,17 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
     let mut cols: BTreeSet<AlgebraicExpression<T>> = Default::default();
     expr.visit_expressions(
         &mut |expr| {
-            match expr {
-                AlgebraicExpression::Reference(AlgebraicReference {
-                    name,
-                    poly_id:
-                        PolyID {
-                            id,
-                            ptype: PolynomialType::Committed,
-                        },
-                    ..
-                }) => {
-                    cols.insert(expr.clone());
-                }
-                _ => (),
+            if let AlgebraicExpression::Reference(AlgebraicReference {
+                name,
+                poly_id:
+                    PolyID {
+                        id,
+                        ptype: PolynomialType::Committed,
+                    },
+                ..
+            }) = expr
+            {
+                cols.insert(expr.clone());
             }
             ControlFlow::Continue::<()>(())
         },
