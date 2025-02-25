@@ -278,6 +278,7 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
                         .chain(std::iter::once(&mut link.mult))
                         .for_each(|e| {
                             powdr::substitute_algebraic(e, &sub_map);
+                            powdr::substitute_algebraic(e, &local_col_exprs);
                         });
                     bus_interactions.push(link);
                 }
