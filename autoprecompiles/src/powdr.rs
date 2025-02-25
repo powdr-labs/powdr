@@ -5,7 +5,7 @@ use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator, PhantomBusInteractionIdentity,
     PolyID, PolynomialType,
 };
-use powdr_ast::asm_analysis::InstructionDefinitionStatement;
+use powdr_ast::asm_analysis::{AnalysisASMFile, InstructionDefinitionStatement};
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, CallableRef, Instruction, InstructionBody,
     LinkDeclaration, MachineParams, OperationId, Param, Params, Part, SymbolPath,
@@ -1245,17 +1245,10 @@ fn powdr_interaction_to_symbolic<T: FieldElement>(
         _ => todo!(),
     };
 
-    let args = powdr_interaction
-        .accumulator_columns
-        .iter()
-        .chain(powdr_interaction.helper_columns.iter().flatten())
-        .cloned()
-        .collect();
-
     SymbolicBusInteraction {
         kind,
         id,
         mult: powdr_interaction.multiplicity,
-        args,
+        args: powdr_interaction.payload.0,
     }
 }

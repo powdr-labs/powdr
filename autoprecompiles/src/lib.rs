@@ -519,7 +519,7 @@ mod test {
             ]
             .into(),
         };
-        let (new_program, new_machines) = autoprecompiles.run();
+        let (new_program, new_machines, _) = autoprecompiles.run();
         let expected_program = vec![
             SymbolicInstructionStatement {
                 name: "new_instr".to_string(),
