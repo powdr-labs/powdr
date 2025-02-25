@@ -5,8 +5,10 @@ use std::protocols::lookup_via_bus::lookup_multi_receive;
 machine Main with degree: 8 {
 
     col fixed x = [1, 5, 2, 6, 4, 2, 6, 3];
-    col witness y;
-    col witness z;
+    // y = random 
+    col fixed y = [0, 0, 0,0, 0, 0, 0,0];
+    // z = 2*x+3-y
+    col fixed z = [5,13,7,15,11,7,15,9];
 
     // Pre-compute f(x) = x + 1 for all x in [1, 8]
     // Pre-compute g(x) = x + 2 for all x in [1, 8]
