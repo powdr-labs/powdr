@@ -1,27 +1,26 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use powdr_ast::analyzed::{
-    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
-};
+use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
+use serde::{Deserialize, Serialize};
 
 pub mod powdr;
 
 const MAIN_MACHINE_STR: &str = "::Main";
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
     pub name: String,
     pub args: Vec<AlgebraicExpression<T>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolicInstructionDefinition {
     pub name: String,
     pub inputs: Vec<String>,
     pub outputs: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolicConstraint<T> {
     pub expr: AlgebraicExpression<T>,
 }
@@ -32,7 +31,7 @@ impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolicBusInteraction<T> {
     pub kind: BusInteractionKind,
     pub id: u64,
@@ -40,13 +39,13 @@ pub struct SymbolicBusInteraction<T> {
     pub args: Vec<AlgebraicExpression<T>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BusInteractionKind {
     Send,
     Receive,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolicMachine<T> {
     pub constraints: Vec<SymbolicConstraint<T>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
@@ -99,6 +98,7 @@ impl<T: Clone + Ord + std::fmt::Debug> Autoprecompiles<T> {
     ) -> (
         Vec<SymbolicInstructionStatement<T>>,
         Vec<(String, SymbolicMachine<T>)>,
+        Vec<BTreeMap<String, String>>,
     ) {
         let blocks = self.collect_basic_blocks();
         let new_instr_name = "new_instr".to_string();
@@ -115,7 +115,7 @@ impl<T: Clone + Ord + std::fmt::Debug> Autoprecompiles<T> {
             &self.instruction_machines,
         );
 
-        (new_program, vec![(new_instr_name, machine)])
+        (new_program, vec![(new_instr_name, machine)], col_subs)
     }
 
     pub fn collect_basic_blocks(&self) -> Vec<BasicBlock<T>> {
@@ -320,6 +320,7 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
 
 #[cfg(test)]
 mod test {
+    use powdr_ast::analyzed::AlgebraicBinaryOperator;
     use powdr_number::BabyBearField;
 
     use super::*;
@@ -446,7 +447,7 @@ mod test {
             kind: BusInteractionKind::Send,
             id: 1,
             mult: one.clone(),
-            args: vec![c_ref.into(), d_ref.into()],
+            args: vec![c_ref, d_ref],
         };
 
         let autoprecompiles = Autoprecompiles {
@@ -468,7 +469,6 @@ mod test {
                             outputs: vec!["b".to_string()],
                         },
                         SymbolicMachine {
-                            cols: BTreeSet::new(),
                             constraints: vec![b_eq_a_plus_one.into()],
                             bus_interactions: vec![],
                         },
@@ -483,7 +483,6 @@ mod test {
                             outputs: vec!["d".to_string()],
                         },
                         SymbolicMachine {
-                            cols: BTreeSet::new(),
                             constraints: vec![],
                             bus_interactions: vec![bus_send],
                         },
@@ -498,7 +497,6 @@ mod test {
                             outputs: vec![],
                         },
                         SymbolicMachine {
-                            cols: BTreeSet::new(),
                             constraints: vec![],
                             bus_interactions: vec![],
                         },
@@ -513,7 +511,6 @@ mod test {
                             outputs: vec![],
                         },
                         SymbolicMachine {
-                            cols: BTreeSet::new(),
                             constraints: vec![],
                             bus_interactions: vec![],
                         },
@@ -534,6 +531,6 @@ mod test {
             },
         ];
         assert_eq!(new_program, expected_program);
-        println!("{:?}", new_machines);
+        println!("{new_machines:?}");
     }
 }
