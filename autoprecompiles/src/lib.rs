@@ -4,8 +4,6 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
 };
 
-use powdr_number::FieldElement;
-
 pub mod powdr;
 
 const MAIN_MACHINE_STR: &str = "::Main";
@@ -50,9 +48,28 @@ pub enum BusInteractionKind {
 
 #[derive(Debug, Clone)]
 pub struct SymbolicMachine<T> {
-    pub cols: BTreeSet<String>,
     pub constraints: Vec<SymbolicConstraint<T>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
+}
+
+impl<T> SymbolicMachine<T> {
+    pub fn algebraic_expressions(&self) -> impl Iterator<Item = &AlgebraicExpression<T>> {
+        let constraints_exprs = self.constraints.iter().map(|constraint| &constraint.expr);
+
+        let bus_mult_exprs = self
+            .bus_interactions
+            .iter()
+            .map(|interaction| &interaction.mult);
+
+        let bus_args_exprs = self
+            .bus_interactions
+            .iter()
+            .flat_map(|interaction| interaction.args.iter());
+
+        constraints_exprs
+            .chain(bus_mult_exprs)
+            .chain(bus_args_exprs)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -76,7 +93,7 @@ pub struct BasicBlock<T> {
     pub statements: Vec<SymbolicInstructionStatement<T>>,
 }
 
-impl<T: FieldElement + Clone> Autoprecompiles<T> {
+impl<T: Clone + Ord + std::fmt::Debug> Autoprecompiles<T> {
     pub fn run(
         &self,
     ) -> (
@@ -92,7 +109,7 @@ impl<T: FieldElement + Clone> Autoprecompiles<T> {
         let selected = [(0, new_instr)].into();
         let new_program = replace_autoprecompile_basic_blocks(&blocks, &selected);
 
-        let machine = generate_precompile(
+        let (machine, col_subs) = generate_precompile(
             &blocks[0].statements,
             &self.instruction_kind,
             &self.instruction_machines,
@@ -148,23 +165,15 @@ pub fn replace_autoprecompile_basic_blocks<T: Clone>(
     new_program
 }
 
-pub fn generate_precompile<T: FieldElement>(
+pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
     statements: &Vec<SymbolicInstructionStatement<T>>,
     instruction_kinds: &BTreeMap<String, InstructionKind>,
     instruction_machines: &BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
-) -> SymbolicMachine<T> {
+) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
     let mut col_counter = 3;
-    let mut cols: BTreeSet<String> = BTreeSet::new();
     let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
-
-    // let dest;
-    cols.insert("dest".to_string());
-
-    // let pc;
-    // let pc_next;
-    cols.insert("pc".to_string());
-    cols.insert("pc_next".to_string());
+    let mut col_subs: Vec<BTreeMap<String, String>> = Vec::new();
 
     let dest_ref = AlgebraicReference {
         name: "dest".to_string(),
@@ -176,7 +185,7 @@ pub fn generate_precompile<T: FieldElement>(
     };
     let dest_ref: AlgebraicExpression<T> = AlgebraicExpression::Reference(dest_ref);
 
-    let one = AlgebraicExpression::Number(T::from(1));
+    //let one = AlgebraicExpression::Number(T::from(1));
 
     let pc_next_ref = AlgebraicReference {
         name: "pc_next".to_string(),
@@ -205,6 +214,43 @@ pub fn generate_precompile<T: FieldElement>(
             | InstructionKind::ConditionalBranch => {
                 let (instr_def, machine) = instruction_machines.get(&instr.name).unwrap();
 
+                let mut local_cols: BTreeSet<AlgebraicExpression<T>> = Default::default();
+                machine.algebraic_expressions().for_each(|e| {
+                    let cols = powdr::collect_cols_algebraic(e);
+                    local_cols.extend(cols);
+                });
+
+                let (local_col_subs, local_col_exprs): (
+                    BTreeMap<String, String>,
+                    BTreeMap<String, AlgebraicExpression<T>>,
+                ) = local_cols
+                    .iter()
+                    .map(|e| {
+                        if let AlgebraicExpression::Reference(expr_ref) = e {
+                            col_counter += 1;
+                            let col_name = format!("w_{col_counter}");
+                            let new_expr_ref = AlgebraicReference {
+                                name: col_name.clone(),
+                                poly_id: PolyID {
+                                    ptype: expr_ref.poly_id.ptype,
+                                    id: col_counter,
+                                },
+                                ..expr_ref.clone()
+                            };
+                            let new_expr_ref: AlgebraicExpression<T> =
+                                AlgebraicExpression::Reference(new_expr_ref);
+                            (
+                                (expr_ref.name.clone(), col_name.clone()),
+                                (expr_ref.name.clone(), new_expr_ref),
+                            )
+                        } else {
+                            panic!("Expected reference")
+                        }
+                    })
+                    .collect();
+
+                col_subs.push(local_col_subs);
+
                 let sub_map: BTreeMap<String, AlgebraicExpression<T>> = instr_def
                     .inputs
                     .clone()
@@ -212,39 +258,17 @@ pub fn generate_precompile<T: FieldElement>(
                     .zip(instr.args.clone())
                     .collect();
 
-                let local_cols = machine
-                    .cols
-                    .iter()
-                    .map(|col| {
-                        let name = format!("w{col_counter}");
-                        let expr = AlgebraicExpression::Reference(AlgebraicReference {
-                            name: name.clone(),
-                            poly_id: PolyID {
-                                ptype: PolynomialType::Committed,
-                                id: col_counter,
-                            },
-                            next: false,
-                        });
-                        col_counter += 1;
-                        (col.clone(), expr)
-                    })
-                    .collect::<BTreeMap<_, _>>();
-
                 let local_identities = machine
                     .constraints
                     .iter()
                     .map(|expr| {
                         let mut expr = expr.expr.clone();
                         powdr::substitute_algebraic(&mut expr, &sub_map);
-                        powdr::substitute_algebraic(&mut expr, &local_cols);
+                        powdr::substitute_algebraic(&mut expr, &local_col_exprs);
                         SymbolicConstraint { expr }
                     })
                     .collect::<Vec<_>>();
 
-                cols.extend(local_cols.values().map(|e| match e {
-                    AlgebraicExpression::Reference(ref r) => r.name.clone(),
-                    _ => panic!("Expected reference"),
-                }));
                 constraints.extend(local_identities);
 
                 for bus_int in &machine.bus_interactions {
@@ -269,24 +293,28 @@ pub fn generate_precompile<T: FieldElement>(
         InstructionKind::UnconditionalBranch | InstructionKind::ConditionalBranch
     );
 
-    if !last_is_branch {
-        let pc_plus_one =
-            AlgebraicExpression::new_binary(pc_ref.clone(), AlgebraicBinaryOperator::Add, one);
-        let pc_eq_pc_plus_one = AlgebraicExpression::new_binary(
-            pc_next_ref.clone(),
-            AlgebraicBinaryOperator::Sub,
-            pc_plus_one,
-        );
-        constraints.push(SymbolicConstraint {
-            expr: pc_eq_pc_plus_one,
-        });
-    }
+    /*
+        if !last_is_branch {
+            let pc_plus_one =
+                AlgebraicExpression::new_binary(pc_ref.clone(), AlgebraicBinaryOperator::Add, one);
+            let pc_eq_pc_plus_one = AlgebraicExpression::new_binary(
+                pc_next_ref.clone(),
+                AlgebraicBinaryOperator::Sub,
+                pc_plus_one,
+            );
+            constraints.push(SymbolicConstraint {
+                expr: pc_eq_pc_plus_one,
+            });
+        }
+    */
 
-    SymbolicMachine {
-        cols,
-        constraints,
-        bus_interactions,
-    }
+    (
+        SymbolicMachine {
+            constraints,
+            bus_interactions,
+        },
+        col_subs,
+    )
 }
 
 #[cfg(test)]
