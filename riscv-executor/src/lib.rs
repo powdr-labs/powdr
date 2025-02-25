@@ -993,10 +993,14 @@ mod builder {
             kind: MemOperationKind,
         ) {
             if let ExecMode::Witness = self.mode {
+                let selector = match kind {
+                    MemOperationKind::Read => F::zero(),
+                    MemOperationKind::Write => F::one(),
+                };
                 self.submachine_op(
                     MachineInstance::memory,
                     identity_id,
-                    &[0.into(), addr.into(), step.into(), val.into_fe()],
+                    &[selector, addr.into(), step.into(), val.into_fe()],
                     &[],
                 );
             }
