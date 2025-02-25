@@ -1,6 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::ControlFlow;
 
+use powdr_ast::analyzed::{
+    AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator, PolyID, PolynomialType,
+};
 use powdr_ast::asm_analysis::InstructionDefinitionStatement;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, CallableRef, Instruction, InstructionBody,
@@ -661,6 +664,27 @@ pub fn generate_precompile(
         callable: callable_defs,
         submachines: Vec::new(),
     }
+}
+
+// After powdr and lib are adjusted, this function can be renamed and the old substitute removed
+pub fn substitute_algebraic<T: Clone>(
+    expr: &mut AlgebraicExpression<T>,
+    sub: &BTreeMap<String, AlgebraicExpression<T>>,
+) {
+    expr.visit_expressions_mut(
+        &mut |expr| {
+            match expr {
+                AlgebraicExpression::Reference(AlgebraicReference { name, .. }) => {
+                    if let Some(sub_expr) = sub.get(name) {
+                        *expr = sub_expr.clone();
+                    }
+                }
+                _ => (),
+            }
+            ControlFlow::Continue::<()>(())
+        },
+        VisitOrder::Pre,
+    );
 }
 
 pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
