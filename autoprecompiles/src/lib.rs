@@ -98,6 +98,7 @@ impl<T: Clone + Ord + std::fmt::Debug> Autoprecompiles<T> {
     ) -> (
         Vec<SymbolicInstructionStatement<T>>,
         Vec<(String, SymbolicMachine<T>)>,
+        Vec<BTreeMap<String, String>>,
     ) {
         let blocks = self.collect_basic_blocks();
         let new_instr_name = "new_instr".to_string();
@@ -114,7 +115,7 @@ impl<T: Clone + Ord + std::fmt::Debug> Autoprecompiles<T> {
             &self.instruction_machines,
         );
 
-        (new_program, vec![(new_instr_name, machine)])
+        (new_program, vec![(new_instr_name, machine)], col_subs)
     }
 
     pub fn collect_basic_blocks(&self) -> Vec<BasicBlock<T>> {
