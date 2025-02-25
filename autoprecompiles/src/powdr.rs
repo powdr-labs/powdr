@@ -681,6 +681,27 @@ pub fn substitute_algebraic<T: Clone>(
     );
 }
 
+pub fn append_suffix_algebraic<T: Clone>(
+    expr: &mut AlgebraicExpression<T>,
+    suffix: &str,
+) -> BTreeMap<String, String> {
+    let mut subs = BTreeMap::new();
+    expr.visit_expressions_mut(
+        &mut |expr| {
+            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = expr {
+                if !["is_first_row", "is_transition", "is_last_row"].contains(&name.as_str()) {
+                    let new_name = format!("{name}_{suffix}");
+                    subs.insert(name.clone(), new_name.clone());
+                    *name = new_name;
+                }
+            }
+            ControlFlow::Continue::<()>(())
+        },
+        VisitOrder::Pre,
+    );
+    subs
+}
+
 // After powdr and lib are adjusted, this function can be renamed and the old collect_cols removed
 pub fn collect_cols_algebraic<T: Clone + Ord>(
     expr: &AlgebraicExpression<T>,
