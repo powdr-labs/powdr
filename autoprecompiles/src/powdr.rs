@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::ControlFlow;
 
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
+use powdr_ast::analyzed::{
+    AlgebraicExpression, AlgebraicReference, BusInteractionIdentity, PolyID, PolynomialType,
+};
 use powdr_ast::asm_analysis::AnalysisASMFile;
 use powdr_ast::asm_analysis::InstructionDefinitionStatement;
 use powdr_ast::parsed::asm::{
@@ -20,8 +22,10 @@ use powdr_ast::{
         UnaryOperation, UnaryOperator,
     },
 };
-use powdr_number::BigUint;
+use powdr_number::{BigUint, FieldElement};
 use powdr_parser_util::SourceRef;
+
+use crate::{BusInteractionKind, SymbolicBusInteraction};
 
 type Expression = powdr_ast::asm_analysis::Expression<NamespacedPolynomialReference>;
 
@@ -1246,4 +1250,26 @@ fn optimize_precompile(mut machine: Machine) -> Machine {
     machine.links.extend(memory_links);
 
     machine
+}
+
+fn powdr_interaction_to_symbolic<T: FieldElement>(
+    powdr_interaction: BusInteractionIdentity<T>,
+) -> SymbolicBusInteraction<T> {
+    let kind = match powdr_interaction.multiplicity {
+        AlgebraicExpression::Number(_) => BusInteractionKind::Send,
+        AlgebraicExpression::UnaryOperation(_) => BusInteractionKind::Receive,
+        _ => todo!(),
+    };
+
+    let id: u64 = match powdr_interaction.bus_id {
+        AlgebraicExpression::Number(n) => n.to_arbitrary_integer().try_into().unwrap(),
+        _ => todo!(),
+    };
+
+    SymbolicBusInteraction {
+        kind,
+        id,
+        mult: powdr_interaction.multiplicity,
+        args: powdr_interaction.payload.0,
+    }
 }
