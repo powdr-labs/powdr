@@ -170,101 +170,26 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
     instruction_kinds: &BTreeMap<String, InstructionKind>,
     instruction_machines: &BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
 ) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
-    let mut col_counter = 3;
     let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
     let mut col_subs: Vec<BTreeMap<String, String>> = Vec::new();
 
-    let dest_ref = AlgebraicReference {
-        name: "dest".to_string(),
-        poly_id: PolyID {
-            ptype: PolynomialType::Intermediate,
-            id: 0,
-        },
-        next: false,
-    };
-    let dest_ref: AlgebraicExpression<T> = AlgebraicExpression::Reference(dest_ref);
-
-    //let one = AlgebraicExpression::Number(T::from(1));
-
-    let pc_next_ref = AlgebraicReference {
-        name: "pc_next".to_string(),
-        poly_id: PolyID {
-            ptype: PolynomialType::Committed,
-            id: 1,
-        },
-        next: false,
-    };
-    let pc_next_ref: AlgebraicExpression<T> = AlgebraicExpression::Reference(pc_next_ref);
-
-    let pc_ref = AlgebraicReference {
-        name: "pc".to_string(),
-        poly_id: PolyID {
-            ptype: PolynomialType::Intermediate,
-            id: 2,
-        },
-        next: false,
-    };
-    let pc_ref: AlgebraicExpression<T> = AlgebraicExpression::Reference(pc_ref);
-
-    for instr in statements.iter() {
+    for (i, instr) in statements.iter().enumerate() {
         match instruction_kinds.get(&instr.name).unwrap() {
             InstructionKind::Normal
             | InstructionKind::UnconditionalBranch
             | InstructionKind::ConditionalBranch => {
                 let (instr_def, machine) = instruction_machines.get(&instr.name).unwrap();
 
-                let mut local_cols: BTreeSet<AlgebraicExpression<T>> = Default::default();
-                machine.algebraic_expressions().for_each(|e| {
-                    let cols = powdr::collect_cols_algebraic(e);
-                    local_cols.extend(cols);
-                });
-
-                let (local_col_subs, local_col_exprs): (
-                    BTreeMap<String, String>,
-                    BTreeMap<String, AlgebraicExpression<T>>,
-                ) = local_cols
-                    .iter()
-                    .map(|e| {
-                        if let AlgebraicExpression::Reference(expr_ref) = e {
-                            col_counter += 1;
-                            let col_name = format!("w_{col_counter}");
-                            let new_expr_ref = AlgebraicReference {
-                                name: col_name.clone(),
-                                poly_id: PolyID {
-                                    ptype: expr_ref.poly_id.ptype,
-                                    id: col_counter,
-                                },
-                                ..expr_ref.clone()
-                            };
-                            let new_expr_ref: AlgebraicExpression<T> =
-                                AlgebraicExpression::Reference(new_expr_ref);
-                            (
-                                (expr_ref.name.clone(), col_name.clone()),
-                                (expr_ref.name.clone(), new_expr_ref),
-                            )
-                        } else {
-                            panic!("Expected reference")
-                        }
-                    })
-                    .collect();
-
-                col_subs.push(local_col_subs);
-
-                let sub_map: BTreeMap<String, AlgebraicExpression<T>> = instr_def
-                    .inputs
-                    .clone()
-                    .into_iter()
-                    .zip(instr.args.clone())
-                    .collect();
+                let mut local_subs = BTreeMap::new();
 
                 let local_identities = machine
                     .constraints
                     .iter()
                     .map(|expr| {
                         let mut expr = expr.expr.clone();
-                        powdr::substitute_algebraic(&mut expr, &sub_map);
-                        powdr::substitute_algebraic(&mut expr, &local_col_exprs);
+                        let subs = powdr::append_suffix_algebraic(&mut expr, &format!("{i}"));
+                        local_subs.extend(subs);
                         SymbolicConstraint { expr }
                     })
                     .collect::<Vec<_>>();
@@ -277,11 +202,13 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
                         .iter_mut()
                         .chain(std::iter::once(&mut link.mult))
                         .for_each(|e| {
-                            powdr::substitute_algebraic(e, &sub_map);
-                            powdr::substitute_algebraic(e, &local_col_exprs);
+                            let subs = powdr::append_suffix_algebraic(e, &format!("{i}"));
+                            local_subs.extend(subs);
                         });
                     bus_interactions.push(link);
                 }
+
+                col_subs.push(local_subs);
             }
             _ => {}
         }
