@@ -191,7 +191,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             branches: [first_branch, second_branch],
         } = witgen.branch_on(&most_constrained_var.clone());
 
-        identity_queue.variables_updated(vec![most_constrained_var.clone()], None);
+        identity_queue.variables_updated(vec![most_constrained_var.clone()]);
 
         // TODO Tuning: If this fails (or also if it does not generate progress right away),
         // we could also choose a different variable to branch on.
@@ -260,10 +260,10 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         mut identity_queue: IdentityQueue<'a, T>,
     ) -> Result<(), affine_symbolic_expression::Error> {
         while let Some(item) = identity_queue.next() {
-            let updated_vars = match &item {
+            let updated_vars = match item {
                 QueueItem::Identity(identity, row_offset) => match identity {
                     Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                        witgen.process_equation_on_row(expression, None, 0.into(), *row_offset)
+                        witgen.process_equation_on_row(expression, None, 0.into(), row_offset)
                     }
                     Identity::BusSend(BusSend {
                         bus_id: _,
@@ -274,7 +274,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                         *identity_id,
                         &selected_payload.selector,
                         selected_payload.expressions.len(),
-                        *row_offset,
+                        row_offset,
                     ),
                     Identity::Connect(..) => Ok(vec![]),
                 },
@@ -291,10 +291,10 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     assignment.row_offset,
                 ),
                 QueueItem::ProverFunction(prover_function, row_offset) => {
-                    witgen.process_prover_function(prover_function, *row_offset)
+                    witgen.process_prover_function(&prover_function, row_offset)
                 }
             }?;
-            identity_queue.variables_updated(updated_vars, Some(item));
+            identity_queue.variables_updated(updated_vars);
         }
         Ok(())
     }
@@ -392,9 +392,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 row,
             ) {
                 Err(_) => return false,
-                Ok(updated_vars) => {
-                    identity_queue.variables_updated(updated_vars, None);
-                }
+                Ok(updated_vars) => identity_queue.variables_updated(updated_vars),
             };
         }
         if self
