@@ -159,13 +159,14 @@ where
     /// For stages in which there are no public values, return an empty vector
     pub fn public_values_so_far(
         &self,
-        witness_by_machine: &BTreeMap<String, Vec<(String, Vec<T>)>>,
+        // witness_by_machine: &BTreeMap<String, Vec<(String, Vec<T>)>>,
+        public: &BTreeMap<String, T>,
     ) -> BTreeMap<String, Vec<Vec<Option<T>>>> {
-        let witness = witness_by_machine
-            .values()
-            // this map seems redundant but it turns a reference over a tuple into a tuple of references
-            .flat_map(|machine_witness| machine_witness.iter().map(|(n, v)| (n, v)))
-            .collect::<BTreeMap<_, _>>();
+        // let witness = witness_by_machine
+        //     .values()
+        //     // this map seems redundant but it turns a reference over a tuple into a tuple of references
+        //     .flat_map(|machine_witness| machine_witness.iter().map(|(n, v)| (n, v)))
+        //     .collect::<BTreeMap<_, _>>();
 
         self.split
             .iter()
@@ -176,7 +177,7 @@ where
                     .map(|publics| {
                         publics
                             .iter()
-                            .map(|(_, name, _, row)| witness.get(name).map(|column| column[*row]))
+                            .map(|(_, name, _, _)| public.get(name).cloned())
                             .collect()
                     })
                     .collect();
@@ -386,6 +387,9 @@ where
                     unimplemented!("Plonky3 does not support permutations")
                 }
                 Identity::Connect(..) => unimplemented!("Plonky3 does not support connections"),
+                Identity::BusInteraction(..) => {
+                    unimplemented!("Plonky3 does not support bus interactions")
+                }
                 Identity::PhantomPermutation(_)
                 | Identity::PhantomLookup(_)
                 | Identity::PhantomBusInteraction(_) => {
@@ -440,6 +444,7 @@ where
         trace_stage: u8,
         new_challenge_values: &[Plonky3Field<T>],
         witness_by_machine: &mut BTreeMap<String, Vec<(String, Vec<T>)>>,
+        public: &BTreeMap<String, T>,
     ) -> CallbackResult<Plonky3Field<T>> {
         let previous_stage_challenges: BTreeSet<&u64> = self
             .split
@@ -478,7 +483,7 @@ where
                 .collect()
         });
 
-        let public_values = self.public_values_so_far(witness_by_machine);
+        let public_values = self.public_values_so_far(public);
 
         // generate the next trace in the format p3 expects
         let air_stages = witness_by_machine
