@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::ControlFlow;
 
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
+use powdr_ast::analyzed::{
+    AlgebraicExpression, AlgebraicReference, PhantomBusInteractionIdentity, PolyID, PolynomialType,
+};
 use powdr_ast::asm_analysis::AnalysisASMFile;
 use powdr_ast::asm_analysis::InstructionDefinitionStatement;
 use powdr_ast::parsed::asm::{
@@ -20,7 +22,7 @@ use powdr_ast::{
         UnaryOperation, UnaryOperator,
     },
 };
-use powdr_number::BigUint;
+use powdr_number::{BigUint, FieldElement};
 use powdr_parser_util::SourceRef;
 
 use crate::{BusInteractionKind, SymbolicBusInteraction};
@@ -1247,7 +1249,7 @@ fn powdr_interaction_to_symbolic<T: FieldElement>(
         .accumulator_columns
         .iter()
         .chain(powdr_interaction.helper_columns.iter().flatten())
-        .map(|c| AlgebraicExpression::Reference(c.clone()))
+        .cloned()
         .collect();
 
     SymbolicBusInteraction {

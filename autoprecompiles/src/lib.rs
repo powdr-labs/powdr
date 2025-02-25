@@ -1,10 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use powdr_ast::analyzed::{
-    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
-};
-
-use powdr_number::FieldElement;
+use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
 use serde::{Deserialize, Serialize};
 
 pub mod powdr;
@@ -96,7 +92,7 @@ pub struct BasicBlock<T> {
     pub statements: Vec<SymbolicInstructionStatement<T>>,
 }
 
-impl<T: FieldElement + Clone> Autoprecompiles<T> {
+impl<T: Clone + Ord + std::fmt::Debug> Autoprecompiles<T> {
     pub fn run(
         &self,
     ) -> (
@@ -179,8 +175,6 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
     let mut col_subs: Vec<BTreeMap<String, String>> = Vec::new();
 
-    //let one = AlgebraicExpression::Number(T::from(1));
-
     let dest_ref = AlgebraicReference {
         name: "dest".to_string(),
         poly_id: PolyID {
@@ -190,6 +184,8 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
         next: false,
     };
     let dest_ref: AlgebraicExpression<T> = AlgebraicExpression::Reference(dest_ref);
+
+    //let one = AlgebraicExpression::Number(T::from(1));
 
     let pc_next_ref = AlgebraicReference {
         name: "pc_next".to_string(),
@@ -262,39 +258,17 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
                     .zip(instr.args.clone())
                     .collect();
 
-                let local_cols = machine
-                    .cols
-                    .iter()
-                    .map(|col| {
-                        let name = format!("w{col_counter}");
-                        let expr = AlgebraicExpression::Reference(AlgebraicReference {
-                            name: name.clone(),
-                            poly_id: PolyID {
-                                ptype: PolynomialType::Committed,
-                                id: col_counter,
-                            },
-                            next: false,
-                        });
-                        col_counter += 1;
-                        (col.clone(), expr)
-                    })
-                    .collect::<BTreeMap<_, _>>();
-
                 let local_identities = machine
                     .constraints
                     .iter()
                     .map(|expr| {
                         let mut expr = expr.expr.clone();
                         powdr::substitute_algebraic(&mut expr, &sub_map);
-                        powdr::substitute_algebraic(&mut expr, &local_cols);
+                        powdr::substitute_algebraic(&mut expr, &local_col_exprs);
                         SymbolicConstraint { expr }
                     })
                     .collect::<Vec<_>>();
 
-                cols.extend(local_cols.values().map(|e| match e {
-                    AlgebraicExpression::Reference(ref r) => r.name.clone(),
-                    _ => panic!("Expected reference"),
-                }));
                 constraints.extend(local_identities);
 
                 for bus_int in &machine.bus_interactions {
@@ -304,6 +278,7 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
                         .chain(std::iter::once(&mut link.mult))
                         .for_each(|e| {
                             powdr::substitute_algebraic(e, &sub_map);
+                            powdr::substitute_algebraic(e, &local_col_exprs);
                         });
                     bus_interactions.push(link);
                 }
