@@ -6,12 +6,10 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed,
-    ConnectIdentity, Expression, FunctionValueDefinition, Identity, LookupIdentity,
-    PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolyID,
-    PolynomialIdentity, PolynomialReference, PolynomialType, Reference, StatementIdentifier,
-    Symbol, SymbolKind,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
+    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
+    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialReference, PolynomialType,
+    Reference, StatementIdentifier, Symbol, SymbolKind,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
