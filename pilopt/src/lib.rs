@@ -6,6 +6,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
     FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
     PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialReference, PolynomialType,
