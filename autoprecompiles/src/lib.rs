@@ -1,7 +1,10 @@
+use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet};
 
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
 use serde::{Deserialize, Serialize};
+
+use powdr_number::{FieldElement, LargeInt};
 
 pub mod powdr;
 
@@ -10,7 +13,7 @@ const MAIN_MACHINE_STR: &str = "::Main";
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
     pub name: String,
-    pub args: Vec<AlgebraicExpression<T>>,
+    pub args: Vec<T>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,7 +34,7 @@ impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct SymbolicBusInteraction<T> {
     pub kind: BusInteractionKind,
     pub id: u64,
@@ -39,7 +42,7 @@ pub struct SymbolicBusInteraction<T> {
     pub args: Vec<AlgebraicExpression<T>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub enum BusInteractionKind {
     Send,
     Receive,
@@ -92,7 +95,93 @@ pub struct BasicBlock<T> {
     pub statements: Vec<SymbolicInstructionStatement<T>>,
 }
 
-impl<T: Clone + Ord + std::fmt::Debug> Autoprecompiles<T> {
+pub enum MemoryType {
+    Register,
+    Memory,
+}
+
+impl<T: FieldElement> From<AlgebraicExpression<T>> for MemoryType {
+    fn from(expr: AlgebraicExpression<T>) -> Self {
+        match expr {
+            AlgebraicExpression::Number(n) => {
+                let n_u32 = n.to_integer().try_into_u32().unwrap();
+                match n_u32 {
+                    1 => MemoryType::Register,
+                    2 => MemoryType::Memory,
+                    _ => unreachable!("Expected 1 or 2"),
+                }
+            }
+            _ => unreachable!("Expected number"),
+        }
+    }
+}
+
+pub enum MemoryOp {
+    Read,
+    Write,
+}
+
+impl From<BusInteractionKind> for MemoryOp {
+    fn from(kind: BusInteractionKind) -> Self {
+        match kind {
+            BusInteractionKind::Receive => MemoryOp::Read,
+            BusInteractionKind::Send => MemoryOp::Write,
+        }
+    }
+}
+
+pub struct MemoryBusInteraction<T> {
+    pub ty: MemoryType,
+    pub addr: AlgebraicExpression<T>,
+    pub data: Vec<AlgebraicExpression<T>>,
+    pub bus_interaction: SymbolicBusInteraction<T>,
+}
+
+impl<T: FieldElement> From<SymbolicBusInteraction<T>> for MemoryBusInteraction<T> {
+    fn from(bus_interaction: SymbolicBusInteraction<T>) -> Self {
+        let ty = bus_interaction.args[0].clone().into();
+        let addr = bus_interaction.args[1].clone();
+        let data = bus_interaction.args[2..bus_interaction.args.len() - 2].to_vec();
+        MemoryBusInteraction {
+            ty,
+            addr,
+            data,
+            bus_interaction,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct PcLookupBusInteraction<T> {
+    pub from_pc: AlgebraicExpression<T>,
+    pub op: AlgebraicExpression<T>,
+    pub args: Vec<AlgebraicExpression<T>>,
+    pub bus_interaction: SymbolicBusInteraction<T>,
+}
+
+impl<T: FieldElement> From<SymbolicBusInteraction<T>> for PcLookupBusInteraction<T> {
+    fn from(bus_interaction: SymbolicBusInteraction<T>) -> Self {
+        let from_pc = bus_interaction.args[0].clone();
+        let op = bus_interaction.args[1].clone();
+        let args = bus_interaction.args[2..].to_vec();
+        PcLookupBusInteraction {
+            from_pc,
+            op,
+            args,
+            bus_interaction,
+        }
+    }
+}
+
+pub enum VMBusInteraction<T> {
+    Memory(MemoryBusInteraction<T>),
+}
+
+const EXECUTION_BUS_ID: u64 = 0;
+const MEMORY_BUS_ID: u64 = 1;
+const PC_LOOKUP_BUS_ID: u64 = 2;
+
+impl<T: FieldElement> Autoprecompiles<T> {
     pub fn run(
         &self,
     ) -> (
@@ -114,6 +203,8 @@ impl<T: Clone + Ord + std::fmt::Debug> Autoprecompiles<T> {
             &self.instruction_kind,
             &self.instruction_machines,
         );
+
+        let machine = optimize_precompile(machine);
 
         (new_program, vec![(new_instr_name, machine)], col_subs)
     }
@@ -165,7 +256,20 @@ pub fn replace_autoprecompile_basic_blocks<T: Clone>(
     new_program
 }
 
-pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
+pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+    let reg_mem_interactions: Vec<MemoryBusInteraction<T>> = machine
+        .bus_interactions
+        .iter()
+        .filter_map(|bus_int| match bus_int.id {
+            MEMORY_BUS_ID => Some(bus_int.clone().into()),
+            _ => None,
+        })
+        .collect();
+
+    machine
+}
+
+pub fn generate_precompile<T: FieldElement>(
     statements: &Vec<SymbolicInstructionStatement<T>>,
     instruction_kinds: &BTreeMap<String, InstructionKind>,
     instruction_machines: &BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
@@ -181,6 +285,39 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
             | InstructionKind::ConditionalBranch => {
                 let (instr_def, machine) = instruction_machines.get(&instr.name).unwrap();
 
+                let pc_lookup: PcLookupBusInteraction<T> = machine
+                    .bus_interactions
+                    .iter()
+                    .filter_map(|bus_int| match bus_int.id {
+                        PC_LOOKUP_BUS_ID => Some(bus_int.clone().into()),
+                        _ => None,
+                    })
+                    .exactly_one()
+                    .expect("Expected single pc lookup");
+
+                let mut sub_map: BTreeMap<String, AlgebraicExpression<T>> = Default::default();
+
+                assert_eq!(instr.args.len(), pc_lookup.args.len());
+                instr
+                    .args
+                    .iter()
+                    .zip(pc_lookup.args.iter())
+                    .for_each(|(instr_arg, pc_arg)| {
+                        let arg = AlgebraicExpression::Number(instr_arg.clone());
+                        match pc_arg {
+                            AlgebraicExpression::Reference(ref arg_ref) => {
+                                sub_map.insert(arg_ref.name.clone(), arg);
+                            }
+                            AlgebraicExpression::BinaryOperation(_expr) => {
+                                constraints.push((arg - pc_arg.clone()).into());
+                            }
+                            AlgebraicExpression::UnaryOperation(_expr) => {
+                                constraints.push((arg - pc_arg.clone()).into());
+                            }
+                            _ => {}
+                        }
+                    });
+
                 let mut local_subs = BTreeMap::new();
 
                 let local_identities = machine
@@ -188,6 +325,7 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
                     .iter()
                     .map(|expr| {
                         let mut expr = expr.expr.clone();
+                        powdr::substitute_algebraic(&mut expr, &sub_map);
                         let subs = powdr::append_suffix_algebraic(&mut expr, &format!("{i}"));
                         local_subs.extend(subs);
                         SymbolicConstraint { expr }
@@ -202,6 +340,7 @@ pub fn generate_precompile<T: Clone + Ord + std::fmt::Debug>(
                         .iter_mut()
                         .chain(std::iter::once(&mut link.mult))
                         .for_each(|e| {
+                            powdr::substitute_algebraic(e, &sub_map);
                             let subs = powdr::append_suffix_algebraic(e, &format!("{i}"));
                             local_subs.extend(subs);
                         });
