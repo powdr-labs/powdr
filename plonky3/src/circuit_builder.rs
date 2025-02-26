@@ -35,6 +35,7 @@ use powdr_executor_utils::{
     WitgenCallback,
 };
 use powdr_number::FieldElement;
+use tracing::{info};
 
 /// A description of the constraint system.
 /// All of the data is derived from the analyzed PIL, but is materialized
@@ -482,6 +483,26 @@ where
                         challenge_map.clone(),
                         trace_stage,
                     );
+                    info!("stage1 witness for machine {:?}", new_witness);
+                    
+                    let mut acc_last=T::from(999);
+                    new_witness.iter().for_each(|(name, values)| {
+                        if name=="main::acc"{
+                            info!("last value of acc {:?}", values.last().unwrap());
+                            acc_last=*values.last().unwrap();
+                        }
+                    });
+                    
+                    let mut acc_2_last=T::from(888);
+                    new_witness.iter().for_each(|(name, values)| {
+                        if name=="main::acc_2"{
+                            info!("last value of acc_2 {:?}", values.last().unwrap());
+                            acc_2_last=*values.last().unwrap();
+                        }
+                    });
+
+                    info!("addition of acc last and acc_2 last, should be 0 {:?}", acc_2_last+acc_last);
+
                     (machine_name.clone(), new_witness)
                 })
                 .collect()
