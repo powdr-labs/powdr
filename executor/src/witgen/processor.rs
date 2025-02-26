@@ -674,9 +674,7 @@ impl ProcessedProverFunctions {
 
     pub fn has_run(&self, row_index: usize, function_index: usize) -> bool {
         let (el, bit) = self.index_for(row_index, function_index);
-        self.data
-            .get(el)
-            .map_or(false, |byte| byte & (1 << bit) != 0)
+        self.data.get(el).is_some_and(|byte| byte & (1 << bit) != 0)
     }
 
     pub fn mark_as_run(&mut self, row_index: usize, function_index: usize) {

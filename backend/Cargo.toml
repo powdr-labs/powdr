@@ -35,6 +35,7 @@ powdr-number.workspace = true
 powdr-parser.workspace = true
 powdr-pil-analyzer.workspace = true
 powdr-executor.workspace = true
+powdr-executor-utils.workspace = true
 powdr-parser-util.workspace = true
 powdr-backend-utils.workspace = true
 
@@ -62,8 +63,7 @@ p3-commit = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf2
 ], optional = true }
 p3-matrix = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", optional = true }
 p3-uni-stark = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", optional = true }
-# TODO: Change this to main branch when the `andrew/dev/update-toolchain` branch is merged,the main branch is using "nightly-2024-01-04", not compatiable with plonky3
-stwo-prover = { git = "https://github.com/ShuangWu121/stwo.git", optional = true, rev = "564a4ddcde376ba0ae78da4d86ea5ad7338ef6fe",features = ["parallel"] }
+stwo-prover = { git = "https://github.com/starkware-libs/stwo.git", optional = true, rev = "f24cde6f8de3f1db75d04f87807f052aa889b077",features = ["parallel"] }
 
 strum = { version = "0.24.1", features = ["derive"] }
 log = "0.4.17"

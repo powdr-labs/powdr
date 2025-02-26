@@ -2,10 +2,9 @@ use powdr_number::{FieldElement, GoldilocksField};
 use powdr_pipeline::pipeline::Columns;
 use powdr_pipeline::Pipeline;
 use std::sync::Arc;
+use test_log::test;
 
 fn run_witgen_pil<T: FieldElement>(pil: &str) -> Arc<Columns<T>> {
-    env_logger::init();
-
     Pipeline::default()
         .from_pil_string(pil.to_string())
         .compute_witness()

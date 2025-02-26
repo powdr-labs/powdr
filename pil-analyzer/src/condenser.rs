@@ -656,7 +656,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> Condenser<'a, T> {
+impl<T: FieldElement> Condenser<'_, T> {
     fn find_unused_name(&self, name: &str) -> String {
         once(None)
             .chain((1..).map(Some))

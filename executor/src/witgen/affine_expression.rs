@@ -153,9 +153,9 @@ where
     }
 }
 
-impl<'x, K, T> AffineExpression<K, T>
+impl<K, T> AffineExpression<K, T>
 where
-    K: Copy + Ord + Display + 'x,
+    K: Copy + Ord + Display,
     T: FieldElement,
 {
     /// If the affine expression has only a single variable (with nonzero coefficient),

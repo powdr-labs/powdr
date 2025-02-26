@@ -96,7 +96,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
             self.data.extend(updated_data.block);
             self.publics.extend(updated_data.publics);
 
-            let latch_row = self.data.len() - 1;
+            // The block we just added contains the first row of the next block,
+            // so the latch row is the second-to-last row.
+            let latch_row = self.data.len() - 2;
             self.multiplicity_counter
                 .increment_at_row(identity_id, latch_row);
 

@@ -151,19 +151,19 @@ pub enum Value<'a, T> {
     Expression(AlgebraicExpression<T>),
 }
 
-impl<'a, T: FieldElement> From<T> for Value<'a, T> {
+impl<T: FieldElement> From<T> for Value<'_, T> {
     fn from(value: T) -> Self {
         Value::FieldElement(value)
     }
 }
 
-impl<'a, T> From<AlgebraicExpression<T>> for Value<'a, T> {
+impl<T> From<AlgebraicExpression<T>> for Value<'_, T> {
     fn from(value: AlgebraicExpression<T>) -> Self {
         Value::Expression(value)
     }
 }
 
-impl<'a, T: FieldElement> Value<'a, T> {
+impl<T: FieldElement> Value<'_, T> {
     /// Tries to convert the value to a field element. For integers, this only works
     /// if the integer is non-negative and less than the modulus.
     pub fn try_to_field_element(&self) -> Result<T, EvalError> {
@@ -328,13 +328,13 @@ pub struct EnumValue<'a, T> {
     pub data: Option<Vec<Arc<Value<'a, T>>>>,
 }
 
-impl<'a, T: Display> EnumValue<'a, T> {
+impl<T: Display> EnumValue<'_, T> {
     pub fn type_formatted(&self) -> String {
         self.enum_decl.name.to_string()
     }
 }
 
-impl<'a, T: Display> Display for EnumValue<'a, T> {
+impl<T: Display> Display for EnumValue<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}::{}", self.enum_decl.name, self.variant)?;
         if let Some(data) = &self.data {
@@ -366,7 +366,7 @@ impl<'a> TypeConstructorValue<'a> {
     }
 }
 
-impl<'a> Display for TypeConstructorValue<'a> {
+impl Display for TypeConstructorValue<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}::{}", self.enum_decl.name, self.variant)
     }
@@ -483,7 +483,7 @@ pub enum BuiltinFunction {
     OutputToChannel,
 }
 
-impl<'a, T: Display> Display for Value<'a, T> {
+impl<T: Display> Display for Value<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Bool(b) => write!(f, "{b}"),
@@ -508,7 +508,7 @@ pub struct Closure<'a, T> {
     pub type_args: HashMap<String, Type>,
 }
 
-impl<'a, T: Display> Display for Closure<'a, T> {
+impl<T: Display> Display for Closure<'_, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.lambda)
     }
@@ -520,7 +520,7 @@ impl<'a, T> From<Closure<'a, T>> for Value<'a, T> {
     }
 }
 
-impl<'a, T> Closure<'a, T> {
+impl<T> Closure<'_, T> {
     pub fn type_formatted(&self) -> String {
         // TODO should use proper types as soon as we have them
         "closure".to_string()
@@ -1216,7 +1216,7 @@ fn evaluate_literal<'a, T: FieldElement>(
             )))?,
         }
     } else {
-        ty.as_ref().cloned().unwrap_or_else(|| Type::Int)
+        ty.as_ref().cloned().unwrap_or(Type::Int)
     };
     if ty == Type::Int {
         return Ok(Value::Integer(n.into()).into());

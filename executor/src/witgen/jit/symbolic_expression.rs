@@ -61,15 +61,15 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
     }
 
     pub fn is_known_zero(&self) -> bool {
-        self.try_to_number().map_or(false, |n| n.is_zero())
+        self.try_to_number().is_some_and(|n| n.is_zero())
     }
 
     pub fn is_known_one(&self) -> bool {
-        self.try_to_number().map_or(false, |n| n.is_one())
+        self.try_to_number().is_some_and(|n| n.is_one())
     }
 
     pub fn is_known_minus_one(&self) -> bool {
-        self.try_to_number().map_or(false, |n| n == -T::from(1))
+        self.try_to_number().is_some_and(|n| n == -T::from(1))
     }
 
     pub fn is_known_nonzero(&self) -> bool {

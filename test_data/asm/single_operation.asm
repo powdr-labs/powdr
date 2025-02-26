@@ -14,4 +14,7 @@ machine Main with degree: 8 {
     SingleOperation m;
 
     link => m.nothing();
+
+    col witness w;
+    w = w * w;
 }

@@ -20,11 +20,20 @@ use crate::large_field::runtime::Runtime;
 /// Will call each of the methods in the `RiscVProgram` just once.
 pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -> String {
     let runtime = Runtime::new(options.libs);
+
+    let prover_data_bounds = program.prover_data_bounds();
+
     // Do this in a separate function to avoid most of the code being generic on F.
     let (initial_mem, instructions) =
         translate_program_impl(program, options.field, &runtime, options.continuations);
 
-    riscv_machine(options, &runtime, initial_mem, instructions)
+    riscv_machine(
+        options,
+        &runtime,
+        initial_mem,
+        prover_data_bounds,
+        instructions,
+    )
 }
 
 fn translate_program_impl(
@@ -182,6 +191,7 @@ fn riscv_machine(
     options: CompilerOptions,
     runtime: &Runtime,
     initial_memory: Vec<String>,
+    prover_data_bounds: (u32, u32),
     program: Vec<String>,
 ) -> String {
     for machine in [
@@ -249,6 +259,11 @@ fn riscv_machine(
             &runtime.submachines_declare(),
         )
         .replace("{{INITIAL_MEMORY}}", &format!("{initial_memory}"))
+        .replace(
+            "{{PROVER_DATA_START}}",
+            &format!("{}", prover_data_bounds.0),
+        )
+        .replace("{{PROVER_DATA_END}}", &format!("{}", prover_data_bounds.1))
         .replace("{{PROGRAM}}", &format!("{program}"))
         .replace("{{BOOTLOADER_INSTRUCTIONS}}", &bootloader_instructions)
         .replace("{{MUL_INSTRUCTION}}", mul_instruction)
@@ -345,7 +360,6 @@ fn only_if_no_write_to_zero_vec(reg: Register, statements: Vec<String>) -> Vec<S
 }
 
 /// Push register into the stack
-
 pub fn push_register(name: &str) -> Vec<String> {
     assert!(name.starts_with('x'), "Only x registers are supported");
     let reg = Register::from(name);

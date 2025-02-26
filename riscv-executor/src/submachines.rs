@@ -1,8 +1,63 @@
 use super::decompose_lower32;
 use super::poseidon_gl;
 use powdr_number::{FieldElement, LargeInt};
+use rayon::iter::IndexedParallelIterator;
+use rayon::iter::IntoParallelIterator;
+use rayon::iter::ParallelIterator;
 
 use std::collections::HashMap;
+
+use num_derive::{FromPrimitive, ToPrimitive};
+
+macro_rules! witness_cols {
+    ($name:ident, $($col:ident),*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToPrimitive, FromPrimitive)]
+        #[allow(non_camel_case_types)]
+        #[repr(usize)]
+        enum $name {
+            $($col,)*
+        }
+
+        impl $name {
+            fn all() -> Vec<Self> {
+                vec![
+                    $(Self::$col,)*
+                ]
+            }
+
+            fn name(&self) -> &'static str {
+                match *self {
+                    $(Self::$col => stringify!($col),)*
+                }
+            }
+        }
+    };
+}
+
+macro_rules! witness_cols_str {
+    ($name:ident, $($col:ident = $str:literal),*) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, ToPrimitive, FromPrimitive)]
+        #[allow(non_camel_case_types)]
+        #[repr(usize)]
+        enum $name {
+            $($col,)*
+        }
+
+        impl $name {
+            fn all() -> Vec<Self> {
+                vec![
+                    $(Self::$col,)*
+                ]
+            }
+
+            fn name(&self) -> &'static str {
+                match *self {
+                    $(Self::$col => $str,)*
+                }
+            }
+        }
+    };
+}
 
 fn only_column_name(name: &str) -> &str {
     // look backwards the "::" and return only the part after it
@@ -15,11 +70,13 @@ trait SubmachineKind: Send {
     const SELECTORS: &'static str;
     /// Row block size
     const BLOCK_SIZE: u32;
+    /// List of non-selector witness columns
+    fn cols() -> Vec<String>;
     /// Add an operation to the submachine trace
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
         selector: Option<&str>,
-        lookup_args: &[F],
+        lookup_args: &[F; 4],
         // extra info provided by the executor
         extra: &[F],
     );
@@ -48,7 +105,7 @@ pub trait Submachine<F: FieldElement>: Send {
     /// current number of rows
     fn len(&self) -> u32;
     /// add a new operation to the trace
-    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F], extra: &[F]);
+    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F; 4], extra: &[F]);
     /// finish the trace, padding to the given degree and returning the machine columns.
     /// Ideally we'd take `self` here, but this is called from a `dyn Trait`...
     fn finish(&mut self, degree: u32) -> Vec<(String, Vec<F>)>;
@@ -65,11 +122,17 @@ impl<F: FieldElement, M: SubmachineKind> SubmachineImpl<F, M> {
     pub fn new(namespace: &str, witness_cols: &[String]) -> Self {
         // filter machine columns
         let prefix = format!("{namespace}::");
-        let witness_cols: HashMap<_, _> = witness_cols
+        let witness_cols: Vec<_> = witness_cols
             .iter()
             .filter(|c| c.starts_with(namespace))
-            .map(|c| (c.strip_prefix(&prefix).unwrap().to_string(), vec![]))
+            .map(|c| c.strip_prefix(&prefix).unwrap().to_string())
             .collect();
+        let selectors = witness_cols
+            .iter()
+            .map(|c| c.to_string())
+            .filter(|c| c.starts_with(&format!("{}[", M::SELECTORS)))
+            .collect();
+        let cols = M::cols();
         if witness_cols.is_empty() {
             log::info!(
                 "namespace {} has no witness columns in the optimized pil",
@@ -77,7 +140,7 @@ impl<F: FieldElement, M: SubmachineKind> SubmachineImpl<F, M> {
             );
         }
         SubmachineImpl {
-            trace: SubmachineTrace::new(namespace, witness_cols),
+            trace: SubmachineTrace::new(namespace, cols, selectors),
             m: std::marker::PhantomData,
             finished: false,
         }
@@ -93,7 +156,7 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
         self.trace.len()
     }
 
-    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F], extra: &[F]) {
+    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F; 4], extra: &[F]) {
         M::add_operation(&mut self.trace, selector, lookup_args, extra);
     }
 
@@ -104,13 +167,13 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
         self.trace.final_row_override();
         while self.len() < degree {
             let prev_len = self.len();
-            self.trace
-                .push_dummy_block(degree, M::BLOCK_SIZE, M::SELECTORS);
+            self.trace.push_dummy_block(degree, M::BLOCK_SIZE);
             let dummy_size = self.len() - prev_len;
             M::dummy_block_fix(&mut self.trace, dummy_size);
         }
         self.trace
             .take_cols()
+            .into_iter()
             .map(|(k, v)| (format!("{}::{}", self.trace.namespace, k), v))
             .collect()
     }
@@ -119,114 +182,152 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
 /// Holds the submachine trace as a list of columns and a last row override
 struct SubmachineTrace<F: FieldElement> {
     namespace: String,
-    cols: HashMap<String, Vec<F>>,
+    // non-selector columns
+    cols: Vec<String>,
+    // values for cols, stored as rows in a flat vec for memory locality
+    values: Vec<F>,
+    // selectors stored separately as they are dynamic (depend on the program)
+    selectors: HashMap<String, Vec<F>>,
     // the trace is circular, so for the first block, we can only set the
     // previous row after the whole trace is built
-    last_row_overrides: HashMap<String, Option<F>>,
+    last_row_overrides: HashMap<usize, Option<F>>,
 }
 
 impl<F: FieldElement> SubmachineTrace<F> {
-    fn new(namespace: &str, cols: HashMap<String, Vec<F>>) -> Self {
+    fn new(namespace: &str, cols: Vec<String>, selectors: Vec<String>) -> Self {
         SubmachineTrace {
             namespace: namespace.to_string(),
-            last_row_overrides: cols.keys().map(|n| (n.clone(), None)).collect(),
+            last_row_overrides: Default::default(),
             cols,
+            values: vec![],
+            selectors: selectors.iter().map(|n| (n.to_string(), vec![])).collect(),
         }
     }
 
     fn len(&self) -> u32 {
-        if self.cols.is_empty() {
-            return 0;
-        }
-        self.cols.values().next().unwrap().len().try_into().unwrap()
+        self.values.len() as u32 / self.cols.len() as u32
     }
 
     /// set the value of a column in all rows of the current block
-    fn set_current_block(&mut self, size: u32, col: &str, value: F) {
+    fn set_current_block(&mut self, size: u32, col: usize, value: F) {
+        for i in 0..size as usize {
+            let row = self.len() as usize - i - 1;
+            let idx = row * self.cols.len() + col;
+            self.values[idx] = value;
+        }
+    }
+
+    /// set the value of a column in the current row
+    fn set_current_row(&mut self, col: usize, value: F) {
+        let row = self.len() as usize - 1;
+        let idx = row * self.cols.len() + col;
+        self.values[idx] = value;
+    }
+
+    /// set the value of a selector in all rows of the current block
+    fn set_current_block_selector(&mut self, size: u32, sel: &str, value: F) {
         for i in 0..size {
             let idx = self.len() - i - 1;
             *self
-                .cols
-                .get_mut(col)
-                .unwrap_or_else(|| panic!("{} has no column {col}", self.namespace))
+                .selectors
+                .get_mut(sel)
+                .unwrap_or_else(|| panic!("{} has no column {sel}", self.namespace))
                 .get_mut(idx as usize)
                 .unwrap() = value;
         }
     }
 
-    /// set the value of a column in the current
-    fn set_current_row(&mut self, col: &str, value: F) {
+    /// set the value of a selector in the current row
+    fn set_current_row_selector(&mut self, sel: &str, value: F) {
         *self
-            .cols
-            .get_mut(col)
-            .unwrap_or_else(|| panic!("{} has no column {col}", self.namespace))
+            .selectors
+            .get_mut(sel)
+            .unwrap_or_else(|| panic!("{} has no selector {sel}", self.namespace))
             .last_mut()
             .unwrap() = value;
     }
 
     /// set the value of a column in the last row of the complete trace
-    fn set_final_row(&mut self, col: &str, value: F) {
-        *self
-            .last_row_overrides
-            .get_mut(col)
-            .unwrap_or_else(|| panic!("{} has no column {col}", self.namespace)) = Some(value);
+    fn set_final_row(&mut self, col: usize, value: F) {
+        self.last_row_overrides.insert(col, Some(value));
     }
 
     /// apply saved updates to the last row of the trace
     fn final_row_override(&mut self) {
         for (col, value) in self.last_row_overrides.iter() {
+            let row = self.len() as usize - 1;
+            let idx = row * self.cols.len() + col;
             if let Some(value) = value {
-                *self
-                    .cols
-                    .get_mut(col)
-                    .unwrap_or_else(|| panic!("{} has no column {col}", self.namespace))
-                    .last_mut()
-                    .unwrap() = *value;
+                self.values[idx] = *value;
             }
         }
     }
 
     /// add new row of zeroes to the trce
     fn push_row(&mut self) {
-        self.cols.values_mut().for_each(|v| v.push(0.into()));
+        self.selectors.values_mut().for_each(|v| v.push(0.into()));
+        self.values
+            .extend(std::iter::repeat(F::from(0)).take(self.cols.len()));
     }
 
     /// Push a dummy block to the trace.
     /// A dummy block is a copy of the first block, with the final row updates applied to it, and selectors set to 0.
-    fn push_dummy_block(&mut self, machine_max_degree: u32, size: u32, selectors: &'static str) {
-        let selector_pat = format!("{selectors}[");
-
-        for i in 0..size {
-            if self.cols.values().next().unwrap().len() as u32 == machine_max_degree {
+    fn push_dummy_block(&mut self, machine_max_degree: u32, size: u32) {
+        for i in 0..size as usize {
+            if self.len() == machine_max_degree {
                 break;
             }
-            self.cols.iter_mut().for_each(|(col, values)| {
-                if !selectors.is_empty() && col.starts_with(&selector_pat) {
-                    values.push(0.into()) // selectors always 0 in dummy blocks
-                } else {
-                    values.push(values[i as usize])
-                }
-            });
+            self.push_row();
+            let last_row = self.len() as usize - 1;
+            let last_row_start_idx = last_row * self.cols.len();
+            // split_at_mut the last row
+            let (start, last_row) = self.values.split_at_mut(last_row_start_idx);
+            // copy row i to the last row
+            last_row.copy_from_slice(&start[self.cols.len() * i..self.cols.len() * (i + 1)]);
         }
         self.final_row_override();
     }
 
     /// consume the trace, returning the columns
-    fn take_cols(&mut self) -> impl Iterator<Item = (String, Vec<F>)> {
-        std::mem::take(&mut self.cols).into_iter()
+    fn take_cols(&mut self) -> Vec<(String, Vec<F>)> {
+        let selectors = std::mem::take(&mut self.selectors);
+        let rows = self.len();
+        let row_len = self.cols.len();
+        let cols = std::mem::take(&mut self.cols);
+        let values = std::mem::take(&mut self.values);
+        cols.into_par_iter()
+            .enumerate()
+            .map(move |(idx, name)| {
+                let mut col_values = Vec::with_capacity(rows as usize);
+                for row in 0..rows as usize {
+                    let val = values[row * row_len + idx];
+                    col_values.push(val);
+                }
+                (name.clone(), col_values)
+            })
+            .chain(selectors)
+            .collect()
     }
 }
 
 pub struct BinaryMachine;
+witness_cols! {BinaryCols, A_byte, B_byte, C_byte, A, B, C, operation_id, operation_id_next}
 
 impl SubmachineKind for BinaryMachine {
     const SELECTORS: &'static str = "sel";
     const BLOCK_SIZE: u32 = 4;
 
+    fn cols() -> Vec<String> {
+        BinaryCols::all()
+            .iter()
+            .map(|c| c.name().to_string())
+            .collect()
+    }
+
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
         selector: Option<&str>,
-        lookup_args: &[F],
+        lookup_args: &[F; 4],
         extra: &[F],
     ) {
         assert!(extra.is_empty());
@@ -247,86 +348,103 @@ impl SubmachineKind for BinaryMachine {
 
         // set last row of the previous block
         if trace.len() > 0 {
-            trace.set_current_row("A_byte", (a1 as u32).into());
-            trace.set_current_row("B_byte", (b1 as u32).into());
-            trace.set_current_row("C_byte", (c1 as u32).into());
-            trace.set_current_row("operation_id_next", op_id);
+            trace.set_current_row(BinaryCols::A_byte as usize, (a1 as u32).into());
+            trace.set_current_row(BinaryCols::B_byte as usize, (b1 as u32).into());
+            trace.set_current_row(BinaryCols::C_byte as usize, (c1 as u32).into());
+            trace.set_current_row(BinaryCols::operation_id_next as usize, op_id);
         } else {
-            trace.set_final_row("A_byte", (a1 as u32).into());
-            trace.set_final_row("B_byte", (b1 as u32).into());
-            trace.set_final_row("C_byte", (c1 as u32).into());
-            trace.set_final_row("operation_id_next", op_id);
+            trace.set_final_row(BinaryCols::A_byte as usize, (a1 as u32).into());
+            trace.set_final_row(BinaryCols::B_byte as usize, (b1 as u32).into());
+            trace.set_final_row(BinaryCols::C_byte as usize, (c1 as u32).into());
+            trace.set_final_row(BinaryCols::operation_id_next as usize, op_id);
         }
 
         // 4 rows for each binary operation
         trace.push_row();
-        trace.set_current_row("operation_id", op_id);
-        trace.set_current_row("operation_id_next", op_id);
-        trace.set_current_row("A_byte", (a2 as u32).into());
-        trace.set_current_row("B_byte", (b2 as u32).into());
-        trace.set_current_row("C_byte", (c2 as u32).into());
-        trace.set_current_row("A", (a.to_integer().try_into_u32().unwrap() & 0xff).into());
-        trace.set_current_row("B", (b.to_integer().try_into_u32().unwrap() & 0xff).into());
-        trace.set_current_row("C", (c.to_integer().try_into_u32().unwrap() & 0xff).into());
+        trace.set_current_row(BinaryCols::operation_id as usize, op_id);
+        trace.set_current_row(BinaryCols::operation_id_next as usize, op_id);
+        trace.set_current_row(BinaryCols::A_byte as usize, (a2 as u32).into());
+        trace.set_current_row(BinaryCols::B_byte as usize, (b2 as u32).into());
+        trace.set_current_row(BinaryCols::C_byte as usize, (c2 as u32).into());
+        trace.set_current_row(
+            BinaryCols::A as usize,
+            (a.to_integer().try_into_u32().unwrap() & 0xff).into(),
+        );
+        trace.set_current_row(
+            BinaryCols::B as usize,
+            (b.to_integer().try_into_u32().unwrap() & 0xff).into(),
+        );
+        trace.set_current_row(
+            BinaryCols::C as usize,
+            (c.to_integer().try_into_u32().unwrap() & 0xff).into(),
+        );
 
         trace.push_row();
-        trace.set_current_row("operation_id", op_id);
-        trace.set_current_row("operation_id_next", op_id);
-        trace.set_current_row("A_byte", (a3 as u32).into());
-        trace.set_current_row("B_byte", (b3 as u32).into());
-        trace.set_current_row("C_byte", (c3 as u32).into());
+        trace.set_current_row(BinaryCols::operation_id as usize, op_id);
+        trace.set_current_row(BinaryCols::operation_id_next as usize, op_id);
+        trace.set_current_row(BinaryCols::A_byte as usize, (a3 as u32).into());
+        trace.set_current_row(BinaryCols::B_byte as usize, (b3 as u32).into());
+        trace.set_current_row(BinaryCols::C_byte as usize, (c3 as u32).into());
         trace.set_current_row(
-            "A",
+            BinaryCols::A as usize,
             (a.to_integer().try_into_u32().unwrap() & 0xffff).into(),
         );
         trace.set_current_row(
-            "B",
+            BinaryCols::B as usize,
             (b.to_integer().try_into_u32().unwrap() & 0xffff).into(),
         );
         trace.set_current_row(
-            "C",
+            BinaryCols::C as usize,
             (c.to_integer().try_into_u32().unwrap() & 0xffff).into(),
         );
 
         trace.push_row();
-        trace.set_current_row("operation_id", op_id);
-        trace.set_current_row("operation_id_next", op_id);
-        trace.set_current_row("A_byte", (a4 as u32).into());
-        trace.set_current_row("B_byte", (b4 as u32).into());
-        trace.set_current_row("C_byte", (c4 as u32).into());
+        trace.set_current_row(BinaryCols::operation_id as usize, op_id);
+        trace.set_current_row(BinaryCols::operation_id_next as usize, op_id);
+        trace.set_current_row(BinaryCols::A_byte as usize, (a4 as u32).into());
+        trace.set_current_row(BinaryCols::B_byte as usize, (b4 as u32).into());
+        trace.set_current_row(BinaryCols::C_byte as usize, (c4 as u32).into());
         trace.set_current_row(
-            "A",
+            BinaryCols::A as usize,
             (a.to_integer().try_into_u32().unwrap() & 0xffffff).into(),
         );
         trace.set_current_row(
-            "B",
+            BinaryCols::B as usize,
             (b.to_integer().try_into_u32().unwrap() & 0xffffff).into(),
         );
         trace.set_current_row(
-            "C",
+            BinaryCols::C as usize,
             (c.to_integer().try_into_u32().unwrap() & 0xffffff).into(),
         );
 
         trace.push_row();
-        trace.set_current_row("operation_id", op_id);
-        trace.set_current_row("A", a);
-        trace.set_current_row("B", b);
-        trace.set_current_row("C", c);
+        trace.set_current_row(BinaryCols::operation_id as usize, op_id);
+        trace.set_current_row(BinaryCols::A as usize, a);
+        trace.set_current_row(BinaryCols::B as usize, b);
+        trace.set_current_row(BinaryCols::C as usize, c);
         // latch row: set selector
-        trace.set_current_row(selector, 1.into());
+        trace.set_current_row_selector(selector, 1.into());
     }
 }
 
 pub struct ShiftMachine;
+witness_cols! {ShiftCols, A_byte, B_next, C_part, A, B, C, operation_id, operation_id_next}
 
 impl SubmachineKind for ShiftMachine {
     const SELECTORS: &'static str = "sel";
     const BLOCK_SIZE: u32 = 4;
 
+    fn cols() -> Vec<String> {
+        ShiftCols::all()
+            .iter()
+            .map(|c| c.name().to_string())
+            .collect()
+    }
+
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
         selector: Option<&str>,
-        lookup_args: &[F],
+        lookup_args: &[F; 4],
         extra: &[F],
     ) {
         assert!(extra.is_empty());
@@ -353,81 +471,95 @@ impl SubmachineKind for ShiftMachine {
 
         // set last row of the previous block
         if trace.len() > 0 {
-            trace.set_current_row("A_byte", (b1 as u32).into());
-            trace.set_current_row("C_part", (((b1 as u32) << shl) >> shr).into());
-            trace.set_current_row("operation_id_next", op_id);
-            trace.set_current_row("B_next", b);
+            trace.set_current_row(ShiftCols::A_byte as usize, (b1 as u32).into());
+            trace.set_current_row(
+                ShiftCols::C_part as usize,
+                (((b1 as u32) << shl) >> shr).into(),
+            );
+            trace.set_current_row(ShiftCols::operation_id_next as usize, op_id);
+            trace.set_current_row(ShiftCols::B_next as usize, b);
         } else {
-            trace.set_final_row("A_byte", (b1 as u32).into());
-            trace.set_final_row("C_part", (((b1 as u32) << shl) >> shr).into());
-            trace.set_final_row("operation_id_next", op_id);
-            trace.set_final_row("B_next", b);
+            trace.set_final_row(ShiftCols::A_byte as usize, (b1 as u32).into());
+            trace.set_final_row(
+                ShiftCols::C_part as usize,
+                (((b1 as u32) << shl) >> shr).into(),
+            );
+            trace.set_final_row(ShiftCols::operation_id_next as usize, op_id);
+            trace.set_final_row(ShiftCols::B_next as usize, b);
         }
 
         // 4 rows for each shift operation
         trace.push_row();
-        trace.set_current_row("operation_id", op_id);
-        trace.set_current_row("operation_id_next", op_id);
-        trace.set_current_row("A_byte", (b2 as u32).into());
+        trace.set_current_row(ShiftCols::operation_id as usize, op_id);
+        trace.set_current_row(ShiftCols::operation_id_next as usize, op_id);
+        trace.set_current_row(ShiftCols::A_byte as usize, (b2 as u32).into());
         let c_part_factor = (b2 as u32) << 8;
         let c_part = ((c_part_factor << shl) >> shr).into();
-        trace.set_current_row("C_part", c_part);
+        trace.set_current_row(ShiftCols::C_part as usize, c_part);
         let a_row = a.to_integer().try_into_u32().unwrap() & 0xff;
-        trace.set_current_row("A", a_row.into());
-        trace.set_current_row("B", b);
-        trace.set_current_row("B_next", b);
-        trace.set_current_row("C", ((a_row << shl) >> shr).into());
+        trace.set_current_row(ShiftCols::A as usize, a_row.into());
+        trace.set_current_row(ShiftCols::B as usize, b);
+        trace.set_current_row(ShiftCols::B_next as usize, b);
+        trace.set_current_row(ShiftCols::C as usize, ((a_row << shl) >> shr).into());
         //
         trace.push_row();
-        trace.set_current_row("operation_id", op_id);
-        trace.set_current_row("operation_id_next", op_id);
-        trace.set_current_row("A_byte", (b3 as u32).into());
+        trace.set_current_row(ShiftCols::operation_id as usize, op_id);
+        trace.set_current_row(ShiftCols::operation_id_next as usize, op_id);
+        trace.set_current_row(ShiftCols::A_byte as usize, (b3 as u32).into());
         let c_part_factor = (b3 as u32) << 16;
         let c_part = ((c_part_factor << shl) >> shr).into();
-        trace.set_current_row("C_part", c_part);
+        trace.set_current_row(ShiftCols::C_part as usize, c_part);
         let a_row = a.to_integer().try_into_u32().unwrap() & 0xffff;
-        trace.set_current_row("A", a_row.into());
-        trace.set_current_row("B", b);
-        trace.set_current_row("B_next", b);
-        trace.set_current_row("C", ((a_row << shl) >> shr).into());
+        trace.set_current_row(ShiftCols::A as usize, a_row.into());
+        trace.set_current_row(ShiftCols::B as usize, b);
+        trace.set_current_row(ShiftCols::B_next as usize, b);
+        trace.set_current_row(ShiftCols::C as usize, ((a_row << shl) >> shr).into());
         //
         trace.push_row();
-        trace.set_current_row("operation_id", op_id);
-        trace.set_current_row("operation_id_next", op_id);
-        trace.set_current_row("A_byte", (b4 as u32).into());
+        trace.set_current_row(ShiftCols::operation_id as usize, op_id);
+        trace.set_current_row(ShiftCols::operation_id_next as usize, op_id);
+        trace.set_current_row(ShiftCols::A_byte as usize, (b4 as u32).into());
         let c_part_factor = (b4 as u32) << 24;
         let c_part = ((c_part_factor << shl) >> shr).into();
-        trace.set_current_row("C_part", c_part);
+        trace.set_current_row(ShiftCols::C_part as usize, c_part);
         let a_row = a.to_integer().try_into_u32().unwrap() & 0xffffff;
-        trace.set_current_row("A", a_row.into());
-        trace.set_current_row("B", b);
-        trace.set_current_row("B_next", b);
-        trace.set_current_row("C", ((a_row << shl) >> shr).into());
+        trace.set_current_row(ShiftCols::A as usize, a_row.into());
+        trace.set_current_row(ShiftCols::B as usize, b);
+        trace.set_current_row(ShiftCols::B_next as usize, b);
+        trace.set_current_row(ShiftCols::C as usize, ((a_row << shl) >> shr).into());
         // latch row
         trace.push_row();
-        trace.set_current_row("operation_id", op_id);
-        trace.set_current_row("A", a);
-        trace.set_current_row("B", b);
-        trace.set_current_row("C", c);
-        trace.set_current_row(selector, 1.into());
+        trace.set_current_row(ShiftCols::operation_id as usize, op_id);
+        trace.set_current_row(ShiftCols::A as usize, a);
+        trace.set_current_row(ShiftCols::B as usize, b);
+        trace.set_current_row(ShiftCols::C as usize, c);
+        trace.set_current_row_selector(selector, 1.into());
     }
 }
 
 pub struct SplitGlMachine;
+witness_cols! {SplitGlCols, output_low, output_high, in_acc, bytes, lt, gt, was_lt}
 
 impl SubmachineKind for SplitGlMachine {
     const SELECTORS: &'static str = "sel";
     const BLOCK_SIZE: u32 = 8;
 
+    fn cols() -> Vec<String> {
+        SplitGlCols::all()
+            .iter()
+            .map(|c| c.name().to_string())
+            .collect()
+    }
+
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
         selector: Option<&str>,
-        lookup_args: &[F],
+        lookup_args: &[F; 4],
         extra: &[F],
     ) {
         assert!(extra.is_empty());
         let selector = only_column_name(selector.unwrap());
-        let [_input, output_lo, output_hi] = lookup_args[..] else {
+        let [_input, output_lo, output_hi, _] = lookup_args[..] else {
             panic!();
         };
 
@@ -463,110 +595,120 @@ impl SubmachineKind for SplitGlMachine {
 
         // set values in the last row of the previous block
         if trace.len() > 0 {
-            trace.set_current_row("bytes", b[0].into());
-            trace.set_current_row("lt", lt[0].into());
-            trace.set_current_row("gt", gt[0].into());
-            trace.set_current_row("was_lt", was_lt[0].into());
+            trace.set_current_row(SplitGlCols::bytes as usize, b[0].into());
+            trace.set_current_row(SplitGlCols::lt as usize, lt[0].into());
+            trace.set_current_row(SplitGlCols::gt as usize, gt[0].into());
+            trace.set_current_row(SplitGlCols::was_lt as usize, was_lt[0].into());
         } else {
-            trace.set_final_row("bytes", b[0].into());
-            trace.set_final_row("lt", lt[0].into());
-            trace.set_final_row("gt", gt[0].into());
-            trace.set_final_row("was_lt", was_lt[0].into());
+            trace.set_final_row(SplitGlCols::bytes as usize, b[0].into());
+            trace.set_final_row(SplitGlCols::lt as usize, lt[0].into());
+            trace.set_final_row(SplitGlCols::gt as usize, gt[0].into());
+            trace.set_final_row(SplitGlCols::was_lt as usize, was_lt[0].into());
         }
 
         // split_gl needs 8 rows:
         // 0
         trace.push_row();
-        trace.set_current_row("output_low", (lo & 0xff).into());
-        trace.set_current_row("output_high", 0.into());
-        trace.set_current_row("in_acc", (lo & 0xff).into());
-        trace.set_current_row("bytes", b[1].into());
-        trace.set_current_row("lt", lt[1].into());
-        trace.set_current_row("gt", gt[1].into());
-        trace.set_current_row("was_lt", was_lt[1].into());
+        trace.set_current_row(SplitGlCols::output_low as usize, (lo & 0xff).into());
+        trace.set_current_row(SplitGlCols::output_high as usize, 0.into());
+        trace.set_current_row(SplitGlCols::in_acc as usize, (lo & 0xff).into());
+        trace.set_current_row(SplitGlCols::bytes as usize, b[1].into());
+        trace.set_current_row(SplitGlCols::lt as usize, lt[1].into());
+        trace.set_current_row(SplitGlCols::gt as usize, gt[1].into());
+        trace.set_current_row(SplitGlCols::was_lt as usize, was_lt[1].into());
 
         // 1
         trace.push_row();
-        trace.set_current_row("output_low", (lo & 0xffff).into());
-        trace.set_current_row("output_high", 0.into());
-        trace.set_current_row("in_acc", (lo & 0xffff).into());
-        trace.set_current_row("bytes", b[2].into());
-        trace.set_current_row("lt", lt[2].into());
-        trace.set_current_row("gt", gt[2].into());
-        trace.set_current_row("was_lt", was_lt[2].into());
+        trace.set_current_row(SplitGlCols::output_low as usize, (lo & 0xffff).into());
+        trace.set_current_row(SplitGlCols::output_high as usize, 0.into());
+        trace.set_current_row(SplitGlCols::in_acc as usize, (lo & 0xffff).into());
+        trace.set_current_row(SplitGlCols::bytes as usize, b[2].into());
+        trace.set_current_row(SplitGlCols::lt as usize, lt[2].into());
+        trace.set_current_row(SplitGlCols::gt as usize, gt[2].into());
+        trace.set_current_row(SplitGlCols::was_lt as usize, was_lt[2].into());
 
         // 2
         trace.push_row();
-        trace.set_current_row("output_low", (lo & 0xffffff).into());
-        trace.set_current_row("output_high", 0.into());
-        trace.set_current_row("in_acc", (lo & 0xffffff).into());
-        trace.set_current_row("bytes", b[3].into());
-        trace.set_current_row("lt", lt[3].into());
-        trace.set_current_row("gt", gt[3].into());
-        trace.set_current_row("was_lt", was_lt[3].into());
+        trace.set_current_row(SplitGlCols::output_low as usize, (lo & 0xffffff).into());
+        trace.set_current_row(SplitGlCols::output_high as usize, 0.into());
+        trace.set_current_row(SplitGlCols::in_acc as usize, (lo & 0xffffff).into());
+        trace.set_current_row(SplitGlCols::bytes as usize, b[3].into());
+        trace.set_current_row(SplitGlCols::lt as usize, lt[3].into());
+        trace.set_current_row(SplitGlCols::gt as usize, gt[3].into());
+        trace.set_current_row(SplitGlCols::was_lt as usize, was_lt[3].into());
 
         // 3
         trace.push_row();
-        trace.set_current_row("output_low", lo.into());
-        trace.set_current_row("output_high", 0.into());
-        trace.set_current_row("in_acc", lo.into());
-        trace.set_current_row("bytes", b[4].into());
-        trace.set_current_row("lt", lt[4].into());
-        trace.set_current_row("gt", gt[4].into());
-        trace.set_current_row("was_lt", was_lt[4].into());
+        trace.set_current_row(SplitGlCols::output_low as usize, lo.into());
+        trace.set_current_row(SplitGlCols::output_high as usize, 0.into());
+        trace.set_current_row(SplitGlCols::in_acc as usize, lo.into());
+        trace.set_current_row(SplitGlCols::bytes as usize, b[4].into());
+        trace.set_current_row(SplitGlCols::lt as usize, lt[4].into());
+        trace.set_current_row(SplitGlCols::gt as usize, gt[4].into());
+        trace.set_current_row(SplitGlCols::was_lt as usize, was_lt[4].into());
 
         // 4
         trace.push_row();
-        trace.set_current_row("output_low", lo.into());
-        trace.set_current_row("output_high", (hi & 0xff).into());
-        trace.set_current_row("in_acc", hi_and_lo(hi & 0xff, lo));
-        trace.set_current_row("bytes", b[5].into());
-        trace.set_current_row("lt", lt[5].into());
-        trace.set_current_row("gt", gt[5].into());
-        trace.set_current_row("was_lt", was_lt[5].into());
+        trace.set_current_row(SplitGlCols::output_low as usize, lo.into());
+        trace.set_current_row(SplitGlCols::output_high as usize, (hi & 0xff).into());
+        trace.set_current_row(SplitGlCols::in_acc as usize, hi_and_lo(hi & 0xff, lo));
+        trace.set_current_row(SplitGlCols::bytes as usize, b[5].into());
+        trace.set_current_row(SplitGlCols::lt as usize, lt[5].into());
+        trace.set_current_row(SplitGlCols::gt as usize, gt[5].into());
+        trace.set_current_row(SplitGlCols::was_lt as usize, was_lt[5].into());
 
         // 5
         trace.push_row();
-        trace.set_current_row("output_low", lo.into());
-        trace.set_current_row("output_high", (hi & 0xffff).into());
-        trace.set_current_row("in_acc", hi_and_lo(hi & 0xffff, lo));
-        trace.set_current_row("bytes", b[6].into());
-        trace.set_current_row("lt", lt[6].into());
-        trace.set_current_row("gt", gt[6].into());
-        trace.set_current_row("was_lt", was_lt[6].into());
+        trace.set_current_row(SplitGlCols::output_low as usize, lo.into());
+        trace.set_current_row(SplitGlCols::output_high as usize, (hi & 0xffff).into());
+        trace.set_current_row(SplitGlCols::in_acc as usize, hi_and_lo(hi & 0xffff, lo));
+        trace.set_current_row(SplitGlCols::bytes as usize, b[6].into());
+        trace.set_current_row(SplitGlCols::lt as usize, lt[6].into());
+        trace.set_current_row(SplitGlCols::gt as usize, gt[6].into());
+        trace.set_current_row(SplitGlCols::was_lt as usize, was_lt[6].into());
 
         // 6
         trace.push_row();
-        trace.set_current_row("output_low", (lo).into());
-        trace.set_current_row("output_high", (hi & 0xffffff).into());
-        trace.set_current_row("in_acc", hi_and_lo(hi & 0xffffff, lo));
-        trace.set_current_row("bytes", b[7].into());
-        trace.set_current_row("lt", lt[7].into());
-        trace.set_current_row("gt", gt[7].into());
-        trace.set_current_row("was_lt", was_lt[7].into());
+        trace.set_current_row(SplitGlCols::output_low as usize, (lo).into());
+        trace.set_current_row(SplitGlCols::output_high as usize, (hi & 0xffffff).into());
+        trace.set_current_row(SplitGlCols::in_acc as usize, hi_and_lo(hi & 0xffffff, lo));
+        trace.set_current_row(SplitGlCols::bytes as usize, b[7].into());
+        trace.set_current_row(SplitGlCols::lt as usize, lt[7].into());
+        trace.set_current_row(SplitGlCols::gt as usize, gt[7].into());
+        trace.set_current_row(SplitGlCols::was_lt as usize, was_lt[7].into());
 
         // 7: bytes/lt/gt/was_lt are set by the next row
         trace.push_row();
-        trace.set_current_row(selector, 1.into());
-        trace.set_current_row("output_low", lo.into());
-        trace.set_current_row("output_high", hi.into());
-        trace.set_current_row("in_acc", hi_and_lo(hi, lo));
+        trace.set_current_row_selector(selector, 1.into());
+        trace.set_current_row(SplitGlCols::output_low as usize, lo.into());
+        trace.set_current_row(SplitGlCols::output_high as usize, hi.into());
+        trace.set_current_row(SplitGlCols::in_acc as usize, hi_and_lo(hi, lo));
     }
 }
 
 pub struct PublicsMachine;
+witness_cols! {PublicsCols, value}
+
 impl SubmachineKind for PublicsMachine {
     const SELECTORS: &'static str = "";
     const BLOCK_SIZE: u32 = 1;
+
+    fn cols() -> Vec<String> {
+        PublicsCols::all()
+            .iter()
+            .map(|c| c.name().to_string())
+            .collect()
+    }
+
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
         selector: Option<&str>,
-        lookup_args: &[F],
+        lookup_args: &[F; 4],
         extra: &[F],
     ) {
         assert!(selector.is_none());
         assert!(extra.is_empty());
-        let [addr, value] = lookup_args[..] else {
+        let [addr, value, _, _] = lookup_args[..] else {
             panic!();
         };
         assert!(
@@ -576,96 +718,124 @@ impl SubmachineKind for PublicsMachine {
         while addr.to_integer().try_into_u32().unwrap() >= trace.len() {
             trace.push_row();
         }
-        *trace
-            .cols
-            .get_mut("value")
-            .unwrap()
-            .get_mut(addr.to_integer().try_into_u32().unwrap() as usize)
-            .unwrap() = value;
+        let row = addr.to_integer().try_into_u32().unwrap() as usize;
+        let idx = row * trace.cols.len();
+        trace.values[idx] = value;
     }
 }
 
 pub struct PoseidonGlMachine;
+witness_cols_str! {
+    PoseidonGlCols,
+    time_step = "time_step",
+    do_mload = "do_mload",
+    word_low = "word_low",
+    word_high = "word_high",
+    input_addr = "input_addr",
+    output_addr = "output_addr",
+    // input
+    input_0 = "input[0]",
+    input_1 = "input[1]",
+    input_2 = "input[2]",
+    input_3 = "input[3]",
+    input_4 = "input[4]",
+    input_5 = "input[5]",
+    input_6 = "input[6]",
+    input_7 = "input[7]",
+    input_8 = "input[8]",
+    input_9 = "input[9]",
+    input_10 = "input[10]",
+    input_11 = "input[11]",
+    // output
+    output_0 = "output[0]",
+    output_1 = "output[1]",
+    output_2 = "output[2]",
+    output_3 = "output[3]",
+    // state
+    state_0 = "state[0]",
+    state_1 = "state[1]",
+    state_2 = "state[2]",
+    state_3 = "state[3]",
+    state_4 = "state[4]",
+    state_5 = "state[5]",
+    state_6 = "state[6]",
+    state_7 = "state[7]",
+    state_8 = "state[8]",
+    state_9 = "state[9]",
+    state_10 = "state[10]",
+    state_11 = "state[11]",
+    // x3
+    x3_0 = "x3[0]",
+    x3_1 = "x3[1]",
+    x3_2 = "x3[2]",
+    x3_3 = "x3[3]",
+    x3_4 = "x3[4]",
+    x3_5 = "x3[5]",
+    x3_6 = "x3[6]",
+    x3_7 = "x3[7]",
+    x3_8 = "x3[8]",
+    x3_9 = "x3[9]",
+    x3_10 = "x3[10]",
+    x3_11 = "x3[11]",
+    // x7
+    x7_0 = "x7[0]",
+    x7_1 = "x7[1]",
+    x7_2 = "x7[2]",
+    x7_3 = "x7[3]",
+    x7_4 = "x7[4]",
+    x7_5 = "x7[5]",
+    x7_6 = "x7[6]",
+    x7_7 = "x7[7]",
+    x7_8 = "x7[8]",
+    x7_9 = "x7[9]",
+    x7_10 = "x7[10]",
+    x7_11 = "x7[11]"
+}
 
 impl SubmachineKind for PoseidonGlMachine {
     const SELECTORS: &'static str = "sel";
     const BLOCK_SIZE: u32 = 31; // full rounds + partial rounds + 1
 
+    fn cols() -> Vec<String> {
+        PoseidonGlCols::all()
+            .iter()
+            .map(|c| c.name().to_string())
+            .collect()
+    }
+
+    #[allow(clippy::needless_range_loop)]
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
         selector: Option<&str>,
-        lookup_args: &[F],
+        lookup_args: &[F; 4],
         extra: &[F],
     ) {
         const STATE_SIZE: usize = 12;
         const OUTPUT_SIZE: usize = 4;
 
         let selector = only_column_name(selector.unwrap());
-        let [input_addr, output_addr, time_step] = lookup_args[..] else {
+        let [input_addr, output_addr, time_step, _] = lookup_args[..] else {
             panic!();
         };
 
         let input = extra[0..STATE_SIZE].to_vec();
         let output = extra[STATE_SIZE..STATE_SIZE + OUTPUT_SIZE].to_vec();
 
-        const INPUT_COLS: [&str; STATE_SIZE] = [
-            "input[0]",
-            "input[1]",
-            "input[2]",
-            "input[3]",
-            "input[4]",
-            "input[5]",
-            "input[6]",
-            "input[7]",
-            "input[8]",
-            "input[9]",
-            "input[10]",
-            "input[11]",
-        ];
-
-        const OUTPUT_COLS: [&str; OUTPUT_SIZE] =
-            ["output[0]", "output[1]", "output[2]", "output[3]"];
-
-        const STATE_COLS: [&str; STATE_SIZE] = [
-            "state[0]",
-            "state[1]",
-            "state[2]",
-            "state[3]",
-            "state[4]",
-            "state[5]",
-            "state[6]",
-            "state[7]",
-            "state[8]",
-            "state[9]",
-            "state[10]",
-            "state[11]",
-        ];
-
-        const X3_COLS: [&str; STATE_SIZE] = [
-            "x3[0]", "x3[1]", "x3[2]", "x3[3]", "x3[4]", "x3[5]", "x3[6]", "x3[7]", "x3[8]",
-            "x3[9]", "x3[10]", "x3[11]",
-        ];
-
-        const X7_COLS: [&str; STATE_SIZE] = [
-            "x7[0]", "x7[1]", "x7[2]", "x7[3]", "x7[4]", "x7[5]", "x7[6]", "x7[7]", "x7[8]",
-            "x7[9]", "x7[10]", "x7[11]",
-        ];
-
         let mut state: Vec<F> = input.clone();
 
         for row in 0..(Self::BLOCK_SIZE - 1) as usize {
             trace.push_row();
             for i in 0..STATE_SIZE {
-                trace.set_current_row(STATE_COLS[i], state[i]);
+                trace.set_current_row(PoseidonGlCols::state_0 as usize + i, state[i]);
             }
             // memory read/write columns
             if row < STATE_SIZE {
                 let v = input[row].to_integer().try_into_u64().unwrap();
                 let hi = (v >> 32) as u32;
                 let lo = (v & 0xffffffff) as u32;
-                trace.set_current_row("do_mload", 1.into());
-                trace.set_current_row("word_low", lo.into());
-                trace.set_current_row("word_high", hi.into());
+                trace.set_current_row(PoseidonGlCols::do_mload as usize, 1.into());
+                trace.set_current_row(PoseidonGlCols::word_low as usize, lo.into());
+                trace.set_current_row(PoseidonGlCols::word_high as usize, hi.into());
             } else if row < STATE_SIZE + OUTPUT_SIZE {
                 let v = output[row - STATE_SIZE]
                     .to_integer()
@@ -673,13 +843,13 @@ impl SubmachineKind for PoseidonGlMachine {
                     .unwrap();
                 let hi = (v >> 32) as u32;
                 let lo = (v & 0xffffffff) as u32;
-                trace.set_current_row("do_mload", 0.into());
-                trace.set_current_row("word_low", lo.into());
-                trace.set_current_row("word_high", hi.into());
+                trace.set_current_row(PoseidonGlCols::do_mload as usize, 0.into());
+                trace.set_current_row(PoseidonGlCols::word_low as usize, lo.into());
+                trace.set_current_row(PoseidonGlCols::word_high as usize, hi.into());
             } else {
-                trace.set_current_row("do_mload", 0.into());
-                trace.set_current_row("word_low", 0.into());
-                trace.set_current_row("word_high", 0.into());
+                trace.set_current_row(PoseidonGlCols::do_mload as usize, 0.into());
+                trace.set_current_row(PoseidonGlCols::word_low as usize, 0.into());
+                trace.set_current_row(PoseidonGlCols::word_high as usize, 0.into());
             }
             // update state for the next row
             // S-Boxes
@@ -688,8 +858,8 @@ impl SubmachineKind for PoseidonGlMachine {
                 let a = state[i] + F::from(poseidon_gl::ROUND_CONSTANTS[i][row]);
                 let x3 = a.pow(3.into());
                 let x7 = x3.pow(2.into()) * a;
-                trace.set_current_row(X3_COLS[i], x3);
-                trace.set_current_row(X7_COLS[i], x7);
+                trace.set_current_row(PoseidonGlCols::x3_0 as usize + i, x3);
+                trace.set_current_row(PoseidonGlCols::x7_0 as usize + i, x7);
                 if i == 0 || is_full {
                     state[i] = x7;
                 } else {
@@ -713,26 +883,46 @@ impl SubmachineKind for PoseidonGlMachine {
             let a = state[i];
             let x3 = a.pow(3.into());
             let x7 = x3.pow(2.into()) * a;
-            trace.set_current_row(X3_COLS[i], x3);
-            trace.set_current_row(X7_COLS[i], x7);
+            trace.set_current_row(PoseidonGlCols::x3_0 as usize + i, x3);
+            trace.set_current_row(PoseidonGlCols::x7_0 as usize + i, x7);
             // set output
-            trace.set_current_row(STATE_COLS[i], state[i]);
+            trace.set_current_row(PoseidonGlCols::state_0 as usize + i, state[i]);
         }
         // these are the same in the whole block
-        trace.set_current_block(Self::BLOCK_SIZE, "time_step", time_step);
-        trace.set_current_block(Self::BLOCK_SIZE, "input_addr", input_addr);
-        trace.set_current_block(Self::BLOCK_SIZE, "output_addr", output_addr);
+        trace.set_current_block(
+            Self::BLOCK_SIZE,
+            PoseidonGlCols::time_step as usize,
+            time_step,
+        );
+        trace.set_current_block(
+            Self::BLOCK_SIZE,
+            PoseidonGlCols::input_addr as usize,
+            input_addr,
+        );
+        trace.set_current_block(
+            Self::BLOCK_SIZE,
+            PoseidonGlCols::output_addr as usize,
+            output_addr,
+        );
         // set selector
-        trace.set_current_block(Self::BLOCK_SIZE, selector, 1.into());
+        trace.set_current_block_selector(Self::BLOCK_SIZE, selector, 1.into());
         for i in 0..STATE_SIZE {
-            trace.set_current_block(Self::BLOCK_SIZE, INPUT_COLS[i], input[i]);
+            trace.set_current_block(
+                Self::BLOCK_SIZE,
+                PoseidonGlCols::input_0 as usize + i,
+                input[i],
+            );
         }
         for i in 0..OUTPUT_SIZE {
-            trace.set_current_block(Self::BLOCK_SIZE, OUTPUT_COLS[i], state[i]);
+            trace.set_current_block(
+                Self::BLOCK_SIZE,
+                PoseidonGlCols::output_0 as usize + i,
+                state[i],
+            );
         }
     }
 
     fn dummy_block_fix<F: FieldElement>(trace: &mut SubmachineTrace<F>, rows: u32) {
-        trace.set_current_block(rows, "do_mload", 0.into());
+        trace.set_current_block(rows, PoseidonGlCols::do_mload as usize, 0.into());
     }
 }

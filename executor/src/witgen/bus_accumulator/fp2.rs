@@ -7,7 +7,6 @@ use num_traits::{One, Zero};
 use powdr_number::FieldElement;
 
 /// An implementation of Fp2, analogous to `std/math/fp2.asm`.
-
 /// An Fp2 element. The tuple (a, b) represents the polynomial a + b * X.
 /// All computations are done modulo the irreducible polynomial X^2 - 11.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

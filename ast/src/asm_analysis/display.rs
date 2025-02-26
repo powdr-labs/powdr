@@ -241,7 +241,7 @@ impl Display for InstructionDefinitionStatement {
     }
 }
 
-impl<'a> Display for CallableSymbolDefinitionRef<'a> {
+impl Display for CallableSymbolDefinitionRef<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match &self.symbol {
             CallableSymbol::Function(s) => {

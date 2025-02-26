@@ -260,8 +260,11 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             })
             .collect::<Vec<_>>();
 
-        log::debug!("Publics:");
-        for (name, value) in extract_publics(&witness_cols, self.analyzed) {
+        let publics = extract_publics(&witness_cols, self.analyzed);
+        if !publics.is_empty() {
+            log::debug!("Publics:");
+        }
+        for (name, value) in publics {
             log::debug!(
                 "  {name:>30}: {}",
                 value

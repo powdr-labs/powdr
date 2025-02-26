@@ -1,4 +1,5 @@
 use powdr_ast::analyzed::Analyzed;
+use powdr_linker::{DegreeMode, LinkerMode, LinkerParams};
 use powdr_number::{
     BabyBearField, BigInt, Bn254Field, FieldElement, GoldilocksField, KoalaBearField,
 };
@@ -22,9 +23,17 @@ pub fn resolve_test_file(file_name: &str) -> PathBuf {
 /// Makes a new pipeline for the given file. All steps until witness generation are
 /// already computed, so that the test can branch off from there, without having to re-compute
 /// these steps.
-pub fn make_simple_prepared_pipeline<T: FieldElement>(file_name: &str) -> Pipeline<T> {
+pub fn make_simple_prepared_pipeline<T: FieldElement>(
+    file_name: &str,
+    linker_mode: LinkerMode,
+) -> Pipeline<T> {
+    let linker_params = LinkerParams {
+        mode: linker_mode,
+        degree_mode: DegreeMode::Vadcop,
+    };
     let mut pipeline = Pipeline::default()
         .with_tmp_output()
+        .with_linker_params(linker_params)
         .from_file(resolve_test_file(file_name));
     pipeline.compute_witness().unwrap();
     pipeline
@@ -37,9 +46,15 @@ pub fn make_prepared_pipeline<T: FieldElement>(
     file_name: &str,
     inputs: Vec<T>,
     external_witness_values: Vec<(String, Vec<T>)>,
+    linker_mode: LinkerMode,
 ) -> Pipeline<T> {
+    let linker_params = LinkerParams {
+        mode: linker_mode,
+        degree_mode: DegreeMode::Vadcop,
+    };
     let mut pipeline = Pipeline::default()
         .with_tmp_output()
+        .with_linker_params(linker_params)
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
         .add_external_witness_values(external_witness_values);
@@ -62,7 +77,8 @@ pub fn regular_test_small_field(file_name: &str, inputs: &[i32]) {
 /// Tests witness generation, mock prover, pilcom and plonky3 with BabyBear.
 pub fn regular_test_bb(file_name: &str, inputs: &[i32]) {
     let inputs_bb = inputs.iter().map(|x| BabyBearField::from(*x)).collect();
-    let pipeline_bb = make_prepared_pipeline(file_name, inputs_bb, vec![]);
+    // LinkerMode::Native because the bus is not implemented for small fields
+    let pipeline_bb = make_prepared_pipeline(file_name, inputs_bb, vec![], LinkerMode::Native);
     test_mock_backend(pipeline_bb.clone());
     test_plonky3_pipeline(pipeline_bb);
 }
@@ -70,19 +86,28 @@ pub fn regular_test_bb(file_name: &str, inputs: &[i32]) {
 /// Tests witness generation, mock prover, pilcom and plonky3 with BabyBear and KoalaBear.
 pub fn regular_test_kb(file_name: &str, inputs: &[i32]) {
     let inputs_kb = inputs.iter().map(|x| KoalaBearField::from(*x)).collect();
-    let pipeline_kb = make_prepared_pipeline(file_name, inputs_kb, vec![]);
+    // LinkerMode::Native because the bus is not implemented for small fields
+    let pipeline_kb = make_prepared_pipeline(file_name, inputs_kb, vec![], LinkerMode::Native);
     test_mock_backend(pipeline_kb.clone());
     test_plonky3_pipeline(pipeline_kb);
 }
 
 /// Tests witness generation, mock prover, pilcom and plonky3 with Goldilocks.
 pub fn regular_test_gl(file_name: &str, inputs: &[i32]) {
-    let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
-    let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
+    let inputs_gl = inputs
+        .iter()
+        .map(|x| GoldilocksField::from(*x))
+        .collect::<Vec<_>>();
 
-    test_mock_backend(pipeline_gl.clone());
-    run_pilcom_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite).unwrap();
-    test_plonky3_pipeline(pipeline_gl);
+    let pipeline_gl_native =
+        make_prepared_pipeline(file_name, inputs_gl.clone(), vec![], LinkerMode::Native);
+    test_mock_backend(pipeline_gl_native.clone());
+    run_pilcom_with_backend_variant(pipeline_gl_native, BackendVariant::Composite).unwrap();
+
+    let pipeline_gl_bus =
+        make_prepared_pipeline(file_name, inputs_gl.clone(), vec![], LinkerMode::Bus);
+    test_mock_backend(pipeline_gl_bus.clone());
+    test_plonky3_pipeline(pipeline_gl_bus);
 }
 
 pub fn test_pilcom(pipeline: Pipeline<GoldilocksField>) {

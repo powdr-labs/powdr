@@ -590,7 +590,7 @@ impl Children<Expression> for PILAnalyzer {
 #[derive(Clone, Copy)]
 struct Driver<'a>(&'a PILAnalyzer);
 
-impl<'a> AnalysisDriver for Driver<'a> {
+impl AnalysisDriver for Driver<'_> {
     fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath {
         path.iter()
             .fold(self.0.current_namespace.clone(), |path, part| {

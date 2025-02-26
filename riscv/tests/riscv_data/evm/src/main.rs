@@ -1,7 +1,7 @@
 #![no_main]
 #![no_std]
 
-use powdr_riscv_runtime::io::read;
+use powdr_riscv_runtime::io::read_fd;
 use powdr_riscv_runtime::print;
 
 use revm::{
@@ -22,7 +22,7 @@ fn main() {
         b256!("e3c84e69bac71c159b2ff0d62b9a5c231887a809a96cb4a262a4b96ed78a1db2");
     let mut db = CacheDB::new(EmptyDB::default());
 
-    let bytecode: Vec<u8> = read(666);
+    let bytecode: Vec<u8> = read_fd(666);
 
     // Fill database:
     let bytecode = Bytes::from(bytecode);

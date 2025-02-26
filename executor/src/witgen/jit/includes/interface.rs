@@ -100,5 +100,6 @@ pub struct WitgenFunctionParams<'a, T: 'a> {
     known: *mut u32,
     row_offset: u64,
     params: MutSlice<LookupCell<'a, T>>,
+    mutable_state: *const std::ffi::c_void,
     call_machine: extern "C" fn(*const std::ffi::c_void, u64, MutSlice<LookupCell<'_, T>>) -> bool,
 }

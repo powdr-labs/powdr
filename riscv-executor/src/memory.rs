@@ -51,7 +51,7 @@ impl<F: FieldElement> Submachine<F> for MemoryMachine<F> {
         &self.namespace
     }
 
-    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F], _extra: &[F]) {
+    fn add_operation(&mut self, selector: Option<&str>, lookup_args: &[F; 4], _extra: &[F]) {
         let [op_id, addr, step, value] = lookup_args[..] else {
             panic!()
         };

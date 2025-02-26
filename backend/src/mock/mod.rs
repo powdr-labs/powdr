@@ -128,17 +128,14 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             );
         }
 
-        let is_ok = machines.values().all(|machine| {
-            !PolynomialConstraintChecker::new(machine, &challenges)
+        let is_ok =
+            machines.values().all(|machine| {
+                !PolynomialConstraintChecker::new(machine, &challenges)
+                    .check()
+                    .has_errors()
+            }) && ConnectionConstraintChecker::new(&self.connections, machines, &challenges)
                 .check()
-                .has_errors()
-        }) && ConnectionConstraintChecker {
-            connections: &self.connections,
-            machines,
-            challenges: &challenges,
-        }
-        .check()
-        .is_ok();
+                .is_ok();
 
         match is_ok {
             true => Ok(Vec::new()),

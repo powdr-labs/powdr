@@ -1,4 +1,3 @@
-pub mod expression_evaluator;
 pub mod fixed_evaluator;
 pub mod partial_expression_evaluator;
 pub mod symbolic_evaluator;

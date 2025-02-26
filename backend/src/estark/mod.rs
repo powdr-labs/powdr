@@ -140,10 +140,10 @@ fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), E
     Ok(())
 }
 
-impl<'a, F: FieldElement> EStarkFilesCommon<F> {
+impl<F: FieldElement> EStarkFilesCommon<F> {
     #[allow(clippy::too_many_arguments)]
     fn create(
-        analyzed: &'a Analyzed<F>,
+        analyzed: &Analyzed<F>,
         fixed: Arc<Fixed<F>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,

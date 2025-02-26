@@ -158,8 +158,8 @@ struct Symbols<'a, 'b, 'c, T: FieldElement, QueryCallback: Send + Sync> {
     query_callback: &'c QueryCallback,
 }
 
-impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> SymbolLookup<'a, T>
-    for Symbols<'a, 'b, 'c, T, QueryCallback>
+impl<'a, T: FieldElement, QueryCallback: super::QueryCallback<T>> SymbolLookup<'a, T>
+    for Symbols<'a, '_, '_, T, QueryCallback>
 {
     fn lookup(
         &mut self,
@@ -324,9 +324,7 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
     }
 }
 
-impl<'a, 'b, 'c, T: FieldElement, QueryCallback: Send + Sync>
-    Symbols<'a, 'b, 'c, T, QueryCallback>
-{
+impl<'a, T: FieldElement, QueryCallback: Send + Sync> Symbols<'a, '_, '_, T, QueryCallback> {
     fn updates(self) -> Constraints<AlgebraicVariable<'a>, T> {
         self.updates
     }

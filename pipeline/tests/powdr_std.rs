@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use powdr_linker::LinkerMode;
 use powdr_number::{BabyBearField, BigInt, Bn254Field, GoldilocksField};
 
 use powdr_pil_analyzer::evaluator::Value;
@@ -18,7 +19,7 @@ use test_log::test;
 #[test]
 fn fingerprint_test() {
     let f = "std/fingerprint_test.asm";
-    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_plonky3_pipeline(pipeline);
 }
 
@@ -26,7 +27,8 @@ fn fingerprint_test() {
 #[ignore = "Too slow"]
 fn poseidon_bn254_test() {
     let f = "std/poseidon_bn254_test.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
+    // Native linker mode, because bus constraints are exponential in Halo2
+    let pipeline = make_simple_prepared_pipeline(f, LinkerMode::Native);
     test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Composite);
 
     // `test_halo2` only does a mock proof in the PR tests.
@@ -94,7 +96,9 @@ fn poseidon2_gl_test() {
 #[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
-    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
+    // Native linker mode, because bus constraints are exponential in Halo2
+    let pipeline = make_simple_prepared_pipeline(f, LinkerMode::Native);
+    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 #[test]
@@ -146,7 +150,7 @@ fn memory_large_test() {
     regular_test_gl(f, &[]);
 
     // This one test was selected to also run estark.
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Native);
     gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
@@ -174,7 +178,7 @@ fn memory_small_test() {
 #[test]
 fn permutation_via_challenges() {
     let f = "std/permutation_via_challenges.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
@@ -182,7 +186,7 @@ fn permutation_via_challenges() {
 #[test]
 fn lookup_via_challenges() {
     let f = "std/lookup_via_challenges.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
@@ -190,7 +194,7 @@ fn lookup_via_challenges() {
 #[test]
 fn lookup_via_challenges_range_constraint() {
     let f = "std/lookup_via_challenges_range_constraint.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
@@ -198,7 +202,7 @@ fn lookup_via_challenges_range_constraint() {
 #[test]
 fn bus_lookup() {
     let f = "std/bus_lookup.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }
@@ -206,7 +210,7 @@ fn bus_lookup() {
 #[test]
 fn bus_permutation() {
     let f = "std/bus_permutation.asm";
-    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);
 }

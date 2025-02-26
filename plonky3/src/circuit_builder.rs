@@ -13,7 +13,6 @@ use alloc::{
     vec::Vec,
 };
 use itertools::Itertools;
-use p3_field::AbstractField;
 use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use tracing::info_span;
 
@@ -21,18 +20,21 @@ use crate::{
     params::{Commitment, FieldElementMap, Plonky3Field, ProverData},
     AirStage,
 };
-use p3_air::{Air, AirBuilder, BaseAir, PairBuilder};
+use p3_air::{Air, BaseAir, PairBuilder};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReferenceThin,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Identity, PolyID, PolynomialType,
+    AlgebraicExpression, AlgebraicReference, AlgebraicReferenceThin, Analyzed, Challenge, Identity,
+    PolyID, PolynomialType,
 };
 
 use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 
-use powdr_executor_utils::WitgenCallback;
-use powdr_number::{FieldElement, LargeInt};
+use powdr_executor_utils::{
+    expression_evaluator::{ExpressionEvaluator, GlobalValues, TraceValues},
+    WitgenCallback,
+};
+use powdr_number::FieldElement;
 
 /// A description of the constraint system.
 /// All of the data is derived from the analyzed PIL, but is materialized
@@ -235,129 +237,10 @@ where
     pub(crate) fn new(constraint_system: &'a ConstraintSystem<T>) -> Self {
         Self { constraint_system }
     }
-
-    /// Conversion to plonky3 expression
-    fn to_plonky3_expr<AB: AirBuilder<F = Plonky3Field<T>> + MultistageAirBuilder>(
-        &self,
-        e: &AlgebraicExpression<T>,
-        traces_by_stage: &[AB::M],
-        fixed: &AB::M,
-        intermediate_cache: &mut BTreeMap<AlgebraicReferenceThin, AB::Expr>,
-        publics: &BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>,
-        challenges: &[BTreeMap<&u64, <AB as MultistageAirBuilder>::Challenge>],
-    ) -> AB::Expr {
-        use AlgebraicBinaryOperator::*;
-        let res = match e {
-            AlgebraicExpression::Reference(r) => {
-                let poly_id = r.poly_id;
-
-                match poly_id.ptype {
-                    PolynomialType::Committed => {
-                        // find the stage and index in that stage
-                        let (stage, index) = self.constraint_system.witness_columns[&poly_id];
-                        traces_by_stage[stage].row_slice(r.next as usize)[index].into()
-                    }
-                    PolynomialType::Constant => {
-                        // find the index in the fixed columns
-                        let index = self.constraint_system.fixed_columns[&poly_id];
-                        fixed.row_slice(r.next as usize)[index].into()
-                    }
-                    PolynomialType::Intermediate => {
-                        let r = r.to_thin();
-                        if let Some(expr) = intermediate_cache.get(&r) {
-                            expr.clone()
-                        } else {
-                            let value = self.to_plonky3_expr::<AB>(
-                                &self.constraint_system.intermediates[&r],
-                                traces_by_stage,
-                                fixed,
-                                intermediate_cache,
-                                publics,
-                                challenges,
-                            );
-                            assert!(intermediate_cache.insert(r, value.clone()).is_none());
-                            value
-                        }
-                    }
-                }
-            }
-            AlgebraicExpression::PublicReference(id) => (*publics
-                .get(id)
-                .expect("Referenced public value does not exist"))
-            .into(),
-            AlgebraicExpression::Number(n) => AB::Expr::from(n.into_p3_field()),
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left,
-                op: Pow,
-                right,
-            }) => match **right {
-                AlgebraicExpression::Number(n) => {
-                    let left = self.to_plonky3_expr::<AB>(
-                        left,
-                        traces_by_stage,
-                        fixed,
-                        intermediate_cache,
-                        publics,
-                        challenges,
-                    );
-                    (0u32..n.to_integer().try_into_u32().unwrap())
-                        .fold(AB::Expr::from(<AB::F as AbstractField>::one()), |acc, _| {
-                            acc * left.clone()
-                        })
-                }
-                _ => unimplemented!("pow with non-constant exponent"),
-            },
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                let left = self.to_plonky3_expr::<AB>(
-                    left,
-                    traces_by_stage,
-                    fixed,
-                    intermediate_cache,
-                    publics,
-                    challenges,
-                );
-                let right = self.to_plonky3_expr::<AB>(
-                    right,
-                    traces_by_stage,
-                    fixed,
-                    intermediate_cache,
-                    publics,
-                    challenges,
-                );
-
-                match op {
-                    Add => left + right,
-                    Sub => left - right,
-                    Mul => left * right,
-                    Pow => unreachable!("This case was handled above"),
-                }
-            }
-            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-                let expr: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(
-                    expr,
-                    traces_by_stage,
-                    fixed,
-                    intermediate_cache,
-                    publics,
-                    challenges,
-                );
-
-                match op {
-                    AlgebraicUnaryOperator::Minus => -expr,
-                }
-            }
-            AlgebraicExpression::Challenge(challenge) => challenges[challenge.stage as usize]
-                [&challenge.id]
-                .clone()
-                .into(),
-        };
-        res
-    }
 }
 
 /// An extension of [Air] allowing access to the number of fixed columns
-
-impl<'a, T: FieldElementMap> BaseAir<Plonky3Field<T>> for PowdrTable<'a, T>
+impl<T: FieldElementMap> BaseAir<Plonky3Field<T>> for PowdrTable<'_, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
@@ -371,8 +254,49 @@ where
     }
 }
 
-impl<'a, T: FieldElementMap, AB: PairBuilder + MultistageAirBuilder<F = Plonky3Field<T>>> Air<AB>
-    for PowdrTable<'a, T>
+struct Data<'a, T, AB: MultistageAirBuilder> {
+    constraint_system: &'a ConstraintSystem<T>,
+    traces_by_stage: &'a [AB::M],
+    fixed: &'a AB::M,
+    publics: &'a BTreeMap<&'a str, <AB as MultistageAirBuilder>::PublicVar>,
+    challenges: &'a [BTreeMap<&'a u64, <AB as MultistageAirBuilder>::Challenge>],
+}
+
+impl<T, AB: MultistageAirBuilder> TraceValues<AB::Expr> for &Data<'_, T, AB> {
+    fn get(&self, reference: &AlgebraicReference) -> AB::Expr {
+        match reference.poly_id.ptype {
+            PolynomialType::Committed => {
+                let (stage, index) = self.constraint_system.witness_columns[&reference.poly_id];
+                self.traces_by_stage[stage].row_slice(reference.next as usize)[index].into()
+            }
+            PolynomialType::Constant => {
+                // find the index in the fixed columns
+                let index = self.constraint_system.fixed_columns[&reference.poly_id];
+                self.fixed.row_slice(reference.next as usize)[index].into()
+            }
+            PolynomialType::Intermediate => unreachable!(),
+        }
+    }
+}
+
+impl<T, AB: MultistageAirBuilder> GlobalValues<AB::Expr> for &Data<'_, T, AB> {
+    fn get_challenge(&self, challenge: &Challenge) -> AB::Expr {
+        self.challenges[challenge.stage as usize][&challenge.id]
+            .clone()
+            .into()
+    }
+
+    fn get_public(&self, public: &str) -> AB::Expr {
+        (*self
+            .publics
+            .get(public)
+            .expect("Referenced public value does not exist"))
+        .into()
+    }
+}
+
+impl<T: FieldElementMap, AB: PairBuilder + MultistageAirBuilder<F = Plonky3Field<T>>> Air<AB>
+    for PowdrTable<'_, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
@@ -382,10 +306,19 @@ where
         let traces_by_stage: Vec<AB::M> =
             (0..stage_count).map(|i| builder.stage_trace(i)).collect();
         let fixed = builder.preprocessed();
-        let mut intermediate_cache = BTreeMap::new();
         let public_input_values_by_stage = (0..stage_count)
             .map(|i| builder.stage_public_values(i))
             .collect_vec();
+
+        // public constraints
+        let public_vals_by_name = self
+            .constraint_system
+            .publics_by_stage
+            .iter()
+            .zip_eq(public_input_values_by_stage)
+            .flat_map(|(publics, values)| publics.iter().zip_eq(values.iter()))
+            .map(|((name, _, _, _), pi)| (name.as_str(), *pi))
+            .collect::<BTreeMap<&str, <AB as MultistageAirBuilder>::PublicVar>>();
 
         // for each stage, the values of the challenges drawn at the end of that stage
         let challenges_by_stage: Vec<BTreeMap<&u64, _>> = self
@@ -410,15 +343,19 @@ where
                 },
             );
 
-        // public constraints
-        let public_vals_by_name = self
-            .constraint_system
-            .publics_by_stage
-            .iter()
-            .zip_eq(public_input_values_by_stage)
-            .flat_map(|(publics, values)| publics.iter().zip_eq(values.iter()))
-            .map(|((name, _, _, _), pi)| (name, *pi))
-            .collect::<BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>>();
+        let data: Data<T, AB> = Data {
+            constraint_system: self.constraint_system,
+            traces_by_stage: &traces_by_stage,
+            publics: &public_vals_by_name,
+            challenges: &challenges_by_stage,
+            fixed: &fixed,
+        };
+        let mut evaluator = ExpressionEvaluator::new_with_custom_expr(
+            &data,
+            &data,
+            &self.constraint_system.intermediates,
+            |value| AB::Expr::from(value.into_p3_field()),
+        );
 
         // constrain public inputs using witness columns in stage 0
         let fixed_local = fixed.row_slice(0);
@@ -433,7 +370,7 @@ where
                 let selector = fixed_local[public_offset + index];
                 let (stage, index) = self.constraint_system.witness_columns[poly_id];
                 let witness_col = traces_by_stage[stage].row_slice(0)[index];
-                let public_value = public_vals_by_name[name];
+                let public_value = public_vals_by_name[name.as_str()];
 
                 // constraining s(i) * (pub[i] - x(i)) = 0
                 builder.assert_zero(selector * (public_value.into() - witness_col));
@@ -443,14 +380,7 @@ where
         for identity in &self.constraint_system.identities {
             match identity {
                 Identity::Polynomial(identity) => {
-                    let e = self.to_plonky3_expr::<AB>(
-                        &identity.expression,
-                        &traces_by_stage,
-                        &fixed,
-                        &mut intermediate_cache,
-                        &public_vals_by_name,
-                        &challenges_by_stage,
-                    );
+                    let e = evaluator.evaluate(&identity.expression);
 
                     builder.assert_zero(e);
                 }
@@ -469,8 +399,8 @@ where
     }
 }
 
-impl<'a, T: FieldElementMap, AB: PairBuilder + MultistageAirBuilder<F = Plonky3Field<T>>>
-    MultiStageAir<AB> for PowdrTable<'a, T>
+impl<T: FieldElementMap, AB: PairBuilder + MultistageAirBuilder<F = Plonky3Field<T>>>
+    MultiStageAir<AB> for PowdrTable<'_, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
@@ -502,7 +432,7 @@ where
     }
 }
 
-impl<'a, T: FieldElementMap> PowdrCircuit<'a, T>
+impl<T: FieldElementMap> PowdrCircuit<'_, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,

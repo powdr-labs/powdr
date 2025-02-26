@@ -4,13 +4,12 @@ use fp2::Fp2;
 use itertools::Itertools;
 use num_traits::{One, Zero};
 use powdr_ast::analyzed::{Analyzed, Identity, PhantomBusInteractionIdentity};
-use powdr_executor_utils::VariablySizedColumn;
+use powdr_executor_utils::{
+    expression_evaluator::{ExpressionEvaluator, OwnedGlobalValues, OwnedTraceValues},
+    VariablySizedColumn,
+};
 use powdr_number::{DegreeType, FieldElement};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-
-use crate::witgen::evaluators::expression_evaluator::ExpressionEvaluator;
-
-use super::evaluators::expression_evaluator::OwnedTraceValues;
 
 mod fp2;
 
@@ -101,7 +100,7 @@ impl<'a, T: FieldElement> BusAccumulatorGenerator<'a, T> {
         bus_interaction: &PhantomBusInteractionIdentity<T>,
     ) -> Vec<Vec<T>> {
         let intermediate_definitions = self.pil.intermediate_definitions();
-        let empty_challenges = BTreeMap::new();
+        let empty_globals = OwnedGlobalValues::default();
 
         let size = self.trace_values.height();
         let mut folded1 = vec![T::zero(); size];
@@ -112,8 +111,8 @@ impl<'a, T: FieldElement> BusAccumulatorGenerator<'a, T> {
         for i in 0..size {
             let mut evaluator = ExpressionEvaluator::new(
                 self.trace_values.row(i),
+                &empty_globals,
                 &intermediate_definitions,
-                &empty_challenges,
             );
             let current_acc = if i == 0 {
                 Fp2::zero()

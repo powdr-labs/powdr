@@ -100,6 +100,9 @@ pub trait RiscVProgram {
         &mut self,
     ) -> impl Iterator<Item = Statement<impl AsRef<str>, impl InstructionArgs>>;
 
+    /// Returns the addresses of the start and end of prover data.
+    fn prover_data_bounds(&self) -> (u32, u32);
+
     /// The name of the function that should be called to start the program.
     fn start_function(&self) -> impl AsRef<str>;
 }
