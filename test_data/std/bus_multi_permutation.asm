@@ -9,7 +9,7 @@ machine Main with degree: 8 {
     col witness y;
     col witness z;
 
-    // A small block machine that computes f(x) = x + 42 and g(x) = x + 21
+    // A small block machine that computes f(x) = x + 42 
     col witness sub_x, sub_y, sub_z, sub_sel_0, sub_sel_1;
     sub_y = sub_x + 42;
   
