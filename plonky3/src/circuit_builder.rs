@@ -492,6 +492,14 @@ where
                             acc_last=*values.last().unwrap();
                         }
                     });
+
+                    let mut acc_1_last=T::from(999);
+                    new_witness.iter().for_each(|(name, values)| {
+                        if name=="main::acc_1"{
+                            info!("last value of acc_1 {:?}", values.last().unwrap());
+                            acc_1_last=*values.last().unwrap();
+                        }
+                    });
                     
                     let mut acc_2_last=T::from(888);
                     new_witness.iter().for_each(|(name, values)| {
@@ -501,7 +509,16 @@ where
                         }
                     });
 
+                    let mut acc_3_last=T::from(888);
+                    new_witness.iter().for_each(|(name, values)| {
+                        if name=="main::acc_3"{
+                            info!("last value of acc_3 {:?}", values.last().unwrap());
+                            acc_3_last=*values.last().unwrap();
+                        }
+                    });
+
                     info!("addition of acc last and acc_2 last, should be 0 {:?}", acc_2_last+acc_last);
+                    info!("addition of acc_1 last and acc_3 last, should be 0 {:?}", acc_1_last+acc_3_last);
 
                     (machine_name.clone(), new_witness)
                 })
