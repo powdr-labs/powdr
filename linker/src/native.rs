@@ -10,6 +10,7 @@ use powdr_ast::{
 };
 use powdr_parser_util::SourceRef;
 use std::collections::BTreeMap;
+use powdr_backend::BackendType;
 
 use crate::{call, DegreeMode, InteractionType, LinkerBackend, MAIN_OPERATION_NAME};
 
@@ -271,7 +272,7 @@ mod test {
     use crate::LinkerBackend;
 
     fn link_vadcop(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
-        super::NativeLinker::link(graph, super::DegreeMode::Vadcop)
+        super::NativeLinker::link(graph, super::DegreeMode::Vadcop, BackendType::Vadcop)
     }
 
     fn link_monolithic(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {

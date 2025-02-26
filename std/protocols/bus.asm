@@ -61,6 +61,27 @@ let create_folded: expr, expr[], Ext<expr>, Ext<expr> -> Ext<expr> = constr |id,
         sub_ext(beta, fingerprint_with_id_inter(id, payload, alpha))
     };
 
+/// Sends Constr::BusInteraction to backends that support it natively.
+/// Only send stage-0 witnesses.
+let bus_native_interaction: expr[], expr[][], expr[], expr[] -> () = constr |ids, payloads, multiplicities, latches| {
+    // Check length of inputs
+    let input_len: int = array::len(ids);
+    assert(input_len == array::len(payloads), || "inputs ids and payloads have unequal lengths");
+    assert(input_len == array::len(multiplicities), || "inputs ids and multiplicities have unequal lengths");
+    assert(input_len == array::len(latches), || "inputs ids and latches have unequal lengths");
+
+    // Add array of bus interactions
+    array::new(
+        input_len,
+        |i| Constr::BusInteraction(
+            multiplicities[i], 
+            ids[i], 
+            payloads[i], 
+            latches[i]
+        )
+    )
+}
+
 /// Sends the payload (id, payload...) to the bus by adding
 /// `multiplicity / (beta - fingerprint(id, payload...))` to `acc`
 /// It is the callers responsibility to properly constrain the multiplicity (e.g. constrain
@@ -250,6 +271,11 @@ let transpose_bus_inputs: BusInteraction[] -> (expr[], expr[][], expr[], expr[])
     )
 };
 
+let bus_native: BusInteraction[] -> () = constr |bus_inputs| {
+    let (ids, payloads, multiplicities, latches) = transpose_bus_inputs(bus_inputs);
+    bus_native_interaction(ids, payloads, multiplicities, latches);
+}
+
 /// Convenience function for batching multiple bus interactions.
 /// Transposes user inputs and then calls the key logic for batch building bus interactions.
 /// Can batch both send and receive.
@@ -266,7 +292,7 @@ enum BusLinkerType {
 }
 
 /// Exposed to the linker and not intended for end user because it requires expert knowledge of Powdr's bus protocol.
-/// Inputs in the order of: id, selector, payload, type for both lookup and permutation.
+/// Inputs in the order of: id, selector, payload, type, return_native_bus_interaction for both lookup and permutation.
 /// where type can be: bus send, lookup bus receive, or permutation bus receive.
 let bus_multi_linker: (expr, expr, expr[], BusLinkerType)[] -> () = constr |inputs| {
     // Lookup requires adding a multiplicity column and constraining it to zero if selector is zero.
@@ -287,6 +313,27 @@ let bus_multi_linker: (expr, expr, expr[], BusLinkerType)[] -> () = constr |inpu
         }
     });
     bus_multi(inputs_inner);
+};
+
+let bus_native_linker: (expr, expr, expr[], BusLinkerType)[] -> () = constr |inputs| {
+    // Lookup requires adding a multiplicity column and constraining it to zero if selector is zero.
+    // Permutation passes the selector to both multiplicity and latch fields as well.
+    let inputs_inner = array::fold(inputs, [], constr |acc, input| {
+        // Converted to input format for the inner function `bus_multi`:
+        // For lookup bus receive, format is id, payload, multiplicity, selector
+        // For permutation bus receive, format is id, payload, selector, selector
+        let (id, selector, payload, type) = input;
+        match type {
+            BusLinkerType::Send => acc + [BusInteraction::Send(id, payload, selector)],
+            BusLinkerType::LookupReceive => {
+                let multiplicity;
+                (1 - selector) * multiplicity = 0;
+                acc + [BusInteraction::Receive(id, payload, multiplicity, selector)]
+            },
+            BusLinkerType::PermutationReceive => acc + [BusInteraction::Receive(id, payload, selector, selector)],
+        }
+    });
+    bus_native(inputs_inner);
 };
 
 /// Builds a single bus interaction by using `bus_multi_interaction` for optimized performance.

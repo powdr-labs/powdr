@@ -5,6 +5,7 @@ use powdr_ast::{
     object::{Link, Location, MachineInstanceGraph, Object},
     parsed::{asm::AbsoluteSymbolPath, NamespaceDegree, PILFile, PilStatement},
 };
+use powdr_backend::BackendType;
 use powdr_parser_util::SourceRef;
 use std::{collections::BTreeMap, iter::once};
 use strum::{Display, EnumString, EnumVariantNames};
@@ -32,7 +33,7 @@ trait LinkerBackend: Sized {
     fn try_new(graph: &MachineInstanceGraph, degree_mode: DegreeMode) -> Result<Self, Vec<String>>;
 
     /// Link the objects into a single PIL file.
-    fn link(graph: MachineInstanceGraph, degree_mode: DegreeMode) -> Result<PILFile, Vec<String>> {
+    fn link(graph: MachineInstanceGraph, degree_mode: DegreeMode, backend_type: BackendType) -> Result<PILFile, Vec<String>> {
         let mut linker = Self::try_new(&graph, degree_mode)?;
 
         let common_definitions = process_definitions(graph.statements);
