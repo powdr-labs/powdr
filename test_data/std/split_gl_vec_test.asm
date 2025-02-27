@@ -76,6 +76,34 @@ machine Main with degree: main_degree {
         assert_eq 256, 0x00000008;
         assert_eq 260, 0x00000007;
 
+        // Same split, but now overlaping the input and output
+        split 100, 104;
+
+        // Assert the field elements are what was written
+        assert_eq 104, 0;
+        assert_eq 108, 0;
+
+        assert_eq 112, 0;
+        assert_eq 116, 0xffffffff;
+
+        assert_eq 120, 0xffffffff;
+        assert_eq 124, 0xfffffffe;
+
+        assert_eq 128, 0x23456789;
+        assert_eq 132, 0xabcdef01;
+
+        assert_eq 136, 0x00000002;
+        assert_eq 140, 0x00000001;
+
+        assert_eq 144, 0x00000004;
+        assert_eq 148, 0x00000003;
+
+        assert_eq 152, 0x00000006;
+        assert_eq 156, 0x00000005;
+
+        assert_eq 160, 0x00000008;
+        assert_eq 164, 0x00000007;
+
         return;
     }
 }

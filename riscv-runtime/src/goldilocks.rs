@@ -43,7 +43,7 @@ impl From<Goldilocks> for OpaqueGoldilocks {
     }
 }
 
-/// Extract the Goldilocks values from the opaque Goldilocks values.
+/// Extract the Goldilocks values from the OpaqueGoldilocks values.
 pub fn extract_opaque_vec8(vec: &[OpaqueGoldilocks; 8]) -> [u64; 8] {
     unsafe {
         let mut output: MaybeUninit<[u64; 8]> = MaybeUninit::uninit();

@@ -25,7 +25,6 @@ pub struct RuntimeLibs {
     pub arith: bool,
     pub keccak: bool,
     pub poseidon2: bool,
-    pub splt_vec: bool,
 }
 
 impl RuntimeLibs {
@@ -34,7 +33,6 @@ impl RuntimeLibs {
             arith: false,
             keccak: false,
             poseidon2: false,
-            splt_vec: false,
         }
     }
 
@@ -55,13 +53,6 @@ impl RuntimeLibs {
     pub fn with_poseidon2(self) -> Self {
         Self {
             poseidon2: true,
-            ..self
-        }
-    }
-
-    pub fn with_splt_vec(self) -> Self {
-        Self {
-            splt_vec: true,
             ..self
         }
     }
@@ -148,13 +139,6 @@ impl CompilerOptions {
     pub fn with_poseidon2(self) -> Self {
         Self {
             libs: self.libs.with_poseidon2(),
-            ..self
-        }
-    }
-
-    pub fn with_splt_vec(self) -> Self {
-        Self {
-            libs: self.libs.with_splt_vec(),
             ..self
         }
     }

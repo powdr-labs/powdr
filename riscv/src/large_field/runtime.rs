@@ -29,9 +29,6 @@ impl Runtime {
         if libs.arith {
             runtime = runtime.with_arith();
         }
-        if libs.splt_vec {
-            runtime = runtime.with_split_vec();
-        }
         runtime
     }
 
@@ -301,15 +298,6 @@ impl Runtime {
             "#],
         );
 
-        // The poseidon2 syscall has input address passed on x10 and output address passed on x11,
-        // they can overlap.
-        let implementation = std::iter::once("poseidon2_gl 10, 11;".to_string());
-
-        self.add_syscall(Syscall::Poseidon2GL, implementation);
-        self
-    }
-
-    fn with_split_vec(mut self) -> Self {
         self.add_submachine(
             "std::machines::split::split_gl_vec::SplitGLVec8",
             None,
@@ -349,6 +337,13 @@ impl Runtime {
                 }
             "#,
             ],
+        );
+
+        // The poseidon2 syscall has input address passed on x10 and output address passed on x11,
+        // they can overlap.
+        self.add_syscall(
+            Syscall::Poseidon2GL,
+            std::iter::once("poseidon2_gl 10, 11;".to_string()),
         );
 
         self.add_syscall(
