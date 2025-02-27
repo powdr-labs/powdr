@@ -12,7 +12,8 @@ powdr-analysis.workspace = true
 powdr-ast.workspace = true
 powdr-number.workspace = true
 powdr-parser-util.workspace = true
-powdr-backend.workspace = true
+powdr-pil-analyzer.workspace = true
+powdr-pilopt.workspace = true
 strum = { version = "0.24.1", features = ["derive"] }
 
 pretty_assertions = "1.4.0"

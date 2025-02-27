@@ -299,9 +299,13 @@ impl BusLinker {
 
 #[cfg(test)]
 mod test {
-    use std::{fs, path::PathBuf};
+    use std::{
+        fs,
+        path::PathBuf,
+    };
 
     use powdr_ast::object::MachineInstanceGraph;
+    use powdr_ast::analyzed::{Analyzed, Identity};
     use powdr_number::{FieldElement, GoldilocksField};
 
     use powdr_analysis::convert_asm_to_pil;
@@ -365,5 +369,31 @@ namespace main__rom(4);
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = BusLinker::link(graph, crate::DegreeMode::Vadcop).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
+    }
+
+    #[test]
+    fn pass_native_bus_interaction_to_backend() {
+        let file_name = "../test_data/asm/empty_vm.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
+        let pil = BusLinker::link(graph, crate::DegreeMode::Vadcop).unwrap();
+        let analyzed: Analyzed<GoldilocksField> = powdr_pil_analyzer::analyze_ast(pil).unwrap();
+        let optimized = powdr_pilopt::optimize(analyzed);
+        let native_bus_interactions = optimized
+            .identities
+            .iter()
+            .filter_map(|i| match i {
+                Identity::BusInteraction(interaction) => Some(interaction),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        // print and compare against expectation
+        let expectation = r#"Constr::BusInteraction(1, 454118344, [0, main::pc, main::instr__jump_to_operation, main::instr__reset, main::instr__loop, main::instr_return], 1);
+Constr::BusInteraction(-main__rom::multiplicity, 454118344, [0, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, 0], 1);
+"#;
+        let native_bus_interactions = native_bus_interactions
+            .iter()
+            .map(|i| format!("{i}\n"))
+            .collect::<String>();
+        assert_eq!(native_bus_interactions, expectation);
     }
 }
