@@ -4,8 +4,8 @@ use std::{collections::BTreeMap, ops::RangeFrom};
 use itertools::{Either, Itertools};
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, AlgebraicUnaryOperator, Analyzed, BusInteractionIdentity,
-        ConnectIdentity, Identity as AnalyzedIdentity, LookupIdentity, PermutationIdentity,
+        AlgebraicExpression, AlgebraicUnaryOperator, Analyzed, ConnectIdentity,
+        Identity as AnalyzedIdentity, LookupIdentity, PermutationIdentity,
         PhantomBusInteractionIdentity, PhantomLookupIdentity, PhantomPermutationIdentity,
         PolynomialIdentity, SelectedExpressions,
     },
@@ -249,9 +249,7 @@ fn convert_identity<T: FieldElement>(
                 identity.clone(),
             ))]
         }
-        AnalyzedIdentity::BusInteraction(bus_interaction) => {
-            vec![convert_bus_interaction(bus_interaction)]
-        }
+        AnalyzedIdentity::BusInteraction(_) => vec![],
         AnalyzedIdentity::PhantomBusInteraction(bus_interaction) => {
             vec![convert_phantom_bus_interaction(bus_interaction)]
         }
@@ -282,43 +280,6 @@ fn convert_identity<T: FieldElement>(
             multiplicity,
             ..
         }) => bus_interaction_pair(*id, bus_id_counter, left, right, Some(multiplicity.clone())),
-    }
-}
-
-fn convert_bus_interaction<T: FieldElement>(
-    bus_interaction: &BusInteractionIdentity<T>,
-) -> IdentityOrReceive<T> {
-    // Detect receives by having a unary minus in the multiplicity
-    // TODO: We should instead analyze the range constraints of the
-    // multiplicity expression.
-    let (is_receive, multiplicity) = match &bus_interaction.multiplicity {
-        AlgebraicExpression::UnaryOperation(op) => match op.op {
-            AlgebraicUnaryOperator::Minus => (true, (*op.expr).clone()),
-        },
-        _ => (false, bus_interaction.multiplicity.clone()),
-    };
-    let bus_id = match bus_interaction.bus_id {
-        AlgebraicExpression::Number(id) => id,
-        // TODO: Relax this for sends when implementing dynamic sends
-        _ => panic!("Expected first payload entry to be a static ID"),
-    };
-    let selected_payload = SelectedExpressions {
-        selector: bus_interaction.latch.clone(),
-        expressions: bus_interaction.payload.0.clone(),
-    };
-    if is_receive {
-        IdentityOrReceive::Receive(BusReceive {
-            bus_id,
-            multiplicity: Some(multiplicity),
-            selected_payload,
-        })
-    } else {
-        assert_eq!(multiplicity, bus_interaction.latch);
-        IdentityOrReceive::Identity(Identity::BusSend(BusSend {
-            identity_id: bus_interaction.id,
-            bus_id: AlgebraicExpression::Number(bus_id),
-            selected_payload,
-        }))
     }
 }
 
