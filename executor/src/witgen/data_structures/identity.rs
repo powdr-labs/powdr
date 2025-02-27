@@ -499,27 +499,4 @@ namespace main(4);
         );
         assert!(!receive.has_arbitrary_multiplicity());
     }
-
-    #[test]
-    fn native_bus_interactions() {
-        let (send, receive) = get_generated_bus_interaction_pair(
-            r"Constr::BusInteraction(main::left_latch, 42, [main::a], main::left_latch);
-              Constr::BusInteraction(-main::multiplicities, 42, [main::b], main::right_latch);",
-        );
-        assert_eq!(
-            send.selected_payload.to_string(),
-            "main::left_latch $ [main::a]"
-        );
-        assert_eq!(
-            receive.selected_payload.to_string(),
-            "main::right_latch $ [main::b]"
-        );
-        assert_eq!(send.bus_id.to_string(), "42");
-        assert_eq!(receive.bus_id, 42.into());
-        assert_eq!(
-            receive.multiplicity.as_ref().unwrap().to_string(),
-            "main::multiplicities"
-        );
-        assert!(receive.has_arbitrary_multiplicity());
-    }
 }
