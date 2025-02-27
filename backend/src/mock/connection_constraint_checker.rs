@@ -78,7 +78,7 @@ impl<F: FieldElement> Connection<F> {
                 None,
             )),
             // Handled by bus constraint checker
-            Identity::PhantomBusInteraction(_) => Err(()),
+            Identity::BusInteraction(_) | Identity::PhantomBusInteraction(_) => Err(()),
         }?;
 
         // This connection is not localized yet: Its expression's PolyIDs point to the global PIL, not the local PIL.

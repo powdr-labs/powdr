@@ -717,6 +717,7 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 left.expressions.is_empty().then_some(index)
             }
             Identity::Connect(..) => None,
+            Identity::BusInteraction(..) => None,
             // Bus interactions send at least their bus ID, which needs to
             // be received for the bus argument to hold.
             Identity::PhantomBusInteraction(..) => None,
@@ -740,7 +741,8 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 Identity::Permutation(..) => 3,
                 Identity::PhantomPermutation(..) => 4,
                 Identity::Connect(..) => 5,
-                Identity::PhantomBusInteraction(..) => 6,
+                Identity::BusInteraction(..) => 6,
+                Identity::PhantomBusInteraction(..) => 7,
             };
 
             discriminant(self)
@@ -800,7 +802,8 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                             left: c, right: d, ..
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
-                    (Identity::PhantomBusInteraction(_), Identity::PhantomBusInteraction(_)) => {
+                    (Identity::BusInteraction(_), Identity::BusInteraction(_))
+                    | (Identity::PhantomBusInteraction(_), Identity::PhantomBusInteraction(_)) => {
                         unimplemented!(
                             "Bus interactions should have been removed before this point."
                         )
@@ -834,6 +837,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .enumerate()
         .filter_map(|(index, identity)| match identity {
             // Duplicate bus interactions should not be removed, because that changes the statement.
+            Identity::BusInteraction(_) => None,
             Identity::PhantomBusInteraction(_) => None,
             _ => match identity_expressions.insert(CanonicalIdentity(identity)) {
                 false => Some(index),
