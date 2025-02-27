@@ -299,13 +299,10 @@ impl BusLinker {
 
 #[cfg(test)]
 mod test {
-    use std::{
-        fs,
-        path::PathBuf,
-    };
+    use std::{fs, path::PathBuf};
 
-    use powdr_ast::object::MachineInstanceGraph;
     use powdr_ast::analyzed::{Analyzed, Identity};
+    use powdr_ast::object::MachineInstanceGraph;
     use powdr_number::{FieldElement, GoldilocksField};
 
     use powdr_analysis::convert_asm_to_pil;
@@ -390,10 +387,13 @@ namespace main__rom(4);
         let expectation = r#"Constr::BusInteraction(1, 454118344, [0, main::pc, main::instr__jump_to_operation, main::instr__reset, main::instr__loop, main::instr_return], 1);
 Constr::BusInteraction(-main__rom::multiplicity, 454118344, [0, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, 0], 1);
 "#;
-        let native_bus_interactions = native_bus_interactions
-            .iter()
-            .map(|i| format!("{i}\n"))
-            .collect::<String>();
+        let native_bus_interactions =
+            native_bus_interactions
+                .iter()
+                .fold(String::new(), |mut acc, i| {
+                    acc.push_str(&format!("{i}\n"));
+                    acc
+                });
         assert_eq!(native_bus_interactions, expectation);
     }
 }
