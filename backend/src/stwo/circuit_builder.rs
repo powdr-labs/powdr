@@ -300,10 +300,8 @@ impl FrameworkEval for PowdrEval {
                 Identity::Permutation(..) => {
                     unimplemented!("Permutation is not implemented in stwo yet")
                 }
-                Identity::BusInteraction(..) => {
-                    unimplemented!("BusInteraction is not implemented in stwo yet")
-                }
-                Identity::PhantomPermutation(..)
+                Identity::BusInteraction(..)
+                | Identity::PhantomPermutation(..)
                 | Identity::PhantomLookup(..)
                 | Identity::PhantomBusInteraction(..) => {}
             }
