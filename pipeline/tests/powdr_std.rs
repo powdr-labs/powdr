@@ -94,6 +94,13 @@ fn poseidon2_gl_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn split_gl_vec_test() {
+    let f = "std/split_gl_vec_test.asm";
+    regular_test_gl(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
     // Native linker mode, because bus constraints are exponential in Halo2
