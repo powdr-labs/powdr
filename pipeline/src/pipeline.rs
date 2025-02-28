@@ -1011,13 +1011,10 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     pub fn compute_witness(&mut self) -> WitgenResult<T> {
-        if let Some(witness) = &self.artifact.witness {
-            if let Some(public) = &self.artifact.public {
-                return Ok((witness.clone(), public.clone()));
-            }
-            return Ok((witness.clone(), Arc::new(BTreeMap::new())));
+        if let (Some(witness), Some(public)) = (&self.artifact.witness, &self.artifact.public) {
+            return Ok((witness.clone(), public.clone()));
         }
-
+        
         self.host_context.clear();
 
         let pil = self.compute_optimized_pil()?;
