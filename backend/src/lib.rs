@@ -14,7 +14,7 @@ mod mock;
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
-use std::{io, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy)]
@@ -191,6 +191,7 @@ pub trait Backend<F: FieldElement>: Send {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
+        public: &BTreeMap<String, F>,
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error>;

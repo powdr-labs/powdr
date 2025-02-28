@@ -9,6 +9,7 @@ fn run_witgen_pil<T: FieldElement>(pil: &str) -> Arc<Columns<T>> {
         .from_pil_string(pil.to_string())
         .compute_witness()
         .unwrap()
+        .0
 }
 
 #[test]
