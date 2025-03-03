@@ -43,6 +43,19 @@ enum Constr {
     /// A connection constraint (copy constraint), result of the "connect" operator.
     Connection((expr, expr)[]),
 
+    /// A bus interaction with only stage 0 columns. Stage 1 columns are to be created in 
+    /// backends that support LogUp natively, i.e. Stwo.
+    /// Contains:
+    /// - An expression for the multiplicity. Negative for bus receives.
+    /// - An expression for the bus ID. Each bus receive should have a static
+    ///   bus ID (i.e., just a number) that uniquely identifies the receive.
+    /// - The tuple added to the bus.
+    /// - An expression for the latch. This should be exactly what the RHS selector
+    ///   would be in an equivalent lookup or permutation:
+    ///   - It should always evaluate to a binary value.
+    ///   - If it evaluates to zero, the multiplicity must be zero.
+    BusInteraction(expr, expr, expr[], expr),
+
     /// A "phantom" bus interaction, i.e., an annotation for witness generation.
     /// The actual constraint should be enforced via other constraints.
     /// Contains:

@@ -135,6 +135,9 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                             line,
                         });
                     }
+                    Identity::BusInteraction(..) => {
+                        // Native bus interactions are not relevant in estark, which supports native lookup/permutations
+                    }
                     Identity::PhantomLookup(..)
                     | Identity::PhantomPermutation(..)
                     | Identity::PhantomBusInteraction(..) => {

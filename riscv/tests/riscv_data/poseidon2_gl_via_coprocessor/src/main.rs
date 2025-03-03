@@ -2,14 +2,14 @@
 #![no_std]
 
 use powdr_riscv_runtime::{
-    goldilocks::{Goldilocks, PRIME},
+    goldilocks::{extract_opaque_vec8, Goldilocks, OpaqueGoldilocks, PRIME},
     hash::{poseidon2_gl, poseidon2_gl_inplace},
 };
 
 #[no_mangle]
 fn main() {
-    let i = [Goldilocks::new(0); 8];
-    let h = poseidon2_gl(&i).map(u64::from);
+    let i = [OpaqueGoldilocks::from(0); 8];
+    let h = extract_opaque_vec8(&poseidon2_gl(&i));
     assert_eq!(h[0], 14905565590733827480);
     assert_eq!(h[1], 640905753703258831);
     assert_eq!(h[2], 4579128623722792381);
@@ -19,8 +19,8 @@ fn main() {
     assert_eq!(h[6], 13759450385053274731);
     assert_eq!(h[7], 2402148582355896469);
 
-    let i = [Goldilocks::new(1); 8];
-    let h = poseidon2_gl(&i).map(u64::from);
+    let i = [OpaqueGoldilocks::from(1); 8];
+    let h = extract_opaque_vec8(&poseidon2_gl(&i));
     assert_eq!(h[0], 18201552556563266798);
     assert_eq!(h[1], 6814935789744812745);
     assert_eq!(h[2], 5947349602629011250);
@@ -31,8 +31,8 @@ fn main() {
     assert_eq!(h[7], 13574628582471329853);
 
     let minus_one = PRIME - 1;
-    let i = [Goldilocks::new(minus_one); 8];
-    let h = poseidon2_gl(&i).map(u64::from);
+    let i = [OpaqueGoldilocks::from(Goldilocks::new(minus_one)); 8];
+    let h = extract_opaque_vec8(&poseidon2_gl(&i));
     assert_eq!(h[0], 13601391594672984423);
     assert_eq!(h[1], 7799837486760213030);
     assert_eq!(h[2], 4721195013230721931);
@@ -52,8 +52,8 @@ fn main() {
         6254867324987,
         2087,
     ]
-    .map(Goldilocks::new);
-    let h = poseidon2_gl(&i).map(u64::from);
+    .map(|x| OpaqueGoldilocks::from(Goldilocks::new(x)));
+    let h = extract_opaque_vec8(&poseidon2_gl(&i));
     assert_eq!(h[0], 14498150941209346562);
     assert_eq!(h[1], 8038616707062714447);
     assert_eq!(h[2], 17242548914990530484);
@@ -65,6 +65,6 @@ fn main() {
 
     // Also test the inplace version
     poseidon2_gl_inplace(&mut i);
-    let h_inplace = i.map(u64::from);
+    let h_inplace = extract_opaque_vec8(&i);
     assert_eq!(h, h_inplace);
 }
