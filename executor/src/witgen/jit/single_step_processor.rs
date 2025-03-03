@@ -78,6 +78,8 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             .map(|f| QueueItem::ProverFunction(f, 1))
             .collect_vec();
 
+        // TODO add definitions of intermediate columns.
+
         Processor::new(
             self.fixed_data,
             identities,

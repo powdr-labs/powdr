@@ -187,6 +187,11 @@ mod tests {
             Default::default(),
             fixed_data.identities.iter().collect(),
             fixed_data.witness_cols.keys().collect(),
+            fixed_data
+                .intermediate_definitions
+                .keys()
+                .map(|k| k.poly_id)
+                .collect(),
             Default::default(),
         );
 

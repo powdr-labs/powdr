@@ -342,6 +342,8 @@ pub struct MachineParts<'a, T: FieldElement> {
     pub identities: Vec<&'a Identity<T>>,
     /// Witness columns relevant to this machine.
     pub witnesses: HashSet<PolyID>,
+    /// Intermediate columns referenced in this machine.
+    pub intermediates: HashSet<PolyID>,
     /// Prover functions that are relevant for this machine.
     pub prover_functions: Vec<&'a analyzed::Expression>,
 }
@@ -352,6 +354,7 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
         connections: BTreeMap<u64, Connection<'a, T>>,
         identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
+        intermediates: HashSet<PolyID>,
         prover_functions: Vec<&'a analyzed::Expression>,
     ) -> Self {
         Self {
@@ -359,6 +362,7 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
             connections,
             identities,
             witnesses,
+            intermediates,
             prover_functions,
         }
     }

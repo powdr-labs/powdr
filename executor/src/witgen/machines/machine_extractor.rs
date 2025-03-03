@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use itertools::Itertools;
+use powdr_ast::analyzed::AlgebraicReference;
+use powdr_ast::analyzed::PolynomialType;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
@@ -62,6 +64,12 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 Default::default(),
                 self.fixed.identities.iter().collect(),
                 self.fixed.witness_cols.keys().collect::<HashSet<_>>(),
+                self.fixed
+                    .analyzed
+                    .intermediate_columns
+                    .values()
+                    .map(|(s, _)| s.into())
+                    .collect::<HashSet<_>>(),
                 prover_functions,
             );
 
@@ -128,6 +136,8 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
 
             publics.add_all(machine_identities.as_slice()).unwrap();
 
+            let machine_intermediates = intermediates_in_identities(&machine_identities).collect();
+
             // Connections that call into the current machine
             let machine_connections = all_connections
                 .iter()
@@ -168,6 +178,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 machine_connections,
                 machine_identities,
                 machine_witnesses,
+                machine_intermediates,
                 prover_functions.iter().map(|&(_, pf)| pf).collect(),
             );
 
@@ -224,6 +235,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             .difference(&multiplicity_columns)
             .cloned()
             .collect::<HashSet<_>>();
+        let main_intermediates = intermediates_in_identities(&base_identities).collect();
 
         log::trace!(
             "\nThe base machine contains the following witnesses:\n{}\n identities:\n{}\n and prover functions:\n{}",
@@ -241,6 +253,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             Default::default(),
             base_identities,
             main_witnesses,
+            main_intermediates,
             base_prover_functions,
         );
 
@@ -466,4 +479,18 @@ fn refs_in_parsed_expression(expr: &analyzed::Expression) -> impl Iterator<Item 
         }
         _ => None,
     })
+}
+
+fn intermediates_in_identities<'a, T: FieldElement>(
+    identities: &'a [&'a Identity<T>],
+) -> impl Iterator<Item = PolyID> + 'a {
+    identities
+        .into_iter()
+        .flat_map(|id| id.all_children())
+        .filter_map(|expr| match expr {
+            Expression::Reference(AlgebraicReference { poly_id, .. }) => {
+                (poly_id.ptype == PolynomialType::Intermediate).then_some(*poly_id)
+            }
+            _ => None,
+        })
 }

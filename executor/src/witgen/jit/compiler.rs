@@ -200,6 +200,9 @@ fn witgen_code<T: FieldElement>(
                 }
                 Variable::Param(i) => format!("get_param(params, {i})"),
                 Variable::FixedCell(_) => panic!("Fixed columns should not be known inputs."),
+                Variable::IntermediateCell(_) => {
+                    unreachable!("Intermediate cells should not be known inputs.")
+                }
                 Variable::MachineCallParam(_) => {
                     unreachable!("Machine call variables should not be pre-known.")
                 }
@@ -245,6 +248,10 @@ fn witgen_code<T: FieldElement>(
                 )),
                 Variable::Param(i) => Some(format!("    set_param(params, {i}, {value});")),
                 Variable::FixedCell(_) => panic!("Fixed columns should not be written to."),
+                Variable::IntermediateCell(_) => {
+                    // We do not permanently store intermediate cells
+                    None
+                }
                 Variable::MachineCallParam(_) => {
                     // This is just an internal variable.
                     None
@@ -258,7 +265,10 @@ fn witgen_code<T: FieldElement>(
         .iter()
         .filter_map(|var| match var {
             Variable::WitnessCell(cell) => Some(cell),
-            Variable::Param(_) | Variable::FixedCell(_) | Variable::MachineCallParam(_) => None,
+            Variable::Param(_)
+            | Variable::FixedCell(_)
+            | Variable::IntermediateCell(_)
+            | Variable::MachineCallParam(_) => None,
         })
         .map(|cell| {
             format!(
@@ -486,14 +496,18 @@ fn variable_to_string(v: &Variable) -> String {
             format_row_offset(cell.row_offset)
         ),
         Variable::Param(i) => format!("p_{i}"),
-        Variable::FixedCell(cell) => {
-            format!(
-                "f_{}_{}_{}",
-                escape_column_name(&cell.column_name),
-                cell.id,
-                cell.row_offset
-            )
-        }
+        Variable::FixedCell(cell) => format!(
+            "f_{}_{}_{}",
+            escape_column_name(&cell.column_name),
+            cell.id,
+            cell.row_offset
+        ),
+        Variable::IntermediateCell(cell) => format!(
+            "i_{}_{}_{}",
+            escape_column_name(&cell.column_name),
+            cell.id,
+            cell.row_offset
+        ),
         Variable::MachineCallParam(call_var) => {
             format!(
                 "call_var_{}_{}_{}",

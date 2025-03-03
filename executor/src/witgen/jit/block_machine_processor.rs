@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_ast::analyzed::{ContainsNextRef, PolyID, PolynomialType};
+use powdr_ast::analyzed::{AlgebraicReferenceThin, ContainsNextRef, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -134,6 +134,26 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .map(|id| (*id, row))
                 .collect_vec()
         });
+
+        // Add the intermediate definitions.
+        for inter in &self.machine_parts.intermediates {
+            let value = &intermediate_definitions[&AlgebraicReferenceThin {
+                poly_id: *inter,
+                next: false,
+            }];
+            println!("Intermediate: {:?} = {value}", inter);
+            for row_offset in start_row..=end_row {
+                queue_items.push(QueueItem::variable_assignment(
+                    value,
+                    Variable::IntermediateCell(Cell {
+                        column_name: "TODO".to_string(),
+                        id: inter.id,
+                        row_offset,
+                    }),
+                    row_offset,
+                ));
+            }
+        }
 
         // Add the prover functions
         queue_items.extend(prover_functions.iter().flat_map(|f| {
@@ -574,6 +594,53 @@ call_var(2, 0, 0) = 0;
 call_var(3, 0, 0) = 0;
 machine_call(2, [Known(call_var(2, 0, 0))]);
 machine_call(3, [Known(call_var(3, 0, 0))]);"
+        );
+    }
+
+    #[test]
+    fn intermediate() {
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is [S.X, S.Y, S.Z];
+        namespace S(256);
+            let X;
+            let Y;
+            let Z;
+            let Z1: inter = X + Y;
+            let Z2: inter = Z1 * Z1 + X;
+            let Z3: inter = Z2 * Z2 + Y;
+            let Z4: inter = Z3 * Z3 + X;
+            let Z5: inter = Z4 * Z4 + Y;
+            let Z6: inter = Z5 * Z5 + X;
+            let Z7: inter = Z6 * Z6 + Z3;
+            let Z8: inter = Z7 * Z7 + X;
+            let Z9: inter = Z8 * Z8 + Y;
+            let Z10: inter = Z9 * Z9 + X;
+            let Z11: inter = Z10 * Z10 + Z8;
+            let Z12: inter = Z11 * Z11 + X;
+            let Z13: inter = Z12 * Z12 + Y;
+            let Z14: inter = Z13 * Z13 + X;
+            let Z15: inter = Z14 * Z14 + Z12;
+            let Z16: inter = Z15 * Z15 + X;
+            let Z17: inter = Z16 * Z16 + Y;
+            let Z18: inter = Z17 * Z17 + X;
+            let Z19: inter = Z18 * Z18 + Z16;
+            let Z20: inter = Z19 * Z19 + X;
+            let Z21: inter = Z20 * Z20 + Y;
+            let Z22: inter = Z21 * Z21 + X;
+            let Z23: inter = Z22 * Z22 + Z20;
+            let Z24: inter = Z23 * Z23 + X;
+            let Z25: inter = Z24 * Z24 + Y;
+            let Z26: inter = Z25 * Z25 + X;
+            let Z27: inter = Z26 * Z26 + Z24;
+            let Z28: inter = Z27 * Z27 + X;
+            Z = Z28;
+        ";
+        let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        assert_eq!(
+            code,
+            "X[1] = Y[0];\nY[1] = (X[0] + Y[0]);\nX[2] = Y[1];\nY[2] = (X[1] + Y[1]);"
         );
     }
 }

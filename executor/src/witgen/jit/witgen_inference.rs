@@ -7,7 +7,7 @@ use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolynomialType,
+    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
 };
 use powdr_number::FieldElement;
 
@@ -529,16 +529,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
         offset: i32,
     ) -> Option<AffineSymbolicExpression<T, Variable>> {
         Some(match expr {
-            Expression::Reference(r) => match r.poly_id.ptype {
-                PolynomialType::Constant | PolynomialType::Committed => {
-                    self.evaluate_variable(Variable::from_reference(r, offset))
-                }
-                PolynomialType::Intermediate => {
-                    let definition =
-                        &self.witgen_inference.fixed_data.intermediate_definitions[&r.to_thin()];
-                    self.evaluate(definition, offset)?
-                }
-            },
+            Expression::Reference(r) => self.evaluate_variable(Variable::from_reference(r, offset)),
             Expression::PublicReference(_) | Expression::Challenge(_) => {
                 // TODO we need to introduce a variable type for those.
                 return None;
@@ -649,7 +640,7 @@ impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'
 
 #[cfg(test)]
 mod test {
-    use powdr_ast::analyzed::{PolyID, PolynomialIdentity};
+    use powdr_ast::analyzed::{PolyID, PolynomialIdentity, PolynomialType};
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
     use test_log::test;
