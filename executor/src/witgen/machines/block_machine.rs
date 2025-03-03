@@ -172,7 +172,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         known_arguments: &BitVec,
         range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
-        let operation_id = if !known_arguments.is_empty() && known_arguments[0] {
+        let fixed_first_input = if !known_arguments.is_empty() && known_arguments[0] {
             range_constraints[0].try_to_single_value().map(|v| (0, v))
         } else {
             None
@@ -181,7 +181,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             can_process,
             identity_id,
             known_arguments,
-            operation_id,
+            fixed_first_input,
         ) {
             Some(entry) => (true, entry.range_constraints.clone()),
             None => (false, range_constraints),
@@ -198,7 +198,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
-        let operation_id = match &values.first() {
+        let fixed_first_input = match &values.first() {
             Some(LookupCell::Input(v)) => Some((0, **v)),
             None | Some(LookupCell::Output(_)) => None,
         };
@@ -211,7 +211,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             identity_id,
             values,
             data,
-            operation_id,
+            fixed_first_input,
         )?;
         assert!(success);
         self.block_count_jit += 1;
@@ -448,12 +448,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
 
         let known_inputs = arguments.iter().map(|e| e.is_constant()).collect();
-        let operation_id = arguments
+        let fixed_first_input = arguments
             .first()
             .and_then(|a| a.constant_value().map(|v| (0, v)));
         if self
             .function_cache
-            .compile_cached(mutable_state, identity_id, &known_inputs, operation_id)
+            .compile_cached(mutable_state, identity_id, &known_inputs, fixed_first_input)
             .is_some()
         {
             let caller_data = CallerData::new(arguments, range_constraints);
