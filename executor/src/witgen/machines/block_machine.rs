@@ -172,10 +172,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         known_arguments: &BitVec,
         range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
-        let operation_id = known_arguments[0]
-            .then(|| range_constraints[0].try_to_single_value())
-            .flatten()
-            .map(|v| (0, v));
+        // We use the input range constraints to see if there is a column
+        // containing the substring "operation_id" which is constrained to a
+        // single value and use that value as part of the cache key.
+        let operation_id = self.find_operation_id(identity_id).and_then(|index| {
+            let v = range_constraints[index].try_to_single_value()?;
+            Some((index, v))
+        });
         match self.function_cache.compile_cached(
             can_process,
             identity_id,
@@ -197,10 +200,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
-        let operation_id = match &values[0] {
-            LookupCell::Input(v) => Some((0, **v)),
-            LookupCell::Output(_) => None,
-        };
+        let operation_id =
+            self.find_operation_id(identity_id)
+                .and_then(|index| match &values[index] {
+                    LookupCell::Input(v) => Some((index, **v)),
+                    LookupCell::Output(_) => None,
+                });
 
         self.data.finalize_all();
         let data = self.data.append_new_finalized_rows(self.block_size);
@@ -447,9 +452,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
 
         let known_inputs = arguments.iter().map(|e| e.is_constant()).collect();
-        let operation_id = arguments
-            .first()
-            .and_then(|v| v.constant_value().map(|v| (0, v)));
+        let operation_id = self.find_operation_id(identity_id).and_then(|index| {
+            let v = arguments[index].constant_value()?;
+            Some((index, v))
+        });
         if self
             .function_cache
             .compile_cached(mutable_state, identity_id, &known_inputs, operation_id)
@@ -531,10 +537,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         self.data.finalize_all();
 
         let mut lookup_cells = caller_data.as_lookup_cells();
-        let operation_id = lookup_cells.first().and_then(|c| match c {
-            LookupCell::Input(v) => Some((0, **v)),
-            LookupCell::Output(_) => None,
-        });
+        let operation_id =
+            self.find_operation_id(identity_id)
+                .and_then(|index| match &lookup_cells[index] {
+                    LookupCell::Input(v) => Some((index, **v)),
+                    LookupCell::Output(_) => None,
+                });
         let data = self.data.append_new_finalized_rows(self.block_size);
 
         let success = self.function_cache.process_lookup_direct(
@@ -547,6 +555,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         assert!(success);
 
         caller_data.into()
+    }
+
+    fn find_operation_id(&self, identity_id: u64) -> Option<usize> {
+        let right = &self.parts.connections[&identity_id].right.expressions;
+        right.iter().position(|r| {
+            try_to_simple_poly(r).is_some_and(|poly| poly.name.contains("operation_id"))
+        })
     }
 
     fn process<'b, Q: QueryCallback<T>>(
