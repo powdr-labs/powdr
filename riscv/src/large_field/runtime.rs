@@ -280,8 +280,8 @@ impl Runtime {
             [r#"instr poseidon2_gl X, Y, Z
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
-                    link ~> tmp?_col = regs.mload(Z, STEP + 2)
-                    link ~> poseidon2_gl.permute(tmp1_col, STEP, tmp2_col, STEP + 1, tmp?_col)
+                    link ~> tmp3_col = regs.mload(Z, STEP + 2)
+                    link ~> poseidon2_gl.permute(tmp1_col, STEP, tmp2_col, STEP + 1, tmp3_col)
                 {
                     // make sure tmp1_col and tmp2_col are 4-byte aligned memory addresses
                     tmp1_col = 4 * (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000),
