@@ -7,7 +7,7 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     jit::{
-        identity_queue::QueueItem, processor::Processor,
+        code_cleaner, identity_queue::QueueItem, processor::Processor,
         prover_function_heuristics::decode_prover_functions,
     },
     machines::MachineParts,
@@ -143,12 +143,13 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let requested_known = known_args
             .iter()
             .enumerate()
-            .filter_map(|(i, is_input)| (!is_input).then_some(Variable::Param(i)));
-        let result = Processor::new(
+            .filter_map(|(i, is_input)| (!is_input).then_some(Variable::Param(i)))
+            .collect_vec();
+        let mut result = Processor::new(
             self.fixed_data,
             identities,
             queue_items,
-            requested_known,
+            requested_known.iter().cloned(),
             BLOCK_MACHINE_MAX_BRANCH_DEPTH,
         )
         .with_block_size(self.block_size)
@@ -173,45 +174,100 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .format("\n  ");
             format!("Code generation failed: {shortened_error}\nRun with RUST_LOG=trace to see the code generated so far.")
         })?;
-        self.check_block_shape(&result.code)?;
+
+        result.code = self.try_ensure_block_shape(result.code, &requested_known)?;
+
         Ok((result, prover_functions))
     }
 
-    /// Verifies that each column and each bus send is stackable in the block.
+    /// Tries to ensure that each column and each bus send is stackable in the block.
     /// This means that if we have a cell write or a bus send in row `i`, we cannot
     /// have another one in row `i + block_size`.
-    fn check_block_shape(&self, code: &[Effect<T, Variable>]) -> Result<(), String> {
-        for (column_id, row_offsets) in written_rows_per_column(code) {
-            for offset in &row_offsets {
-                if row_offsets.contains(&(*offset + self.block_size as i32)) {
+    /// In some situations, it removes assignments to variables that are not required,
+    /// but would conflict with other assignments.
+    /// Returns the potentially modified code.
+    fn try_ensure_block_shape(
+        &self,
+        code: Vec<Effect<T, Variable>>,
+        requested_known: &[Variable],
+    ) -> Result<Vec<Effect<T, Variable>>, String> {
+        let optional_vars = code_cleaner::optional_vars(&code, requested_known);
+
+        // Determine conflicting variable assignments we can remove.
+        let mut vars_to_remove = HashSet::new();
+        for (column_id, row_offsets) in written_rows_per_column(&code) {
+            for (outside, inside) in self.conflicting_row_offsets(&row_offsets) {
+                let first_var = Variable::WitnessCell(Cell {
+                    column_name: String::new(),
+                    id: column_id,
+                    row_offset: outside,
+                });
+                let second_var = Variable::WitnessCell(Cell {
+                    column_name: String::new(),
+                    id: column_id,
+                    row_offset: inside,
+                });
+
+                if optional_vars.contains(&first_var) {
+                    vars_to_remove.insert(first_var);
+                } else if optional_vars.contains(&second_var) {
+                    vars_to_remove.insert(second_var);
+                } else {
+                    // Both variables are non-optional, we have a conflict.
                     return Err(format!(
-                        "Column {} is not stackable in a {}-row block, conflict in rows {} and {}.",
+                        "Column {} is not stackable in a {}-row block, conflict in rows {inside} and {outside}.",
                         self.fixed_data.column_name(&PolyID {
                             id: column_id,
                             ptype: PolynomialType::Committed
                         }),
                         self.block_size,
-                        offset,
-                        offset + self.block_size as i32
                     ));
                 }
             }
         }
-        for (identity_id, row_offsets) in completed_rows_for_bus_send(code) {
-            let row_offsets: BTreeSet<_> = row_offsets.into_iter().collect();
-            for offset in &row_offsets {
-                if row_offsets.contains(&(*offset + self.block_size as i32)) {
+        let code = code_cleaner::remove_variables(code, vars_to_remove);
+
+        // Determine conflicting machine calls we can remove.
+        let mut machine_calls_to_remove = HashSet::new();
+        for (identity_id, row_offsets) in completed_rows_for_bus_send(&code) {
+            for (outside, inside) in
+                self.conflicting_row_offsets(&row_offsets.keys().copied().collect())
+            {
+                if row_offsets[&outside] {
+                    machine_calls_to_remove.insert((identity_id, outside));
+                } else if row_offsets[&inside] {
+                    machine_calls_to_remove.insert((identity_id, inside));
+                } else {
                     return Err(format!(
-                        "Bus send for identity {} is not stackable in a {}-row block, conflict in rows {} and {}.",
-                        identity_id,
-                        self.block_size,
-                        offset,
-                        offset + self.block_size as i32
-                    ));
+                    "Bus send for identity {} is not stackable in a {}-row block, conflict in rows {inside} and {outside}.",
+                    identity_id,
+                    self.block_size,
+                ));
                 }
             }
         }
-        Ok(())
+        let code = code_cleaner::remove_machine_calls(code, &machine_calls_to_remove);
+
+        Ok(code)
+    }
+
+    /// Returns a list of pairs of conflicting row offsets in `row_offsets`
+    /// (i.e. equal modulo block size) where the first is always the one
+    /// outside the "regular" block range.
+    fn conflicting_row_offsets<'b>(
+        &'b self,
+        row_offsets: &'b BTreeSet<i32>,
+    ) -> impl Iterator<Item = (i32, i32)> + 'b {
+        row_offsets.iter().copied().flat_map(|offset| {
+            let other_offset = offset + self.block_size as i32;
+            row_offsets.contains(&other_offset).then_some({
+                if offset >= 0 && offset < self.block_size as i32 {
+                    (other_offset, offset)
+                } else {
+                    (offset, other_offset)
+                }
+            })
+        })
     }
 }
 
@@ -232,24 +288,35 @@ fn written_rows_per_column<T: FieldElement>(
         })
 }
 
-/// Returns, for each bus send ID, the collection of row offsets that have a machine call.
+/// Returns, for each bus send ID, the collection of row offsets that have a machine call
+/// and if in all the calls or that row, all the arguments are known.
 /// Combines calls from branches.
 fn completed_rows_for_bus_send<T: FieldElement>(
     code: &[Effect<T, Variable>],
-) -> BTreeMap<u64, BTreeSet<i32>> {
+) -> BTreeMap<u64, BTreeMap<i32, bool>> {
     code.iter()
         .flat_map(machine_calls)
-        .fold(BTreeMap::new(), |mut map, (id, row)| {
-            map.entry(id).or_default().insert(row);
+        .fold(BTreeMap::new(), |mut map, (id, row, call)| {
+            let rows = map.entry(id).or_default();
+            let entry = rows.entry(row).or_insert_with(|| true);
+            *entry &= fully_known_call(call);
             map
         })
+}
+
+/// Returns true if the effect is a machine call where all arguments are known.
+fn fully_known_call<T: FieldElement>(e: &Effect<T, Variable>) -> bool {
+    match e {
+        Effect::MachineCall(_, known, _) => known.iter().all(|v| v),
+        _ => false,
+    }
 }
 
 /// Returns all machine calls (bus identity and row offset) found in the effect.
 /// Recurses into branches.
 fn machine_calls<T: FieldElement>(
     e: &Effect<T, Variable>,
-) -> Box<dyn Iterator<Item = (u64, i32)> + '_> {
+) -> Box<dyn Iterator<Item = (u64, i32, &Effect<T, Variable>)> + '_> {
     match e {
         Effect::MachineCall(id, _, arguments) => match &arguments[0] {
             Variable::MachineCallParam(MachineCallVariable {
@@ -258,7 +325,7 @@ fn machine_calls<T: FieldElement>(
                 ..
             }) => {
                 assert_eq!(*id, *identity_id);
-                Box::new(std::iter::once((*identity_id, *row_offset)))
+                Box::new(std::iter::once((*identity_id, *row_offset, e)))
             }
             _ => panic!("Expected machine call variable."),
         },
@@ -398,8 +465,9 @@ params[2] = Add::c[0];"
     }
 
     #[test]
-    #[should_panic = "Column NotStackable::a is not stackable in a 1-row block"]
     fn not_stackable() {
+        // Note: This used to require a panic, but now we are just not assigning to
+        // a' any more. At some point, we need a better check for the block shape.
         let input = "
         namespace Main(256);
             col witness a, b, c;
@@ -574,6 +642,38 @@ call_var(2, 0, 0) = 0;
 call_var(3, 0, 0) = 0;
 machine_call(2, [Known(call_var(2, 0, 0))]);
 machine_call(3, [Known(call_var(3, 0, 0))]);"
+        );
+    }
+
+    #[test]
+    fn stackable_with_same_value() {
+        // In the following, we assign b[0] = 0 and b[4] = 0, which is a stackable
+        // error only if we are not able to compare the actual values.
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is S.sel $ [S.a, S.b, S.c];
+        namespace S(256);
+            col witness a, b, c;
+            let sel: col = |i| if i % 4 == 0 { 1 } else { 0 };
+            col fixed FACTOR = [0, 0, 1, 0]*;
+            b' = FACTOR * 8;
+            c = b + 1;
+        ";
+        let code = format_code(&generate_for_block_machine(input, "S", 1, 2).unwrap().code);
+        assert_eq!(
+            code,
+            "S::a[0] = params[0];
+S::b[0] = 0;
+params[1] = 0;
+S::b[1] = 0;
+S::c[0] = 1;
+params[2] = 1;
+S::b[2] = 0;
+S::c[1] = 1;
+S::b[3] = 8;
+S::c[2] = 1;
+S::c[3] = 9;"
         );
     }
 }
