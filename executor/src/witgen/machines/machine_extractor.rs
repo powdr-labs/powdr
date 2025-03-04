@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use itertools::Itertools;
@@ -68,9 +69,9 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 self.fixed
                     .analyzed
                     .intermediate_columns
-                    .values()
-                    .map(|(s, _)| s.into())
-                    .collect::<HashSet<_>>(),
+                    .iter()
+                    .map(|(name, (s, _))| (s.into(), name.clone()))
+                    .collect(),
                 prover_functions,
             );
 
@@ -486,33 +487,35 @@ fn refs_in_parsed_expression(expr: &analyzed::Expression) -> impl Iterator<Item 
     })
 }
 
-fn try_as_intermediate_ref<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID> {
+fn try_as_intermediate_ref<T: FieldElement>(expr: &Expression<T>) -> Option<(PolyID, String)> {
     match expr {
-        Expression::Reference(AlgebraicReference { poly_id, .. }) => {
-            (poly_id.ptype == PolynomialType::Intermediate).then_some(*poly_id)
+        Expression::Reference(AlgebraicReference { poly_id, name, .. }) => {
+            (poly_id.ptype == PolynomialType::Intermediate).then(|| (*poly_id, name.clone()))
         }
         _ => None,
     }
 }
 
+/// Returns all intermediate columns referenced in the identities as a map to their name.
+/// Follows intermediate references recursively.
 fn intermediates_in_identities<T: FieldElement>(
     identities: &[&Identity<T>],
     intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, Expression<T>>,
-) -> HashSet<PolyID> {
+) -> HashMap<PolyID, String> {
     let mut queue = identities
         .iter()
         .flat_map(|id| id.all_children())
         .filter_map(try_as_intermediate_ref)
         .collect::<BTreeSet<_>>();
-    let mut intermediates = HashSet::new();
-    while let Some(intermediate) = queue.pop_first() {
-        intermediates.insert(intermediate);
-        for referenced in intermediate_definitions[&intermediate.into()]
+    let mut intermediates = HashMap::new();
+    while let Some((poly_id, name)) = queue.pop_first() {
+        intermediates.insert(poly_id, name.clone());
+        for (ref_id, ref_name) in intermediate_definitions[&poly_id.into()]
             .all_children()
             .filter_map(try_as_intermediate_ref)
         {
-            if intermediates.insert(referenced) {
-                queue.insert(referenced);
+            if intermediates.insert(ref_id, ref_name.clone()).is_none() {
+                queue.insert((ref_id, ref_name));
             }
         }
     }

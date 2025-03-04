@@ -181,17 +181,19 @@ mod tests {
 
         let mutable_state = MutableState::new(iter::empty(), &query_callback);
 
+        let intermediates = analyzed
+            .intermediate_polys_in_source_order()
+            .flat_map(|(s, _)| s.array_elements())
+            .map(|(name, id)| (id, name))
+            .collect();
+
         let row_offset = RowIndex::from_degree(0, degree);
         let machine_parts = MachineParts::new(
             &fixed_data,
             Default::default(),
             fixed_data.identities.iter().collect(),
             fixed_data.witness_cols.keys().collect(),
-            fixed_data
-                .intermediate_definitions
-                .keys()
-                .map(|k| k.poly_id)
-                .collect(),
+            intermediates,
             Default::default(),
         );
 

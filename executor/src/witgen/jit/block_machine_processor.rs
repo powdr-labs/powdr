@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReferenceThin, ContainsNextRef, PolyID, PolynomialType};
+use powdr_ast::analyzed::{ContainsNextRef, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -135,19 +135,17 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .collect_vec()
         });
 
-        // Add the intermediate definitions.
-        for inter in &self.machine_parts.intermediates {
-            let value = &intermediate_definitions[&AlgebraicReferenceThin {
-                poly_id: *inter,
-                next: false,
-            }];
-            println!("Intermediate: {inter:?} = {value}");
+        // Add the intermediate definitions. It is fine to iterate over
+        // a hash type because the queue will re-sort its items.
+        #[allow(clippy::iter_over_hash_type)]
+        for (poly_id, name) in &self.machine_parts.intermediates {
+            let value = &intermediate_definitions[&(*poly_id).into()];
             for row_offset in start_row..=end_row {
                 queue_items.push(QueueItem::variable_assignment(
                     value,
                     Variable::IntermediateCell(Cell {
-                        column_name: "TODO".to_string(),
-                        id: inter.id,
+                        column_name: name.clone(),
+                        id: poly_id.id,
                         row_offset,
                     }),
                     row_offset,
@@ -640,7 +638,66 @@ machine_call(3, [Known(call_var(3, 0, 0))]);"
         let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
         assert_eq!(
             code,
-            "X[1] = Y[0];\nY[1] = (X[0] + Y[0]);\nX[2] = Y[1];\nY[2] = (X[1] + Y[1]);"
+            "\
+S::X[0] = params[0];
+S::Y[0] = params[1];
+S::Z1[0] = (S::X[0] + S::Y[0]);
+S::Z2[0] = ((S::Z1[0] * S::Z1[0]) + S::X[0]);
+S::Z3[0] = ((S::Z2[0] * S::Z2[0]) + S::Y[0]);
+S::Z4[0] = ((S::Z3[0] * S::Z3[0]) + S::X[0]);
+S::Z5[0] = ((S::Z4[0] * S::Z4[0]) + S::Y[0]);
+S::Z6[0] = ((S::Z5[0] * S::Z5[0]) + S::X[0]);
+S::Z7[0] = ((S::Z6[0] * S::Z6[0]) + S::Z3[0]);
+S::Z8[0] = ((S::Z7[0] * S::Z7[0]) + S::X[0]);
+S::Z9[0] = ((S::Z8[0] * S::Z8[0]) + S::Y[0]);
+S::Z10[0] = ((S::Z9[0] * S::Z9[0]) + S::X[0]);
+S::Z11[0] = ((S::Z10[0] * S::Z10[0]) + S::Z8[0]);
+S::Z12[0] = ((S::Z11[0] * S::Z11[0]) + S::X[0]);
+S::Z13[0] = ((S::Z12[0] * S::Z12[0]) + S::Y[0]);
+S::Z14[0] = ((S::Z13[0] * S::Z13[0]) + S::X[0]);
+S::Z15[0] = ((S::Z14[0] * S::Z14[0]) + S::Z12[0]);
+S::Z16[0] = ((S::Z15[0] * S::Z15[0]) + S::X[0]);
+S::Z17[0] = ((S::Z16[0] * S::Z16[0]) + S::Y[0]);
+S::Z18[0] = ((S::Z17[0] * S::Z17[0]) + S::X[0]);
+S::Z19[0] = ((S::Z18[0] * S::Z18[0]) + S::Z16[0]);
+S::Z20[0] = ((S::Z19[0] * S::Z19[0]) + S::X[0]);
+S::Z21[0] = ((S::Z20[0] * S::Z20[0]) + S::Y[0]);
+S::Z22[0] = ((S::Z21[0] * S::Z21[0]) + S::X[0]);
+S::Z23[0] = ((S::Z22[0] * S::Z22[0]) + S::Z20[0]);
+S::Z24[0] = ((S::Z23[0] * S::Z23[0]) + S::X[0]);
+S::Z25[0] = ((S::Z24[0] * S::Z24[0]) + S::Y[0]);
+S::Z26[0] = ((S::Z25[0] * S::Z25[0]) + S::X[0]);
+S::Z27[0] = ((S::Z26[0] * S::Z26[0]) + S::Z24[0]);
+S::Z28[0] = ((S::Z27[0] * S::Z27[0]) + S::X[0]);
+S::Z[0] = S::Z28[0];
+params[2] = S::Z[0];"
+        );
+    }
+
+    #[test]
+    fn intermediate_array() {
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is [S.X, S.Y, S.Z];
+        namespace S(256);
+            let X;
+            let Y;
+            let Z;
+            let Zi: inter[3] = [X + Y, 2 * X, Y * Y];
+            Z = Zi[0] + Zi[1] + Zi[2];
+        ";
+        let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        assert_eq!(
+            code,
+            "\
+S::X[0] = params[0];
+S::Y[0] = params[1];
+S::Zi[0][0] = (S::X[0] + S::Y[0]);
+S::Zi[2][0] = (S::Y[0] * S::Y[0]);
+S::Zi[1][0] = (2 * S::X[0]);
+S::Z[0] = ((S::Zi[0][0] + S::Zi[1][0]) + S::Zi[2][0]);
+params[2] = S::Z[0];"
         );
     }
 }
