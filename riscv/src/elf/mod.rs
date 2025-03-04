@@ -40,16 +40,16 @@ pub fn translate(file_name: &Path, options: CompilerOptions) -> String {
     code_gen::translate_program(elf_program, options)
 }
 
-struct ElfProgram {
+pub struct ElfProgram {
     dbg: DebugInfo,
     data_map: BTreeMap<u32, Data>,
-    text_labels: BTreeSet<u32>,
+    pub text_labels: BTreeSet<u32>,
     instructions: Vec<HighLevelInsn>,
     prover_data_bounds: (u32, u32),
     entry_point: u32,
 }
 
-fn load_elf(file_name: &Path) -> ElfProgram {
+pub fn load_elf(file_name: &Path) -> ElfProgram {
     log::info!("Loading ELF file: {}", file_name.display());
     let file_buffer = fs::read(file_name).unwrap();
 
@@ -1116,27 +1116,35 @@ impl Iterator for RiscVInstructionIterator<'_> {
                     .try_into()
                     .expect("Not enough bytes to complete a 32-bit instruction"),
             )
-            .decode(Isa::Rv32)
-            .unwrap_or_else(|_| {
-                // TODO: maybe instead of failing we should just emit `unimp`.
-                // This way we would support the default GNU binutils
-                // linker script, that places the ELF header in the text
-                // section.
-                panic!(
-                    "Failed to decode 32-bit instruction at {:08x}",
-                    self.curr_address
-                )
-            });
+            .decode(Isa::Rv32);
+            //.unwrap_or_else(|_| UnimpOrInstruction::Unimp32);
+
+            /*
+                        .unwrap_or_else(|_| {
+                            // TODO: maybe instead of failing we should just emit `unimp`.
+                            // This way we would support the default GNU binutils
+                            // linker script, that places the ELF header in the text
+                            // section.
+                            panic!(
+                                "Failed to decode 32-bit instruction at {:08x}",
+                                self.curr_address
+                            )
+                        });
+            */
 
             // When C extension is disabled, both LLVM and GNU binutils uses the
             // privileged instruction CSRRW to represent the `unimp` mnemonic.
             // https://groups.google.com/a/groups.riscv.org/g/sw-dev/c/Xu6UmcIAKIk/m/piJEHdBlAAAJ
             //
             // We must handle this case here.
-            let insn = if matches!(insn.opc, Op::CSRRW) {
-                UnimpOrInstruction::Unimp32
+            let insn = if let Ok(insn) = insn {
+                if matches!(insn.opc, Op::CSRRW) {
+                    UnimpOrInstruction::Unimp32
+                } else {
+                    UnimpOrInstruction::Instruction(insn)
+                }
             } else {
-                UnimpOrInstruction::Instruction(insn)
+                UnimpOrInstruction::Unimp32
             };
 
             maybe_insn = MaybeInstruction {
