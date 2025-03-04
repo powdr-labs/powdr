@@ -38,9 +38,14 @@ pub enum ProverFunctionComputation<'a> {
     /// The expression `f` in `query |i| std::prover::compute_from(Y, i, [X, ...], f)`,
     /// where f: (fe[] -> fe)
     ComputeFrom(&'a Expression),
-    /// Represents a call to `handle_query` (see `try_decode_handle_query`), where the
-    /// keys are the pc values (the first input column). The two two arguments to both input
-    /// and output queries are the second and third input columns.
+    /// Represents a call to `handle_query`, i.e. a function of the form
+    ///    query |<i>| std::prover::handle_query(<Y>, <i>, match std::prover::eval(<pc>) {
+    ///      <value1> => std::prelude::Query::Output(std::convert::int::<fe>(std::prover::eval(<arg1>)), std::prover::eval(<arg2>)),
+    ///      <value2> => std::prelude::Query::Input(std::convert::int::<fe>(std::prover::eval(<arg1>)), std::convert::int::<fe>(std::prover::eval(<arg2>))),
+    ///      ...
+    ///      _ => std::prelude::Query::None,
+    ///    }
+    /// where the map maps the `value<i>` patterns (as u64 numbers) to the type of query used for that number.
     HandleQueryInputOutput(BTreeMap<u64, QueryType>),
 }
 
