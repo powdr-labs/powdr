@@ -282,12 +282,7 @@ impl Runtime {
             "std::machines::hash::poseidon2_gl::Poseidon2GL",
             None,
             "poseidon2_gl",
-            vec![
-                "memory",
-                "split_gl",
-                "MIN_DEGREE",
-                "LARGE_SUBMACHINES_MAX_DEGREE",
-            ],
+            vec!["memory", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
             [r#"instr poseidon2_gl X, Y
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
@@ -296,18 +291,70 @@ impl Runtime {
                     // make sure tmp1_col and tmp2_col are aligned memory addresses
                     tmp3_col * 4 = tmp1_col,
                     tmp4_col * 4 = tmp2_col,
-                    // make sure the factors fit in 32 bits
+                    // make sure the addresses are 32 bits
                     tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
                     tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
                 }
             "#],
         );
 
+        self.add_submachine(
+            "std::machines::split::split_gl_vec::SplitGLVec8",
+            None,
+            "split_gl_vec",
+            vec!["memory", "split_gl", "MIN_DEGREE", "MAIN_MAX_DEGREE"],
+            [
+                r#"instr split_gl_vec X, Y
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> split_gl_vec.split(tmp1_col, tmp2_col, STEP + 2)
+                {
+                    // make sure tmp1_col and tmp2_col are aligned memory addresses
+                    tmp3_col * 4 = tmp1_col,
+                    tmp4_col * 4 = tmp2_col,
+                    // make sure the addresses are 32 bits
+                    tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+                    tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+                }
+            "#,
+                r#"
+                // Computes val(X) * 2**32 + val(Y) as a field operation and stores the result
+                // at memory address val(Z)
+                // val(Z) can be between in range [0, 2**32).
+                // val(Z) should be a multiple of 4, but this instruction does not enforce it.
+                instr merge_gl X, Y, Z
+                    // load lower limb
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    // load higher limb
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    // load the result address
+                    link ~> tmp3_col = regs.mload(Z, STEP + 2)
+                    // store the result at the result address
+                    link ~> memory.mstore(X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP + 3, tmp1_col + tmp2_col * 0x100000000)
+                {
+                    // Byte decompose the address
+                    tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+                }
+            "#,
+            ],
+        );
+
         // The poseidon2 syscall has input address passed on x10 and output address passed on x11,
         // they can overlap.
-        let implementation = std::iter::once("poseidon2_gl 10, 11;".to_string());
+        self.add_syscall(
+            Syscall::Poseidon2GL,
+            std::iter::once("poseidon2_gl 10, 11;".to_string()),
+        );
 
-        self.add_syscall(Syscall::Poseidon2GL, implementation);
+        self.add_syscall(
+            Syscall::SplitGLVec,
+            std::iter::once("split_gl_vec 10, 11;".to_string()),
+        );
+        self.add_syscall(
+            Syscall::MergeGL,
+            std::iter::once("merge_gl 10, 11, 12;".to_string()),
+        );
+
         self
     }
 
