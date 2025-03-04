@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::AlgebraicReference;
+use powdr_ast::analyzed::AlgebraicReferenceThin;
 use powdr_ast::analyzed::PolynomialType;
 
 use super::block_machine::BlockMachine;
@@ -136,7 +137,10 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
 
             publics.add_all(machine_identities.as_slice()).unwrap();
 
-            let machine_intermediates = intermediates_in_identities(&machine_identities).collect();
+            let machine_intermediates = intermediates_in_identities(
+                &machine_identities,
+                &self.fixed.intermediate_definitions,
+            );
 
             // Connections that call into the current machine
             let machine_connections = all_connections
@@ -235,7 +239,8 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             .difference(&multiplicity_columns)
             .cloned()
             .collect::<HashSet<_>>();
-        let main_intermediates = intermediates_in_identities(&base_identities).collect();
+        let main_intermediates =
+            intermediates_in_identities(&base_identities, &self.fixed.intermediate_definitions);
 
         log::trace!(
             "\nThe base machine contains the following witnesses:\n{}\n identities:\n{}\n and prover functions:\n{}",
@@ -481,16 +486,35 @@ fn refs_in_parsed_expression(expr: &analyzed::Expression) -> impl Iterator<Item 
     })
 }
 
-fn intermediates_in_identities<'a, T: FieldElement>(
-    identities: &'a [&'a Identity<T>],
-) -> impl Iterator<Item = PolyID> + 'a {
-    identities
-        .into_iter()
+fn try_as_intermediate_ref<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID> {
+    match expr {
+        Expression::Reference(AlgebraicReference { poly_id, .. }) => {
+            (poly_id.ptype == PolynomialType::Intermediate).then_some(*poly_id)
+        }
+        _ => None,
+    }
+}
+
+fn intermediates_in_identities<T: FieldElement>(
+    identities: &[&Identity<T>],
+    intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, Expression<T>>,
+) -> HashSet<PolyID> {
+    let mut queue = identities
+        .iter()
         .flat_map(|id| id.all_children())
-        .filter_map(|expr| match expr {
-            Expression::Reference(AlgebraicReference { poly_id, .. }) => {
-                (poly_id.ptype == PolynomialType::Intermediate).then_some(*poly_id)
+        .filter_map(try_as_intermediate_ref)
+        .collect::<BTreeSet<_>>();
+    let mut intermediates = HashSet::new();
+    while let Some(intermediate) = queue.pop_first() {
+        intermediates.insert(intermediate);
+        for referenced in intermediate_definitions[&intermediate.into()]
+            .all_children()
+            .filter_map(try_as_intermediate_ref)
+        {
+            if intermediates.insert(referenced) {
+                queue.insert(referenced);
             }
-            _ => None,
-        })
+        }
+    }
+    intermediates
 }

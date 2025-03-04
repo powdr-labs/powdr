@@ -141,7 +141,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 poly_id: *inter,
                 next: false,
             }];
-            println!("Intermediate: {:?} = {value}", inter);
+            println!("Intermediate: {inter:?} = {value}");
             for row_offset in start_row..=end_row {
                 queue_items.push(QueueItem::variable_assignment(
                     value,
