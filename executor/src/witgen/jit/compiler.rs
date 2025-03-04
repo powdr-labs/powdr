@@ -14,7 +14,7 @@ use crate::witgen::{
         finalizable_data::{ColumnLayout, CompactDataRef},
         mutable_state::MutableState,
     },
-    jit::prover_function_heuristics::ProverFunctionComputation,
+    jit::prover_function_heuristics::{ProverFunctionComputation, QueryType},
     machines::{
         profiling::{record_end, record_start},
         LookupCell,
@@ -539,8 +539,27 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
             assert!(!f.compute_multi);
             format!("({}).call()", codegen.generate_code_for_expression(code)?)
         }
-        ProverFunctionComputation::HandleQueryInputOutput(_branches) => {
-            todo!()
+        ProverFunctionComputation::HandleQueryInputOutput(branches) => {
+            let indent = "        ";
+            // We assign zero in the "no match" case. The correct behaviour would be to
+            // not assign anything, but it should work for all our use-casse.
+            format!(
+                "match IntType::from(args[0]) {{\n{}\n{indent}_ => 0.into(),\n    }}",
+                branches
+                    .iter()
+                    .map(|(value, query_type)| {
+                        let result = match query_type {
+                            QueryType::Input => {
+                                "input_from_channel(ibig::IBig::from(args[0]), ibig::IBig::from(args[1])),"
+                            }
+                            QueryType::Output => {
+                                "{ output_to_channel(ibig::IBig::from(args[0]), args[1]); 0.into() },"
+                            }
+                        };
+                        format!("{indent}{value} => {result}")
+                    })
+                    .format("\n")
+            )
         }
     };
     let code = if f.compute_multi {
@@ -552,10 +571,10 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
     let length = f.target.len();
     let index = f.index;
     Ok(format!(
-        "fn prover_function_{index}(i: u64, args: &[FieldElement]) -> [FieldElement; {length}] {{\n\
-            let i: ibig::IBig = i.into();\n\
-            {code}
-        }}"
+        "fn prover_function_{index}(i: u64, args: &[FieldElement]) -> [FieldElement; {length}] {{
+    let i: ibig::IBig = i.into();
+    {code}
+}}"
     ))
 }
 
@@ -564,12 +583,14 @@ mod tests {
 
     use std::ptr::null;
 
+    use powdr_ast::analyzed::AlgebraicReference;
     use powdr_ast::analyzed::FunctionValueDefinition;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
     use powdr_number::GoldilocksField;
 
+    use crate::witgen::jit::prover_function_heuristics::QueryType;
     use crate::witgen::jit::variable::Cell;
     use crate::witgen::jit::variable::MachineCallVariable;
     use crate::witgen::range_constraints::RangeConstraint;
@@ -1080,5 +1101,86 @@ extern \"C\" fn witgen(
         p_1 = (p_0 + FieldElement::from(3));
     }";
         assert_eq!(format_effects(&[branch_effect]), expectation);
+    }
+
+    #[test]
+    fn handle_query_prover_function() {
+        fn to_algebraic_ref(name: &str, id: u64) -> AlgebraicReference {
+            AlgebraicReference {
+                name: name.to_string(),
+                poly_id: PolyID {
+                    id,
+                    ptype: PolynomialType::Committed,
+                },
+                next: false,
+            }
+        }
+
+        let x = cell("x", 0, 0);
+        let y = cell("y", 1, 0);
+        let z = cell("z", 2, 0);
+        let effects = vec![Effect::ProverFunctionCall(ProverFunctionCall {
+            targets: vec![x.clone()],
+            function_index: 0,
+            row_offset: 0,
+            inputs: vec![y.clone(), z.clone()],
+        })];
+        let known_inputs = vec![y.clone(), z.clone()];
+        let prover_function = ProverFunction {
+            index: 0,
+            target: vec![to_algebraic_ref("x", 0)],
+            compute_multi: false,
+            computation: ProverFunctionComputation::HandleQueryInputOutput(
+                [(7, QueryType::Input), (8, QueryType::Output)]
+                    .into_iter()
+                    .collect(),
+            ),
+            condition: None,
+            input_columns: vec![to_algebraic_ref("y", 1), to_algebraic_ref("z", 2)],
+        };
+        let f = super::compile_effects(
+            &NoDefinitions,
+            ColumnLayout {
+                column_count: 3,
+                first_column_id: 0,
+            },
+            &known_inputs,
+            &effects,
+            vec![prover_function],
+        )
+        .unwrap();
+
+        let mut data = vec![
+            GoldilocksField::from(0),
+            GoldilocksField::from(7),
+            GoldilocksField::from(2),
+        ];
+        let mut known = vec![0; 1];
+        (f.function)(witgen_fun_params(&mut data, &mut known));
+        assert_eq!(data[0], GoldilocksField::from(18));
+        assert_eq!(data[1], GoldilocksField::from(7));
+        assert_eq!(data[2], GoldilocksField::from(2));
+
+        let mut data = vec![
+            GoldilocksField::from(0),
+            GoldilocksField::from(8),
+            GoldilocksField::from(2),
+        ];
+        let mut known = vec![0; 1];
+        (f.function)(witgen_fun_params(&mut data, &mut known));
+        assert_eq!(data[0], GoldilocksField::from(0));
+        assert_eq!(data[1], GoldilocksField::from(8));
+        assert_eq!(data[2], GoldilocksField::from(2));
+
+        let mut data = vec![
+            GoldilocksField::from(0),
+            GoldilocksField::from(9),
+            GoldilocksField::from(2),
+        ];
+        let mut known = vec![0; 1];
+        (f.function)(witgen_fun_params(&mut data, &mut known));
+        assert_eq!(data[0], GoldilocksField::from(0));
+        assert_eq!(data[1], GoldilocksField::from(9));
+        assert_eq!(data[2], GoldilocksField::from(2));
     }
 }
