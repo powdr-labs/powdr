@@ -291,7 +291,7 @@ impl Runtime {
         );
 
         self.add_submachine(
-            "std::machines::split::split_gl_vec::SplitGLVec8",
+            "std::machines::split::split_gl_vec::SplitGLVec4",
             None,
             "split_gl_vec",
             vec!["memory", "split_gl", "MIN_DEGREE", "MAIN_MAX_DEGREE"],

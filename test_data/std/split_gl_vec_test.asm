@@ -1,6 +1,6 @@
 use std::machines::split::ByteCompare;
 use std::machines::split::split_gl::SplitGL;
-use std::machines::split::split_gl_vec::SplitGLVec8;
+use std::machines::split::split_gl_vec::SplitGLVec4;
 use std::machines::large_field::memory::Memory;
 use std::machines::range::Byte2;
 
@@ -20,7 +20,7 @@ machine Main with degree: main_degree {
     ByteCompare byte_compare;
     SplitGL split_machine(byte_compare, split_degree, split_degree);
 
-    SplitGLVec8 split_vec_machine(memory, split_machine, split_vec_degree, split_vec_degree);
+    SplitGLVec4 split_vec_machine(memory, split_machine, split_vec_degree, split_vec_degree);
 
     col fixed STEP(i) { 2 * i };
 
@@ -39,20 +39,16 @@ machine Main with degree: main_degree {
 
     function main {
         // Store 8 field elements sequentially in memory
-        mstore 100, 0;
+        mstore 100, 1;
         mstore 104, 0xffffffff00000000;
         mstore 108, 0xfffffffeffffffff;
         mstore 112, 0xabcdef0123456789;
-        mstore 116, 0x0000000100000002;
-        mstore 120, 0x0000000300000004;
-        mstore 124, 0x0000000500000006;
-        mstore 128, 0x0000000700000008;
 
         // Split the previously stored field elements
         split 100, 200;
 
         // Assert the field elements are what was written
-        assert_eq 200, 0;
+        assert_eq 200, 1;
         assert_eq 204, 0;
 
         assert_eq 208, 0;
@@ -64,23 +60,11 @@ machine Main with degree: main_degree {
         assert_eq 224, 0x23456789;
         assert_eq 228, 0xabcdef01;
 
-        assert_eq 232, 0x00000002;
-        assert_eq 236, 0x00000001;
-
-        assert_eq 240, 0x00000004;
-        assert_eq 244, 0x00000003;
-
-        assert_eq 248, 0x00000006;
-        assert_eq 252, 0x00000005;
-
-        assert_eq 256, 0x00000008;
-        assert_eq 260, 0x00000007;
-
         // Same split, but now overlaping the input and output
         split 100, 104;
 
         // Assert the field elements are what was written
-        assert_eq 104, 0;
+        assert_eq 104, 1;
         assert_eq 108, 0;
 
         assert_eq 112, 0;
@@ -91,18 +75,6 @@ machine Main with degree: main_degree {
 
         assert_eq 128, 0x23456789;
         assert_eq 132, 0xabcdef01;
-
-        assert_eq 136, 0x00000002;
-        assert_eq 140, 0x00000001;
-
-        assert_eq 144, 0x00000004;
-        assert_eq 148, 0x00000003;
-
-        assert_eq 152, 0x00000006;
-        assert_eq 156, 0x00000005;
-
-        assert_eq 160, 0x00000008;
-        assert_eq 164, 0x00000007;
 
         return;
     }

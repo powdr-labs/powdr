@@ -27,15 +27,26 @@ pub fn poseidon_gl(data: &mut [Goldilocks; 12]) -> &[Goldilocks; 4] {
 /// Perform one Poseidon2 permutation with 8 Goldilocks field elements in-place.
 pub fn poseidon2_gl_inplace(data: &mut [OpaqueGoldilocks; 8]) {
     unsafe {
-        ecall!(Syscall::Poseidon2GL, in("a0") data, in("a1") data);
+        ecall!(Syscall::Poseidon2GL, in("a0") data, in("a1") data, in("a2") 3);
     }
 }
 
-/// Perform one Poseidon2 permutation with 8 Goldilocks field elements.
-pub fn poseidon2_gl(data: &[OpaqueGoldilocks; 8]) -> [OpaqueGoldilocks; 8] {
+#[repr(u32)]
+pub enum Poseidon2OutputHalf {
+    //None = 0,
+    FirstHalf = 1,
+    SecondHalf = 2,
+    //Full = 3,
+}
+
+/// Perform one Poseidon2 compression with 8 Goldilocks field elements.
+pub fn poseidon2_gl_compression(
+    data: &[OpaqueGoldilocks; 8],
+    output_half: Poseidon2OutputHalf,
+) -> [OpaqueGoldilocks; 4] {
     unsafe {
-        let mut output: MaybeUninit<[OpaqueGoldilocks; 8]> = MaybeUninit::uninit();
-        ecall!(Syscall::Poseidon2GL, in("a0") data, in("a1") output.as_mut_ptr());
+        let mut output: MaybeUninit<[OpaqueGoldilocks; 4]> = MaybeUninit::uninit();
+        ecall!(Syscall::Poseidon2GL, in("a0") data, in("a1") output.as_mut_ptr(), in("a2") output_half as u32);
         output.assume_init()
     }
 }

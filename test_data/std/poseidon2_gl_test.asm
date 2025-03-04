@@ -16,9 +16,9 @@ machine Main with degree: main_degree {
     reg ADDR1[<=];
     reg ADDR2[<=];
 
-    // Increase the time step by 4 in each row, so that the poseidon machine
+    // Increase the time step by 2 in each row, so that the poseidon machine
     // can read in the given time step and write in the next time step.
-    col fixed STEP(i) { 4 * i };
+    col fixed STEP(i) { 2 * i };
     Byte2 byte2;
     Memory memory(byte2, memory_degree, memory_degree);
 
@@ -27,7 +27,7 @@ machine Main with degree: main_degree {
 
     Poseidon2GL poseidon2(memory, poseidon2_degree, poseidon2_degree);
     instr poseidon2 ADDR1, ADDR2, X1 ->
-        link ~> poseidon2.permute(ADDR1, STEP, ADDR2, STEP + 2, X1);
+        link ~> poseidon2.permute(ADDR1, STEP, ADDR2, STEP + 1, X1);
 
     col witness val;
     instr assert_eq ADDR1, X1 ->
