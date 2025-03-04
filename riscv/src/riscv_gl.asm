@@ -198,7 +198,7 @@ machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
 
     // Stores 1 in register W if V = val(X) - val(Y) - Z is positive,
     // i.e. val(X) - val(Y) > Z, where X and Y are register ids and Z is a constant.
-    // V is required to be the difference of two 32-bit unsigend values.
+    // V is required to be the difference of two 32-bit unsigned values.
     // i.e. -2**32 < V < 2**32
     instr is_diff_greater_than X, Y, Z, W
         link ~> tmp1_col = regs.mload(X, STEP)
