@@ -8,6 +8,7 @@ pub use powdr_pilopt as pilopt;
 pub use powdr_pipeline as pipeline;
 pub use powdr_riscv as riscv;
 pub use powdr_riscv_executor as riscv_executor;
+use powdr_riscv_executor::hash_map_to_memory_state;
 
 pub use powdr_pipeline::Pipeline;
 
@@ -314,7 +315,7 @@ fn run_internal(
 
     let trace_len = riscv_executor::execute(
         &asm,
-        initial_memory,
+        hash_map_to_memory_state(initial_memory),
         pipeline.data_callback().unwrap(),
         &riscv::continuations::bootloader::default_input(&[]),
         profiler,
