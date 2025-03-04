@@ -11,7 +11,7 @@ use super::poseidon2_common::poseidon2;
 
 // Implements the Poseidon2 permutation for Goldilocks field.
 //
-// It can be used as general hash fuction by using a sponge construction or,
+// It can be used as general hash function by using a sponge construction or,
 // by discarding a part of the output, it can be used as compression function
 // for building a Merkle tree.
 //
