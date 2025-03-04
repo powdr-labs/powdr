@@ -15,7 +15,7 @@ namespace Main(16);
     // This is a generic function that computes the sum of an array
     // given its length.
     // It is not stored as a column.
-    // If it is used in a constraint, it has to be evaulated, while
+    // If it is used in a constraint, it has to be evaluated, while
     // columns must be used symbolically.
     let<T: Add + FromLiteral> sum: T[], int -> T = |a, len| match len {
         0 => 0,
