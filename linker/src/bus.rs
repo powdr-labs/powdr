@@ -27,7 +27,7 @@ pub struct BusLinker {
     /// arguments for `bus_multi_linker`
     bus_multi_linker_args: ArrayLiteral,
     /// interaction id map for each link.to
-    interaction_id_map: BTreeMap<(Operation, Location), u32>,
+    interaction_id_map: BTreeMap<LinkTo, u32>,
 }
 
 impl LinkerBackend for BusLinker {
@@ -75,22 +75,15 @@ impl LinkerBackend for BusLinker {
                     (indices, sizes)
                 },
             );
-        // generate a map of interaction id for each link.to
-        let interaction_id_map: BTreeMap<(Operation, Location), u32> = graph
+
+        let interaction_id_map: BTreeMap<LinkTo, u32> = graph
             .objects
+            .values()
+            .flat_map(|object| object.links.iter().map(|link| link.to.clone()))
+            .collect::<HashSet<_>>()
             .iter()
-            .flat_map(|(location, object)| {
-                object
-                    .operations
-                    .iter()
-                    .map(move |(operation_name, operation)| {
-                        (location, operation_name.clone(), operation.clone())
-                    })
-            })
             .enumerate()
-            .map(|(id, (location, _operation_name, operation))| {
-                ((operation.clone(), location.clone()), id as u32)
-            })
+            .map(|(id, link_to)| (link_to.clone(), id as u32))
             .collect();
 
         Ok(Self {
@@ -110,7 +103,7 @@ impl LinkerBackend for BusLinker {
 
         let operation = &objects[&to.machine].operations[&to.operation];
 
-        let interaction_id = self.interaction_id_map[&(operation.clone(), link.to.machine.clone())];
+        let interaction_id = self.interaction_id_map[to];
 
         let op_id = operation.id.clone().map(|operation_id| operation_id.into());
 
@@ -238,7 +231,7 @@ impl BusLinker {
         // By construction, all operations *which are called* have an optional selector index. The others can be safely ignored.
         if let Some(selector_index) = selector_index {
             // get the interaction id for the link.to
-            let interaction_id = self.interaction_id_map[&(operation.clone(), location.clone())];
+            let interaction_id = self.interaction_id_map[&link_to];
 
             let namespace = location.to_string();
 
