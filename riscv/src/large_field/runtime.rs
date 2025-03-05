@@ -172,12 +172,9 @@ impl Runtime {
                 link ~> tmp2_col = regs.mload(Y, STEP + 1)
                 link ~> keccakf.keccakf32_memory(tmp1_col, tmp2_col, STEP)
             {
-                // make sure tmp1_col and tmp2_col are aligned memory addresses
-                tmp3_col * 4 = tmp1_col,
-                tmp4_col * 4 = tmp2_col,
-                // make sure the factors fit in 32 bits
-                tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-                tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+                // make sure tmp1_col and tmp2_col are 4-byte aligned memory addresses
+                tmp1_col = 4 * (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000),
+                tmp2_col = 4 * (Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000)
             }
             "#
             .to_string()],
@@ -257,12 +254,9 @@ impl Runtime {
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
                     link ~> poseidon_gl.poseidon_permutation(tmp1_col, tmp2_col, STEP)
                 {
-                    // make sure tmp1_col and tmp2_col are aligned memory addresses
-                    tmp3_col * 4 = tmp1_col,
-                    tmp4_col * 4 = tmp2_col,
-                    // make sure the factors fit in 32 bits
-                    tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-                    tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+                    // make sure tmp1_col and tmp2_col are 4-byte aligned memory addresses
+                    tmp1_col = 4 * (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000),
+                    tmp2_col = 4 * (Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000)
                 }
             "#],
         );
@@ -288,12 +282,9 @@ impl Runtime {
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
                     link ~> poseidon2_gl.poseidon2_permutation(tmp1_col, tmp2_col, STEP)
                 {
-                    // make sure tmp1_col and tmp2_col are aligned memory addresses
-                    tmp3_col * 4 = tmp1_col,
-                    tmp4_col * 4 = tmp2_col,
-                    // make sure the addresses are 32 bits
-                    tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-                    tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+                    // make sure tmp1_col and tmp2_col are 4-byte aligned memory addresses
+                    tmp1_col = 4 * (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000),
+                    tmp2_col = 4 * (Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000)
                 }
             "#],
         );
@@ -309,12 +300,9 @@ impl Runtime {
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
                     link ~> split_gl_vec.split(tmp1_col, tmp2_col, STEP + 2)
                 {
-                    // make sure tmp1_col and tmp2_col are aligned memory addresses
-                    tmp3_col * 4 = tmp1_col,
-                    tmp4_col * 4 = tmp2_col,
-                    // make sure the addresses are 32 bits
-                    tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-                    tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+                    // make sure tmp1_col and tmp2_col are 4-byte aligned memory addresses
+                    tmp1_col = 4 * (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000),
+                    tmp2_col = 4 * (Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000)
                 }
             "#,
                 r#"

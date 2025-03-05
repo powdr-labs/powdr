@@ -306,17 +306,10 @@ extern "C" fn witgen(
 }
 
 pub fn format_effects<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
-    format_effects_inner(effects, true)
+    indent(format_effects_inner(effects, true), 1)
 }
 
 fn format_effects_inner<T: FieldElement>(
-    effects: &[Effect<T, Variable>],
-    is_top_level: bool,
-) -> String {
-    indent(format_effects_inner_unindented(effects, is_top_level), 1)
-}
-
-fn format_effects_inner_unindented<T: FieldElement>(
     effects: &[Effect<T, Variable>],
     is_top_level: bool,
 ) -> String {
@@ -412,21 +405,17 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                 "".to_string()
             };
 
-            if matches!(second[..], [Effect::Branch(..)]) {
-                format!(
-                    "{var_decls}if {} {{\n{}\n}} else if {}",
-                    format_condition(condition),
-                    format_effects_inner(first, false),
-                    format_effects_inner_unindented(second, false)
-                )
+            let else_part = if matches!(second[..], [Effect::Branch(..)]) {
+                format_effects_inner(second, false)
             } else {
-                format!(
-                    "{var_decls}if {} {{\n{}\n}} else {{\n{}\n}}",
-                    format_condition(condition),
-                    format_effects_inner(first, false),
-                    format_effects_inner(second, false)
-                )
-            }
+                format!("{{\n{}\n}}", indent(format_effects_inner(second, false), 1))
+            };
+
+            format!(
+                "{var_decls}if {} {{\n{}\n}} else {else_part}",
+                format_condition(condition),
+                indent(format_effects_inner(first, false), 1)
+            )
         }
     }
 }
@@ -1082,7 +1071,7 @@ extern \"C\" fn witgen(
         let expectation = "    let p_1;
     if 7 <= IntType::from(p_0) && IntType::from(p_0) <= 20 {
         p_1 = (p_0 + FieldElement::from(1));
-    } else if if 7 <= IntType::from(p_2) && IntType::from(p_2) <= 20 {
+    } else if 7 <= IntType::from(p_2) && IntType::from(p_2) <= 20 {
         p_1 = (p_0 + FieldElement::from(2));
     } else {
         p_1 = (p_0 + FieldElement::from(3));
