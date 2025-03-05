@@ -10,25 +10,12 @@ use powdr_ast::{
     },
 };
 use powdr_parser_util::SourceRef;
-use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     str::FromStr,
 };
 
 use crate::{call, try_into_namespace_degree, DegreeMode, LinkerBackend, MAIN_OPERATION_NAME};
-
-/// Compute a unique identifier for an interaction
-fn interaction_id(link_to: &LinkTo) -> u32 {
-    let mut hasher = Sha256::default();
-    hasher.update(format!("{}/{}", link_to.machine, link_to.operation));
-    let result = hasher.finalize();
-    let mut bytes = [0u8; 4];
-    bytes.copy_from_slice(&result[..4]);
-    // Ensure that interaction_id is at most 30-bits, in order to
-    // fill in a single field element for BabyBear and M31.
-    u32::from_le_bytes(bytes) >> 2
-}
 
 pub struct BusLinker {
     /// the pil statements
@@ -39,7 +26,7 @@ pub struct BusLinker {
     selector_array_index_by_operation: BTreeMap<LinkTo, Option<usize>>,
     /// arguments for `bus_multi_linker`
     bus_multi_linker_args: ArrayLiteral,
-    /// map of interaction id for each link.to
+    /// interaction id map for each link.to
     interaction_id_map: HashMap<LinkTo, u32>,
 }
 
@@ -94,8 +81,8 @@ impl LinkerBackend for BusLinker {
         let interaction_id_map: HashMap<LinkTo, u32> = graph
             .objects
             .values()
-            .flat_map(|object| object.links.iter().map(|link| link.to.clone())) // Extract only `link.to`
-            .collect::<std::collections::HashSet<_>>() // Ensure unique `link.to` values
+            .flat_map(|object| object.links.iter().map(|link| link.to.clone())) 
+            .collect::<std::collections::HashSet<_>>() 
             .into_iter()
             .map(|link_to| {
                 let id = id_counter;
@@ -121,7 +108,7 @@ impl LinkerBackend for BusLinker {
 
         let operation = &objects[&to.machine].operations[&to.operation];
 
-        let interaction_id = self.interaction_id_map[&to];
+        let interaction_id = self.interaction_id_map[to];
 
         let op_id = operation.id.clone().map(|operation_id| operation_id.into());
 
@@ -148,7 +135,6 @@ impl LinkerBackend for BusLinker {
     }
 
     fn process_object(&mut self, location: &Location, objects: &BTreeMap<Location, Object>) {
-        println!("-------------------processing object at {:?}", location);
         let object = &objects[location];
 
         let namespace_degree = try_into_namespace_degree(object.degree.clone())
@@ -180,12 +166,10 @@ impl LinkerBackend for BusLinker {
 
         // process outgoing links
         for link in &object.links {
-            println!("-------------------------in process object, processing object link");
             self.process_link(link, location, objects);
         }
         // receive incoming links
         for (name, operation) in &object.operations {
-            println!("operation is {:?}", operation);
             self.process_operation(name, operation, location, object);
         }
 
@@ -214,13 +198,10 @@ impl LinkerBackend for BusLinker {
         // if this is the main object, call the main operation
         if *location == Location::main() {
             let operation_id = object.operation_id.clone();
-
             let main_operation_id = object
                 .operations
                 .get(MAIN_OPERATION_NAME)
                 .and_then(|operation| operation.id.as_ref());
-
-            println!("operation id in main location {:?}", main_operation_id);
 
             if let (Some(operation_id_name), Some(operation_id_value)) =
                 (operation_id, main_operation_id)
@@ -254,7 +235,7 @@ impl BusLinker {
 
         // By construction, all operations *which are called* have an optional selector index. The others can be safely ignored.
         if let Some(selector_index) = selector_index {
-            // compute the unique interaction id
+            // get the interaction id for the link.to
             let interaction_id = self.interaction_id_map[&link_to];
 
             let namespace = location.to_string();
