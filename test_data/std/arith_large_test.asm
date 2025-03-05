@@ -829,5 +829,6 @@ machine Main with degree: main_degree {
         // Left out these test cases, because the format is different...
         // https://github.com/0xPolygonHermez/zkevm-proverjs/blob/a4006af3d7fe4a57a85500c01dc791fb5013cef0/test/sm/sm_arith.js#L1196-L1211
 
+        return;
     }
 }
