@@ -1,7 +1,9 @@
 use itertools::Itertools;
 use std::collections::{BTreeMap, BTreeSet};
 
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
+use powdr_ast::analyzed::{
+    AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType,
+};
 use serde::{Deserialize, Serialize};
 
 use powdr_number::{FieldElement, LargeInt};
@@ -95,7 +97,9 @@ pub struct BasicBlock<T> {
     pub statements: Vec<SymbolicInstructionStatement<T>>,
 }
 
+#[derive(Clone, Debug)]
 pub enum MemoryType {
+    Constant,
     Register,
     Memory,
 }
@@ -106,9 +110,10 @@ impl<T: FieldElement> From<AlgebraicExpression<T>> for MemoryType {
             AlgebraicExpression::Number(n) => {
                 let n_u32 = n.to_integer().try_into_u32().unwrap();
                 match n_u32 {
+                    0 => MemoryType::Constant,
                     1 => MemoryType::Register,
                     2 => MemoryType::Memory,
-                    _ => unreachable!("Expected 1 or 2"),
+                    _ => unreachable!("Expected 0, 1 or 2 but got {n}"),
                 }
             }
             _ => unreachable!("Expected number"),
@@ -116,6 +121,17 @@ impl<T: FieldElement> From<AlgebraicExpression<T>> for MemoryType {
     }
 }
 
+impl<T: FieldElement> From<MemoryType> for AlgebraicExpression<T> {
+    fn from(ty: MemoryType) -> Self {
+        match ty {
+            MemoryType::Constant => AlgebraicExpression::Number(T::from(0u32)),
+            MemoryType::Register => AlgebraicExpression::Number(T::from(1u32)),
+            MemoryType::Memory => AlgebraicExpression::Number(T::from(2u32)),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum MemoryOp {
     Read,
     Write,
@@ -130,20 +146,44 @@ impl From<BusInteractionKind> for MemoryOp {
     }
 }
 
+impl From<MemoryOp> for BusInteractionKind {
+    fn from(op: MemoryOp) -> Self {
+        match op {
+            MemoryOp::Read => BusInteractionKind::Receive,
+            MemoryOp::Write => BusInteractionKind::Send,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct MemoryBusInteraction<T> {
     pub ty: MemoryType,
+    pub op: MemoryOp,
     pub addr: AlgebraicExpression<T>,
     pub data: Vec<AlgebraicExpression<T>>,
     pub bus_interaction: SymbolicBusInteraction<T>,
 }
 
+impl<T: FieldElement> MemoryBusInteraction<T> {
+    pub fn try_addr_u32(&self) -> Option<u32> {
+        match self.addr {
+            AlgebraicExpression::Number(n) => n.to_integer().try_into_u32(),
+            _ => None,
+        }
+    }
+}
+
 impl<T: FieldElement> From<SymbolicBusInteraction<T>> for MemoryBusInteraction<T> {
     fn from(bus_interaction: SymbolicBusInteraction<T>) -> Self {
+        //println!("\n\nBus interaction is {bus_interaction:?}\n\n");
+        //println!("\n\nAS = {}\n\n", bus_interaction.args[0]);
         let ty = bus_interaction.args[0].clone().into();
+        let op = bus_interaction.kind.clone().into();
         let addr = bus_interaction.args[1].clone();
         let data = bus_interaction.args[2..bus_interaction.args.len() - 2].to_vec();
         MemoryBusInteraction {
             ty,
+            op,
             addr,
             data,
             bus_interaction,
@@ -204,9 +244,19 @@ impl<T: FieldElement> Autoprecompiles<T> {
             &self.instruction_machines,
         );
 
-        let machine = optimize_precompile(machine);
+        //let machine = optimize_precompile(machine);
 
         (new_program, vec![(new_instr_name, machine)], col_subs)
+    }
+
+    pub fn build(&self) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
+        let (machine, subs) = generate_precompile(
+            &self.program,
+            &self.instruction_kind,
+            &self.instruction_machines,
+        );
+        let machine = optimize_precompile(machine);
+        (machine, subs)
     }
 
     pub fn collect_basic_blocks(&self) -> Vec<BasicBlock<T>> {
@@ -257,14 +307,94 @@ pub fn replace_autoprecompile_basic_blocks<T: Clone>(
 }
 
 pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    let reg_mem_interactions: Vec<MemoryBusInteraction<T>> = machine
-        .bus_interactions
-        .iter()
-        .filter_map(|bus_int| match bus_int.id {
-            MEMORY_BUS_ID => Some(bus_int.clone().into()),
-            _ => None,
-        })
-        .collect();
+    /*
+        let all_mem_interactions: Vec<MemoryBusInteraction<T>> = machine
+            .bus_interactions
+            .iter()
+            .filter_map(|bus_int| match bus_int.id {
+                MEMORY_BUS_ID => Some(bus_int.clone().into()),
+                _ => None,
+            })
+            .collect();
+
+        let mut reg_mem_interactions: Vec<MemoryBusInteraction<T>> = all_mem_interactions
+            .iter()
+            .filter_map(|bus_int| match bus_int.ty {
+                MemoryType::Register => Some(bus_int.clone()),
+                _ => None,
+            })
+            .collect();
+    */
+
+    println!(
+        "Before autoprecompile optimizations, constraints: {}, bus_interactions: {}",
+        machine.constraints.len(),
+        machine.bus_interactions.len()
+    );
+
+    /*
+        for c in &machine.constraints {
+            println!("Constraint: {}", c.expr);
+        }
+    */
+
+    let mut local_mem: BTreeMap<u32, Vec<AlgebraicExpression<T>>> = BTreeMap::new();
+    let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
+    machine.bus_interactions.retain(|bus_int| {
+        if bus_int.id != MEMORY_BUS_ID {
+            return true;
+        }
+
+        let mem_int: MemoryBusInteraction<T> = bus_int.clone().into();
+
+        if matches!(mem_int.ty, MemoryType::Constant | MemoryType::Memory) {
+            return true;
+        }
+
+        let addr = match mem_int.try_addr_u32() {
+            None => {
+                return true;
+            }
+            Some(addr) => addr,
+        };
+
+        match mem_int.op {
+            MemoryOp::Read => match local_mem.get(&addr) {
+                Some(data) => {
+                    assert_eq!(data.len(), mem_int.data.len());
+                    mem_int
+                        .data
+                        .iter()
+                        .zip(data.iter())
+                        .for_each(|(new_data, old_data)| {
+                            let eq_expr = AlgebraicExpression::new_binary(
+                                new_data.clone(),
+                                AlgebraicBinaryOperator::Sub,
+                                old_data.clone(),
+                            );
+                            new_constraints.push(eq_expr.into());
+                        });
+                    false
+                }
+                None => {
+                    local_mem.insert(addr, mem_int.data.clone());
+                    true
+                }
+            },
+            MemoryOp::Write => {
+                local_mem.insert(addr, mem_int.data.clone());
+                true
+            }
+        }
+    });
+
+    machine.constraints.extend(new_constraints);
+
+    println!(
+        "After autoprecompile optimizations, constraints: {}, bus_interactions: {}",
+        machine.constraints.len(),
+        machine.bus_interactions.len()
+    );
 
     machine
 }
@@ -296,6 +426,7 @@ pub fn generate_precompile<T: FieldElement>(
                     .expect("Expected single pc lookup");
 
                 let mut sub_map: BTreeMap<String, AlgebraicExpression<T>> = Default::default();
+                let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
                 assert_eq!(instr.args.len(), pc_lookup.args.len());
                 instr
@@ -304,25 +435,50 @@ pub fn generate_precompile<T: FieldElement>(
                     .zip(pc_lookup.args.iter())
                     .for_each(|(instr_arg, pc_arg)| {
                         let arg = AlgebraicExpression::Number(instr_arg.clone());
+                        //println!("\nInstruction arg: {instr_arg}");
+                        //println!("\nPc arg: {pc_arg}\n");
                         match pc_arg {
                             AlgebraicExpression::Reference(ref arg_ref) => {
                                 sub_map.insert(arg_ref.name.clone(), arg);
                             }
                             AlgebraicExpression::BinaryOperation(_expr) => {
-                                constraints.push((arg - pc_arg.clone()).into());
+                                local_constraints.push((arg - pc_arg.clone()).into());
                             }
                             AlgebraicExpression::UnaryOperation(_expr) => {
-                                constraints.push((arg - pc_arg.clone()).into());
+                                local_constraints.push((arg - pc_arg.clone()).into());
                             }
                             _ => {}
                         }
                     });
 
+                /*
+                                for l in &local_constraints {
+                                    println!("Local constraint: {}", l.expr);
+                                }
+                                println!("\nSubmap = {sub_map:?}\n");
+                */
+
                 let mut local_subs = BTreeMap::new();
 
+                /*
+                                for l in &machine.constraints {
+                                    println!("\nMachine constraint: {}", l.expr);
+                                }
+                                for i in &machine.bus_interactions {
+                                    println!(
+                                        "\nBus interaction id = {}, kind = {:?}, mult = {}",
+                                        i.id, i.kind, i.mult
+                                    );
+                                    for a in &i.args {
+                                        println!("arg = {a}");
+                                    }
+                                    println!("\n");
+                                }
+                */
                 let local_identities = machine
                     .constraints
                     .iter()
+                    .chain(local_constraints.iter())
                     .map(|expr| {
                         let mut expr = expr.expr.clone();
                         powdr::substitute_algebraic(&mut expr, &sub_map);
@@ -597,6 +753,5 @@ mod test {
             },
         ];
         assert_eq!(new_program, expected_program);
-        println!("{new_machines:?}");
     }
 }
