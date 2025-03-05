@@ -171,7 +171,7 @@ impl Session {
 
         let (trace_len, label_freq) = riscv_executor::execute(
             &asm,
-            initial_memory,
+            hash_map_to_memory_state(initial_memory),
             self.pipeline.data_callback().unwrap(),
             &riscv::continuations::bootloader::default_input(&[]),
             None,
@@ -253,7 +253,7 @@ impl Session {
 
         let (trace_len, _) = riscv_executor::execute(
             &asm,
-            initial_memory,
+            hash_map_to_memory_state(initial_memory),
             self.pipeline.data_callback().unwrap(),
             &riscv::continuations::bootloader::default_input(&[]),
             None,

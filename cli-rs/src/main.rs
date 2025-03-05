@@ -11,7 +11,7 @@ use powdr::number::{
     BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KnownField, KoalaBearField,
 };
 use powdr::riscv::{CompilerOptions, RuntimeLibs};
-use powdr::riscv_executor::{write_executor_csv, ProfilerOptions};
+use powdr::riscv_executor::{hash_map_to_memory_state, write_executor_csv, ProfilerOptions};
 use powdr::Pipeline;
 
 use itertools::Itertools;
@@ -446,7 +446,7 @@ fn autoprecompiles<F: FieldElement>(
 
     let (trace_len, label_freq) = powdr::riscv_executor::execute(
         &asm,
-        initial_memory,
+        hash_map_to_memory_state(initial_memory),
         pipeline.data_callback().unwrap(),
         &powdr::riscv::continuations::bootloader::default_input(&[]),
         None,
@@ -530,7 +530,7 @@ fn autoprecompiles<F: FieldElement>(
 
     let (trace_len, _) = powdr::riscv_executor::execute(
         &asm,
-        initial_memory,
+        hash_map_to_memory_state(initial_memory),
         pipeline.data_callback().unwrap(),
         &powdr::riscv::continuations::bootloader::default_input(&[]),
         None,

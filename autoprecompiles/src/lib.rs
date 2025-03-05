@@ -244,7 +244,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
             &self.instruction_machines,
         );
 
-        //let machine = optimize_precompile(machine);
+        let machine = optimize_precompile(machine);
 
         (new_program, vec![(new_instr_name, machine)], col_subs)
     }
@@ -255,7 +255,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
             &self.instruction_kind,
             &self.instruction_machines,
         );
-        //let machine = optimize_precompile(machine);
+        let machine = optimize_precompile(machine);
         (machine, subs)
     }
 
