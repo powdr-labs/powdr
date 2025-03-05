@@ -60,6 +60,8 @@ impl<T: FieldElement> WitgenFunction<T> {
             call_machine: call_machine::<T, Q>,
             fixed_data: fixed_data as *const _ as *const c_void,
             get_fixed_value: get_fixed_value::<T>,
+            input_from_channel: input_from_channel::<T, Q>,
+            output_to_channel: output_to_channel::<T, Q>,
         });
     }
 }
@@ -86,6 +88,30 @@ extern "C" fn call_machine<T: FieldElement, Q: QueryCallback<T>>(
     mutable_state
         .call_direct(identity_id, params.into())
         .unwrap()
+}
+
+extern "C" fn input_from_channel<T: FieldElement, Q: QueryCallback<T>>(
+    mutable_state: *const c_void,
+    channel: u32,
+    index: u64,
+) -> T {
+    let mutable_state = unsafe { &*(mutable_state as *const MutableState<T, Q>) };
+    // TODO what is the proper error handling?
+    // TODO What to do for Ok(None)?
+    (mutable_state.query_callback())(&format!("Input({channel},{index})"))
+        .unwrap()
+        .unwrap()
+}
+
+extern "C" fn output_to_channel<T: FieldElement, Q: QueryCallback<T>>(
+    mutable_state: *const c_void,
+    fd: u32,
+    elem: T,
+) {
+    let mutable_state = unsafe { &*(mutable_state as *const MutableState<T, Q>) };
+    (mutable_state.query_callback())(&format!("Output({fd},{elem})"))
+        .unwrap()
+        .unwrap();
 }
 
 /// Compile the given inferred effects into machine code and load it.
@@ -154,6 +180,12 @@ struct WitgenFunctionParams<'a, T: 'a> {
     /// A callback to retrieve values from fixed columns.
     /// The parameters are: fixed data pointer, fixed column id, row number.
     get_fixed_value: extern "C" fn(*const c_void, u64, u64) -> T,
+    /// A callback to retrieve a prover-provided value from a channel
+    /// The parameters are: mutable state pointer, channel number, index.
+    input_from_channel: extern "C" fn(*const c_void, u32, u64) -> T,
+    /// A callback to output a value to a channel.
+    /// The parameters are: mutable state pointer, channel number, value.
+    output_to_channel: extern "C" fn(*const c_void, u32, T),
 }
 
 #[repr(C)]
@@ -280,6 +312,8 @@ extern "C" fn witgen(
         call_machine,
         fixed_data,
         get_fixed_value,
+        input_from_channel,
+        output_to_channel,
     }}: WitgenFunctionParams<FieldElement>,
 ) {{
     let known = known_to_slice(known, data.len);
@@ -375,7 +409,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
             inputs,
         }) => {
             format!(
-                "{}[{}] = prover_function_{function_index}(row_offset + {row_offset}, &[{}]);",
+                "{}[{}] = prover_function_{function_index}(mutable_state, input_from_channel, output_to_channel, row_offset + {row_offset}, &[{}]);",
                 if is_top_level { "let " } else { "" },
                 targets.iter().map(variable_to_string).format(", "),
                 inputs.iter().map(variable_to_string).format(", ")
@@ -550,10 +584,10 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
                     .map(|(value, query_type)| {
                         let result = match query_type {
                             QueryType::Input => {
-                                "input_from_channel(ibig::IBig::from(args[0]), ibig::IBig::from(args[1])),"
+                                "input_from_channel(mutable_state, IntType::from(args[0]) as u32, IntType::from(args[1]) as u64),"
                             }
                             QueryType::Output => {
-                                "{ output_to_channel(ibig::IBig::from(args[0]), args[1]); 0.into() },"
+                                "{ output_to_channel(mutable_state, IntType::from(args[0]) as u32, args[1]); 0.into() },"
                             }
                         };
                         format!("{indent}{value} => {result}")
@@ -571,10 +605,16 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
     let length = f.target.len();
     let index = f.index;
     Ok(format!(
-        "fn prover_function_{index}(i: u64, args: &[FieldElement]) -> [FieldElement; {length}] {{
+        r#"fn prover_function_{index}(
+    mutable_state: *const std::ffi::c_void,
+    input_from_channel: extern "C" fn(*const std::ffi::c_void, u32, u64) -> FieldElement,
+    output_to_channel: extern "C" fn(*const std::ffi::c_void, u32, FieldElement),
+    i: u64,
+    args: &[FieldElement]
+) -> [FieldElement; {length}] {{
     let i: ibig::IBig = i.into();
     {code}
-}}"
+}}"#
     ))
 }
 
@@ -708,6 +748,8 @@ extern \"C\" fn witgen(
         call_machine,
         fixed_data,
         get_fixed_value,
+        input_from_channel,
+        output_to_channel,
     }: WitgenFunctionParams<FieldElement>,
 ) {
     let known = known_to_slice(known, data.len);
@@ -755,6 +797,12 @@ extern \"C\" fn witgen(
         GoldilocksField::from(col_id * 2000 + row)
     }
 
+    extern "C" fn input_from_channel_test(_: *const c_void, _: u32, _: u64) -> GoldilocksField {
+        GoldilocksField::from(117)
+    }
+
+    extern "C" fn output_to_channel_test(_: *const c_void, _: u32, _: GoldilocksField) {}
+
     fn witgen_fun_params<'a>(
         data: &mut [GoldilocksField],
         known: &mut [u32],
@@ -768,6 +816,8 @@ extern \"C\" fn witgen(
             call_machine: no_call_machine,
             fixed_data: null(),
             get_fixed_value: get_fixed_data_test,
+            input_from_channel: input_from_channel_test,
+            output_to_channel: output_to_channel_test,
         }
     }
 
@@ -821,6 +871,8 @@ extern \"C\" fn witgen(
             call_machine: no_call_machine,
             fixed_data: null(),
             get_fixed_value: get_fixed_data_test,
+            input_from_channel: input_from_channel_test,
+            output_to_channel: output_to_channel_test,
         };
         (f2.function)(params2);
         assert_eq!(data[0], GoldilocksField::from(7));
@@ -914,6 +966,8 @@ extern \"C\" fn witgen(
             call_machine: no_call_machine,
             fixed_data: null(),
             get_fixed_value: get_fixed_data_test,
+            input_from_channel: input_from_channel_test,
+            output_to_channel: output_to_channel_test,
         };
         (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(7 * 2));
@@ -958,6 +1012,8 @@ extern \"C\" fn witgen(
             call_machine: no_call_machine,
             fixed_data: null(),
             get_fixed_value: get_fixed_data_test,
+            input_from_channel: input_from_channel_test,
+            output_to_channel: output_to_channel_test,
         };
         (f.function)(params);
         assert_eq!(data[0], GoldilocksField::from(30006));
@@ -1017,6 +1073,8 @@ extern \"C\" fn witgen(
             call_machine: mock_call_machine,
             fixed_data: null(),
             get_fixed_value: get_fixed_data_test,
+            input_from_channel: input_from_channel_test,
+            output_to_channel: output_to_channel_test,
         };
         (f.function)(params);
         assert_eq!(data[0], GoldilocksField::from(9));
@@ -1052,6 +1110,8 @@ extern \"C\" fn witgen(
             call_machine: no_call_machine,
             fixed_data: null(),
             get_fixed_value: get_fixed_data_test,
+            input_from_channel: input_from_channel_test,
+            output_to_channel: output_to_channel_test,
         };
         (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(8));
@@ -1067,6 +1127,8 @@ extern \"C\" fn witgen(
             call_machine: no_call_machine,
             fixed_data: null(),
             get_fixed_value: get_fixed_data_test,
+            input_from_channel: input_from_channel_test,
+            output_to_channel: output_to_channel_test,
         };
         (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(4));
@@ -1157,7 +1219,7 @@ extern \"C\" fn witgen(
         ];
         let mut known = vec![0; 1];
         (f.function)(witgen_fun_params(&mut data, &mut known));
-        assert_eq!(data[0], GoldilocksField::from(18));
+        assert_eq!(data[0], GoldilocksField::from(117));
         assert_eq!(data[1], GoldilocksField::from(7));
         assert_eq!(data[2], GoldilocksField::from(2));
 
