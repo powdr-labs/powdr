@@ -87,7 +87,6 @@ fn cargo_toml(opt_level: Option<u32>) -> String {
 /// temporary directory containing the compiled library
 /// and the path to the compiled library.
 pub fn call_cargo(code: &str, opt_level: Option<u32>) -> Result<PathInTempDir, String> {
-    println!("=========================Code:\n{code}\n=========================");
     let dir = mktemp::Temp::new_dir().unwrap();
     fs::write(dir.join("Cargo.toml"), cargo_toml(opt_level)).unwrap();
     fs::create_dir(dir.join("src")).unwrap();
@@ -108,7 +107,6 @@ pub fn call_cargo(code: &str, opt_level: Option<u32>) -> Result<PathInTempDir, S
         .unwrap();
     if !out.status.success() {
         let stderr = from_utf8(&out.stderr).unwrap_or("UTF-8 error in error message.");
-        println!("Error message:\n{}", stderr);
         return Err(format!(
                 "Rust compiler error when JIT-compiling. Will use interpreter instead. Error message:\n{stderr}."
             ));
