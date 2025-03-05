@@ -81,8 +81,8 @@ impl LinkerBackend for BusLinker {
         let interaction_id_map: HashMap<LinkTo, u32> = graph
             .objects
             .values()
-            .flat_map(|object| object.links.iter().map(|link| link.to.clone())) 
-            .collect::<std::collections::HashSet<_>>() 
+            .flat_map(|object| object.links.iter().map(|link| link.to.clone()))
+            .collect::<std::collections::HashSet<_>>()
             .into_iter()
             .map(|link_to| {
                 let id = id_counter;
