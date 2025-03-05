@@ -11,7 +11,7 @@ use powdr_ast::{
 };
 use powdr_parser_util::SourceRef;
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{BTreeMap, HashSet},
     str::FromStr,
 };
 
@@ -27,7 +27,7 @@ pub struct BusLinker {
     /// arguments for `bus_multi_linker`
     bus_multi_linker_args: ArrayLiteral,
     /// interaction id map for each link.to
-    interaction_id_map: HashMap<LinkTo, u32>,
+    interaction_id_map: BTreeMap<(Operation, Location), u32>,
 }
 
 impl LinkerBackend for BusLinker {
@@ -76,18 +76,20 @@ impl LinkerBackend for BusLinker {
                 },
             );
         // generate a map of interaction id for each link.to
-        let mut id_counter = 0;
-
-        let interaction_id_map: HashMap<LinkTo, u32> = graph
+        let interaction_id_map: BTreeMap<(Operation, Location), u32> = graph
             .objects
-            .values()
-            .flat_map(|object| object.links.iter().map(|link| link.to.clone()))
-            .collect::<std::collections::HashSet<_>>()
-            .into_iter()
-            .map(|link_to| {
-                let id = id_counter;
-                id_counter += 1;
-                (link_to, id as u32)
+            .iter()
+            .flat_map(|(location, object)| {
+                object
+                    .operations
+                    .iter()
+                    .map(move |(operation_name, operation)| {
+                        (location, operation_name.clone(), operation.clone())
+                    })
+            })
+            .enumerate()
+            .map(|(id, (location, _operation_name, operation))| {
+                ((operation.clone(), location.clone()), id as u32)
             })
             .collect();
 
@@ -108,7 +110,7 @@ impl LinkerBackend for BusLinker {
 
         let operation = &objects[&to.machine].operations[&to.operation];
 
-        let interaction_id = self.interaction_id_map[to];
+        let interaction_id = self.interaction_id_map[&(operation.clone(), link.to.machine.clone())];
 
         let op_id = operation.id.clone().map(|operation_id| operation_id.into());
 
@@ -236,7 +238,7 @@ impl BusLinker {
         // By construction, all operations *which are called* have an optional selector index. The others can be safely ignored.
         if let Some(selector_index) = selector_index {
             // get the interaction id for the link.to
-            let interaction_id = self.interaction_id_map[&link_to];
+            let interaction_id = self.interaction_id_map[&(operation.clone(), location.clone())];
 
             let namespace = location.to_string();
 
@@ -354,7 +356,7 @@ mod test {
     pc' = (1 - first_step') * pc_update;
     pol commit call_selectors[0];
     std::array::map(call_selectors, std::utils::force_bool);
-    std::protocols::bus::bus_multi_linker([(454118344, 1, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], std::protocols::bus::BusLinkerType::Send)]);
+    std::protocols::bus::bus_multi_linker([(0, 1, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], std::protocols::bus::BusLinkerType::Send)]);
 namespace main__rom(4);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
@@ -363,7 +365,7 @@ namespace main__rom(4);
     pol constant p_instr_return = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-    std::protocols::bus::bus_multi_linker([(454118344, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], std::protocols::bus::BusLinkerType::LookupReceive)]);
+    std::protocols::bus::bus_multi_linker([(0, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], std::protocols::bus::BusLinkerType::LookupReceive)]);
 "#;
 
         let file_name = "../test_data/asm/empty_vm.asm";
