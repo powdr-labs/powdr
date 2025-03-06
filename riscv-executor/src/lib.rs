@@ -815,14 +815,13 @@ mod builder {
             let cols_len = self.trace.known_cols.len() / KnownWitnessCol::count();
 
             // sanity check
-            // TODO
-            // if let ExecMode::Witness = self.mode {
-            //     assert!(
-            //         self.trace.len <= cols_len,
-            //         "Expected trace len ({}) to be at most the column length ({cols_len})",
-            //         self.trace.len
-            //     );
-            // }
+            if let ExecMode::Witness = self.mode {
+                assert!(
+                    self.trace.len <= cols_len,
+                    "Expected trace len ({}) to be at most the column length ({cols_len})",
+                    self.trace.len
+                );
+            }
 
             cols_len
         }
