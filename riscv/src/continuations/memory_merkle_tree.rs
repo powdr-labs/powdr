@@ -8,7 +8,7 @@ use super::bootloader::{
 };
 
 use powdr_number::{FieldElement, GoldilocksField};
-use powdr_riscv_executor::poseidon_gl::poseidon_gl;
+use powdr_riscv_executor::{poseidon_gl::poseidon_gl, Elem};
 
 const N_LEVELS_DEFAULT: usize = N_LEAVES_LOG + 1;
 
@@ -96,9 +96,9 @@ impl<T: FieldElement, const N_LEVELS: usize, const WORDS_PER_PAGE: usize>
     /// use a BTreeMap here.
     pub fn organize_updates_by_page(
         &self,
-        updates: impl Iterator<Item = (u32, u32)>,
-    ) -> BTreeMap<usize, Vec<(usize, u32)>> {
-        let mut updates_by_page: BTreeMap<usize, Vec<(usize, u32)>> = BTreeMap::new();
+        updates: impl Iterator<Item = (u32, Elem<T>)>,
+    ) -> BTreeMap<usize, Vec<(usize, Elem<T>)>> {
+        let mut updates_by_page: BTreeMap<usize, Vec<(usize, Elem<T>)>> = BTreeMap::new();
         for (addr, value) in updates {
             assert!(addr % BYTES_PER_WORD as u32 == 0);
             let word_index = addr as usize / BYTES_PER_WORD;
@@ -114,7 +114,7 @@ impl<T: FieldElement, const N_LEVELS: usize, const WORDS_PER_PAGE: usize>
 
     /// Applies updates, given an iterator of (memory address, value) pairs.
     /// Memory addresses are assumed to be word-aligned.
-    pub fn update(&mut self, updates: impl Iterator<Item = (u32, u32)>) {
+    pub fn update(&mut self, updates: impl Iterator<Item = (u32, Elem<T>)>) {
         let mut updated_indices = Vec::new();
 
         // Update all leaves first:
@@ -136,18 +136,18 @@ impl<T: FieldElement, const N_LEVELS: usize, const WORDS_PER_PAGE: usize>
 
     /// Applies updates to a single page, given an iterator of (word index, value) pairs.
     /// Word indices addresses are assumed to be word-aligned.
-    pub fn update_page(&mut self, page_index: usize, updates: &[(usize, u32)]) {
+    pub fn update_page(&mut self, page_index: usize, updates: &[(usize, Elem<T>)]) {
         self.update_page_impl(page_index, updates);
         self.update_hashes(page_index)
     }
 
-    fn update_page_impl(&mut self, page_index: usize, updates: &[(usize, u32)]) {
+    fn update_page_impl(&mut self, page_index: usize, updates: &[(usize, Elem<T>)]) {
         let page = &mut self
             .data
             .entry(page_index)
             .or_insert_with(|| [T::zero(); WORDS_PER_PAGE]);
         for (index, value) in updates {
-            page[*index] = T::from(*value);
+            page[*index] = value.into_fe();
         }
     }
 
@@ -268,31 +268,31 @@ mod test {
 
         // Update page 0
         data[0][4] = 1;
-        tree.update([(4 * 4, 1)].into_iter());
+        tree.update([(4 * 4, 1.into())].into_iter());
         let expected_root_hash = root_hash::<GoldilocksField>(&data);
         assert_eq!(tree.root_hash(), &expected_root_hash);
 
         // Update page 1
         data[1][3] = 2;
-        tree.update([((8 + 3) * 4, 2)].into_iter());
+        tree.update([((8 + 3) * 4, 2.into())].into_iter());
         let expected_root_hash = root_hash::<GoldilocksField>(&data);
         assert_eq!(tree.root_hash(), &expected_root_hash);
 
         // Update page 2
         data[2][7] = 3;
-        tree.update([((2 * 8 + 7) * 4, 3)].into_iter());
+        tree.update([((2 * 8 + 7) * 4, 3.into())].into_iter());
         let expected_root_hash = root_hash::<GoldilocksField>(&data);
         assert_eq!(tree.root_hash(), &expected_root_hash);
 
         // Update page 3
         data[3][6] = 4;
-        tree.update([((3 * 8 + 6) * 4, 4)].into_iter());
+        tree.update([((3 * 8 + 6) * 4, 4.into())].into_iter());
         let expected_root_hash = root_hash::<GoldilocksField>(&data);
         assert_eq!(tree.root_hash(), &expected_root_hash);
 
         // Update page 0, again
         data[0][3] = 5;
-        tree.update([(4 * 3, 5)].into_iter());
+        tree.update([(4 * 3, 5.into())].into_iter());
         let expected_root_hash = root_hash::<GoldilocksField>(&data);
         assert_eq!(tree.root_hash(), &expected_root_hash);
 
@@ -306,7 +306,8 @@ mod test {
                 ((3 * 8 + 6) * 4, 4),
                 (4 * 3, 5),
             ]
-            .into_iter(),
+            .into_iter()
+            .map(|(a, v)| (a, v.into())),
         );
         assert_eq!(tree.root_hash(), &expected_root_hash);
     }
@@ -323,7 +324,8 @@ mod test {
                 ((3 * 8 + 6) * 4, 4),
                 (4 * 3, 5),
             ]
-            .into_iter(),
+            .into_iter()
+            .map(|(a, v)| (a, v.into())),
         );
         let root_hash = tree.root_hash();
 

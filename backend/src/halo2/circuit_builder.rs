@@ -332,6 +332,9 @@ impl<T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCircui
                             .collect()
                     });
                 }
+                Identity::BusInteraction(..) => {
+                    // Native bus interactions are not relevant in halo2, which supports native lookup/permutations
+                }
                 Identity::PhantomLookup(..)
                 | Identity::PhantomPermutation(..)
                 | Identity::PhantomBusInteraction(..) => {

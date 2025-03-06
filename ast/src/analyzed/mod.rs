@@ -1028,6 +1028,39 @@ impl<T> Children<AlgebraicExpression<T>> for ExpressionList<T> {
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
 )]
 /// For documentation, see the equivalent `Constr` variant in std/prelude.asm.
+pub struct BusInteractionIdentity<T> {
+    // The ID is globally unique among identities.
+    pub id: u64,
+    pub source: SourceRef,
+    pub multiplicity: AlgebraicExpression<T>,
+    pub bus_id: AlgebraicExpression<T>,
+    pub payload: ExpressionList<T>,
+    pub latch: AlgebraicExpression<T>,
+}
+
+impl<T> Children<AlgebraicExpression<T>> for BusInteractionIdentity<T> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(
+            once(&mut self.multiplicity)
+                .chain(once(&mut self.bus_id))
+                .chain(self.payload.children_mut())
+                .chain(once(&mut self.latch)),
+        )
+    }
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(
+            once(&self.multiplicity)
+                .chain(once(&self.bus_id))
+                .chain(self.payload.children())
+                .chain(once(&self.latch)),
+        )
+    }
+}
+
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
+/// For documentation, see the equivalent `Constr` variant in std/prelude.asm.
 pub struct PhantomBusInteractionIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
@@ -1086,6 +1119,7 @@ pub enum Identity<T> {
     Permutation(PermutationIdentity<T>),
     PhantomPermutation(PhantomPermutationIdentity<T>),
     Connect(ConnectIdentity<T>),
+    BusInteraction(BusInteractionIdentity<T>),
     PhantomBusInteraction(PhantomBusInteractionIdentity<T>),
 }
 
@@ -1109,6 +1143,7 @@ impl<T> Identity<T> {
             Identity::Permutation(i) => i.id,
             Identity::PhantomPermutation(i) => i.id,
             Identity::Connect(i) => i.id,
+            Identity::BusInteraction(i) => i.id,
             Identity::PhantomBusInteraction(i) => i.id,
         }
     }
@@ -1121,6 +1156,7 @@ impl<T> Identity<T> {
             Identity::Permutation(_) => IdentityKind::Permutation,
             Identity::PhantomPermutation(_) => IdentityKind::PhantomPermutation,
             Identity::Connect(_) => IdentityKind::Connect,
+            Identity::BusInteraction(_) => IdentityKind::BusInteraction,
             Identity::PhantomBusInteraction(_) => IdentityKind::PhantomBusInteraction,
         }
     }
@@ -1135,6 +1171,7 @@ impl<T> SourceReference for Identity<T> {
             Identity::Permutation(i) => &i.source,
             Identity::PhantomPermutation(i) => &i.source,
             Identity::Connect(i) => &i.source,
+            Identity::BusInteraction(i) => &i.source,
             Identity::PhantomBusInteraction(i) => &i.source,
         }
     }
@@ -1147,6 +1184,7 @@ impl<T> SourceReference for Identity<T> {
             Identity::Permutation(i) => &mut i.source,
             Identity::PhantomPermutation(i) => &mut i.source,
             Identity::Connect(i) => &mut i.source,
+            Identity::BusInteraction(i) => &mut i.source,
             Identity::PhantomBusInteraction(i) => &mut i.source,
         }
     }
@@ -1161,6 +1199,7 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
             Identity::Permutation(i) => i.children_mut(),
             Identity::PhantomPermutation(i) => i.children_mut(),
             Identity::Connect(i) => i.children_mut(),
+            Identity::BusInteraction(i) => i.children_mut(),
             Identity::PhantomBusInteraction(i) => i.children_mut(),
         }
     }
@@ -1173,6 +1212,7 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
             Identity::Permutation(i) => i.children(),
             Identity::PhantomPermutation(i) => i.children(),
             Identity::Connect(i) => i.children(),
+            Identity::BusInteraction(i) => i.children(),
             Identity::PhantomBusInteraction(i) => i.children(),
         }
     }
@@ -1188,6 +1228,7 @@ pub enum IdentityKind {
     Permutation,
     PhantomPermutation,
     Connect,
+    BusInteraction,
     PhantomBusInteraction,
 }
 
@@ -1212,6 +1253,15 @@ pub struct AlgebraicReferenceThin {
 impl From<&AlgebraicReference> for AlgebraicReferenceThin {
     fn from(value: &AlgebraicReference) -> Self {
         value.to_thin()
+    }
+}
+
+impl From<PolyID> for AlgebraicReferenceThin {
+    fn from(poly_id: PolyID) -> Self {
+        AlgebraicReferenceThin {
+            poly_id,
+            next: false,
+        }
     }
 }
 
