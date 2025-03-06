@@ -59,6 +59,9 @@ impl<T: FieldElement> ExpressionCounter for Identity<T> {
             Identity::Connect(connect_identity) => {
                 connect_identity.left.len() + connect_identity.right.len()
             }
+            Identity::BusInteraction(bus_interaction_identity) => {
+                3 + bus_interaction_identity.payload.0.len() // multiplicity/latch/bus_id + payload
+            }
             // phantom identities are not relevant in this context
             Identity::PhantomLookup(..)
             | Identity::PhantomPermutation(..)

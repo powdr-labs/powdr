@@ -95,6 +95,7 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
             Default::default(),
             polynomial_identities,
             parts.witnesses,
+            parts.intermediates,
             parts.prover_functions,
         );
 

@@ -94,7 +94,9 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                 let idx = var_mapper.map_var(var);
                 InterpreterAction::ReadParam(idx, *i)
             }
-            Variable::FixedCell(_) | Variable::MachineCallParam(_) => unreachable!(),
+            Variable::FixedCell(_)
+            | Variable::MachineCallParam(_)
+            | Variable::IntermediateCell(_) => unreachable!(),
         }));
     }
 
@@ -166,6 +168,9 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                         actions.push(InterpreterAction::WriteParam(idx, *i));
                     }
                     Variable::FixedCell(_) => panic!("Should not write to fixed column."),
+                    Variable::IntermediateCell(_) => {
+                        // Intermediate cells are not stored permanently
+                    }
                     Variable::MachineCallParam(_) => {
                         // This is just an internal variable.
                     }
