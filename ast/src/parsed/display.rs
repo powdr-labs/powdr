@@ -555,7 +555,10 @@ impl Display for FunctionDefinition {
                 )
             }
             FunctionDefinition::Expression(e) => write!(f, " = {e}"),
-            FunctionDefinition::TypeDeclaration(_) | FunctionDefinition::TraitDeclaration(_) => {
+            // not sure if we need to print public declaration definition anywhere
+            FunctionDefinition::TypeDeclaration(_)
+            | FunctionDefinition::TraitDeclaration(_)
+            | FunctionDefinition::PublicDeclaration(..) => {
                 panic!("Should not use this formatting function.")
             }
         }
@@ -717,7 +720,6 @@ impl<Ref: Display> Display for Expression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Expression::Reference(_, reference) => write!(f, "{reference}"),
-            Expression::PublicReference(_, name) => write!(f, ":{name}"),
             Expression::Number(_, n) => write!(f, "{n}"),
             Expression::String(_, value) => write!(f, "{}", quote(value)),
             Expression::Tuple(_, items) => write!(f, "({})", format_list(items)),

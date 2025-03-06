@@ -574,7 +574,6 @@ impl<T> Children<Expression<T>> for SelectedExpressions<Expression<T>> {
 )]
 pub enum Expression<Ref = NamespacedPolynomialReference> {
     Reference(SourceRef, Ref),
-    PublicReference(SourceRef, String),
     // A number literal and its type.
     Number(SourceRef, Number),
     String(SourceRef, String),
@@ -630,7 +629,6 @@ macro_rules! impl_source_reference_inner {
 impl_source_reference!(
     Expression<E>,
     Reference,
-    PublicReference,
     Number,
     String,
     Tuple,
@@ -883,9 +881,7 @@ impl<R> Expression<R> {
     #[auto_enum(Iterator)]
     pub fn children(&self) -> impl Iterator<Item = &Expression<R>> + '_ {
         match self {
-            Expression::Reference(_, _)
-            | Expression::PublicReference(_, _)
-            | Expression::String(_, _) => empty(),
+            Expression::Reference(_, _) | Expression::String(_, _) => empty(),
             Expression::Number(_, _) => empty(),
             Expression::Tuple(_, v) => v.iter(),
             Expression::LambdaExpression(_, lambda) => lambda.children(),
@@ -909,9 +905,7 @@ impl<R> Expression<R> {
     #[auto_enum(Iterator)]
     pub fn children_mut(&mut self) -> impl Iterator<Item = &mut Expression<R>> + '_ {
         match self {
-            Expression::Reference(_, _)
-            | Expression::PublicReference(_, _)
-            | Expression::String(_, _) => empty(),
+            Expression::Reference(_, _) | Expression::String(_, _) => empty(),
             Expression::Number(_, _) => empty(),
             Expression::Tuple(_, v) => v.iter_mut(),
             Expression::LambdaExpression(_, lambda) => lambda.children_mut(),
@@ -1379,6 +1373,12 @@ pub enum FunctionDefinition {
     TypeDeclaration(TypeDeclaration<Expression>),
     /// A trait declaration.
     TraitDeclaration(TraitDeclaration<Expression>),
+    /// A public declaration: (polynomial referred to, optional array index, trace row number of the polynomial)
+    PublicDeclaration(
+        NamespacedPolynomialReference,
+        Option<Expression>,
+        Expression,
+    ),
 }
 
 impl Children<Expression> for FunctionDefinition {
@@ -1388,6 +1388,7 @@ impl Children<Expression> for FunctionDefinition {
             FunctionDefinition::Expression(e) => Box::new(once(e)),
             FunctionDefinition::TypeDeclaration(_enum_declaration) => todo!(),
             FunctionDefinition::TraitDeclaration(trait_declaration) => trait_declaration.children(),
+            FunctionDefinition::PublicDeclaration(_, _, e) => todo!(),
         }
     }
 
@@ -1399,6 +1400,7 @@ impl Children<Expression> for FunctionDefinition {
             FunctionDefinition::TraitDeclaration(trait_declaration) => {
                 trait_declaration.children_mut()
             }
+            FunctionDefinition::PublicDeclaration(_, _, e) => todo!(),
         }
     }
 }

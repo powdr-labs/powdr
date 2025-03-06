@@ -36,7 +36,6 @@ use crate::{
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     solved_impls: SolvedTraitImpls,
-    public_declarations: HashMap<String, PublicDeclaration>,
     proof_items: &[Expression],
     trait_impls: Vec<TraitImplementation<Expression>>,
     source_order: Vec<StatementIdentifier>,
@@ -187,7 +186,6 @@ pub fn condense<T: FieldElement>(
     Analyzed {
         definitions,
         solved_impls,
-        public_declarations,
         intermediate_columns,
         identities: condensed_identities,
         prover_functions,

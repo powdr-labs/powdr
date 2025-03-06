@@ -14,8 +14,8 @@ use powdr_ast::parsed::{
     PilStatement, PolynomialName, TraitDeclaration,
 };
 use powdr_ast::parsed::{
-    ArrayExpression, NamedExpression, StructDeclaration, SymbolCategory, TraitImplementation,
-    TypeDeclaration,
+    ArrayExpression, NamedExpression, NamespacedPolynomialReference, StructDeclaration,
+    SymbolCategory, TraitImplementation, TypeDeclaration,
 };
 use powdr_parser_util::{Error, SourceRef};
 use std::str::FromStr;
@@ -31,7 +31,7 @@ use crate::expression_processor::ExpressionProcessor;
 
 pub enum PILItem {
     Definition(Symbol, Option<FunctionValueDefinition>),
-    PublicDeclaration(PublicDeclaration),
+    // PublicDeclaration(PublicDeclaration),
     ProofItem(Expression),
     TraitImplementation(TraitImplementation<Expression>),
 }
@@ -39,7 +39,6 @@ pub enum PILItem {
 pub struct Counters {
     symbol_counters: BTreeMap<SymbolKind, u64>,
     identity_counter: u64,
-    public_counter: u64,
 }
 
 impl Default for Counters {
@@ -55,7 +54,6 @@ impl Default for Counters {
             .map(|k| (k, 0))
             .collect(),
             identity_counter: 0,
-            public_counter: 0,
         }
     }
 }
@@ -71,9 +69,6 @@ impl Counters {
         let mut counters = Self::default();
         if let Some(id) = identity {
             counters.identity_counter = id + 1;
-        }
-        if let Some(id) = public {
-            counters.public_counter = id + 1;
         }
         for symbol in symbols {
             let counter = counters.symbol_counters.get_mut(&symbol.kind).unwrap();
@@ -93,12 +88,6 @@ impl Counters {
         let counter = self.symbol_counters.get_mut(&kind).unwrap();
         let id = *counter;
         *counter += length.unwrap_or(1);
-        id
-    }
-
-    pub fn dispense_public_id(&mut self) -> u64 {
-        let id = self.public_counter;
-        self.public_counter += 1;
         id
     }
 }
@@ -141,7 +130,20 @@ where
                 )
             }
             PilStatement::PublicDeclaration(source, name, polynomial, array_index, index) => {
-                self.handle_public_declaration(source, name, polynomial, array_index, index)
+                // self.handle_public_declaration(source, name, polynomial, array_index, index)
+                let (name, ty) = self.name_and_type_from_polynomial_name(
+                    PolynomialName {
+                        name,
+                        array_size: None,
+                    },
+                    Type::Inter, // I'm not sure what to use for the type of public declaration
+                )?;
+                let value = Some(FunctionDefinition::PublicDeclaration(
+                    polynomial,
+                    array_index,
+                    index,
+                ));
+                self.handle_symbol_definition(source, name, SymbolKind::Public(), None, ty, value)
             }
             PilStatement::PolynomialConstantDefinition(source, name, definition) => self
                 .handle_symbol_definition(
@@ -431,6 +433,10 @@ where
             Some(FunctionDefinition::Array(value)) => {
                 self.process_array_symbol(symbol, type_scheme, value)
             }
+            Some(FunctionDefinition::PublicDeclaration(polynomial, array_index, index)) => {
+                assert_eq!(symbol_kind, SymbolKind::Public());
+                self.process_public_declaration(symbol, polynomial, array_index, index)
+            }
             None => Ok(vec![PILItem::Definition(symbol, None)]),
         }
     }
@@ -508,47 +514,61 @@ where
             .collect()
     }
 
-    fn handle_public_declaration(
+    fn process_public_declaration(
         &mut self,
-        source: SourceRef,
-        name: String,
-        poly: parsed::NamespacedPolynomialReference,
+        symbol: Symbol,
+        polynomial: NamespacedPolynomialReference,
         array_index: Option<parsed::Expression>,
         index: parsed::Expression,
     ) -> Result<Vec<PILItem>, Error> {
-        let id = self.counters.dispense_public_id();
-        let name = self.driver.resolve_decl(&name);
-        let polynomial = self
-            .expression_processor(&Default::default())
-            .process_namespaced_polynomial_reference(poly)
-            .map_err(|err| source.with_error(err))?;
-        let type_vars = Default::default();
-        let mut expression_processor = self.expression_processor(&type_vars);
-        let array_index = array_index
-            .map(|i| {
-                let i = expression_processor.process_expression(i).map_err(|err| {
-                    err.extend_message(|m| format!("Failed to process array index: {m}"))
-                })?;
-                let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
-                    .unwrap()
-                    .try_into()
-                    .unwrap();
-                assert!(index <= usize::MAX as u64);
-                Ok(index as usize)
-            })
-            .transpose()?;
-        let index = expression_processor.process_expression(index)?;
-        Ok(vec![PILItem::PublicDeclaration(PublicDeclaration {
+        let Symbol {
             id,
             source,
-            name: name.to_string(),
-            polynomial,
-            array_index,
-            index: untyped_evaluator::evaluate_expression_to_int(self.driver, index)
-                .unwrap()
-                .try_into()
-                .unwrap(),
-        })])
+            absolute_name,
+            ..
+        } = symbol.clone();
+
+        Ok(vec![PILItem::Definition(
+            symbol,
+            Some(FunctionValueDefinition::PublicDeclaration(
+                PublicDeclaration {
+                    id,
+                    source: source.clone(),
+                    name: absolute_name,
+                    polynomial: self
+                        .expression_processor(&Default::default())
+                        .process_namespaced_polynomial_reference(polynomial)
+                        .map_err(|err| source.with_error(err))?,
+                    array_index: array_index
+                        .map(|i| {
+                            let i = self
+                                .expression_processor(&Default::default())
+                                .process_expression(i)
+                                .map_err(|err| {
+                                    err.extend_message(|m| {
+                                        format!("Failed to process array index: {m}")
+                                    })
+                                })?;
+                            let index: u64 =
+                                untyped_evaluator::evaluate_expression_to_int(self.driver, i)
+                                    .unwrap()
+                                    .try_into()
+                                    .unwrap();
+                            assert!(index <= usize::MAX as u64);
+                            Ok(index as usize)
+                        })
+                        .transpose()?,
+                    index: untyped_evaluator::evaluate_expression_to_int(
+                        self.driver,
+                        self.expression_processor(&Default::default())
+                            .process_expression(index)?,
+                    )
+                    .unwrap()
+                    .try_into()
+                    .unwrap(),
+                },
+            )),
+        )])
     }
 
     fn expression_processor<'b>(

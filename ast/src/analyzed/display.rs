@@ -95,6 +95,15 @@ impl<T: Display> Display for Analyzed<T> {
                                 format_witness_column(&name, symbol, definition),
                             )?,
                             SymbolKind::Poly(PolynomialType::Intermediate) => unreachable!(),
+                            SymbolKind::Public() => {
+                                if let FunctionValueDefinition::PublicDeclaration(decl) =
+                                    definition.as_ref().unwrap()
+                                {
+                                    writeln_indented(f, format_public_declaration(&name, &decl))?;
+                                } else {
+                                    unreachable!() // public symbol should always have a public declaration
+                                }
+                            }
                             SymbolKind::Other() => {
                                 assert!(symbol.stage.is_none());
                                 match definition {
@@ -159,11 +168,11 @@ impl<T: Display> Display for Analyzed<T> {
                         panic!()
                     }
                 }
-                StatementIdentifier::PublicDeclaration(name) => {
-                    let decl = &self.public_declarations[name];
-                    let name = update_namespace(&decl.name, f)?;
-                    writeln_indented(f, format_public_declaration(&name, decl))?;
-                }
+                // StatementIdentifier::PublicDeclaration(name) => {
+                //     let decl = &self.public_declarations[name];
+                //     let name = update_namespace(&decl.name, f)?;
+                //     writeln_indented(f, format_public_declaration(&name, decl))?;
+                // }
                 StatementIdentifier::ProofItem(i) => {
                     writeln_indented(f, &self.identities[*i])?;
                 }
@@ -277,7 +286,8 @@ impl Display for FunctionValueDefinition {
             FunctionValueDefinition::TypeDeclaration(_)
             | FunctionValueDefinition::TypeConstructor(_, _)
             | FunctionValueDefinition::TraitDeclaration(_)
-            | FunctionValueDefinition::TraitFunction(_, _) => {
+            | FunctionValueDefinition::TraitFunction(_, _)
+            | FunctionValueDefinition::PublicDeclaration(_) => {
                 panic!("Should not use this formatting function.")
             }
         }
