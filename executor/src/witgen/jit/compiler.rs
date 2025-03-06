@@ -590,7 +590,7 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
         ProverFunctionComputation::HandleQueryInputOutput(branches) => {
             let indent = "        ";
             // We assign zero in the "no match" case. The correct behaviour would be to
-            // not assign anything, but it should work for all our use-casse.
+            // not assign anything, but it should work for all our use-cases.
             format!(
                 "match IntType::from(args[0]) {{\n{}\n{indent}_ => 0.into(),\n    }}",
                 branches
