@@ -900,13 +900,6 @@ mod builder {
             self.regs[idx as usize] = value;
         }
 
-        pub fn set_col_idx(&mut self, col: KnownWitnessCol, idx: usize, value: Elem<F>) {
-            if let ExecMode::Witness = self.mode {
-                let idx = (KnownWitnessCol::count() * idx) + col as usize;
-                *self.trace.known_cols.get_mut(idx).unwrap() = value.into_fe();
-            }
-        }
-
         pub fn set_col(&mut self, col: KnownWitnessCol, value: Elem<F>) {
             if let ExecMode::Witness = self.mode {
                 let idx = (self.trace.known_cols.len() - KnownWitnessCol::count()) + col as usize;
