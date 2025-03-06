@@ -325,7 +325,9 @@ fn simplify_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     pil_file.post_visit_expressions_in_identities_mut(&mut simplify_expression_single);
 }
 
-fn simplify_expression<T: FieldElement>(mut e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
+pub fn simplify_expression<T: FieldElement>(
+    mut e: AlgebraicExpression<T>,
+) -> AlgebraicExpression<T> {
     e.post_visit_expressions_mut(&mut simplify_expression_single);
     e
 }
