@@ -75,15 +75,26 @@ impl LinkerBackend for BusLinker {
                     (indices, sizes)
                 },
             );
-
+        // generate a map of interaction id for each link.to
         let interaction_id_map: BTreeMap<LinkTo, u32> = graph
             .objects
-            .values()
-            .flat_map(|object| object.links.iter().map(|link| link.to.clone()))
-            .collect::<HashSet<_>>()
             .iter()
+            .flat_map(|(location, object)| {
+                object
+                    .operations
+                    .keys()
+                    .map(move |operation_name| (location, operation_name.clone()))
+            })
             .enumerate()
-            .map(|(id, link_to)| (link_to.clone(), id as u32))
+            .map(|(id, (location, operation_name))| {
+                (
+                    LinkTo {
+                        machine: location.clone(),
+                        operation: operation_name.clone(),
+                    },
+                    id as u32,
+                )
+            })
             .collect();
 
         Ok(Self {
