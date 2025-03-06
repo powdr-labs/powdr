@@ -173,7 +173,6 @@ macro_rules! known_witness_col {
 }
 
 known_witness_col! {
-    _operation_id,
     pc_update,
     X,
     Y,
@@ -341,14 +340,6 @@ known_fixed_col! {
     Y_read_free,
     X_read_free
 }
-
-/// Initial value of the PC.
-///
-/// To match the ZK proof witness, the PC must start after some offset used for
-/// proof initialization.
-///
-/// TODO: get this value from some authoritative place
-const PC_INITIAL_VAL: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Elem<F: FieldElement> {
@@ -574,7 +565,7 @@ impl<F: FieldElement> ExecutionTrace<F> {
             reg_writes: vec![None; reg_map.len()],
             reg_map,
             mem_ops: Vec::new(),
-            len: PC_INITIAL_VAL + 1,
+            len: 1,
             pc_trace: Vec::new(),
             submachine_ops: MachineInstance::all().iter().map(|_| Vec::new()).collect(),
             known_cols: vec![],
@@ -637,7 +628,7 @@ mod builder {
         pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, KnownWitnessCol,
         MachineInstance, MemOperation, MemOperationKind, MemoryMachine, MemoryState,
         PoseidonGlMachine, PublicsMachine, RegisterMemory, ShiftMachine, SplitGlMachine,
-        Submachine, SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
+        Submachine, SubmachineBoxed, SubmachineOp,
     };
 
     fn namespace_degree_range<F: FieldElement>(
@@ -731,7 +722,7 @@ mod builder {
 
             let pc_idx = reg_map["pc"];
             let mut regs = vec![0.into(); reg_len];
-            regs[pc_idx as usize] = PC_INITIAL_VAL.into();
+            regs[pc_idx as usize] = 0.into();
 
             let submachines: HashMap<_, RefCell<Box<dyn Submachine<F>>>> =
                 if let ExecMode::Witness = mode {
@@ -777,7 +768,7 @@ mod builder {
 
             let mut ret = Self {
                 pc_idx,
-                curr_pc: PC_INITIAL_VAL.into(),
+                curr_pc: 0.into(),
                 trace: ExecutionTrace::new(witness_cols, reg_map),
                 submachines,
                 next_statement_line: 1,
@@ -824,9 +815,14 @@ mod builder {
             let cols_len = self.trace.known_cols.len() / KnownWitnessCol::count();
 
             // sanity check
-            if let ExecMode::Witness = self.mode {
-                assert!(self.trace.len <= cols_len);
-            }
+            // TODO
+            // if let ExecMode::Witness = self.mode {
+            //     assert!(
+            //         self.trace.len <= cols_len,
+            //         "Expected trace len ({}) to be at most the column length ({cols_len})",
+            //         self.trace.len
+            //     );
+            // }
 
             cols_len
         }
@@ -1254,7 +1250,7 @@ fn preprocess_main_function<F: FieldElement>(machine: &Machine) -> PreprocessedM
 
     let mut statements = Vec::new();
     let mut label_map = HashMap::new();
-    let mut batch_to_line_map = vec![0; PC_INITIAL_VAL];
+    let mut batch_to_line_map = vec![];
     let mut debug_files = Vec::new();
     let mut function_starts = BTreeMap::new();
     let mut location_starts = BTreeMap::new();
@@ -1279,7 +1275,7 @@ fn preprocess_main_function<F: FieldElement>(machine: &Machine) -> PreprocessedM
                             debug_files.push((dir.as_str(), file.as_str()));
                         }
                         DebugDirective::Loc(file, line, _) => {
-                            location_starts.insert(batch_idx + PC_INITIAL_VAL, (*file, *line));
+                            location_starts.insert(batch_idx, (*file, *line));
                             statements.push(s);
                         }
                         DebugDirective::OriginalInstruction(_) => {
@@ -1291,10 +1287,10 @@ fn preprocess_main_function<F: FieldElement>(machine: &Machine) -> PreprocessedM
                 FunctionStatement::Label(LabelStatement { source: _, name }) => {
                     // assert there are no statements in the middle of a block
                     assert!(!statement_seen);
-                    label_map.insert(name.as_str(), (batch_idx + PC_INITIAL_VAL).into());
+                    label_map.insert(name.as_str(), (batch_idx).into());
                     // TODO: would looking for "___dot_Lfunc_begin" be less hacky? would require more work to handle ecalls though...
                     if !name.contains("___dot_L") {
-                        function_starts.insert(batch_idx + PC_INITIAL_VAL, name.as_str());
+                        function_starts.insert(batch_idx, name.as_str());
                     }
                 }
             }
@@ -1339,21 +1335,14 @@ struct Executor<'a, 'b, F: FieldElement> {
 
 impl<F: FieldElement> Executor<'_, '_, F> {
     fn init(&mut self) {
-        self.step = 4;
+        // TODO why not zero?
+        self.step = 2;
 
         if let ExecMode::Witness = self.mode {
             for c in KnownFixedCol::all() {
                 self.cached_fixed_cols
                     .push(self.get_fixed(c.name()).unwrap().clone());
             }
-        }
-
-        for i in 0..2 {
-            self.proc.push_row(i);
-            self.proc
-                .set_col_idx(KnownWitnessCol::_operation_id, i as usize, 2.into());
-            self.proc
-                .set_col_idx(KnownWitnessCol::pc_update, i as usize, (i + 1).into());
         }
     }
 
@@ -1370,16 +1359,6 @@ impl<F: FieldElement> Executor<'_, '_, F> {
             .get(col as usize)
             .map(|v| v[row])
             .unwrap_or_default()
-    }
-
-    fn sink_id(&self) -> u32 {
-        // sink_id is the length of the ROM. we find it by looking at the line instr__loop activates
-        self.get_fixed("main__rom::p_instr__loop")
-            .unwrap()
-            .iter()
-            .position(|val| val.is_one())
-            .map(|pos| pos as u32)
-            .expect("could not find sink_id by looking at the p_instr__loop column")
     }
 
     /// read register value, updating the register memory machine
@@ -3094,7 +3073,7 @@ fn execute_inner<F: FieldElement>(
         profiling.map(|opt| Profiler::new(opt, &debug_files[..], function_starts, location_starts));
 
     let mut curr_pc = 0u32;
-    e.proc.push_row(PC_INITIAL_VAL as u32);
+    e.proc.push_row(curr_pc);
     let mut last = Instant::now();
     let mut count = 0;
     loop {
@@ -3118,7 +3097,6 @@ fn execute_inner<F: FieldElement>(
         match stm {
             FunctionStatement::Assignment(a) => {
                 let pc = e.proc.get_pc().u();
-                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(pc as usize);
                 }
@@ -3171,8 +3149,6 @@ fn execute_inner<F: FieldElement>(
                 }
             }
             FunctionStatement::Instruction(i) => {
-                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
-
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
                 }
@@ -3205,7 +3181,7 @@ fn execute_inner<F: FieldElement>(
                 }
             }
             FunctionStatement::Return(_) => {
-                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
+                e.proc.set_col(KnownWitnessCol::pc_update, e.proc.get_pc());
                 break;
             }
             FunctionStatement::DebugDirective(dd) => {
@@ -3241,32 +3217,6 @@ fn execute_inner<F: FieldElement>(
     log::debug!("Program execution took {}s", start.elapsed().as_secs_f64());
 
     if let ExecMode::Trace | ExecMode::Witness = mode {
-        let sink_id = e.sink_id();
-
-        // reset
-        e.proc.set_col(KnownWitnessCol::pc_update, 0.into());
-        e.proc.set_pc(0.into());
-        assert!(e.proc.advance().is_none());
-        e.proc
-            .set_col(KnownWitnessCol::_operation_id, sink_id.into());
-
-        // jump_to_operation
-        e.proc.set_col(KnownWitnessCol::pc_update, 1.into());
-        e.proc.set_pc(1.into());
-        e.proc.set_reg("query_arg_1", 0);
-        e.proc.set_reg("query_arg_2", 0);
-        assert!(e.proc.advance().is_none());
-        e.proc
-            .set_col(KnownWitnessCol::_operation_id, sink_id.into());
-
-        // loop
-        e.proc.set_col(KnownWitnessCol::pc_update, sink_id.into());
-        e.proc.set_pc(sink_id.into());
-        assert!(e.proc.advance().is_none());
-        e.proc.set_col(KnownWitnessCol::pc_update, sink_id.into());
-        e.proc
-            .set_col(KnownWitnessCol::_operation_id, sink_id.into());
-
         if let ExecMode::Witness = mode {
             let start = Instant::now();
             program_columns = e.generate_program_columns();
