@@ -1,6 +1,7 @@
 // TODO: the unused is only here because the interpreter is not integrated in the final code yet
 #![allow(unused)]
 use super::effect::{Assertion, Effect};
+
 use super::symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator};
 use super::variable::{Cell, Variable};
 use crate::witgen::data_structures::finalizable_data::CompactDataRef;

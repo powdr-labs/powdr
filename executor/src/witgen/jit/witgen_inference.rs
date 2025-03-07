@@ -676,7 +676,7 @@ mod test {
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let fixed_data = global_constraints::set_global_constraints(fixed_data);
 
-        let fixed_lookup_connections = fixed_data
+        let fixed_lookup_receives = fixed_data
             .bus_receives
             .iter()
             .filter(|(_, r)| FixedLookup::is_responsible(r))
@@ -684,7 +684,7 @@ mod test {
             .collect();
 
         let global_constr = fixed_data.global_range_constraints.clone();
-        let fixed_machine = FixedLookup::new(global_constr, &fixed_data, fixed_lookup_connections);
+        let fixed_machine = FixedLookup::new(global_constr, &fixed_data, fixed_lookup_receives);
         let known_fixed = KnownMachine::FixedLookup(fixed_machine);
         let mutable_state = MutableState::new([known_fixed].into_iter(), &|_| {
             Err("Query not implemented".to_string())
