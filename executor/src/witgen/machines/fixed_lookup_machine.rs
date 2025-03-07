@@ -340,12 +340,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .filter(|(inputs, _)| matches_range_constraint(inputs, &input_range_constraints))
             .any(|(_, value)| value.0.is_none());
 
-        let columns = (self.bus_receives[&bus_id]
+        let columns = self.bus_receives[&bus_id]
             .selected_payload
             .expressions
-            .iter())
-        .map(|e| FixedColOrConstant::try_from(e).unwrap())
-        .collect_vec();
+            .iter()
+            .map(|e| FixedColOrConstant::try_from(e).unwrap())
+            .collect_vec();
         let cache_key = RangeConstraintCacheKey {
             columns: columns.clone(),
             range_constraints: range_constraints.clone(),
