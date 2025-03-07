@@ -37,7 +37,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
     ) -> EvalResult<'a, T> {
         let result = match identity {
             Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
-            Identity::BusSend(bus_interaction) => self.process_lookup_or_permutation(
+            Identity::BusSend(bus_interaction) => self.process_machine_call(
                 bus_interaction.bus_id().unwrap(),
                 &bus_interaction.selected_payload,
                 rows,
@@ -65,7 +65,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
         }
     }
 
-    fn process_lookup_or_permutation(
+    fn process_machine_call(
         &mut self,
         bus_id: T,
         left: &'a powdr_ast::analyzed::SelectedExpressions<T>,

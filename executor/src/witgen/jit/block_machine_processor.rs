@@ -48,7 +48,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         }
     }
 
-    /// Generates the JIT code for a given combination of connection and known arguments.
+    /// Generates the JIT code for a given combination of bus and known arguments.
     /// Fails if it cannot solve for the outputs, or if any sub-machine calls cannot be completed.
     pub fn generate_code(
         &self,
@@ -93,8 +93,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         }
 
         // Set all other selectors to 0 in the latch row.
-        for other_connection in self.machine_parts.bus_receives.values() {
-            let other_selector = &other_connection.selected_payload.selector;
+        for other_receive in self.machine_parts.bus_receives.values() {
+            let other_selector = &other_receive.selected_payload.selector;
             if other_selector != selector {
                 queue_items.push(QueueItem::constant_assignment(
                     other_selector,
@@ -178,10 +178,10 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string_with_variable_formatter(|var| match var {
-                Variable::Param(i) => format!("{} (connection param)", &bus_receive.selected_payload.expressions[*i]),
+                Variable::Param(i) => format!("{} (receive param)", &bus_receive.selected_payload.expressions[*i]),
                 _ => var.to_string(),
             });
-            log::trace!("\nCode generation failed for connection:\n  {bus_receive}");
+            log::trace!("\nCode generation failed for bus receive:\n  {bus_receive}");
             let known_args_str = known_args
                 .iter()
                 .enumerate()
@@ -250,18 +250,18 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
         // Determine conflicting machine calls we can remove.
         let mut machine_calls_to_remove = HashSet::new();
-        for (bus_id, row_offsets) in completed_rows_for_bus_send(&code) {
+        for (identity_id, row_offsets) in completed_rows_for_bus_send(&code) {
             for (outside, inside) in
                 self.conflicting_row_offsets(&row_offsets.keys().copied().collect())
             {
                 if row_offsets[&outside] {
-                    machine_calls_to_remove.insert((bus_id, outside));
+                    machine_calls_to_remove.insert((identity_id, outside));
                 } else if row_offsets[&inside] {
-                    machine_calls_to_remove.insert((bus_id, inside));
+                    machine_calls_to_remove.insert((identity_id, inside));
                 } else {
                     return Err(format!(
-                    "Bus send for bus {} is not stackable in a {}-row block, conflict in rows {inside} and {outside}.",
-                    bus_id,
+                    "Bus send for identity {} is not stackable in a {}-row block, conflict in rows {inside} and {outside}.",
+                    identity_id,
                     self.block_size,
                 ));
                 }
@@ -309,7 +309,7 @@ fn written_rows_per_column<T: FieldElement>(
         })
 }
 
-/// Returns, for each send ID, the collection of row offsets that have a machine call
+/// Returns, for each bus send ID, the collection of row offsets that have a machine call
 /// and if in all the calls or that row, all the arguments are known.
 /// Combines calls from branches.
 fn completed_rows_for_bus_send<T: FieldElement>(
@@ -333,7 +333,7 @@ fn fully_known_call<T: FieldElement>(e: &Effect<T, Variable>) -> bool {
     }
 }
 
-/// Returns all machine calls (identity ID and row offset) found in the effect.
+/// Returns all machine calls (bus identity and row offset) found in the effect.
 /// Recurses into branches.
 fn machine_calls<T: FieldElement>(
     e: &Effect<T, Variable>,
