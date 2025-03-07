@@ -53,12 +53,15 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
     pub fn generate_code(
         &self,
         can_process: impl CanProcessCall<T>,
-        identity_id: u64,
+        bus_id: T,
         known_args: &BitVec,
         known_concrete: Option<(usize, T)>,
     ) -> Result<(ProcessorResult<T>, Vec<ProverFunction<'a, T>>), String> {
-        let connection = self.machine_parts.connections[&identity_id];
-        assert_eq!(connection.right.expressions.len(), known_args.len());
+        let bus_receive = self.machine_parts.bus_receives[&bus_id];
+        assert_eq!(
+            bus_receive.selected_payload.expressions.len(),
+            known_args.len()
+        );
 
         // Set up WitgenInference with known arguments.
         let known_variables = known_args
@@ -73,7 +76,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         let mut queue_items = vec![];
 
         // In the latch row, set the RHS selector to 1.
-        let selector = &connection.right.selector;
+        let selector = &bus_receive.selected_payload.selector;
         queue_items.push(QueueItem::constant_assignment(
             selector,
             T::one(),
@@ -83,15 +86,15 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         if let Some((index, value)) = known_concrete {
             // Set the known argument to the concrete value.
             queue_items.push(QueueItem::constant_assignment(
-                &connection.right.expressions[index],
+                &bus_receive.selected_payload.expressions[index],
                 value,
                 self.latch_row as i32,
             ));
         }
 
         // Set all other selectors to 0 in the latch row.
-        for other_connection in self.machine_parts.connections.values() {
-            let other_selector = &other_connection.right.selector;
+        for other_connection in self.machine_parts.bus_receives.values() {
+            let other_selector = &other_connection.selected_payload.selector;
             if other_selector != selector {
                 queue_items.push(QueueItem::constant_assignment(
                     other_selector,
@@ -102,7 +105,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         }
 
         // For each argument, connect the expression on the RHS with the formal parameter.
-        for (index, expr) in connection.right.expressions.iter().enumerate() {
+        for (index, expr) in bus_receive.selected_payload.expressions.iter().enumerate() {
             queue_items.push(QueueItem::variable_assignment(
                 expr,
                 Variable::Param(index),
@@ -175,14 +178,14 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         .generate_code(can_process, witgen)
         .map_err(|e| {
             let err_str = e.to_string_with_variable_formatter(|var| match var {
-                Variable::Param(i) => format!("{} (connection param)", &connection.right.expressions[*i]),
+                Variable::Param(i) => format!("{} (connection param)", &bus_receive.selected_payload.expressions[*i]),
                 _ => var.to_string(),
             });
-            log::trace!("\nCode generation failed for connection:\n  {connection}");
+            log::trace!("\nCode generation failed for connection:\n  {bus_receive}");
             let known_args_str = known_args
                 .iter()
                 .enumerate()
-                .filter_map(|(i, b)| b.then_some(connection.right.expressions[i].to_string()))
+                .filter_map(|(i, b)| b.then_some(bus_receive.selected_payload.expressions[i].to_string()))
                 .join("\n  ");
             log::trace!("Known arguments:\n  {known_args_str}");
             log::trace!("Error:\n  {err_str}");
@@ -247,18 +250,18 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
         // Determine conflicting machine calls we can remove.
         let mut machine_calls_to_remove = HashSet::new();
-        for (identity_id, row_offsets) in completed_rows_for_bus_send(&code) {
+        for (bus_id, row_offsets) in completed_rows_for_bus_send(&code) {
             for (outside, inside) in
                 self.conflicting_row_offsets(&row_offsets.keys().copied().collect())
             {
                 if row_offsets[&outside] {
-                    machine_calls_to_remove.insert((identity_id, outside));
+                    machine_calls_to_remove.insert((bus_id, outside));
                 } else if row_offsets[&inside] {
-                    machine_calls_to_remove.insert((identity_id, inside));
+                    machine_calls_to_remove.insert((bus_id, inside));
                 } else {
                     return Err(format!(
-                    "Bus send for identity {} is not stackable in a {}-row block, conflict in rows {inside} and {outside}.",
-                    identity_id,
+                    "Bus send for bus {} is not stackable in a {}-row block, conflict in rows {inside} and {outside}.",
+                    bus_id,
                     self.block_size,
                 ));
                 }
@@ -306,7 +309,7 @@ fn written_rows_per_column<T: FieldElement>(
         })
 }
 
-/// Returns, for each bus send ID, the collection of row offsets that have a machine call
+/// Returns, for each send ID, the collection of row offsets that have a machine call
 /// and if in all the calls or that row, all the arguments are known.
 /// Combines calls from branches.
 fn completed_rows_for_bus_send<T: FieldElement>(
@@ -330,21 +333,18 @@ fn fully_known_call<T: FieldElement>(e: &Effect<T, Variable>) -> bool {
     }
 }
 
-/// Returns all machine calls (bus identity and row offset) found in the effect.
+/// Returns all machine calls (identity ID and row offset) found in the effect.
 /// Recurses into branches.
 fn machine_calls<T: FieldElement>(
     e: &Effect<T, Variable>,
 ) -> Box<dyn Iterator<Item = (u64, i32, &Effect<T, Variable>)> + '_> {
     match e {
-        Effect::MachineCall(id, _, arguments) => match &arguments[0] {
+        Effect::MachineCall(_, _, arguments) => match &arguments[0] {
             Variable::MachineCallParam(MachineCallVariable {
                 identity_id,
                 row_offset,
                 ..
-            }) => {
-                assert_eq!(*id, *identity_id);
-                Box::new(std::iter::once((*identity_id, *row_offset, e)))
-            }
+            }) => Box::new(std::iter::once((*identity_id, *row_offset, e))),
             _ => panic!("Expected machine call variable."),
         },
         Effect::Branch(_, first, second) => {
@@ -420,8 +420,8 @@ mod test {
             panic!("Expected exactly one matching block machine")
         };
         let (machine_parts, block_size, latch_row) = machine.machine_info();
-        assert_eq!(machine_parts.connections.len(), 1);
-        let connection_id = *machine_parts.connections.keys().next().unwrap();
+        assert_eq!(machine_parts.bus_receives.len(), 1);
+        let bus_id = *machine_parts.bus_receives.keys().next().unwrap();
         let processor = BlockMachineProcessor {
             fixed_data: &fixed_data,
             machine_parts: machine_parts.clone(),
@@ -440,7 +440,7 @@ mod test {
         );
 
         processor
-            .generate_code(&mutable_state, connection_id, &known_values, None)
+            .generate_code(&mutable_state, bus_id, &known_values, None)
             .map(|(result, _)| result)
     }
 
@@ -549,18 +549,18 @@ assert (main_binary::B[1] & 0xffffffffffff0000) == 0;
 call_var(9, 0, 2) = main_binary::B_byte[0];
 main_binary::B_byte[-1] = main_binary::B[0];
 call_var(9, -1, 2) = main_binary::B_byte[-1];
-machine_call(9, [Known(call_var(9, -1, 0)), Known(call_var(9, -1, 1)), Known(call_var(9, -1, 2)), Unknown(call_var(9, -1, 3))]);
+machine_call(2, [Known(call_var(9, -1, 0)), Known(call_var(9, -1, 1)), Known(call_var(9, -1, 2)), Unknown(call_var(9, -1, 3))]);
 main_binary::C_byte[-1] = call_var(9, -1, 3);
 main_binary::C[0] = main_binary::C_byte[-1];
-machine_call(9, [Known(call_var(9, 0, 0)), Known(call_var(9, 0, 1)), Known(call_var(9, 0, 2)), Unknown(call_var(9, 0, 3))]);
+machine_call(2, [Known(call_var(9, 0, 0)), Known(call_var(9, 0, 1)), Known(call_var(9, 0, 2)), Unknown(call_var(9, 0, 3))]);
 main_binary::C_byte[0] = call_var(9, 0, 3);
 main_binary::C[1] = (main_binary::C[0] + (main_binary::C_byte[0] * 256));
-machine_call(9, [Known(call_var(9, 1, 0)), Known(call_var(9, 1, 1)), Known(call_var(9, 1, 2)), Unknown(call_var(9, 1, 3))]);
+machine_call(2, [Known(call_var(9, 1, 0)), Known(call_var(9, 1, 1)), Known(call_var(9, 1, 2)), Unknown(call_var(9, 1, 3))]);
 main_binary::C_byte[1] = call_var(9, 1, 3);
 main_binary::C[2] = (main_binary::C[1] + (main_binary::C_byte[1] * 65536));
 main_binary::operation_id_next[2] = main_binary::operation_id[3];
 call_var(9, 2, 0) = main_binary::operation_id_next[2];
-machine_call(9, [Known(call_var(9, 2, 0)), Known(call_var(9, 2, 1)), Known(call_var(9, 2, 2)), Unknown(call_var(9, 2, 3))]);
+machine_call(2, [Known(call_var(9, 2, 0)), Known(call_var(9, 2, 1)), Known(call_var(9, 2, 2)), Unknown(call_var(9, 2, 3))]);
 main_binary::C_byte[2] = call_var(9, 2, 3);
 main_binary::C[3] = (main_binary::C[2] + (main_binary::C_byte[2] * 16777216));
 params[3] = main_binary::C[3];"
@@ -624,11 +624,11 @@ assert (SubM::a[0] & 0xffffffffffff0000) == 0;
 params[1] = SubM::b[0];
 params[2] = SubM::c[0];
 call_var(1, 0, 0) = SubM::c[0];
-machine_call(1, [Known(call_var(1, 0, 0))]);
+machine_call(2, [Known(call_var(1, 0, 0))]);
 SubM::b[1] = SubM::b[0];
 call_var(1, 1, 0) = SubM::b[1];
 SubM::c[1] = SubM::c[0];
-machine_call(1, [Known(call_var(1, 1, 0))]);
+machine_call(2, [Known(call_var(1, 1, 0))]);
 SubM::a[1] = ((SubM::b[1] * 256) + SubM::c[1]);"
         );
     }

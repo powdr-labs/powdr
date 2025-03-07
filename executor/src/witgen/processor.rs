@@ -11,9 +11,9 @@ use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 
-use super::data_structures::identity::Identity;
+use super::data_structures::identity::{BusReceive, Identity};
 use super::global_constraints::RangeConstraintSet;
-use super::machines::{Connection, MachineParts};
+use super::machines::MachineParts;
 use super::FixedData;
 use super::{
     affine_expression::AffineExpression,
@@ -55,7 +55,7 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
     /// Range constraints of the caller.
     pub range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     /// Connection.
-    pub connection: Connection<'a, T>,
+    pub bus_receive: &'a BusReceive<T>,
     /// The payload of the calling bus send, evaluated.
     pub arguments: Arguments<'a, T>,
 }
@@ -64,11 +64,11 @@ impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
     pub fn new(
         arguments: &'b [AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
-        connection: Connection<'a, T>,
+        bus_receive: &'a BusReceive<T>,
     ) -> Self {
         Self {
             range_constraints,
-            connection,
+            bus_receive,
             arguments: arguments.to_vec(),
         }
     }
@@ -164,7 +164,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
         for (l, r) in outer_query
             .arguments
             .iter()
-            .zip(&outer_query.connection.right.expressions)
+            .zip(&outer_query.bus_receive.selected_payload.expressions)
         {
             if let Some(right_poly) = try_to_simple_poly(r).map(|p| p.poly_id) {
                 if let Some(l) = l.constant_value() {
@@ -212,7 +212,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
             .as_ref()
             .and_then(|outer_query| {
                 row_pair
-                    .evaluate(&outer_query.connection.right.selector)
+                    .evaluate(&outer_query.bus_receive.selected_payload.selector)
                     .ok()
             })
             .and_then(|l| l.constant_value())
@@ -322,7 +322,12 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         row_index: usize,
     ) -> Result<(bool, Constraints<AlgebraicVariable<'a>, T>), EvalError<T>> {
         let mut progress = false;
-        let right = self.outer_query.as_ref().unwrap().connection.right;
+        let right = &self
+            .outer_query
+            .as_ref()
+            .unwrap()
+            .bus_receive
+            .selected_payload;
         progress |= self
             .set_value(row_index, &right.selector, T::one(), || {
                 "Set selector to 1".to_string()

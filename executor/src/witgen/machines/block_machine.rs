@@ -96,10 +96,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let degree = degree_range.max;
 
         let (is_permutation, block_size, latch_row) =
-            detect_connection_type_and_block_size(fixed_data, &parts.connections)?;
+            detect_connection_type_and_block_size(fixed_data, &parts.bus_receives)?;
 
-        for id in parts.connections.values() {
-            for r in id.right.expressions.iter() {
+        for receive in parts.bus_receives.values() {
+            for r in receive.selected_payload.expressions.iter() {
                 if let Some(poly) = try_to_simple_poly(r) {
                     if poly.poly_id.ptype == PolynomialType::Constant {
                         // It does not really make sense to have constant polynomials on the RHS
@@ -161,30 +161,28 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
-    fn identity_ids(&self) -> Vec<u64> {
-        self.parts.connections.keys().copied().collect()
+    fn bus_ids(&self) -> Vec<T> {
+        self.parts.bus_receives.keys().copied().collect()
     }
 
     fn can_process_call_fully(
         &mut self,
         can_process: impl CanProcessCall<T>,
-        identity_id: u64,
+        bus_id: T,
         known_arguments: &BitVec,
         range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
         // We use the input range constraints to see if there is a column
         // containing the substring "operation_id" which is constrained to a
         // single value and use that value as part of the cache key.
-        let operation_id = self.find_operation_id(identity_id).and_then(|index| {
+        let operation_id = self.find_operation_id(bus_id).and_then(|index| {
             let v = range_constraints[index].try_to_single_value()?;
             Some((index, v))
         });
-        match self.function_cache.compile_cached(
-            can_process,
-            identity_id,
-            known_arguments,
-            operation_id,
-        ) {
+        match self
+            .function_cache
+            .compile_cached(can_process, bus_id, known_arguments, operation_id)
+        {
             Some(entry) => (true, entry.range_constraints.clone()),
             None => (false, range_constraints),
         }
@@ -193,26 +191,26 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         if self.rows() + self.block_size as DegreeType > self.degree {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
-        let operation_id =
-            self.find_operation_id(identity_id)
-                .and_then(|index| match &values[index] {
-                    LookupCell::Input(v) => Some((index, **v)),
-                    LookupCell::Output(_) => None,
-                });
+        let operation_id = self
+            .find_operation_id(bus_id)
+            .and_then(|index| match &values[index] {
+                LookupCell::Input(v) => Some((index, **v)),
+                LookupCell::Output(_) => None,
+            });
 
         self.data.finalize_all();
         let data = self.data.append_new_finalized_rows(self.block_size);
 
         let success = self.function_cache.process_lookup_direct(
             mutable_state,
-            identity_id,
+            bus_id,
             values,
             data,
             operation_id,
@@ -225,13 +223,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         let previous_len = self.data.len();
         let result =
-            self.process_plookup_internal(mutable_state, identity_id, arguments, range_constraints);
+            self.process_plookup_internal(mutable_state, bus_id, arguments, range_constraints);
         if let Ok(assignments) = &result {
             if !assignments.is_complete() {
                 // rollback the changes.
@@ -311,11 +309,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
 
             // Set all selectors to 0
-            for id in self.parts.connections.values() {
+            for receive in self.parts.bus_receives.values() {
                 processor
-                    .set_value(self.latch_row + 1, &id.right.selector, T::zero(), || {
-                        "Zero selectors".to_string()
-                    })
+                    .set_value(
+                        self.latch_row + 1,
+                        &receive.selected_payload.selector,
+                        T::zero(),
+                        || "Zero selectors".to_string(),
+                    )
                     .unwrap();
             }
 
@@ -435,7 +436,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     fn process_plookup_internal<Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
@@ -452,17 +453,17 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
 
         let known_inputs = arguments.iter().map(|e| e.is_constant()).collect();
-        let operation_id = self.find_operation_id(identity_id).and_then(|index| {
+        let operation_id = self.find_operation_id(bus_id).and_then(|index| {
             let v = arguments[index].constant_value()?;
             Some((index, v))
         });
         if self
             .function_cache
-            .compile_cached(mutable_state, identity_id, &known_inputs, operation_id)
+            .compile_cached(mutable_state, bus_id, &known_inputs, operation_id)
             .is_some()
         {
             let caller_data = CallerData::new(arguments, range_constraints);
-            let updates = self.process_lookup_via_jit(mutable_state, identity_id, caller_data)?;
+            let updates = self.process_lookup_via_jit(mutable_state, bus_id, caller_data)?;
             assert!(updates.is_complete());
             self.block_count_jit += 1;
             return Ok(updates);
@@ -471,7 +472,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let outer_query = OuterQuery::new(
             arguments,
             range_constraints,
-            self.parts.connections[&identity_id],
+            self.parts.bus_receives[&bus_id],
         );
 
         // TODO this assumes we are always using the same lookup for this machine.
@@ -527,7 +528,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     fn process_lookup_via_jit<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         mut caller_data: CallerData<'a, 'b, T>,
     ) -> EvalResult<'a, T> {
         assert!(
@@ -538,7 +539,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         let mut lookup_cells = caller_data.as_lookup_cells();
         let operation_id =
-            self.find_operation_id(identity_id)
+            self.find_operation_id(bus_id)
                 .and_then(|index| match &lookup_cells[index] {
                     LookupCell::Input(v) => Some((index, **v)),
                     LookupCell::Output(_) => None,
@@ -547,7 +548,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         let success = self.function_cache.process_lookup_direct(
             mutable_state,
-            identity_id,
+            bus_id,
             &mut lookup_cells,
             data,
             operation_id,
@@ -557,8 +558,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         caller_data.into()
     }
 
-    fn find_operation_id(&self, identity_id: u64) -> Option<usize> {
-        let right = &self.parts.connections[&identity_id].right.expressions;
+    fn find_operation_id(&self, bus_id: T) -> Option<usize> {
+        let right = &self.parts.bus_receives[&bus_id]
+            .selected_payload
+            .expressions;
         right.iter().position(|r| {
             try_to_simple_poly(r).is_some_and(|poly| poly.name.contains("operation_id"))
         })
