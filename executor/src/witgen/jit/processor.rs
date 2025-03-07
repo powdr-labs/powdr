@@ -31,18 +31,18 @@ pub struct Processor<'a, T: FieldElement> {
     block_size: usize,
     /// List of variables we want to be known at the end. One of them not being known
     /// is a failure.
-    requested_known_vars: Vec<Variable>,
+    requested_known_vars: Vec<Variable<T>>,
     /// List of variables we want to know the derived range constraints of at the very end
     /// (for every branch).
-    requested_range_constraints: Vec<Variable>,
+    requested_range_constraints: Vec<Variable<T>>,
     /// Maximum branch depth allowed.
     max_branch_depth: usize,
 }
 
 pub struct ProcessorResult<T: FieldElement> {
     /// Generated code.
-    pub code: Vec<Effect<T, Variable>>,
-    /// Range constrainst of the variables they were requested on.
+    pub code: Vec<Effect<T, Variable<T>>>,
+    /// Range constraints of the variables they were requested on.
     pub range_constraints: Vec<RangeConstraint<T>>,
 }
 
@@ -51,7 +51,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         identities: impl IntoIterator<Item = (&'a Identity<T>, i32)>,
         initial_queue: Vec<QueueItem<'a, T>>,
-        requested_known_vars: impl IntoIterator<Item = Variable>,
+        requested_known_vars: impl IntoIterator<Item = Variable<T>>,
         max_branch_depth: usize,
     ) -> Self {
         let identities = identities.into_iter().collect_vec();
@@ -69,7 +69,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
     /// Provides a list of variables that we want to know the derived range constraints of at the end.
     pub fn with_requested_range_constraints(
         mut self,
-        vars: impl IntoIterator<Item = Variable>,
+        vars: impl IntoIterator<Item = Variable<T>>,
     ) -> Self {
         self.requested_range_constraints.extend(vars);
         self
@@ -426,12 +426,13 @@ fn combine_range_constraints<T: FieldElement>(
 fn machine_call_params<T: FieldElement>(
     bus_send: &BusSend<T>,
     row_offset: i32,
-) -> impl Iterator<Item = Variable> + '_ {
+) -> impl Iterator<Item = Variable<T>> + '_ {
     (0..bus_send.selected_payload.expressions.len()).map(move |index| {
         Variable::MachineCallParam(MachineCallVariable {
             identity_id: bus_send.identity_id,
             row_offset,
             index,
+            _phantom: Default::default(),
         })
     })
 }
@@ -440,7 +441,7 @@ pub struct Error<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     pub reason: ErrorReason,
     pub witgen: WitgenInference<'a, T, FixedEval>,
     /// Required variables that could not be determined
-    pub missing_variables: Vec<Variable>,
+    pub missing_variables: Vec<Variable<T>>,
     pub identities: Vec<(&'a Identity<T>, i32)>,
 }
 
@@ -479,7 +480,7 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
 
     pub fn to_string_with_variable_formatter(
         &self,
-        var_formatter: impl Fn(&Variable) -> String,
+        var_formatter: impl Fn(&Variable<T>) -> String,
     ) -> String {
         let mut s = String::new();
         let reason_str = match &self.reason {
