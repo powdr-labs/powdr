@@ -31,7 +31,6 @@ use crate::expression_processor::ExpressionProcessor;
 
 pub enum PILItem {
     Definition(Symbol, Option<FunctionValueDefinition>),
-    // PublicDeclaration(PublicDeclaration),
     ProofItem(Expression),
     TraitImplementation(TraitImplementation<Expression>),
 }
@@ -49,6 +48,7 @@ impl Default for Counters {
                 SymbolKind::Poly(PolynomialType::Constant),
                 SymbolKind::Poly(PolynomialType::Intermediate),
                 SymbolKind::Other(),
+                SymbolKind::Public(),
             ]
             .into_iter()
             .map(|k| (k, 0))
@@ -64,7 +64,6 @@ impl Counters {
     pub fn with_existing<'a>(
         symbols: impl IntoIterator<Item = &'a Symbol>,
         identity: Option<u64>,
-        public: Option<u64>,
     ) -> Self {
         let mut counters = Self::default();
         if let Some(id) = identity {
@@ -130,13 +129,12 @@ where
                 )
             }
             PilStatement::PublicDeclaration(source, name, polynomial, array_index, index) => {
-                // self.handle_public_declaration(source, name, polynomial, array_index, index)
                 let (name, ty) = self.name_and_type_from_polynomial_name(
                     PolynomialName {
                         name,
                         array_size: None,
                     },
-                    Type::Inter, // I'm not sure what to use for the type of public declaration
+                    Type::Expr,
                 )?;
                 let value = Some(FunctionDefinition::PublicDeclaration(
                     polynomial,

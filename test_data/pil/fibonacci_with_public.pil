@@ -16,4 +16,4 @@ namespace Fibonacci(N);
     // Note that the value of :out is not forced to be
     // consistent with the value of the public "out".
     // This will change with #1633.
-    ISLAST * (:out - y) = 0;
+    ISLAST * (out - y) = 0;

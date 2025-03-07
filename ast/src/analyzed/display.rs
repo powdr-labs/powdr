@@ -99,7 +99,7 @@ impl<T: Display> Display for Analyzed<T> {
                                 if let FunctionValueDefinition::PublicDeclaration(decl) =
                                     definition.as_ref().unwrap()
                                 {
-                                    writeln_indented(f, format_public_declaration(&name, &decl))?;
+                                    writeln_indented(f, format_public_declaration(&name, decl))?;
                                 } else {
                                     unreachable!() // public symbol should always have a public declaration
                                 }
@@ -168,11 +168,6 @@ impl<T: Display> Display for Analyzed<T> {
                         panic!()
                     }
                 }
-                // StatementIdentifier::PublicDeclaration(name) => {
-                //     let decl = &self.public_declarations[name];
-                //     let name = update_namespace(&decl.name, f)?;
-                //     writeln_indented(f, format_public_declaration(&name, decl))?;
-                // }
                 StatementIdentifier::ProofItem(i) => {
                     writeln_indented(f, &self.identities[*i])?;
                 }

@@ -31,7 +31,6 @@ pub use contains_next_ref::ContainsNextRef;
 pub enum StatementIdentifier {
     /// Either an intermediate column or a definition.
     Definition(String),
-    // PublicDeclaration(String),
     /// Index into the vector of proof items / identities.
     ProofItem(usize),
     /// Index into the vector of prover functions.
@@ -44,7 +43,6 @@ pub enum StatementIdentifier {
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     pub solved_impls: SolvedTraitImpls,
-    // pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<T>>,
     pub prover_functions: Vec<Expression>,
@@ -194,8 +192,8 @@ impl<T> Analyzed<T> {
     ) -> impl Iterator<Item = (&String, &PublicDeclaration)> {
         self.source_order.iter().filter_map(move |statement| {
             if let StatementIdentifier::Definition(name) = statement {
-                if let FunctionValueDefinition::PublicDeclaration(public_declaration) =
-                    self.definitions.get(name).unwrap().1.as_ref().unwrap()
+                if let Some(FunctionValueDefinition::PublicDeclaration(public_declaration)) =
+                    self.definitions.get(name).unwrap().1.as_ref()
                 {
                     return Some((name, public_declaration));
                 }
@@ -562,7 +560,7 @@ pub fn type_from_definition(
             }
             FunctionValueDefinition::PublicDeclaration(_) => {
                 // I'm not sure what to do with the type of publicdeclaration and how is this function used
-                panic!("Requested type of public declaration.")
+                Some(Type::Expr.into())
             }
         }
     } else {

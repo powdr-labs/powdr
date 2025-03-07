@@ -204,7 +204,6 @@ fn expr_to_ref(expr: &Expression) -> Option<String> {
         Expression::Reference(_, NamespacedPolynomialReference { path, .. }) => {
             Some(path.to_string())
         }
-        Expression::PublicReference(_, pref) => Some(pref.clone()),
         _ => None,
     }
 }

@@ -98,7 +98,10 @@ impl ReferencedSymbols for FunctionValueDefinition {
             | FunctionValueDefinition::Array(..)
             | FunctionValueDefinition::Expression(TypedExpression {
                 type_scheme: None, ..
-            }) => Box::new(self.children().flat_map(|e| e.symbols())),
+            })
+            | FunctionValueDefinition::PublicDeclaration(..) => {
+                Box::new(self.children().flat_map(|e| e.symbols()))
+            }
         }
     }
 }
@@ -154,7 +157,6 @@ fn symbols_in_expression(
     e: &Expression,
 ) -> Option<Box<dyn Iterator<Item = SymbolReference<'_>> + '_>> {
     match e {
-        Expression::PublicReference(_, name) => Some(Box::new(once(SymbolReference::from(name)))),
         Expression::Reference(_, Reference::Poly(pr @ PolynomialReference { type_args, .. })) => {
             let type_iter = type_args
                 .iter()
@@ -171,9 +173,6 @@ fn symbols_in_expression_asm(
     e: &ExpressionASM,
 ) -> Option<Box<dyn Iterator<Item = SymbolReference<'_>> + '_>> {
     match e {
-        ExpressionASM::PublicReference(_, name) => {
-            Some(Box::new(once(SymbolReference::from(name))))
-        }
         ExpressionASM::Reference(_, pr @ NamespacedPolynomialReference { type_args, .. }) => {
             let type_iter = type_args
                 .iter()
@@ -332,7 +331,8 @@ impl ReferencedSymbols for FunctionDefinition {
             FunctionDefinition::TypeDeclaration(type_declaration) => type_declaration.symbols(),
             FunctionDefinition::Array(..)
             | FunctionDefinition::Expression(..)
-            | FunctionDefinition::TraitDeclaration(..) => {
+            | FunctionDefinition::TraitDeclaration(..)
+            | FunctionDefinition::PublicDeclaration(..) => {
                 Box::new(self.children().flat_map(|e| e.symbols()))
             }
         }

@@ -569,6 +569,8 @@ impl<'a> Definitions<'a> {
                 }))
                 .into()
             }
+        } else if matches!(symbol.kind, SymbolKind::Public()) {
+            Value::from(AlgebraicExpression::PublicReference(name)).into()
         } else {
             match value {
                 Some(FunctionValueDefinition::Expression(TypedExpression {
