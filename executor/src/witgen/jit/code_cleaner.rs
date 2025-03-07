@@ -10,9 +10,9 @@ use super::{
 /// Returns the list of variables that are not needed to compute the required
 /// variables.
 pub fn optional_vars<T: FieldElement>(
-    code: &[Effect<T, Variable<T>>],
-    required: &[Variable<T>],
-) -> HashSet<Variable<T>> {
+    code: &[Effect<T, Variable>],
+    required: &[Variable],
+) -> HashSet<Variable> {
     let mut required: HashSet<_> = required.iter().cloned().collect();
     let mut optional: HashSet<_> = Default::default();
     for effect in code.iter().rev() {
@@ -23,9 +23,9 @@ pub fn optional_vars<T: FieldElement>(
 
 /// Removes the given variables from the code and all variables that depend on them.
 pub fn remove_variables<T: FieldElement>(
-    code: Vec<Effect<T, Variable<T>>>,
-    mut to_remove: HashSet<Variable<T>>,
-) -> Vec<Effect<T, Variable<T>>> {
+    code: Vec<Effect<T, Variable>>,
+    mut to_remove: HashSet<Variable>,
+) -> Vec<Effect<T, Variable>> {
     code.into_iter()
         .filter_map(|effect| remove_variables_from_effect(effect, &mut to_remove))
         .collect()
@@ -33,9 +33,9 @@ pub fn remove_variables<T: FieldElement>(
 
 /// Removes all calls to machines with the given IDs on the given row offsets.
 pub fn remove_machine_calls<T: FieldElement>(
-    code: Vec<Effect<T, Variable<T>>>,
+    code: Vec<Effect<T, Variable>>,
     to_remove: &HashSet<(u64, i32)>,
-) -> Vec<Effect<T, Variable<T>>> {
+) -> Vec<Effect<T, Variable>> {
     code.into_iter()
         .filter_map(|effect| remove_machine_calls_from_effect(effect, to_remove))
         .collect()
@@ -46,9 +46,9 @@ pub fn remove_machine_calls<T: FieldElement>(
 /// variables.
 /// This is intended to be used in reverse on a list of effects.
 fn optional_vars_in_effect<T: FieldElement>(
-    effect: &Effect<T, Variable<T>>,
-    required: &mut HashSet<Variable<T>>,
-) -> HashSet<Variable<T>> {
+    effect: &Effect<T, Variable>,
+    required: &mut HashSet<Variable>,
+) -> HashSet<Variable> {
     let needed = match &effect {
         Effect::Assignment(..) | Effect::ProverFunctionCall(..) => {
             effect.written_vars().any(|(v, _)| required.contains(v))
@@ -81,9 +81,9 @@ fn optional_vars_in_effect<T: FieldElement>(
 }
 
 fn optional_vars_in_branch<T: FieldElement>(
-    branch: &[Effect<T, Variable<T>>],
-    required: &mut HashSet<Variable<T>>,
-) -> HashSet<Variable<T>> {
+    branch: &[Effect<T, Variable>],
+    required: &mut HashSet<Variable>,
+) -> HashSet<Variable> {
     branch
         .iter()
         .rev()
@@ -92,9 +92,9 @@ fn optional_vars_in_branch<T: FieldElement>(
 }
 
 fn remove_variables_from_effect<T: FieldElement>(
-    effect: Effect<T, Variable<T>>,
-    to_remove: &mut HashSet<Variable<T>>,
-) -> Option<Effect<T, Variable<T>>> {
+    effect: Effect<T, Variable>,
+    to_remove: &mut HashSet<Variable>,
+) -> Option<Effect<T, Variable>> {
     if let Effect::Branch(condition, left, right) = effect {
         let mut remove_left = to_remove.clone();
         let left = left
@@ -116,9 +116,9 @@ fn remove_variables_from_effect<T: FieldElement>(
 }
 
 fn remove_machine_calls_from_effect<T: FieldElement>(
-    effect: Effect<T, Variable<T>>,
+    effect: Effect<T, Variable>,
     to_remove: &HashSet<(u64, i32)>,
-) -> Option<Effect<T, Variable<T>>> {
+) -> Option<Effect<T, Variable>> {
     match effect {
         Effect::MachineCall(id, known, arguments) => {
             let Variable::MachineCallParam(MachineCallVariable {

@@ -42,7 +42,7 @@ pub enum MachineCallArgumentIdx {
 }
 
 impl<T: FieldElement> EffectsInterpreter<T> {
-    pub fn new(known_inputs: &[Variable<T>], effects: &[Effect<T, Variable<T>>]) -> Self {
+    pub fn new(known_inputs: &[Variable], effects: &[Effect<T, Variable>]) -> Self {
         let mut actions = vec![];
         let mut var_mapper = VariableMapper::new();
 
@@ -60,9 +60,9 @@ impl<T: FieldElement> EffectsInterpreter<T> {
     }
 
     fn load_fixed_column_values(
-        var_mapper: &mut VariableMapper<T>,
+        var_mapper: &mut VariableMapper,
         actions: &mut Vec<InterpreterAction<T>>,
-        effects: &[Effect<T, Variable<T>>],
+        effects: &[Effect<T, Variable>],
     ) {
         actions.extend(
             effects
@@ -81,9 +81,9 @@ impl<T: FieldElement> EffectsInterpreter<T> {
     }
 
     fn load_known_inputs(
-        var_mapper: &mut VariableMapper<T>,
+        var_mapper: &mut VariableMapper,
         actions: &mut Vec<InterpreterAction<T>>,
-        known_inputs: &[Variable<T>],
+        known_inputs: &[Variable],
     ) {
         actions.extend(known_inputs.iter().map(|var| match var {
             Variable::WitnessCell(c) => {
@@ -101,9 +101,9 @@ impl<T: FieldElement> EffectsInterpreter<T> {
     }
 
     fn process_effects(
-        var_mapper: &mut VariableMapper<T>,
+        var_mapper: &mut VariableMapper,
         actions: &mut Vec<InterpreterAction<T>>,
-        effects: &[Effect<T, Variable<T>>],
+        effects: &[Effect<T, Variable>],
     ) {
         effects.iter().for_each(|effect| {
             let action = match effect {
@@ -150,9 +150,9 @@ impl<T: FieldElement> EffectsInterpreter<T> {
     }
 
     fn write_data(
-        var_mapper: &mut VariableMapper<T>,
+        var_mapper: &mut VariableMapper,
         actions: &mut Vec<InterpreterAction<T>>,
-        effects: &[Effect<T, Variable<T>>],
+        effects: &[Effect<T, Variable>],
     ) {
         effects
             .iter()
@@ -329,13 +329,13 @@ impl<T: FieldElement> InterpreterAction<T> {
 }
 
 /// Helper struct to map variables to contiguous indices, so they can be kept in
-/// sequential memory and quickly referred to during execution.
-pub struct VariableMapper<T> {
-    var_idx: HashMap<Variable<T>, usize>,
+/// sequential memory and quickly refered to during execution.
+pub struct VariableMapper {
+    var_idx: HashMap<Variable, usize>,
     count: usize,
 }
 
-impl<T: FieldElement> VariableMapper<T> {
+impl VariableMapper {
     pub fn new() -> Self {
         Self {
             var_idx: HashMap::new(),
@@ -348,7 +348,7 @@ impl<T: FieldElement> VariableMapper<T> {
     }
 
     /// Returns the index of the variable, allocates it if it does not exist.
-    pub fn map_var(&mut self, var: &Variable<T>) -> usize {
+    pub fn map_var(&mut self, var: &Variable) -> usize {
         let idx = *self.var_idx.entry(var.clone()).or_insert_with(|| {
             self.count += 1;
             self.count - 1
@@ -364,13 +364,13 @@ impl<T: FieldElement> VariableMapper<T> {
     }
 
     /// get the index of a variable if it was previously mapped
-    pub fn get_var(&mut self, var: &Variable<T>) -> Option<usize> {
+    pub fn get_var(&mut self, var: &Variable) -> Option<usize> {
         self.var_idx.get(var).copied()
     }
 
-    pub fn map_expr_to_rpn(
+    pub fn map_expr_to_rpn<T: FieldElement>(
         &mut self,
-        expr: &SymbolicExpression<T, Variable<T>>,
+        expr: &SymbolicExpression<T, Variable>,
     ) -> RPNExpression<T, usize> {
         RPNExpression::map_from(expr, self)
     }
@@ -392,14 +392,11 @@ pub enum RPNExpressionElem<T: FieldElement, S> {
 
 impl<T: FieldElement> RPNExpression<T, usize> {
     /// Convert a symbolic expression to RPN, mapping variables to indices
-    fn map_from(
-        expr: &SymbolicExpression<T, Variable<T>>,
-        var_mapper: &mut VariableMapper<T>,
-    ) -> Self {
+    fn map_from(expr: &SymbolicExpression<T, Variable>, var_mapper: &mut VariableMapper) -> Self {
         fn inner<T: FieldElement>(
-            expr: &SymbolicExpression<T, Variable<T>>,
+            expr: &SymbolicExpression<T, Variable>,
             elems: &mut Vec<RPNExpressionElem<T, usize>>,
-            var_mapper: &mut VariableMapper<T>,
+            var_mapper: &mut VariableMapper,
         ) {
             match expr {
                 SymbolicExpression::Concrete(n) => {

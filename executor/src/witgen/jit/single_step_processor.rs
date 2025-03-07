@@ -37,7 +37,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
     pub fn generate_code(
         &self,
         can_process: impl CanProcessCall<T>,
-    ) -> Result<Vec<Effect<T, Variable<T>>>, String> {
+    ) -> Result<Vec<Effect<T, Variable>>, String> {
         let intermediate_definitions = self.fixed_data.analyzed.intermediate_definitions();
         let all_witnesses = self
             .machine_parts
@@ -113,7 +113,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         .map(|r| r.code)
     }
 
-    fn cell(&self, id: PolyID, row_offset: i32) -> Variable<T> {
+    fn cell(&self, id: PolyID, row_offset: i32) -> Variable {
         Variable::WitnessCell(Cell {
             column_name: self.fixed_data.column_name(&id).to_string(),
             id: id.id,
@@ -168,7 +168,7 @@ mod test {
     fn generate_single_step(
         input_pil: &str,
         machine_name: &str,
-    ) -> Result<Vec<Effect<GoldilocksField, Variable<GoldilocksField>>>, String> {
+    ) -> Result<Vec<Effect<GoldilocksField, Variable>>, String> {
         let (analyzed, fixed_col_vals) = read_pil(input_pil);
 
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);

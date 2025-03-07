@@ -1,14 +1,13 @@
 use std::{
     fmt::{self, Display, Formatter},
     hash::{Hash, Hasher},
-    marker::PhantomData,
 };
 
 use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
 /// A variable that can be used in the inference engine.
-pub enum Variable<T> {
+pub enum Variable {
     /// A witness cell in the current machine.
     WitnessCell(Cell),
     /// A cell of an intermediate column
@@ -19,10 +18,10 @@ pub enum Variable<T> {
     Param(usize),
     /// An input or output value of a machine call on a certain
     /// identity on a certain row offset.
-    MachineCallParam(MachineCallVariable<T>),
+    MachineCallParam(MachineCallVariable),
 }
 
-impl<T> Display for Variable<T> {
+impl Display for Variable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Variable::WitnessCell(cell) => write!(f, "{cell}"),
@@ -40,7 +39,7 @@ impl<T> Display for Variable<T> {
     }
 }
 
-impl<T> Variable<T> {
+impl Variable {
     /// Create a variable from an algebraic reference.
     pub fn from_reference(r: &AlgebraicReference, row_offset: i32) -> Self {
         let cell = Cell {
@@ -76,12 +75,10 @@ impl<T> Variable<T> {
 }
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Debug)]
-pub struct MachineCallVariable<T> {
+pub struct MachineCallVariable {
     pub identity_id: u64,
     pub row_offset: i32,
     pub index: usize,
-    // TODO: Remove this after we changed identity_id: u64 to bus_id: T
-    pub _phantom: PhantomData<T>,
 }
 
 /// The identifier of a witness cell in the trace table
