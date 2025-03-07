@@ -10,8 +10,9 @@ use std::{
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
-        Analyzed, BusInteractionIdentity, Identity, PolyID, PolynomialIdentity, PolynomialType,
+        AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+        AlgebraicUnaryOperator, Analyzed, BusInteractionIdentity, Identity, PolyID,
+        PolynomialIdentity, PolynomialType,
     },
     parsed::{
         asm::SymbolPath, visitor::AllChildren, ArrayLiteral, BinaryOperation, BinaryOperator,
@@ -20,16 +21,17 @@ use powdr_ast::{
     },
 };
 use serde::{Deserialize, Serialize};
+use std::convert::TryFrom;
 
 use powdr_number::{BigUint, FieldElement, LargeInt};
+use powdr_pilopt::simplify_expression;
 
 pub mod powdr;
-
-const MAIN_MACHINE_STR: &str = "::Main";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
     pub name: String,
+    pub opcode: usize,
     pub args: Vec<T>,
 }
 
@@ -51,12 +53,31 @@ impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     }
 }
 
+impl<T: FieldElement> SymbolicConstraint<T> {
+    pub fn columns(&self) -> BTreeSet<String> {
+        let mut cols = BTreeSet::new();
+        cols.extend(powdr::collect_cols_names_algebraic(&self.expr));
+        cols
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
 pub struct SymbolicBusInteraction<T> {
     pub kind: BusInteractionKind,
     pub id: u64,
     pub mult: AlgebraicExpression<T>,
     pub args: Vec<AlgebraicExpression<T>>,
+}
+
+impl<T: FieldElement> SymbolicBusInteraction<T> {
+    pub fn columns(&self) -> BTreeSet<String> {
+        let mut cols = BTreeSet::new();
+        cols.extend(powdr::collect_cols_names_algebraic(&self.mult));
+        for a in &self.args {
+            cols.extend(powdr::collect_cols_names_algebraic(&a));
+        }
+        cols
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash)]
@@ -88,6 +109,16 @@ impl<T> SymbolicMachine<T> {
         constraints_exprs
             .chain(bus_mult_exprs)
             .chain(bus_args_exprs)
+    }
+}
+
+impl<T: FieldElement> SymbolicMachine<T> {
+    pub fn columns(&self) -> BTreeSet<String> {
+        let mut cols = BTreeSet::new();
+        for c in &self.constraints {
+            cols.extend(c.columns());
+        }
+        cols
     }
 }
 
@@ -248,6 +279,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
         let new_instr_name = "new_instr".to_string();
         let new_instr = SymbolicInstructionStatement {
             name: new_instr_name.clone(),
+            opcode: 0,
             args: Vec::new(),
         };
         let selected = [(0, new_instr)].into();
@@ -324,27 +356,9 @@ pub fn replace_autoprecompile_basic_blocks<T: Clone>(
 }
 
 pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
-    /*
-        let all_mem_interactions: Vec<MemoryBusInteraction<T>> = machine
-            .bus_interactions
-            .iter()
-            .filter_map(|bus_int| match bus_int.id {
-                MEMORY_BUS_ID => Some(bus_int.clone().into()),
-                _ => None,
-            })
-            .collect();
-
-        let mut reg_mem_interactions: Vec<MemoryBusInteraction<T>> = all_mem_interactions
-            .iter()
-            .filter_map(|bus_int| match bus_int.ty {
-                MemoryType::Register => Some(bus_int.clone()),
-                _ => None,
-            })
-            .collect();
-    */
-
     println!(
-        "Before autoprecompile optimizations, constraints: {}, bus_interactions: {}",
+        "Before autoprecompile optimizations, columns: {}, constraints: {}, bus_interactions: {}",
+        machine.columns().len(),
         machine.constraints.len(),
         machine.bus_interactions.len()
     );
@@ -370,7 +384,7 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
 
         let addr = match mem_int.try_addr_u32() {
             None => {
-                return true;
+                panic!("Register memory access must have constant address");
             }
             Some(addr) => addr,
         };
@@ -379,6 +393,14 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
             MemoryOp::Read => match local_mem.get(&addr) {
                 Some(data) => {
                     assert_eq!(data.len(), mem_int.data.len());
+                    /*
+                        println!(
+                            "Replacing bus interaction of addr {} by local constraints:",
+                            mem_int.addr
+                        );
+                        println!("Data: {data:?}");
+                        println!("Mem int data: {:?}", mem_int.data);
+                    */
                     mem_int
                         .data
                         .iter()
@@ -389,6 +411,7 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
                                 AlgebraicBinaryOperator::Sub,
                                 old_data.clone(),
                             );
+                            //println!("New constraint: {eq_expr}");
                             new_constraints.push(eq_expr.into());
                         });
                     false
@@ -405,10 +428,84 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
         }
     });
 
+    let mut last_store: BTreeMap<u32, usize> = BTreeMap::new();
+    machine
+        .bus_interactions
+        .iter()
+        .enumerate()
+        .for_each(|(i, bus_int)| {
+            if bus_int.id != MEMORY_BUS_ID {
+                return;
+            }
+
+            let mem_int: MemoryBusInteraction<T> = bus_int.clone().into();
+
+            if matches!(mem_int.ty, MemoryType::Constant | MemoryType::Memory) {
+                return;
+            }
+
+            let addr = match mem_int.try_addr_u32() {
+                None => {
+                    panic!("Register memory access must have constant address");
+                }
+                Some(addr) => addr,
+            };
+
+            match mem_int.op {
+                MemoryOp::Read => {}
+                MemoryOp::Write => {
+                    last_store.insert(addr, i);
+                }
+            }
+        });
+
+    machine.bus_interactions = machine
+        .bus_interactions
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, bus_int)| {
+            if bus_int.id != MEMORY_BUS_ID {
+                return Some(bus_int);
+            }
+
+            let mem_int: MemoryBusInteraction<T> = bus_int.clone().into();
+
+            if matches!(mem_int.ty, MemoryType::Constant | MemoryType::Memory) {
+                return Some(bus_int);
+            }
+
+            let addr = match mem_int.try_addr_u32() {
+                None => {
+                    panic!("Register memory access must have constant address");
+                }
+                Some(addr) => addr,
+            };
+
+            match mem_int.op {
+                MemoryOp::Read => {
+                    return Some(bus_int);
+                }
+                MemoryOp::Write => {
+                    if last_store
+                        .get(&addr)
+                        .is_some_and(|&last_index| last_index == i)
+                    {
+                        Some(bus_int)
+                    } else {
+                        //println!("Removing redundant register write");
+                        //println!("Bus interaction: {:?}", bus_int);
+                        None
+                    }
+                }
+            }
+        })
+        .collect();
+
     machine.constraints.extend(new_constraints);
 
     println!(
-        "After autoprecompile optimizations, constraints: {}, bus_interactions: {}",
+        "After autoprecompile optimizations, columns: {}, constraints: {}, bus_interactions: {}",
+        machine.columns().len(),
         machine.constraints.len(),
         machine.bus_interactions.len()
     );
@@ -430,7 +527,8 @@ pub fn generate_precompile<T: FieldElement>(
             InstructionKind::Normal
             | InstructionKind::UnconditionalBranch
             | InstructionKind::ConditionalBranch => {
-                let (instr_def, machine) = instruction_machines.get(&instr.name).unwrap();
+                let (instr_def, mut machine) =
+                    instruction_machines.get(&instr.name).unwrap().clone();
 
                 let pc_lookup: PcLookupBusInteraction<T> = machine
                     .bus_interactions
@@ -444,6 +542,10 @@ pub fn generate_precompile<T: FieldElement>(
 
                 let mut sub_map: BTreeMap<String, AlgebraicExpression<T>> = Default::default();
                 let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
+
+                if is_loadstore(instr.opcode) {
+                    sub_map.extend(loadstore_chip_info(&machine, instr.opcode));
+                }
 
                 assert_eq!(instr.args.len(), pc_lookup.args.len());
                 instr
@@ -469,29 +571,30 @@ pub fn generate_precompile<T: FieldElement>(
                     });
 
                 /*
-                                for l in &local_constraints {
-                                    println!("Local constraint: {}", l.expr);
-                                }
-                                println!("\nSubmap = {sub_map:?}\n");
+                   for l in &local_constraints {
+                       println!("Local constraint: {}", l.expr);
+                   }
+                   println!("\nSubmap = {sub_map:?}\n");
                 */
 
                 let mut local_subs = BTreeMap::new();
 
                 /*
-                                for l in &machine.constraints {
-                                    println!("\nMachine constraint: {}", l.expr);
-                                }
-                                for i in &machine.bus_interactions {
-                                    println!(
-                                        "\nBus interaction id = {}, kind = {:?}, mult = {}",
-                                        i.id, i.kind, i.mult
-                                    );
-                                    for a in &i.args {
-                                        println!("arg = {a}");
-                                    }
-                                    println!("\n");
-                                }
+                for l in &machine.constraints {
+                    println!("\nMachine constraint: {}", l.expr);
+                }
+                for i in &machine.bus_interactions {
+                    println!(
+                        "\nBus interaction id = {}, kind = {:?}, mult = {}",
+                        i.id, i.kind, i.mult
+                    );
+                    for a in &i.args {
+                        println!("arg = {a}");
+                    }
+                    println!("\n");
+                }
                 */
+
                 let local_identities = machine
                     .constraints
                     .iter()
@@ -500,6 +603,7 @@ pub fn generate_precompile<T: FieldElement>(
                         let mut expr = expr.expr.clone();
                         powdr::substitute_algebraic(&mut expr, &sub_map);
                         let subs = powdr::append_suffix_algebraic(&mut expr, &format!("{i}"));
+                        expr = simplify_expression(expr);
                         local_subs.extend(subs);
                         SymbolicConstraint { expr }
                     })
@@ -514,6 +618,7 @@ pub fn generate_precompile<T: FieldElement>(
                         .chain(std::iter::once(&mut link.mult))
                         .for_each(|e| {
                             powdr::substitute_algebraic(e, &sub_map);
+                            *e = simplify_expression(e.clone());
                             let subs = powdr::append_suffix_algebraic(e, &format!("{i}"));
                             local_subs.extend(subs);
                         });
@@ -521,6 +626,39 @@ pub fn generate_precompile<T: FieldElement>(
                 }
 
                 col_subs.push(local_subs);
+
+                // after the first round of simplifying,
+                // we need to look for register memory bus interactions
+                // and replace the addr by the first argument of the instruction
+                for bus_int in &mut bus_interactions {
+                    if bus_int.id != MEMORY_BUS_ID {
+                        continue;
+                    }
+
+                    let addr_space = match bus_int.args[0] {
+                        AlgebraicExpression::Number(n) => n.to_integer().try_into_u32().unwrap(),
+                        _ => panic!(
+                            "Address space must be a constant but got {}",
+                            bus_int.args[0]
+                        ),
+                    };
+
+                    if addr_space != 1 {
+                        continue;
+                    }
+
+                    match bus_int.args[1] {
+                        AlgebraicExpression::Number(_) => {}
+                        _ => {
+                            if let Some(arg) = bus_int.args.get_mut(1) {
+                                //println!("Replacing runtime reg addr by constant");
+                                *arg = instr.args[0].clone().into();
+                            } else {
+                                panic!("Expected address argument");
+                            }
+                        }
+                    };
+                }
             }
             _ => {}
         }
@@ -759,6 +897,34 @@ fn algebraic_to_expression<P: FieldElement>(expr: &AlgebraicExpression<P>) -> Ex
         }
         AlgebraicExpression::Challenge(_) => unreachable!(),
     }
+}
+
+fn is_loadstore(opcode: usize) -> bool {
+    opcode >= 0x210 && opcode <= 0x215
+}
+
+fn loadstore_chip_info<T: FieldElement>(
+    machine: &SymbolicMachine<T>,
+    //pc_int: &PcLookupBusInteraction<T>,
+    opcode: usize,
+) -> BTreeMap<String, AlgebraicExpression<T>> {
+    let is_load = if opcode == 0x210 || opcode == 0x211 || opcode == 0x212 {
+        T::from(1u32)
+    } else {
+        T::from(0u32)
+    };
+    let is_load = AlgebraicExpression::Number(is_load);
+    let is_load_expr = match &machine.constraints[7].expr {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            left.clone()
+        }
+        _ => panic!("Expected subtraction."),
+    };
+    let cols = powdr::collect_cols_names_algebraic(&is_load_expr);
+    assert_eq!(cols.len(), 1);
+    let is_load_col = cols.into_iter().next().unwrap();
+
+    [(is_load_col, is_load)].into()
 }
 
 #[cfg(test)]

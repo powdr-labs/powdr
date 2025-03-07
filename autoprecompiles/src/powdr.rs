@@ -732,6 +732,22 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
     cols
 }
 
+pub fn collect_cols_names_algebraic<T: Clone + Ord>(
+    expr: &AlgebraicExpression<T>,
+) -> BTreeSet<String> {
+    let mut cols: BTreeSet<String> = Default::default();
+    expr.visit_expressions(
+        &mut |expr| {
+            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = expr {
+                cols.insert(name.clone());
+            }
+            ControlFlow::Continue::<()>(())
+        },
+        VisitOrder::Pre,
+    );
+    cols
+}
+
 pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
     expr.visit_expressions_mut(
         &mut |expr| {
