@@ -28,7 +28,7 @@ pub const N_LEAVES_LOG: usize = MEMORY_SIZE_LOG - PAGE_SIZE_BYTES_LOG;
 pub const MERKLE_TREE_DEPTH: usize = N_LEAVES_LOG + 1;
 pub const PAGE_SIZE_BYTES: usize = 1 << PAGE_SIZE_BYTES_LOG;
 pub const PAGE_NUMBER_MASK: usize = (1 << N_LEAVES_LOG) - 1;
-pub const WORDS_PER_HASH: usize = 8;
+pub const WORDS_PER_HASH: usize = 4;
 pub const BOOTLOADER_INPUTS_PER_PAGE: usize =
     WORDS_PER_PAGE + 1 + WORDS_PER_HASH + (MERKLE_TREE_DEPTH - 1) * WORDS_PER_HASH;
 pub const MEMORY_HASH_START_INDEX: usize = 2 * (REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len());
@@ -36,7 +36,8 @@ pub const NUM_PAGES_INDEX: usize = MEMORY_HASH_START_INDEX + WORDS_PER_HASH * 2;
 pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 
 // Ensure we have enough addresses for the scratch space.
-const_assert!(PAGE_SIZE_BYTES > 384);
+// TODO: review this number
+const_assert!(PAGE_SIZE_BYTES > 1024);
 
 /// Computes the size of the bootloader given the number of input pages.
 pub fn bootloader_size(accessed_pages: &BTreeSet<u32>) -> usize {

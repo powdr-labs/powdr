@@ -318,6 +318,14 @@ fn memory(with_bootloader: bool) -> String {
         r#"
     std::machines::large_field::memory_with_bootloader_write::MemoryWithBootloaderWrite memory(byte2, MIN_DEGREE, MAIN_MAX_DEGREE);
 
+    // Runs a Posseidon2GL permutation on uninitialized memory at val(X) * Y + Z,
+    // and stores the first half of the final state at val(W).
+    //
+    // 8 memory words are read and 4 memory words are written.
+    instr poseidon2_gl_bootloader X, Y, Z, W
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> poseidon2_gl.permute(tmp1_col * Y + Z, 0, W, STEP + 1);
+
     // Stores val(W) at address (V = val(X) - val(Z) + Y) % 2**32.
     // V can be between 0 and 2**33.
     instr mstore_bootloader X, Z, Y, W

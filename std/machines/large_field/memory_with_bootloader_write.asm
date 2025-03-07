@@ -3,13 +3,13 @@ use std::machines::range::Byte2;
 use std::field::modulus;
 use std::check::require_field_bits;
 
-/// This machine is a slightly extended version of std::machines::memory::Memory,
-/// where in addition to mstore, there is an mstore_bootloader operation. It behaves
-/// just like mstore, except that the first access to each memory cell must come
-/// from the mstore_bootloader operation.
+/// This is a slightly different version of std::machines::memory::Memory,
+/// where initial read is unconstrained unconstrained instead of returning 0, but
+/// it can only happen when m_step is 0 (i.e., from the initial memory verification,
+/// inside the bootloader).
 machine MemoryWithBootloaderWrite(byte2: Byte2) with
     latch: LATCH,
-    operation_id: operation_id,
+    operation_id: m_is_write,
     call_selectors: selectors,
 {
     require_field_bits(32, || "Memory requires a field that fits any 32-Bit value.");
@@ -17,7 +17,6 @@ machine MemoryWithBootloaderWrite(byte2: Byte2) with
 
     operation mload<0> m_addr, m_step -> m_value;
     operation mstore<1> m_addr, m_step, m_value ->;
-    operation mstore_bootloader<2> m_addr, m_step, m_value ->;
 
     let LATCH = 1;
 
@@ -34,19 +33,16 @@ machine MemoryWithBootloaderWrite(byte2: Byte2) with
 
     // Memory operation flags
     let m_is_write;
-    let m_is_bootloader_write;
     std::utils::force_bool(m_is_write);
-    std::utils::force_bool(m_is_bootloader_write);
-    col operation_id = m_is_write + 2 * m_is_bootloader_write;
 
     // is_write can only be 1 if a selector is active
     let is_mem_op = array::sum(selectors);
     std::utils::force_bool(is_mem_op);
     (1 - is_mem_op) * m_is_write = 0;
-    (1 - is_mem_op) * m_is_bootloader_write = 0;
 
-    // The first operation of a new address has to be a bootloader write
-    m_change * (1 - m_is_bootloader_write') = 0;
+    // The first operation of a new address has to either have
+    // m_step = 0 (to mean it is inside the bootloader) or be a write.
+    m_change * m_step * (1 - m_is_write)= 0;
 
     // m_change has to be 1 in the last row, so that the above constraint is triggered.
     // An exception to this when the last address is -1, which is only possible if there is
@@ -57,7 +53,7 @@ machine MemoryWithBootloaderWrite(byte2: Byte2) with
 
     // If the next line is a read and we stay at the same address, then the
     // value cannot change.
-    (1 - m_is_write' - m_is_bootloader_write') * (1 - m_change) * (m_value' - m_value) = 0;
+    (1 - m_is_write') * (1 - m_change) * (m_value' - m_value) = 0;
 
     let m_diff_lower;
     let m_diff_upper;

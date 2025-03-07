@@ -42,7 +42,7 @@ machine Memory(byte2: Byte2) with
     // then the value is zero.
     (1 - m_is_write') * m_change * m_value' = 0;
 
-    // change has to be 1 in the last row, so that a first read on row zero is constrained to return 0
+    // m_change has to be 1 in the last row, so that a first read on row zero is constrained to return 0
     (1 - m_change) * LAST = 0;
 
     // If the next line is a read and we stay at the same address, then the

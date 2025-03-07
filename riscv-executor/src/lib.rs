@@ -2429,7 +2429,9 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                 None
             }
             Instruction::poseidon2_gl => {
-                let input_ptr = self.proc.get_reg_mem(args[0].u()).u();
+                let stride = self.proc.get_reg_mem(args[2].u()).u();
+
+                let input_ptr = self.proc.get_reg_mem(args[0].u()).u() + stride * 32;
                 assert!(is_multiple_of_4(input_ptr));
 
                 let inputs: [F; 8] = (0..8)
@@ -2438,7 +2440,7 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                     .try_into()
                     .unwrap();
 
-                let output_half = self.proc.get_reg_mem(args[2].u()).u();
+                let output_half = self.proc.get_reg_mem(args[3].u()).u();
 
                 let result = poseidon2_gl::poseidon2_gl(&inputs);
                 let result = match output_half {
@@ -2449,7 +2451,8 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                     _ => unreachable!(),
                 };
 
-                let output_ptr = self.proc.get_reg_mem(args[1].u()).u();
+                let output_byte_size = result.len() as u32 * 4;
+                let output_ptr = self.proc.get_reg_mem(args[1].u()).u() + stride * output_byte_size;
                 assert!(is_multiple_of_4(output_ptr));
                 result.iter().enumerate().for_each(|(i, v)| {
                     self.proc
