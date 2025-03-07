@@ -117,8 +117,8 @@ where
             .split
             .iter()
             .filter_map(|(namespace, (pil, _))| {
-                // if we have neither fixed columns nor publics, we don't need to commit to anything
-                if pil.constant_count() + pil.publics_count() == 0 {
+                // if we don't have fixed columns, we don't need to commit to anything
+                if pil.constant_count() == 0 {
                     None
                 } else {
                     let fixed_columns = machine_fixed_columns(&self.fixed, pil);
@@ -129,15 +129,6 @@ where
                             .unwrap()
                             .iter()
                             .map(|size| {
-                                // get selector columns for the public inputs, as closures
-                                let publics = pil
-                                    .get_publics()
-                                    .into_iter()
-                                    .map(|(_, _, _, row_id, _)| {
-                                        move |i| T::from(i == row_id as u64)
-                                    })
-                                    .collect::<Vec<_>>();
-
                                 // get the config
                                 let config = T::get_config();
 
@@ -153,11 +144,10 @@ where
                                             fixed_columns
                                                 .iter()
                                                 .map(move |(_, column)| column[i as usize])
-                                                .chain(publics.iter().map(move |f| f(i)))
                                                 .map(|value| value.into_p3_field())
                                         })
                                         .collect(),
-                                    fixed_columns.len() + publics.len(),
+                                    fixed_columns.len(),
                                 );
 
                                 let evaluations = vec![(domain, matrix)];
@@ -206,6 +196,7 @@ where
     pub fn prove(
         &self,
         witness: &[(String, Vec<T>)],
+        public: &BTreeMap<String, T>,
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
         let mut witness_by_machine = self
@@ -235,6 +226,7 @@ where
             proving_key,
             &circuit,
             &mut witness_by_machine,
+            public,
             &mut challenger,
         );
 
@@ -242,7 +234,7 @@ where
 
         let verifying_key = self.verifying_key.as_ref();
 
-        let public_values = circuit.public_values_so_far(&witness_by_machine);
+        let public_values = circuit.public_values_so_far(public);
 
         // extract the full map of public values by unwrapping all the options
         let public_values = public_values
@@ -352,12 +344,12 @@ mod tests {
         let mut pipeline = Pipeline::<F>::default().from_pil_string(pil.to_string());
         let pil = pipeline.compute_optimized_pil().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
-        let witness = &mut pipeline.compute_witness().unwrap();
+        let (witness, public) = &mut pipeline.compute_witness().unwrap();
         let fixed = pipeline.compute_fixed_cols().unwrap();
 
         let mut prover = Plonky3Prover::new(pil, fixed);
         prover.setup();
-        let proof = prover.prove(witness, witness_callback);
+        let proof = prover.prove(witness, public, witness_callback);
 
         assert!(proof.is_ok());
 
@@ -468,8 +460,8 @@ mod tests {
     fn challenge() {
         let content = r#"
         let N: int = 8;
-        
-        namespace Global(N); 
+
+        namespace Global(N);
             let alpha: expr = std::prelude::challenge(0, 41);
             let beta: expr = std::prelude::challenge(0, 42);
             col witness x;
@@ -483,8 +475,8 @@ mod tests {
     fn stage_1_public() {
         let content = r#"
         let N: int = 8;
-        
-        namespace Global(N); 
+
+        namespace Global(N);
             let alpha: expr = std::prelude::challenge(0, 41);
             let beta: expr = std::prelude::challenge(0, 42);
             col witness stage(0) x;

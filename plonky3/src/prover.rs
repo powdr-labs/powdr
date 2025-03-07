@@ -402,6 +402,7 @@ pub fn prove<T: FieldElementMap>(
     proving_key: Option<&StarkProvingKey<T::Config>>,
     program: &PowdrCircuit<T>,
     witness_by_machine: &mut BTreeMap<String, Vec<(String, Vec<T>)>>,
+    public: &BTreeMap<String, T>,
     challenger: &mut Challenger<T>,
 ) -> Proof<T::Config>
 where
@@ -440,12 +441,9 @@ where
                         ),
                         public_values: constraint_system.publics_by_stage[0]
                             .iter()
-                            .map(|(_, column_name, _, row)| {
-                                witness_by_machine
-                                    .get(name)
-                                    .unwrap()
-                                    .iter()
-                                    .find_map(|(n, v)| (n == column_name).then(|| v[*row]))
+                            .map(|(name, _, _, _)| {
+                                public
+                                    .get(name.rsplit("::").next().unwrap_or(name))
                                     .unwrap()
                                     .into_p3_field()
                             })
@@ -454,7 +452,7 @@ where
                 ),
             )
         })
-        .unzip();
+        .unzip(); // all witness go into stage 0
 
     if tables.is_empty() {
         panic!("No tables to prove");
@@ -500,7 +498,7 @@ where
         // get the challenges drawn at the end of the previous stage
         let local_challenges = &state.processed_stages.last().unwrap().challenge_values;
         let CallbackResult { air_stages } =
-            program.compute_stage(stage_id, local_challenges, witness_by_machine);
+            program.compute_stage(stage_id, local_challenges, witness_by_machine, public);
 
         assert_eq!(air_stages.len(), multi_table.table_count());
 
