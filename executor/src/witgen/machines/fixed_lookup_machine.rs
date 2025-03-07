@@ -106,10 +106,10 @@ fn create_index<T: FieldElement>(
     application: &Application<T>,
     receives: &BTreeMap<T, &BusReceive<T>>,
 ) -> HashMap<Vec<T>, IndexValue<T>> {
-    let right = &receives[&application.bus_id].selected_payload;
-    assert!(right.selector.is_one());
+    let receive_payload = &receives[&application.bus_id].selected_payload;
+    assert!(receive_payload.selector.is_one());
 
-    let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
+    let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = receive_payload
         .expressions
         .iter()
         .map(|e| FixedColOrConstant::try_from(e).unwrap())
@@ -246,11 +246,11 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         bus_id: T,
         outer_query: OuterQuery<'a, '_, T>,
     ) -> EvalResult<'a, T> {
-        let right = &self.bus_receives[&bus_id].selected_payload;
+        let receive_payload = &self.bus_receives[&bus_id].selected_payload;
 
         if outer_query.arguments.len() == 1 && !outer_query.arguments.first().unwrap().is_constant()
         {
-            if let Some(column_reference) = try_to_simple_poly(&right.expressions[0]) {
+            if let Some(column_reference) = try_to_simple_poly(&receive_payload.expressions[0]) {
                 // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
                 return self.process_range_check(
                     outer_query.range_constraints,
@@ -437,10 +437,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
                 create_index(self.fixed_data, application, &self.bus_receives)
             });
         let index_value = index.get(&input_values).ok_or_else(|| {
-            let right = &self.bus_receives[&bus_id].selected_payload;
+            let receive_payload = &self.bus_receives[&bus_id].selected_payload;
             let input_assignment = values
                 .iter()
-                .zip(&right.expressions)
+                .zip(&receive_payload.expressions)
                 .filter_map(|(l, r)| match l {
                     LookupCell::Input(v) => {
                         let name = try_to_simple_poly(r)

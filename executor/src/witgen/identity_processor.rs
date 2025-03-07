@@ -102,10 +102,10 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
         outer_query: &OuterQuery<'a, '_, T>,
         current_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let right = &outer_query.bus_receive.selected_payload;
+        let receive_payload = &outer_query.bus_receive.selected_payload;
         // sanity check that the right hand side selector is active
         current_rows
-            .evaluate(&right.selector)
+            .evaluate(&receive_payload.selector)
             .ok()
             .and_then(|affine_expression| affine_expression.constant_value())
             .and_then(|v| v.is_one().then_some(()))
@@ -116,7 +116,11 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
 
         let mut updates = EvalValue::complete(vec![]);
 
-        for (l, r) in outer_query.arguments.iter().zip(right.expressions.iter()) {
+        for (l, r) in outer_query
+            .arguments
+            .iter()
+            .zip(receive_payload.expressions.iter())
+        {
             match current_rows.evaluate(r) {
                 Ok(r) => {
                     let result = (l.clone() - r).solve_with_range_constraints(&range_constraint)?;

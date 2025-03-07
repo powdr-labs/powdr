@@ -559,12 +559,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     }
 
     fn find_operation_id(&self, bus_id: T) -> Option<usize> {
-        let right = &self.parts.bus_receives[&bus_id]
+        self.parts.bus_receives[&bus_id]
             .selected_payload
-            .expressions;
-        right.iter().position(|r| {
-            try_to_simple_poly(r).is_some_and(|poly| poly.name.contains("operation_id"))
-        })
+            .expressions
+            .iter()
+            .position(|r| {
+                try_to_simple_poly(r).is_some_and(|poly| poly.name.contains("operation_id"))
+            })
     }
 
     fn process<'b, Q: QueryCallback<T>>(

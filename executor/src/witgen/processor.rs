@@ -322,14 +322,14 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         row_index: usize,
     ) -> Result<(bool, Constraints<AlgebraicVariable<'a>, T>), EvalError<T>> {
         let mut progress = false;
-        let right = &self
+        let receive_payload = &self
             .outer_query
             .as_ref()
             .unwrap()
             .bus_receive
             .selected_payload;
         progress |= self
-            .set_value(row_index, &right.selector, T::one(), || {
+            .set_value(row_index, &receive_payload.selector, T::one(), || {
                 "Set selector to 1".to_string()
             })
             .unwrap_or(false);
@@ -355,7 +355,11 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             .map_err(|e| {
                 log::warn!("Error in outer query: {e}");
                 log::warn!("Some of the following entries could not be matched:");
-                for (l, r) in outer_query.arguments.iter().zip(right.expressions.iter()) {
+                for (l, r) in outer_query
+                    .arguments
+                    .iter()
+                    .zip(receive_payload.expressions.iter())
+                {
                     if let Ok(r) = row_pair.evaluate(r) {
                         log::warn!("  => {} = {}", l, r);
                     }

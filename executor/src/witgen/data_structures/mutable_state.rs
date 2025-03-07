@@ -25,14 +25,14 @@ pub struct MutableState<'a, T: FieldElement, Q: QueryCallback<T>> {
 impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
     pub fn new(machines: impl Iterator<Item = KnownMachine<'a, T>>, query_callback: &'a Q) -> Self {
         let machines: Vec<_> = machines.map(RefCell::new).collect();
-        let identity_to_machine_index = machines
+        let bus_to_machine_index = machines
             .iter()
             .enumerate()
             .flat_map(|(index, m)| m.borrow().bus_ids().into_iter().map(move |id| (id, index)))
             .collect();
         Self {
             machines,
-            bus_to_machine_index: identity_to_machine_index,
+            bus_to_machine_index,
             query_callback,
         }
     }
@@ -90,7 +90,7 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
             .unwrap_or_else(|| panic!("No executor machine matched identity ID: {bus_id}"));
         self.machines[machine_index].try_borrow_mut().map_err(|_| {
             EvalError::RecursiveMachineCalls(format!(
-                "Detected when processing identity with ID {bus_id}"
+                "Detected when processing machine call with bus ID {bus_id}"
             ))
         })
     }
