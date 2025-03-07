@@ -10,25 +10,12 @@ use powdr_ast::{
     },
 };
 use powdr_parser_util::SourceRef;
-use sha2::{Digest, Sha256};
 use std::{
     collections::{BTreeMap, HashSet},
     str::FromStr,
 };
 
 use crate::{call, try_into_namespace_degree, DegreeMode, LinkerBackend, MAIN_OPERATION_NAME};
-
-/// Compute a unique identifier for an interaction
-fn interaction_id(link_to: &LinkTo) -> u32 {
-    let mut hasher = Sha256::default();
-    hasher.update(format!("{}/{}", link_to.machine, link_to.operation));
-    let result = hasher.finalize();
-    let mut bytes = [0u8; 4];
-    bytes.copy_from_slice(&result[..4]);
-    // Ensure that interaction_id is at most 30-bits, in order to
-    // fill in a single field element for BabyBear and M31.
-    u32::from_le_bytes(bytes) >> 2
-}
 
 pub struct BusLinker {
     /// the pil statements
@@ -39,6 +26,8 @@ pub struct BusLinker {
     selector_array_index_by_operation: BTreeMap<LinkTo, Option<usize>>,
     /// arguments for `bus_multi_linker`
     bus_multi_linker_args: ArrayLiteral,
+    /// interaction id map for each link.to
+    interaction_id_map: BTreeMap<LinkTo, u32>,
 }
 
 impl LinkerBackend for BusLinker {
@@ -86,6 +75,27 @@ impl LinkerBackend for BusLinker {
                     (indices, sizes)
                 },
             );
+        // generate a map of interaction id for each link.to
+        let interaction_id_map: BTreeMap<LinkTo, u32> = graph
+            .objects
+            .iter()
+            .flat_map(|(location, object)| {
+                object
+                    .operations
+                    .keys()
+                    .map(move |operation_name| (location, operation_name.clone()))
+            })
+            .enumerate()
+            .map(|(id, (location, operation_name))| {
+                (
+                    LinkTo {
+                        machine: location.clone(),
+                        operation: operation_name.clone(),
+                    },
+                    id as u32,
+                )
+            })
+            .collect();
 
         Ok(Self {
             pil: Default::default(),
@@ -94,6 +104,7 @@ impl LinkerBackend for BusLinker {
             bus_multi_linker_args: ArrayLiteral {
                 items: Default::default(),
             },
+            interaction_id_map,
         })
     }
 
@@ -103,7 +114,7 @@ impl LinkerBackend for BusLinker {
 
         let operation = &objects[&to.machine].operations[&to.operation];
 
-        let interaction_id = interaction_id(to);
+        let interaction_id = self.interaction_id_map[to];
 
         let op_id = operation.id.clone().map(|operation_id| operation_id.into());
 
@@ -230,8 +241,8 @@ impl BusLinker {
 
         // By construction, all operations *which are called* have an optional selector index. The others can be safely ignored.
         if let Some(selector_index) = selector_index {
-            // compute the unique interaction id
-            let interaction_id = interaction_id(&link_to);
+            // get the interaction id for the link.to
+            let interaction_id = self.interaction_id_map[&link_to];
 
             let namespace = location.to_string();
 
@@ -350,7 +361,7 @@ mod test {
     pc' = (1 - first_step') * pc_update;
     pol commit call_selectors[0];
     std::array::map(call_selectors, std::utils::force_bool);
-    std::protocols::bus::bus_multi_linker([(454118344, 1, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], std::protocols::bus::BusLinkerType::Send)]);
+    std::protocols::bus::bus_multi_linker([(0, 1, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], std::protocols::bus::BusLinkerType::Send)]);
 namespace main__rom(4);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
@@ -359,7 +370,7 @@ namespace main__rom(4);
     pol constant p_instr_return = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-    std::protocols::bus::bus_multi_linker([(454118344, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], std::protocols::bus::BusLinkerType::LookupReceive)]);
+    std::protocols::bus::bus_multi_linker([(0, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], std::protocols::bus::BusLinkerType::LookupReceive)]);
 "#;
 
         let file_name = "../test_data/asm/empty_vm.asm";

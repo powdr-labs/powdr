@@ -10,19 +10,22 @@ use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
 pub enum Variable {
     /// A witness cell in the current machine.
     WitnessCell(Cell),
+    /// A cell of an intermediate column
+    IntermediateCell(Cell),
+    /// A fixed column cell.
+    FixedCell(Cell),
     /// A parameter (input or output) of the machine.
     Param(usize),
     /// An input or output value of a machine call on a certain
     /// identity on a certain row offset.
     MachineCallParam(MachineCallVariable),
-    /// A fixed column cell.
-    FixedCell(Cell),
 }
 
 impl Display for Variable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Variable::WitnessCell(cell) => write!(f, "{cell}"),
+            Variable::IntermediateCell(cell) => write!(f, "{cell}"),
             Variable::Param(i) => write!(f, "params[{i}]"),
             Variable::MachineCallParam(ret) => {
                 write!(
@@ -47,7 +50,7 @@ impl Variable {
         match r.poly_id.ptype {
             PolynomialType::Committed => Self::WitnessCell(cell),
             PolynomialType::Constant => Self::FixedCell(cell),
-            _ => panic!(),
+            PolynomialType::Intermediate => Self::IntermediateCell(cell),
         }
     }
 
@@ -57,6 +60,10 @@ impl Variable {
             Variable::WitnessCell(cell) => Some(PolyID {
                 id: cell.id,
                 ptype: PolynomialType::Committed,
+            }),
+            Variable::IntermediateCell(cell) => Some(PolyID {
+                id: cell.id,
+                ptype: PolynomialType::Intermediate,
             }),
             Variable::FixedCell(cell) => Some(PolyID {
                 id: cell.id,

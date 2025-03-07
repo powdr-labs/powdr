@@ -1256,6 +1256,15 @@ impl From<&AlgebraicReference> for AlgebraicReferenceThin {
     }
 }
 
+impl From<PolyID> for AlgebraicReferenceThin {
+    fn from(poly_id: PolyID) -> Self {
+        AlgebraicReferenceThin {
+            poly_id,
+            next: false,
+        }
+    }
+}
+
 impl AlgebraicReferenceThin {
     pub fn with_name(&self, name: String) -> AlgebraicReference {
         AlgebraicReference {
