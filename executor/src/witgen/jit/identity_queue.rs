@@ -217,7 +217,11 @@ impl<'a, T: FieldElement> ReferencesComputer<'a, T> {
         vars.unique().collect_vec()
     }
 
-    fn variables_in_expression(&mut self, expression: &Expression<T>, row: i32) -> Vec<Variable<T>> {
+    fn variables_in_expression(
+        &mut self,
+        expression: &Expression<T>,
+        row: i32,
+    ) -> Vec<Variable<T>> {
         self.references_in_expression(expression)
             .iter()
             .map(|r| {
