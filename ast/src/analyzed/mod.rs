@@ -192,8 +192,10 @@ impl<T> Analyzed<T> {
     ) -> impl Iterator<Item = (&String, &PublicDeclaration)> {
         self.source_order.iter().filter_map(move |statement| {
             if let StatementIdentifier::Definition(name) = statement {
-                if let Some(FunctionValueDefinition::PublicDeclaration(public_declaration)) =
-                    self.definitions.get(name).unwrap().1.as_ref()
+                if let Some((
+                    _,
+                    Some(FunctionValueDefinition::PublicDeclaration(public_declaration)),
+                )) = self.definitions.get(name)
                 {
                     return Some((name, public_declaration));
                 }
