@@ -489,7 +489,7 @@ impl<T: Display> Display for AlgebraicExpression<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             AlgebraicExpression::Reference(reference) => write!(f, "{reference}"),
-            AlgebraicExpression::PublicReference(name) => write!(f, ":{name}"),
+            AlgebraicExpression::PublicReference(name) => write!(f, "{name}"),
             AlgebraicExpression::Challenge(challenge) => {
                 write!(
                     f,
