@@ -21,8 +21,7 @@ use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition,
-    PolynomialType, PublicDeclaration, Reference, SolvedTraitImpls, StatementIdentifier, Symbol,
-    SymbolKind,
+    PolynomialType, Reference, SolvedTraitImpls, StatementIdentifier, Symbol, SymbolKind,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::Error;
@@ -67,7 +66,6 @@ struct PILAnalyzer {
     polynomial_degree: Option<DegreeRange>,
     /// Map of definitions, gradually being built up here.
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    public_declarations: HashMap<String, PublicDeclaration>,
     /// The list of proof items, i.e. statements that evaluate to constraints or prover functions.
     proof_items: Vec<Expression>,
     /// The order in which definitions and identities
@@ -432,7 +430,6 @@ impl PILAnalyzer {
         Ok(condenser::condense(
             self.definitions,
             solved_impls,
-            self.public_declarations,
             &self.proof_items,
             self.trait_impls,
             self.source_order,
@@ -501,16 +498,6 @@ impl PILAnalyzer {
                             assert!(is_new, "{name} already defined.");
                             self.source_order
                                 .push(StatementIdentifier::Definition(name));
-                        }
-                        PILItem::PublicDeclaration(decl) => {
-                            let name = decl.name.clone();
-                            let is_new = self
-                                .public_declarations
-                                .insert(name.clone(), decl)
-                                .is_none();
-                            assert!(is_new, "Public '{name}' already declared.");
-                            self.source_order
-                                .push(StatementIdentifier::PublicDeclaration(name));
                         }
                         PILItem::ProofItem(item) => {
                             let index = self.proof_items.len();
