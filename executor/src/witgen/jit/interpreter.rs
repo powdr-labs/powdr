@@ -11,7 +11,6 @@ use crate::witgen::{FixedData, QueryCallback};
 use itertools::Itertools;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::FieldElement;
-use std::hash::Hash;
 
 use std::collections::{BTreeSet, HashMap};
 
