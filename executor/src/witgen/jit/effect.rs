@@ -29,11 +29,11 @@ pub enum Effect<T: FieldElement, V> {
     Branch(BranchCondition<T, V>, Vec<Effect<T, V>>, Vec<Effect<T, V>>),
 }
 
-impl<T: FieldElement> Effect<T, Variable> {
+impl<T: FieldElement> Effect<T, Variable<T>> {
     /// Returns an iterator over all variables written to in the effect.
     /// The flag indicates if the variable is the return value of a machine call and thus needs
     /// to be declared mutable.
-    pub fn written_vars(&self) -> Box<dyn Iterator<Item = (&Variable, bool)> + '_> {
+    pub fn written_vars(&self) -> Box<dyn Iterator<Item = (&Variable<T>, bool)> + '_> {
         match self {
             Effect::Assignment(var, _) => Box::new(iter::once((var, false))),
             Effect::RangeConstraint(..) => unreachable!(),
@@ -134,7 +134,7 @@ pub struct ProverFunctionCall<V> {
 }
 
 /// Helper function to render a list of effects. Used for informational purposes only.
-pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
+pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable<T>>]) -> String {
     effects
         .iter()
         .map(|effect| match effect {
@@ -203,7 +203,7 @@ fn format_condition<T: FieldElement>(
     BranchCondition {
         variable,
         condition,
-    }: &BranchCondition<T, Variable>,
+    }: &BranchCondition<T, Variable<T>>,
 ) -> String {
     let (min, max) = condition.range();
     match min.cmp(&max) {
@@ -224,7 +224,7 @@ mod test {
     use super::*;
     type T = GoldilocksField;
 
-    fn var(id: u64) -> Variable {
+    fn var(id: u64) -> Variable<T> {
         Variable::WitnessCell(Cell {
             column_name: format!("v{id}"),
             id,

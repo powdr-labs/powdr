@@ -206,9 +206,9 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
     /// Returns the potentially modified code.
     fn try_ensure_block_shape(
         &self,
-        code: Vec<Effect<T, Variable>>,
-        requested_known: &[Variable],
-    ) -> Result<Vec<Effect<T, Variable>>, String> {
+        code: Vec<Effect<T, Variable<T>>>,
+        requested_known: &[Variable<T>],
+    ) -> Result<Vec<Effect<T, Variable<T>>>, String> {
         let optional_vars = code_cleaner::optional_vars(&code, requested_known);
 
         // Determine conflicting variable assignments we can remove.
@@ -292,7 +292,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 /// Returns, for each column ID, the collection of row offsets that have a cell write.
 /// Combines writes from branches.
 fn written_rows_per_column<T: FieldElement>(
-    code: &[Effect<T, Variable>],
+    code: &[Effect<T, Variable<T>>],
 ) -> BTreeMap<u64, BTreeSet<i32>> {
     code.iter()
         .flat_map(|e| e.written_vars())
@@ -310,7 +310,7 @@ fn written_rows_per_column<T: FieldElement>(
 /// and if in all the calls or that row, all the arguments are known.
 /// Combines calls from branches.
 fn completed_rows_for_bus_send<T: FieldElement>(
-    code: &[Effect<T, Variable>],
+    code: &[Effect<T, Variable<T>>],
 ) -> BTreeMap<u64, BTreeMap<i32, bool>> {
     code.iter()
         .flat_map(machine_calls)
@@ -323,7 +323,7 @@ fn completed_rows_for_bus_send<T: FieldElement>(
 }
 
 /// Returns true if the effect is a machine call where all arguments are known.
-fn fully_known_call<T: FieldElement>(e: &Effect<T, Variable>) -> bool {
+fn fully_known_call<T: FieldElement>(e: &Effect<T, Variable<T>>) -> bool {
     match e {
         Effect::MachineCall(_, known, _) => known.iter().all(|v| v),
         _ => false,
@@ -333,8 +333,8 @@ fn fully_known_call<T: FieldElement>(e: &Effect<T, Variable>) -> bool {
 /// Returns all machine calls (bus identity and row offset) found in the effect.
 /// Recurses into branches.
 fn machine_calls<T: FieldElement>(
-    e: &Effect<T, Variable>,
-) -> Box<dyn Iterator<Item = (u64, i32, &Effect<T, Variable>)> + '_> {
+    e: &Effect<T, Variable<T>>,
+) -> Box<dyn Iterator<Item = (u64, i32, &Effect<T, Variable<T>>)> + '_> {
     match e {
         Effect::MachineCall(id, _, arguments) => match &arguments[0] {
             Variable::MachineCallParam(MachineCallVariable {
