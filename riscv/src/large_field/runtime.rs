@@ -277,15 +277,32 @@ impl Runtime {
             None,
             "poseidon2_gl",
             vec!["memory", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
-            [r#"instr poseidon2_gl X, Y, Z
+            // Poseidon2GL permutation applied to 8 words read from val(X) + Z * 32,
+            // with 8 or 4 words result written to, respectively, val(Y) + Z * 16 or val(Y) + Z * 32,
+            // depending on val(W).
+            // 
+            // If val(W) is 0, no output is written, if val(W) is 1 or 2, 4 words are written of the
+            // first or second half of the final state is written, respectivelly.
+            //
+            // If val(W) is 3, the full 8 words of the final state are written.
+            //
+            // Argument Z can be seen as a stride counter. It indexes both the input and output
+            // in arrays whose elements are one full input or output block.
+            [r#"instr poseidon2_gl X, Y, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
-                    link ~> tmp3_col = regs.mload(Z, STEP + 2)
-                    link ~> poseidon2_gl.permute(tmp1_col, STEP, tmp2_col, STEP + 1, tmp3_col)
+                    link ~> tmp3_col = regs.mload(W, STEP + 2)
+                    link ~> poseidon2_gl.permute(tmp1_col + Z * 32, STEP, tmp2_col + Z * (16 + tmp4_col), STEP + 1, tmp3_col)
                 {
                     // make sure tmp1_col and tmp2_col are 4-byte aligned memory addresses
                     tmp1_col = 4 * (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000),
                     tmp2_col = 4 * (Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000)
+
+                    // Make tmp4_col = 0 if tmp3_col = 1 or 2, and tmp4_col = 16 if tmp3_col = 3
+                    // this way we know the size of the output to be 16 or 32 bytes.
+                    // if tmp3_col = 0, then tmp4_col doesn't matter. Any other value is forbidden
+                    // by the Poseidon2GL machine.
+                    tmp4_col = 8 * (tmp3_col - 1) * (tmp3_col - 2)
                 }
             "#],
         );
@@ -332,7 +349,7 @@ impl Runtime {
         // they can overlap.
         self.add_syscall(
             Syscall::Poseidon2GL,
-            std::iter::once(format!("{} 10, 11, 12;", Syscall::Poseidon2GL.name())),
+            std::iter::once(format!("{} 10, 11, 0, 12;", Syscall::Poseidon2GL.name())),
         );
 
         self.add_syscall(

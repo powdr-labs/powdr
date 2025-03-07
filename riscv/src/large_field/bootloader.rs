@@ -159,7 +159,8 @@ bootloader_init:
 // - x2: Current page index
 // - x3: Current page number
 // - x4: The ith bit of the page number (during Merkle proof validation)
-// - x18-x25: The current memory hash
+// - x5: Constant 1
+// - x18-x21: The current memory hash
 // - x9: 0: Merkle tree validation phase; 1: Merkle tree update phase
 // - Scratch space for hash operations:
 //   - [0], [4], [8], [12], [16], [20], [24], [28] will usually contain the "current" hash (either in the context
@@ -172,15 +173,14 @@ bootloader_init:
 load_bootloader_input 0, 1, 1, {NUM_PAGES_INDEX};
 add_wrap 1, 0, 0, 1;
 
+// Constant 1
+add_wrap 0, 0, 1, 5;
+
 // Initialize memory hash
 load_bootloader_input 0, 18, 1, {MEMORY_HASH_START_INDEX};
 load_bootloader_input 0, 19, 1, {MEMORY_HASH_START_INDEX} + 1;
 load_bootloader_input 0, 20, 1, {MEMORY_HASH_START_INDEX} + 2;
 load_bootloader_input 0, 21, 1, {MEMORY_HASH_START_INDEX} + 3;
-load_bootloader_input 0, 22, 1, {MEMORY_HASH_START_INDEX} + 4;
-load_bootloader_input 0, 23, 1, {MEMORY_HASH_START_INDEX} + 5;
-load_bootloader_input 0, 24, 1, {MEMORY_HASH_START_INDEX} + 6;
-load_bootloader_input 0, 25, 1, {MEMORY_HASH_START_INDEX} + 7;
 
 // Current page index
 set_reg 2, 0;
@@ -201,59 +201,58 @@ fail;
 
 page_number_ok:
 
-// Store & hash {WORDS_PER_PAGE} page words. This is an unrolled loop that for each word:
-// - Loads the word into the P{{(i % 4) + 4}} register
-// - Stores the word at the address x3 * {PAGE_SIZE_BYTES} + i * {BYTES_PER_WORD}
-// - If i % 4 == 3: Hashes mem[0, 96), storing the result in mem[0, 32)
+// Build the Merkle Tree of a single page, where each leaf is made up of 8 words (32 bytes), for
+// a total of 64 leafs.
+// 
+// We hash one level at a time, saving the intermediate hash valus in the scratch space.
+// Each level will output this many words to the the scratch space:
+// - level 0: 256 field element words
+// - level 1: 128 field element words
+// - level 2: 64 field element words
+// - level 3: 32 field element words
+// - level 4: 16 field element words
+// - level 5: 8 field element words
+// - level 6: 4 field element words (final page hash)
 //
-// At the end of the loop, we'll have a linear hash of the page in [0, 32), using a Merkle-Damgård
-// construction. The initial [0, 32) values are 0, and the capacity [64, 96) is 0 throughout the
-// bootloader execution.
+// Level 0 is special in that it hashes the leafs directly from the page location in
+// memory, using unconstrained reads, where the witgen must supply the page data.
+//
+// The remaining levels are hashed with normal memory operations.
 
-mstore_bootloader 0, 0, 0, 0;
-mstore_bootloader 0, 0, 4, 0;
-mstore_bootloader 0, 0, 8, 0;
-mstore_bootloader 0, 0, 12, 0;
-mstore_bootloader 0, 0, 16, 0;
-mstore_bootloader 0, 0, 20, 0;
-mstore_bootloader 0, 0, 24, 0;
-mstore_bootloader 0, 0, 28, 0;
-mstore_bootloader 0, 0, 32, 0;
-mstore_bootloader 0, 0, 36, 0;
-mstore_bootloader 0, 0, 40, 0;
-mstore_bootloader 0, 0, 44, 0;
-mstore_bootloader 0, 0, 48, 0;
-mstore_bootloader 0, 0, 52, 0;
-mstore_bootloader 0, 0, 56, 0;
-mstore_bootloader 0, 0, 60, 0;
-mstore_bootloader 0, 0, 64, 0;
-mstore_bootloader 0, 0, 68, 0;
-mstore_bootloader 0, 0, 72, 0;
-mstore_bootloader 0, 0, 76, 0;
-mstore_bootloader 0, 0, 80, 0;
-mstore_bootloader 0, 0, 84, 0;
-mstore_bootloader 0, 0, 88, 0;
-mstore_bootloader 0, 0, 92, 0;
+// Hashes for level 0
+
 "#,
-   ));
+    ));
 
-    bootloader.push_str(&format!("affine 3, 90, {PAGE_SIZE_BYTES}, 0;\n"));
-    for i in 0..WORDS_PER_PAGE {
-        // Multiply the index by 8 to skip 2 words, 4 words,
-        // one used for the actual 32-bit word and a zero.
-        let idx = ((i % 4) + 4) * WORDS_PER_HASH;
+    // Level 0 is special because it reads from the pages themselves.
+    let hash_count = WORDS_PER_PAGE / 8;
+    for hash_idx in 0..hash_count {
+        // Read 8 words from val(x3) * PAGE_SIZE_BYTES + hash_idx * 8 * BYTES_PER_WORD,
+        let input_offset = hash_idx * 8 * BYTES_PER_WORD;
+        // Output 4 FE words packed from the start of the scratch space.
+        let output_addr = hash_idx * WORDS_PER_HASH * BYTES_PER_WORD;
+        bootloader.push_str(&format!(
+            "poseidon2_gl_bootloader 3, {PAGE_SIZE_BYTES}, {input_offset}, {output_addr};"
+        ));
+    }
+
+    // The other levels reads and outputs to the scratch space.
+    // The number of hashes in this level is half the number of hashes in the previous level.
+    for (hash_count, level) in itertools::iterate(hash_count / 2, |x| x / 2)
+        .take_while(|x| *x >= 8)
+        .zip(1..)
+    {
         bootloader.push_str(&format!(
             r#"
-load_bootloader_input 2, 91, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {i};
-mstore 0, 0, {idx}, 91;
+// Hashes for level {level}
 
-affine 3, 90, {PAGE_SIZE_BYTES}, {i} * {BYTES_PER_WORD};
-mstore_bootloader 90, 0, 0, 91;"#
+"#
         ));
 
-        // Hash if buffer is full
-        if i % 4 == 3 {
-            bootloader.push_str("poseidon_gl 0, 0;");
+        for hash_idx in 0..hash_count {
+            // Hash the 8 words at the input address and store 4 words result at the output address. Register x5 is
+            // a constant 1, selecting the first half of the full poseidon state as output.
+            bootloader.push_str(&format!("poseidon2_gl  0, 0, {hash_idx}, 5;\n"));
         }
     }
 
@@ -262,7 +261,7 @@ mstore_bootloader 90, 0, 0, 91;"#
 // == Merkle proof validation ==
 // We commit to the memory content by hashing it in pages of {WORDS_PER_PAGE} words each.
 // These hashes are stored in a binary Merkle tree of depth {MERKLE_TREE_DEPTH}.
-// At this point, the current page hash is in mem[0, 32).
+// At this point, the current page hash is in mem[0, 16).
 // 
 // Now, we re-computed the Merkle root twice, in two phases:
 // - First using the current page hash, as computed by the bootloader. The prover provides
