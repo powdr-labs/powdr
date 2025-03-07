@@ -332,6 +332,7 @@ fn fully_known_call<T: FieldElement>(e: &Effect<T, Variable<T>>) -> bool {
 
 /// Returns all machine calls (bus identity and row offset) found in the effect.
 /// Recurses into branches.
+#[allow(clippy::type_complexity)]
 fn machine_calls<T: FieldElement>(
     e: &Effect<T, Variable<T>>,
 ) -> Box<dyn Iterator<Item = (u64, i32, &Effect<T, Variable<T>>)> + '_> {
