@@ -33,16 +33,16 @@ pub struct WitgenInference<'a, T: FieldElement, FixedEval> {
     fixed_data: &'a FixedData<'a, T>,
     fixed_evaluator: FixedEval,
     /// Sequences of branches taken in the past to get to the current state.
-    branches_taken: Vec<(Variable<T>, RangeConstraint<T>)>,
-    derived_range_constraints: HashMap<Variable<T>, RangeConstraint<T>>,
-    known_variables: HashSet<Variable<T>>,
+    branches_taken: Vec<(Variable, RangeConstraint<T>)>,
+    derived_range_constraints: HashMap<Variable, RangeConstraint<T>>,
+    known_variables: HashSet<Variable>,
     /// Submachine calls that have already been completed.
     /// These are still processed to propagate range constraints
     /// and concrete values.
     /// This avoids generating multiple submachine calls for the same
     /// connection on the same row.
     complete_calls: HashSet<(u64, i32)>,
-    code: Vec<Effect<T, Variable<T>>>,
+    code: Vec<Effect<T, Variable>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -65,9 +65,9 @@ impl<T: Display> Display for Value<T> {
 /// Return type of the `branch_on` method.
 pub struct BranchResult<'a, T: FieldElement, FixedEval> {
     /// The code common to both branches.
-    pub common_code: Vec<Effect<T, Variable<T>>>,
+    pub common_code: Vec<Effect<T, Variable>>,
     /// The condition of the branch.
-    pub condition: BranchCondition<T, Variable<T>>,
+    pub condition: BranchCondition<T, Variable>,
     /// The two branches.
     pub branches: [WitgenInference<'a, T, FixedEval>; 2],
 }
@@ -76,7 +76,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         fixed_evaluator: FixedEval,
-        known_variables: impl IntoIterator<Item = Variable<T>>,
+        known_variables: impl IntoIterator<Item = Variable>,
         complete_calls: impl IntoIterator<Item = (u64, i32)>,
     ) -> Self {
         Self {
@@ -90,23 +90,23 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    pub fn finish(self) -> Vec<Effect<T, Variable<T>>> {
+    pub fn finish(self) -> Vec<Effect<T, Variable>> {
         self.code
     }
 
-    pub fn code(&self) -> &Vec<Effect<T, Variable<T>>> {
+    pub fn code(&self) -> &Vec<Effect<T, Variable>> {
         &self.code
     }
 
-    pub fn branches_taken(&self) -> &[(Variable<T>, RangeConstraint<T>)] {
+    pub fn branches_taken(&self) -> &[(Variable, RangeConstraint<T>)] {
         &self.branches_taken
     }
 
-    pub fn known_variables(&self) -> &HashSet<Variable<T>> {
+    pub fn known_variables(&self) -> &HashSet<Variable> {
         &self.known_variables
     }
 
-    pub fn is_known(&self, variable: &Variable<T>) -> bool {
+    pub fn is_known(&self, variable: &Variable) -> bool {
         if let Variable::FixedCell(_) = variable {
             true
         } else {
@@ -119,7 +119,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.complete_calls.contains(&(identity.id(), row_offset))
     }
 
-    pub fn value(&self, variable: &Variable<T>) -> Value<T> {
+    pub fn value(&self, variable: &Variable) -> Value<T> {
         let rc = self.range_constraint(variable);
         if let Some(val) = rc.try_to_single_value() {
             Value::Concrete(val)
@@ -134,7 +134,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// is in the "second half" of its range constraint and one where it is in the
     /// "first half" of its range constraint (determined by calling the `bisect` method).
     /// Returns the common code, the branch condition and the two branches.
-    pub fn branch_on(mut self, variable: &Variable<T>) -> BranchResult<'a, T, FixedEval> {
+    pub fn branch_on(mut self, variable: &Variable) -> BranchResult<'a, T, FixedEval> {
         // The variable needs to be known, we need to have a range constraint but
         // it cannot be a single value.
         assert!(self.is_known(variable));
@@ -159,7 +159,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
     }
 
-    fn branch_to(&mut self, var: &Variable<T>, range_constraint: RangeConstraint<T>) {
+    fn branch_to(&mut self, var: &Variable, range_constraint: RangeConstraint<T>) {
         self.branches_taken
             .push((var.clone(), range_constraint.clone()));
         self.add_range_constraint(var.clone(), range_constraint);
@@ -172,7 +172,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         selector: &Expression<T>,
         argument_count: usize,
         row_offset: i32,
-    ) -> Result<Vec<Variable<T>>, Error> {
+    ) -> Result<Vec<Variable>, Error> {
         let result = self.process_call_inner(
             can_process_call,
             lookup_id,
@@ -190,7 +190,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         &mut self,
         prover_function: &ProverFunction<'a, T>,
         row_offset: i32,
-    ) -> Result<Vec<Variable<T>>, Error> {
+    ) -> Result<Vec<Variable>, Error> {
         let targets = prover_function
             .target
             .iter()
@@ -242,10 +242,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     pub fn process_equation_on_row(
         &mut self,
         lhs: &Expression<T>,
-        variable: Option<Variable<T>>,
+        variable: Option<Variable>,
         offset: T,
         row_offset: i32,
-    ) -> Result<Vec<Variable<T>>, Error> {
+    ) -> Result<Vec<Variable>, Error> {
         // Try to find a new assignment to a variable in the equality.
         let mut result = self.process_equation_on_row_using_evaluator(
             lhs,
@@ -273,11 +273,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     fn process_equation_on_row_using_evaluator(
         &self,
         lhs: &Expression<T>,
-        variable: Option<Variable<T>>,
+        variable: Option<Variable>,
         offset: T,
         row_offset: i32,
         only_concrete_known: bool,
-    ) -> Result<ProcessResult<T, Variable<T>>, Error> {
+    ) -> Result<ProcessResult<T, Variable>, Error> {
         let evaluator = if only_concrete_known {
             Evaluator::new(self).only_concrete_known()
         } else {
@@ -300,7 +300,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         selector: &Expression<T>,
         argument_count: usize,
         row_offset: i32,
-    ) -> ProcessResult<T, Variable<T>> {
+    ) -> ProcessResult<T, Variable> {
         // We need to know the selector.
         let Some(selector) = self
             .evaluate(selector, row_offset)
@@ -324,7 +324,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     identity_id: lookup_id,
                     row_offset,
                     index,
-                    _phantom: Default::default(),
                 })
             })
             .collect_vec();
@@ -357,9 +356,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Returns the variables that have been updated.
     fn ingest_effects(
         &mut self,
-        process_result: ProcessResult<T, Variable<T>>,
+        process_result: ProcessResult<T, Variable>,
         identity_id: Option<(u64, i32)>,
-    ) -> Result<Vec<Variable<T>>, Error> {
+    ) -> Result<Vec<Variable>, Error> {
         let mut updated_variables = vec![];
         for e in process_result.effects {
             match &e {
@@ -436,7 +435,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 
     /// Adds a range constraint to the set of derived range constraints. Returns true if progress was made.
-    fn add_range_constraint(&mut self, variable: Variable<T>, rc: RangeConstraint<T>) -> bool {
+    fn add_range_constraint(&mut self, variable: Variable, rc: RangeConstraint<T>) -> bool {
         let old_rc = self.range_constraint(&variable);
         let rc = old_rc.conjunction(&rc);
         if rc == old_rc {
@@ -455,7 +454,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 
     /// Record a variable as known. Return true if it was not known before.
-    fn record_known(&mut self, variable: Variable<T>) -> bool {
+    fn record_known(&mut self, variable: Variable) -> bool {
         // We do not record fixed columns as known.
         if matches!(variable, Variable::FixedCell(_)) {
             false
@@ -467,7 +466,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Returns the current best-known range constraint on the given variable
     /// combining global range constraints and newly derived local range constraints.
     /// For fixed columns, it also invokes the fixed evaluator.
-    pub fn range_constraint(&self, variable: &Variable<T>) -> RangeConstraint<T> {
+    pub fn range_constraint(&self, variable: &Variable) -> RangeConstraint<T> {
         if let Variable::FixedCell(fixed_cell) = variable {
             if let Some(v) = self.fixed_evaluator.evaluate(fixed_cell) {
                 return RangeConstraint::from_value(v);
@@ -495,7 +494,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         &self,
         expr: &Expression<T>,
         offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable<T>>> {
+    ) -> Option<AffineSymbolicExpression<T, Variable>> {
         Evaluator::new(self).evaluate(expr, offset)
     }
 }
@@ -528,7 +527,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
         &self,
         expr: &Expression<T>,
         offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable<T>>> {
+    ) -> Option<AffineSymbolicExpression<T, Variable>> {
         Some(match expr {
             Expression::Reference(r) => self.evaluate_variable(Variable::from_reference(r, offset)),
             Expression::PublicReference(_) | Expression::Challenge(_) => {
@@ -544,10 +543,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
     /// Turns the given variable either to a known symbolic value or an unknown symbolic value
     /// depending on if it is known or not.
     /// If it is known to be range-constrained to a single value, that value is used.
-    pub fn evaluate_variable(
-        &self,
-        variable: Variable<T>,
-    ) -> AffineSymbolicExpression<T, Variable<T>> {
+    pub fn evaluate_variable(&self, variable: Variable) -> AffineSymbolicExpression<T, Variable> {
         // If a variable is known and has a compile-time constant value,
         // that value is stored in the range constraints.
         let rc = self.witgen_inference.range_constraint(&variable);
@@ -565,7 +561,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
         &self,
         op: &AlgebraicBinaryOperation<T>,
         offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable<T>>> {
+    ) -> Option<AffineSymbolicExpression<T, Variable>> {
         let left = self.evaluate(&op.left, offset);
         let right = self.evaluate(&op.right, offset);
         match op.op {
@@ -592,7 +588,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
         &self,
         op: &AlgebraicUnaryOperation<T>,
         offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable<T>>> {
+    ) -> Option<AffineSymbolicExpression<T, Variable>> {
         let expr = self.evaluate(&op.expr, offset)?;
         match op.op {
             AlgebraicUnaryOperator::Minus => Some(-&expr),
@@ -600,7 +596,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
     }
 }
 
-fn is_known_zero<T: FieldElement>(x: &Option<AffineSymbolicExpression<T, Variable<T>>>) -> bool {
+fn is_known_zero<T: FieldElement>(x: &Option<AffineSymbolicExpression<T, Variable>>) -> bool {
     x.as_ref()
         .and_then(|x| x.try_to_known().map(|x| x.is_known_zero()))
         .unwrap_or(false)
@@ -726,7 +722,6 @@ mod test {
                                     identity_id: *identity_id,
                                     row_offset: *row,
                                     index,
-                                    _phantom: Default::default(),
                                 });
                                 updated_vars.extend(
                                     witgen

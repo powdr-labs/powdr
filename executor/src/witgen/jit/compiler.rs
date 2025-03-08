@@ -92,8 +92,8 @@ extern "C" fn call_machine<T: FieldElement, Q: QueryCallback<T>>(
 pub fn compile_effects<T: FieldElement, D: DefinitionFetcher>(
     definitions: &D,
     column_layout: ColumnLayout,
-    known_inputs: &[Variable<T>],
-    effects: &[Effect<T, Variable<T>>],
+    known_inputs: &[Variable],
+    effects: &[Effect<T, Variable>],
     prover_functions: Vec<ProverFunction<'_, T>>,
 ) -> Result<WitgenFunction<T>, String> {
     let utils = util_code::<T>()?;
@@ -187,8 +187,8 @@ impl<T> From<MutSlice<T>> for &mut [T] {
 }
 
 fn witgen_code<T: FieldElement>(
-    known_inputs: &[Variable<T>],
-    effects: &[Effect<T, Variable<T>>],
+    known_inputs: &[Variable],
+    effects: &[Effect<T, Variable>],
 ) -> String {
     let load_known_inputs = known_inputs
         .iter()
@@ -315,12 +315,12 @@ extern "C" fn witgen(
     )
 }
 
-pub fn format_effects<T: FieldElement>(effects: &[Effect<T, Variable<T>>]) -> String {
+pub fn format_effects<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
     indent(format_effects_inner(effects, true), 1)
 }
 
 fn format_effects_inner<T: FieldElement>(
-    effects: &[Effect<T, Variable<T>>],
+    effects: &[Effect<T, Variable>],
     is_top_level: bool,
 ) -> String {
     effects
@@ -329,7 +329,7 @@ fn format_effects_inner<T: FieldElement>(
         .join("\n")
 }
 
-fn format_effect<T: FieldElement>(effect: &Effect<T, Variable<T>>, is_top_level: bool) -> String {
+fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bool) -> String {
     match effect {
         Effect::Assignment(var, e) => {
             format!(
@@ -430,7 +430,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable<T>>, is_top_level:
     }
 }
 
-fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable<T>>) -> String {
+fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable>) -> String {
     match e {
         SymbolicExpression::Concrete(v) => format!("FieldElement::from({v})"),
         SymbolicExpression::Symbol(symbol, _) => variable_to_string(symbol),
@@ -464,7 +464,7 @@ fn format_condition<T: FieldElement>(
     BranchCondition {
         variable,
         condition,
-    }: &BranchCondition<T, Variable<T>>,
+    }: &BranchCondition<T, Variable>,
 ) -> String {
     let var = format!("IntType::from({})", variable_to_string(variable));
     let (min, max) = condition.range();
@@ -476,7 +476,7 @@ fn format_condition<T: FieldElement>(
 }
 
 /// Returns the name of a local (stack) variable for the given expression variable.
-fn variable_to_string<T>(v: &Variable<T>) -> String {
+fn variable_to_string(v: &Variable) -> String {
     match v {
         Variable::WitnessCell(cell) => format!(
             "c_{}_{}_{}",
@@ -596,8 +596,8 @@ mod tests {
 
     fn compile_effects(
         column_count: usize,
-        known_inputs: &[Variable<GoldilocksField>],
-        effects: &[Effect<GoldilocksField, Variable<GoldilocksField>>],
+        known_inputs: &[Variable],
+        effects: &[Effect<GoldilocksField, Variable>],
     ) -> Result<WitgenFunction<GoldilocksField>, String> {
         super::compile_effects(
             &NoDefinitions,
@@ -623,7 +623,7 @@ mod tests {
     //     compile_effects::<KoalaBearField>(0, 2, &[], &[]).unwrap();
     // }
 
-    fn cell(column_name: &str, id: u64, row_offset: i32) -> Variable<GoldilocksField> {
+    fn cell(column_name: &str, id: u64, row_offset: i32) -> Variable {
         Variable::WitnessCell(Cell {
             column_name: column_name.to_string(),
             row_offset,
@@ -631,33 +631,30 @@ mod tests {
         })
     }
 
-    fn param(i: usize) -> Variable<GoldilocksField> {
+    fn param(i: usize) -> Variable {
         Variable::Param(i)
     }
 
-    fn call_var(identity_id: u64, row_offset: i32, index: usize) -> Variable<GoldilocksField> {
+    fn call_var(identity_id: u64, row_offset: i32, index: usize) -> Variable {
         Variable::MachineCallParam(MachineCallVariable {
             identity_id,
             row_offset,
             index,
-            _phantom: Default::default(),
         })
     }
 
-    fn symbol(
-        var: &Variable<GoldilocksField>,
-    ) -> SymbolicExpression<GoldilocksField, Variable<GoldilocksField>> {
+    fn symbol(var: &Variable) -> SymbolicExpression<GoldilocksField, Variable> {
         SymbolicExpression::from_symbol(var.clone(), Default::default())
     }
 
-    fn number(n: u64) -> SymbolicExpression<GoldilocksField, Variable<GoldilocksField>> {
+    fn number(n: u64) -> SymbolicExpression<GoldilocksField, Variable> {
         SymbolicExpression::from(GoldilocksField::from(n))
     }
 
     fn assignment(
-        var: &Variable<GoldilocksField>,
-        e: SymbolicExpression<GoldilocksField, Variable<GoldilocksField>>,
-    ) -> Effect<GoldilocksField, Variable<GoldilocksField>> {
+        var: &Variable,
+        e: SymbolicExpression<GoldilocksField, Variable>,
+    ) -> Effect<GoldilocksField, Variable> {
         Effect::Assignment(var.clone(), e)
     }
 
