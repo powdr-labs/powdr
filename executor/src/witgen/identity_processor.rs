@@ -37,8 +37,8 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
     ) -> EvalResult<'a, T> {
         let result = match identity {
             Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
-            Identity::BusSend(bus_interaction) => self.process_lookup_or_permutation(
-                bus_interaction.identity_id,
+            Identity::BusSend(bus_interaction) => self.process_machine_call(
+                bus_interaction.bus_id().unwrap(),
                 &bus_interaction.selected_payload,
                 rows,
             ),
@@ -65,9 +65,9 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
         }
     }
 
-    fn process_lookup_or_permutation(
+    fn process_machine_call(
         &mut self,
-        id: u64,
+        bus_id: T,
         left: &'a powdr_ast::analyzed::SelectedExpressions<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -85,7 +85,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
             Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
         };
 
-        self.mutable_state.call(id, &left, rows)
+        self.mutable_state.call(bus_id, &left, rows)
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.
@@ -102,10 +102,10 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
         outer_query: &OuterQuery<'a, '_, T>,
         current_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let right = outer_query.connection.right;
+        let receive_payload = &outer_query.bus_receive.selected_payload;
         // sanity check that the right hand side selector is active
         current_rows
-            .evaluate(&right.selector)
+            .evaluate(&receive_payload.selector)
             .ok()
             .and_then(|affine_expression| affine_expression.constant_value())
             .and_then(|v| v.is_one().then_some(()))
@@ -116,7 +116,11 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
 
         let mut updates = EvalValue::complete(vec![]);
 
-        for (l, r) in outer_query.arguments.iter().zip(right.expressions.iter()) {
+        for (l, r) in outer_query
+            .arguments
+            .iter()
+            .zip(receive_payload.expressions.iter())
+        {
             match current_rows.evaluate(r) {
                 Ok(r) => {
                     let result = (l.clone() - r).solve_with_range_constraints(&range_constraint)?;

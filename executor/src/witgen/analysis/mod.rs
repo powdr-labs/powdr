@@ -10,8 +10,7 @@ use powdr_ast::{
 use powdr_number::FieldElement;
 
 use super::{
-    machines::{Connection, ConnectionKind},
-    util::try_to_simple_poly,
+    data_structures::identity::BusReceive, machines::ConnectionKind, util::try_to_simple_poly,
     FixedData,
 };
 
@@ -20,25 +19,29 @@ use super::{
 /// On success, return the connection kind, block size and latch row.
 pub fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
-    connections: &BTreeMap<u64, Connection<'a, T>>,
+    receives: &BTreeMap<T, &'a BusReceive<T>>,
 ) -> Option<(ConnectionKind, usize, usize)> {
     // TODO we should check that the other constraints/fixed columns are also periodic.
 
     // Connecting identities should either all be permutations or all lookups.
-    let connection_type = connections
+    let connection_type = match receives
         .values()
-        .map(|id| id.kind)
+        .map(|receive| receive.has_arbitrary_multiplicity())
         .unique()
         .exactly_one()
-        .ok()?;
+        .ok()?
+    {
+        true => ConnectionKind::Lookup,
+        false => ConnectionKind::Permutation,
+    };
 
     // Detect the block size.
     let (latch_row, block_size) = match connection_type {
         ConnectionKind::Lookup => {
             // We'd expect all RHS selectors to be fixed columns of the same period.
-            connections
+            receives
                 .values()
-                .map(|id| try_to_period(&id.right.selector, fixed_data))
+                .map(|receive| try_to_period(&receive.selected_payload.selector, fixed_data))
                 .unique()
                 .exactly_one()
                 .ok()??
@@ -54,8 +57,8 @@ pub fn detect_connection_type_and_block_size<'a, T: FieldElement>(
                     .max_by_key(|&(_, period)| period)
             };
             let mut latch_candidates = BTreeSet::new();
-            for id in connections.values() {
-                collect_fixed_cols(&id.right.selector, &mut latch_candidates);
+            for receive in receives.values() {
+                collect_fixed_cols(&receive.selected_payload.selector, &mut latch_candidates);
             }
             if latch_candidates.is_empty() {
                 (0, 1)

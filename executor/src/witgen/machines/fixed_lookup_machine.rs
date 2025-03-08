@@ -9,6 +9,7 @@ use powdr_number::FieldElement;
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
 use crate::witgen::data_structures::caller_data::CallerData;
+use crate::witgen::data_structures::identity::BusReceive;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
 use crate::witgen::jit::witgen_inference::CanProcessCall;
@@ -18,12 +19,12 @@ use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause, QueryCallback};
 use crate::witgen::{EvalResult, FixedData};
 
-use super::{Connection, LookupCell, Machine};
+use super::{LookupCell, Machine};
 
 /// An Application specifies a lookup cache.
 #[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Clone)]
-struct Application {
-    pub identity_id: u64,
+struct Application<T> {
+    pub bus_id: T,
     /// Booleans indicating if the respective column is a known input column (true)
     /// or an unknown output column (false).
     pub inputs: BitVec,
@@ -102,13 +103,13 @@ impl<T: FieldElement> std::ops::Index<usize> for FixedColOrConstant<T, &[T]> {
 /// `input_fixed_columns` is assumed to be sorted
 fn create_index<T: FieldElement>(
     fixed_data: &FixedData<T>,
-    application: &Application,
-    connections: &BTreeMap<u64, Connection<'_, T>>,
+    application: &Application<T>,
+    receives: &BTreeMap<T, &BusReceive<T>>,
 ) -> HashMap<Vec<T>, IndexValue<T>> {
-    let right = connections[&application.identity_id].right;
-    assert!(right.selector.is_one());
+    let receive_payload = &receives[&application.bus_id].selected_payload;
+    assert!(receive_payload.selector.is_one());
 
-    let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
+    let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = receive_payload
         .expressions
         .iter()
         .map(|e| FixedColOrConstant::try_from(e).unwrap())
@@ -205,36 +206,36 @@ fn create_index<T: FieldElement>(
 /// Machine to perform a lookup in fixed columns only.
 pub struct FixedLookup<'a, T: FieldElement> {
     global_constraints: GlobalConstraints<T>,
-    indices: HashMap<Application, Index<T>>,
+    indices: HashMap<Application<T>, Index<T>>,
     range_constraint_indices: BTreeMap<RangeConstraintCacheKey<T>, Option<Vec<RangeConstraint<T>>>>,
-    connections: BTreeMap<u64, Connection<'a, T>>,
+    bus_receives: BTreeMap<T, &'a BusReceive<T>>,
     fixed_data: &'a FixedData<'a, T>,
 }
 
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
-    pub fn is_responsible(connection: &Connection<T>) -> bool {
-        connection.is_lookup()
-            && connection.right.selector.is_one()
-            && connection
-                .right
+    pub fn is_responsible(receive: &BusReceive<T>) -> bool {
+        let selected_payload = &receive.selected_payload;
+        receive.has_arbitrary_multiplicity()
+            && selected_payload.selector.is_one()
+            && selected_payload
                 .expressions
                 .iter()
                 // For native lookups, we do remove constants in the PIL
                 // optimizer, but this might not be the case for bus interactions.
                 .all(|e| FixedColOrConstant::try_from(e).is_ok())
-            && !connection.right.expressions.is_empty()
+            && !selected_payload.expressions.is_empty()
     }
 
     pub fn new(
         global_constraints: GlobalConstraints<T>,
         fixed_data: &'a FixedData<'a, T>,
-        connections: BTreeMap<u64, Connection<'a, T>>,
+        bus_receives: BTreeMap<T, &'a BusReceive<T>>,
     ) -> Self {
         Self {
             global_constraints,
             indices: Default::default(),
             range_constraint_indices: Default::default(),
-            connections,
+            bus_receives,
             fixed_data,
         }
     }
@@ -242,14 +243,14 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
     fn process_plookup_internal<Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         outer_query: OuterQuery<'a, '_, T>,
     ) -> EvalResult<'a, T> {
-        let right = self.connections[&identity_id].right;
+        let receive_payload = &self.bus_receives[&bus_id].selected_payload;
 
         if outer_query.arguments.len() == 1 && !outer_query.arguments.first().unwrap().is_constant()
         {
-            if let Some(column_reference) = try_to_simple_poly(&right.expressions[0]) {
+            if let Some(column_reference) = try_to_simple_poly(&receive_payload.expressions[0]) {
                 // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
                 return self.process_range_check(
                     outer_query.range_constraints,
@@ -262,7 +263,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         // Split the left-hand-side into known input values and unknown output expressions.
         let mut values = CallerData::from(&outer_query);
 
-        if !self.process_lookup_direct(mutable_state, identity_id, &mut values.as_lookup_cells())? {
+        if !self.process_lookup_direct(mutable_state, bus_id, &mut values.as_lookup_cells())? {
             // multiple matches, we stop and learnt nothing
             return Ok(EvalValue::incomplete(
                 IncompleteCause::MultipleLookupMatches,
@@ -310,21 +311,21 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
     fn can_process_call_fully(
         &mut self,
         _can_process: impl CanProcessCall<T>,
-        identity_id: u64,
+        bus_id: T,
         known_arguments: &BitVec,
         range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
-        if !Self::is_responsible(&self.connections[&identity_id]) {
+        if !Self::is_responsible(self.bus_receives[&bus_id]) {
             return (false, range_constraints);
         }
         let index = self
             .indices
             .entry(Application {
-                identity_id,
+                bus_id,
                 inputs: known_arguments.clone(),
             })
             .or_insert_with_key(|application| {
-                create_index(self.fixed_data, application, &self.connections)
+                create_index(self.fixed_data, application, &self.bus_receives)
             });
         let input_range_constraints = known_arguments
             .iter()
@@ -339,7 +340,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .filter(|(inputs, _)| matches_range_constraint(inputs, &input_range_constraints))
             .any(|(_, value)| value.0.is_none());
 
-        let columns = (self.connections[&identity_id].right.expressions.iter())
+        let columns = self.bus_receives[&bus_id]
+            .selected_payload
+            .expressions
+            .iter()
             .map(|e| FixedColOrConstant::try_from(e).unwrap())
             .collect_vec();
         let cache_key = RangeConstraintCacheKey {
@@ -392,20 +396,20 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
     fn process_plookup<Q: crate::witgen::QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        let identity = self.connections[&identity_id];
+        let receive = self.bus_receives[&bus_id];
 
-        let outer_query = OuterQuery::new(arguments, range_constraints, identity);
-        self.process_plookup_internal(mutable_state, identity_id, outer_query)
+        let outer_query = OuterQuery::new(arguments, range_constraints, receive);
+        self.process_plookup_internal(mutable_state, bus_id, outer_query)
     }
 
     fn process_lookup_direct<'c, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         let mut input_values = vec![];
@@ -422,7 +426,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .collect();
 
         let application = Application {
-            identity_id,
+            bus_id,
             inputs: known_inputs,
         };
 
@@ -430,13 +434,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .indices
             .entry(application)
             .or_insert_with_key(|application| {
-                create_index(self.fixed_data, application, &self.connections)
+                create_index(self.fixed_data, application, &self.bus_receives)
             });
         let index_value = index.get(&input_values).ok_or_else(|| {
-            let right = self.connections[&identity_id].right;
+            let receive_payload = &self.bus_receives[&bus_id].selected_payload;
             let input_assignment = values
                 .iter()
-                .zip(&right.expressions)
+                .zip(&receive_payload.expressions)
                 .filter_map(|(l, r)| match l {
                     LookupCell::Input(v) => {
                         let name = try_to_simple_poly(r)
@@ -475,8 +479,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         Default::default()
     }
 
-    fn identity_ids(&self) -> Vec<u64> {
-        self.connections.keys().copied().collect()
+    fn bus_ids(&self) -> Vec<T> {
+        self.bus_receives.keys().copied().collect()
     }
 }
 

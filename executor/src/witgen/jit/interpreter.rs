@@ -29,7 +29,7 @@ enum InterpreterAction<T: FieldElement> {
     AssignExpression(usize, RPNExpression<T, usize>),
     WriteCell(usize, Cell),
     WriteParam(usize, usize),
-    MachineCall(u64, Vec<MachineCallArgumentIdx>),
+    MachineCall(T, Vec<MachineCallArgumentIdx>),
     Assertion(RPNExpression<T, usize>, RPNExpression<T, usize>, bool),
 }
 
@@ -523,8 +523,8 @@ mod test {
             panic!("Expected exactly one matching block machine")
         };
         let (machine_parts, block_size, latch_row) = machine.machine_info();
-        assert_eq!(machine_parts.connections.len(), 1);
-        let connection_id = *machine_parts.connections.keys().next().unwrap();
+        assert_eq!(machine_parts.bus_receives.len(), 1);
+        let bus_id = *machine_parts.bus_receives.keys().next().unwrap();
         let processor =
             BlockMachineProcessor::new(&fixed_data, machine_parts.clone(), block_size, latch_row);
 
@@ -540,7 +540,7 @@ mod test {
 
         // TODO we cannot compile the prover functions here, but we can evaluate them.
         let (result, _prover_functions) = processor
-            .generate_code(&mutable_state, connection_id, &known_values, None)
+            .generate_code(&mutable_state, bus_id, &known_values, None)
             .unwrap();
 
         let known_inputs = (0..12).map(Variable::Param).collect::<Vec<_>>();
