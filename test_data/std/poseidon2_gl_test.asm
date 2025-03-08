@@ -26,7 +26,8 @@ machine Main with degree: main_degree {
         link ~> memory.mstore(ADDR1, STEP, X1);
 
     Poseidon2GL poseidon2(memory, poseidon2_degree, poseidon2_degree);
-    instr poseidon2 ADDR1, ADDR2 -> link ~> poseidon2.poseidon2_permutation(ADDR1, ADDR2, STEP);
+    instr poseidon2 ADDR1, ADDR2, X1 ->
+        link ~> poseidon2.permute(ADDR1, STEP, ADDR2, STEP + 1, X1);
 
     col witness val;
     instr assert_eq ADDR1, X1 ->
@@ -50,7 +51,24 @@ machine Main with degree: main_degree {
         mstore 24, 0;
         mstore 28, 0;
 
-        poseidon2 0, 0;
+        // Test only second half output
+        poseidon2 0, 100, 2;
+    
+        assert_eq 100, 5905145432652609062;
+        assert_eq 104, 9814446752588696081;
+        assert_eq 108, 13759450385053274731;
+        assert_eq 112, 2402148582355896469;
+
+        // Test only first half output
+        poseidon2 0, 100, 1;
+
+        assert_eq 100, 14905565590733827480;
+        assert_eq 104, 640905753703258831;
+        assert_eq 108, 4579128623722792381;
+        assert_eq 112, 158153743058056413;
+
+        // Test full state output
+        poseidon2 0, 0, 3;
 
         assert_eq 0, 14905565590733827480;
         assert_eq 4, 640905753703258831;
@@ -72,7 +90,7 @@ machine Main with degree: main_degree {
         mstore 24, 1;
         mstore 28, 1;
 
-        poseidon2 0, 0;
+        poseidon2 0, 0, 3;
 
         assert_eq 0, 18201552556563266798;
         assert_eq 4, 6814935789744812745;
@@ -94,7 +112,7 @@ machine Main with degree: main_degree {
         mstore 24, 0xffffffff00000000;
         mstore 28, 0xffffffff00000000;
 
-        poseidon2 0, 0;
+        poseidon2 0, 0, 3;
 
         assert_eq 0, 13601391594672984423;
         assert_eq 4, 7799837486760213030;
@@ -116,7 +134,7 @@ machine Main with degree: main_degree {
         mstore 24, 1456 * 2**32 + 1394942011;
         mstore 28, 2087;
 
-        poseidon2 0, 0;
+        poseidon2 0, 0, 3;
 
         assert_eq 0, 14498150941209346562;
         assert_eq 4, 8038616707062714447;
@@ -138,7 +156,7 @@ machine Main with degree: main_degree {
         mstore 124, 0;
         mstore 128, 0;
 
-        poseidon2 100, 104;
+        poseidon2 100, 104, 3;
 
         assert_eq 104, 14905565590733827480;
         assert_eq 108, 640905753703258831;

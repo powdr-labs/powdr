@@ -2438,7 +2438,16 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                     .try_into()
                     .unwrap();
 
+                let output_half = self.proc.get_reg_mem(args[2].u()).u();
+
                 let result = poseidon2_gl::poseidon2_gl(&inputs);
+                let result = match output_half {
+                    0 => &result[0..0],
+                    1 => &result[0..4],
+                    2 => &result[4..8],
+                    3 => &result[0..8],
+                    _ => unreachable!(),
+                };
 
                 let output_ptr = self.proc.get_reg_mem(args[1].u()).u();
                 assert!(is_multiple_of_4(output_ptr));
@@ -2668,7 +2677,7 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                 let output_ptr = self.proc.get_reg_mem(args[1].u()).u();
                 assert!(is_multiple_of_4(output_ptr));
 
-                let result = (0..8)
+                let result = (0..4)
                     .flat_map(|i| {
                         let v = self.proc.get_mem(input_ptr + i * 4, 0, 0).into_fe();
                         let v = v.to_integer().try_into_u64().unwrap();
