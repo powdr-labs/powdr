@@ -42,8 +42,9 @@ pub fn util_code<T: FieldElement>() -> Result<String, String> {
     };
 
     let types = include_str!("includes/types.rs");
+    let builtins = include_str!("includes/builtins.rs");
 
     Ok(format!(
-        "#![allow(non_snake_case, unused_parens, unused_variables)]\n{types}\n{field_impl}\n"
+        "#![allow(non_snake_case, unused_parens, unused_variables)]\n{types}\n{builtins}\n{field_impl}\n"
     ))
 }
