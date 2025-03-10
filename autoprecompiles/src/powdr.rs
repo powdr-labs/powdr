@@ -732,20 +732,76 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
     cols
 }
 
-pub fn collect_cols_names_algebraic<T: Clone + Ord>(
+pub fn collect_cols_names_algebraic<T: Clone + Ord + std::fmt::Display>(
     expr: &AlgebraicExpression<T>,
 ) -> BTreeSet<String> {
+    //println!("1111111 Visiting expr {expr}");
     let mut cols: BTreeSet<String> = Default::default();
     expr.visit_expressions(
         &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = expr {
+            if let AlgebraicExpression::Reference(AlgebraicReference { name, poly_id, .. }) = expr {
                 cols.insert(name.clone());
+                //println!("1111 Collecting col {name} with id {}", poly_id.id);
             }
             ControlFlow::Continue::<()>(())
         },
         VisitOrder::Pre,
     );
     cols
+}
+
+pub fn collect_cols_ids_algebraic<T: Clone + Ord + std::fmt::Display>(
+    expr: &AlgebraicExpression<T>,
+) -> BTreeSet<u64> {
+    //println!("222222222 Visiting expr {expr}");
+    let mut cols: BTreeSet<u64> = Default::default();
+    expr.visit_expressions(
+        &mut |expr| {
+            if let AlgebraicExpression::Reference(AlgebraicReference { name, poly_id, .. }) = expr {
+                cols.insert(poly_id.id);
+                //println!("2222 Collecting col {name} with id {}", poly_id.id);
+            }
+            ControlFlow::Continue::<()>(())
+        },
+        VisitOrder::Pre,
+    );
+    cols
+}
+
+pub fn reassign_ids_algebraic<T: Clone + Ord>(
+    expr: &mut AlgebraicExpression<T>,
+    mut curr_id: usize,
+    subs: &mut BTreeMap<String, usize>,
+    rev_subs: &mut BTreeMap<usize, String>,
+) -> usize {
+    expr.visit_expressions_mut(
+        &mut |expr| {
+            if let AlgebraicExpression::Reference(AlgebraicReference { name, poly_id, .. }) = expr {
+                match subs.get_mut(name.as_str()) {
+                    Some(id) => {
+                        //println!("Reassining {name} from {} to {id}", poly_id.id);
+                        match rev_subs.get(id) {
+                            Some(r_name) => {
+                                assert_eq!(r_name, name, "Id {id} already assigned to {name}");
+                            }
+                            None => {
+                                rev_subs.insert(*id, name.clone());
+                            }
+                        }
+                        poly_id.id = *id as u64;
+                    }
+                    None => {
+                        poly_id.id = curr_id as u64;
+                        subs.insert(name.clone(), curr_id);
+                        curr_id += 1;
+                    }
+                }
+            }
+            ControlFlow::Continue::<()>(())
+        },
+        VisitOrder::Pre,
+    );
+    curr_id
 }
 
 pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {

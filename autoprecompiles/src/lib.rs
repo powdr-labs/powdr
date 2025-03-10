@@ -53,10 +53,16 @@ impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     }
 }
 
-impl<T: FieldElement> SymbolicConstraint<T> {
+impl<T: Clone + Ord + std::fmt::Display> SymbolicConstraint<T> {
     pub fn columns(&self) -> BTreeSet<String> {
         let mut cols = BTreeSet::new();
         cols.extend(powdr::collect_cols_names_algebraic(&self.expr));
+        cols
+    }
+
+    pub fn column_ids(&self) -> BTreeSet<u64> {
+        let mut cols = BTreeSet::new();
+        cols.extend(powdr::collect_cols_ids_algebraic(&self.expr));
         cols
     }
 }
@@ -69,12 +75,21 @@ pub struct SymbolicBusInteraction<T> {
     pub args: Vec<AlgebraicExpression<T>>,
 }
 
-impl<T: FieldElement> SymbolicBusInteraction<T> {
+impl<T: Clone + Ord + std::fmt::Display> SymbolicBusInteraction<T> {
     pub fn columns(&self) -> BTreeSet<String> {
         let mut cols = BTreeSet::new();
         cols.extend(powdr::collect_cols_names_algebraic(&self.mult));
         for a in &self.args {
             cols.extend(powdr::collect_cols_names_algebraic(&a));
+        }
+        cols
+    }
+
+    pub fn column_ids(&self) -> BTreeSet<u64> {
+        let mut cols = BTreeSet::new();
+        cols.extend(powdr::collect_cols_ids_algebraic(&self.mult));
+        for a in &self.args {
+            cols.extend(powdr::collect_cols_ids_algebraic(&a));
         }
         cols
     }
@@ -112,11 +127,25 @@ impl<T> SymbolicMachine<T> {
     }
 }
 
-impl<T: FieldElement> SymbolicMachine<T> {
+impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
     pub fn columns(&self) -> BTreeSet<String> {
         let mut cols = BTreeSet::new();
         for c in &self.constraints {
             cols.extend(c.columns());
+        }
+        for b in &self.bus_interactions {
+            cols.extend(b.columns());
+        }
+        cols
+    }
+
+    pub fn column_ids(&self) -> BTreeSet<u64> {
+        let mut cols = BTreeSet::new();
+        for c in &self.constraints {
+            cols.extend(c.column_ids());
+        }
+        for b in &self.bus_interactions {
+            cols.extend(b.column_ids());
         }
         cols
     }
@@ -302,6 +331,26 @@ impl<T: FieldElement> Autoprecompiles<T> {
             &self.instruction_kind,
             &self.instruction_machines,
         );
+        let c = machine.columns();
+        let i = machine.column_ids();
+        // println!("\n\nCollecting info");
+        // println!("\nC:\n{c:?}");
+        // println!("\nI:\n{i:?}");
+        // for c in &machine.constraints {
+        //     println!("Constraint: {}", c.expr);
+        // }
+        // for i in &machine.bus_interactions {
+        //     println!(
+        //         "\nBus interaction id = {}, kind = {:?}, mult = {}",
+        //         i.id, i.kind, i.mult
+        //     );
+        //     for a in &i.args {
+        //         println!("arg = {a}");
+        //     }
+        //     println!("\n");
+        // }
+        assert_eq!(c.len(), i.len());
+        assert_eq!(machine.columns().len(), machine.column_ids().len());
         let machine = optimize_precompile(machine);
         let machine = powdr_optimize(machine);
 
@@ -518,11 +567,17 @@ pub fn generate_precompile<T: FieldElement>(
     instruction_kinds: &BTreeMap<String, InstructionKind>,
     instruction_machines: &BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
 ) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
+    println!("Generating autoprecompile inside powdr");
     let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
     let mut col_subs: Vec<BTreeMap<String, String>> = Vec::new();
+    let mut global_idx: usize = 3;
+    let mut global_idx_subs: BTreeMap<String, usize> = BTreeMap::new();
+    let mut global_idx_subs_rev: BTreeMap<usize, String> = BTreeMap::new();
 
     for (i, instr) in statements.iter().enumerate() {
+        //println!("\n\nVisiting instruction {i}\n\n");
+        //println!("Inlining instruction {} index {i}", &instr.name);
         match instruction_kinds.get(&instr.name).unwrap() {
             InstructionKind::Normal
             | InstructionKind::UnconditionalBranch
@@ -547,6 +602,7 @@ pub fn generate_precompile<T: FieldElement>(
                     sub_map.extend(loadstore_chip_info(&machine, instr.opcode));
                 }
 
+                //println!("Inlining pc args");
                 assert_eq!(instr.args.len(), pc_lookup.args.len());
                 instr
                     .args
@@ -595,15 +651,24 @@ pub fn generate_precompile<T: FieldElement>(
                 }
                 */
 
+                //println!("Computing local identities");
                 let local_identities = machine
                     .constraints
                     .iter()
                     .chain(local_constraints.iter())
                     .map(|expr| {
+                        //println!("handling local identity {}", expr.expr);
                         let mut expr = expr.expr.clone();
                         powdr::substitute_algebraic(&mut expr, &sub_map);
                         let subs = powdr::append_suffix_algebraic(&mut expr, &format!("{i}"));
                         expr = simplify_expression(expr);
+                        global_idx = powdr::reassign_ids_algebraic(
+                            &mut expr,
+                            global_idx,
+                            &mut global_idx_subs,
+                            &mut global_idx_subs_rev,
+                        );
+                        //println!("became identity {expr}");
                         local_subs.extend(subs);
                         SymbolicConstraint { expr }
                     })
@@ -611,15 +676,25 @@ pub fn generate_precompile<T: FieldElement>(
 
                 constraints.extend(local_identities);
 
+                //println!("Computing local bus interactions");
                 for bus_int in &machine.bus_interactions {
+                    //println!("\nhandling bus interaction\n");
                     let mut link = bus_int.clone();
                     link.args
                         .iter_mut()
                         .chain(std::iter::once(&mut link.mult))
                         .for_each(|e| {
+                            //println!("\nHandling arg {e}");
                             powdr::substitute_algebraic(e, &sub_map);
                             *e = simplify_expression(e.clone());
                             let subs = powdr::append_suffix_algebraic(e, &format!("{i}"));
+                            global_idx = powdr::reassign_ids_algebraic(
+                                &mut *e,
+                                global_idx,
+                                &mut global_idx_subs,
+                                &mut global_idx_subs_rev,
+                            );
+                            //println!("Became arg {e}\n");
                             local_subs.extend(subs);
                         });
                     bus_interactions.push(link);
@@ -627,6 +702,7 @@ pub fn generate_precompile<T: FieldElement>(
 
                 col_subs.push(local_subs);
 
+                //println!("Simplifying local bus interactions");
                 // after the first round of simplifying,
                 // we need to look for register memory bus interactions
                 // and replace the addr by the first argument of the instruction
@@ -686,6 +762,9 @@ pub fn generate_precompile<T: FieldElement>(
         }
     */
 
+    //println!("\nFinal subs len: {}", global_idx_subs.len());
+    //println!("\nFinal subs:\n{global_idx_subs:?}");
+
     (
         SymbolicMachine {
             constraints,
@@ -698,6 +777,13 @@ pub fn generate_precompile<T: FieldElement>(
 /// Use a SymbolicMachine to create a PILFile and run powdr's optimizations on it.
 /// Then, translate the optimized constraints and interactions back to a SymbolicMachine
 fn powdr_optimize<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> SymbolicMachine<P> {
+    println!(
+        "Before powdr optimizations, columns: {}, constraints: {}, bus_interactions: {}",
+        symbolic_machine.columns().len(),
+        symbolic_machine.constraints.len(),
+        symbolic_machine.bus_interactions.len()
+    );
+
     let pilfile = symbolic_machine_to_pilfile(symbolic_machine);
     let analyzed: Analyzed<P> = analyze_ast(pilfile).expect("Failed to analyze AST");
     let optimized = optimize(analyzed);
@@ -730,7 +816,8 @@ fn powdr_optimize<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> Symb
                 } else if let AlgebraicExpression::<P>::UnaryOperation(_) = multiplicity {
                     BusInteractionKind::Receive
                 } else {
-                    panic!("Multiplicity must be a Number or a Unary Operation");
+                    BusInteractionKind::Send
+                    //panic!("Multiplicity must be a Number or a Unary Operation");
                 };
 
                 let interaction = SymbolicBusInteraction {
@@ -744,11 +831,19 @@ fn powdr_optimize<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> Symb
             _ => continue,
         }
     }
-
-    SymbolicMachine {
+    let machine = SymbolicMachine {
         constraints: powdr_exprs,
         bus_interactions: powdr_bus_interactions,
-    }
+    };
+
+    println!(
+        "After powdr optimizations, columns: {}, constraints: {}, bus_interactions: {}",
+        machine.columns().len(),
+        machine.constraints.len(),
+        machine.bus_interactions.len()
+    );
+
+    machine
 }
 
 /// Create a PILFile from a SymbolicMachine
