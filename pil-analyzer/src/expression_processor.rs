@@ -76,7 +76,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     .map_err(|e| src.with_error(e))?;
                 Expression::Reference(src, reference)
             }
-            PExpression::PublicReference(src, name) => Expression::PublicReference(src, name),
             PExpression::Number(src, Number { value: n, type_: t }) => {
                 Expression::Number(src, Number { value: n, type_: t })
             }

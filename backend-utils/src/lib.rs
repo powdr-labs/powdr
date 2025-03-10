@@ -188,9 +188,8 @@ fn split_by_namespace<F: FieldElement>(
 
     // Publics end up in the empty namespace, but we can find the correct namespace by looking
     // at the referenced polynomial.
-    let public_to_namespace = pil
-        .public_declarations
-        .iter()
+    let _public_to_namespace = pil
+        .public_declarations_in_source_order()
         .map(|(public_name, public)| {
             let ns = extract_namespace(&public.polynomial.name);
             (public_name.clone(), ns)
@@ -206,9 +205,6 @@ fn split_by_namespace<F: FieldElement>(
                 current_namespace = namespace.clone();
                 // add `statement` to `namespace`
                 Some((namespace, statement))
-            }
-            StatementIdentifier::PublicDeclaration(name) => {
-                Some((public_to_namespace[name].clone(), statement))
             }
             StatementIdentifier::ProofItem(i) => {
                 let identity = &pil.identities[*i];
