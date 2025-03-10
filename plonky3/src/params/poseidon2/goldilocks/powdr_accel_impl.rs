@@ -3,8 +3,8 @@ use p3_field::AbstractField;
 use p3_goldilocks::Goldilocks;
 use p3_symmetric::CryptographicPermutation;
 use powdr_riscv_runtime::{
-    goldilocks::{extract_opaque_vec8, Goldilocks as PowdrGoldilocks, OpaqueGoldilocks},
-    hash::{poseidon2_gl, poseidon2_gl_inplace},
+    goldilocks::{extract_opaque_vec, Goldilocks as PowdrGoldilocks, OpaqueGoldilocks},
+    hash::poseidon2_gl_inplace,
 };
 
 #[derive(Clone, Copy, Debug)]
@@ -21,10 +21,10 @@ impl p3_symmetric::Permutation<[Goldilocks; 8]> for Permutation {
         // canonical representation internally, so it is safe to cast between their
         // array's pointers.
         let input = unsafe { &*(&input as *const _ as *const [PowdrGoldilocks; 8]) };
-        let input = input.map(|x| OpaqueGoldilocks::from(x));
-        let output = poseidon2_gl(&input);
+        let mut state = input.map(|x| OpaqueGoldilocks::from(x));
+        poseidon2_gl_inplace(&mut state);
 
-        extract_opaque_vec8(&output).map(|x| Goldilocks::from_canonical_u64(x))
+        extract_opaque_vec::<8>(&state).map(|x| Goldilocks::from_canonical_u64(x))
     }
 
     fn permute_mut(&self, data: &mut [Goldilocks; 8]) {
