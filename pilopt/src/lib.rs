@@ -570,7 +570,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
 
     let in_publics: HashSet<_> = pil_file
         .public_declarations_in_source_order()
-        .map(|(_, pubd)| pubd.referenced_poly_name().clone())
+        .map(|(_, pubd)| pubd.referenced_poly().name.clone())
         .collect();
     // We cannot remove arrays or array elements, so filter them out.
     // Also, we filter out columns that are used in public declarations.

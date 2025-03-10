@@ -407,7 +407,7 @@ impl<T> Analyzed<T> {
             .map(|(name, public_declaration)| {
                 let column_name = public_declaration.referenced_poly_name();
                 let (poly_id, stage) = {
-                    let symbol = &self.definitions[&public_declaration.referenced_poly_name()].0;
+                    let symbol = &self.definitions[&public_declaration.referenced_poly().name].0;
                     (
                         symbol
                             .array_elements()

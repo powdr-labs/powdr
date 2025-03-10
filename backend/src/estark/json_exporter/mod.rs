@@ -76,7 +76,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                 )) = analyzed.definitions.get(name)
                 {
                     assert_eq!(poly.kind, SymbolKind::Public());
-                    let symbol = &analyzed.definitions[&pubd.referenced_poly_name()].0;
+                    let symbol = &analyzed.definitions[&pubd.referenced_poly().name].0;
                     let (_, poly) = symbol
                         .array_elements()
                         .nth(array_index.unwrap_or_default())
