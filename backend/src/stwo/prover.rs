@@ -669,26 +669,7 @@ fn get_challenges<MC: MerkleChannel>(
     challenge_channel: &mut MC::C,
 ) -> BTreeMap<u64, M31> {
     let identities = &analyzed.identities;
-    let challenges_stage0 = identities
-        .iter()
-        .flat_map(|identity| {
-            identity.all_children().filter_map(|expr| match expr {
-                AlgebraicExpression::Challenge(challenge) => Some(challenge.id),
-                _ => None,
-            })
-        })
-        .chain(
-            // Note: iterating on a `HashMap` is fine here because we are creating another map.
-            analyzed
-                .intermediate_columns
-                .values()
-                .flat_map(|(_, def)| def.iter().flat_map(|d| d.all_children()))
-                .filter_map(|expr| match expr {
-                    AlgebraicExpression::Challenge(challenge) => Some(challenge.id),
-                    _ => None,
-                }),
-        )
-        .collect::<BTreeSet<_>>();
+    let challenges_stage0 = analyzed.challenges();
 
     // Stwo provides a function to draw challenges from the secure field `QM31`,
     // which consists of 4 `M31` elements.
@@ -705,6 +686,7 @@ fn get_challenges<MC: MerkleChannel>(
 
     challenges_stage0
         .into_iter()
+        .map(|challenge| challenge.id)
         .zip(draw_challenges.map(|challenge| from_stwo_field(&challenge)))
         .collect::<BTreeMap<_, _>>()
 }

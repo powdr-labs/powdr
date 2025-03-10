@@ -24,9 +24,8 @@ use powdr_ast::{
     },
 };
 
-pub use pil_analyzer::{analyze_ast, analyze_file, analyze_string};
-
 pub use expressionizer::try_algebraic_expression_to_expression;
+pub use pil_analyzer::{analyze_ast, analyze_file, analyze_string};
 
 pub trait AnalysisDriver: Clone + Copy {
     /// Turns a declaration into an absolute name.

@@ -541,6 +541,7 @@ fn simplify_associative_operations() {
     -N::x + N::y + 12 = N::z;
     -N::x + 18 = N::z;
 "#;
+
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }

@@ -838,7 +838,7 @@ fn substitute_polynomial_references<T: FieldElement>(
         ) = e
         {
             if let Some(value) = substitutions_by_name.get(name) {
-                *e = dbg!(try_algebraic_expression_to_expression(&poly_id_to_name, value).unwrap());
+                *e = try_algebraic_expression_to_expression(&poly_id_to_name, value).unwrap();
             }
         }
     });
@@ -921,15 +921,15 @@ fn constrained_to_linear<T: FieldElement>(
         return None;
     };
 
-    // we require `y` to be a multi-linear expression over non-shifted columns
+    // we require `right` to be a multi-linear expression over non-shifted columns
     if right.contains_next_ref(intermediate_columns)
         || right.degree_with_cache(intermediate_columns, &mut Default::default()) != 1
     {
         return None;
     }
 
-    // we require `y` not to be a single, non-shifted, witness column, because this case is already covered and does not require an intermediate column
-    // TODO: maybe we should avoid this edge case by removing the other optimizer, see xxx
+    // we require `right` not to be a single, non-shifted, witness column, because this case is already covered and does not require an intermediate column
+    // TODO: maybe we should avoid this edge case by removing the other optimizer
     if matches!(
         right.as_ref(),
         AlgebraicExpression::Reference(AlgebraicReference {

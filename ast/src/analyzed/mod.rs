@@ -18,7 +18,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::parsed::types::{ArrayType, Type, TypeBounds, TypeScheme};
-use crate::parsed::visitor::{Children, ExpressionVisitable};
+use crate::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
@@ -87,6 +87,24 @@ impl<T> Analyzed<T> {
             .filter_map(|(symbol, _)| symbol.degree)
             .map(|d| d.try_into_unique().unwrap())
             .collect::<HashSet<_>>()
+    }
+
+    /// Returns the set of all referenced challenges in this [`Analyzed<T>`].
+    pub fn challenges(&self) -> BTreeSet<&Challenge> {
+        self.identities
+            .iter()
+            .flat_map(|identity| identity.all_children())
+            .chain(
+                // Note: we iterate on a `HashMap` so the ordering is not guaranteed, but this is ok since we're building another map.
+                self.intermediate_columns
+                    .values()
+                    .flat_map(|(_, def)| def.iter().flat_map(|d| d.all_children())),
+            )
+            .filter_map(|expr| match expr {
+                AlgebraicExpression::Challenge(challenge) => Some(challenge),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Returns the number of stages based on the maximum stage number of all definitions
