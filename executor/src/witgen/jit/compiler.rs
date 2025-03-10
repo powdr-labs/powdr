@@ -523,13 +523,13 @@ fn variable_to_string(v: &Variable) -> String {
             "f_{}_{}_{}",
             escape_column_name(&cell.column_name),
             cell.id,
-            cell.row_offset
+            format_row_offset(cell.row_offset)
         ),
         Variable::IntermediateCell(cell) => format!(
             "i_{}_{}_{}",
             escape_column_name(&cell.column_name),
             cell.id,
-            cell.row_offset
+            format_row_offset(cell.row_offset)
         ),
         Variable::MachineCallParam(call_var) => {
             format!(
