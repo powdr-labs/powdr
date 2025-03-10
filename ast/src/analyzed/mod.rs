@@ -31,7 +31,6 @@ pub use contains_next_ref::ContainsNextRef;
 pub enum StatementIdentifier {
     /// Either an intermediate column or a definition.
     Definition(String),
-    PublicDeclaration(String),
     /// Index into the vector of proof items / identities.
     ProofItem(usize),
     /// Index into the vector of prover functions.
@@ -44,7 +43,6 @@ pub enum StatementIdentifier {
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     pub solved_impls: SolvedTraitImpls,
-    pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<T>>,
     pub prover_functions: Vec<Expression>,
@@ -122,7 +120,10 @@ impl<T> Analyzed<T> {
     }
     /// @returns the number of public inputs
     pub fn publics_count(&self) -> usize {
-        self.public_declarations.len()
+        self.definitions
+            .iter()
+            .filter(|(_name, (symbol, _))| matches!(symbol.kind, SymbolKind::Public()))
+            .count()
     }
 
     pub fn name_to_poly_id(&self) -> BTreeMap<String, PolyID> {
@@ -187,8 +188,12 @@ impl<T> Analyzed<T> {
         &self,
     ) -> impl Iterator<Item = (&String, &PublicDeclaration)> {
         self.source_order.iter().filter_map(move |statement| {
-            if let StatementIdentifier::PublicDeclaration(name) = statement {
-                if let Some(public_declaration) = self.public_declarations.get(name) {
+            if let StatementIdentifier::Definition(name) = statement {
+                if let Some((
+                    _,
+                    Some(FunctionValueDefinition::PublicDeclaration(public_declaration)),
+                )) = self.definitions.get(name)
+                {
                     return Some((name, public_declaration));
                 }
             }
@@ -398,12 +403,11 @@ impl<T> Analyzed<T> {
     /// Retrieves (name, col_name, poly_id, offset, stage) of each public witness in the trace.
     pub fn get_publics(&self) -> Vec<(String, String, PolyID, usize, u8)> {
         let mut publics = self
-            .public_declarations
-            .values()
-            .map(|public_declaration| {
+            .public_declarations_in_source_order()
+            .map(|(name, public_declaration)| {
                 let column_name = public_declaration.referenced_poly_name();
                 let (poly_id, stage) = {
-                    let symbol = &self.definitions[&public_declaration.polynomial.name].0;
+                    let symbol = &self.definitions[&public_declaration.referenced_poly().name].0;
                     (
                         symbol
                             .array_elements()
@@ -414,13 +418,7 @@ impl<T> Analyzed<T> {
                     )
                 };
                 let row_offset = public_declaration.index as usize;
-                (
-                    public_declaration.name.clone(),
-                    column_name,
-                    poly_id,
-                    row_offset,
-                    stage,
-                )
+                (name.clone(), column_name, poly_id, row_offset, stage)
             })
             .collect::<Vec<_>>();
 
@@ -559,6 +557,7 @@ pub fn type_from_definition(
                     ty: trait_func.ty.clone(),
                 })
             }
+            FunctionValueDefinition::PublicDeclaration(_) => Some(Type::Expr.into()),
         }
     } else {
         assert!(
@@ -771,6 +770,8 @@ impl Symbol {
 pub enum SymbolKind {
     /// Fixed, witness or intermediate polynomial
     Poly(PolynomialType),
+    /// Public declaration
+    Public(),
     /// Other symbol, depends on the type.
     /// Examples include functions not of the type "int -> fe".
     Other(),
@@ -784,6 +785,7 @@ pub enum FunctionValueDefinition {
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
     TraitDeclaration(TraitDeclaration),
     TraitFunction(Arc<TraitDeclaration>, NamedType),
+    PublicDeclaration(PublicDeclaration),
 }
 
 impl Children<Expression> for FunctionValueDefinition {
@@ -799,6 +801,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children(),
+            FunctionValueDefinition::PublicDeclaration(pub_decl) => pub_decl.children(),
         }
     }
 
@@ -814,6 +817,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
+            FunctionValueDefinition::PublicDeclaration(pub_decl) => pub_decl.children_mut(),
         }
     }
 }
@@ -836,23 +840,48 @@ impl Children<Expression> for NamedType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Hash, PartialEq, Eq)]
 pub struct PublicDeclaration {
     pub id: u64,
     pub source: SourceRef,
     pub name: String,
-    pub polynomial: PolynomialReference,
+    pub polynomial: Expression,
     pub array_index: Option<usize>,
     /// The evaluation point of the polynomial, not the array index.
     pub index: DegreeType,
 }
 
 impl PublicDeclaration {
-    pub fn referenced_poly_name(&self) -> String {
-        match self.array_index {
-            Some(index) => format!("{}[{}]", self.polynomial.name, index),
-            None => self.polynomial.name.clone(),
+    pub fn referenced_poly(&self) -> &PolynomialReference {
+        match &self.polynomial {
+            Expression::Reference(_, Reference::Poly(reference)) => reference,
+            _ => panic!("Expected reference."),
         }
+    }
+
+    pub fn referenced_poly_name(&self) -> String {
+        let name = self.referenced_poly().name.clone();
+        match self.array_index {
+            Some(index) => format!("{name}[{index}]"),
+            None => name,
+        }
+    }
+}
+
+impl Children<Expression> for PublicDeclaration {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        assert!(matches!(
+            self.polynomial,
+            Expression::Reference(_, Reference::Poly(_))
+        ));
+        Box::new(iter::once(&self.polynomial))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        assert!(matches!(
+            self.polynomial,
+            Expression::Reference(_, Reference::Poly(_))
+        ));
+        Box::new(iter::once(&mut self.polynomial))
     }
 }
 

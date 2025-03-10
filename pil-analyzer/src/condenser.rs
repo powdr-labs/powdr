@@ -13,8 +13,8 @@ use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, BusInteractionIdentity, ConnectIdentity,
     DegreeRange, Expression, ExpressionList, FunctionValueDefinition, Identity, LookupIdentity,
     PermutationIdentity, PhantomBusInteractionIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialType, PublicDeclaration,
-    SelectedExpressions, SolvedTraitImpls, StatementIdentifier, Symbol, SymbolKind,
+    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialType, SelectedExpressions,
+    SolvedTraitImpls, StatementIdentifier, Symbol, SymbolKind,
 };
 use powdr_ast::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
@@ -36,7 +36,6 @@ use crate::{
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     solved_impls: SolvedTraitImpls,
-    public_declarations: HashMap<String, PublicDeclaration>,
     proof_items: &[Expression],
     trait_impls: Vec<TraitImplementation<Expression>>,
     source_order: Vec<StatementIdentifier>,
@@ -187,7 +186,6 @@ pub fn condense<T: FieldElement>(
     Analyzed {
         definitions,
         solved_impls,
-        public_declarations,
         intermediate_columns,
         identities: condensed_identities,
         prover_functions,
@@ -235,7 +233,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
         solved_impls: &'a SolvedTraitImpls,
     ) -> Self {
-        let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
+        let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None);
         let poly_id_to_name = symbols
             .iter()
             .filter_map(|(name, (symbol, _))| match &symbol.kind {
