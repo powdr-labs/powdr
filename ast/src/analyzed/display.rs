@@ -431,12 +431,22 @@ impl<T: Display> Display for BusInteractionIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "Constr::BusInteraction({}, {}, [{}], {});",
+            "Constr::BusInteraction({}, {}, {}, [{}], {});",
             self.multiplicity,
+            self.kind,
             self.bus_id,
             self.payload.0.iter().map(ToString::to_string).format(", "),
             self.latch
         )
+    }
+}
+
+impl Display for BusInteractionKind {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            BusInteractionKind::Send => write!(f, "Send"),
+            BusInteractionKind::Receive => write!(f, "Receive"),
+        }
     }
 }
 

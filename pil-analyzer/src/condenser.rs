@@ -10,9 +10,9 @@ use std::{
 };
 
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Analyzed, BusInteractionIdentity, ConnectIdentity,
-    DegreeRange, Expression, ExpressionList, FunctionValueDefinition, Identity, LookupIdentity,
-    PermutationIdentity, PhantomBusInteractionIdentity, PhantomLookupIdentity,
+    AlgebraicExpression, AlgebraicReference, Analyzed, BusInteractionIdentity, BusInteractionKind,
+    ConnectIdentity, DegreeRange, Expression, ExpressionList, FunctionValueDefinition, Identity,
+    LookupIdentity, PermutationIdentity, PhantomBusInteractionIdentity, PhantomLookupIdentity,
     PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialType, PublicDeclaration,
     SelectedExpressions, SolvedTraitImpls, StatementIdentifier, Symbol, SymbolKind,
 };
@@ -22,7 +22,7 @@ use powdr_ast::parsed::{
     types::{ArrayType, Type},
     FunctionKind, SourceReference, TraitImplementation,
 };
-use powdr_number::FieldElement;
+use powdr_number::{BigInt, BigUint, FieldElement};
 use powdr_parser_util::SourceRef;
 
 use crate::{
@@ -796,12 +796,24 @@ fn to_constraint<T: FieldElement>(
             id: counters.dispense_identity_id(),
             source,
             multiplicity: to_expr(&fields[0]),
-            bus_id: to_expr(&fields[1]),
-            payload: ExpressionList(match fields[2].as_ref() {
+            kind: match to_expr(&fields[1]) {
+                AlgebraicExpression::Number(n) => {
+                    if n == T::zero() {
+                        BusInteractionKind::Send
+                    } else if n == T::one() {
+                        BusInteractionKind::Receive
+                    } else {
+                        panic!("Expected 0 (Send) or 1 (Receive), got {n}");
+                    }
+                }
+                _ => panic!("Expression must be a Number"),
+            },
+            bus_id: to_expr(&fields[2]),
+            payload: ExpressionList(match fields[3].as_ref() {
                 Value::Array(fields) => fields.iter().map(|f| to_expr(f)).collect(),
-                _ => panic!("Expected array, got {:?}", fields[2]),
+                _ => panic!("Expected array, got {:?}", fields[3]),
             }),
-            latch: to_expr(&fields[3]),
+            latch: to_expr(&fields[4]),
         }
         .into(),
         "PhantomBusInteraction" => PhantomBusInteractionIdentity {
