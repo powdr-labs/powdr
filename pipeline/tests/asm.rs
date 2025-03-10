@@ -169,7 +169,7 @@ fn block_to_block_empty_submachine() {
     let f = "asm/block_to_block_empty_submachine.asm";
     let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
 
-    let witness = pipeline.compute_witness().unwrap();
+    let (witness, _) = pipeline.compute_witness().unwrap();
     let arith_size = witness
         .iter()
         .find(|(k, _)| k == "main_arith::x")
@@ -302,7 +302,7 @@ fn dynamic_vadcop() {
     let f = "asm/dynamic_vadcop.asm";
 
     let mut pipeline_gl = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
-    let witness = pipeline_gl.compute_witness().unwrap();
+    let (witness, _) = pipeline_gl.compute_witness().unwrap();
     let witness_by_name = witness
         .iter()
         .map(|(k, v)| (k.as_str(), v))

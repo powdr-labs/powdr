@@ -55,10 +55,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
     fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
         assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self
+        let process_result = self
             .process(first_row, 0, mutable_state, None, true)
-            .updated_data
-            .block;
+            .updated_data;
+        self.data = process_result.block;
+        self.publics.extend(process_result.publics);
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -122,6 +123,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
             .take_transposed()
             .map(|(id, (values, _))| (id, values))
             .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
+            .collect()
+    }
+
+    fn take_public_values(&mut self) -> BTreeMap<String, T> {
+        std::mem::take(&mut self.publics)
+            .into_iter()
+            .map(|(key, value)| (key.to_string(), value))
             .collect()
     }
 }

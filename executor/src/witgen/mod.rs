@@ -61,6 +61,8 @@ impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String>
 
 pub use powdr_executor_utils::{WitgenCallback, WitgenCallbackFn};
 
+pub type Witness<T> = Vec<(String, Vec<T>)>;
+pub type Public<T> = BTreeMap<String, T>;
 pub struct WitgenCallbackContext<T> {
     /// TODO: all these fields probably don't need to be Arc anymore, since the
     /// Arc was moved one level up... but I have to investigate this further.
@@ -141,6 +143,7 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
                 .with_external_witness_values(current_witness)
                 .with_challenges(stage, challenges)
                 .generate()
+                .0
         }
     }
 }
@@ -202,7 +205,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
     /// Generates the committed polynomial values
     /// @returns the values (in source order) and the degree of the polynomials.
-    pub fn generate(self) -> Vec<(String, Vec<T>)> {
+    pub fn generate(self) -> (Witness<T>, Public<T>) {
         record_start(OUTER_CODE_NAME);
         let fixed = FixedData::new(
             self.analyzed,
@@ -241,24 +244,19 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let machines = MachineExtractor::new(&fixed).split_out_machines();
 
         // Run main machine and extract columns from all machines.
-        let columns = MutableState::new(machines.into_iter(), &self.query_callback).run();
+        let (columns, publics) =
+            MutableState::new(machines.into_iter(), &self.query_callback).run();
 
-        let publics = extract_publics(&columns, self.analyzed);
         if !publics.is_empty() {
             log::debug!("Publics:");
         }
         for (name, value) in publics.iter() {
-            log::debug!(
-                "  {name:>30}: {}",
-                value
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "Not yet known at this stage".to_string())
-            );
+            log::debug!("  {name:>30}: {}", value.to_string());
         }
 
         let mut columns = if self.stage == 0 {
             // Multiplicities should be computed in the first stage
-            MultiplicityColumnGenerator::new(&fixed).generate(columns, publics)
+            MultiplicityColumnGenerator::new(&fixed).generate(columns, &publics)
         } else {
             columns
         };
@@ -279,7 +277,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 (name, column)
             })
             .collect::<Vec<_>>();
-        witness_cols
+        (witness_cols, publics)
     }
 }
 

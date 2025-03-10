@@ -159,14 +159,8 @@ where
     /// For stages in which there are no public values, return an empty vector
     pub fn public_values_so_far(
         &self,
-        witness_by_machine: &BTreeMap<String, Vec<(String, Vec<T>)>>,
+        public: &BTreeMap<String, T>,
     ) -> BTreeMap<String, Vec<Vec<Option<T>>>> {
-        let witness = witness_by_machine
-            .values()
-            // this map seems redundant but it turns a reference over a tuple into a tuple of references
-            .flat_map(|machine_witness| machine_witness.iter().map(|(n, v)| (n, v)))
-            .collect::<BTreeMap<_, _>>();
-
         self.split
             .iter()
             .map(|(name, (_, table))| {
@@ -176,7 +170,11 @@ where
                     .map(|publics| {
                         publics
                             .iter()
-                            .map(|(_, name, _, row)| witness.get(name).map(|column| column[*row]))
+                            .map(|(name, _, _, _)| {
+                                public
+                                    .get(name.rsplit("::").next().unwrap_or(name))
+                                    .cloned()
+                            })
                             .collect()
                     })
                     .collect();
@@ -287,7 +285,9 @@ impl<T, AB: MultistageAirBuilder> TerminalAccess<AB::Expr> for &Data<'_, T, AB> 
     fn get_public(&self, public: &str) -> AB::Expr {
         (*self
             .publics
-            .get(public)
+            .iter()
+            .find(|(abs_name, _)| abs_name.rsplit("::").next().unwrap_or(abs_name) == public)
+            .map(|(_, value)| value)
             .expect("Referenced public value does not exist"))
         .into()
     }
@@ -354,25 +354,6 @@ where
             |value| AB::Expr::from(value.into_p3_field()),
         );
 
-        // constrain public inputs using witness columns in stage 0
-        let fixed_local = fixed.row_slice(0);
-        let public_offset = self.constraint_system.constant_count;
-
-        self.constraint_system
-            .publics_by_stage
-            .iter()
-            .flatten()
-            .enumerate()
-            .for_each(|(index, (name, _, poly_id, _))| {
-                let selector = fixed_local[public_offset + index];
-                let (stage, index) = self.constraint_system.witness_columns[poly_id];
-                let witness_col = traces_by_stage[stage].row_slice(0)[index];
-                let public_value = public_vals_by_name[name.as_str()];
-
-                // constraining s(i) * (pub[i] - x(i)) = 0
-                builder.assert_zero(selector * (public_value.into() - witness_col));
-            });
-
         // circuit constraints
         for identity in &self.constraint_system.identities {
             match identity {
@@ -409,12 +390,6 @@ where
 
     fn preprocessed_width(&self) -> usize {
         self.constraint_system.constant_count
-            + self
-                .constraint_system
-                .publics_by_stage
-                .iter()
-                .map(|publics| publics.len())
-                .sum::<usize>()
     }
 
     fn stage_count(&self) -> u8 {
@@ -441,6 +416,7 @@ where
         trace_stage: u8,
         new_challenge_values: &[Plonky3Field<T>],
         witness_by_machine: &mut BTreeMap<String, Vec<(String, Vec<T>)>>,
+        public: &BTreeMap<String, T>,
     ) -> CallbackResult<Plonky3Field<T>> {
         let previous_stage_challenges: BTreeSet<&u64> = self
             .split
@@ -479,7 +455,7 @@ where
                 .collect()
         });
 
-        let public_values = self.public_values_so_far(witness_by_machine);
+        let public_values = self.public_values_so_far(public); // will we have second stage publics then if our public values are no longer based on witness? // this recollects values for all stages from updated witness
 
         // generate the next trace in the format p3 expects
         let air_stages = witness_by_machine
