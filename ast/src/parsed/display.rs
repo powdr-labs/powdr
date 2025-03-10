@@ -122,6 +122,11 @@ impl Display for MachineProperties {
                     .as_ref()
                     .map(|s| format!("call_selectors: {s}")),
             )
+            .chain(
+                self.pc_update_disabled
+                    .as_ref()
+                    .map(|_| "pc_update_disabled".to_string()),
+            )
             .join(", ");
         if !props.is_empty() {
             write!(f, " with {props}")?;

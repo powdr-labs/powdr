@@ -698,6 +698,8 @@ pub struct Machine {
     pub operation_id: Option<String>,
     /// call selector array
     pub call_selectors: Option<String>,
+    /// With continuations, we need to disable the normal pc update rule and provide a custom one
+    pub pc_update_disabled: bool,
     /// Declared machine parameters
     pub params: MachineParams,
     /// The set of registers for this machine
