@@ -237,7 +237,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     }
                     SymbolKind::Poly(_) => Some(symbol.id),
                     SymbolKind::Other() => None,
-                    SymbolKind::Public() => None,
+                    SymbolKind::Public() => None, 
                 }?;
 
                 let out = Reference {
