@@ -135,6 +135,10 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
     ) -> Self {
         let data = FinalizableData::new(&parts.witnesses, fixed_data);
 
+        println!(
+            "Common degree range of parts: {}",
+            parts.common_degree_range().max
+        );
         Self {
             degree: parts.common_degree_range().max,
             name,
