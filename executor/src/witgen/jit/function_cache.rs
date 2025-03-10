@@ -82,6 +82,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         known_args: &BitVec,
         known_concrete: Option<(usize, T)>,
     ) -> Option<&CacheEntry<T>> {
+        return None;
         let cache_key = CacheKey {
             identity_id,
             known_args: known_args.clone(),

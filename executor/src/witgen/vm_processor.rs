@@ -157,6 +157,8 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
             log::Level::Debug
         };
 
+        println!("VM degree: {}", self.degree);
+
         for row_index in 0.. {
             // The total number of rows to run for. Note that `self.degree` might change during
             // the computation, so we need to recompute this value in each iteration.
@@ -201,6 +203,9 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
                         self.degree_range,
                     );
                     self.processor.set_size(self.degree);
+                    println!("Updated VM degree: {}", self.degree);
+                } else {
+                    println!("No loop in row {row_index}.");
                 }
             }
             if let Some(period) = looping_period {

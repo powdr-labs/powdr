@@ -351,6 +351,9 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                             } else {
                                 None
                             };
+                            if let Some(e) = &external_values {
+                                println!("External values for {}: {}", name, e.len());
+                            }
                             WitnessColumn::new(
                                 poly_id.id as usize,
                                 &name,
@@ -541,7 +544,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .external_values
             .as_ref()
             .and_then(|v| {
-                let row = row % v.len() as u64;
+                //let row = row % v.len() as u64;
                 v.get(row as usize).cloned()
             })
     }
