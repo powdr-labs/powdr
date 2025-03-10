@@ -563,7 +563,14 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     }
 }
 
-/// Identifies witness columns that are constrained to a non-shifted (multi)linear expression, replaces the witness column by an intermediate polynomial
+/// Identifies witness columns that are constrained to a non-shifted (multi)linear expression, replaces the witness column by an intermediate polynomial.
+/// The pattern is the following:
+/// ```
+/// col witness x;
+/// x = lin;
+/// ```
+/// Where `lin` is a non-shifted multi-linear expression.
+/// This optimization makes sense because it saves the cost of committing to `x` and does not increase the degree of the constraints `x` is involved in.
 /// TODO: the optimization is *NOT* applied to witness columns which are boolean constrained: intermediate polynomials get inlined in witness generation and
 /// the boolean constraint gets lost. Remove this limitation once intermediate polynomials are handled correctly in witness generation.
 fn replace_linear_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
@@ -583,63 +590,7 @@ fn replace_linear_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let boolean_constrained_witnesses = pil_file
         .identities
         .iter()
-        .filter_map(|id| {
-            // we are only interested in polynomial identities
-            let expression =
-                if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
-                    expression
-                } else {
-                    return None;
-                };
-
-            // we are only interested in `a * b = 0` constraints
-            let (a, b) = match expression {
-                AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                    left: a,
-                    op: AlgebraicBinaryOperator::Mul,
-                    right: b,
-                }) => (a, b),
-                _ => return None,
-            };
-
-            // we are only interested in `b := (1 - a)` or `a := (1 - b)`
-            let a = match (a.as_ref(), b.as_ref()) {
-                (
-                    a_0,
-                    AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                        left: one,
-                        op: AlgebraicBinaryOperator::Sub,
-                        right: a_1,
-                    }),
-                )
-                | (
-                    AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                        left: one,
-                        op: AlgebraicBinaryOperator::Sub,
-                        right: a_1,
-                    }),
-                    a_0,
-                ) if **one == AlgebraicExpression::Number(T::one()) && *a_0 == **a_1 => a_0,
-                _ => return None,
-            };
-
-            // we are only interested in `a` being a column
-            let a = match a {
-                AlgebraicExpression::Reference(AlgebraicReference {
-                    poly_id,
-                    next: false,
-                    ..
-                }) => poly_id,
-                _ => return None,
-            };
-
-            // we are only interested in `a` being a witness column
-            if matches!(a.ptype, PolynomialType::Committed) {
-                Some(*a)
-            } else {
-                None
-            }
-        })
+        .filter_map(|id| try_to_boolean_constrained(id))
         .collect::<HashSet<_>>();
 
     let keep = pil_file
@@ -660,14 +611,14 @@ fn replace_linear_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .iter()
         .enumerate()
         .filter_map(|(index, id)| {
-            if let Identity::Polynomial(PolynomialIdentity { expression: e, .. }) = id {
-                Some((index, e))
+            if let Identity::Polynomial(i) = id {
+                Some((index, i))
             } else {
                 None
             }
         })
         .filter_map(|(index, identity)| {
-            constrained_to_linear(identity, &intermediate_definitions).map(|e| (index, e))
+            try_to_linearly_constrained(identity, &intermediate_definitions).map(|e| (index, e))
         })
         .filter(|(_, ((_, poly_id), _))| !keep.contains(poly_id))
         .collect::<Vec<(usize, ((String, PolyID), _))>>();
@@ -886,9 +837,19 @@ fn constrained_to_constant<T: FieldElement>(
     None
 }
 
-/// Identifies witness columns that are constrained to a (multi)linear expression.
-fn constrained_to_linear<T: FieldElement>(
-    identity: &AlgebraicExpression<T>,
+/// Tries to extract a witness column which is constrained to a non-shifted multi-linear expression.
+/// Inputs:
+/// - `identity`: a polynomial identity
+/// - `intermediate_columns`: the intermediate column definitions
+///
+/// Outputs:
+/// - `None` if the identity does not match the pattern
+/// - `Some(((name, poly_id), expression))` if the identity matches the pattern, where:
+///     - `name` is the name of the witness column
+///     - `poly_id` is the id of the witness column
+///     - `expression` is the (multi)linear expression that the witness column is constrained to
+fn try_to_linearly_constrained<T: FieldElement>(
+    identity: &PolynomialIdentity<T>,
     intermediate_columns: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
 ) -> Option<((String, PolyID), AlgebraicExpression<T>)> {
     // We require the constraint to be of the form `left = right`, represented as `left - right`
@@ -896,55 +857,60 @@ fn constrained_to_linear<T: FieldElement>(
         left,
         op: AlgebraicBinaryOperator::Sub,
         right,
-    }) = identity
+    }) = &identity.expression
     {
         (left, right)
     } else {
         return None;
     };
 
-    // We require `left` to be a single, non-shifted, witness column `w`
-    let w = if let AlgebraicExpression::Reference(
-        r @ AlgebraicReference {
-            poly_id:
-                PolyID {
+    // Helper function to try to extract a witness column from two sides of an identity
+    let try_from_sides = |left: &AlgebraicExpression<T>, right: &AlgebraicExpression<T>| {
+        // We require `left` to be a single, non-shifted, witness column `w`
+        let w = if let AlgebraicExpression::Reference(
+            r @ AlgebraicReference {
+                poly_id:
+                    PolyID {
+                        ptype: PolynomialType::Committed,
+                        ..
+                    },
+                next: false,
+                ..
+            },
+        ) = left
+        {
+            r
+        } else {
+            return None;
+        };
+
+        // we require `right` to be a multi-linear expression over non-shifted columns
+        if right.contains_next_ref(intermediate_columns)
+            || right.degree_with_cache(intermediate_columns, &mut Default::default()) != 1
+        {
+            return None;
+        }
+
+        // we require `right` not to be a single, non-shifted, witness column, because this case is already covered and does not require an intermediate column
+        // TODO: maybe we should avoid this edge case by removing the other optimizer
+        if matches!(
+            right,
+            AlgebraicExpression::Reference(AlgebraicReference {
+                poly_id: PolyID {
                     ptype: PolynomialType::Committed,
                     ..
                 },
-            next: false,
-            ..
-        },
-    ) = left.as_ref()
-    {
-        r
-    } else {
-        return None;
+                next: false,
+                ..
+            })
+        ) {
+            return None;
+        }
+
+        Some(((w.name.clone(), w.poly_id), right.clone()))
     };
 
-    // we require `right` to be a multi-linear expression over non-shifted columns
-    if right.contains_next_ref(intermediate_columns)
-        || right.degree_with_cache(intermediate_columns, &mut Default::default()) != 1
-    {
-        return None;
-    }
-
-    // we require `right` not to be a single, non-shifted, witness column, because this case is already covered and does not require an intermediate column
-    // TODO: maybe we should avoid this edge case by removing the other optimizer
-    if matches!(
-        right.as_ref(),
-        AlgebraicExpression::Reference(AlgebraicReference {
-            poly_id: PolyID {
-                ptype: PolynomialType::Committed,
-                ..
-            },
-            next: false,
-            ..
-        })
-    ) {
-        return None;
-    }
-
-    Some(((w.name.clone(), w.poly_id), *right.clone()))
+    try_from_sides(left, right).or_else(|| try_from_sides(right, left))
 }
 
 /// Removes identities that evaluate to zero (including constraints of the form "X = X") and lookups with empty columns.
@@ -1149,6 +1115,65 @@ fn equal_constrained<T: FieldElement>(
             _ => None,
         },
         _ => None,
+    }
+}
+
+/// Tries to extract a boolean constrained witness column from a polynomial identity.
+/// The pattern used is `x * (1 - x) = 0` or `(1 - x) * x = 0` where `x` is a witness column.
+fn try_to_boolean_constrained<T: FieldElement>(id: &Identity<T>) -> Option<PolyID> {
+    // we are only interested in polynomial identities
+    let expression = if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
+        expression
+    } else {
+        return None;
+    };
+
+    // we are only interested in `a * b = 0` constraints
+    let (a, b) = match expression {
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left: a,
+            op: AlgebraicBinaryOperator::Mul,
+            right: b,
+        }) => (a, b),
+        _ => return None,
+    };
+
+    // we are only interested in `b := (1 - a)` or `a := (1 - b)`
+    let a = match (a.as_ref(), b.as_ref()) {
+        (
+            a_0,
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left: one,
+                op: AlgebraicBinaryOperator::Sub,
+                right: a_1,
+            }),
+        )
+        | (
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left: one,
+                op: AlgebraicBinaryOperator::Sub,
+                right: a_1,
+            }),
+            a_0,
+        ) if **one == AlgebraicExpression::Number(T::one()) && *a_0 == **a_1 => a_0,
+        _ => return None,
+    };
+
+    // we are only interested in `a` being a column
+    let a = match a {
+        AlgebraicExpression::Reference(AlgebraicReference {
+            poly_id,
+            next: false,
+            ..
+        }) => poly_id,
+        _ => return None,
+    };
+
+    // we are only interested in `a` being a witness column
+    if matches!(a.ptype, PolynomialType::Committed) {
+        Some(*a)
+    } else {
+        None
     }
 }
 
