@@ -180,7 +180,7 @@ fn symbol_kind_to_json_string(k: SymbolKind) -> &'static str {
     match k {
         SymbolKind::Poly(poly_type) => polynomial_type_to_json_string(poly_type),
         SymbolKind::Other() => panic!("Cannot translate \"other\" symbol to json."),
-        SymbolKind::Public() => panic!("Cannot translate \"other\" symbol to json."), // don't see public translated to json string before, so im not doing it here either
+        SymbolKind::Public() => panic!("Cannot translate \"other\" symbol to json."),
     }
 }
 
@@ -237,7 +237,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     }
                     SymbolKind::Poly(_) => Some(symbol.id),
                     SymbolKind::Other() => None,
-                    SymbolKind::Public() => None, // not sure if this is correct, but because public declarations aren't exported as references here before, i'm not exporting anything here either
+                    SymbolKind::Public() => None,
                 }?;
 
                 let out = Reference {
