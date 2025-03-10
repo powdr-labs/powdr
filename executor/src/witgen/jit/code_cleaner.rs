@@ -129,8 +129,7 @@ fn remove_machine_calls_from_effect<T: FieldElement>(
             else {
                 panic!()
             };
-            assert_eq!(id, *identity_id);
-            if to_remove.contains(&(id, *row_offset)) {
+            if to_remove.contains(&(*identity_id, *row_offset)) {
                 None
             } else {
                 Some(Effect::MachineCall(id, known, arguments))

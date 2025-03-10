@@ -22,7 +22,7 @@ pub enum Effect<T: FieldElement, V> {
     /// A run-time assertion. If this fails, we have conflicting constraints.
     Assertion(Assertion<T, V>),
     /// A call to a different machine, with identity ID, known inputs and argument variables.
-    MachineCall(u64, BitVec, Vec<V>),
+    MachineCall(T, BitVec, Vec<V>),
     /// Compute one variable by executing a prover function (given by index) on the value of other variables.
     ProverFunctionCall(ProverFunctionCall<V>),
     /// A branch on a variable.

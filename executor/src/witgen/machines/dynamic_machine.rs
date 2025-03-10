@@ -37,14 +37,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b MutableState<'a, T, Q>,
-        _identity_id: u64,
+        _bus_id: T,
         _values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         unimplemented!("Direct lookup not supported by machine {}.", self.name())
     }
 
-    fn identity_ids(&self) -> Vec<u64> {
-        self.parts.identity_ids()
+    fn bus_ids(&self) -> Vec<T> {
+        self.parts.bus_ids()
     }
 
     fn name(&self) -> &str {
@@ -64,17 +64,17 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        let identity = *self.parts.connections.get(&identity_id).unwrap();
-        let outer_query = OuterQuery::new(arguments, range_constraints, identity);
+        let recieve = *self.parts.bus_receives.get(&bus_id).unwrap();
+        let outer_query = OuterQuery::new(arguments, range_constraints, recieve);
 
         log::trace!("Start processing secondary VM '{}'", self.name());
         log::trace!("Arguments:");
-        for (r, l) in identity
-            .right
+        for (r, l) in recieve
+            .selected_payload
             .expressions
             .iter()
             .zip(&outer_query.arguments)
