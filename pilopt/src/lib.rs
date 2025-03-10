@@ -769,7 +769,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
 }
 
 /// Inlines `col i = e` into the references to `x` where `e` is a non-shifted expression with no operations.
-/// The reasoning is that intermediate columns are useful to remember intermediate computation results, but in this case 
+/// The reasoning is that intermediate columns are useful to remember intermediate computation results, but in this case
 /// the intermediate results are already known.
 fn inline_trivial_intermediate_polynomials<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let intermediate_polys = pil_file
@@ -1093,45 +1093,4 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         })
         .collect();
     pil_file.remove_identities(&to_remove);
-}
-
-/// Identifies witness columns that are directly constrained to be equal to other witness columns
-/// through polynomial identities of the form "x = y" and returns a tuple ((name, id), (name, id))
-/// for each pair of identified columns
-fn equal_constrained<T: FieldElement>(
-    expression: &AlgebraicExpression<T>,
-    poly_id_to_array_elem: &BTreeMap<PolyID, (&String, Option<usize>)>,
-) -> Option<((String, PolyID), (String, PolyID))> {
-    match expression {
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-            left,
-            op: AlgebraicBinaryOperator::Sub,
-            right,
-        }) => match (left.as_ref(), right.as_ref()) {
-            (AlgebraicExpression::Reference(l), AlgebraicExpression::Reference(r)) => {
-                let is_valid = |x: &AlgebraicReference, left: bool| {
-                    x.is_witness()
-                        && if left {
-                            // We don't allow the left-hand side to be an array element
-                            // to preserve array integrity (e.g. `x = y` is valid, but `x[0] = y` is not)
-                            poly_id_to_array_elem.get(&x.poly_id).unwrap().1.is_none()
-                        } else {
-                            true
-                        }
-                };
-
-                if is_valid(l, true) && is_valid(r, false) && r.next == l.next {
-                    Some(if l.poly_id > r.poly_id {
-                        ((l.name.clone(), l.poly_id), (r.name.clone(), r.poly_id))
-                    } else {
-                        ((r.name.clone(), r.poly_id), (l.name.clone(), l.poly_id))
-                    })
-                } else {
-                    None
-                }
-            }
-            _ => None,
-        },
-        _ => None,
-    }
 }
