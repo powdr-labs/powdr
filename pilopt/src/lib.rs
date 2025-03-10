@@ -33,9 +33,8 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         extract_constant_lookups(&mut pil_file);
         replace_linear_witness_columns(&mut pil_file);
         remove_constant_witness_columns(&mut pil_file);
-        remove_constant_intermediate_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
-        remove_equal_constrained_witness_columns(&mut pil_file);
+        inline_trivial_intermediate_polynomials(&mut pil_file);
         remove_trivial_identities(&mut pil_file);
         remove_duplicate_identities(&mut pil_file);
 
@@ -769,9 +768,10 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     substitute_polynomial_references(pil_file, constant_polys);
 }
 
-/// Identifies intermediate columns that are constrained to a single value, replaces every
-/// reference to this column by the value and deletes the column.
-fn remove_constant_intermediate_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+/// Inlines `col i = e` into the references to `x` where `e` is a non-shifted expression with no operations.
+/// The reasoning is that intermediate columns are useful to remember intermediate computation results, but in this case 
+/// the intermediate results are already known.
+fn inline_trivial_intermediate_polynomials<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let intermediate_polys = pil_file
         .intermediate_polys_in_source_order()
         .filter_map(|(symbol, definitions)| {
@@ -779,13 +779,13 @@ fn remove_constant_intermediate_columns<T: FieldElement>(pil_file: &mut Analyzed
             match symbol.is_array() {
                 true => None,
                 false => {
-                    let ((name, poly_id), definition) = symbols_and_definitions.next().unwrap();
-                    match definition {
-                        AlgebraicExpression::Number(value) => {
+                    let ((name, poly_id), value) = symbols_and_definitions.next().unwrap();
+                    match value {
+                        AlgebraicExpression::Number(_) | AlgebraicExpression::Reference(_) => {
                             log::debug!(
-                                "Determined intermediate column {name} to be constant {value}. Removing.",
+                                "Determined intermediate column {name} to be trivial value `{value}`. Removing.",
                             );
-                            Some(((name.clone(), poly_id), (*value).into()))
+                            Some(((name.clone(), poly_id), value.clone()))
                         }
                         _ => None,
                     }
@@ -925,22 +925,6 @@ fn constrained_to_linear<T: FieldElement>(
     if right.contains_next_ref(intermediate_columns)
         || right.degree_with_cache(intermediate_columns, &mut Default::default()) != 1
     {
-        return None;
-    }
-
-    // we require `right` not to be a single, non-shifted, witness column, because this case is already covered and does not require an intermediate column
-    // TODO: maybe we should avoid this edge case by removing the other optimizer
-    if matches!(
-        right.as_ref(),
-        AlgebraicExpression::Reference(AlgebraicReference {
-            poly_id: PolyID {
-                ptype: PolynomialType::Committed,
-                ..
-            },
-            next: false,
-            ..
-        })
-    ) {
         return None;
     }
 
@@ -1149,70 +1133,5 @@ fn equal_constrained<T: FieldElement>(
             _ => None,
         },
         _ => None,
-    }
-}
-
-fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let poly_id_to_array_elem = build_poly_id_to_definition_name_lookup(pil_file);
-    let mut substitutions: BTreeMap<(String, PolyID), (String, PolyID)> = pil_file
-        .identities
-        .iter()
-        .filter_map(|id| {
-            if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
-                equal_constrained(expression, &poly_id_to_array_elem)
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    resolve_transitive_substitutions(&mut substitutions);
-
-    let (subs_by_id, subs_by_name): (HashMap<_, _>, HashMap<_, _>) = substitutions
-        .iter()
-        .map(|(k, v)| ((k.1, v), (&k.0, v)))
-        .unzip();
-
-    pil_file.post_visit_expressions_in_identities_mut(&mut |e: &mut AlgebraicExpression<_>| {
-        if let AlgebraicExpression::Reference(ref mut reference) = e {
-            if let Some((replacement_name, replacement_id)) = subs_by_id.get(&reference.poly_id) {
-                reference.poly_id = *replacement_id;
-                reference.name = replacement_name.clone();
-            }
-        }
-    });
-
-    pil_file.post_visit_expressions_mut(&mut |e: &mut Expression| {
-        if let Expression::Reference(_, Reference::Poly(reference)) = e {
-            if let Some((replacement_name, _)) = subs_by_name.get(&reference.name) {
-                reference.name = replacement_name.clone();
-            }
-        }
-    });
-}
-
-fn resolve_transitive_substitutions(subs: &mut BTreeMap<(String, PolyID), (String, PolyID)>) {
-    let mut changed = true;
-    while changed {
-        changed = false;
-        let keys: Vec<_> = subs
-            .keys()
-            .map(|(name, id)| (name.to_string(), *id))
-            .collect();
-
-        for key in keys {
-            let Some(target_key) = subs.get(&key) else {
-                continue;
-            };
-
-            let Some(new_target) = subs.get(target_key) else {
-                continue;
-            };
-
-            if subs.get(&key).unwrap() != new_target {
-                subs.insert(key, new_target.clone());
-                changed = true;
-            }
-        }
     }
 }

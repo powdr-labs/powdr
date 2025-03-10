@@ -18,11 +18,11 @@ fn replace_fixed() {
     one * Y = zero * Y + 7 * X * X;
 "#;
     let expectation = r#"namespace N(65536);
-    col witness X;
+    col witness Y;
     query |i| {
         let _: expr = 1_expr;
     };
-    N::X = 7 * N::X * N::X;
+    N::Y = 7 * N::Y * N::Y;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -120,10 +120,8 @@ fn intermediate() {
     "#;
     let expectation = r#"namespace N(65536);
     col witness x;
-    col intermediate = N::x;
-    col int2 = N::intermediate * N::x;
-    col int3 = N::int2;
-    N::int3 = 3 * N::x + N::x;
+    col int2 = N::x * N::x;
+    N::int2 = 3 * N::x + N::x;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -459,8 +457,8 @@ fn equal_constrained_transitive() {
         a + b + c = 5;
     "#;
     let expectation = r#"namespace N(65536);
-    col witness a;
-    N::a + N::a + N::a = 5;
+    col witness c;
+    N::c + N::c + N::c = 5;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
