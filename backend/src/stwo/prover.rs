@@ -1,7 +1,6 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
-use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, DegreeRange};
-use powdr_ast::parsed::visitor::AllChildren;
+use powdr_ast::analyzed::{Analyzed, DegreeRange};
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
@@ -668,7 +667,6 @@ fn get_challenges<MC: MerkleChannel>(
     analyzed: &Analyzed<M31>,
     challenge_channel: &mut MC::C,
 ) -> BTreeMap<u64, M31> {
-    let identities = &analyzed.identities;
     let challenges_stage0 = analyzed.challenges();
 
     // Stwo provides a function to draw challenges from the secure field `QM31`,
