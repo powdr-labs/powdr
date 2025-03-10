@@ -797,16 +797,9 @@ fn to_constraint<T: FieldElement>(
             source,
             multiplicity: to_expr(&fields[0]),
             kind: match to_expr(&fields[1]) {
-                AlgebraicExpression::Number(n) => {
-                    if n == T::zero() {
-                        BusInteractionKind::Send
-                    } else if n == T::one() {
-                        BusInteractionKind::Receive
-                    } else {
-                        panic!("Expected 0 (Send) or 1 (Receive), got {n}");
-                    }
-                }
-                _ => panic!("Expression must be a Number"),
+                AlgebraicExpression::Number(_) => BusInteractionKind::Send,
+                AlgebraicExpression::UnaryOperation(_) => BusInteractionKind::Receive,
+                _ => panic!("Expression must be a Number or UnaryOperation"),
             },
             bus_id: to_expr(&fields[2]),
             payload: ExpressionList(match fields[3].as_ref() {

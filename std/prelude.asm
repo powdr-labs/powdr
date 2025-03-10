@@ -47,7 +47,7 @@ enum Constr {
     /// backends that support LogUp natively, i.e. Stwo.
     /// Contains:
     /// - An expression for the multiplicity. Negative for bus receives.
-    /// - An expression for the kind of bus interaction. 0 = Send, 1 = Receive.
+    /// - An expression for the kind of bus interaction. 1 = Send, -1 = Receive.
     /// - An expression for the bus ID. Each bus receive should have a static
     ///   bus ID (i.e., just a number) that uniquely identifies the receive.
     /// - The tuple added to the bus.

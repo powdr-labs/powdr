@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use powdr::collect_cols_algebraic;
-use powdr_ast::analyzed::BusInteractionKind;
+use powdr_ast::analyzed::BusInteractionKind as AnalyzedBusInteractionKind;
 use powdr_ast::parsed::asm::Part;
 use powdr_ast::{
     analyzed::{
@@ -91,6 +91,12 @@ impl<T: Clone + Ord + std::fmt::Display> SymbolicBusInteraction<T> {
         }
         cols
     }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub enum BusInteractionKind {
+    Send,
+    Receive,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -802,8 +808,13 @@ fn powdr_optimize<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> Symb
                     panic!("Bus ID must be a Number");
                 };
 
+                let kind = match kind {
+                    AnalyzedBusInteractionKind::Send => BusInteractionKind::Send,
+                    AnalyzedBusInteractionKind::Receive => BusInteractionKind::Receive,
+                };
+
                 let interaction = SymbolicBusInteraction {
-                    kind: kind.clone(),
+                    kind,
                     id,
                     mult: multiplicity.clone(),
                     args: payload.0.clone(),
@@ -899,8 +910,14 @@ fn symbolic_machine_to_pilfile<P: FieldElement>(symbolic_machine: SymbolicMachin
         );
 
         let kind_expr = match interaction.kind {
-            BusInteractionKind::Send => BigUint::from(0u32).into(),
-            BusInteractionKind::Receive => BigUint::from(1u32).into(),
+            BusInteractionKind::Send => BigUint::from(1u32).into(),
+            BusInteractionKind::Receive => Expression::UnaryOperation(
+                SourceRef::unknown(),
+                UnaryOperation {
+                    op: UnaryOperator::Minus,
+                    expr: Box::new(BigUint::from(1u32).into()),
+                },
+            ),
         };
 
         let bus_interaction_expr = Expression::FunctionCall(
