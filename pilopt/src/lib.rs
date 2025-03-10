@@ -768,7 +768,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     substitute_polynomial_references(pil_file, constant_polys);
 }
 
-/// Inlines `col i = e` into the references to `x` where `e` is a non-shifted expression with no operations.
+/// Inlines `col i = e` into the references to `i` where `e` is a non-shifted expression with no operations.
 /// The reasoning is that intermediate columns are useful to remember intermediate computation results, but in this case
 /// the intermediate results are already known.
 fn inline_trivial_intermediate_polynomials<T: FieldElement>(pil_file: &mut Analyzed<T>) {
