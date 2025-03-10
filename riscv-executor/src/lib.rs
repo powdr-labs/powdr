@@ -1330,9 +1330,6 @@ struct Executor<'a, 'b, F: FieldElement> {
 
 impl<F: FieldElement> Executor<'_, '_, F> {
     fn init(&mut self) {
-        // TODO why not zero?
-        self.step = 2;
-
         if let ExecMode::Witness = self.mode {
             for c in KnownFixedCol::all() {
                 self.cached_fixed_cols
