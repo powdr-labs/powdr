@@ -1033,9 +1033,18 @@ pub struct BusInteractionIdentity<T> {
     pub id: u64,
     pub source: SourceRef,
     pub multiplicity: AlgebraicExpression<T>,
+    pub kind: BusInteractionKind,
     pub bus_id: AlgebraicExpression<T>,
     pub payload: ExpressionList<T>,
     pub latch: AlgebraicExpression<T>,
+}
+
+#[derive(
+    Debug, Clone, Serialize, Deserialize, Ord, PartialOrd, Eq, PartialEq, JsonSchema, Hash,
+)]
+pub enum BusInteractionKind {
+    Send,
+    Receive,
 }
 
 impl<T> Children<AlgebraicExpression<T>> for BusInteractionIdentity<T> {
