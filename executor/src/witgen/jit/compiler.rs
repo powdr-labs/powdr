@@ -200,6 +200,9 @@ fn witgen_code<T: FieldElement>(
                 }
                 Variable::Param(i) => format!("get_param(params, {i})"),
                 Variable::FixedCell(_) => panic!("Fixed columns should not be known inputs."),
+                Variable::IntermediateCell(_) => {
+                    unreachable!("Intermediate cells should not be known inputs.")
+                }
                 Variable::MachineCallParam(_) => {
                     unreachable!("Machine call variables should not be pre-known.")
                 }
@@ -245,6 +248,10 @@ fn witgen_code<T: FieldElement>(
                 )),
                 Variable::Param(i) => Some(format!("    set_param(params, {i}, {value});")),
                 Variable::FixedCell(_) => panic!("Fixed columns should not be written to."),
+                Variable::IntermediateCell(_) => {
+                    // We do not permanently store intermediate cells
+                    None
+                }
                 Variable::MachineCallParam(_) => {
                     // This is just an internal variable.
                     None
@@ -258,7 +265,10 @@ fn witgen_code<T: FieldElement>(
         .iter()
         .filter_map(|var| match var {
             Variable::WitnessCell(cell) => Some(cell),
-            Variable::Param(_) | Variable::FixedCell(_) | Variable::MachineCallParam(_) => None,
+            Variable::Param(_)
+            | Variable::FixedCell(_)
+            | Variable::IntermediateCell(_)
+            | Variable::MachineCallParam(_) => None,
         })
         .map(|cell| {
             format!(
@@ -475,14 +485,18 @@ fn variable_to_string(v: &Variable) -> String {
             format_row_offset(cell.row_offset)
         ),
         Variable::Param(i) => format!("p_{i}"),
-        Variable::FixedCell(cell) => {
-            format!(
-                "f_{}_{}_{}",
-                escape_column_name(&cell.column_name),
-                cell.id,
-                cell.row_offset
-            )
-        }
+        Variable::FixedCell(cell) => format!(
+            "f_{}_{}_{}",
+            escape_column_name(&cell.column_name),
+            cell.id,
+            cell.row_offset
+        ),
+        Variable::IntermediateCell(cell) => format!(
+            "i_{}_{}_{}",
+            escape_column_name(&cell.column_name),
+            cell.id,
+            cell.row_offset
+        ),
         Variable::MachineCallParam(call_var) => {
             format!(
                 "call_var_{}_{}_{}",
@@ -747,6 +761,23 @@ extern \"C\" fn witgen(
         }
     }
 
+    fn witgen_fun_params_with_params<'a>(
+        data: &mut [GoldilocksField],
+        known: &mut [u32],
+        params: &'a mut [LookupCell<'a, GoldilocksField>],
+    ) -> WitgenFunctionParams<'a, GoldilocksField> {
+        WitgenFunctionParams {
+            data: data.into(),
+            known: known.as_mut_ptr(),
+            row_offset: 0,
+            params: params.into(),
+            mutable_state: std::ptr::null(),
+            call_machine: no_call_machine,
+            fixed_data: null(),
+            get_fixed_value: get_fixed_data_test,
+        }
+    }
+
     #[test]
     fn load_code() {
         let x = cell("x", 0, 0);
@@ -881,16 +912,7 @@ extern \"C\" fn witgen(
         let mut data = vec![];
         let mut known = vec![];
         let mut params = vec![LookupCell::Input(&x_val), LookupCell::Output(&mut y_val)];
-        let params = WitgenFunctionParams {
-            data: data.as_mut_slice().into(),
-            known: known.as_mut_ptr(),
-            row_offset: 0,
-            params: params.as_mut_slice().into(),
-            mutable_state: std::ptr::null(),
-            call_machine: no_call_machine,
-            fixed_data: null(),
-            get_fixed_value: get_fixed_data_test,
-        };
+        let params = witgen_fun_params_with_params(&mut data, &mut known, &mut params);
         (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(7 * 2));
     }
@@ -924,17 +946,7 @@ extern \"C\" fn witgen(
         let f = compile_effects(1, &[], &effects).unwrap();
         let mut data = vec![7.into()];
         let mut known = vec![0];
-        let mut params = vec![];
-        let params = WitgenFunctionParams {
-            data: data.as_mut_slice().into(),
-            known: known.as_mut_ptr(),
-            row_offset: 0,
-            params: params.as_mut_slice().into(),
-            mutable_state: std::ptr::null(),
-            call_machine: no_call_machine,
-            fixed_data: null(),
-            get_fixed_value: get_fixed_data_test,
-        };
+        let params = witgen_fun_params(&mut data, &mut known);
         (f.function)(params);
         assert_eq!(data[0], GoldilocksField::from(30006));
     }
@@ -1019,31 +1031,13 @@ extern \"C\" fn witgen(
         let mut known = vec![];
 
         let mut params = vec![LookupCell::Input(&x_val), LookupCell::Output(&mut y_val)];
-        let params = WitgenFunctionParams {
-            data: data.as_mut_slice().into(),
-            known: known.as_mut_ptr(),
-            row_offset: 0,
-            params: params.as_mut_slice().into(),
-            mutable_state: std::ptr::null(),
-            call_machine: no_call_machine,
-            fixed_data: null(),
-            get_fixed_value: get_fixed_data_test,
-        };
+        let params = witgen_fun_params_with_params(&mut data, &mut known, &mut params);
         (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(8));
 
         x_val = 2.into();
         let mut params = vec![LookupCell::Input(&x_val), LookupCell::Output(&mut y_val)];
-        let params = WitgenFunctionParams {
-            data: data.as_mut_slice().into(),
-            known: known.as_mut_ptr(),
-            row_offset: 0,
-            params: params.as_mut_slice().into(),
-            mutable_state: std::ptr::null(),
-            call_machine: no_call_machine,
-            fixed_data: null(),
-            get_fixed_value: get_fixed_data_test,
-        };
+        let params = witgen_fun_params_with_params(&mut data, &mut known, &mut params);
         (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(4));
     }
