@@ -146,6 +146,7 @@ impl<T: FieldElement> CellValue<T> {
     /// Panics if the update is not an improvement.
     pub fn apply_update(&mut self, c: &Constraint<T>) {
         match (&self, c) {
+            //(CellValue::Known(_), Constraint::RangeConstraint(_)) => {}
             (CellValue::Known(_), _) => {
                 // Note that this is a problem even if the value that was set is the same,
                 // because we would return that progress was made when it wasn't.

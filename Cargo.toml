@@ -3,34 +3,36 @@
 resolver = "2"
 
 members = [
-    "powdr",
-    "powdr-test",
-    "number",
-    "parser",
-    "cargo-powdr",
-    "cli",
-    "cli-rs",
-    "executor",
-    "jit-compiler",
-    "riscv",
-    "parser-util",
-    "pil-analyzer",
-    "pipeline",
-    "pilopt",
-    "plonky3",
-    "asm-to-pil",
-    "asmopt",
-    "backend",
-    "ast",
-    "analysis",
-    "linker",
-    "isa-utils",
-    "airgen",
-    "riscv-executor",
-    "riscv-syscalls",
-    "schemas",
-    "backend-utils",
-    "executor-utils",
+  "powdr",
+  "powdr-test",
+  "number",
+  "parser",
+  "cargo-powdr",
+  "cli",
+  "cli-rs",
+  "executor",
+  "jit-compiler",
+  "riscv",
+  "parser-util",
+  "pil-analyzer",
+  "pipeline",
+  "pilopt",
+  "plonky3",
+  "asm-to-pil",
+  "asmopt",
+  "backend",
+  "ast",
+  "analysis",
+  "linker",
+  "isa-utils",
+  "airgen",
+  "riscv-executor",
+  "riscv-syscalls",
+  "schemas",
+  "backend-utils",
+  "executor-utils",
+  "precompile_macro",
+  "autoprecompiles",
 ]
 
 exclude = ["riscv-runtime"]
@@ -51,6 +53,7 @@ powdr-asm-to-pil = { path = "./asm-to-pil", version = "0.1.4" }
 powdr-isa-utils = { path = "./isa-utils", version = "0.1.4" }
 powdr-analysis = { path = "./analysis", version = "0.1.4" }
 powdr-asmopt = { path = "./asmopt", version = "0.1.4" }
+powdr-autoprecompiles = { path = "./autoprecompiles/", version = "0.1.4" }
 powdr-backend = { path = "./backend", version = "0.1.4" }
 powdr-backend-utils = { path = "./backend-utils", version = "0.1.4" }
 powdr-executor = { path = "./executor", version = "0.1.4" }

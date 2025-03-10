@@ -18,10 +18,13 @@ pub use powdr_number::{FieldElement, LargeInt};
 
 use riscv::{CompilerOptions, RuntimeLibs};
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs::{self, File};
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
+
+use itertools::Itertools;
 
 #[derive(Default)]
 pub struct SessionBuilder {
@@ -153,6 +156,118 @@ impl Session {
             callgrind: true,
         };
         run_with_profiler(&mut self.pipeline, profiler)
+    }
+
+    pub fn optimize_autoprecompile(&mut self, n: usize) {
+        self.pipeline.compute_checked_asm().unwrap();
+        let checked_asm = self.pipeline.checked_asm().unwrap().clone();
+
+        let asm = self.pipeline.compute_analyzed_asm().unwrap().clone();
+        let initial_memory =
+            riscv::continuations::load_initial_memory(&asm, self.pipeline.initial_memory());
+
+        println!("Running powdr-riscv executor in fast mode...");
+        let start = Instant::now();
+
+        let (trace_len, label_freq) = riscv_executor::execute(
+            &asm,
+            initial_memory,
+            self.pipeline.data_callback().unwrap(),
+            &riscv::continuations::bootloader::default_input(&[]),
+            None,
+            Default::default(),
+        );
+
+        let duration = start.elapsed();
+        println!("Fast executor took: {duration:?}");
+        println!("Trace length: {trace_len}");
+
+        let blocks = powdr_analysis::collect_basic_blocks(&checked_asm);
+        let blocks = blocks
+            .into_iter()
+            .map(|(name, b)| {
+                let freq = label_freq.get(&name).unwrap_or(&0);
+                let l = b.len() as u64;
+                (name, b, freq, freq * l)
+            })
+            .sorted_by_key(|(_, _, _, cost)| std::cmp::Reverse(*cost))
+            .collect::<Vec<_>>();
+        for (name, block, freq, cost) in &blocks {
+            println!(
+                "{name}: size = {}, freq = {freq}, cost = {cost}",
+                block.len()
+            );
+        }
+
+        let total_cost = blocks.iter().map(|(_, _, _, cost)| cost).sum::<u64>();
+
+        //let dont_eq = vec!["__data_init", "main", "halt"];
+        let dont_eq: Vec<&str> = vec![];
+        //let dont_contain = vec!["powdr_riscv_runtime", "page_ok"];
+        let dont_contain: Vec<&str> = vec![];
+        let selected: BTreeSet<String> = blocks
+            .iter()
+            .skip(0)
+            .filter(|(name, block, _, cost)| {
+                !dont_eq.contains(&name.as_str())
+                    && !dont_contain.iter().any(|s| name.contains(s))
+                    && block.len() > 1
+                    && *cost > 2
+            })
+            //.take(n)
+            .map(|block| block.0.clone())
+            .into_iter()
+            .collect();
+        let auto_asm = powdr_analysis::analyze_precompiles(checked_asm.clone(), &selected);
+
+        println!("Selected blocks: {selected:?}");
+        println!("Selected {} blocks", selected.len());
+
+        let cost_unopt = blocks
+            .iter()
+            .filter(|(name, _, _, _)| !selected.contains(name))
+            .map(|(name, _, _, cost)| {
+                println!("Did not select block {name} with cost {cost}");
+                cost
+            })
+            .sum::<u64>();
+        //println!("New auto_asm:\n{auto_asm}");
+
+        println!("Total cost = {total_cost}");
+        println!("Total cost unopt = {cost_unopt}");
+
+        let selected_blocks: BTreeMap<_, _> = blocks
+            .into_iter()
+            .filter(|(name, _, _, _)| selected.contains(name))
+            .map(|(name, block, _, _)| (name, block))
+            .collect();
+
+        self.pipeline.rollback_from_checked_asm();
+        self.pipeline.set_checked_asm(auto_asm);
+        let asm = self.pipeline.compute_analyzed_asm().unwrap().clone();
+        let initial_memory =
+            riscv::continuations::load_initial_memory(&asm, self.pipeline.initial_memory());
+
+        println!("Running powdr-riscv executor in fast mode with autoprecomiles...");
+        let start = Instant::now();
+
+        let (trace_len, _) = riscv_executor::execute(
+            &asm,
+            initial_memory,
+            self.pipeline.data_callback().unwrap(),
+            &riscv::continuations::bootloader::default_input(&[]),
+            None,
+            selected_blocks,
+        );
+
+        let duration = start.elapsed();
+        println!("Fast executor with autoprecompiles took: {duration:?}");
+        println!("Trace length with autoprecompiles: {trace_len}");
+
+        /*
+            pipeline.compute_witness()?;
+            pipeline.compute_proof()?;
+        */
     }
 
     pub fn prove(&mut self) {
@@ -313,12 +428,13 @@ fn run_internal(
     let asm = pipeline.compute_analyzed_asm().unwrap().clone();
     let initial_memory = riscv::continuations::load_initial_memory(&asm, pipeline.initial_memory());
 
-    let trace_len = riscv_executor::execute(
+    let (trace_len, _) = riscv_executor::execute(
         &asm,
         hash_map_to_memory_state(initial_memory),
         pipeline.data_callback().unwrap(),
         &riscv::continuations::bootloader::default_input(&[]),
         profiler,
+        Default::default(),
     );
 
     let duration = start.elapsed();
