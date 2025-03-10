@@ -768,7 +768,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     substitute_polynomial_references(pil_file, constant_polys);
 }
 
-/// Inlines `col i = e` into the references to `i` where `e` is a non-shifted expression with no operations.
+/// Inlines `col i = e` into the references to `i` where `e` is an expression with no operations.
 /// The reasoning is that intermediate columns are useful to remember intermediate computation results, but in this case
 /// the intermediate results are already known.
 fn inline_trivial_intermediate_polynomials<T: FieldElement>(pil_file: &mut Analyzed<T>) {
@@ -781,13 +781,15 @@ fn inline_trivial_intermediate_polynomials<T: FieldElement>(pil_file: &mut Analy
                 false => {
                     let ((name, poly_id), value) = symbols_and_definitions.next().unwrap();
                     match value {
-                        AlgebraicExpression::Number(_) | AlgebraicExpression::Reference(_) => {
+                        AlgebraicExpression::BinaryOperation(_) | AlgebraicExpression::UnaryOperation(_) => {
+                            None
+                        }
+                        _ =>{
                             log::debug!(
                                 "Determined intermediate column {name} to be trivial value `{value}`. Removing.",
                             );
-                            Some(((name.clone(), poly_id), value.clone()))
+                            Some(((name, poly_id), value.clone()))
                         }
-                        _ => None,
                     }
                 }
             }
