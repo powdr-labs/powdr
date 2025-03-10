@@ -122,11 +122,8 @@ impl<T> Analyzed<T> {
     pub fn publics_count(&self) -> usize {
         self.definitions
             .iter()
-            .filter_map(move |(_name, (symbol, _))| match symbol.kind {
-                SymbolKind::Public() => Some(1),
-                _ => None,
-            })
-            .sum()
+            .filter(|(_name, (symbol, _))| matches!(symbol.kind, SymbolKind::Public()))
+            .count()
     }
 
     pub fn name_to_poly_id(&self) -> BTreeMap<String, PolyID> {
@@ -410,7 +407,7 @@ impl<T> Analyzed<T> {
             .map(|(name, public_declaration)| {
                 let column_name = public_declaration.referenced_poly_name();
                 let (poly_id, stage) = {
-                    let symbol = &self.definitions[&public_declaration.polynomial.name].0;
+                    let symbol = &self.definitions[&public_declaration.referenced_poly_name()].0;
                     (
                         symbol
                             .array_elements()
@@ -560,10 +557,7 @@ pub fn type_from_definition(
                     ty: trait_func.ty.clone(),
                 })
             }
-            FunctionValueDefinition::PublicDeclaration(_) => {
-                // I'm not sure what to do with the type of publicdeclaration and how is this function used
-                Some(Type::Expr.into())
-            }
+            FunctionValueDefinition::PublicDeclaration(_) => Some(Type::Expr.into()),
         }
     } else {
         assert!(
@@ -776,6 +770,7 @@ impl Symbol {
 pub enum SymbolKind {
     /// Fixed, witness or intermediate polynomial
     Poly(PolynomialType),
+    /// Public declaration
     Public(),
     /// Other symbol, depends on the type.
     /// Examples include functions not of the type "int -> fe".
@@ -806,8 +801,6 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children(),
-            // not sure if public declaration should have no children or have the polynomial it refers to as the only child
-            // how is the children function used in our pipeline?
             FunctionValueDefinition::PublicDeclaration(pub_decl) => pub_decl.children(),
         }
     }
@@ -852,27 +845,43 @@ pub struct PublicDeclaration {
     pub id: u64,
     pub source: SourceRef,
     pub name: String,
-    pub polynomial: PolynomialReference,
+    pub polynomial: Expression,
     pub array_index: Option<usize>,
     /// The evaluation point of the polynomial, not the array index.
     pub index: DegreeType,
 }
 
 impl PublicDeclaration {
+    pub fn referenced_poly(&self) -> &PolynomialReference {
+        match &self.polynomial {
+            Expression::Reference(_, Reference::Poly(reference)) => reference,
+            _ => panic!("Expected reference."),
+        }
+    }
+
     pub fn referenced_poly_name(&self) -> String {
+        let name = self.referenced_poly().name.clone();
         match self.array_index {
-            Some(index) => format!("{}[{}]", self.polynomial.name, index),
-            None => self.polynomial.name.clone(),
+            Some(index) => format!("{name}[{index}]"),
+            None => name,
         }
     }
 }
 
 impl Children<Expression> for PublicDeclaration {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
-        Box::new(empty())
+        assert!(matches!(
+            self.polynomial,
+            Expression::Reference(_, Reference::Poly(_))
+        ));
+        Box::new(iter::once(&self.polynomial))
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
-        Box::new(empty())
+        assert!(matches!(
+            self.polynomial,
+            Expression::Reference(_, Reference::Poly(_))
+        ));
+        Box::new(iter::once(&mut self.polynomial))
     }
 }
 

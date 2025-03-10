@@ -96,12 +96,12 @@ impl<T: Display> Display for Analyzed<T> {
                             )?,
                             SymbolKind::Poly(PolynomialType::Intermediate) => unreachable!(),
                             SymbolKind::Public() => {
-                                if let FunctionValueDefinition::PublicDeclaration(decl) =
-                                    definition.as_ref().unwrap()
+                                if let Some(FunctionValueDefinition::PublicDeclaration(decl)) =
+                                    definition
                                 {
                                     writeln_indented(f, format_public_declaration(&name, decl))?;
                                 } else {
-                                    unreachable!() // public symbol should always have a public declaration
+                                    unreachable!() // For now, public symbol should always have a public declaration
                                 }
                             }
                             SymbolKind::Other() => {
@@ -249,7 +249,7 @@ fn format_witness_column(
 fn format_public_declaration(name: &str, decl: &PublicDeclaration) -> String {
     format!(
         "public {name} = {}{}({});",
-        decl.polynomial,
+        decl.referenced_poly(),
         decl.array_index
             .map(|i| format!("[{i}]"))
             .unwrap_or_default(),

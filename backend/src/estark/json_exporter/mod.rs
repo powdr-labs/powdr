@@ -65,17 +65,18 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     }
                 } else if let Some((
                     poly,
-                    Some(FunctionValueDefinition::PublicDeclaration(PublicDeclaration {
-                        name,
-                        polynomial,
-                        array_index,
-                        index,
-                        ..
-                    })),
+                    Some(FunctionValueDefinition::PublicDeclaration(
+                        pubd @ PublicDeclaration {
+                            name,
+                            array_index,
+                            index,
+                            ..
+                        },
+                    )),
                 )) = analyzed.definitions.get(name)
                 {
                     assert_eq!(poly.kind, SymbolKind::Public());
-                    let symbol = &analyzed.definitions[&polynomial.name].0;
+                    let symbol = &analyzed.definitions[&pubd.referenced_poly_name()].0;
                     let (_, poly) = symbol
                         .array_elements()
                         .nth(array_index.unwrap_or_default())

@@ -191,7 +191,7 @@ fn split_by_namespace<F: FieldElement>(
     let _public_to_namespace = pil
         .public_declarations_in_source_order()
         .map(|(public_name, public)| {
-            let ns = extract_namespace(&public.polynomial.name);
+            let ns = extract_namespace(&public.referenced_poly_name());
             (public_name.clone(), ns)
         })
         .collect::<BTreeMap<_, _>>();

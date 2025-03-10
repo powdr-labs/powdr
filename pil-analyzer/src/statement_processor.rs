@@ -21,7 +21,8 @@ use powdr_parser_util::{Error, SourceRef};
 use std::str::FromStr;
 
 use powdr_ast::analyzed::{
-    Expression, FunctionValueDefinition, PolynomialType, PublicDeclaration, Symbol, SymbolKind,
+    Expression, FunctionValueDefinition, PolynomialType, PublicDeclaration, Reference::Poly,
+    Symbol, SymbolKind,
 };
 
 use crate::type_processor::TypeProcessor;
@@ -526,6 +527,41 @@ where
             ..
         } = symbol.clone();
 
+        let polynomial = Expression::Reference(
+            SourceRef::unknown(),
+            Poly(
+                self.expression_processor(&Default::default())
+                    .process_namespaced_polynomial_reference(polynomial)
+                    .map_err(|err| source.with_error(err))?,
+            ),
+        );
+
+        let array_index = array_index
+            .map(|i| {
+                let i = self
+                    .expression_processor(&Default::default())
+                    .process_expression(i)
+                    .map_err(|err| {
+                        err.extend_message(|m| format!("Failed to process array index: {m}"))
+                    })?;
+                let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
+                    .unwrap()
+                    .try_into()
+                    .unwrap();
+                assert!(index <= usize::MAX as u64);
+                Ok(index as usize)
+            })
+            .transpose()?;
+
+        let index = untyped_evaluator::evaluate_expression_to_int(
+            self.driver,
+            self.expression_processor(&Default::default())
+                .process_expression(index)?,
+        )
+        .unwrap()
+        .try_into()
+        .unwrap();
+
         Ok(vec![PILItem::Definition(
             symbol,
             Some(FunctionValueDefinition::PublicDeclaration(
@@ -533,37 +569,9 @@ where
                     id,
                     source: source.clone(),
                     name: absolute_name,
-                    polynomial: self
-                        .expression_processor(&Default::default())
-                        .process_namespaced_polynomial_reference(polynomial)
-                        .map_err(|err| source.with_error(err))?,
-                    array_index: array_index
-                        .map(|i| {
-                            let i = self
-                                .expression_processor(&Default::default())
-                                .process_expression(i)
-                                .map_err(|err| {
-                                    err.extend_message(|m| {
-                                        format!("Failed to process array index: {m}")
-                                    })
-                                })?;
-                            let index: u64 =
-                                untyped_evaluator::evaluate_expression_to_int(self.driver, i)
-                                    .unwrap()
-                                    .try_into()
-                                    .unwrap();
-                            assert!(index <= usize::MAX as u64);
-                            Ok(index as usize)
-                        })
-                        .transpose()?,
-                    index: untyped_evaluator::evaluate_expression_to_int(
-                        self.driver,
-                        self.expression_processor(&Default::default())
-                            .process_expression(index)?,
-                    )
-                    .unwrap()
-                    .try_into()
-                    .unwrap(),
+                    polynomial,
+                    array_index,
+                    index,
                 },
             )),
         )])

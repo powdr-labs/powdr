@@ -555,10 +555,17 @@ impl Display for FunctionDefinition {
                 )
             }
             FunctionDefinition::Expression(e) => write!(f, " = {e}"),
-            // not sure if we need to print public declaration definition anywhere
-            FunctionDefinition::TypeDeclaration(_)
-            | FunctionDefinition::TraitDeclaration(_)
-            | FunctionDefinition::PublicDeclaration(..) => {
+            FunctionDefinition::PublicDeclaration(poly, array_index, index) => {
+                write!(
+                    f,
+                    " = {poly}{}({index});",
+                    array_index
+                        .as_ref()
+                        .map(|i| format!("[{i}]"))
+                        .unwrap_or_default()
+                )
+            }
+            FunctionDefinition::TraitDeclaration(_) | FunctionDefinition::TypeDeclaration(_) => {
                 panic!("Should not use this formatting function.")
             }
         }
