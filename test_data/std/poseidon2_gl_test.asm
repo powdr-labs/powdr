@@ -16,27 +16,23 @@ machine Main with degree: main_degree {
     reg ADDR1[<=];
     reg ADDR2[<=];
 
-    ByteCompare byte_compare;
-    SplitGL split(byte_compare, split_degree, split_degree);
-
     // Increase the time step by 2 in each row, so that the poseidon machine
     // can read in the given time step and write in the next time step.
     col fixed STEP(i) { 2 * i };
     Byte2 byte2;
     Memory memory(byte2, memory_degree, memory_degree);
-    instr mstore_le ADDR1, X1, X2 ->
-        link ~> memory.mstore(ADDR1, STEP, X2)
-        link ~> memory.mstore(ADDR1 + 4, STEP, X1);
 
-    Poseidon2GL poseidon2(memory, split, poseidon2_degree, poseidon2_degree);
+    instr mstore ADDR1, X1 ->
+        link ~> memory.mstore(ADDR1, STEP, X1);
+
+    Poseidon2GL poseidon2(memory, poseidon2_degree, poseidon2_degree);
     instr poseidon2 ADDR1, ADDR2 -> link ~> poseidon2.poseidon2_permutation(ADDR1, ADDR2, STEP);
 
-    col witness val_low, val_high;
+    col witness val;
     instr assert_eq ADDR1, X1 ->
-        link ~> val_low = memory.mload(ADDR1, STEP)
-        link ~> val_high = memory.mload(ADDR1 + 4, STEP)
+        link ~> val = memory.mload(ADDR1, STEP)
     {
-        val_low + 2**32 * val_high = X1
+        val = X1
     }
 
 
@@ -45,113 +41,113 @@ machine Main with degree: main_degree {
 
         // Test vector 0:
 
-        mstore_le 0, 0, 0;
-        mstore_le 8, 0, 0;
-        mstore_le 16, 0, 0;
-        mstore_le 24, 0, 0;
-        mstore_le 32, 0, 0;
-        mstore_le 40, 0, 0;
-        mstore_le 48, 0, 0;
-        mstore_le 56, 0, 0;
+        mstore 0, 0;
+        mstore 4, 0;
+        mstore 8, 0;
+        mstore 12, 0;
+        mstore 16, 0;
+        mstore 20, 0;
+        mstore 24, 0;
+        mstore 28, 0;
 
         poseidon2 0, 0;
 
         assert_eq 0, 14905565590733827480;
-        assert_eq 8, 640905753703258831;
-        assert_eq 16, 4579128623722792381;
-        assert_eq 24, 158153743058056413;
-        assert_eq 32, 5905145432652609062;
-        assert_eq 40, 9814446752588696081;
-        assert_eq 48, 13759450385053274731;
-        assert_eq 56, 2402148582355896469;
+        assert_eq 4, 640905753703258831;
+        assert_eq 8, 4579128623722792381;
+        assert_eq 12, 158153743058056413;
+        assert_eq 16, 5905145432652609062;
+        assert_eq 20, 9814446752588696081;
+        assert_eq 24, 13759450385053274731;
+        assert_eq 28, 2402148582355896469;
 
         // Test vector 1:
 
-        mstore_le 0, 0, 1;
-        mstore_le 8, 0, 1;
-        mstore_le 16, 0, 1;
-        mstore_le 24, 0, 1;
-        mstore_le 32, 0, 1;
-        mstore_le 40, 0, 1;
-        mstore_le 48, 0, 1;
-        mstore_le 56, 0, 1;
+        mstore 0, 1;
+        mstore 4, 1;
+        mstore 8, 1;
+        mstore 12, 1;
+        mstore 16, 1;
+        mstore 20, 1;
+        mstore 24, 1;
+        mstore 28, 1;
 
         poseidon2 0, 0;
 
         assert_eq 0, 18201552556563266798;
-        assert_eq 8, 6814935789744812745;
-        assert_eq 16, 5947349602629011250;
-        assert_eq 24, 15482468195247053191;
-        assert_eq 32, 2971437633000883992;
-        assert_eq 40, 9752341516515962403;
-        assert_eq 48, 15477293561177957600;
-        assert_eq 56, 13574628582471329853;
+        assert_eq 4, 6814935789744812745;
+        assert_eq 8, 5947349602629011250;
+        assert_eq 12, 15482468195247053191;
+        assert_eq 16, 2971437633000883992;
+        assert_eq 20, 9752341516515962403;
+        assert_eq 24, 15477293561177957600;
+        assert_eq 28, 13574628582471329853;
 
         // Test vector 2:
 
-        mstore_le 0, 4294967295, 0;
-        mstore_le 8, 4294967295, 0;
-        mstore_le 16, 4294967295, 0;
-        mstore_le 24, 4294967295, 0;
-        mstore_le 32, 4294967295, 0;
-        mstore_le 40, 4294967295, 0;
-        mstore_le 48, 4294967295, 0;
-        mstore_le 56, 4294967295, 0;
+        mstore 0, 0xffffffff00000000;
+        mstore 4, 0xffffffff00000000;
+        mstore 8, 0xffffffff00000000;
+        mstore 12, 0xffffffff00000000;
+        mstore 16, 0xffffffff00000000;
+        mstore 20, 0xffffffff00000000;
+        mstore 24, 0xffffffff00000000;
+        mstore 28, 0xffffffff00000000;
 
         poseidon2 0, 0;
 
         assert_eq 0, 13601391594672984423;
-        assert_eq 8, 7799837486760213030;
-        assert_eq 16, 4721195013230721931;
-        assert_eq 24, 6190752424007146655;
-        assert_eq 32, 5006958669091947377;
-        assert_eq 40, 716937639216173272;
-        assert_eq 48, 10656923966581845557;
-        assert_eq 56, 6633446230068695780;
+        assert_eq 4, 7799837486760213030;
+        assert_eq 8, 4721195013230721931;
+        assert_eq 12, 6190752424007146655;
+        assert_eq 16, 5006958669091947377;
+        assert_eq 20, 716937639216173272;
+        assert_eq 24, 10656923966581845557;
+        assert_eq 28, 6633446230068695780;
 
         // Test vector 3:
 
-        mstore_le 0, 0, 923978;
-        mstore_le 8, 54, 3835263602;
-        mstore_le 16, 2288, 750480250;
-        mstore_le 24, 0, 112870;
-        mstore_le 32, 67351775, 2528393476;
-        mstore_le 40, 53619936, 3453132820;
-        mstore_le 48, 1456, 1394942011;
-        mstore_le 56, 0, 2087;
+        mstore 0, 923978;
+        mstore 4, 54 * 2**32 + 3835263602;
+        mstore 8, 2288 * 2**32 + 750480250;
+        mstore 12, 112870;
+        mstore 16, 67351775 * 2**32 + 2528393476;
+        mstore 20, 53619936 * 2**32 + 3453132820;
+        mstore 24, 1456 * 2**32 + 1394942011;
+        mstore 28, 2087;
 
         poseidon2 0, 0;
 
         assert_eq 0, 14498150941209346562;
-        assert_eq 8, 8038616707062714447;
-        assert_eq 16, 17242548914990530484;
-        assert_eq 24, 3240738938335106853;
-        assert_eq 32, 13554879377661635843;
-        assert_eq 40, 12505236434419724338;
-        assert_eq 48, 3134668969942435695;
-        assert_eq 56, 1912726109528180442;
+        assert_eq 4, 8038616707062714447;
+        assert_eq 8, 17242548914990530484;
+        assert_eq 12, 3240738938335106853;
+        assert_eq 16, 13554879377661635843;
+        assert_eq 20, 12505236434419724338;
+        assert_eq 24, 3134668969942435695;
+        assert_eq 28, 1912726109528180442;
 
         // Test vector 0, but with input at 100 and output at 104:
 
-        mstore_le 100, 0, 0;
-        mstore_le 108, 0, 0;
-        mstore_le 116, 0, 0;
-        mstore_le 124, 0, 0;
-        mstore_le 132, 0, 0;
-        mstore_le 140, 0, 0;
-        mstore_le 148, 0, 0;
-        mstore_le 156, 0, 0;
+        mstore 100, 0;
+        mstore 104, 0;
+        mstore 108, 0;
+        mstore 112, 0;
+        mstore 116, 0;
+        mstore 120, 0;
+        mstore 124, 0;
+        mstore 128, 0;
 
         poseidon2 100, 104;
 
         assert_eq 104, 14905565590733827480;
-        assert_eq 112, 640905753703258831;
-        assert_eq 120, 4579128623722792381;
-        assert_eq 128, 158153743058056413;
-        assert_eq 136, 5905145432652609062;
-        assert_eq 144, 9814446752588696081;
-        assert_eq 152, 13759450385053274731;
-        assert_eq 160, 2402148582355896469;
+        assert_eq 108, 640905753703258831;
+        assert_eq 112, 4579128623722792381;
+        assert_eq 116, 158153743058056413;
+        assert_eq 120, 5905145432652609062;
+        assert_eq 124, 9814446752588696081;
+        assert_eq 128, 13759450385053274731;
+        assert_eq 132, 2402148582355896469;
 
         return;
     }

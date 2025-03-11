@@ -427,6 +427,19 @@ impl<T: Display> Display for ConnectIdentity<T> {
     }
 }
 
+impl<T: Display> Display for BusInteractionIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "Constr::BusInteraction({}, {}, [{}], {});",
+            self.multiplicity,
+            self.bus_id,
+            self.payload.0.iter().map(ToString::to_string).format(", "),
+            self.latch
+        )
+    }
+}
+
 impl<T: Display> Display for PhantomBusInteractionIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(

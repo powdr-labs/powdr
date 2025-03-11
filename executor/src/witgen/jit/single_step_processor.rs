@@ -157,15 +157,37 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
 
         let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
-        let queue_items = prover_functions
+        let mut queue_items = prover_functions
             .iter()
             // Process prover functions only on the next row.
             .map(|f| QueueItem::ProverFunction(f.clone(), 1))
-            .collect();
+            .collect_vec();
+
+        // Add the intermediate definitions. It is fine to iterate over
+        // a hash type because the queue will re-sort its items.
+        #[allow(clippy::iter_over_hash_type)]
+        for (poly_id, name) in &self.machine_parts.intermediates {
+            let value = &intermediate_definitions[&(*poly_id).into()];
+            let rows = if value.contains_next_ref(&intermediate_definitions) {
+                vec![0]
+            } else {
+                vec![0, 1]
+            };
+            for row_offset in rows {
+                queue_items.push(QueueItem::variable_assignment(
+                    value,
+                    Variable::IntermediateCell(Cell {
+                        column_name: name.clone(),
+                        id: poly_id.id,
+                        row_offset,
+                    }),
+                    row_offset,
+                ));
+            }
+        }
 
         let processor_result = Processor::new(
             self.fixed_data,
-            self,
             identities,
             queue_items,
             requested_known,

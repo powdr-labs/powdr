@@ -75,7 +75,6 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
 
     /// Call the machine responsible for the right-hand-side of an identity given its ID,
     /// use the direct interface.
-    #[allow(unused)]
     pub fn call_direct(
         &self,
         identity_id: u64,
