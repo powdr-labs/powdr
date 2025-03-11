@@ -22,8 +22,8 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, SourceReference,
-    TraitDeclaration, TraitImplementation, TypeDeclaration,
+    self, ArrayExpression, EnumDeclaration, EnumVariant, FunctionCall, IndexAccess, NamedType,
+    SourceReference, TraitDeclaration, TraitImplementation, TypeDeclaration,
 };
 pub use contains_next_ref::ContainsNextRef;
 
@@ -411,13 +411,17 @@ impl<T> Analyzed<T> {
                     (
                         symbol
                             .array_elements()
-                            .nth(public_declaration.array_index.unwrap_or_default())
+                            .nth(
+                                public_declaration
+                                    .referenced_poly_array_index()
+                                    .unwrap_or_default(),
+                            )
                             .unwrap()
                             .1,
                         symbol.stage.unwrap_or_default() as u8,
                     )
                 };
-                let row_offset = public_declaration.index as usize;
+                let row_offset = public_declaration.index() as usize;
                 (name.clone(), column_name, poly_id, row_offset, stage)
             })
             .collect::<Vec<_>>();
@@ -846,42 +850,80 @@ pub struct PublicDeclaration {
     pub source: SourceRef,
     pub name: String,
     pub polynomial: Expression,
-    pub array_index: Option<usize>,
-    /// The evaluation point of the polynomial, not the array index.
-    pub index: DegreeType,
+    // pub array_index: Option<usize>,
+    // /// The evaluation point of the polynomial, not the array index.
+    // pub index: DegreeType,
 }
 
 impl PublicDeclaration {
     pub fn referenced_poly(&self) -> &PolynomialReference {
         match &self.polynomial {
-            Expression::Reference(_, Reference::Poly(reference)) => reference,
-            _ => panic!("Expected reference."),
+            Expression::FunctionCall(_, FunctionCall { function, .. }) => match function.as_ref() {
+                Expression::Reference(_, Reference::Poly(poly)) => poly,
+                Expression::IndexAccess(_, IndexAccess { array, .. }) => match array.as_ref() {
+                    Expression::Reference(_, Reference::Poly(poly)) => poly,
+                    _ => panic!("Expected Reference."),
+                },
+                _ => panic!("Expected Reference or IndexAccess."),
+            },
+            _ => panic!("Expected FunctionCall."),
+        }
+    }
+
+    pub fn referenced_poly_array_index(&self) -> Option<usize> {
+        match &self.polynomial {
+            Expression::FunctionCall(_, FunctionCall { function, .. }) => match function.as_ref() {
+                Expression::Reference(_, Reference::Poly(_)) => None,
+                Expression::IndexAccess(_, IndexAccess { index, .. }) => match index.as_ref() {
+                    Expression::Number(_, index) => Some(index.value.clone().try_into().unwrap()),
+                    _ => panic!("Expected Number."),
+                },
+                _ => panic!("Expected Reference or IndexAccess."),
+            },
+            _ => panic!("Expected FunctionCall."),
         }
     }
 
     pub fn referenced_poly_name(&self) -> String {
         let name = self.referenced_poly().name.clone();
-        match self.array_index {
-            Some(index) => format!("{name}[{index}]"),
-            None => name,
+        let index = self.referenced_poly_array_index();
+        if let Some(index) = index {
+            format!("{name}[{index}]")
+        } else {
+            name
+        }
+    }
+
+    pub fn index(&self) -> DegreeType {
+        match &self.polynomial {
+            Expression::FunctionCall(_, FunctionCall { arguments, .. }) => {
+                assert!(arguments.len() == 1);
+                match &arguments[0] {
+                    Expression::Number(_, index) => index.value.clone().try_into().unwrap(),
+                    _ => panic!("Expected Number."),
+                }
+            }
+            _ => panic!("Expected FunctionCall."),
         }
     }
 }
 
 impl Children<Expression> for PublicDeclaration {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
-        assert!(matches!(
-            self.polynomial,
-            Expression::Reference(_, Reference::Poly(_))
-        ));
-        Box::new(iter::once(&self.polynomial))
+        match &self.polynomial {
+            Expression::FunctionCall(_, FunctionCall { function, .. }) => {
+                Box::new(iter::once(function.as_ref()))
+            }
+            _ => panic!("Expected FunctionCall."),
+        }
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
-        assert!(matches!(
-            self.polynomial,
-            Expression::Reference(_, Reference::Poly(_))
-        ));
-        Box::new(iter::once(&mut self.polynomial))
+        match &mut self.polynomial {
+            Expression::FunctionCall(_, FunctionCall { function, .. }) => {
+                Box::new(iter::once(function.as_mut()))
+            }
+            _ => panic!("Expected FunctionCall."),
+        }
     }
 }
 

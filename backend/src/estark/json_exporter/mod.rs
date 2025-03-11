@@ -66,12 +66,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                 } else if let Some((
                     poly,
                     Some(FunctionValueDefinition::PublicDeclaration(
-                        pubd @ PublicDeclaration {
-                            name,
-                            array_index,
-                            index,
-                            ..
-                        },
+                        pubd @ PublicDeclaration { name, .. },
                     )),
                 )) = analyzed.definitions.get(name)
                 {
@@ -79,14 +74,14 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     let symbol = &analyzed.definitions[&pubd.referenced_poly().name].0;
                     let (_, poly) = symbol
                         .array_elements()
-                        .nth(array_index.unwrap_or_default())
+                        .nth(pubd.referenced_poly_array_index().unwrap_or_default())
                         .unwrap();
                     let (_, expr) = exporter.polynomial_reference_to_json(poly, false);
                     let id = publics.len();
                     publics.push(starky::types::Public {
                         polType: polynomial_reference_type_to_type(&expr.op).to_string(),
                         polId: expr.id.unwrap(),
-                        idx: *index as usize,
+                        idx: pubd.index() as usize,
                         id,
                         name: name.clone(),
                     });

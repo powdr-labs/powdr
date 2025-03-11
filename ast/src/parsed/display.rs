@@ -172,7 +172,7 @@ impl Display for LinkDeclaration {
         write!(
             f,
             "link {}{} {}",
-            if self.flag == 1.into() {
+            if self.flag == 1u32.into() {
                 "".to_string()
             } else {
                 format!("if {} ", self.flag)
