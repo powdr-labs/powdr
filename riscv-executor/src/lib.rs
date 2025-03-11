@@ -1057,12 +1057,12 @@ mod builder {
                 std::cmp::max(self.trace.len.next_power_of_two() as u32, range.min as u32)
             };
 
-            println!("Extending to main degree: {}", main_degree);
+            println!("Extending to main degree: {main_degree}");
 
             // fill up reg trace to degree
             cols.iter_mut().for_each(|(n, v)| {
                 let last = *v.last().unwrap();
-                println!("last value: of {n} = {}", last);
+                println!("last value: of {n} = {last}");
                 v.resize(main_degree as usize, last);
             });
 
@@ -3176,8 +3176,14 @@ fn execute_inner<F: FieldElement>(
             }
             FunctionStatement::Return(_) => {
                 e.proc.set_col(KnownWitnessCol::pc_update, e.proc.get_pc());
-                e.proc.set_col(KnownWitnessCol::query_arg_1_update, e.proc.get_reg("query_arg_1"));
-                e.proc.set_col(KnownWitnessCol::query_arg_2_update, e.proc.get_reg("query_arg_2"));
+                e.proc.set_col(
+                    KnownWitnessCol::query_arg_1_update,
+                    e.proc.get_reg("query_arg_1"),
+                );
+                e.proc.set_col(
+                    KnownWitnessCol::query_arg_2_update,
+                    e.proc.get_reg("query_arg_2"),
+                );
                 break;
             }
             FunctionStatement::DebugDirective(dd) => {
@@ -3198,8 +3204,14 @@ fn execute_inner<F: FieldElement>(
             }
         };
 
-        e.proc.set_col(KnownWitnessCol::query_arg_1_update, e.proc.get_reg("query_arg_1"));
-        e.proc.set_col(KnownWitnessCol::query_arg_2_update, e.proc.get_reg("query_arg_2"));
+        e.proc.set_col(
+            KnownWitnessCol::query_arg_1_update,
+            e.proc.get_reg("query_arg_1"),
+        );
+        e.proc.set_col(
+            KnownWitnessCol::query_arg_2_update,
+            e.proc.get_reg("query_arg_2"),
+        );
 
         curr_pc = match e.proc.advance() {
             Some(pc) => pc,
