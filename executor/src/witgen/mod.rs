@@ -543,10 +543,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         self.witness_cols[column]
             .external_values
             .as_ref()
-            .and_then(|v| {
-                //let row = row % v.len() as u64;
-                v.get(row as usize).cloned()
-            })
+            .and_then(|v| v.get(row as usize).cloned())
     }
 
     fn witnesses_until_current_stage(&self) -> impl Iterator<Item = PolyID> + '_ {

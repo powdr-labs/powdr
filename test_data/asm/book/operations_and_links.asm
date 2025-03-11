@@ -18,6 +18,7 @@ machine Main with degree: 16 {
        assert_eq A, 10;
        A <== add4(2, 2, 2, 2);
        assert_eq A, 8;
+
        return;
     }
 }
