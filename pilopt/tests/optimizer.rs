@@ -519,27 +519,27 @@ fn simplify_associative_operations() {
         col fixed c2 = [2]*;
         col fixed c3 = [3]*;
         
-        (x + c2) + c1 = y;
-        (c2 + x) + c3 = y;
-        (x - c2) + c1 = y;
+        (x + c2) + c1 = y * y;
+        (c2 + x) + c3 = y * y;
+        (x - c2) + c1 = y * y;
         
-        ((x + 3) - y) - 9 = z;
-        (c3 + (x + 3)) - y = z;
-        ((-x + 3) + y) + 9 = z;
-        ((-x + 3) + c3) + 12 = z;
+        ((x + 3) - y) - 9 = z * z;
+        (c3 + (x + 3)) - y = z * z;
+        ((-x + 3) + y) + 9 = z * z;
+        ((-x + 3) + c3) + 12 = z * z;
     "#;
 
     let expectation = r#"namespace N(150);
     col witness x;
     col witness y;
     col witness z;
-    N::x + 3 = N::y;
-    N::x + 5 = N::y;
-    N::x - 2 + 1 = N::y;
-    N::x + 3 - N::y - 9 = N::z;
-    N::x + 6 - N::y = N::z;
-    -N::x + N::y + 12 = N::z;
-    -N::x + 18 = N::z;
+    N::x + 3 = N::y * N::y;
+    N::x + 5 = N::y * N::y;
+    N::x - 2 + 1 = N::y * N::y;
+    N::x + 3 - N::y - 9 = N::z * N::z;
+    N::x + 6 - N::y = N::z * N::z;
+    -N::x + N::y + 12 = N::z * N::z;
+    -N::x + 18 = N::z * N::z;
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
