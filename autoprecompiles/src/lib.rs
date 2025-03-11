@@ -419,6 +419,10 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
     let mut local_mem: BTreeMap<u32, Vec<AlgebraicExpression<T>>> = BTreeMap::new();
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     machine.bus_interactions.retain(|bus_int| {
+        if bus_int.id == PC_LOOKUP_BUS_ID || bus_int.id == EXECUTION_BUS_ID {
+            return false;
+        }
+
         if bus_int.id != MEMORY_BUS_ID {
             return true;
         }
