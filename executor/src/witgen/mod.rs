@@ -351,9 +351,6 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                             } else {
                                 None
                             };
-                            if let Some(e) = &external_values {
-                                println!("External values for {}: {}", name, e.len());
-                            }
                             WitnessColumn::new(
                                 poly_id.id as usize,
                                 &name,

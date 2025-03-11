@@ -1057,12 +1057,9 @@ mod builder {
                 std::cmp::max(self.trace.len.next_power_of_two() as u32, range.min as u32)
             };
 
-            println!("Extending to main degree: {main_degree}");
-
             // fill up reg trace to degree
-            cols.iter_mut().for_each(|(n, v)| {
+            cols.values_mut().for_each(|v| {
                 let last = *v.last().unwrap();
-                println!("last value: of {n} = {last}");
                 v.resize(main_degree as usize, last);
             });
 

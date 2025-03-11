@@ -35,14 +35,13 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
     // TODO remove the guard once the executor is implemented for BB
     if T::known_field().unwrap() == KnownField::GoldilocksField {
         let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
-        let trace_len = powdr_riscv_executor::execute(
+        powdr_riscv_executor::execute(
             &analyzed,
             Default::default(),
             pipeline.data_callback().unwrap(),
             &[],
             None,
         );
-        println!("Trace length: {trace_len}");
     }
 
     // Compute the witness once for all tests that follow.
