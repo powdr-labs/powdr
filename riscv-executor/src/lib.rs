@@ -174,6 +174,8 @@ macro_rules! known_witness_col {
 
 known_witness_col! {
     pc_update,
+    query_arg_1_update,
+    query_arg_2_update,
     X,
     Y,
     Z,
@@ -1330,9 +1332,6 @@ struct Executor<'a, 'b, F: FieldElement> {
 
 impl<F: FieldElement> Executor<'_, '_, F> {
     fn init(&mut self) {
-        // TODO why not zero?
-        self.step = 2;
-
         if let ExecMode::Witness = self.mode {
             for c in KnownFixedCol::all() {
                 self.cached_fixed_cols
@@ -2325,8 +2324,6 @@ impl<F: FieldElement> Executor<'_, '_, F> {
 
                 set_col!(tmp1_col, input_ptr);
                 set_col!(tmp2_col, output_ptr);
-                set_col!(tmp3_col, (input_ptr.u() >> 2).into());
-                set_col!(tmp4_col, (output_ptr.u() >> 2).into());
 
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(input_ptr.u() as i64 >> 2);
                 set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
@@ -3074,9 +3071,11 @@ fn execute_inner<F: FieldElement>(
     loop {
         let stm = statements[curr_pc as usize];
 
-        log::trace!("l {curr_pc}: {stm}",);
+        // step is updated by 4 cause we have instructions that need that many memory accesses,
+        // except on a DebugDirective which is a noop
+        let mut step_update = 4;
 
-        e.step += 4;
+        log::trace!("l {curr_pc}: {stm}",);
 
         count += 1;
         if count % 10000 == 0 {
@@ -3177,10 +3176,12 @@ fn execute_inner<F: FieldElement>(
             }
             FunctionStatement::Return(_) => {
                 e.proc.set_col(KnownWitnessCol::pc_update, e.proc.get_pc());
+                e.proc.set_col(KnownWitnessCol::query_arg_1_update, e.proc.get_reg("query_arg_1"));
+                e.proc.set_col(KnownWitnessCol::query_arg_2_update, e.proc.get_reg("query_arg_2"));
                 break;
             }
             FunctionStatement::DebugDirective(dd) => {
-                e.step -= 4;
+                step_update = 0;
                 match &dd.directive {
                     DebugDirective::Loc(file, line, column) => {
                         let (dir, file) = debug_files[file - 1];
@@ -3197,10 +3198,15 @@ fn execute_inner<F: FieldElement>(
             }
         };
 
+        e.proc.set_col(KnownWitnessCol::query_arg_1_update, e.proc.get_reg("query_arg_1"));
+        e.proc.set_col(KnownWitnessCol::query_arg_2_update, e.proc.get_reg("query_arg_2"));
+
         curr_pc = match e.proc.advance() {
             Some(pc) => pc,
             None => break,
         };
+
+        e.step += step_update;
     }
 
     if let Some(mut p) = profiler {
