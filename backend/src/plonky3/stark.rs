@@ -431,13 +431,13 @@ mod tests {
     }
 
     #[test]
-    fn add() {
+    fn mul() {
         let content = r#"
         namespace Add(8);
             col witness x;
             col witness y;
             col witness z;
-            x + y = z;
+            x * y = z;
         "#;
         run_test(content);
     }
