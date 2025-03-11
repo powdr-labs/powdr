@@ -10,12 +10,12 @@ use powdr_ast::parsed::types::TupleType;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
-    EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression, NamedType,
-    PilStatement, PolynomialName, TraitDeclaration,
+    EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, IndexAccess, LambdaExpression,
+    NamedType, PilStatement, PolynomialName, TraitDeclaration,
 };
 use powdr_ast::parsed::{
-    ArrayExpression, NamedExpression, NamespacedPolynomialReference, StructDeclaration,
-    SymbolCategory, TraitImplementation, TypeDeclaration,
+    ArrayExpression, FunctionCall, NamedExpression, NamespacedPolynomialReference,
+    StructDeclaration, SymbolCategory, TraitImplementation, TypeDeclaration,
 };
 use powdr_parser_util::{Error, SourceRef};
 use std::str::FromStr;
@@ -527,40 +527,66 @@ where
             ..
         } = symbol.clone();
 
-        let polynomial = Expression::Reference(
-            SourceRef::unknown(),
-            Poly(
-                self.expression_processor(&Default::default())
-                    .process_namespaced_polynomial_reference(polynomial)
-                    .map_err(|err| source.with_error(err))?,
-            ),
+        let index: u64 = untyped_evaluator::evaluate_expression_to_int(
+            self.driver,
+            self.expression_processor(&Default::default())
+                .process_expression(index)?,
+        ) // evaluate to int first to make sure it's an Expression::Number at this point
+        .unwrap()
+        .try_into()
+        .unwrap();
+        let index = Expression::from(index);
+
+        assert!(matches!(index, Expression::Number(..)));
+
+        let poly_reference = Poly(
+            self.expression_processor(&Default::default())
+                .process_namespaced_polynomial_reference(polynomial)
+                .map_err(|err| source.with_error(err))?,
         );
 
-        let array_index = array_index
-            .map(|i| {
+        let polynomial = match array_index {
+            None => Expression::FunctionCall(
+                SourceRef::unknown(),
+                FunctionCall {
+                    function: Box::new(Expression::Reference(SourceRef::unknown(), poly_reference)),
+                    arguments: vec![index],
+                },
+            ),
+            Some(i) => {
                 let i = self
                     .expression_processor(&Default::default())
                     .process_expression(i)
                     .map_err(|err| {
                         err.extend_message(|m| format!("Failed to process array index: {m}"))
                     })?;
-                let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
-                    .unwrap()
-                    .try_into()
-                    .unwrap();
-                assert!(index <= usize::MAX as u64);
-                Ok(index as usize)
-            })
-            .transpose()?;
+                let array_index: u64 =
+                    untyped_evaluator::evaluate_expression_to_int(self.driver, i)
+                        .unwrap()
+                        .try_into()
+                        .unwrap(); // evaluate to int first to make sure it's an Expression::Number at this point
+                let array_index = Expression::from(array_index);
 
-        let index = untyped_evaluator::evaluate_expression_to_int(
-            self.driver,
-            self.expression_processor(&Default::default())
-                .process_expression(index)?,
-        )
-        .unwrap()
-        .try_into()
-        .unwrap();
+                assert!(matches!(array_index, Expression::Number(..)));
+
+                Expression::FunctionCall(
+                    SourceRef::unknown(),
+                    FunctionCall {
+                        function: Box::new(Expression::IndexAccess(
+                            SourceRef::unknown(),
+                            IndexAccess {
+                                array: Box::new(Expression::Reference(
+                                    SourceRef::unknown(),
+                                    poly_reference,
+                                )),
+                                index: Box::new(array_index),
+                            },
+                        )),
+                        arguments: vec![index],
+                    },
+                )
+            }
+        };
 
         Ok(vec![PILItem::Definition(
             symbol,
@@ -570,8 +596,6 @@ where
                     source: source.clone(),
                     name: absolute_name,
                     polynomial,
-                    array_index,
-                    index,
                 },
             )),
         )])

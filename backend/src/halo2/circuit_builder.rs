@@ -90,7 +90,7 @@ fn get_publics<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, usize)> 
         .public_declarations_in_source_order()
         .map(|(_, public_declaration)| {
             let witness_name = public_declaration.referenced_poly_name();
-            let witness_offset = public_declaration.index as usize;
+            let witness_offset = public_declaration.index() as usize;
             (witness_name, witness_offset)
         })
         .collect::<Vec<_>>();

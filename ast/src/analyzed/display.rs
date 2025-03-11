@@ -250,10 +250,10 @@ fn format_public_declaration(name: &str, decl: &PublicDeclaration) -> String {
     format!(
         "public {name} = {}{}({});",
         decl.referenced_poly(),
-        decl.array_index
+        decl.referenced_poly_array_index()
             .map(|i| format!("[{i}]"))
             .unwrap_or_default(),
-        decl.index
+        decl.index()
     )
 }
 
