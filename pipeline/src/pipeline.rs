@@ -966,11 +966,12 @@ impl<T: FieldElement> Pipeline<T> {
         self.compute_analyzed_pil()?;
         let analyzed_pil = self.artifact.analyzed_pil.take().unwrap();
 
-        self.log("Optimizing pil (pre backend tuning)...");
+        self.log("Optimizing pil...");
         let optimized_pre_tuning_pil = powdr_pilopt::optimize(analyzed_pil);
         let optimized_post_tuning_pil = if let Some(backend_type) = self.arguments.backend {
             let factory = backend_type.factory::<T>();
             let backend_tuned_pil = factory.tune_analyzed_pil(optimized_pre_tuning_pil);
+            self.log("Optimizing pil (post backend tuning)...");
             powdr_pilopt::optimize(backend_tuned_pil)
         } else {
             optimized_pre_tuning_pil
