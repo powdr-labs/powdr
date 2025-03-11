@@ -131,7 +131,11 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
                 )
             }
         } else if let Some((_, value)) = pil_file.intermediate_columns.get(n.name.as_ref()) {
-            assert!(n.type_args.is_none());
+            assert!(n
+                .type_args
+                .as_ref()
+                .map(|args| args.is_empty())
+                .unwrap_or(true));
             Box::new(value.iter().flat_map(|v| {
                 v.all_children().flat_map(|e| {
                     if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
@@ -565,7 +569,7 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 
 /// Identifies witness columns that are constrained to a non-shifted (multi)linear expression, replaces the witness column by an intermediate polynomial.
 /// The pattern is the following:
-/// ```
+/// ```pil
 /// col witness x;
 /// x = lin;
 /// ```

@@ -256,7 +256,7 @@ fn halo_without_lookup() {
 
 #[test]
 fn add() {
-    let f = "pil/add.pil";
+    let f = "pil/mul.pil";
     regular_test_gl(f, Default::default());
 }
 
