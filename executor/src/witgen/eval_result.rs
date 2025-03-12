@@ -33,6 +33,8 @@ pub enum IncompleteCause<K = usize> {
     NonConstantQueryMatchScrutinee,
     /// Query element is not constant.
     NonConstantQueryElement,
+    /// Bus ID is not constant.
+    NonConstantBusID,
     /// A required argument was not provided
     NonConstantRequiredArgument(&'static str),
     /// The left selector in a lookup is not constant. Example: `x * {1} in [{1}]` where `x` is not constant.

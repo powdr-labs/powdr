@@ -256,7 +256,10 @@ fn propagate_constraints<T: FieldElement>(
             }
         }
         Identity::BusSend(send) => {
-            let receive = send.try_match_static(bus_receives).unwrap();
+            let receive = match send.try_match_static(bus_receives) {
+                Some(r) => r,
+                None => return false,
+            };
             if !send.selected_payload.selector.is_one() {
                 return false;
             }

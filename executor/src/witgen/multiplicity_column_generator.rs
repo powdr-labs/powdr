@@ -35,9 +35,6 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
     ) -> HashMap<String, Vec<T>> {
         record_start(MULTIPLICITY_WITGEN_NAME);
 
-        // A map from multiplicity column ID to the vector of multiplicities.
-        let mut multiplicity_columns = BTreeMap::new();
-
         let (identities, _) = convert_identities(self.fixed.analyzed);
 
         let all_columns = witness_columns
@@ -75,11 +72,11 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             })
             .map(|(bus_id, bus_receive)| {
                 let (size, rhs_tuples) =
-                    self.get_tuples(&terminal_values, &bus_receive.selected_payload);
+                    self.get_tuples(&terminal_values, &bus_receive.selected_payload, None);
 
                 let index = rhs_tuples
                     .into_iter()
-                    .map(|(i, tuple)| {
+                    .map(|(i, tuple, _)| {
                         // There might be multiple identical rows, but it's fine, we can pick any.
                         (tuple, i)
                     })
@@ -104,28 +101,35 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             })
             .collect::<BTreeMap<_, _>>();
 
+        // A map from multiplicity column ID to the vector of multiplicities.
+        let mut multiplicity_columns = receive_infos
+            .values()
+            .map(|info| (info.multiplicity_column, vec![0; info.size]))
+            .collect::<BTreeMap<_, _>>();
+
         // Increment multiplicities for all bus sends.
-        for (bus_send, bus_receive) in identities.iter().filter_map(|i| match i {
-            Identity::BusSend(bus_send) => receive_infos
-                .get(&bus_send.bus_id().unwrap())
-                .map(|bus_receive| (bus_send, bus_receive)),
+        for bus_send in identities.iter().filter_map(|i| match i {
+            Identity::BusSend(bus_send) => Some(bus_send),
             _ => None,
         }) {
-            let (_, lhs_tuples) = self.get_tuples(&terminal_values, &bus_send.selected_payload);
-
-            let multiplicities = multiplicity_columns
-                .entry(bus_receive.multiplicity_column)
-                .or_insert_with(|| vec![0; bus_receive.size]);
-            assert_eq!(multiplicities.len(), bus_receive.size);
+            let (_, lhs_tuples) = self.get_tuples(
+                &terminal_values,
+                &bus_send.selected_payload,
+                Some(&bus_send.bus_id),
+            );
 
             // Looking up the index is slow, so we do it in parallel.
             let indices = lhs_tuples
                 .into_par_iter()
-                .map(|(_, tuple)| bus_receive.index[&tuple])
+                .filter_map(|(_, tuple, bus_id)| {
+                    receive_infos.get(&bus_id.unwrap()).map(|receive_info| {
+                        (receive_info.multiplicity_column, receive_info.index[&tuple])
+                    })
+                })
                 .collect::<Vec<_>>();
 
-            for index in indices {
-                multiplicities[index] += 1;
+            for (multiplicity_column, index) in indices {
+                multiplicity_columns.get_mut(&multiplicity_column).unwrap()[index] += 1;
             }
         }
 
@@ -151,7 +155,8 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
         &self,
         terminal_values: &OwnedTerminalValues<T>,
         selected_expressions: &SelectedExpressions<T>,
-    ) -> (usize, Vec<(usize, Vec<T>)>) {
+        bus_id: Option<&AlgebraicExpression<T>>,
+    ) -> (usize, Vec<(usize, Vec<T>, Option<T>)>) {
         let machine_size = selected_expressions
             .expressions
             .iter()
@@ -178,10 +183,13 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                     terminal_values.row(row),
                     &self.fixed.intermediate_definitions,
                 );
-                let result = evaluator.evaluate(&selected_expressions.selector);
+                let selector = evaluator.evaluate(&selected_expressions.selector);
 
-                assert!(result.is_zero() || result.is_one(), "Non-binary selector");
-                result.is_one().then(|| {
+                assert!(
+                    selector.is_zero() || selector.is_one(),
+                    "Non-binary selector"
+                );
+                selector.is_one().then(|| {
                     (
                         row,
                         selected_expressions
@@ -189,6 +197,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                             .iter()
                             .map(|expression| evaluator.evaluate(expression))
                             .collect::<Vec<_>>(),
+                        bus_id.map(|bus_id| evaluator.evaluate(bus_id)),
                     )
                 })
             })

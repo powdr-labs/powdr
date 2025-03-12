@@ -251,7 +251,6 @@ fn static_bus_multi() {
 }
 
 #[test]
-#[should_panic = "Expected first payload entry to be a static ID"]
 fn dynamic_bus() {
     // Witgen does not currently support this.
     let f = "asm/dynamic_bus.asm";
