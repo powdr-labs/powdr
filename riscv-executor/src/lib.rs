@@ -3068,7 +3068,7 @@ fn execute_inner<F: FieldElement>(
     loop {
         let stm = statements[curr_pc as usize];
 
-        // step is updated by 4 cause we have instructions that need that many memory accesses,
+        // step is updated by 4 because we have instructions that need that many memory accesses,
         // except on a DebugDirective which is a noop
         let mut step_update = 4;
 

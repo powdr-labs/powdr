@@ -176,7 +176,7 @@ impl<T: FieldElement> VMConverter<T> {
                         let lhs = next_reference(name);
                         use RegisterTy::*;
                         match reg.ty {
-                            // Force pc to zero on first row.
+                            // Force the pc and the write registers to zero on the first row.
                             Pc | Write => {
                                 // introduce an intermediate witness polynomial to keep the degree of polynomial identities at 2
                                 // this may not be optimal for backends which support higher degree constraints
