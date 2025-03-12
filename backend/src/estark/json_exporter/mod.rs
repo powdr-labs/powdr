@@ -81,7 +81,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     publics.push(starky::types::Public {
                         polType: polynomial_reference_type_to_type(&expr.op).to_string(),
                         polId: expr.id.unwrap(),
-                        idx: pubd.index() as usize,
+                        idx: pubd.row() as usize,
                         id,
                         name: name.clone(),
                     });

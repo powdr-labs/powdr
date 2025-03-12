@@ -247,14 +247,7 @@ fn format_witness_column(
 }
 
 fn format_public_declaration(name: &str, decl: &PublicDeclaration) -> String {
-    format!(
-        "public {name} = {}{}({});",
-        decl.referenced_poly(),
-        decl.referenced_poly_array_index()
-            .map(|i| format!("[{i}]"))
-            .unwrap_or_default(),
-        decl.index()
-    )
+    format!("public {name} = {};", decl.value)
 }
 
 impl Display for FunctionValueDefinition {

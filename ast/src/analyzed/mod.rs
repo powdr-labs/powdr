@@ -421,7 +421,7 @@ impl<T> Analyzed<T> {
                         symbol.stage.unwrap_or_default() as u8,
                     )
                 };
-                let row_offset = public_declaration.index() as usize;
+                let row_offset = public_declaration.row() as usize;
                 (name.clone(), column_name, poly_id, row_offset, stage)
             })
             .collect::<Vec<_>>();
@@ -849,15 +849,14 @@ pub struct PublicDeclaration {
     pub id: u64,
     pub source: SourceRef,
     pub name: String,
-    pub polynomial: Expression,
-    // pub array_index: Option<usize>,
-    // /// The evaluation point of the polynomial, not the array index.
-    // pub index: DegreeType,
+    /// The declaration value, in two possible forms: polynomial[array_index](row) OR polynomial(row)
+    /// where "row" is the evaluation point of the polynomial.
+    pub value: Expression,
 }
 
 impl PublicDeclaration {
     pub fn referenced_poly(&self) -> &PolynomialReference {
-        match &self.polynomial {
+        match &self.value {
             Expression::FunctionCall(_, FunctionCall { function, .. }) => match function.as_ref() {
                 Expression::Reference(_, Reference::Poly(poly)) => poly,
                 Expression::IndexAccess(_, IndexAccess { array, .. }) => match array.as_ref() {
@@ -871,7 +870,7 @@ impl PublicDeclaration {
     }
 
     pub fn referenced_poly_array_index(&self) -> Option<usize> {
-        match &self.polynomial {
+        match &self.value {
             Expression::FunctionCall(_, FunctionCall { function, .. }) => match function.as_ref() {
                 Expression::Reference(_, Reference::Poly(_)) => None,
                 Expression::IndexAccess(_, IndexAccess { index, .. }) => match index.as_ref() {
@@ -884,6 +883,8 @@ impl PublicDeclaration {
         }
     }
 
+    /// Returns the name of the polynomial referenced by the public declaration.
+    /// Includes the array index if present.
     pub fn referenced_poly_name(&self) -> String {
         let name = self.referenced_poly().name.clone();
         let index = self.referenced_poly_array_index();
@@ -894,8 +895,8 @@ impl PublicDeclaration {
         }
     }
 
-    pub fn index(&self) -> DegreeType {
-        match &self.polynomial {
+    pub fn row(&self) -> DegreeType {
+        match &self.value {
             Expression::FunctionCall(_, FunctionCall { arguments, .. }) => {
                 assert!(arguments.len() == 1);
                 match &arguments[0] {
@@ -910,20 +911,10 @@ impl PublicDeclaration {
 
 impl Children<Expression> for PublicDeclaration {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
-        match &self.polynomial {
-            Expression::FunctionCall(_, FunctionCall { function, .. }) => {
-                Box::new(iter::once(function.as_ref()))
-            }
-            _ => panic!("Expected FunctionCall."),
-        }
+        Box::new(self.value.children())
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
-        match &mut self.polynomial {
-            Expression::FunctionCall(_, FunctionCall { function, .. }) => {
-                Box::new(iter::once(function.as_mut()))
-            }
-            _ => panic!("Expected FunctionCall."),
-        }
+        Box::new(self.value.children_mut())
     }
 }
 

@@ -737,19 +737,6 @@ impl<Ref> From<u32> for Expression<Ref> {
     }
 }
 
-impl<Ref> From<u64> for Expression<Ref> {
-    fn from(value: u64) -> Self {
-        BigUint::from(value).into()
-    }
-}
-
-impl<Ref> From<i32> for Expression<Ref> {
-    fn from(value: i32) -> Self {
-        assert!(value >= 0);
-        BigUint::from(value as u32).into()
-    }
-}
-
 pub type ExpressionPrecedence = u64;
 
 impl<Ref> Expression<Ref> {

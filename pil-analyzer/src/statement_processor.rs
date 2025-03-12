@@ -130,19 +130,19 @@ where
                 )
             }
             PilStatement::PublicDeclaration(source, name, polynomial, array_index, index) => {
-                let (name, ty) = self.name_and_type_from_polynomial_name(
-                    PolynomialName {
-                        name,
-                        array_size: None,
-                    },
-                    Type::Expr,
-                )?;
                 let value = Some(FunctionDefinition::PublicDeclaration(
                     polynomial,
                     array_index,
                     index,
                 ));
-                self.handle_symbol_definition(source, name, SymbolKind::Public(), None, ty, value)
+                self.handle_symbol_definition(
+                    source,
+                    name,
+                    SymbolKind::Public(),
+                    None,
+                    Some(Type::Expr.into()),
+                    value,
+                )
             }
             PilStatement::PolynomialConstantDefinition(source, name, definition) => self
                 .handle_symbol_definition(
@@ -432,9 +432,9 @@ where
             Some(FunctionDefinition::Array(value)) => {
                 self.process_array_symbol(symbol, type_scheme, value)
             }
-            Some(FunctionDefinition::PublicDeclaration(polynomial, array_index, index)) => {
+            Some(FunctionDefinition::PublicDeclaration(polynomial, array_index, row)) => {
                 assert_eq!(symbol_kind, SymbolKind::Public());
-                self.process_public_declaration(symbol, polynomial, array_index, index)
+                self.process_public_declaration(symbol, polynomial, array_index, row)
             }
             None => Ok(vec![PILItem::Definition(symbol, None)]),
         }
@@ -518,7 +518,7 @@ where
         symbol: Symbol,
         polynomial: NamespacedPolynomialReference,
         array_index: Option<parsed::Expression>,
-        index: parsed::Expression,
+        row: parsed::Expression,
     ) -> Result<Vec<PILItem>, Error> {
         let Symbol {
             id,
@@ -527,17 +527,17 @@ where
             ..
         } = symbol.clone();
 
-        let index: u64 = untyped_evaluator::evaluate_expression_to_int(
+        let row: u32 = untyped_evaluator::evaluate_expression_to_int(
             self.driver,
             self.expression_processor(&Default::default())
-                .process_expression(index)?,
+                .process_expression(row)?,
         ) // evaluate to int first to make sure it's an Expression::Number at this point
         .unwrap()
         .try_into()
         .unwrap();
-        let index = Expression::from(index);
+        let row = Expression::from(row);
 
-        assert!(matches!(index, Expression::Number(..)));
+        assert!(matches!(row, Expression::Number(..)));
 
         let poly_reference = Poly(
             self.expression_processor(&Default::default())
@@ -545,12 +545,12 @@ where
                 .map_err(|err| source.with_error(err))?,
         );
 
-        let polynomial = match array_index {
+        let value = match array_index {
             None => Expression::FunctionCall(
                 SourceRef::unknown(),
                 FunctionCall {
                     function: Box::new(Expression::Reference(SourceRef::unknown(), poly_reference)),
-                    arguments: vec![index],
+                    arguments: vec![row],
                 },
             ),
             Some(i) => {
@@ -560,7 +560,7 @@ where
                     .map_err(|err| {
                         err.extend_message(|m| format!("Failed to process array index: {m}"))
                     })?;
-                let array_index: u64 =
+                let array_index: u32 =
                     untyped_evaluator::evaluate_expression_to_int(self.driver, i)
                         .unwrap()
                         .try_into()
@@ -582,7 +582,7 @@ where
                                 index: Box::new(array_index),
                             },
                         )),
-                        arguments: vec![index],
+                        arguments: vec![row],
                     },
                 )
             }
@@ -595,7 +595,7 @@ where
                     id,
                     source: source.clone(),
                     name: absolute_name,
-                    polynomial,
+                    value,
                 },
             )),
         )])
