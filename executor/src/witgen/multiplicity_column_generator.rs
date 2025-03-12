@@ -35,10 +35,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
     ) -> HashMap<String, Vec<T>> {
         record_start(MULTIPLICITY_WITGEN_NAME);
 
-        log::trace!("Starting multiplicity witness generation.");
-        let start = std::time::Instant::now();
-
-        // Several range constraints might point to the same target
+        // A map from multiplicity column ID to the vector of multiplicities.
         let mut multiplicity_columns = BTreeMap::new();
 
         let (identities, _) = convert_identities(self.fixed.analyzed);
@@ -68,31 +65,17 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             challenge_values: self.fixed.challenges.clone(),
         };
 
-        log::trace!(
-            "  Done building trace values, took: {}s",
-            start.elapsed().as_secs_f64()
-        );
-
+        // Index all bus receives with arbitrary multiplicity.
         let receive_infos = self
             .fixed
             .bus_receives
             .iter()
-            .filter(|(_, bus_receive)| bus_receive.has_arbitrary_multiplicity())
-            .filter_map(|(bus_id, bus_receive)| {
-                if !bus_receive.has_arbitrary_multiplicity() || bus_receive.multiplicity.is_none() {
-                    return None;
-                }
-                log::trace!("  Building index for bus receive: {bus_receive}");
-                let start = std::time::Instant::now();
-
+            .filter(|(_, bus_receive)| {
+                bus_receive.has_arbitrary_multiplicity() && bus_receive.multiplicity.is_some()
+            })
+            .map(|(bus_id, bus_receive)| {
                 let (size, rhs_tuples) =
                     self.get_tuples(&terminal_values, &bus_receive.selected_payload);
-
-                log::trace!(
-                    "    Done collecting received tuples, took {}s",
-                    start.elapsed().as_secs_f64()
-                );
-                let start = std::time::Instant::now();
 
                 let index = rhs_tuples
                     .into_iter()
@@ -102,11 +85,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                     })
                     .collect::<HashMap<_, _>>();
 
-                log::trace!(
-                    "    Done building index, took {}s",
-                    start.elapsed().as_secs_f64()
-                );
-                Some((
+                (
                     *bus_id,
                     ReceiveInfo {
                         multiplicity_column: match bus_receive.multiplicity.as_ref().unwrap() {
@@ -118,31 +97,21 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                                 )
                             }
                         },
-                        index,
                         size,
+                        index,
                     },
-                ))
+                )
             })
             .collect::<BTreeMap<_, _>>();
-        for bus_send in identities.iter().filter_map(|i| match i {
-            Identity::BusSend(bus_send) => Some(bus_send),
+
+        // Increment multiplicities for all bus sends.
+        for (bus_send, bus_receive) in identities.iter().filter_map(|i| match i {
+            Identity::BusSend(bus_send) => receive_infos
+                .get(&bus_send.bus_id().unwrap())
+                .map(|bus_receive| (bus_send, bus_receive)),
             _ => None,
         }) {
-            let bus_receive = receive_infos.get(&bus_send.bus_id().unwrap());
-            if bus_receive.is_none() {
-                continue;
-            }
-            let bus_receive = bus_receive.unwrap();
-
-            log::trace!("  Incrementing multiplicities for bus send: {bus_send}");
-            let start = std::time::Instant::now();
             let (_, lhs_tuples) = self.get_tuples(&terminal_values, &bus_send.selected_payload);
-
-            log::trace!(
-                "    Done collecting sent tuples, took: {}s",
-                start.elapsed().as_secs_f64()
-            );
-            let start = std::time::Instant::now();
 
             let multiplicities = multiplicity_columns
                 .entry(bus_receive.multiplicity_column)
@@ -158,10 +127,6 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             for index in indices {
                 multiplicities[index] += 1;
             }
-            log::trace!(
-                "    Done updating multiplicities, took: {}s",
-                start.elapsed().as_secs_f64()
-            );
         }
 
         let columns = terminal_values
@@ -235,6 +200,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
 
 struct ReceiveInfo<T> {
     multiplicity_column: PolyID,
-    index: HashMap<Vec<T>, usize>,
     size: usize,
+    /// Maps a tuple of values to its index in the trace.
+    index: HashMap<Vec<T>, usize>,
 }
