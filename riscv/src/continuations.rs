@@ -347,7 +347,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let mut register_values = default_register_values();
 
     let asm = pipeline.compute_analyzed_asm().unwrap().clone();
-    let pil = pipeline.compute_optimized_pil().unwrap();
+    let pil = pipeline.compute_optimized_pil().unwrap().clone();
     let fixed = pipeline.compute_fixed_cols().unwrap();
     let main_machine = asm.get_machine(&parse_absolute_path("::Main")).unwrap();
     sanity_check(main_machine, field);

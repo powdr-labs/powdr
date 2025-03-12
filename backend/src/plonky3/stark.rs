@@ -20,6 +20,8 @@ use powdr_plonky3::{
     ProverData, StarkProvingKey, StarkVerifyingKey, TableProvingKey, TableProvingKeyCollection,
 };
 
+use crate::BackendType;
+
 use p3_uni_stark::StarkGenericConfig;
 
 pub struct Plonky3Prover<T: FieldElementMap>
@@ -349,8 +351,10 @@ mod tests {
         ProverData<F>: Send + serde::Serialize + for<'a> serde::Deserialize<'a>,
         Commitment<F>: Send,
     {
-        let mut pipeline = Pipeline::<F>::default().from_pil_string(pil.to_string());
-        let pil = pipeline.compute_optimized_pil().unwrap();
+        let mut pipeline = Pipeline::<F>::default()
+            .with_backend_type(BackendType::Plonky3)
+            .from_pil_string(pil.to_string());
+        let pil = pipeline.compute_backend_tune_pil().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = &mut pipeline.compute_witness().unwrap();
         let fixed = pipeline.compute_fixed_cols().unwrap();

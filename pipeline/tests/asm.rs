@@ -450,7 +450,7 @@ fn read_poly_files() {
             })
             .with_backend(BackendType::EStarkDump, None);
         pipeline.compute_witness().unwrap();
-        let pil = pipeline.compute_optimized_pil().unwrap();
+        let pil = pipeline.compute_backend_tuned_pil().unwrap().clone();
         pipeline.compute_proof().unwrap();
 
         // check fixed cols (may have no fixed cols)
@@ -876,6 +876,8 @@ fn expand_fixed_jit() {
     let mut pipeline = Pipeline::<GoldilocksField>::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name));
+    // i think it's fine to keep using compute_optimized_pil here,
+    // as it has nothing to do with backend specific tuning
     let pil = pipeline.compute_optimized_pil().unwrap();
 
     let fixed_cols = constant_evaluator::generate_only_via_jit(&pil);

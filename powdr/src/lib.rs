@@ -160,7 +160,12 @@ impl Session {
         let pil_file = pil_file_path(&asm_name);
 
         let generate_artifacts = if let Ok(existing_pil) = fs::read_to_string(&pil_file) {
-            let computed_pil = self.pipeline.compute_optimized_pil().unwrap().to_string();
+            // i think it's fine to use compute_backend_tuned_pil here because the session builder uses Plonky3 as the default backend
+            let computed_pil = self
+                .pipeline
+                .compute_backend_tuned_pil()
+                .unwrap()
+                .to_string();
             if existing_pil != computed_pil {
                 log::info!("Compiled PIL changed, invalidating artifacts...");
                 true

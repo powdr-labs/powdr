@@ -116,11 +116,13 @@ pub fn test_pilcom(pipeline: Pipeline<GoldilocksField>) {
     run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
 }
 
-pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Arc<Analyzed<T>> {
+pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Analyzed<T> {
+    // i think it's fine to keep using compute_optimized_pil here because it's only used in simple tests
     Pipeline::default()
         .from_asm_string(contents.to_string(), None)
         .compute_optimized_pil()
         .unwrap()
+        .clone()
 }
 
 #[cfg(not(feature = "estark-starky"))]
@@ -292,7 +294,7 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
     pipeline.clone().compute_proof().unwrap();
 
     // Repeat the proof generation, but with an externally generated setup and verification key
-    let pil = pipeline.compute_optimized_pil().unwrap();
+    let pil = pipeline.compute_backend_tuned_pil().unwrap().clone();
 
     // Setup
     let output_dir = pipeline.output_dir().clone().unwrap();
@@ -370,7 +372,7 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
 
-    if pipeline.optimized_pil().unwrap().constant_count() > 0 {
+    if pipeline.backend_tuned_pil().unwrap().constant_count() > 0 {
         // Export verification Key
         let output_dir = pipeline.output_dir().as_ref().unwrap();
         let vkey_file_path = output_dir.join("verification_key.bin");
@@ -419,7 +421,7 @@ pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
 
-    if pipeline.optimized_pil().unwrap().constant_count() > 0 {
+    if pipeline.backend_tuned_pil().unwrap().constant_count() > 0 {
         // Export verification Key
         let output_dir = pipeline.output_dir().as_ref().unwrap();
         let vkey_file_path = output_dir.join("verification_key.bin");
@@ -606,6 +608,8 @@ pub fn run_reparse_test_with_blacklist(file: &str, blacklist: &[&str]) {
     };
 
     // Compute the optimized PIL
+    // i think it should be fine to keep using compute_optimized_pil here
+    // because the focus is on the re-parsing, not the native bus interaction vs phantom bus interaction columns
     let optimized_pil = pipeline.compute_optimized_pil().unwrap();
 
     // Run the pipeline using the string serialization of the optimized PIL.

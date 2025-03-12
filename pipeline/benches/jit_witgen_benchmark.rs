@@ -12,6 +12,7 @@ fn jit_witgen_benchmark(c: &mut Criterion) {
     // Poseidon benchmark
     let mut pipeline =
         Pipeline::<T>::default().from_file("../test_data/std/poseidon_benchmark.asm".into());
+    // this `jit_witgen_benchmark` function will also require backend type
     pipeline.compute_optimized_pil().unwrap();
     pipeline.compute_fixed_cols().unwrap();
 

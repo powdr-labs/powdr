@@ -45,6 +45,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
     }
 
     // Compute the witness once for all tests that follow.
+    // we will have to include a backend type here or compute_witness will panic
     pipeline.compute_witness().unwrap();
 
     test_mock_backend(pipeline.clone());
@@ -61,7 +62,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
     // verify executor generated witness
     if executor_witgen {
         let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
-        let pil = pipeline.compute_optimized_pil().unwrap();
+        let pil = pipeline.compute_optimized_pil().unwrap().clone();
         let fixed = pipeline.compute_fixed_cols().unwrap().clone();
         let execution = powdr_riscv_executor::execute_with_witness(
             &analyzed,

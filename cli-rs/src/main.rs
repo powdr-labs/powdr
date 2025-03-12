@@ -432,7 +432,8 @@ fn execute<F: FieldElement>(
     } else {
         let fixed = pipeline.compute_fixed_cols().unwrap().clone();
         let asm = pipeline.compute_analyzed_asm().unwrap().clone();
-        let pil = pipeline.compute_optimized_pil().unwrap();
+        // flagging it here that we would need to change the cli-rs to require backend type when executing
+        let pil = pipeline.compute_optimized_pil().unwrap().clone();
 
         let start = Instant::now();
 

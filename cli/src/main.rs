@@ -793,6 +793,9 @@ fn read_and_verify<T: FieldElement>(
 
 #[allow(clippy::print_stdout)]
 fn optimize_and_output<T: FieldElement>(file: &str) {
+    // will need to determine if this is always called with the backend type
+    // if yes, replace with compute_backend_tuned_pil
+    // or force a backend type in the cli when this is invoked
     println!(
         "{}",
         Pipeline::<T>::default()

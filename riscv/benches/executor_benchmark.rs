@@ -19,6 +19,7 @@ fn executor_benchmark(c: &mut Criterion) {
     let options = CompilerOptions::new_gl();
     let contents = elf::translate(&executable, options);
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
+    // i think we'll need to specify a backend type here, or compute_witness (which requires compute_backend_tuned_pil) will panic below
     pipeline.compute_optimized_pil().unwrap();
     pipeline.compute_fixed_cols().unwrap();
 
