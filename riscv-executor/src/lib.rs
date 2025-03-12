@@ -2687,7 +2687,6 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                     .unwrap_or_else(|| self.proc.get_reg(name.as_str()));
                 Some(val)
             }
-            Expression::PublicReference(_, _) => todo!(),
             Expression::Number(_, Number { value: n, .. }) => {
                 let unsigned: u32 = n
                     .try_into()

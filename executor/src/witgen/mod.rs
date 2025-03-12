@@ -295,10 +295,10 @@ where
     pil.public_declarations_in_source_order()
         .map(|(name, public_declaration)| {
             let poly_name = &public_declaration.referenced_poly_name();
-            let poly_index = public_declaration.index;
+            let poly_row = public_declaration.row();
             let value = witness
                 .get(poly_name)
-                .map(|column| column[poly_index as usize]);
+                .map(|column| column[poly_row as usize]);
             ((*name).clone(), value)
         })
         .collect()

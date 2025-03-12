@@ -120,7 +120,7 @@ impl Display for LinkDefinition {
         write!(
             f,
             "link {}{} {};",
-            if flag == 1.into() {
+            if flag == 1u32.into() {
                 "".to_string()
             } else {
                 format!("if {flag} ")

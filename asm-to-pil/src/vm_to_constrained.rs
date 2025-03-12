@@ -741,7 +741,6 @@ impl<T: FieldElement> VMConverter<T> {
 
     fn process_assignment_value(&self, value: Expression) -> Vec<(T, AffineExpressionComponent)> {
         match value {
-            Expression::PublicReference(_, _) => panic!(),
             Expression::IndexAccess(_, _) => panic!(),
             Expression::FunctionCall(_, _) => panic!(),
             Expression::Reference(_, reference) => {
