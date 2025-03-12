@@ -119,10 +119,18 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             .collect::<BTreeMap<_, _>>();
 
         // Increment multiplicities for all bus sends.
-        for bus_send in identities.iter().filter_map(|i| match i {
-            Identity::BusSend(bus_send) => Some(bus_send),
+        let bus_sends = identities.iter().filter_map(|i| match i {
+            Identity::BusSend(bus_send) => match bus_send.bus_id() {
+                // As a performance optimization, already filter out sends with a static
+                // bus ID for which we know we don't need to track multiplicities.
+                Some(bus_id) => receive_infos.get(&bus_id).map(|_| bus_send),
+                // For dynamic sends, this optimization is not possible.
+                None => Some(bus_send),
+            },
             _ => None,
-        }) {
+        });
+
+        for bus_send in bus_sends {
             let SelectedExpressions {
                 selector,
                 expressions,
@@ -137,7 +145,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                 self.get_tuples(&terminal_values, selector, &bus_id_and_expressions);
 
             // Looking up the index is slow, so we do it in parallel.
-            let indices = bus_id_and_expressions
+            let columns_and_indices = bus_id_and_expressions
                 .into_par_iter()
                 .filter_map(|(_, bus_id_and_expressions)| {
                     receive_infos
@@ -151,7 +159,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                 })
                 .collect::<Vec<_>>();
 
-            for (multiplicity_column, index) in indices {
+            for (multiplicity_column, index) in columns_and_indices {
                 multiplicity_columns.get_mut(&multiplicity_column).unwrap()[index] += 1;
             }
         }
