@@ -14,7 +14,7 @@ use crate::witgen::{
         finalizable_data::{ColumnLayout, CompactDataRef},
         mutable_state::MutableState,
     },
-    jit::prover_function_heuristics::ProverFunctionComputation,
+    jit::prover_function_heuristics::{ProverFunctionComputation, QueryType},
     machines::{
         profiling::{record_end, record_start},
         LookupCell,
@@ -60,6 +60,8 @@ impl<T: FieldElement> WitgenFunction<T> {
             call_machine: call_machine::<T, Q>,
             fixed_data: fixed_data as *const _ as *const c_void,
             get_fixed_value: get_fixed_value::<T>,
+            input_from_channel: input_from_channel::<T, Q>,
+            output_to_channel: output_to_channel::<T, Q>,
         });
     }
 }
@@ -86,6 +88,30 @@ extern "C" fn call_machine<T: FieldElement, Q: QueryCallback<T>>(
     mutable_state
         .call_direct(identity_id, params.into())
         .unwrap()
+}
+
+extern "C" fn input_from_channel<T: FieldElement, Q: QueryCallback<T>>(
+    mutable_state: *const c_void,
+    channel: u32,
+    index: u64,
+) -> T {
+    let mutable_state = unsafe { &*(mutable_state as *const MutableState<T, Q>) };
+    // TODO what is the proper error handling?
+    // TODO What to do for Ok(None)?
+    (mutable_state.query_callback())(&format!("Input({channel},{index})"))
+        .unwrap()
+        .unwrap()
+}
+
+extern "C" fn output_to_channel<T: FieldElement, Q: QueryCallback<T>>(
+    mutable_state: *const c_void,
+    fd: u32,
+    elem: T,
+) {
+    let mutable_state = unsafe { &*(mutable_state as *const MutableState<T, Q>) };
+    (mutable_state.query_callback())(&format!("Output({fd},{elem})"))
+        .unwrap()
+        .unwrap();
 }
 
 /// Compile the given inferred effects into machine code and load it.
@@ -154,6 +180,12 @@ struct WitgenFunctionParams<'a, T: 'a> {
     /// A callback to retrieve values from fixed columns.
     /// The parameters are: fixed data pointer, fixed column id, row number.
     get_fixed_value: extern "C" fn(*const c_void, u64, u64) -> T,
+    /// A callback to retrieve a prover-provided value from a channel
+    /// The parameters are: mutable state pointer, channel number, index.
+    input_from_channel: extern "C" fn(*const c_void, u32, u64) -> T,
+    /// A callback to output a value to a channel.
+    /// The parameters are: mutable state pointer, channel number, value.
+    output_to_channel: extern "C" fn(*const c_void, u32, T),
 }
 
 #[repr(C)]
@@ -290,6 +322,8 @@ extern "C" fn witgen(
         call_machine,
         fixed_data,
         get_fixed_value,
+        input_from_channel,
+        output_to_channel,
     }}: WitgenFunctionParams<FieldElement>,
 ) {{
     let known = known_to_slice(known, data.len);
@@ -385,7 +419,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
             inputs,
         }) => {
             format!(
-                "{}[{}] = prover_function_{function_index}(row_offset + {row_offset}, &[{}]);",
+                "{}[{}] = prover_function_{function_index}(mutable_state, input_from_channel, output_to_channel, row_offset + {row_offset}, &[{}]);",
                 if is_top_level { "let " } else { "" },
                 targets.iter().map(variable_to_string).format(", "),
                 inputs.iter().map(variable_to_string).format(", ")
@@ -489,13 +523,13 @@ fn variable_to_string(v: &Variable) -> String {
             "f_{}_{}_{}",
             escape_column_name(&cell.column_name),
             cell.id,
-            cell.row_offset
+            format_row_offset(cell.row_offset)
         ),
         Variable::IntermediateCell(cell) => format!(
             "i_{}_{}_{}",
             escape_column_name(&cell.column_name),
             cell.id,
-            cell.row_offset
+            format_row_offset(cell.row_offset)
         ),
         Variable::MachineCallParam(call_var) => {
             format!(
@@ -544,7 +578,7 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
     f: &ProverFunction<'_, T>,
     codegen: &mut CodeGenerator<'_, T, D>,
 ) -> Result<String, String> {
-    let code = match f.computation {
+    let code = match &f.computation {
         ProverFunctionComputation::ComputeFrom(code) => format!(
             "({}).call(args.to_vec().into())",
             codegen.generate_code_for_expression(code)?
@@ -552,6 +586,28 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
         ProverFunctionComputation::ProvideIfUnknown(code) => {
             assert!(!f.compute_multi);
             format!("({}).call()", codegen.generate_code_for_expression(code)?)
+        }
+        ProverFunctionComputation::HandleQueryInputOutput(branches) => {
+            let indent = "        ";
+            // We assign zero in the "no match" case. The correct behaviour would be to
+            // not assign anything, but it should work for all our use-cases.
+            format!(
+                "match IntType::from(args[0]) {{\n{}\n{indent}_ => 0.into(),\n    }}",
+                branches
+                    .iter()
+                    .map(|(value, query_type)| {
+                        let result = match query_type {
+                            QueryType::Input => {
+                                "input_from_channel(mutable_state, IntType::from(args[0]) as u32, IntType::from(args[1]) as u64),"
+                            }
+                            QueryType::Output => {
+                                "{ output_to_channel(mutable_state, IntType::from(args[0]) as u32, args[1]); 0.into() },"
+                            }
+                        };
+                        format!("{indent}{value} => {result}")
+                    })
+                    .format("\n")
+            )
         }
     };
     let code = if f.compute_multi {
@@ -563,10 +619,16 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
     let length = f.target.len();
     let index = f.index;
     Ok(format!(
-        "fn prover_function_{index}(i: u64, args: &[FieldElement]) -> [FieldElement; {length}] {{\n\
-            let i: ibig::IBig = i.into();\n\
-            {code}
-        }}"
+        r#"fn prover_function_{index}(
+    mutable_state: *const std::ffi::c_void,
+    input_from_channel: extern "C" fn(*const std::ffi::c_void, u32, u64) -> FieldElement,
+    output_to_channel: extern "C" fn(*const std::ffi::c_void, u32, FieldElement),
+    i: u64,
+    args: &[FieldElement]
+) -> [FieldElement; {length}] {{
+    let i: ibig::IBig = i.into();
+    {code}
+}}"#
     ))
 }
 
@@ -575,12 +637,14 @@ mod tests {
 
     use std::ptr::null;
 
+    use powdr_ast::analyzed::AlgebraicReference;
     use powdr_ast::analyzed::FunctionValueDefinition;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
     use powdr_number::GoldilocksField;
 
+    use crate::witgen::jit::prover_function_heuristics::QueryType;
     use crate::witgen::jit::variable::Cell;
     use crate::witgen::jit::variable::MachineCallVariable;
     use crate::witgen::range_constraints::RangeConstraint;
@@ -698,6 +762,8 @@ extern \"C\" fn witgen(
         call_machine,
         fixed_data,
         get_fixed_value,
+        input_from_channel,
+        output_to_channel,
     }: WitgenFunctionParams<FieldElement>,
 ) {
     let known = known_to_slice(known, data.len);
@@ -745,6 +811,12 @@ extern \"C\" fn witgen(
         GoldilocksField::from(col_id * 2000 + row)
     }
 
+    extern "C" fn input_from_channel_test(_: *const c_void, _: u32, _: u64) -> GoldilocksField {
+        GoldilocksField::from(117)
+    }
+
+    extern "C" fn output_to_channel_test(_: *const c_void, _: u32, _: GoldilocksField) {}
+
     fn witgen_fun_params<'a>(
         data: &mut [GoldilocksField],
         known: &mut [u32],
@@ -758,6 +830,8 @@ extern \"C\" fn witgen(
             call_machine: no_call_machine,
             fixed_data: null(),
             get_fixed_value: get_fixed_data_test,
+            input_from_channel: input_from_channel_test,
+            output_to_channel: output_to_channel_test,
         }
     }
 
@@ -775,6 +849,8 @@ extern \"C\" fn witgen(
             call_machine: no_call_machine,
             fixed_data: null(),
             get_fixed_value: get_fixed_data_test,
+            input_from_channel: input_from_channel_test,
+            output_to_channel: output_to_channel_test,
         }
     }
 
@@ -828,6 +904,8 @@ extern \"C\" fn witgen(
             call_machine: no_call_machine,
             fixed_data: null(),
             get_fixed_value: get_fixed_data_test,
+            input_from_channel: input_from_channel_test,
+            output_to_channel: output_to_channel_test,
         };
         (f2.function)(params2);
         assert_eq!(data[0], GoldilocksField::from(7));
@@ -1005,6 +1083,8 @@ extern \"C\" fn witgen(
             call_machine: mock_call_machine,
             fixed_data: null(),
             get_fixed_value: get_fixed_data_test,
+            input_from_channel: input_from_channel_test,
+            output_to_channel: output_to_channel_test,
         };
         (f.function)(params);
         assert_eq!(data[0], GoldilocksField::from(9));
@@ -1071,5 +1151,86 @@ extern \"C\" fn witgen(
         p_1 = (p_0 + FieldElement::from(3));
     }";
         assert_eq!(format_effects(&[branch_effect]), expectation);
+    }
+
+    #[test]
+    fn handle_query_prover_function() {
+        fn to_algebraic_ref(name: &str, id: u64) -> AlgebraicReference {
+            AlgebraicReference {
+                name: name.to_string(),
+                poly_id: PolyID {
+                    id,
+                    ptype: PolynomialType::Committed,
+                },
+                next: false,
+            }
+        }
+
+        let x = cell("x", 0, 0);
+        let y = cell("y", 1, 0);
+        let z = cell("z", 2, 0);
+        let effects = vec![Effect::ProverFunctionCall(ProverFunctionCall {
+            targets: vec![x.clone()],
+            function_index: 0,
+            row_offset: 0,
+            inputs: vec![y.clone(), z.clone()],
+        })];
+        let known_inputs = vec![y.clone(), z.clone()];
+        let prover_function = ProverFunction {
+            index: 0,
+            target: vec![to_algebraic_ref("x", 0)],
+            compute_multi: false,
+            computation: ProverFunctionComputation::HandleQueryInputOutput(
+                [(7, QueryType::Input), (8, QueryType::Output)]
+                    .into_iter()
+                    .collect(),
+            ),
+            condition: None,
+            input_columns: vec![to_algebraic_ref("y", 1), to_algebraic_ref("z", 2)],
+        };
+        let f = super::compile_effects(
+            &NoDefinitions,
+            ColumnLayout {
+                column_count: 3,
+                first_column_id: 0,
+            },
+            &known_inputs,
+            &effects,
+            vec![prover_function],
+        )
+        .unwrap();
+
+        let mut data = vec![
+            GoldilocksField::from(0),
+            GoldilocksField::from(7),
+            GoldilocksField::from(2),
+        ];
+        let mut known = vec![0; 1];
+        (f.function)(witgen_fun_params(&mut data, &mut known));
+        assert_eq!(data[0], GoldilocksField::from(117));
+        assert_eq!(data[1], GoldilocksField::from(7));
+        assert_eq!(data[2], GoldilocksField::from(2));
+
+        let mut data = vec![
+            GoldilocksField::from(0),
+            GoldilocksField::from(8),
+            GoldilocksField::from(2),
+        ];
+        let mut known = vec![0; 1];
+        (f.function)(witgen_fun_params(&mut data, &mut known));
+        assert_eq!(data[0], GoldilocksField::from(0));
+        assert_eq!(data[1], GoldilocksField::from(8));
+        assert_eq!(data[2], GoldilocksField::from(2));
+
+        let mut data = vec![
+            GoldilocksField::from(0),
+            GoldilocksField::from(9),
+            GoldilocksField::from(2),
+        ];
+        let mut known = vec![0; 1];
+        (f.function)(witgen_fun_params(&mut data, &mut known));
+        assert_eq!(data[0], GoldilocksField::from(0));
+        assert_eq!(data[1], GoldilocksField::from(9));
+        assert_eq!(data[2], GoldilocksField::from(2));
     }
 }

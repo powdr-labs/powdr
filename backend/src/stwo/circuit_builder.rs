@@ -312,8 +312,8 @@ impl FrameworkEval for PowdrEval {
     }
 }
 
-// This function creates a list of the names of the constant polynomials that have next references
-// Note that the anaylsis should also dereference next references to intermediate polynomials
+/// This function creates a list of the names of the constant polynomials that have next references
+/// Note that the anaylsis should also dereference next references to intermediate polynomials
 pub fn get_constant_with_next_list(analyzed: &Analyzed<M31>) -> HashSet<String> {
     let intermediate_definitions = analyzed.intermediate_definitions();
     let cache = &mut BTreeMap::new();
