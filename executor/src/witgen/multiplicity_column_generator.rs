@@ -78,7 +78,10 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             .bus_receives
             .iter()
             .filter(|(_, bus_receive)| bus_receive.has_arbitrary_multiplicity())
-            .map(|(bus_id, bus_receive)| {
+            .filter_map(|(bus_id, bus_receive)| {
+                if !bus_receive.has_arbitrary_multiplicity() || bus_receive.multiplicity.is_none() {
+                    return None;
+                }
                 log::trace!("  Building index for bus receive: {bus_receive}");
                 let start = std::time::Instant::now();
 
@@ -103,25 +106,34 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                     "    Done building index, took {}s",
                     start.elapsed().as_secs_f64()
                 );
-                (
+                Some((
                     *bus_id,
                     ReceiveInfo {
-                        multiplicity_column: bus_receive.multiplicity.as_ref().map(|mult_expr| {
-                            match mult_expr {
-                                AlgebraicExpression::Reference(r) => r.poly_id,
-                                _ => panic!("Expected simple reference, got: {mult_expr}"),
+                        multiplicity_column: match bus_receive.multiplicity.as_ref().unwrap() {
+                            AlgebraicExpression::Reference(r) => r.poly_id,
+                            _ => {
+                                panic!(
+                                    "Expected simple reference, got: {}",
+                                    bus_receive.multiplicity.as_ref().unwrap()
+                                )
                             }
-                        }),
+                        },
                         index,
                         size,
                     },
-                )
+                ))
             })
             .collect::<BTreeMap<_, _>>();
         for bus_send in identities.iter().filter_map(|i| match i {
             Identity::BusSend(bus_send) => Some(bus_send),
             _ => None,
         }) {
+            let bus_receive = receive_infos.get(&bus_send.bus_id().unwrap());
+            if bus_receive.is_none() {
+                continue;
+            }
+            let bus_receive = bus_receive.unwrap();
+
             log::trace!("  Incrementing multiplicities for bus send: {bus_send}");
             let start = std::time::Instant::now();
             let (_, lhs_tuples) = self.get_tuples(&terminal_values, &bus_send.selected_payload);
@@ -132,13 +144,8 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             );
             let start = std::time::Instant::now();
 
-            let bus_receive = receive_infos
-                .get(&bus_send.bus_id().unwrap())
-                .expect("Bus send without corresponding receive");
-
-            let multiplicity_column_id = bus_receive.multiplicity_column.unwrap();
             let multiplicities = multiplicity_columns
-                .entry(multiplicity_column_id)
+                .entry(bus_receive.multiplicity_column)
                 .or_insert_with(|| vec![0; bus_receive.size]);
             assert_eq!(multiplicities.len(), bus_receive.size);
 
@@ -227,7 +234,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
 }
 
 struct ReceiveInfo<T> {
-    multiplicity_column: Option<PolyID>,
+    multiplicity_column: PolyID,
     index: HashMap<Vec<T>, usize>,
     size: usize,
 }
