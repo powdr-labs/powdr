@@ -158,9 +158,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
         bus_id: Option<&AlgebraicExpression<T>>,
     ) -> (usize, Vec<(usize, Vec<T>, Option<T>)>) {
         let machine_size = selected_expressions
-            .expressions
-            .iter()
-            .flat_map(|expr| expr.all_children())
+            .all_children()
             .filter_map(|expr| match expr {
                 AlgebraicExpression::Reference(ref r) => match r.poly_id.ptype {
                     PolynomialType::Committed | PolynomialType::Constant => {
