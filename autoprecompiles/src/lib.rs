@@ -137,6 +137,14 @@ impl<T: Clone + Ord + std::fmt::Display> SymbolicMachine<T> {
         cols
     }
 
+    pub fn constraint_columns(&self) -> BTreeSet<String> {
+        let mut cols = BTreeSet::new();
+        for c in &self.constraints {
+            cols.extend(c.columns());
+        }
+        cols
+    }
+
     pub fn column_ids(&self) -> BTreeSet<u64> {
         let mut cols = BTreeSet::new();
         for c in &self.constraints {
@@ -293,6 +301,7 @@ pub enum VMBusInteraction<T> {
 const EXECUTION_BUS_ID: u64 = 0;
 const MEMORY_BUS_ID: u64 = 1;
 const PC_LOOKUP_BUS_ID: u64 = 2;
+const RANGE_CHECK_BUS_ID: u64 = 3;
 
 impl<T: FieldElement> Autoprecompiles<T> {
     pub fn run(
@@ -350,7 +359,39 @@ impl<T: FieldElement> Autoprecompiles<T> {
         assert_eq!(c.len(), i.len());
         assert_eq!(machine.columns().len(), machine.column_ids().len());
         let machine = optimize_precompile(machine);
+
+        let mut bus: BTreeMap<u64, Vec<&SymbolicBusInteraction<T>>> = BTreeMap::new();
+        for b in &machine.bus_interactions {
+            match bus.get_mut(&b.id) {
+                Some(v) => {
+                    v.push(&b);
+                }
+                None => {
+                    bus.insert(b.id, vec![&b]);
+                }
+            }
+        }
+        for (b, v) in &bus {
+            println!("Bus id {b} has {} interactions", v.len());
+        }
+
+        // for c in &machine.constraints {
+        //     println!("Constraint: {}", c.expr);
+        // }
+        // for i in &machine.bus_interactions {
+        //     println!(
+        //         "\nBus interaction id = {}, kind = {:?}, mult = {}",
+        //         i.id, i.kind, i.mult
+        //     );
+        //     for a in &i.args {
+        //         println!("arg = {a}");
+        //     }
+        //     println!("\n");
+        // }
+        //
         let machine = powdr_optimize(machine);
+
+        let machine = remove_range_checks(machine);
 
         (machine, subs)
     }
@@ -402,6 +443,37 @@ pub fn replace_autoprecompile_basic_blocks<T: Clone>(
     new_program
 }
 
+pub fn remove_range_checks<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+    println!(
+        "Before range check optimizations, columns: {}, constraints: {}, bus_interactions: {}",
+        machine.columns().len(),
+        machine.constraints.len(),
+        machine.bus_interactions.len()
+    );
+
+    let cols = machine.constraint_columns();
+
+    machine.bus_interactions.retain(|bus_int| {
+        if bus_int.id != RANGE_CHECK_BUS_ID {
+            return true;
+        }
+
+        bus_int.args.iter().any(|a| {
+            let a_cols = powdr::collect_cols_names_algebraic(a);
+            a_cols.iter().any(|c| cols.contains(c))
+        })
+    });
+
+    println!(
+        "After range check optimizations, columns: {}, constraints: {}, bus_interactions: {}",
+        machine.columns().len(),
+        machine.constraints.len(),
+        machine.bus_interactions.len()
+    );
+
+    machine
+}
+
 pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     println!(
         "Before autoprecompile optimizations, columns: {}, constraints: {}, bus_interactions: {}",
@@ -416,7 +488,7 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
         }
     */
 
-    let mut local_mem: BTreeMap<u32, Vec<AlgebraicExpression<T>>> = BTreeMap::new();
+    let mut local_reg_mem: BTreeMap<u32, Vec<AlgebraicExpression<T>>> = BTreeMap::new();
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     machine.bus_interactions.retain(|bus_int| {
         if bus_int.id == PC_LOOKUP_BUS_ID || bus_int.id == EXECUTION_BUS_ID {
@@ -441,7 +513,7 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
         };
 
         match mem_int.op {
-            MemoryOp::Read => match local_mem.get(&addr) {
+            MemoryOp::Read => match local_reg_mem.get(&addr) {
                 Some(data) => {
                     assert_eq!(data.len(), mem_int.data.len());
                     /*
@@ -468,12 +540,12 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
                     false
                 }
                 None => {
-                    local_mem.insert(addr, mem_int.data.clone());
+                    local_reg_mem.insert(addr, mem_int.data.clone());
                     true
                 }
             },
             MemoryOp::Write => {
-                local_mem.insert(addr, mem_int.data.clone());
+                local_reg_mem.insert(addr, mem_int.data.clone());
                 true
             }
         }
