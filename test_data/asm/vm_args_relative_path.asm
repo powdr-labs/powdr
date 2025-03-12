@@ -1,5 +1,5 @@
 
-let N: int = 16;
+let N: int = 32;
 
 machine Main with degree: N {
     reg pc[@pc];

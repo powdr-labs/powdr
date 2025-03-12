@@ -13,7 +13,6 @@ use powdr_ast::{
         RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
-        self,
         asm::{
             CallableParams, CallableRef, InstructionBody, InstructionParams, LinkDeclaration,
             OperationId, Param, Params,
@@ -29,7 +28,7 @@ use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_parser_util::SourceRef;
 
 use crate::{
-    common::{instruction_flag, return_instruction, RETURN_NAME},
+    common::{instruction_flag, RETURN_NAME},
     utils::parse_pil_statement,
 };
 
@@ -37,12 +36,7 @@ pub fn convert_machine<T: FieldElement>(
     machine: Machine,
     rom: Option<Rom>,
 ) -> (Machine, Option<Machine>) {
-    let output_count = machine
-        .operations()
-        .map(|f| f.params.outputs.len())
-        .max()
-        .unwrap_or_default();
-    VMConverter::<T>::with_output_count(output_count).convert_machine(machine, rom)
+    VMConverter::<T>::default().convert_machine(machine, rom)
 }
 
 pub enum Input {
@@ -128,19 +122,10 @@ struct VMConverter<T> {
     line_lookup: Vec<(String, String)>,
     /// Names of fixed columns that contain the rom.
     rom_constant_names: Vec<String>,
-    /// the maximum number of inputs in all functions
-    output_count: usize,
     _phantom: std::marker::PhantomData<T>,
 }
 
 impl<T: FieldElement> VMConverter<T> {
-    fn with_output_count(output_count: usize) -> Self {
-        Self {
-            output_count,
-            ..Default::default()
-        }
-    }
-
     fn convert_machine(
         mut self,
         mut input: Machine,
@@ -168,16 +153,6 @@ impl<T: FieldElement> VMConverter<T> {
             self.handle_instruction_def(&mut input, instr);
         }
 
-        // introduce `return` instruction
-        self.handle_instruction_def(
-            &mut input,
-            InstructionDefinitionStatement {
-                source: SourceRef::unknown(),
-                name: RETURN_NAME.into(),
-                instruction: self.return_instruction(),
-            },
-        );
-
         let assignment_registers = self
             .assignment_register_names()
             .cloned()
@@ -201,30 +176,23 @@ impl<T: FieldElement> VMConverter<T> {
                         let lhs = next_reference(name);
                         use RegisterTy::*;
                         match reg.ty {
-                            // Force pc to zero on first row.
-                            Pc => {
+                            // Force the pc and the write registers to zero on the first row.
+                            Pc | Write => {
                                 // introduce an intermediate witness polynomial to keep the degree of polynomial identities at 2
                                 // this may not be optimal for backends which support higher degree constraints
-                                let pc_update_name = format!("{name}_update");
+                                let update_name = format!("{name}_update");
                                 vec![
-                                    witness_column(
-                                        SourceRef::unknown(),
-                                        pc_update_name.clone(),
-                                        None,
-                                    ),
+                                    witness_column(SourceRef::unknown(), update_name.clone(), None),
                                     PilStatement::Expression(
                                         SourceRef::unknown(),
-                                        build::identity(
-                                            direct_reference(pc_update_name.clone()),
-                                            rhs,
-                                        ),
+                                        build::identity(direct_reference(update_name.clone()), rhs),
                                     ),
                                     PilStatement::Expression(
                                         SourceRef::unknown(),
                                         build::identity(
                                             lhs,
                                             (Expression::from(1) - next_reference("first_step"))
-                                                * direct_reference(pc_update_name),
+                                                * direct_reference(update_name),
                                         ),
                                     ),
                                 ]
@@ -1136,10 +1104,6 @@ impl<T: FieldElement> VMConverter<T> {
         self.registers
             .iter()
             .filter_map(|(n, r)| r.ty.is_read_only().then_some(n))
-    }
-
-    fn return_instruction(&self) -> parsed::asm::Instruction {
-        return_instruction(self.output_count, self.pc_name.as_ref().unwrap())
     }
 
     /// Return an expression of degree at most 1 whose value matches that of `expr`.
