@@ -380,9 +380,9 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
         self.fixed_data.common_degree_range(&self.witnesses)
     }
 
-    /// Returns the IDs of the connecting identities.
+    /// Returns the bus IDs of the bus receives in this machine.
     pub fn bus_ids(&self) -> Vec<T> {
-        self.bus_receives.keys().cloned().collect()
+        self.bus_receives.keys().copied().collect()
     }
 
     /// Returns the name of a column.

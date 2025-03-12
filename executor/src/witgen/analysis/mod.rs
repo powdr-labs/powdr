@@ -24,16 +24,18 @@ pub fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     // TODO we should check that the other constraints/fixed columns are also periodic.
 
     // Connecting identities should either all be permutations or all lookups.
-    let connection_type = match receives
+    let connection_type = receives
         .values()
-        .map(|receive| receive.has_arbitrary_multiplicity())
+        .map(|receive| {
+            if receive.has_arbitrary_multiplicity() {
+                ConnectionKind::Lookup
+            } else {
+                ConnectionKind::Permutation
+            }
+        })
         .unique()
         .exactly_one()
-        .ok()?
-    {
-        true => ConnectionKind::Lookup,
-        false => ConnectionKind::Permutation,
-    };
+        .ok()?;
 
     // Detect the block size.
     let (latch_row, block_size) = match connection_type {
