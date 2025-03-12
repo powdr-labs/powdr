@@ -40,8 +40,7 @@ const_assert!(PAGE_SIZE_BYTES > 384);
 
 /// Computes the size of the bootloader given the number of input pages.
 pub fn bootloader_size(accessed_pages: &BTreeSet<u32>) -> usize {
-    let constant_overhead =
-        2 + // load number of pages
+    let constant_overhead = 2 + // load number of pages
         8 + // init memory hash
         1 + // page idx = 0
         1 + // branch_if_diff_equal if no pages
