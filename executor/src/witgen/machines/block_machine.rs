@@ -461,61 +461,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             assert!(updates.is_complete());
             self.block_count_jit += 1;
             return Ok(updates);
-        }
-
-        let outer_query = OuterQuery::new(
-            arguments,
-            range_constraints,
-            self.parts.connections[&identity_id],
-        );
-
-        // TODO this assumes we are always using the same lookup for this machine.
-        let mut sequence_iterator = self
-            .processing_sequence_cache
-            .get_processing_sequence(&outer_query.arguments);
-
-        if !sequence_iterator.has_steps() {
-            // Shortcut, no need to do anything.
-            log::trace!(
-                "Abort processing block machine '{}' (inputs incomplete according to cache)",
-                self.name()
-            );
+        } else {
             return Ok(EvalValue::incomplete(
-                IncompleteCause::BlockMachineLookupIncomplete,
+                IncompleteCause::NonConstantRequiredArgument("???"),
             ));
-        }
-
-        let process_result =
-            self.process(mutable_state, &mut sequence_iterator, outer_query.clone())?;
-
-        match process_result {
-            ProcessResult::Success(updated_data, updates) => {
-                assert!(updates.is_complete());
-                self.block_count_runtime += 1;
-
-                log::trace!(
-                    "End processing block machine '{}' (successfully)",
-                    self.name()
-                );
-                self.append_block(updated_data.block)?;
-                self.publics.extend(updated_data.publics);
-
-                let updates = updates.report_side_effect();
-
-                // We solved the query, so report it to the cache.
-                self.processing_sequence_cache
-                    .report_processing_sequence(&outer_query.arguments, sequence_iterator);
-                Ok(updates)
-            }
-            ProcessResult::Incomplete(updates) => {
-                log::trace!(
-                    "End processing block machine '{}' (incomplete)",
-                    self.name()
-                );
-                self.processing_sequence_cache
-                    .report_incomplete(&outer_query.arguments);
-                Ok(updates)
-            }
         }
     }
 
