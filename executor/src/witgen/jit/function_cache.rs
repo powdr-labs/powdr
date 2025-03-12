@@ -81,31 +81,43 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         bus_id: T,
         known_args: &BitVec,
         known_concrete: Option<(usize, T)>,
-    ) -> Option<&CacheEntry<T>> {
-        let cache_key = CacheKey {
+    ) -> &Option<CacheEntry<T>> {
+        // First try the generic version, then the specific.
+        let mut key = CacheKey {
             bus_id,
             known_args: known_args.clone(),
-            known_concrete,
+            known_concrete: None,
         };
-        self.ensure_cache(can_process, &cache_key);
-        self.witgen_functions.get(&cache_key).unwrap().as_ref()
+
+        if self.ensure_cache(can_process.clone(), &key).is_none() && known_concrete.is_some() {
+            key = CacheKey {
+                bus_id,
+                known_args: known_args.clone(),
+                known_concrete,
+            };
+            self.ensure_cache(can_process.clone(), &key);
+        }
+        self.ensure_cache(can_process, &key)
     }
 
-    fn ensure_cache(&mut self, can_process: impl CanProcessCall<T>, cache_key: &CacheKey<T>) {
-        if self.witgen_functions.contains_key(cache_key) {
-            return;
+    fn ensure_cache(
+        &mut self,
+        can_process: impl CanProcessCall<T>,
+        cache_key: &CacheKey<T>,
+    ) -> &Option<CacheEntry<T>> {
+        if !self.witgen_functions.contains_key(cache_key) {
+            record_start("Auto-witgen code derivation");
+            let f = match T::known_field() {
+                // Currently, we only support the Goldilocks fields
+                Some(KnownField::GoldilocksField) => {
+                    self.compile_witgen_function(can_process, cache_key)
+                }
+                _ => None,
+            };
+            assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none());
+            record_end("Auto-witgen code derivation");
         }
-
-        record_start("Auto-witgen code derivation");
-        let f = match T::known_field() {
-            // Currently, we only support the Goldilocks fields
-            Some(KnownField::GoldilocksField) => {
-                self.compile_witgen_function(can_process, cache_key)
-            }
-            _ => None,
-        };
-        assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none());
-        record_end("Auto-witgen code derivation");
+        self.witgen_functions.get(cache_key).unwrap()
     }
 
     fn compile_witgen_function(

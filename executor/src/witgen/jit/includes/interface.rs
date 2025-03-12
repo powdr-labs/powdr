@@ -104,4 +104,6 @@ pub struct WitgenFunctionParams<'a, T: 'a> {
     call_machine: extern "C" fn(*const std::ffi::c_void, T, MutSlice<LookupCell<'_, T>>) -> bool,
     fixed_data: *const std::ffi::c_void,
     get_fixed_value: extern "C" fn(*const std::ffi::c_void, u64, u64) -> T,
+    input_from_channel: extern "C" fn(*const std::ffi::c_void, u32, u64) -> T,
+    output_to_channel: extern "C" fn(*const std::ffi::c_void, u32, T),
 }
