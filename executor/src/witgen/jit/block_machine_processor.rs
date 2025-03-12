@@ -309,7 +309,7 @@ fn written_rows_per_column<T: FieldElement>(
         })
 }
 
-/// Returns, for each bus send ID, the collection of row offsets that have a machine call
+/// Returns, for each bus send *identity* ID, the collection of row offsets that have a machine call
 /// and if in all the calls or that row, all the arguments are known.
 /// Combines calls from branches.
 fn completed_rows_for_bus_send<T: FieldElement>(
@@ -333,7 +333,7 @@ fn fully_known_call<T: FieldElement>(e: &Effect<T, Variable>) -> bool {
     }
 }
 
-/// Returns all machine calls (bus identity and row offset) found in the effect.
+/// Returns all machine calls (bus send identity ID and row offset) found in the effect.
 /// Recurses into branches.
 fn machine_calls<T: FieldElement>(
     e: &Effect<T, Variable>,
