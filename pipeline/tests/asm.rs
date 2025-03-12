@@ -133,7 +133,7 @@ fn empty() {
 
 #[test]
 // TODO: https://github.com/powdr-labs/powdr/issues/2292
-#[should_panic = "No column references found: []"]
+#[should_panic = "No column references found: 1 $ []"]
 fn single_operation() {
     let f = "asm/single_operation.asm";
     regular_test_all_fields(f, &[]);

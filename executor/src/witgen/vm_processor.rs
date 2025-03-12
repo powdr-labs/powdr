@@ -364,7 +364,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
             .filter_map(|(index, (ident, _))| match ident {
                 Identity::BusSend(send) => send
                     .try_match_static(&self.fixed_data.bus_receives)
-                    // Filter dynamic lookups
+                    // We assume that the PC lookup is static.
                     .and_then(|receive| {
                         receive
                             .has_arbitrary_multiplicity()

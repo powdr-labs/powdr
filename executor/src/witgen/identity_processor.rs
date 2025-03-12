@@ -37,7 +37,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
     ) -> EvalResult<'a, T> {
         let result = match identity {
             Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
-            Identity::BusSend(bus_interaction) => self.process_machine_call(bus_interaction, rows),
+            Identity::BusSend(bus_send) => self.process_machine_call(bus_send, rows),
             Identity::Connect(..) => {
                 // TODO this is not the right cause.
                 Ok(EvalValue::incomplete(IncompleteCause::SolvingFailed))

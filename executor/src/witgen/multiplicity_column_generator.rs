@@ -1,5 +1,9 @@
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    iter::once,
+};
 
+use itertools::Itertools;
 use powdr_ast::{
     analyzed::{AlgebraicExpression, PolyID, PolynomialType, SelectedExpressions},
     parsed::visitor::AllChildren,
@@ -71,12 +75,19 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                 bus_receive.has_arbitrary_multiplicity() && bus_receive.multiplicity.is_some()
             })
             .map(|(bus_id, bus_receive)| {
-                let (size, rhs_tuples) =
-                    self.get_tuples(&terminal_values, &bus_receive.selected_payload, None);
+                let SelectedExpressions {
+                    selector,
+                    expressions,
+                } = &bus_receive.selected_payload;
+                let (size, rhs_tuples) = self.get_tuples(
+                    &terminal_values,
+                    selector,
+                    &expressions.iter().collect::<Vec<_>>(),
+                );
 
                 let index = rhs_tuples
                     .into_iter()
-                    .map(|(i, tuple, _)| {
+                    .map(|(i, tuple)| {
                         // There might be multiple identical rows, but it's fine, we can pick any.
                         (tuple, i)
                     })
@@ -112,19 +123,31 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             Identity::BusSend(bus_send) => Some(bus_send),
             _ => None,
         }) {
-            let (_, lhs_tuples) = self.get_tuples(
-                &terminal_values,
-                &bus_send.selected_payload,
-                Some(&bus_send.bus_id),
-            );
+            let SelectedExpressions {
+                selector,
+                expressions,
+            } = &bus_send.selected_payload;
+
+            // We need to evaluate both the bus_id (to know the run-time receive) and the expressions
+            let bus_id_and_expressions = once(&bus_send.bus_id)
+                .chain(expressions.iter())
+                .collect::<Vec<_>>();
+
+            let (_, bus_id_and_expressions) =
+                self.get_tuples(&terminal_values, selector, &bus_id_and_expressions);
 
             // Looking up the index is slow, so we do it in parallel.
-            let indices = lhs_tuples
+            let indices = bus_id_and_expressions
                 .into_par_iter()
-                .filter_map(|(_, tuple, bus_id)| {
-                    receive_infos.get(&bus_id.unwrap()).map(|receive_info| {
-                        (receive_info.multiplicity_column, receive_info.index[&tuple])
-                    })
+                .filter_map(|(_, bus_id_and_expressions)| {
+                    receive_infos
+                        .get(&bus_id_and_expressions[0])
+                        .map(|receive_info| {
+                            (
+                                receive_info.multiplicity_column,
+                                receive_info.index[&bus_id_and_expressions[1..]],
+                            )
+                        })
                 })
                 .collect::<Vec<_>>();
 
@@ -154,11 +177,13 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
     fn get_tuples(
         &self,
         terminal_values: &OwnedTerminalValues<T>,
-        selected_expressions: &SelectedExpressions<T>,
-        bus_id: Option<&AlgebraicExpression<T>>,
-    ) -> (usize, Vec<(usize, Vec<T>, Option<T>)>) {
-        let machine_size = selected_expressions
-            .all_children()
+        selector: &AlgebraicExpression<T>,
+        expressions: &[&AlgebraicExpression<T>],
+    ) -> (usize, Vec<(usize, Vec<T>)>) {
+        let machine_size = expressions
+            .iter()
+            .flat_map(|e| e.all_children())
+            .chain(selector.all_children())
             .filter_map(|expr| match expr {
                 AlgebraicExpression::Reference(ref r) => match r.poly_id.ptype {
                     PolynomialType::Committed | PolynomialType::Constant => {
@@ -172,7 +197,12 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             // But in practice, either the machine has a (smaller) witness column, or
             // it's a fixed lookup, so there is only one size.
             .min()
-            .unwrap_or_else(|| panic!("No column references found: {selected_expressions}"));
+            .unwrap_or_else(|| {
+                panic!(
+                    "No column references found: {selector} $ [{}]",
+                    expressions.iter().map(ToString::to_string).join(", ")
+                )
+            });
 
         let tuples = (0..machine_size)
             .into_par_iter()
@@ -181,7 +211,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                     terminal_values.row(row),
                     &self.fixed.intermediate_definitions,
                 );
-                let selector = evaluator.evaluate(&selected_expressions.selector);
+                let selector = evaluator.evaluate(selector);
 
                 assert!(
                     selector.is_zero() || selector.is_one(),
@@ -190,12 +220,10 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                 selector.is_one().then(|| {
                     (
                         row,
-                        selected_expressions
-                            .expressions
+                        expressions
                             .iter()
                             .map(|expression| evaluator.evaluate(expression))
                             .collect::<Vec<_>>(),
-                        bus_id.map(|bus_id| evaluator.evaluate(bus_id)),
                     )
                 })
             })
