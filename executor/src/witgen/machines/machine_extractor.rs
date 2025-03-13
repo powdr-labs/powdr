@@ -494,7 +494,7 @@ fn try_as_intermediate_ref<T: FieldElement>(expr: &Expression<T>) -> Option<(Pol
     }
 }
 
-/// Returns all intermediate columns referenced in the identities as a map to their name.
+/// Returns all intermediate columns referenced in the expression as a map to their name.
 /// Follows intermediate references recursively.
 fn intermediates_in_expressions<'a, T: FieldElement>(
     expressions: impl Iterator<Item = &'a AlgebraicExpression<T>>,
