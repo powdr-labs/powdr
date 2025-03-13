@@ -36,8 +36,8 @@ pub struct FunctionCache<'a, T: FieldElement> {
     /// The processor that generates the JIT code
     processor: BlockMachineProcessor<'a, T>,
     /// The cache of JIT functions and the returned range constraints.
-    /// If the entry is None, we attempted to generate the function but failed.
-    witgen_functions: HashMap<CacheKey<T>, Option<CacheEntry<T>>>,
+    /// If the entry is Err, we attempted to generate the function but failed.
+    witgen_functions: HashMap<CacheKey<T>, Result<CacheEntry<T>, CompilationError>>,
     column_layout: ColumnLayout,
     block_size: usize,
     machine_name: String,
@@ -47,6 +47,12 @@ pub struct FunctionCache<'a, T: FieldElement> {
 pub struct CacheEntry<T: FieldElement> {
     pub function: WitgenFunction<T>,
     pub range_constraints: Vec<RangeConstraint<T>>,
+}
+
+#[derive(Debug)]
+pub enum CompilationError {
+    UnsupportedField,
+    Other(String),
 }
 
 impl<'a, T: FieldElement> FunctionCache<'a, T> {
@@ -81,7 +87,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         bus_id: T,
         known_args: &BitVec,
         known_concrete: Option<(usize, T)>,
-    ) -> &Option<CacheEntry<T>> {
+    ) -> &Result<CacheEntry<T>, CompilationError> {
         // First try the generic version, then the specific.
         let mut key = CacheKey {
             bus_id,
@@ -89,7 +95,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             known_concrete: None,
         };
 
-        if self.ensure_cache(can_process.clone(), &key).is_none() && known_concrete.is_some() {
+        if self.ensure_cache(can_process.clone(), &key).is_err() && known_concrete.is_some() {
             key = CacheKey {
                 bus_id,
                 known_args: known_args.clone(),
@@ -104,7 +110,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         &mut self,
         can_process: impl CanProcessCall<T>,
         cache_key: &CacheKey<T>,
-    ) -> &Option<CacheEntry<T>> {
+    ) -> &Result<CacheEntry<T>, CompilationError> {
         if !self.witgen_functions.contains_key(cache_key) {
             record_start("Auto-witgen code derivation");
             let f = match T::known_field() {
@@ -112,7 +118,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
                 Some(KnownField::GoldilocksField) => {
                     self.compile_witgen_function(can_process, cache_key)
                 }
-                _ => None,
+                _ => Err(CompilationError::UnsupportedField),
             };
             assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none());
             record_end("Auto-witgen code derivation");
@@ -124,7 +130,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         &self,
         can_process: impl CanProcessCall<T>,
         cache_key: &CacheKey<T>,
-    ) -> Option<CacheEntry<T>> {
+    ) -> Result<CacheEntry<T>, CompilationError> {
         log::info!(
             "Compiling JIT function for\n  Machine: {}\n  Connection: {}\n   Inputs: {:?}{}",
             self.machine_name,
@@ -154,10 +160,10 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
                 // These errors can be pretty verbose and are quite common currently.
                 log::info!(
                     "=> Error generating JIT code: {}\n...",
-                    e.to_string().lines().take(5).join("\n")
+                    e.lines().take(5).join("\n")
                 );
-            })
-            .ok()?;
+                CompilationError::Other(e)
+            })?;
 
         log::info!("=> Success!");
         let out_of_bounds_vars = code
@@ -198,7 +204,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         .unwrap();
         log::info!("Compilation done.");
 
-        Some(CacheEntry {
+        Ok(CacheEntry {
             function,
             range_constraints,
         })

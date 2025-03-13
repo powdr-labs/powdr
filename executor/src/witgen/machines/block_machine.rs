@@ -13,7 +13,7 @@ use crate::witgen::data_structures::caller_data::CallerData;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::global_constraints::RangeConstraintSet;
-use crate::witgen::jit::function_cache::FunctionCache;
+use crate::witgen::jit::function_cache::{CompilationError, FunctionCache};
 use crate::witgen::jit::witgen_inference::CanProcessCall;
 use crate::witgen::processor::{OuterQuery, Processor, SolverState};
 use crate::witgen::range_constraints::RangeConstraint;
@@ -183,8 +183,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             known_arguments,
             fixed_first_input,
         ) {
-            Some(entry) => (true, entry.range_constraints.clone()),
-            None => (false, range_constraints),
+            Ok(entry) => (true, entry.range_constraints.clone()),
+            Err(_) => (false, range_constraints),
         }
     }
 
@@ -454,16 +454,27 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let fixed_first_input = arguments
             .first()
             .and_then(|a| a.constant_value().map(|v| (0, v)));
-        if self
-            .function_cache
-            .compile_cached(mutable_state, bus_id, &known_inputs, fixed_first_input)
-            .is_some()
-        {
-            let caller_data = CallerData::new(arguments, range_constraints);
-            let updates = self.process_lookup_via_jit(mutable_state, bus_id, caller_data)?;
-            assert!(updates.is_complete());
-            self.block_count_jit += 1;
-            return Ok(updates);
+        match self.function_cache.compile_cached(
+            mutable_state,
+            bus_id,
+            &known_inputs,
+            fixed_first_input,
+        ) {
+            Ok(_) => {
+                let caller_data = CallerData::new(arguments, range_constraints);
+                let updates = self.process_lookup_via_jit(mutable_state, bus_id, caller_data)?;
+                assert!(updates.is_complete());
+                self.block_count_jit += 1;
+                return Ok(updates);
+            }
+            Err(CompilationError::Other(_e)) => {
+                // Assuming the JIT compiler is feature-complete, this means that the witness is not
+                // unique, which could happen e.g. if not all required arguments are provided.
+                return Ok(EvalValue::incomplete(IncompleteCause::JitCompilationFailed));
+            }
+            // If we're on an unsupported field, this won't be fixed in future invocations.
+            // Fall back to run-time witgen.
+            Err(CompilationError::UnsupportedField) => {}
         }
 
         let outer_query = OuterQuery::new(

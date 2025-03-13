@@ -47,6 +47,8 @@ pub enum IncompleteCause<K = usize> {
     SymbolicEvaluationOfChallenge,
     /// Some knowledge was learnt, but not a concrete value. Example: `Y = X` if we know that `Y` is boolean. We learn that `X` is boolean, but not its exact value.
     NotConcrete,
+    /// The JIT compiler was not able to generate a function that computes a unique witness.
+    JitCompilationFailed,
     Multiple(Vec<IncompleteCause<K>>),
 }
 
