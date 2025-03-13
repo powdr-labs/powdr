@@ -6,8 +6,8 @@ use std::{cmp, path::PathBuf};
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Identity, PolyID, PolynomialType,
-    StatementIdentifier, SymbolKind,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, FunctionValueDefinition, Identity,
+    PolyID, PolynomialType, PublicDeclaration, StatementIdentifier, SymbolKind,
 };
 use powdr_parser_util::SourceRef;
 use starky::types::{
@@ -63,24 +63,29 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                             exporter.intermediate_poly_expression_ids[&id.id] as usize
                         );
                     }
+                } else if let Some((
+                    poly,
+                    Some(FunctionValueDefinition::PublicDeclaration(
+                        pubd @ PublicDeclaration { name, .. },
+                    )),
+                )) = analyzed.definitions.get(name)
+                {
+                    assert_eq!(poly.kind, SymbolKind::Public());
+                    let symbol = &analyzed.definitions[&pubd.referenced_poly().name].0;
+                    let (_, poly) = symbol
+                        .array_elements()
+                        .nth(pubd.referenced_poly_array_index().unwrap_or_default())
+                        .unwrap();
+                    let (_, expr) = exporter.polynomial_reference_to_json(poly, false);
+                    let id = publics.len();
+                    publics.push(starky::types::Public {
+                        polType: polynomial_reference_type_to_type(&expr.op).to_string(),
+                        polId: expr.id.unwrap(),
+                        idx: pubd.row() as usize,
+                        id,
+                        name: name.clone(),
+                    });
                 }
-            }
-            StatementIdentifier::PublicDeclaration(name) => {
-                let pub_def = &analyzed.public_declarations[name];
-                let symbol = &analyzed.definitions[&pub_def.polynomial.name].0;
-                let (_, poly) = symbol
-                    .array_elements()
-                    .nth(pub_def.array_index.unwrap_or_default())
-                    .unwrap();
-                let (_, expr) = exporter.polynomial_reference_to_json(poly, false);
-                let id = publics.len();
-                publics.push(starky::types::Public {
-                    polType: polynomial_reference_type_to_type(&expr.op).to_string(),
-                    polId: expr.id.unwrap(),
-                    idx: pub_def.index as usize,
-                    id,
-                    name: name.clone(),
-                });
             }
             StatementIdentifier::ProofItem(id) => {
                 let identity = &analyzed.identities[*id];
@@ -170,6 +175,7 @@ fn symbol_kind_to_json_string(k: SymbolKind) -> &'static str {
     match k {
         SymbolKind::Poly(poly_type) => polynomial_type_to_json_string(poly_type),
         SymbolKind::Other() => panic!("Cannot translate \"other\" symbol to json."),
+        SymbolKind::Public() => panic!("Cannot translate \"other\" symbol to json."),
     }
 }
 
@@ -226,6 +232,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     }
                     SymbolKind::Poly(_) => Some(symbol.id),
                     SymbolKind::Other() => None,
+                    SymbolKind::Public() => None,
                 }?;
 
                 let out = Reference {
@@ -300,7 +307,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                 StarkyExpr {
                     op: "public".to_string(),
                     deg: 0,
-                    id: Some(self.analyzed.public_declarations[name].id as usize),
+                    id: Some(self.analyzed.definitions[name].0.id as usize),
                     ..DEFAULT_EXPR
                 },
             ),

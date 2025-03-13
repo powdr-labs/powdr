@@ -2687,7 +2687,6 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                     .unwrap_or_else(|| self.proc.get_reg(name.as_str()));
                 Some(val)
             }
-            Expression::PublicReference(_, _) => todo!(),
             Expression::Number(_, Number { value: n, .. }) => {
                 let unsigned: u32 = n
                     .try_into()
@@ -3068,7 +3067,7 @@ fn execute_inner<F: FieldElement>(
     loop {
         let stm = statements[curr_pc as usize];
 
-        // step is updated by 4 cause we have instructions that need that many memory accesses,
+        // step is updated by 4 because we have instructions that need that many memory accesses,
         // except on a DebugDirective which is a noop
         let mut step_update = 4;
 
