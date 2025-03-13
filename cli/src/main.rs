@@ -721,7 +721,6 @@ fn run<F: FieldElement>(
     pipeline.compute_optimized_pil().unwrap();
 
     if let Some(backend) = prove_with {
-        pipeline.compute_witness().unwrap();
         pipeline
             .with_backend(backend, backend_options.clone())
             .compute_proof()

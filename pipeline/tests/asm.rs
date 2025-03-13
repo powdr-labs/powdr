@@ -91,7 +91,7 @@ fn mem_write_once_external_write() {
     mem[17] = GoldilocksField::from(42);
     mem[62] = GoldilocksField::from(123);
     mem[255] = GoldilocksField::from(-1);
-    let mut pipeline = Pipeline::default()
+    let pipeline = Pipeline::default()
         .with_tmp_output()
         .from_file(resolve_test_file(f))
         .add_external_witness_values(vec![("main_memory::value".to_string(), mem)])
@@ -99,7 +99,6 @@ fn mem_write_once_external_write() {
             degree_mode: powdr_linker::DegreeMode::Monolithic,
             ..Default::default()
         });
-    pipeline.compute_witness().unwrap();
     test_pilcom(pipeline.clone());
     test_mock_backend(pipeline);
 }
@@ -166,21 +165,30 @@ fn block_to_block() {
 }
 
 #[test]
+#[cfg(feature = "plonky3")]
 fn block_to_block_empty_submachine() {
     let f = "asm/block_to_block_empty_submachine.asm";
-    let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
 
-    let witness = pipeline.compute_witness().unwrap();
-    let arith_size = witness
+    [BackendType::Mock, BackendType::Plonky3]
         .iter()
-        .find(|(k, _)| k == "main_arith::x")
-        .unwrap()
-        .1
-        .len();
-    assert_eq!(arith_size, 0);
+        .for_each(|backend| {
+            let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
+                .with_backend(*backend, None);
+            let witness = pipeline.compute_witness().unwrap();
+            let arith_size = witness
+                .iter()
+                .find(|(k, _)| k == "main_arith::x")
+                .unwrap()
+                .1
+                .len();
+            assert_eq!(arith_size, 0);
 
-    test_mock_backend(pipeline.clone());
-    test_plonky3_pipeline(pipeline);
+            match backend {
+                BackendType::Plonky3 => test_plonky3_pipeline(pipeline),
+                BackendType::Mock => test_mock_backend(pipeline),
+                _ => unreachable!(),
+            }
+        });
 }
 
 #[test]
@@ -299,23 +307,33 @@ fn vm_to_block_array() {
 
 #[test]
 #[ignore = "Too slow"]
+#[cfg(feature = "plonky3")]
 fn dynamic_vadcop() {
     let f = "asm/dynamic_vadcop.asm";
 
-    let mut pipeline_gl = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
-    let witness = pipeline_gl.compute_witness().unwrap();
-    let witness_by_name = witness
+    // Witness generation require backend to be known
+    [BackendType::Mock, BackendType::Plonky3]
         .iter()
-        .map(|(k, v)| (k.as_str(), v))
-        .collect::<BTreeMap<_, _>>();
+        .for_each(|backend| {
+            let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
+                .with_backend(*backend, None);
+            let witness = pipeline.compute_witness().unwrap();
+            let witness_by_name = witness
+                .iter()
+                .map(|(k, v)| (k.as_str(), v))
+                .collect::<BTreeMap<_, _>>();
 
-    // Spot-check some witness columns to have the expected length.
-    assert_eq!(witness_by_name["main::X"].len(), 128);
-    assert_eq!(witness_by_name["main_arith::y"].len(), 32);
-    assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
+            // Spot-check some witness columns to have the expected length.
+            assert_eq!(witness_by_name["main::X"].len(), 128);
+            assert_eq!(witness_by_name["main_arith::y"].len(), 32);
+            assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
 
-    test_mock_backend(pipeline_gl.clone());
-    test_plonky3_pipeline(pipeline_gl);
+            match backend {
+                BackendType::Plonky3 => test_plonky3_pipeline(pipeline),
+                BackendType::Mock => test_mock_backend(pipeline),
+                _ => unreachable!(),
+            }
+        });
 }
 
 #[test]
