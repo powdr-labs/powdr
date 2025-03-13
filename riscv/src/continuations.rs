@@ -67,7 +67,7 @@ where
 
     // Advance the pipeline to the optimized PIL stage, so that it doesn't need to be computed
     // in every chunk.
-    pipeline.compute_optimized_pil().unwrap();
+    pipeline.compute_backend_tuned_pil().unwrap();
 
     bootloader_inputs
         .into_iter()
@@ -100,7 +100,7 @@ where
                 // get the length of the main machine
                 // quite hacky, is there a better way?
                 let length = pipeline
-                    .optimized_pil()
+                    .backend_tuned_pil()
                     .unwrap()
                     .definitions
                     .iter()
@@ -347,7 +347,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let mut register_values = default_register_values();
 
     let asm = pipeline.compute_analyzed_asm().unwrap().clone();
-    let pil = pipeline.compute_optimized_pil().unwrap().clone();
+    let pil = pipeline.compute_backend_tuned_pil().unwrap().clone();
     let fixed = pipeline.compute_fixed_cols().unwrap();
     let main_machine = asm.get_machine(&parse_absolute_path("::Main")).unwrap();
     sanity_check(main_machine, field);

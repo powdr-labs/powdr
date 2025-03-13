@@ -990,23 +990,21 @@ impl<T: FieldElement> Pipeline<T> {
 
         self.compute_optimized_pil()?;
 
-        if let Some(backend_type) = self.arguments.backend {
-            // If backend option is set, take the optimized pil from memory.
-            // Then, compute and add the backend-tuned pil to artifacts and return backend-tuned pil.
-            let optimized_pil = self.artifact.optimized_pil.take().unwrap();
-            let factory = backend_type.factory::<T>();
-            self.log("Apply backend-specific tuning to optimized pil...");
-            let backend_tuned_pil = factory.tune_analyzed_pil(optimized_pil);
-            self.log("Optimizing pil (post backend-specific tuning)...");
-            let reoptimized_pil = powdr_pilopt::optimize(backend_tuned_pil);
-            self.maybe_write_pil(&reoptimized_pil, "_backend_tuned")?;
-            self.maybe_write_pil_object(&reoptimized_pil, "_backend_tuned")?;
-            self.artifact.backend_tuned_pil = Some(Arc::new(reoptimized_pil));
+        let backend_type = self.arguments.backend.expect("no backend selected!");
 
-            Ok(self.artifact.backend_tuned_pil.as_ref().unwrap().clone())
-        } else {
-            panic!("Backend type is not set!");
-        }
+        // If backend option is set, take the optimized pil from memory.
+        // Then, compute and add the backend-tuned pil to artifacts and return backend-tuned pil.
+        let optimized_pil = self.artifact.optimized_pil.take().unwrap();
+        let factory = backend_type.factory::<T>();
+        self.log("Apply backend-specific tuning to optimized pil...");
+        let backend_tuned_pil = factory.tune_analyzed_pil(optimized_pil);
+        self.log("Optimizing pil (post backend-specific tuning)...");
+        let reoptimized_pil = powdr_pilopt::optimize(backend_tuned_pil);
+        self.maybe_write_pil(&reoptimized_pil, "_backend_tuned")?;
+        self.maybe_write_pil_object(&reoptimized_pil, "_backend_tuned")?;
+        self.artifact.backend_tuned_pil = Some(Arc::new(reoptimized_pil));
+
+        Ok(self.artifact.backend_tuned_pil.as_ref().unwrap().clone())
     }
 
     pub fn backend_tuned_pil(&self) -> Result<Arc<Analyzed<T>>, Vec<String>> {
@@ -1018,7 +1016,7 @@ impl<T: FieldElement> Pipeline<T> {
             return Ok(fixed_cols.clone());
         }
 
-        let pil = self.compute_backend_tuned_pil()?;
+        let pil = self.compute_backend_tuned_pil()?; // will panic if backend type is not set yet
 
         self.log("Evaluating fixed columns...");
         let start = Instant::now();
@@ -1045,7 +1043,7 @@ impl<T: FieldElement> Pipeline<T> {
 
         self.host_context.clear();
 
-        let pil = self.compute_backend_tuned_pil()?;
+        let pil = self.compute_backend_tuned_pil()?; // will panic if backend type is not set yet
         let fixed_cols = self.compute_fixed_cols()?;
 
         assert_eq!(pil.constant_count(), fixed_cols.len());
@@ -1105,7 +1103,7 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     pub fn publics(&self) -> Result<Vec<(String, Option<T>)>, Vec<String>> {
-        let pil = self.backend_tuned_pil()?;
+        let pil = self.backend_tuned_pil()?; // will panic if backend type is not set yet
         let witness = self.witness()?;
         Ok(extract_publics(witness.iter().map(|(k, v)| (k, v)), &pil)
             .into_iter()
@@ -1132,7 +1130,7 @@ impl<T: FieldElement> Pipeline<T> {
         if self.artifact.backend.is_some() {
             return Ok(self.artifact.backend.as_deref_mut().unwrap());
         }
-        let pil = self.compute_backend_tuned_pil()?;
+        let pil = self.compute_backend_tuned_pil()?; // will panic if backend type is not set yet
         let fixed_cols = self.compute_fixed_cols()?;
 
         let backend = self.arguments.backend.expect("no backend selected!");

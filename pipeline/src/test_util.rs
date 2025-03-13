@@ -117,7 +117,6 @@ pub fn test_pilcom(pipeline: Pipeline<GoldilocksField>) {
 }
 
 pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Analyzed<T> {
-    // i think it's fine to keep using compute_optimized_pil here because it's only used in simple tests
     Pipeline::default()
         .from_asm_string(contents.to_string(), None)
         .compute_optimized_pil()
@@ -608,8 +607,6 @@ pub fn run_reparse_test_with_blacklist(file: &str, blacklist: &[&str]) {
     };
 
     // Compute the optimized PIL
-    // i think it should be fine to keep using compute_optimized_pil here
-    // because the focus is on the re-parsing, not the native bus interaction vs phantom bus interaction columns
     let optimized_pil = pipeline.compute_optimized_pil().unwrap();
 
     // Run the pipeline using the string serialization of the optimized PIL.

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use powdr_backend::BackendType;
 use powdr_executor::constant_evaluator;
 use powdr_linker::{LinkerMode, LinkerParams};
 use powdr_number::{BabyBearField, FieldElement, GoldilocksField, Mersenne31Field};
@@ -7,7 +8,7 @@ use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, make_prepared_pipeline, make_simple_prepared_pipeline,
         regular_test_all_fields, regular_test_gl, resolve_test_file, test_mock_backend,
-        test_pilcom, test_plonky3_pipeline, test_stwo_pipeline, BackendVariant,
+        test_pilcom, test_plonky3_pipeline, test_stwo_pipeline,
     },
     Pipeline,
 };
@@ -219,7 +220,7 @@ fn block_to_block_with_bus_composite() {
     //   not satisfied.
 
     use powdr_number::Bn254Field;
-    use powdr_pipeline::test_util::test_halo2_with_backend_variant;
+    use powdr_pipeline::test_util::{test_halo2_with_backend_variant, BackendVariant};
     let f = "asm/block_to_block_with_bus.asm";
     let pipeline = make_simple_prepared_pipeline::<Bn254Field>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
@@ -874,11 +875,10 @@ fn expand_fixed_jit() {
     let file_name = "asm/expand_fixed.asm";
 
     let mut pipeline = Pipeline::<GoldilocksField>::default()
+        .with_backend(BackendType::Mock, None)
         .with_tmp_output()
         .from_file(resolve_test_file(file_name));
-    // i think it's fine to keep using compute_optimized_pil here,
-    // as it has nothing to do with backend specific tuning
-    let pil = pipeline.compute_optimized_pil().unwrap();
+    let pil = pipeline.compute_backend_tuned_pil().unwrap();
 
     let fixed_cols = constant_evaluator::generate_only_via_jit(&pil);
 

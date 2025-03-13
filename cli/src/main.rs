@@ -718,9 +718,10 @@ fn run<F: FieldElement>(
 ) -> Result<(), Vec<String>> {
     pipeline = pipeline.with_setup_file(params.map(PathBuf::from));
 
-    pipeline.compute_witness().unwrap();
+    pipeline.compute_optimized_pil().unwrap();
 
     if let Some(backend) = prove_with {
+        pipeline.compute_witness().unwrap();
         pipeline
             .with_backend(backend, backend_options.clone())
             .compute_proof()
@@ -793,9 +794,6 @@ fn read_and_verify<T: FieldElement>(
 
 #[allow(clippy::print_stdout)]
 fn optimize_and_output<T: FieldElement>(file: &str) {
-    // will need to determine if this is always called with the backend type
-    // if yes, replace with compute_backend_tuned_pil
-    // or force a backend type in the cli when this is invoked
     println!(
         "{}",
         Pipeline::<T>::default()

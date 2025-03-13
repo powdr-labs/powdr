@@ -20,8 +20,6 @@ use powdr_plonky3::{
     ProverData, StarkProvingKey, StarkVerifyingKey, TableProvingKey, TableProvingKeyCollection,
 };
 
-use crate::BackendType;
-
 use p3_uni_stark::StarkGenericConfig;
 
 pub struct Plonky3Prover<T: FieldElementMap>
@@ -330,7 +328,7 @@ mod tests {
 
     use super::Plonky3Prover;
     use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
-    use powdr_pipeline::Pipeline;
+    use powdr_pipeline::{BackendType, Pipeline};
     use test_log::test;
 
     use powdr_plonky3::{Commitment, FieldElementMap, ProverData};
@@ -352,9 +350,9 @@ mod tests {
         Commitment<F>: Send,
     {
         let mut pipeline = Pipeline::<F>::default()
-            .with_backend_type(BackendType::Plonky3)
+            .with_backend(BackendType::Plonky3, None)
             .from_pil_string(pil.to_string());
-        let pil = pipeline.compute_backend_tune_pil().unwrap();
+        let pil = pipeline.compute_backend_tuned_pil().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = &mut pipeline.compute_witness().unwrap();
         let fixed = pipeline.compute_fixed_cols().unwrap();
