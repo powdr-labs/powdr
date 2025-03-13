@@ -117,7 +117,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
 
         // Increment multiplicities for all bus sends.
         let bus_sends = identities.iter().filter_map(|i| match i {
-            Identity::BusSend(bus_send) => match bus_send.bus_id() {
+            Identity::BusSend(bus_send) => match bus_send.static_bus_id() {
                 // As a performance optimization, already filter out sends with a static
                 // bus ID for which we know we don't need to track multiplicities.
                 Some(bus_id) => receive_infos.get(&bus_id).map(|_| bus_send),
