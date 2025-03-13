@@ -18,7 +18,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::parsed::types::{ArrayType, Type, TypeBounds, TypeScheme};
-use crate::parsed::visitor::{Children, ExpressionVisitable};
+use crate::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
@@ -85,6 +85,16 @@ impl<T> Analyzed<T> {
             .filter_map(|(symbol, _)| symbol.degree)
             .map(|d| d.try_into_unique().unwrap())
             .collect::<HashSet<_>>()
+    }
+
+    /// Returns the set of all referenced challenges in this [`Analyzed<T>`].
+    pub fn challenges(&self) -> BTreeSet<&Challenge> {
+        self.all_children()
+            .filter_map(|expr| match expr {
+                AlgebraicExpression::Challenge(challenge) => Some(challenge),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Returns the number of stages based on the maximum stage number of all definitions
@@ -711,6 +721,7 @@ impl DegreeRange {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Hash)]
 pub struct Symbol {
+    /// Unique ID of the symbol within the set of symbols of this kind.
     pub id: u64,
     pub source: SourceRef,
     pub absolute_name: String,
