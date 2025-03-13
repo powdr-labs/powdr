@@ -12,7 +12,10 @@ use powdr_ast::analyzed::{
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    data_structures::{identity::Identity, mutable_state::MutableState},
+    data_structures::{
+        identity::{BusSend, Identity},
+        mutable_state::MutableState,
+    },
     global_constraints::RangeConstraintSet,
     range_constraints::RangeConstraint,
     FixedData, QueryCallback,
@@ -168,21 +171,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     pub fn process_call(
         &mut self,
         can_process_call: impl CanProcessCall<T>,
-        identity_id: u64,
-        bus_id: T,
-        selector: &Expression<T>,
-        argument_count: usize,
+        bus_send: &BusSend<T>,
         row_offset: i32,
     ) -> Result<Vec<Variable>, Error> {
-        let result = self.process_call_inner(
-            can_process_call,
-            identity_id,
-            bus_id,
-            selector,
-            argument_count,
-            row_offset,
-        );
-        self.ingest_effects(result, Some((identity_id, row_offset)))
+        let result = self.process_call_inner(can_process_call, bus_send, row_offset);
+        self.ingest_effects(result, Some((bus_send.identity_id, row_offset)))
     }
 
     /// Process a prover function on a row, i.e. determine if we can execute it and if it will
@@ -298,18 +291,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     fn process_call_inner(
         &mut self,
         can_process_call: impl CanProcessCall<T>,
-        identity_id: u64,
-        bus_id: T,
-        selector: &Expression<T>,
-        argument_count: usize,
+        bus_send: &BusSend<T>,
         row_offset: i32,
     ) -> ProcessResult<T, Variable> {
         // We need to know the selector.
-        let Some(selector) = self
-            .evaluate(selector, row_offset)
-            .and_then(|s| s.try_to_known().map(|k| k.try_to_number()))
-            .flatten()
-        else {
+        let (Some(selector), Some(bus_id)) = (
+            self.evaluate_to_known_number(&bus_send.selected_payload.selector, row_offset),
+            self.evaluate_to_known_number(&bus_send.bus_id, row_offset),
+        ) else {
             return ProcessResult::empty();
         };
         if selector == 0.into() {
@@ -321,10 +310,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             assert_eq!(selector, 1.into(), "Selector is non-binary");
         }
 
-        let arguments = (0..argument_count)
+        let arguments = (0..bus_send.selected_payload.expressions.len())
             .map(|index| {
                 Variable::MachineCallParam(MachineCallVariable {
-                    identity_id,
+                    identity_id: bus_send.identity_id,
                     row_offset,
                     index,
                 })
@@ -499,6 +488,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         offset: i32,
     ) -> Option<AffineSymbolicExpression<T, Variable>> {
         Evaluator::new(self).evaluate(expr, offset)
+    }
+
+    pub fn evaluate_to_known_number(&self, expr: &Expression<T>, offset: i32) -> Option<T> {
+        self.evaluate(expr, offset)
+            .and_then(|s| s.try_to_known().map(|k| k.try_to_number()))
+            .flatten()
     }
 }
 
@@ -729,16 +724,7 @@ mod test {
                                 );
                             }
                             updated_vars.extend(
-                                witgen
-                                    .process_call(
-                                        &mutable_state,
-                                        bus_send.identity_id,
-                                        bus_send.bus_id().unwrap(),
-                                        &bus_send.selected_payload.selector,
-                                        bus_send.selected_payload.expressions.len(),
-                                        *row,
-                                    )
-                                    .unwrap(),
+                                witgen.process_call(&mutable_state, bus_send, *row).unwrap(),
                             );
                             updated_vars
                         }
