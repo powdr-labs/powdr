@@ -40,15 +40,13 @@ const_assert!(PAGE_SIZE_BYTES > 384);
 
 /// Computes the size of the bootloader given the number of input pages.
 pub fn bootloader_size(accessed_pages: &BTreeSet<u32>) -> usize {
-    let constant_overhead = 1 + // jump bootloader_init
-        2 + // load number of pages
+    let constant_overhead = 2 + // load number of pages
         8 + // init memory hash
         1 + // page idx = 0
         1 + // branch_if_diff_equal if no pages
         8 + // assert final merkle root
         REGISTER_MEMORY_NAMES.len() + // load memory regs
-        REGISTER_NAMES.len() * 2 +  // load asm regs
-        1; // jump_to_bootloader_input
+        REGISTER_NAMES.len() * 2;
 
     let cost_per_page_fixed = 3 + // load page number and check != 0
         24 + // zero out scratch space
@@ -141,16 +139,14 @@ pub const PC_INDEX: usize = REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len() -
 
 /// The default PC that can be used in first chunk, will just continue with whatever comes after the bootloader.
 ///
-/// The value is 3, because we added a jump instruction at the beginning of the code.
+/// The value is 1, because we added a jump instruction at the beginning of the code.
 /// Specifically, the first instructions are:
-/// 0: reset
-/// 1: jump_to_operation
-/// 2: jump submachine_init
-/// 3: jump computation_start
-pub const DEFAULT_PC: u64 = 3;
+/// 0: jump bootloader_init
+/// 1: jump computation_start
+pub const DEFAULT_PC: u64 = 1;
 
 /// Analogous to the `DEFAULT_PC`, this well-known PC jumps to the shutdown routine.
-pub const SHUTDOWN_START: u64 = 4;
+pub const SHUTDOWN_START: u64 = 2;
 
 /// Helper struct to construct the bootloader inputs, placing each element in
 /// its correct position.

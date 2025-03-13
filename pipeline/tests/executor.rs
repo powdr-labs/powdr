@@ -12,7 +12,7 @@ fn run_witgen_pil<T: FieldElement>(pil: &str) -> Arc<Columns<T>> {
 }
 
 #[test]
-#[should_panic = "Publics are referenced by more than one machine: public"]
+#[should_panic = "Publics are referenced by more than one machine: Machine1::pub"]
 fn two_machines_conflicting_public() {
     // This test *should* fail, because two machines access the same
     // public, but assign different values to it.
@@ -20,16 +20,14 @@ fn two_machines_conflicting_public() {
     namespace Machine1(4);
         col witness y;
         [ 42, y ] in [ Machine2.x, Machine2.y ];
-
         // y will be 43 on all rows
-        y - :public = 0;
-
+        public pub = y(3);
+        y - pub = 0;
     namespace Machine2(8);
         col witness x, y;
         y = x + 1;
-
         // x will be 42 on all rows
-        x - :public = 0;
+        x - Machine1::pub = 0;
     "#;
     run_witgen_pil::<GoldilocksField>(src);
 }
