@@ -1,6 +1,7 @@
 use std::array;
 use std::check::assert;
 use std::utils::unchanged_until;
+use std::utils::new_bool;
 use std::utils::force_bool;
 use std::utils::sum;
 use std::convert::expr;
@@ -19,8 +20,8 @@ use super::poseidon2_common::poseidon2;
 // state size of 8 field elements instead of 12, matching Plonky3's implementation.
 //
 // This machine assumes each memory word contains a full field element, and it
-// writes one field element per memory word. Use SplitGLVec8 to split the output
-// into 32-bit words. 
+// writes one field element per memory word. Use SplitGLVec4 to split the output
+// into 32-bit words.
 machine Poseidon2GL(mem: Memory) with
     latch: latch,
     // Allow this machine to be connected via a permutation
@@ -33,19 +34,32 @@ machine Poseidon2GL(mem: Memory) with
     // The input data is passed via a memory pointer: the machine will read STATE_SIZE
     // field elements from memory.
     //
-    // Similarly, the output data is written to memory at the provided pointer.
+    // Similarly, the output data is written to memory at the provided pointer. We don't
+    // have any use for writing the full state as output, so depending on the operation,
+    // it will either write the first half of the state (used in sponge squeeze) or the
+    // second half (used in sponge absorb and on merkle tree compression).
     //
-    // Reads happen at the provided time step; writes happen at the next time step.
+    // Memory reads happen at input_time_step and memory writes happens at output_time_step.
     //
     // The addresses must be multiple of 4.
-    operation poseidon2_permutation
+    //
+    // This operation can output any combination of the first and second half of the final
+    // state, depending on the value of output_halves:
+    //  0: no output
+    //  1: first half
+    //  2: second half
+    //  3: the entire state
+    operation permute
         input_addr,
+        input_time_step,
         output_addr,
-        time_step ->;
+        output_time_step,
+        output_halves ->;
 
     let latch = 1;
 
-    let time_step;
+    let input_time_step;
+    let output_time_step;
 
     // Poseidon2 parameters, compatible with our powdr-plonky3 implementation.
     //
@@ -120,14 +134,14 @@ machine Poseidon2GL(mem: Memory) with
     let input: col[STATE_SIZE];
 
     // TODO: when link is available inside functions, we can turn this into array operations.
-    link if is_used ~> input[0] = mem.mload(input_addr + 0, time_step);
-    link if is_used ~> input[1] = mem.mload(input_addr + 4, time_step);
-    link if is_used ~> input[2] = mem.mload(input_addr + 8, time_step);
-    link if is_used ~> input[3] = mem.mload(input_addr + 12, time_step);
-    link if is_used ~> input[4] = mem.mload(input_addr + 16, time_step);
-    link if is_used ~> input[5] = mem.mload(input_addr + 20, time_step);
-    link if is_used ~> input[6] = mem.mload(input_addr + 24, time_step);
-    link if is_used ~> input[7] = mem.mload(input_addr + 28, time_step);
+    link if is_used ~> input[0] = mem.mload(input_addr + 0, input_time_step);
+    link if is_used ~> input[1] = mem.mload(input_addr + 4, input_time_step);
+    link if is_used ~> input[2] = mem.mload(input_addr + 8, input_time_step);
+    link if is_used ~> input[3] = mem.mload(input_addr + 12, input_time_step);
+    link if is_used ~> input[4] = mem.mload(input_addr + 16, input_time_step);
+    link if is_used ~> input[5] = mem.mload(input_addr + 20, input_time_step);
+    link if is_used ~> input[6] = mem.mload(input_addr + 24, input_time_step);
+    link if is_used ~> input[7] = mem.mload(input_addr + 28, input_time_step);
 
     // Generate the Poseidon2 permutation
     let output = poseidon2(
@@ -143,16 +157,25 @@ machine Poseidon2GL(mem: Memory) with
         input,
     );
 
-    // Write the output to memory at the next time step
-    let output_addr;
+    // Decide which halves to output:
+    let output_halves;
+    let output_first_half = new_bool();
+    let output_second_half = new_bool();
+    output_halves = output_first_half + 2 * output_second_half;
 
-    // TODO: turn this into array operations
-    link if is_used ~> mem.mstore(output_addr + 0, time_step + 1, output[0]);
-    link if is_used ~> mem.mstore(output_addr + 4, time_step + 1, output[1]);
-    link if is_used ~> mem.mstore(output_addr + 8, time_step + 1, output[2]);
-    link if is_used ~> mem.mstore(output_addr + 12, time_step + 1, output[3]);
-    link if is_used ~> mem.mstore(output_addr + 16, time_step + 1, output[4]);
-    link if is_used ~> mem.mstore(output_addr + 20, time_step + 1, output[5]);
-    link if is_used ~> mem.mstore(output_addr + 24, time_step + 1, output[6]);
-    link if is_used ~> mem.mstore(output_addr + 28, time_step + 1, output[7]);
+    // TODO: turn these into array operations:
+
+    // Write the first half of the output
+    let output_addr;
+    link if is_used * output_first_half ~> mem.mstore(output_addr + 0, output_time_step, output[0]);
+    link if is_used * output_first_half ~> mem.mstore(output_addr + 4, output_time_step, output[1]);
+    link if is_used * output_first_half ~> mem.mstore(output_addr + 8, output_time_step, output[2]);
+    link if is_used * output_first_half ~> mem.mstore(output_addr + 12, output_time_step, output[3]);
+
+    // Write the second half of the output
+    let second_half_addr = output_addr + 16 * output_first_half;
+    link if is_used * output_second_half ~> mem.mstore(second_half_addr + 0, output_time_step, output[4]);
+    link if is_used * output_second_half ~> mem.mstore(second_half_addr + 4, output_time_step, output[5]);
+    link if is_used * output_second_half ~> mem.mstore(second_half_addr + 8, output_time_step, output[6]);
+    link if is_used * output_second_half ~> mem.mstore(second_half_addr + 12, output_time_step, output[7]);
 }
