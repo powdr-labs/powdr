@@ -91,7 +91,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                     ReceiveInfo {
                         multiplicity_column: try_to_simple_poly(multiplicity)
                             .unwrap_or_else(|| {
-                                panic!("Expected simple reference, got: {}", multiplicity)
+                                panic!("Expected simple reference, got: {multiplicity}")
                             })
                             .poly_id,
                         size,
