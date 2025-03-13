@@ -18,6 +18,7 @@ use crate::witgen::data_structures::identity::Identity;
 use crate::witgen::machines::dynamic_machine::DynamicMachine;
 use crate::witgen::machines::second_stage_machine::SecondStageMachine;
 use crate::witgen::machines::{write_once_memory::WriteOnceMemory, MachineParts};
+use powdr_ast::analyzed::AlgebraicExpression;
 
 use powdr_ast::analyzed::{
     self, AlgebraicExpression as Expression, PolyID, PolynomialReference, Reference,
@@ -136,11 +137,6 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
 
             publics.add_all(machine_identities.as_slice()).unwrap();
 
-            let machine_intermediates = intermediates_in_identities(
-                &machine_identities,
-                &self.fixed.intermediate_definitions,
-            );
-
             // Connections that call into the current machine
             let machine_receives = self
                 .fixed
@@ -157,6 +153,14 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 })
                 .collect::<BTreeMap<_, _>>();
             assert!(machine_receives.contains_key(&bus_receive.bus_id));
+
+            let machine_intermediates = intermediates_in_expressions(
+                machine_identities
+                    .iter()
+                    .flat_map(|i| i.all_children())
+                    .chain(machine_receives.values().flat_map(|r| r.all_children())),
+                &self.fixed.intermediate_definitions,
+            );
 
             let prover_functions = prover_functions
                 .iter()
@@ -241,8 +245,10 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             .difference(&multiplicity_columns)
             .cloned()
             .collect::<HashSet<_>>();
-        let main_intermediates =
-            intermediates_in_identities(&base_identities, &self.fixed.intermediate_definitions);
+        let main_intermediates = intermediates_in_expressions(
+            base_identities.iter().flat_map(|i| i.all_children()),
+            &self.fixed.intermediate_definitions,
+        );
 
         log::trace!(
             "\nThe base machine contains the following witnesses:\n{}\n identities:\n{}\n and prover functions:\n{}",
@@ -490,13 +496,11 @@ fn try_as_intermediate_ref<T: FieldElement>(expr: &Expression<T>) -> Option<(Pol
 
 /// Returns all intermediate columns referenced in the identities as a map to their name.
 /// Follows intermediate references recursively.
-fn intermediates_in_identities<T: FieldElement>(
-    identities: &[&Identity<T>],
+fn intermediates_in_expressions<'a, T: FieldElement>(
+    expressions: impl Iterator<Item = &'a AlgebraicExpression<T>>,
     intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, Expression<T>>,
 ) -> HashMap<PolyID, String> {
-    let mut queue = identities
-        .iter()
-        .flat_map(|id| id.all_children())
+    let mut queue = expressions
         .filter_map(try_as_intermediate_ref)
         .collect::<BTreeSet<_>>();
     let mut intermediates = HashMap::new();
