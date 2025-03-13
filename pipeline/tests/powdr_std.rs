@@ -94,6 +94,13 @@ fn poseidon2_gl_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn split_gl_vec_test() {
+    let f = "std/split_gl_vec_test.asm";
+    regular_test_gl(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
     // Native linker mode, because bus constraints are exponential in Halo2
@@ -245,8 +252,8 @@ fn bus_multi_permutation() {
 }
 
 #[test]
-fn bus_multi_batch_lookup_permutation() {
-    let f = "std/bus_multi_batch_lookup_permutation.asm";
+fn bus_multi_linker() {
+    let f = "std/bus_multi_linker.asm";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline.clone());
     test_plonky3_pipeline(pipeline);

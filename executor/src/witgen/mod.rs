@@ -295,10 +295,10 @@ where
     pil.public_declarations_in_source_order()
         .map(|(name, public_declaration)| {
             let poly_name = &public_declaration.referenced_poly_name();
-            let poly_index = public_declaration.index;
+            let poly_row = public_declaration.row();
             let value = witness
                 .get(poly_name)
-                .map(|column| column[poly_index as usize]);
+                .map(|column| column[poly_row as usize]);
             ((*name).clone(), value)
         })
         .collect()
@@ -540,10 +540,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         self.witness_cols[column]
             .external_values
             .as_ref()
-            .and_then(|v| {
-                let row = row % v.len() as u64;
-                v.get(row as usize).cloned()
-            })
+            .and_then(|v| v.get(row as usize).cloned())
     }
 
     fn witnesses_until_current_stage(&self) -> impl Iterator<Item = PolyID> + '_ {

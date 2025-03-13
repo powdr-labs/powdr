@@ -135,7 +135,9 @@ instructions! {
     ec_double,
     commit_public,
     fail,
-    keccakf
+    keccakf,
+    split_gl_vec,
+    merge_gl
 }
 
 /// Enum with columns directly accessed by the executor (as to avoid matching on strings)
@@ -171,8 +173,9 @@ macro_rules! known_witness_col {
 }
 
 known_witness_col! {
-    _operation_id,
     pc_update,
+    query_arg_1_update,
+    query_arg_2_update,
     X,
     Y,
     Z,
@@ -340,20 +343,18 @@ known_fixed_col! {
     X_read_free
 }
 
-/// Initial value of the PC.
-///
-/// To match the ZK proof witness, the PC must start after some offset used for
-/// proof initialization.
-///
-/// TODO: get this value from some authoritative place
-const PC_INITIAL_VAL: usize = 2;
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Elem<F: FieldElement> {
+pub enum Elem<F: FieldElement> {
     /// Only the ranges of i32 and u32 are actually valid for a Binary value.
     /// I.e., [-2**31, 2**32).
     Binary(i64),
     Field(F),
+}
+
+impl<F: FieldElement> Default for Elem<F> {
+    fn default() -> Self {
+        Self::Binary(0)
+    }
 }
 
 impl<F: FieldElement> Elem<F> {
@@ -513,7 +514,7 @@ impl<F: FieldElement> Display for Elem<F> {
     }
 }
 
-pub type MemoryState = HashMap<u32, u32>;
+pub type MemoryState<F> = HashMap<u32, Elem<F>>;
 pub type RegisterMemoryState<F> = HashMap<u32, F>;
 
 #[derive(Debug)]
@@ -566,7 +567,7 @@ impl<F: FieldElement> ExecutionTrace<F> {
             reg_writes: vec![None; reg_map.len()],
             reg_map,
             mem_ops: Vec::new(),
-            len: PC_INITIAL_VAL + 1,
+            len: 1,
             pc_trace: Vec::new(),
             submachine_ops: MachineInstance::all().iter().map(|_| Vec::new()).collect(),
             known_cols: vec![],
@@ -629,7 +630,7 @@ mod builder {
         pil, BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, KnownWitnessCol,
         MachineInstance, MemOperation, MemOperationKind, MemoryMachine, MemoryState,
         PoseidonGlMachine, PublicsMachine, RegisterMemory, ShiftMachine, SplitGlMachine,
-        Submachine, SubmachineBoxed, SubmachineOp, PC_INITIAL_VAL,
+        Submachine, SubmachineBoxed, SubmachineOp,
     };
 
     fn namespace_degree_range<F: FieldElement>(
@@ -683,7 +684,7 @@ mod builder {
         regs: Vec<Elem<F>>,
 
         /// Current memory.
-        mem: HashMap<u32, u32>,
+        mem: MemoryState<F>,
 
         /// Separate register memory, last and second last.
         reg_mem: RegisterMemory<F>,
@@ -704,7 +705,7 @@ mod builder {
             main: &'a Machine,
             opt_pil: Option<&Analyzed<F>>,
             witness_cols: Vec<String>,
-            mem: MemoryState,
+            mem: MemoryState<F>,
             batch_to_line_map: &'b [u32],
             max_rows_len: usize,
             mode: ExecMode,
@@ -723,7 +724,7 @@ mod builder {
 
             let pc_idx = reg_map["pc"];
             let mut regs = vec![0.into(); reg_len];
-            regs[pc_idx as usize] = PC_INITIAL_VAL.into();
+            regs[pc_idx as usize] = 0.into();
 
             let submachines: HashMap<_, RefCell<Box<dyn Submachine<F>>>> =
                 if let ExecMode::Witness = mode {
@@ -769,7 +770,7 @@ mod builder {
 
             let mut ret = Self {
                 pc_idx,
-                curr_pc: PC_INITIAL_VAL.into(),
+                curr_pc: 0.into(),
                 trace: ExecutionTrace::new(witness_cols, reg_map),
                 submachines,
                 next_statement_line: 1,
@@ -817,7 +818,11 @@ mod builder {
 
             // sanity check
             if let ExecMode::Witness = self.mode {
-                assert!(self.trace.len <= cols_len);
+                assert!(
+                    self.trace.len <= cols_len,
+                    "Expected trace len ({}) to be at most the column length ({cols_len})",
+                    self.trace.len
+                );
             }
 
             cols_len
@@ -896,13 +901,6 @@ mod builder {
             self.regs[idx as usize] = value;
         }
 
-        pub fn set_col_idx(&mut self, col: KnownWitnessCol, idx: usize, value: Elem<F>) {
-            if let ExecMode::Witness = self.mode {
-                let idx = (KnownWitnessCol::count() * idx) + col as usize;
-                *self.trace.known_cols.get_mut(idx).unwrap() = value.into_fe();
-            }
-        }
-
         pub fn set_col(&mut self, col: KnownWitnessCol, value: Elem<F>) {
             if let ExecMode::Witness = self.mode {
                 let idx = (self.trace.known_cols.len() - KnownWitnessCol::count()) + col as usize;
@@ -965,44 +963,44 @@ mod builder {
             self.set_next_pc().and(Some(st_line))
         }
 
-        pub(crate) fn set_mem(&mut self, addr: u32, val: u32, step: u32, identity_id: u64) {
-            if let ExecMode::Witness = self.mode {
-                self.submachine_op(
-                    MachineInstance::memory,
-                    identity_id,
-                    &[1.into(), addr.into(), step.into(), val.into()],
-                    &[],
-                );
-            }
-            if let ExecMode::Trace | ExecMode::Witness = self.mode {
-                self.trace.mem_ops.push(MemOperation {
-                    row: self.trace.len,
-                    kind: MemOperationKind::Write,
-                    address: addr,
-                });
-            }
-
+        pub(crate) fn set_mem(&mut self, addr: u32, val: Elem<F>, step: u32, identity_id: u64) {
+            self.log_mem_op(addr, step, identity_id, val, MemOperationKind::Write);
             self.mem.insert(addr, val);
         }
 
-        pub(crate) fn get_mem(&mut self, addr: u32, step: u32, identity_id: u64) -> u32 {
-            let val = *self.mem.get(&addr).unwrap_or(&0);
+        pub(crate) fn get_mem(&mut self, addr: u32, step: u32, identity_id: u64) -> Elem<F> {
+            let val = self.mem.get(&addr).cloned().unwrap_or_default();
+            self.log_mem_op(addr, step, identity_id, val, MemOperationKind::Read);
+            val
+        }
+
+        fn log_mem_op(
+            &mut self,
+            addr: u32,
+            step: u32,
+            identity_id: u64,
+            val: Elem<F>,
+            kind: MemOperationKind,
+        ) {
             if let ExecMode::Witness = self.mode {
+                let selector = match kind {
+                    MemOperationKind::Read => F::zero(),
+                    MemOperationKind::Write => F::one(),
+                };
                 self.submachine_op(
                     MachineInstance::memory,
                     identity_id,
-                    &[0.into(), addr.into(), step.into(), val.into()],
+                    &[selector, addr.into(), step.into(), val.into_fe()],
                     &[],
                 );
             }
             if let ExecMode::Trace | ExecMode::Witness = self.mode {
                 self.trace.mem_ops.push(MemOperation {
                     row: self.trace.len,
-                    kind: MemOperationKind::Read,
+                    kind,
                     address: addr,
                 });
             }
-            val
         }
 
         pub(crate) fn set_reg_mem(&mut self, addr: u32, val: Elem<F>) {
@@ -1246,7 +1244,7 @@ fn preprocess_main_function<F: FieldElement>(machine: &Machine) -> PreprocessedM
 
     let mut statements = Vec::new();
     let mut label_map = HashMap::new();
-    let mut batch_to_line_map = vec![0; PC_INITIAL_VAL];
+    let mut batch_to_line_map = vec![];
     let mut debug_files = Vec::new();
     let mut function_starts = BTreeMap::new();
     let mut location_starts = BTreeMap::new();
@@ -1271,7 +1269,7 @@ fn preprocess_main_function<F: FieldElement>(machine: &Machine) -> PreprocessedM
                             debug_files.push((dir.as_str(), file.as_str()));
                         }
                         DebugDirective::Loc(file, line, _) => {
-                            location_starts.insert(batch_idx + PC_INITIAL_VAL, (*file, *line));
+                            location_starts.insert(batch_idx, (*file, *line));
                             statements.push(s);
                         }
                         DebugDirective::OriginalInstruction(_) => {
@@ -1283,10 +1281,10 @@ fn preprocess_main_function<F: FieldElement>(machine: &Machine) -> PreprocessedM
                 FunctionStatement::Label(LabelStatement { source: _, name }) => {
                     // assert there are no statements in the middle of a block
                     assert!(!statement_seen);
-                    label_map.insert(name.as_str(), (batch_idx + PC_INITIAL_VAL).into());
+                    label_map.insert(name.as_str(), (batch_idx).into());
                     // TODO: would looking for "___dot_Lfunc_begin" be less hacky? would require more work to handle ecalls though...
                     if !name.contains("___dot_L") {
-                        function_starts.insert(batch_idx + PC_INITIAL_VAL, name.as_str());
+                        function_starts.insert(batch_idx, name.as_str());
                     }
                 }
             }
@@ -1331,21 +1329,11 @@ struct Executor<'a, 'b, F: FieldElement> {
 
 impl<F: FieldElement> Executor<'_, '_, F> {
     fn init(&mut self) {
-        self.step = 4;
-
         if let ExecMode::Witness = self.mode {
             for c in KnownFixedCol::all() {
                 self.cached_fixed_cols
                     .push(self.get_fixed(c.name()).unwrap().clone());
             }
-        }
-
-        for i in 0..2 {
-            self.proc.push_row(i);
-            self.proc
-                .set_col_idx(KnownWitnessCol::_operation_id, i as usize, 2.into());
-            self.proc
-                .set_col_idx(KnownWitnessCol::pc_update, i as usize, (i + 1).into());
         }
     }
 
@@ -1362,16 +1350,6 @@ impl<F: FieldElement> Executor<'_, '_, F> {
             .get(col as usize)
             .map(|v| v[row])
             .unwrap_or_default()
-    }
-
-    fn sink_id(&self) -> u32 {
-        // sink_id is the length of the ROM. we find it by looking at the line instr__loop activates
-        self.get_fixed("main__rom::p_instr__loop")
-            .unwrap()
-            .iter()
-            .position(|val| val.is_one())
-            .map(|pos| pos as u32)
-            .expect("could not find sink_id by looking at the p_instr__loop column")
     }
 
     /// read register value, updating the register memory machine
@@ -1560,7 +1538,7 @@ impl<F: FieldElement> Executor<'_, '_, F> {
 
                 let addr = addr as u32;
                 let lid = self.instr_link_id(instr, MachineInstance::memory, 0);
-                self.proc.set_mem(addr, value.u(), self.step + 3, lid);
+                self.proc.set_mem(addr, value, self.step + 3, lid);
 
                 set_col!(tmp1_col, addr1);
                 set_col!(tmp2_col, addr2);
@@ -1591,12 +1569,12 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                 let rem = addr % 4;
 
                 let lid = self.instr_link_id(instr, MachineInstance::regs, 1);
-                self.reg_write(2, write_addr1, val.into(), lid);
+                self.reg_write(2, write_addr1, val, lid);
                 let lid = self.instr_link_id(instr, MachineInstance::regs, 2);
                 self.reg_write(3, write_addr2, rem.into(), lid);
 
                 set_col!(tmp1_col, addr1);
-                set_col!(tmp3_col, Elem::from_u32_as_fe(val));
+                set_col!(tmp3_col, val);
                 set_col!(tmp4_col, Elem::from_u32_as_fe(rem as u32));
 
                 let v = addr1.add(&args[1]).as_i64_from_lower_bytes();
@@ -2343,8 +2321,6 @@ impl<F: FieldElement> Executor<'_, '_, F> {
 
                 set_col!(tmp1_col, input_ptr);
                 set_col!(tmp2_col, output_ptr);
-                set_col!(tmp3_col, (input_ptr.u() >> 2).into());
-                set_col!(tmp4_col, (output_ptr.u() >> 2).into());
 
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(input_ptr.u() as i64 >> 2);
                 set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
@@ -2365,7 +2341,7 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                         let lo = self.proc.get_mem(input_ptr.u() + 8 * i, self.step, lid);
                         let lid = self.link_id("main_poseidon_gl", "main_memory", 1);
                         let hi = self.proc.get_mem(input_ptr.u() + 8 * i + 4, self.step, lid);
-                        F::from(((hi as u64) << 32) | lo as u64)
+                        F::from(((hi.u() as u64) << 32) | lo.u() as u64)
                     })
                     .collect::<Vec<_>>();
 
@@ -2379,10 +2355,14 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                     // memory writes from the poseidon machine
                     let lid = self.link_id("main_poseidon_gl", "main_memory", 2);
                     self.proc
-                        .set_mem(output_ptr.u() + 8 * i as u32, lo, self.step + 1, lid);
+                        .set_mem(output_ptr.u() + 8 * i as u32, lo.into(), self.step + 1, lid);
                     let lid = self.link_id("main_poseidon_gl", "main_memory", 3);
-                    self.proc
-                        .set_mem(output_ptr.u() + 8 * i as u32 + 4, hi, self.step + 1, lid);
+                    self.proc.set_mem(
+                        output_ptr.u() + 8 * i as u32 + 4,
+                        hi.into(),
+                        self.step + 1,
+                        lid,
+                    );
                     let lid = self.link_id("main_poseidon_gl", "main_split_gl", 0);
                     submachine_op!(split_gl, lid, &[*v, lo.into(), hi.into(), 0.into()],);
                 });
@@ -2420,27 +2400,19 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                 let input_ptr = self.proc.get_reg_mem(args[0].u()).u();
                 assert!(is_multiple_of_4(input_ptr));
 
-                let inputs: [u64; 8] = (0..16)
-                    .map(|i| self.proc.get_mem(input_ptr + i * 4, 0, 0))
-                    .chunks(2)
-                    .into_iter()
-                    .map(|mut chunk| {
-                        let low = chunk.next().unwrap() as u64;
-                        let high = chunk.next().unwrap() as u64;
-                        (high << 32) | low
-                    })
+                let inputs: [F; 8] = (0..8)
+                    .map(|i| self.proc.get_mem(input_ptr + i * 4, 0, 0).into_fe())
                     .collect::<Vec<_>>()
                     .try_into()
                     .unwrap();
 
-                let result = poseidon2_gl::poseidon2_gl(&inputs)
-                    .into_iter()
-                    .flat_map(|v| vec![(v & 0xffffffff) as u32, (v >> 32) as u32]);
+                let result = poseidon2_gl::poseidon2_gl(&inputs);
 
                 let output_ptr = self.proc.get_reg_mem(args[1].u()).u();
                 assert!(is_multiple_of_4(output_ptr));
-                result.enumerate().for_each(|(i, v)| {
-                    self.proc.set_mem(output_ptr + i as u32 * 4, v, 0, 0);
+                result.iter().enumerate().for_each(|(i, v)| {
+                    self.proc
+                        .set_mem(output_ptr + i as u32 * 4, Elem::Field(*v), 0, 0);
                 });
 
                 None
@@ -2457,20 +2429,20 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                 assert!(is_multiple_of_4(output_ptr_d));
 
                 let a = (0..8)
-                    .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
+                    .map(|i| self.proc.get_mem(input_ptr_a + i * 4, 0, 0).into_fe())
                     .collect::<Vec<_>>();
                 let b = (0..8)
-                    .map(|i| F::from(self.proc.get_mem(input_ptr_b + i * 4, 0, 0)))
+                    .map(|i| self.proc.get_mem(input_ptr_b + i * 4, 0, 0).into_fe())
                     .collect::<Vec<_>>();
                 let c = (0..8)
-                    .map(|i| F::from(self.proc.get_mem(input_ptr_c + i * 4, 0, 0)))
+                    .map(|i| self.proc.get_mem(input_ptr_c + i * 4, 0, 0).into_fe())
                     .collect::<Vec<_>>();
                 let result = arith::affine_256(&a, &b, &c);
 
                 result.0.iter().enumerate().for_each(|(i, &v)| {
                     self.proc.set_mem(
                         output_ptr_d + i as u32 * 4,
-                        v.to_integer().try_into_u32().unwrap(),
+                        Elem::try_from_fe_as_bin(&v).unwrap(),
                         1,
                         1,
                     );
@@ -2478,7 +2450,7 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                 result.1.iter().enumerate().for_each(|(i, &v)| {
                     self.proc.set_mem(
                         output_ptr_d + (result.0.len() as u32 * 4) + (i as u32 * 4),
-                        v.to_integer().try_into_u32().unwrap(),
+                        Elem::try_from_fe_as_bin(&v).unwrap(),
                         1,
                         1,
                     );
@@ -2497,20 +2469,20 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                 assert!(is_multiple_of_4(output_ptr_c));
 
                 let ah = (0..8)
-                    .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
+                    .map(|i| self.proc.get_mem(input_ptr_a + i * 4, 0, 0).into_fe())
                     .collect::<Vec<_>>();
                 let al = (8..16)
-                    .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
+                    .map(|i| self.proc.get_mem(input_ptr_a + i * 4, 0, 0).into_fe())
                     .collect::<Vec<_>>();
                 let b = (0..8)
-                    .map(|i| F::from(self.proc.get_mem(input_ptr_b + i * 4, 0, 0)))
+                    .map(|i| self.proc.get_mem(input_ptr_b + i * 4, 0, 0).into_fe())
                     .collect::<Vec<_>>();
                 let result = arith::mod_256(&ah, &al, &b);
 
                 result.iter().enumerate().for_each(|(i, &v)| {
                     self.proc.set_mem(
                         output_ptr_c + i as u32 * 4,
-                        v.to_integer().try_into_u32().unwrap(),
+                        Elem::try_from_fe_as_bin(&v).unwrap(),
                         1,
                         1,
                     );
@@ -2529,23 +2501,23 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                 assert!(is_multiple_of_4(output_ptr_c));
 
                 let ax = (0..8)
-                    .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
+                    .map(|i| self.proc.get_mem(input_ptr_a + i * 4, 0, 0).into_fe())
                     .collect::<Vec<_>>();
                 let ay = (8..16)
-                    .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
+                    .map(|i| self.proc.get_mem(input_ptr_a + i * 4, 0, 0).into_fe())
                     .collect::<Vec<_>>();
                 let bx = (0..8)
-                    .map(|i| F::from(self.proc.get_mem(input_ptr_b + i * 4, 0, 0)))
+                    .map(|i| self.proc.get_mem(input_ptr_b + i * 4, 0, 0).into_fe())
                     .collect::<Vec<_>>();
                 let by = (8..16)
-                    .map(|i| F::from(self.proc.get_mem(input_ptr_b + i * 4, 0, 0)))
+                    .map(|i| self.proc.get_mem(input_ptr_b + i * 4, 0, 0).into_fe())
                     .collect::<Vec<_>>();
 
                 let result = arith::ec_add(&ax, &ay, &bx, &by);
                 result.0.iter().enumerate().for_each(|(i, &v)| {
                     self.proc.set_mem(
                         output_ptr_c + i as u32 * 4,
-                        v.to_integer().try_into_u32().unwrap(),
+                        Elem::try_from_fe_as_bin(&v).unwrap(),
                         1,
                         1,
                     );
@@ -2553,7 +2525,7 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                 result.1.iter().enumerate().for_each(|(i, &v)| {
                     self.proc.set_mem(
                         output_ptr_c + (result.0.len() as u32 * 4) + (i as u32 * 4),
-                        v.to_integer().try_into_u32().unwrap(),
+                        Elem::try_from_fe_as_bin(&v).unwrap(),
                         1,
                         1,
                     );
@@ -2570,17 +2542,17 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                 assert!(is_multiple_of_4(output_ptr_b));
 
                 let ax = (0..8)
-                    .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
+                    .map(|i| self.proc.get_mem(input_ptr_a + i * 4, 0, 0).into_fe())
                     .collect::<Vec<_>>();
                 let ay = (8..16)
-                    .map(|i| F::from(self.proc.get_mem(input_ptr_a + i * 4, 0, 0)))
+                    .map(|i| self.proc.get_mem(input_ptr_a + i * 4, 0, 0).into_fe())
                     .collect::<Vec<_>>();
 
                 let result = arith::ec_double(&ax, &ay);
                 result.0.iter().enumerate().for_each(|(i, &v)| {
                     self.proc.set_mem(
                         output_ptr_b + i as u32 * 4,
-                        v.to_integer().try_into_u32().unwrap(),
+                        Elem::try_from_fe_as_bin(&v).unwrap(),
                         1,
                         1,
                     );
@@ -2588,7 +2560,7 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                 result.1.iter().enumerate().for_each(|(i, &v)| {
                     self.proc.set_mem(
                         output_ptr_b + (result.0.len() as u32 * 4) + (i as u32 * 4),
-                        v.to_integer().try_into_u32().unwrap(),
+                        Elem::try_from_fe_as_bin(&v).unwrap(),
                         1,
                         1,
                     );
@@ -2633,7 +2605,7 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                     let lo = self
                         .proc
                         .get_mem(input_ptr.u() + 8 * i as u32, self.step, lid);
-                    *state_i = ((hi as u64) << 32) | lo as u64;
+                    *state_i = ((hi.u() as u64) << 32) | lo.u() as u64;
                 }
 
                 keccakf(&mut state);
@@ -2643,14 +2615,55 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                     let hi = (val >> 32) as u32;
 
                     self.proc
-                        .set_mem(output_ptr.u() + i as u32 * 8, lo, self.step + 1, lid);
-                    self.proc
-                        .set_mem(output_ptr.u() + i as u32 * 8 + 4, hi, self.step + 1, lid);
+                        .set_mem(output_ptr.u() + i as u32 * 8, lo.into(), self.step + 1, lid);
+                    self.proc.set_mem(
+                        output_ptr.u() + i as u32 * 8 + 4,
+                        hi.into(),
+                        self.step + 1,
+                        lid,
+                    );
                 }
 
                 //let lid = self.instr_link_id(instr, "main_keccakf", 0);
                 //submachine_op!(keccakf, lid, &[input_ptr.into_fe(), output_ptr.into_fe()],);
                 //main_op!(keccakf32_memory);
+                None
+            }
+            Instruction::split_gl_vec => {
+                let input_ptr = self.proc.get_reg_mem(args[0].u()).u();
+                assert!(is_multiple_of_4(input_ptr));
+
+                let output_ptr = self.proc.get_reg_mem(args[1].u()).u();
+                assert!(is_multiple_of_4(output_ptr));
+
+                let result = (0..8)
+                    .flat_map(|i| {
+                        let v = self.proc.get_mem(input_ptr + i * 4, 0, 0).into_fe();
+                        let v = v.to_integer().try_into_u64().unwrap();
+                        let lo = (v & 0xffffffff) as u32;
+                        let hi = (v >> 32) as u32;
+                        [lo, hi].into_iter()
+                    })
+                    // Need to collect to unborrow "self.proc".
+                    .collect::<Vec<_>>();
+
+                result.into_iter().enumerate().for_each(|(i, v)| {
+                    self.proc.set_mem(output_ptr + i as u32 * 4, v.into(), 1, 0);
+                });
+
+                None
+            }
+            Instruction::merge_gl => {
+                let lo = self.proc.get_reg_mem(args[0].u()).into_fe();
+                let hi = self.proc.get_reg_mem(args[1].u()).into_fe();
+
+                let output_ptr = self.proc.get_reg_mem(args[2].u()).u();
+                assert!(is_multiple_of_4(output_ptr));
+
+                // Write the result to memory
+                let result = hi * F::from(0x1_0000_0000_u64) + lo;
+                self.proc.set_mem(output_ptr, Elem::Field(result), 2, 0);
+
                 None
             }
             Instruction::Count => unreachable!(),
@@ -2674,7 +2687,6 @@ impl<F: FieldElement> Executor<'_, '_, F> {
                     .unwrap_or_else(|| self.proc.get_reg(name.as_str()));
                 Some(val)
             }
-            Expression::PublicReference(_, _) => todo!(),
             Expression::Number(_, Number { value: n, .. }) => {
                 let unsigned: u32 = n
                     .try_into()
@@ -2847,7 +2859,7 @@ pub struct Execution<F: FieldElement> {
     /// witness columns
     pub trace: HashMap<String, Vec<F>>,
     /// final memory state
-    pub memory: MemoryState,
+    pub memory: MemoryState<F>,
     /// sequence of memory accesses
     pub memory_accesses: Vec<MemOperation>,
     /// final register memory state
@@ -2868,7 +2880,7 @@ enum ExecMode {
 /// Returns the execution trace length.
 pub fn execute<F: FieldElement>(
     asm: &AnalysisASMFile,
-    initial_memory: MemoryState,
+    initial_memory: MemoryState<F>,
     prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     profiling: Option<ProfilerOptions>,
@@ -2894,7 +2906,7 @@ pub fn execute_with_trace<F: FieldElement>(
     asm: &AnalysisASMFile,
     opt_pil: &Analyzed<F>,
     fixed: FixedColumns<F>,
-    initial_memory: MemoryState,
+    initial_memory: MemoryState<F>,
     prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     max_steps_to_execute: Option<usize>,
@@ -2921,7 +2933,7 @@ pub fn execute_with_witness<F: FieldElement>(
     asm: &AnalysisASMFile,
     opt_pil: &Analyzed<F>,
     fixed: FixedColumns<F>,
-    initial_memory: MemoryState,
+    initial_memory: MemoryState<F>,
     prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     max_steps_to_execute: Option<usize>,
@@ -2947,7 +2959,7 @@ fn execute_inner<F: FieldElement>(
     asm: &AnalysisASMFile,
     opt_pil: Option<&Analyzed<F>>,
     fixed: Option<FixedColumns<F>>,
-    initial_memory: MemoryState,
+    initial_memory: MemoryState<F>,
     prover_ctx: &Callback<F>,
     bootloader_inputs: &[F],
     max_steps_to_execute: usize,
@@ -3049,15 +3061,17 @@ fn execute_inner<F: FieldElement>(
         profiling.map(|opt| Profiler::new(opt, &debug_files[..], function_starts, location_starts));
 
     let mut curr_pc = 0u32;
-    e.proc.push_row(PC_INITIAL_VAL as u32);
+    e.proc.push_row(curr_pc);
     let mut last = Instant::now();
     let mut count = 0;
     loop {
         let stm = statements[curr_pc as usize];
 
-        log::trace!("l {curr_pc}: {stm}",);
+        // step is updated by 4 because we have instructions that need that many memory accesses,
+        // except on a DebugDirective which is a noop
+        let mut step_update = 4;
 
-        e.step += 4;
+        log::trace!("l {curr_pc}: {stm}",);
 
         count += 1;
         if count % 10000 == 0 {
@@ -3073,7 +3087,6 @@ fn execute_inner<F: FieldElement>(
         match stm {
             FunctionStatement::Assignment(a) => {
                 let pc = e.proc.get_pc().u();
-                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(pc as usize);
                 }
@@ -3126,8 +3139,6 @@ fn execute_inner<F: FieldElement>(
                 }
             }
             FunctionStatement::Instruction(i) => {
-                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
-
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
                 }
@@ -3160,11 +3171,19 @@ fn execute_inner<F: FieldElement>(
                 }
             }
             FunctionStatement::Return(_) => {
-                e.proc.set_col(KnownWitnessCol::_operation_id, 2.into());
+                e.proc.set_col(KnownWitnessCol::pc_update, e.proc.get_pc());
+                e.proc.set_col(
+                    KnownWitnessCol::query_arg_1_update,
+                    e.proc.get_reg("query_arg_1"),
+                );
+                e.proc.set_col(
+                    KnownWitnessCol::query_arg_2_update,
+                    e.proc.get_reg("query_arg_2"),
+                );
                 break;
             }
             FunctionStatement::DebugDirective(dd) => {
-                e.step -= 4;
+                step_update = 0;
                 match &dd.directive {
                     DebugDirective::Loc(file, line, column) => {
                         let (dir, file) = debug_files[file - 1];
@@ -3181,10 +3200,21 @@ fn execute_inner<F: FieldElement>(
             }
         };
 
+        e.proc.set_col(
+            KnownWitnessCol::query_arg_1_update,
+            e.proc.get_reg("query_arg_1"),
+        );
+        e.proc.set_col(
+            KnownWitnessCol::query_arg_2_update,
+            e.proc.get_reg("query_arg_2"),
+        );
+
         curr_pc = match e.proc.advance() {
             Some(pc) => pc,
             None => break,
         };
+
+        e.step += step_update;
     }
 
     if let Some(mut p) = profiler {
@@ -3196,32 +3226,6 @@ fn execute_inner<F: FieldElement>(
     log::debug!("Program execution took {}s", start.elapsed().as_secs_f64());
 
     if let ExecMode::Trace | ExecMode::Witness = mode {
-        let sink_id = e.sink_id();
-
-        // reset
-        e.proc.set_col(KnownWitnessCol::pc_update, 0.into());
-        e.proc.set_pc(0.into());
-        assert!(e.proc.advance().is_none());
-        e.proc
-            .set_col(KnownWitnessCol::_operation_id, sink_id.into());
-
-        // jump_to_operation
-        e.proc.set_col(KnownWitnessCol::pc_update, 1.into());
-        e.proc.set_pc(1.into());
-        e.proc.set_reg("query_arg_1", 0);
-        e.proc.set_reg("query_arg_2", 0);
-        assert!(e.proc.advance().is_none());
-        e.proc
-            .set_col(KnownWitnessCol::_operation_id, sink_id.into());
-
-        // loop
-        e.proc.set_col(KnownWitnessCol::pc_update, sink_id.into());
-        e.proc.set_pc(sink_id.into());
-        assert!(e.proc.advance().is_none());
-        e.proc.set_col(KnownWitnessCol::pc_update, sink_id.into());
-        e.proc
-            .set_col(KnownWitnessCol::_operation_id, sink_id.into());
-
         if let ExecMode::Witness = mode {
             let start = Instant::now();
             program_columns = e.generate_program_columns();
@@ -3271,4 +3275,8 @@ pub fn write_executor_csv<F: FieldElement, P: AsRef<Path>>(
 
 fn is_multiple_of_4(n: u32) -> bool {
     n % 4 == 0
+}
+
+pub fn hash_map_to_memory_state<F: FieldElement>(map: HashMap<u32, u32>) -> MemoryState<F> {
+    map.into_iter().map(|(k, v)| (k, v.into())).collect()
 }

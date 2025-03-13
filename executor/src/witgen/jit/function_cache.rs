@@ -25,7 +25,7 @@ use super::{
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct CacheKey<T: FieldElement> {
-    identity_id: u64,
+    bus_id: T,
     /// If `Some((index, value))`, then this function is used only if the
     /// `index`th argument is set to `value`.
     known_concrete: Option<(usize, T)>,
@@ -107,32 +107,43 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
     pub fn compile_cached(
         &mut self,
         can_process: impl CanProcessCall<T>,
-        identity_id: u64,
+        bus_id: T,
         known_args: &BitVec,
         known_concrete: Option<(usize, T)>,
-    ) -> Option<&CacheEntry<T>> {
-        let cache_key = CacheKey {
-            identity_id,
+    ) -> &Option<CacheEntry<T>> {
+        // First try the generic version, then the specific.
+        let mut key = CacheKey {
+            bus_id,
             known_args: known_args.clone(),
-            known_concrete,
+            known_concrete: None,
         };
-        self.ensure_cache(can_process, &cache_key);
-        self.witgen_functions.get(&cache_key).unwrap().as_ref()
+
+        if self.ensure_cache(can_process.clone(), &key).is_none() && known_concrete.is_some() {
+            key = CacheKey {
+                bus_id,
+                known_args: known_args.clone(),
+                known_concrete,
+            };
+            self.ensure_cache(can_process.clone(), &key);
+        }
+        self.ensure_cache(can_process, &key)
     }
 
-    fn ensure_cache(&mut self, can_process: impl CanProcessCall<T>, cache_key: &CacheKey<T>) {
-        if self.witgen_functions.contains_key(cache_key) {
-            return;
+    fn ensure_cache(
+        &mut self,
+        can_process: impl CanProcessCall<T>,
+        cache_key: &CacheKey<T>,
+    ) -> &Option<CacheEntry<T>> {
+        if !self.witgen_functions.contains_key(cache_key) {
+            record_start("Auto-witgen code derivation");
+
+            let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField));
+            let f = self.compile_witgen_function(can_process, cache_key, interpreted);
+            assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none());
+
+            record_end("Auto-witgen code derivation");
         }
-
-        record_start("Auto-witgen code derivation");
-
-        let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField));
-
-        let f = self.compile_witgen_function(can_process, cache_key, interpreted);
-
-        assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none());
-        record_end("Auto-witgen code derivation");
+        self.witgen_functions.get(cache_key).unwrap()
     }
 
     fn compile_witgen_function(
@@ -144,7 +155,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         log::debug!(
             "Compiling JIT function for\n  Machine: {}\n  Connection: {}\n   Inputs: {:?}{}",
             self.machine_name,
-            self.parts.connections[&cache_key.identity_id],
+            self.parts.bus_receives[&cache_key.bus_id],
             cache_key.known_args,
             cache_key
                 .known_concrete
@@ -162,7 +173,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .processor
             .generate_code(
                 can_process,
-                cache_key.identity_id,
+                cache_key.bus_id,
                 &cache_key.known_args,
                 cache_key.known_concrete,
             )
@@ -230,7 +241,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
     pub fn process_lookup_direct<'c, 'd, Q: QueryCallback<T>>(
         &self,
         mutable_state: &MutableState<'a, T, Q>,
-        connection_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
         data: CompactDataRef<'d, T>,
         known_concrete: Option<(usize, T)>,
@@ -241,16 +252,20 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .collect::<BitVec>();
 
         let cache_key = CacheKey {
-            identity_id: connection_id,
-            known_args,
+            bus_id,
+            known_args: known_args.clone(),
             known_concrete,
         };
 
-        // TODO If the function is not in the cache, we should also try with
-        // known_concrete set to None.
-
         self.witgen_functions
             .get(&cache_key)
+            .or_else(|| {
+                self.witgen_functions.get(&CacheKey {
+                    bus_id,
+                    known_args: known_args.clone(),
+                    known_concrete: None,
+                })
+            })
             .expect("Need to call compile_cached() first!")
             .as_ref()
             .expect("compile_cached() returned false!")

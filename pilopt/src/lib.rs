@@ -69,10 +69,6 @@ fn hash_pil_state<T: Hash>(pil_file: &Analyzed<T>) -> u64 {
                     unreachable!("Missing definition for {:?}", d);
                 }
             }
-            StatementIdentifier::PublicDeclaration(pd) => {
-                pd.hash(&mut hasher);
-                pil_file.public_declarations[pd].hash(&mut hasher);
-            }
             StatementIdentifier::ProofItem(pi) => {
                 pi.hash(&mut hasher);
                 pil_file.identities[*pi].hash(&mut hasher);
@@ -203,9 +199,8 @@ fn collect_required_symbols<'a, T: FieldElement>(
     let mut required_names: HashSet<SymbolReference<'a>> = Default::default();
     required_names.extend(
         pil_file
-            .public_declarations
-            .values()
-            .map(|p| SymbolReference::from(&p.polynomial.name)),
+            .public_declarations_in_source_order()
+            .map(|(name, _)| SymbolReference::from(name)),
     );
     for fun in &pil_file.prover_functions {
         for e in fun.all_children() {
@@ -266,7 +261,8 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
         | FunctionValueDefinition::TypeDeclaration(_)
         | FunctionValueDefinition::TypeConstructor(_, _)
         | FunctionValueDefinition::TraitDeclaration(_)
-        | FunctionValueDefinition::TraitFunction(_, _) => None,
+        | FunctionValueDefinition::TraitFunction(_, _)
+        | FunctionValueDefinition::PublicDeclaration(_) => None,
     }
 }
 
@@ -325,7 +321,9 @@ fn simplify_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     pil_file.post_visit_expressions_in_identities_mut(&mut simplify_expression_single);
 }
 
-fn simplify_expression<T: FieldElement>(mut e: AlgebraicExpression<T>) -> AlgebraicExpression<T> {
+pub fn simplify_expression<T: FieldElement>(
+    mut e: AlgebraicExpression<T>,
+) -> AlgebraicExpression<T> {
     e.post_visit_expressions_mut(&mut simplify_expression_single);
     e
 }
@@ -573,9 +571,8 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .collect::<Vec<((String, PolyID), _)>>();
 
     let in_publics: HashSet<_> = pil_file
-        .public_declarations
-        .values()
-        .map(|pubd| pubd.polynomial.name.clone())
+        .public_declarations_in_source_order()
+        .map(|(_, pubd)| pubd.referenced_poly().name.clone())
         .collect();
     // We cannot remove arrays or array elements, so filter them out.
     // Also, we filter out columns that are used in public declarations.
@@ -717,6 +714,7 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 left.expressions.is_empty().then_some(index)
             }
             Identity::Connect(..) => None,
+            Identity::BusInteraction(..) => None,
             // Bus interactions send at least their bus ID, which needs to
             // be received for the bus argument to hold.
             Identity::PhantomBusInteraction(..) => None,
@@ -740,7 +738,8 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 Identity::Permutation(..) => 3,
                 Identity::PhantomPermutation(..) => 4,
                 Identity::Connect(..) => 5,
-                Identity::PhantomBusInteraction(..) => 6,
+                Identity::BusInteraction(..) => 6,
+                Identity::PhantomBusInteraction(..) => 7,
             };
 
             discriminant(self)
@@ -800,7 +799,8 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                             left: c, right: d, ..
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
-                    (Identity::PhantomBusInteraction(_), Identity::PhantomBusInteraction(_)) => {
+                    (Identity::BusInteraction(_), Identity::BusInteraction(_))
+                    | (Identity::PhantomBusInteraction(_), Identity::PhantomBusInteraction(_)) => {
                         unimplemented!(
                             "Bus interactions should have been removed before this point."
                         )
@@ -834,6 +834,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .enumerate()
         .filter_map(|(index, identity)| match identity {
             // Duplicate bus interactions should not be removed, because that changes the statement.
+            Identity::BusInteraction(_) => None,
             Identity::PhantomBusInteraction(_) => None,
             _ => match identity_expressions.insert(CanonicalIdentity(identity)) {
                 false => Some(index),

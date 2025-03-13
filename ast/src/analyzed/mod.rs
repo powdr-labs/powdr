@@ -22,8 +22,8 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, SourceReference,
-    TraitDeclaration, TraitImplementation, TypeDeclaration,
+    self, ArrayExpression, EnumDeclaration, EnumVariant, FunctionCall, IndexAccess, NamedType,
+    SourceReference, TraitDeclaration, TraitImplementation, TypeDeclaration,
 };
 pub use contains_next_ref::ContainsNextRef;
 
@@ -31,7 +31,6 @@ pub use contains_next_ref::ContainsNextRef;
 pub enum StatementIdentifier {
     /// Either an intermediate column or a definition.
     Definition(String),
-    PublicDeclaration(String),
     /// Index into the vector of proof items / identities.
     ProofItem(usize),
     /// Index into the vector of prover functions.
@@ -44,7 +43,6 @@ pub enum StatementIdentifier {
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     pub solved_impls: SolvedTraitImpls,
-    pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<T>>,
     pub prover_functions: Vec<Expression>,
@@ -122,7 +120,10 @@ impl<T> Analyzed<T> {
     }
     /// @returns the number of public inputs
     pub fn publics_count(&self) -> usize {
-        self.public_declarations.len()
+        self.definitions
+            .iter()
+            .filter(|(_name, (symbol, _))| matches!(symbol.kind, SymbolKind::Public()))
+            .count()
     }
 
     pub fn name_to_poly_id(&self) -> BTreeMap<String, PolyID> {
@@ -187,8 +188,12 @@ impl<T> Analyzed<T> {
         &self,
     ) -> impl Iterator<Item = (&String, &PublicDeclaration)> {
         self.source_order.iter().filter_map(move |statement| {
-            if let StatementIdentifier::PublicDeclaration(name) = statement {
-                if let Some(public_declaration) = self.public_declarations.get(name) {
+            if let StatementIdentifier::Definition(name) = statement {
+                if let Some((
+                    _,
+                    Some(FunctionValueDefinition::PublicDeclaration(public_declaration)),
+                )) = self.definitions.get(name)
+                {
                     return Some((name, public_declaration));
                 }
             }
@@ -398,29 +403,26 @@ impl<T> Analyzed<T> {
     /// Retrieves (name, col_name, poly_id, offset, stage) of each public witness in the trace.
     pub fn get_publics(&self) -> Vec<(String, String, PolyID, usize, u8)> {
         let mut publics = self
-            .public_declarations
-            .values()
-            .map(|public_declaration| {
+            .public_declarations_in_source_order()
+            .map(|(name, public_declaration)| {
                 let column_name = public_declaration.referenced_poly_name();
                 let (poly_id, stage) = {
-                    let symbol = &self.definitions[&public_declaration.polynomial.name].0;
+                    let symbol = &self.definitions[&public_declaration.referenced_poly().name].0;
                     (
                         symbol
                             .array_elements()
-                            .nth(public_declaration.array_index.unwrap_or_default())
+                            .nth(
+                                public_declaration
+                                    .referenced_poly_array_index()
+                                    .unwrap_or_default(),
+                            )
                             .unwrap()
                             .1,
                         symbol.stage.unwrap_or_default() as u8,
                     )
                 };
-                let row_offset = public_declaration.index as usize;
-                (
-                    public_declaration.name.clone(),
-                    column_name,
-                    poly_id,
-                    row_offset,
-                    stage,
-                )
+                let row_offset = public_declaration.row() as usize;
+                (name.clone(), column_name, poly_id, row_offset, stage)
             })
             .collect::<Vec<_>>();
 
@@ -559,6 +561,7 @@ pub fn type_from_definition(
                     ty: trait_func.ty.clone(),
                 })
             }
+            FunctionValueDefinition::PublicDeclaration(_) => Some(Type::Expr.into()),
         }
     } else {
         assert!(
@@ -771,6 +774,8 @@ impl Symbol {
 pub enum SymbolKind {
     /// Fixed, witness or intermediate polynomial
     Poly(PolynomialType),
+    /// Public declaration
+    Public(),
     /// Other symbol, depends on the type.
     /// Examples include functions not of the type "int -> fe".
     Other(),
@@ -784,6 +789,7 @@ pub enum FunctionValueDefinition {
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
     TraitDeclaration(TraitDeclaration),
     TraitFunction(Arc<TraitDeclaration>, NamedType),
+    PublicDeclaration(PublicDeclaration),
 }
 
 impl Children<Expression> for FunctionValueDefinition {
@@ -799,6 +805,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children(),
+            FunctionValueDefinition::PublicDeclaration(pub_decl) => pub_decl.children(),
         }
     }
 
@@ -814,6 +821,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
+            FunctionValueDefinition::PublicDeclaration(pub_decl) => pub_decl.children_mut(),
         }
     }
 }
@@ -836,23 +844,77 @@ impl Children<Expression> for NamedType {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Hash, PartialEq, Eq)]
 pub struct PublicDeclaration {
     pub id: u64,
     pub source: SourceRef,
     pub name: String,
-    pub polynomial: PolynomialReference,
-    pub array_index: Option<usize>,
-    /// The evaluation point of the polynomial, not the array index.
-    pub index: DegreeType,
+    /// The declaration value, in two possible forms: polynomial[array_index](row) OR polynomial(row)
+    /// where "row" is the evaluation point of the polynomial.
+    pub value: Expression,
 }
 
 impl PublicDeclaration {
-    pub fn referenced_poly_name(&self) -> String {
-        match self.array_index {
-            Some(index) => format!("{}[{}]", self.polynomial.name, index),
-            None => self.polynomial.name.clone(),
+    pub fn referenced_poly(&self) -> &PolynomialReference {
+        match &self.value {
+            Expression::FunctionCall(_, FunctionCall { function, .. }) => match function.as_ref() {
+                Expression::Reference(_, Reference::Poly(poly)) => poly,
+                Expression::IndexAccess(_, IndexAccess { array, .. }) => match array.as_ref() {
+                    Expression::Reference(_, Reference::Poly(poly)) => poly,
+                    _ => panic!("Expected Reference."),
+                },
+                _ => panic!("Expected Reference or IndexAccess."),
+            },
+            _ => panic!("Expected FunctionCall."),
         }
+    }
+
+    pub fn referenced_poly_array_index(&self) -> Option<usize> {
+        match &self.value {
+            Expression::FunctionCall(_, FunctionCall { function, .. }) => match function.as_ref() {
+                Expression::Reference(_, Reference::Poly(_)) => None,
+                Expression::IndexAccess(_, IndexAccess { index, .. }) => match index.as_ref() {
+                    Expression::Number(_, index) => Some(index.value.clone().try_into().unwrap()),
+                    _ => panic!("Expected Number."),
+                },
+                _ => panic!("Expected Reference or IndexAccess."),
+            },
+            _ => panic!("Expected FunctionCall."),
+        }
+    }
+
+    /// Returns the name of the polynomial referenced by the public declaration.
+    /// Includes the array index if present.
+    pub fn referenced_poly_name(&self) -> String {
+        let name = self.referenced_poly().name.clone();
+        let index = self.referenced_poly_array_index();
+        if let Some(index) = index {
+            format!("{name}[{index}]")
+        } else {
+            name
+        }
+    }
+
+    pub fn row(&self) -> DegreeType {
+        match &self.value {
+            Expression::FunctionCall(_, FunctionCall { arguments, .. }) => {
+                assert!(arguments.len() == 1);
+                match &arguments[0] {
+                    Expression::Number(_, index) => index.value.clone().try_into().unwrap(),
+                    _ => panic!("Expected Number."),
+                }
+            }
+            _ => panic!("Expected FunctionCall."),
+        }
+    }
+}
+
+impl Children<Expression> for PublicDeclaration {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(self.value.children())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(self.value.children_mut())
     }
 }
 
@@ -1028,6 +1090,39 @@ impl<T> Children<AlgebraicExpression<T>> for ExpressionList<T> {
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
 )]
 /// For documentation, see the equivalent `Constr` variant in std/prelude.asm.
+pub struct BusInteractionIdentity<T> {
+    // The ID is globally unique among identities.
+    pub id: u64,
+    pub source: SourceRef,
+    pub multiplicity: AlgebraicExpression<T>,
+    pub bus_id: AlgebraicExpression<T>,
+    pub payload: ExpressionList<T>,
+    pub latch: AlgebraicExpression<T>,
+}
+
+impl<T> Children<AlgebraicExpression<T>> for BusInteractionIdentity<T> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(
+            once(&mut self.multiplicity)
+                .chain(once(&mut self.bus_id))
+                .chain(self.payload.children_mut())
+                .chain(once(&mut self.latch)),
+        )
+    }
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(
+            once(&self.multiplicity)
+                .chain(once(&self.bus_id))
+                .chain(self.payload.children())
+                .chain(once(&self.latch)),
+        )
+    }
+}
+
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
+/// For documentation, see the equivalent `Constr` variant in std/prelude.asm.
 pub struct PhantomBusInteractionIdentity<T> {
     // The ID is globally unique among identities.
     pub id: u64,
@@ -1086,6 +1181,7 @@ pub enum Identity<T> {
     Permutation(PermutationIdentity<T>),
     PhantomPermutation(PhantomPermutationIdentity<T>),
     Connect(ConnectIdentity<T>),
+    BusInteraction(BusInteractionIdentity<T>),
     PhantomBusInteraction(PhantomBusInteractionIdentity<T>),
 }
 
@@ -1109,6 +1205,7 @@ impl<T> Identity<T> {
             Identity::Permutation(i) => i.id,
             Identity::PhantomPermutation(i) => i.id,
             Identity::Connect(i) => i.id,
+            Identity::BusInteraction(i) => i.id,
             Identity::PhantomBusInteraction(i) => i.id,
         }
     }
@@ -1121,6 +1218,7 @@ impl<T> Identity<T> {
             Identity::Permutation(_) => IdentityKind::Permutation,
             Identity::PhantomPermutation(_) => IdentityKind::PhantomPermutation,
             Identity::Connect(_) => IdentityKind::Connect,
+            Identity::BusInteraction(_) => IdentityKind::BusInteraction,
             Identity::PhantomBusInteraction(_) => IdentityKind::PhantomBusInteraction,
         }
     }
@@ -1135,6 +1233,7 @@ impl<T> SourceReference for Identity<T> {
             Identity::Permutation(i) => &i.source,
             Identity::PhantomPermutation(i) => &i.source,
             Identity::Connect(i) => &i.source,
+            Identity::BusInteraction(i) => &i.source,
             Identity::PhantomBusInteraction(i) => &i.source,
         }
     }
@@ -1147,6 +1246,7 @@ impl<T> SourceReference for Identity<T> {
             Identity::Permutation(i) => &mut i.source,
             Identity::PhantomPermutation(i) => &mut i.source,
             Identity::Connect(i) => &mut i.source,
+            Identity::BusInteraction(i) => &mut i.source,
             Identity::PhantomBusInteraction(i) => &mut i.source,
         }
     }
@@ -1161,6 +1261,7 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
             Identity::Permutation(i) => i.children_mut(),
             Identity::PhantomPermutation(i) => i.children_mut(),
             Identity::Connect(i) => i.children_mut(),
+            Identity::BusInteraction(i) => i.children_mut(),
             Identity::PhantomBusInteraction(i) => i.children_mut(),
         }
     }
@@ -1173,6 +1274,7 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
             Identity::Permutation(i) => i.children(),
             Identity::PhantomPermutation(i) => i.children(),
             Identity::Connect(i) => i.children(),
+            Identity::BusInteraction(i) => i.children(),
             Identity::PhantomBusInteraction(i) => i.children(),
         }
     }
@@ -1188,6 +1290,7 @@ pub enum IdentityKind {
     Permutation,
     PhantomPermutation,
     Connect,
+    BusInteraction,
     PhantomBusInteraction,
 }
 
@@ -1212,6 +1315,15 @@ pub struct AlgebraicReferenceThin {
 impl From<&AlgebraicReference> for AlgebraicReferenceThin {
     fn from(value: &AlgebraicReference) -> Self {
         value.to_thin()
+    }
+}
+
+impl From<PolyID> for AlgebraicReferenceThin {
+    fn from(poly_id: PolyID) -> Self {
+        AlgebraicReferenceThin {
+            poly_id,
+            next: false,
+        }
     }
 }
 

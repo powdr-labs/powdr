@@ -547,7 +547,6 @@ impl TypeChecker {
                 *type_args = Some(args);
                 type_for_reference(&ty)
             }
-            Expression::PublicReference(_, _) => Type::Expr,
             Expression::Number(
                 _,
                 Number {

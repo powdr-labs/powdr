@@ -30,7 +30,7 @@ enum InterpreterAction<T: FieldElement> {
     AssignExpression(usize, RPNExpression<T, usize>),
     WriteCell(usize, Cell),
     WriteParam(usize, usize),
-    MachineCall(u64, Vec<MachineCallArgumentIdx>),
+    MachineCall(T, Vec<MachineCallArgumentIdx>),
     Assertion(RPNExpression<T, usize>, RPNExpression<T, usize>, bool),
     Branch(
         BranchTest<T>,
@@ -151,7 +151,9 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                 let idx = var_mapper.map_var(var);
                 InterpreterAction::ReadParam(idx, *i)
             }
-            Variable::FixedCell(_) | Variable::MachineCallParam(_) => unreachable!(),
+            Variable::FixedCell(_)
+            | Variable::MachineCallParam(_)
+            | Variable::IntermediateCell(_) => unreachable!(),
         }));
     }
 
@@ -228,6 +230,9 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                         actions.push(InterpreterAction::WriteParam(idx, *i));
                     }
                     Variable::FixedCell(_) => panic!("Should not write to fixed column."),
+                    Variable::IntermediateCell(_) => {
+                        // Intermediate cells are not stored permanently
+                    }
                     Variable::MachineCallParam(_) => {
                         // This is just an internal variable.
                     }
@@ -669,8 +674,8 @@ namespace arith(8);
         });
 
         // generate code for the call
-        assert_eq!(machine_parts.connections.len(), 1);
-        let connection_id = *machine_parts.connections.keys().next().unwrap();
+        assert_eq!(machine_parts.bus_receives.len(), 1);
+        let bus_id = *machine_parts.bus_receives.keys().next().unwrap();
         let (num_inputs, num_outputs) = (5, 1);
         let known_values = BitVec::from_iter(
             (0..num_inputs)
@@ -680,7 +685,7 @@ namespace arith(8);
         let known_inputs = (0..num_inputs).map(Variable::Param).collect::<Vec<_>>();
 
         let (result, _prover_functions) = processor
-            .generate_code(&mutable_state, connection_id, &known_values, None)
+            .generate_code(&mutable_state, bus_id, &known_values, None)
             .unwrap();
 
         // ensure there's a branch in the code
@@ -752,16 +757,14 @@ namespace arith(8);
             panic!("Expected exactly one matching block machine")
         };
         let (machine_parts, block_size, latch_row) = machine.machine_info();
+        assert_eq!(machine_parts.bus_receives.len(), 1);
+        let bus_id = *machine_parts.bus_receives.keys().next().unwrap();
         let processor =
             BlockMachineProcessor::new(&fixed_data, machine_parts.clone(), block_size, latch_row);
 
         let mutable_state = MutableState::new(machines.into_iter(), &|_| {
             Err("Query not implemented".to_string())
         });
-
-        // generate code for the call
-        assert_eq!(machine_parts.connections.len(), 1);
-        let connection_id = *machine_parts.connections.keys().next().unwrap();
 
         let (num_inputs, num_outputs) = (12, 4);
         let known_values = BitVec::from_iter(
@@ -772,7 +775,7 @@ namespace arith(8);
         let known_inputs = (0..num_inputs).map(Variable::Param).collect::<Vec<_>>();
 
         let (result, _prover_functions) = processor
-            .generate_code(&mutable_state, connection_id, &known_values, None)
+            .generate_code(&mutable_state, bus_id, &known_values, None)
             .unwrap();
 
         // generate and call the interpreter

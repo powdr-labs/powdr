@@ -249,6 +249,7 @@ fn convert_identity<T: FieldElement>(
                 identity.clone(),
             ))]
         }
+        AnalyzedIdentity::BusInteraction(_) => vec![],
         AnalyzedIdentity::PhantomBusInteraction(bus_interaction) => {
             vec![convert_phantom_bus_interaction(bus_interaction)]
         }

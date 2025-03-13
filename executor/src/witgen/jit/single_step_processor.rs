@@ -72,17 +72,39 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         let witgen =
             WitgenInference::new(self.fixed_data, self, known_variables, complete_identities);
 
-        let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?
+        let mut queue_items = decode_prover_functions(&self.machine_parts, self.fixed_data)?
             .into_iter()
             // Process prover functions only on the next row.
             .map(|f| QueueItem::ProverFunction(f, 1))
             .collect_vec();
 
+        // Add the intermediate definitions. It is fine to iterate over
+        // a hash type because the queue will re-sort its items.
+        #[allow(clippy::iter_over_hash_type)]
+        for (poly_id, name) in &self.machine_parts.intermediates {
+            let value = &intermediate_definitions[&(*poly_id).into()];
+            let rows = if value.contains_next_ref(&intermediate_definitions) {
+                vec![0]
+            } else {
+                vec![0, 1]
+            };
+            for row_offset in rows {
+                queue_items.push(QueueItem::variable_assignment(
+                    value,
+                    Variable::IntermediateCell(Cell {
+                        column_name: name.clone(),
+                        id: poly_id.id,
+                        row_offset,
+                    }),
+                    row_offset,
+                ));
+            }
+        }
+
         Processor::new(
             self.fixed_data,
-            self,
             identities,
-            prover_functions,
+            queue_items,
             requested_known,
             SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH,
         )
@@ -289,7 +311,7 @@ call_var(2, 1, 0) = VM::pc[1];
 VM::instr_add[1] = 0;
 call_var(2, 1, 1) = 0;
 call_var(2, 1, 2) = 1;
-machine_call(2, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(call_var(2, 1, 2))]);
+machine_call(1, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(call_var(2, 1, 2))]);
 VM::instr_mul[1] = 1;"
         );
     }
@@ -323,11 +345,11 @@ VM::instr_mul[1] = 1;"
             Ok(_) => panic!("Expected error"),
             Err(e) => {
                 let start = e
-                    .find("The following identities have not been fully processed:")
+                    .find("The following machine calls have not been fully processed:")
                     .unwrap();
                 let end = e.find("Generated code so far:").unwrap();
                 let expected = "\
-The following identities have not been fully processed:
+The following machine calls have not been fully processed:
 --------------[ identity 1 on row 1: ]--------------
 Main::is_arith $ [ Main::a, Main::b, Main::c ]
      ???              2       ???      ???    
