@@ -27,7 +27,7 @@ use super::{
 };
 
 /// This is a tuning value. It is the maximum nesting depth of branches in the JIT code.
-const SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH: usize = 6;
+const SINGLE_STEP_MACHINE_MAX_BRANCH_DEPTH: usize = 30;
 
 /// A processor for generating JIT code that computes the next row from the previous row.
 pub struct SingleStepProcessor<'a, T: FieldElement> {

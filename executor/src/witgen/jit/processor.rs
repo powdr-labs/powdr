@@ -158,14 +158,20 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             .iter()
             .map(|var| (var, witgen.range_constraint(var)))
             .filter(|(_, rc)| rc.try_to_single_value().is_none())
-            .sorted()
+            // Prefer variables that contain the substring "instr_".
+            .sorted_by_cached_key(|(var, rc)| {
+                (!var.to_string().contains("instr_"), var.clone(), rc.clone())
+            })
             .min_by_key(|(_, rc)| rc.range_width())
             .map(|(var, rc)| (var.clone(), rc.clone()));
         // Either there is no variable left to branch on or the most constrained
         // still has more than (1 << max_branch_depth) possible values.
         let no_viable_branch_variable = most_constrained_var
             .as_ref()
-            .map(|(_, rc)| (rc.range_width() >> self.max_branch_depth) > 0.into())
+            .map(|(_, rc)| {
+                rc.range_width() > 2.into()
+                    || (rc.range_width() >> self.max_branch_depth) > 0.into()
+            })
             .unwrap_or(true);
 
         if branch_depth >= self.max_branch_depth || no_viable_branch_variable {
@@ -221,7 +227,10 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 other?
             }
             // Any other error should be propagated.
-            (Err(e), _) | (_, Err(e)) => Err(e)?,
+            (Err(e), _) | (_, Err(e)) => {
+                // TODO prepend the common code and the branch here
+                Err(e)?
+            }
             (Ok(first_result), Ok(second_result)) if first_result.code == second_result.code => {
                 log::trace!("Branching on {most_constrained_var} resulted in the same code, we can reduce to a single branch.");
                 ProcessorResult {
