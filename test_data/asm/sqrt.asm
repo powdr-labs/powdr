@@ -29,7 +29,7 @@ machine Sqrt with
         };
 
     col witness y;
-    query |i| std::prover::provide_value(y, i, sqrt_hint(std::prover::eval(x)));
+    query |i| std::prover::compute_from(y, i, [x], |inputs| sqrt_hint(inputs[0]));
 
     y * y = x;
     
