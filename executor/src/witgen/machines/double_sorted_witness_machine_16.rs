@@ -3,7 +3,7 @@ use std::iter::once;
 
 use itertools::Itertools;
 
-use super::{ConnectionKind, LookupCell, Machine, MachineParts};
+use super::{LookupCell, Machine, MachineParts};
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::machines::compute_size_and_log;
@@ -96,8 +96,8 @@ pub struct DoubleSortedWitnesses16<'a, T: FieldElement> {
     diff_columns_base: Option<u64>,
     /// Whether this machine has a `m_is_bootloader_write` column.
     has_bootloader_write_column: bool,
-    /// All selector IDs that are used on the right-hand side connecting identities.
-    selector_ids: BTreeMap<u64, PolyID>,
+    /// All selector IDs that are used on the right-hand side connecting identities, by bus ID.
+    selector_ids: BTreeMap<T, PolyID>,
 }
 
 struct Operation<T> {
@@ -133,22 +133,25 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
             return None;
         }
 
-        if parts.connections.is_empty() {
+        if parts.bus_receives.is_empty() {
             return None;
         }
 
+        // Expecting permutation
         if !parts
-            .connections
+            .bus_receives
             .values()
-            .all(|i| i.kind == ConnectionKind::Permutation)
+            .all(|receive| !receive.has_arbitrary_multiplicity())
         {
             return None;
         }
 
         let selector_ids = parts
-            .connections
+            .bus_receives
             .iter()
-            .map(|(id, i)| try_to_simple_poly(&i.right.selector).map(|p| (*id, p.poly_id)))
+            .map(|(receive, i)| {
+                try_to_simple_poly(&i.selected_payload.selector).map(|p| (*receive, p.poly_id))
+            })
             .collect::<Option<BTreeMap<_, _>>>()?;
 
         let namespace = namespaces.drain().next().unwrap().into();
@@ -218,13 +221,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b MutableState<'a, T, Q>,
-        _identity_id: u64,
+        _bus_id: T,
         _values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         unimplemented!("Direct lookup not supported by machine {}.", self.name())
     }
 
-    fn identity_ids(&self) -> Vec<u64> {
+    fn bus_ids(&self) -> Vec<T> {
         self.selector_ids.keys().cloned().collect()
     }
 
@@ -235,11 +238,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, arguments, range_constraints)
+        self.process_plookup_internal(bus_id, arguments, range_constraints)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -412,7 +415,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
 impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
     pub fn process_plookup_internal(
         &mut self,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
@@ -433,7 +436,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
             }
         };
 
-        let selector_id = *self.selector_ids.get(&identity_id).unwrap();
+        let selector_id = *self.selector_ids.get(&bus_id).unwrap();
 
         let is_normal_write = operation_id == T::from(OPERATION_ID_WRITE);
         let is_bootloader_write = operation_id == T::from(OPERATION_ID_BOOTLOADER_WRITE);

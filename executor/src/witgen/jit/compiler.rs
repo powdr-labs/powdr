@@ -81,13 +81,11 @@ extern "C" fn get_fixed_value<T: FieldElement>(
 
 extern "C" fn call_machine<T: FieldElement, Q: QueryCallback<T>>(
     mutable_state: *const c_void,
-    identity_id: u64,
+    bus_id: T,
     params: MutSlice<LookupCell<T>>,
 ) -> bool {
     let mutable_state = unsafe { &*(mutable_state as *const MutableState<T, Q>) };
-    mutable_state
-        .call_direct(identity_id, params.into())
-        .unwrap()
+    mutable_state.call_direct(bus_id, params.into()).unwrap()
 }
 
 extern "C" fn input_from_channel<T: FieldElement, Q: QueryCallback<T>>(
@@ -174,7 +172,7 @@ struct WitgenFunctionParams<'a, T: 'a> {
     /// The pointer to the mutable state.
     mutable_state: *const c_void,
     /// A callback to call submachines.
-    call_machine: extern "C" fn(*const c_void, u64, MutSlice<LookupCell<'_, T>>) -> bool,
+    call_machine: extern "C" fn(*const c_void, T, MutSlice<LookupCell<'_, T>>) -> bool,
     /// A pointer to the "fixed data".
     fixed_data: *const c_void,
     /// A callback to retrieve values from fixed columns.
@@ -409,7 +407,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                 .map(|var_name| format!("let mut {var_name} = FieldElement::default();\n"))
                 .format("");
             format!(
-                "{var_decls}assert!(call_machine(mutable_state, {id}, MutSlice::from((&mut [{args}]).as_mut_slice())));"
+                "{var_decls}assert!(call_machine(mutable_state, {id}.into(), MutSlice::from((&mut [{args}]).as_mut_slice())));"
             )
         }
         Effect::ProverFunctionCall(ProverFunctionCall {
@@ -734,7 +732,7 @@ mod tests {
             assignment(&x0, number(7) * symbol(&a0)),
             assignment(&cv1, symbol(&x0)),
             Effect::MachineCall(
-                7,
+                7.into(),
                 [false, true].into_iter().collect(),
                 vec![r1.clone(), cv1.clone()],
             ),
@@ -780,7 +778,7 @@ extern \"C\" fn witgen(
     let c_x_0_0 = (FieldElement::from(7) * c_a_2_0);
     let call_var_7_1_0 = c_x_0_0;
     let mut call_var_7_1_1 = FieldElement::default();
-    assert!(call_machine(mutable_state, 7, MutSlice::from((&mut [LookupCell::Output(&mut call_var_7_1_1), LookupCell::Input(&call_var_7_1_0)]).as_mut_slice())));
+    assert!(call_machine(mutable_state, 7.into(), MutSlice::from((&mut [LookupCell::Output(&mut call_var_7_1_1), LookupCell::Input(&call_var_7_1_0)]).as_mut_slice())));
     let c_y_1_m1 = call_var_7_1_1;
     let c_y_1_1 = (c_y_1_m1 + c_x_0_0);
     assert!(c_y_1_m1 == c_x_0_0);
@@ -801,7 +799,7 @@ extern \"C\" fn witgen(
 
     extern "C" fn no_call_machine(
         _: *const c_void,
-        _: u64,
+        _: GoldilocksField,
         _: MutSlice<LookupCell<'_, GoldilocksField>>,
     ) -> bool {
         false
@@ -1031,10 +1029,10 @@ extern \"C\" fn witgen(
 
     extern "C" fn mock_call_machine(
         _: *const c_void,
-        id: u64,
+        id: GoldilocksField,
         params: MutSlice<LookupCell<'_, GoldilocksField>>,
     ) -> bool {
-        assert_eq!(id, 7);
+        assert_eq!(id, 7.into());
         assert_eq!(params.len, 3);
 
         let params: &mut [LookupCell<GoldilocksField>] = params.into();
@@ -1063,7 +1061,7 @@ extern \"C\" fn witgen(
         let effects = vec![
             Effect::Assignment(v1.clone(), number(7)),
             Effect::MachineCall(
-                7,
+                7.into(),
                 [true, false, false].into_iter().collect(),
                 vec![v1, r1.clone(), r2.clone()],
             ),

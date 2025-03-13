@@ -6,6 +6,7 @@ use num_traits::One;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
+use crate::witgen::data_structures::identity::BusReceive;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::{
@@ -14,7 +15,7 @@ use crate::witgen::{
 };
 use crate::witgen::{AffineExpression, AlgebraicVariable};
 
-use super::{Connection, LookupCell, Machine, MachineParts};
+use super::{LookupCell, Machine, MachineParts};
 
 /// A memory machine with a fixed address space, and each address can only have one
 /// value during the lifetime of the program.
@@ -31,7 +32,7 @@ use super::{Connection, LookupCell, Machine, MachineParts};
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
     degree: DegreeType,
-    connections: BTreeMap<u64, Connection<'a, T>>,
+    bus_receives: BTreeMap<T, &'a BusReceive<T>>,
     /// The fixed data
     fixed_data: &'a FixedData<'a, T>,
     /// The polynomials that are used as values (witness polynomials on the RHS)
@@ -53,28 +54,32 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             return None;
         }
 
-        if parts.connections.is_empty() {
+        if parts.bus_receives.is_empty() {
             return None;
         }
 
-        if !parts.connections.values().all(|i| i.is_lookup()) {
+        if !parts
+            .bus_receives
+            .values()
+            .all(|r| r.has_arbitrary_multiplicity())
+        {
             return None;
         }
 
         // All connecting identities should have a selector of 1
         if parts
-            .connections
+            .bus_receives
             .values()
-            .any(|i| !i.right.selector.is_one())
+            .any(|r| !r.selected_payload.selector.is_one())
         {
             return None;
         }
 
         // All RHS expressions should be the same
         let rhs_exprs = parts
-            .connections
+            .bus_receives
             .values()
-            .map(|i| &i.right.expressions)
+            .map(|r| &r.selected_payload.expressions)
             .collect_vec();
         if !rhs_exprs.iter().all_equal() {
             return None;
@@ -124,7 +129,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
         Some(Self {
             degree,
-            connections: parts.connections.clone(),
+            bus_receives: parts.bus_receives.clone(),
             name,
             fixed_data,
             value_polys,
@@ -135,13 +140,13 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
     fn process_plookup_internal(
         &mut self,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
     ) -> EvalResult<'a, T> {
-        let identity = self.connections[&identity_id];
+        let bus_receive = self.bus_receives[&bus_id];
         let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = arguments
             .iter()
-            .zip(identity.right.expressions.iter())
+            .zip(bus_receive.selected_payload.expressions.iter())
             .partition(|(_, r)| {
                 try_to_simple_poly(r).unwrap().poly_id.ptype == PolynomialType::Constant
             });
@@ -230,14 +235,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b MutableState<'a, T, Q>,
-        _identity_id: u64,
+        _bus_id: T,
         _values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         unimplemented!("Direct lookup not supported by machine {}.", self.name())
     }
 
-    fn identity_ids(&self) -> Vec<u64> {
-        self.connections.keys().copied().collect()
+    fn bus_ids(&self) -> Vec<T> {
+        self.bus_receives.keys().copied().collect()
     }
 
     fn name(&self) -> &str {
@@ -247,11 +252,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         _range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, arguments)
+        self.process_plookup_internal(bus_id, arguments)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(

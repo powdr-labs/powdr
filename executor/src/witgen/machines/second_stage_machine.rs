@@ -33,13 +33,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for SecondStageMachine<'a, T> {
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b MutableState<'a, T, Q>,
-        _identity_id: u64,
+        _bus_id: T,
         _values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         unimplemented!("Direct lookup not supported by machine {}.", self.name())
     }
 
-    fn identity_ids(&self) -> Vec<u64> {
+    fn bus_ids(&self) -> Vec<T> {
         Vec::new()
     }
 
@@ -57,7 +57,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SecondStageMachine<'a, T> {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &MutableState<'a, T, Q>,
-        _identity_id: u64,
+        _bus_id: T,
         _arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         _range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
