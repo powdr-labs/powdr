@@ -115,7 +115,9 @@ pub fn serde_data_to_query_callback<T: FieldElement>(
                     .map_err(|e| format!("Error parsing callback data channel: {e})"))?;
 
                 if channel != cb_channel {
-                    return Err("Callback channel mismatch".to_string());
+                    return Err(format!(
+                        "Callback channel mismatch. Expected {channel} but got {cb_channel}"
+                    ));
                 }
 
                 let index = index
@@ -148,7 +150,9 @@ pub fn dict_data_to_query_callback<T: FieldElement>(
                     .map_err(|e| format!("Error parsing callback data channel: {e})"))?;
 
                 let Some(elems) = dict.get(&cb_channel) else {
-                    return Err("Callback channel mismatch".to_string());
+                    return Err(format!(
+                        "Callback channel mismatch. Channel {cb_channel} not found."
+                    ));
                 };
 
                 let index = index

@@ -20,6 +20,13 @@ machine Main with degree: 8 {
     reg CNT;
 
     col witness XInv;
+    query |i| std::prover::compute_from(XInv, i, [X], |values| {
+        if values[0] == 0 {
+            0_fe
+        } else {
+            std::convert::fe(std::math::ff::inverse(std::convert::int(values[0]), std::field::modulus()))
+        }
+    });
     col witness XIsZero;
     // assume X = 7
     // XisZero * 7 = 0 -> XIzZero = 0

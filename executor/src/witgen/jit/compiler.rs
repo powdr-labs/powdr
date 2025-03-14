@@ -95,7 +95,9 @@ extern "C" fn input_from_channel<T: FieldElement, Q: QueryCallback<T>>(
     channel: u32,
     index: u64,
 ) -> T {
+    println!("Deref");
     let mutable_state = unsafe { &*(mutable_state as *const MutableState<T, Q>) };
+    println!("Deref done");
     // TODO what is the proper error handling?
     // TODO What to do for Ok(None)?
     (mutable_state.query_callback())(&format!("Input({channel},{index})"))
@@ -144,6 +146,8 @@ pub fn compile_effects<T: FieldElement, D: DefinitionFetcher>(
         {witgen_code}"
     );
 
+    println!("Generated code:\n{}", code);
+
     record_start("JIT-compilation");
     let start = std::time::Instant::now();
     let opt_level = 0;
@@ -151,6 +155,9 @@ pub fn compile_effects<T: FieldElement, D: DefinitionFetcher>(
     let r = powdr_jit_compiler::call_cargo(&code, Some(opt_level));
     log::trace!("Done compiling, took {:.2}s", start.elapsed().as_secs_f32());
     record_end("JIT-compilation");
+    if let Err(e) = &r {
+        println!("Failed to compile generated code: {e}");
+    }
     let lib_path = r.map_err(|e| format!("Failed to compile generated code: {e}"))?;
 
     let library = Arc::new(unsafe { libloading::Library::new(&lib_path.path).unwrap() });

@@ -9,7 +9,7 @@ use crate::witgen::{
         finalizable_data::{ColumnLayout, CompactDataRef},
         mutable_state::MutableState,
     },
-    jit::compiler::compile_effects,
+    jit::{compiler::compile_effects, effect::format_code},
     machines::{
         profiling::{record_end, record_start},
         MachineParts,
@@ -75,6 +75,7 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
 
             Ok((processing_result, prover_functions)) => {
                 let code = processing_result.code;
+                println!("code: {}", format_code(&code));
                 log::debug!("Generated code ({} steps)", code.len());
                 log::debug!("Compiling effects...");
 
