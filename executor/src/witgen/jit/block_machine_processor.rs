@@ -800,4 +800,35 @@ S::Z[0] = ((S::Zi[0][0] + S::Zi[1][0]) + S::Zi[2][0]);
 params[2] = S::Z[0];"
         );
     }
+
+    #[test]
+    fn bit_decomp_negative() {
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is [S.Y, S.Z,  S.carry];
+        namespace S(256);
+            let BYTE: col = |i| i & 0xff;
+            let X;
+            let Y;
+            let Z;
+            let carry;
+            carry * (1 - carry) = 0;
+            [ X ] in [ BYTE ];
+            [ Y ] in [ BYTE ];
+            [ Z ] in [ BYTE ];
+            X + Y = Z + 256 * carry;
+        ";
+        let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        assert_eq!(
+            code,
+            "\
+S::Y[0] = params[0];
+S::Z[0] = params[1];
+S::X[0] = (-(S::Y[0] + -S::Z[0]) & 0xff);
+S::carry[0] = -((-(S::Y[0] + -S::Z[0]) & 0x100) // 256);
+assert (-(S::Y[0] + -S::Z[0]) & 0xfffffffffffffe00) == 0;
+params[2] = S::carry[0];"
+        );
+    }
 }
