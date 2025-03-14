@@ -8,7 +8,7 @@ use std::convert::fe;
 use std::prelude::set_hint;
 use std::prelude::Query;
 use std::prover::eval;
-use std::prover::provide_value;
+use std::prover::compute_from;
 use std::machines::large_field::memory::Memory;
 
 machine Keccakf32Memory(mem: Memory) with
@@ -592,10 +592,10 @@ machine Keccakf32Memory(mem: Memory) with
     //     }
     // }
 
-    let query_c: int, int, int -> int = query |x, limb, bit_in_limb|
+    let query_c: int, int, int, fe[] -> int = query |x, limb, bit_in_limb, a|
         utils::fold(
             5, 
-            |y| (int(eval(a[y * 10 + x * 2 + limb])) >> bit_in_limb) & 0x1, 
+            |y| (int(a[y * 10 + x * 2 + limb]) >> bit_in_limb) & 0x1, 
             0, 
             |acc, e| acc ^ e
         );
@@ -607,7 +607,7 @@ machine Keccakf32Memory(mem: Memory) with
             let limb = z / 32;
             let bit_in_limb = z % 32;
 
-            provide_value(c_i, row, fe(query_c(x, limb, bit_in_limb)));
+            compute_from(c_i, row, a, |a| fe(query_c(x, limb, bit_in_limb, a)))
         });
     };
 
@@ -622,17 +622,17 @@ machine Keccakf32Memory(mem: Memory) with
     //     }
     // }
 
-    let query_c_prime: int, int -> int = query |x, z| 
-        int(eval(c[x * 64 + z])) ^ 
-        int(eval(c[((x + 4) % 5) * 64 + z])) ^ 
-        int(eval(c[((x + 1) % 5) * 64 + (z + 63) % 64]));
+    let query_c_prime: int, int, fe[] -> int = query |x, z, c| 
+        int(c[x * 64 + z]) ^ 
+        int(c[((x + 4) % 5) * 64 + z]) ^ 
+        int(c[((x + 1) % 5) * 64 + (z + 63) % 64]);
 
     query |row| {
         let _ = array::map_enumerated(c_prime, |i, c_i| {
             let x = i / 64;
             let z = i % 64;
 
-            provide_value(c_i, row, fe(query_c_prime(x, z)));
+            compute_from(c_i, row, c, |c| fe(query_c_prime(x, z, c)));
         });
     };
 
@@ -652,10 +652,6 @@ machine Keccakf32Memory(mem: Memory) with
     //     }
     // }
 
-    let query_a_prime: int, int, int, int, int -> int = query |x, y, z, limb, bit_in_limb| 
-        ((int(eval(a[y * 10 + x * 2 + limb])) >> bit_in_limb) & 0x1) ^ 
-        int(eval(c[x * 64 + z])) ^ 
-        int(eval(c_prime[x * 64 + z]));
 
     query |row| {
         let _ = array::map_enumerated(a_prime, |i, a_i| {
@@ -665,7 +661,14 @@ machine Keccakf32Memory(mem: Memory) with
             let limb = z / 32;
             let bit_in_limb = z % 32;
 
-            provide_value(a_i, row, fe(query_a_prime(x, y, z, limb, bit_in_limb)));
+            let a_elem = a[y * 10 + x * 2 + limb];
+            let c_elem = c[x * 64 + z];
+            let c_prime_elem = c_prime[x * 64 + z];
+
+            compute_from(
+                a_i, row, [a_elem, c_elem, c_prime_elem],
+                |inputs| fe(((int(inputs[0]) >> bit_in_limb) & 0x1) ^ int(inputs[1]) ^ int(inputs[2]))
+            );
         });
     };
 
@@ -687,13 +690,23 @@ machine Keccakf32Memory(mem: Memory) with
     //     }
     // }
 
-    let query_a_prime_prime: int, int, int -> int = query |x, y, limb| 
+
+    let b_index: int, int, int -> int = |x, y, z| {
+        let a: int = (x + 3 * y) % 5;
+        let rot: int = R[a * 5 + x]; // b = x
+        x * 320 + a * 64 + (z + 64 - rot) % 64
+    };
+    let andn_int: int, int -> int = |a, b| (1 - a) * b;
+
+    let query_a_prime_prime: int, int, int, fe[] -> int = query |x, y, limb, a_prime| 
         utils::fold(
             32, 
-            |z| 
-                int(eval(b(x, y, (limb + 1) * 32 - 1 - z))) ^ 
-                int(eval(andn(b((x + 1) % 5, y, (limb + 1) * 32 - 1 - z), 
-                b((x + 2) % 5, y, (limb + 1) * 32 - 1 - z)))), 
+            |z|
+                int(a_prime[b_index(x, y, (limb + 1) * 32 - 1 - z)]) ^ 
+                int(andn_int(
+                    int(a_prime[b_index((x + 1) % 5, y, (limb + 1) * 32 - 1 - z)]), 
+                    int(a_prime[b_index((x + 2) % 5, y, (limb + 1) * 32 - 1 - z)])
+                )), 
             0, 
             |acc, e| acc * 2 + e
         );
@@ -704,7 +717,7 @@ machine Keccakf32Memory(mem: Memory) with
             let x = (i / 2) % 5;
             let limb = i % 2;
 
-            provide_value(a_i, row, fe(query_a_prime_prime(x, y, limb)));
+            compute_from(a_i, row, a_prime, |a_prime| fe(query_a_prime_prime(x, y, limb, a_prime)));
         });
     };
 
@@ -730,10 +743,11 @@ machine Keccakf32Memory(mem: Memory) with
             let limb = i / 32;
             let bit_in_limb = i % 32;
 
-            provide_value(
+            compute_from(
                 a_i, 
-                row, 
-                fe((int(eval(a_prime_prime[limb])) >> bit_in_limb) & 0x1)
+                row,
+                a_prime_prime,
+                |a_prime_prime| fe((int(a_prime_prime[limb]) >> bit_in_limb) & 0x1)
             );
         });
     };
@@ -745,16 +759,17 @@ machine Keccakf32Memory(mem: Memory) with
     //         F::from_canonical_u16(row.a_prime_prime[0][0][limb].as_canonical_u64() as u16 ^ rc_lo);
     // }
 
-    let query_a_prime_prime_prime_0_0_limbs: int, int -> int = query |round, limb| 
-        int(eval(a_prime_prime[limb])) ^ 
+    let query_a_prime_prime_prime_0_0_limbs: int, int, fe[] -> int = query |round, limb, a_prime_prime| 
+        int(a_prime_prime[limb]) ^ 
         ((RC[round] >> (limb * 32)) & 0xffffffff);
 
     query |row| {
         let _ = array::new(2, |limb| {
-            provide_value(
+            compute_from(
                 a_prime_prime_prime_0_0_limbs[limb], 
-                row, 
-                fe(query_a_prime_prime_prime_0_0_limbs(row % NUM_ROUNDS, limb)
+                row,
+                a_prime_prime,
+                |a_prime_prime| fe(query_a_prime_prime_prime_0_0_limbs(row % NUM_ROUNDS, limb, a_prime_prime)
             ));
         });
     };
