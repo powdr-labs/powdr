@@ -1,6 +1,8 @@
+use std::mem::MaybeUninit;
+
 use wasmparser::{
-    types, CompositeInnerType, ContType, FuncType, FunctionBody, LocalsReader, ModuleArity, Parser,
-    Payload, RefType, SubType, ValType,
+    CompositeInnerType, ContType, FuncType, FunctionBody, ModuleArity, Operator, Parser, Payload,
+    RefType, SubType, ValType,
 };
 
 fn main() -> wasmparser::Result<()> {
@@ -94,9 +96,10 @@ impl<'a> ModuleArity for ModuleState<'a> {
 
 enum Operation {
     FunctionArgs,
-    Const(u32),
+    WASMOp(Operator<'static>),
 }
 
+#[derive(Clone, Copy)]
 struct ValueOrigin {
     node: usize,
     output_idx: usize,
@@ -106,6 +109,7 @@ struct Node {
     operation: Operation,
     inputs: Vec<ValueOrigin>,
     outputs: Vec<ValType>,
+    // branch_target: Option<usize>,
 }
 
 fn infinite_registers_allocation(
@@ -141,7 +145,43 @@ fn infinite_registers_allocation(
         let operator = operator?;
         let arity = operator.operator_arity(&module);
 
-        // TODO: to be continued...
+        // Most operators simply creates a new node that consumes some inputs and produces
+        // some outputs. But local.* and drop are special that they simply move around
+        // the references between the stack and the locals, and can be resolved statically.
+        match operator {
+            // Special stack and local manipulation operators that don't create nodes:
+            Operator::LocalGet { local_index } => {
+                // LocalGet simply pushes a local value to the stack, and it can be
+                // resolved immediatelly without creating a new node.
+                let val_ref = locals[local_index as usize];
+                stack.push(val_ref);
+                continue;
+            }
+            Operator::LocalSet { local_index } => {
+                // LocalSet pops a value from the stack and assigns it to a local.
+                // It also can be resolved statically without generating a node.
+                let val_ref = stack.pop().unwrap();
+                locals[local_index as usize] = val_ref;
+                continue;
+            }
+            Operator::LocalTee { local_index } => {
+                // LocalTee is like LocalSet, but keeps the value on the stack.
+                let val_ref = *stack.last().unwrap();
+                locals[local_index as usize] = val_ref;
+                continue;
+            }
+            Operator::Drop => {
+                // Drop could be a node that consumes a value and produces nothing,
+                // but since it has no side effects, we can just resolve it statically.
+                stack.pop().unwrap();
+                continue;
+            }
+            // TODO: handle blocks
+            // Regular operators that create nodes:
+            _ => {}
+        }
+
+        // TODO: handle regular operators
     }
 
     Ok(())
@@ -174,7 +214,7 @@ fn read_locals(
         let (count, value_type) = local?;
         for _ in 0..count {
             nodes.push(Node {
-                operation: Operation::Const(0),
+                operation: default_for_type(value_type),
                 inputs: Vec::new(),
                 outputs: vec![value_type],
             });
@@ -186,4 +226,21 @@ fn read_locals(
     }
 
     Ok((nodes, locals))
+}
+
+fn default_for_type(value_type: ValType) -> Operation {
+    match value_type {
+        ValType::I32 => Operation::WASMOp(Operator::I32Const { value: 0 }),
+        ValType::I64 => Operation::WASMOp(Operator::I64Const { value: 0 }),
+        ValType::F32 => Operation::WASMOp(Operator::F32Const { value: 0.0.into() }),
+        ValType::F64 => Operation::WASMOp(Operator::F64Const { value: 0.0.into() }),
+        ValType::V128 => Operation::WASMOp(Operator::V128Const {
+            // Apparently there is no way to instantiate a V128 value.
+            // TODO: Fix this when issue is resolved: https://github.com/bytecodealliance/wasm-tools/issues/2101
+            value: unsafe { MaybeUninit::zeroed().assume_init() },
+        }),
+        ValType::Ref(ref_type) => Operation::WASMOp(Operator::RefNull {
+            hty: ref_type.heap_type(),
+        }),
+    }
 }
