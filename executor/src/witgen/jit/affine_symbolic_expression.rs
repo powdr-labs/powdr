@@ -259,7 +259,9 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
         let mut covered_bits: <T as FieldElement>::Integer = 0.into();
         let mut effects = vec![];
         for (var, coeff, constraint) in constrained_coefficients {
-            let mask = *constraint.multiple(coeff).mask();
+            let is_negative = !coeff.is_in_lower_half();
+            let coeff_abs = if is_negative { -coeff } else { coeff };
+            let mask = *constraint.multiple(coeff_abs).mask();
             if !(mask & covered_bits).is_zero() {
                 // Overlapping range constraints.
                 return Ok(ProcessResult::empty());
@@ -269,7 +271,11 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             let masked = -&self.offset & mask;
             effects.push(Effect::Assignment(
                 var.clone(),
-                masked.integer_div(&coeff.into()),
+                if is_negative {
+                    -masked.integer_div(&coeff_abs.into())
+                } else {
+                    masked.integer_div(&coeff_abs.into())
+                },
             ));
         }
 
