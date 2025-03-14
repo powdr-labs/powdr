@@ -86,7 +86,7 @@ fn decode_prover_function<T: FieldElement>(
         results.into_iter().nth(index).unwrap()
     } else {
         Err(format!(
-        "Prover function not recognized.\nTried decoding 'provide_if_unknown': {}\nTried decoding 'handle_query': {}\nTried decoding 'compute_from': {}",
+        "Prover function not recognized:\n{function}\nTried decoding 'provide_if_unknown': {}\nTried decoding 'handle_query': {}\nTried decoding 'compute_from': {}",
         results[0].as_ref().err().unwrap(),
         results[1].as_ref().err().unwrap(),
         results[2].as_ref().err().unwrap(),
