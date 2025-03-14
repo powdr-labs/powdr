@@ -20,6 +20,13 @@ machine Main with degree: 8 {
     reg CNT;
 
     col witness XInv;
+    query |i| std::prover::compute_from(XInv, i, [X], |values| {
+        if values[0] == 0 {
+            0_fe
+        } else {
+            std::convert::fe(std::math::ff::inverse(std::convert::int(values[0]), std::field::modulus()))
+        }
+    });
     col witness XIsZero;
     // assume X = 7
     // XisZero * 7 = 0 -> XIzZero = 0
@@ -34,18 +41,25 @@ machine Main with degree: 8 {
     instr dec_CNT { CNT' = CNT - 1 }
     instr assert_zero X { XIsZero = 1 }
 
+    reg channel;
+    reg input_position;
+
     function main {
-        CNT <=X= ${ Query::Input(0, 2) };
+        channel <=X= 0;
+        input_position <=X= 2;
+        CNT <=X= ${ Query::Input(std::convert::int(std::prover::eval(channel)), std::convert::int(std::prover::eval(input_position))) };
 
         start:
         jmpz CNT, check;
-        A <=X= A + ${ Query::Input(0, std::convert::int(std::prover::eval(CNT) + 2)) };
+        input_position <=X= CNT + 2;
+        A <=X= A + ${ Query::Input(std::convert::int(std::prover::eval(channel)), std::convert::int(std::prover::eval(input_position))) };
         // Could use "CNT <=X= CNT - 1", but that would need X.
         dec_CNT;
         jmp start;
 
         check:
-        A <=X= A - ${ Query::Input(0, 1) };
+        input_position <=X= 1;
+        A <=X= A - ${ Query::Input(std::convert::int(std::prover::eval(channel)), std::convert::int(std::prover::eval(input_position))) };
         assert_zero A;
         return;
     }
