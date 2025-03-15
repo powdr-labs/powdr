@@ -370,6 +370,14 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
+    pub fn with_backend_if_none(&mut self, backend: BackendType, options: Option<BackendOptions>) {
+        if self.arguments.backend.is_none() {
+            self.arguments.backend = Some(backend);
+            self.arguments.backend_options = options.unwrap_or_default();
+            self.artifact.backend = None;
+        }
+    }
+
     pub fn with_setup_file(mut self, setup_file: Option<PathBuf>) -> Self {
         self.arguments.setup_file = setup_file;
         self.artifact.backend = None;
