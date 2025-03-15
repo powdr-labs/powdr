@@ -21,7 +21,7 @@ pub fn resolve_test_file(file_name: &str) -> PathBuf {
     PathBuf::from(format!("../test_data/{file_name}"))
 }
 
-/// Makes a new pipeline for the given file. All steps until optimized pil are
+/// Makes a new pipeline for the given file. All steps until witness generation are
 /// already computed, so that the test can branch off from there, without having to re-compute
 /// these steps.
 pub fn make_simple_prepared_pipeline<T: FieldElement>(
@@ -36,11 +36,11 @@ pub fn make_simple_prepared_pipeline<T: FieldElement>(
         .with_tmp_output()
         .with_linker_params(linker_params)
         .from_file(resolve_test_file(file_name));
-    pipeline.compute_optimized_pil().unwrap();
+    pipeline.compute_witness().unwrap();
     pipeline
 }
 
-/// Makes a new pipeline for the given file and inputs. All steps until optimized pil are
+/// Makes a new pipeline for the given file and inputs. All steps until witness generation are
 /// already computed, so that the test can branch off from there, without having to re-compute
 /// these steps.
 pub fn make_prepared_pipeline<T: FieldElement>(
@@ -59,7 +59,7 @@ pub fn make_prepared_pipeline<T: FieldElement>(
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
         .add_external_witness_values(external_witness_values);
-    pipeline.compute_optimized_pil().unwrap();
+    pipeline.compute_witness().unwrap();
     pipeline
 }
 
@@ -293,7 +293,7 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
     pipeline.clone().compute_proof().unwrap();
 
     // Repeat the proof generation, but with an externally generated setup and verification key
-    let pil = pipeline.compute_backend_tuned_pil().unwrap().clone();
+    let pil = pipeline.compute_optimized_pil().unwrap();
 
     // Setup
     let output_dir = pipeline.output_dir().clone().unwrap();
@@ -371,7 +371,7 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
 
-    if pipeline.backend_tuned_pil().unwrap().constant_count() > 0 {
+    if pipeline.optimized_pil().unwrap().constant_count() > 0 {
         // Export verification Key
         let output_dir = pipeline.output_dir().as_ref().unwrap();
         let vkey_file_path = output_dir.join("verification_key.bin");
@@ -420,7 +420,7 @@ pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
 
-    if pipeline.backend_tuned_pil().unwrap().constant_count() > 0 {
+    if pipeline.optimized_pil().unwrap().constant_count() > 0 {
         // Export verification Key
         let output_dir = pipeline.output_dir().as_ref().unwrap();
         let vkey_file_path = output_dir.join("verification_key.bin");
@@ -499,8 +499,8 @@ pub fn assert_proofs_fail_for_invalid_witnesses_mock(
     assert!(Pipeline::<GoldilocksField>::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
-        .set_witness(convert_witness(witness))
         .with_backend(powdr_backend::BackendType::Mock, None)
+        .set_witness(convert_witness(witness))
         .compute_proof()
         .is_err());
 }
