@@ -430,6 +430,7 @@ fn read_slice_with_options<T: FieldElement>(options: CompilerOptions) {
 
     let mut pipeline = Pipeline::<T>::default()
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
+        .with_backend(powdr_backend::BackendType::Mock, None)
         .with_prover_inputs(vec![answer.into()])
         .with_prover_dict_inputs(d);
 

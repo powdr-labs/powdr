@@ -35,7 +35,10 @@ fn block_to_block_wrong_connection() {
     // So, if we multiply all columns with a constant, the constraint
     // should still be satisfied, but the connection argument should fail.
     let f = "asm/block_to_block.asm";
-    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
+    let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
+        .with_backend(powdr_backend::BackendType::Mock, None);
+
+    pipeline.compute_witness().unwrap();
 
     // Get the correct witness
     let witness = pipeline.witness().unwrap();
