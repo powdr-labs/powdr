@@ -718,7 +718,7 @@ fn run<F: FieldElement>(
 ) -> Result<(), Vec<String>> {
     pipeline = pipeline.with_setup_file(params.map(PathBuf::from));
 
-    pipeline.compute_witness().unwrap();
+    pipeline.compute_optimized_pil().unwrap();
 
     if let Some(backend) = prove_with {
         pipeline

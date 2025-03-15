@@ -113,9 +113,12 @@ fn fibonacci() {
 fn fibonacci_with_public() {
     // Public references are not supported by the backends yet, but we can test witness generation.
     let f = "pil/fibonacci_with_public.pil";
-    let mut pipeline: Pipeline<GoldilocksField> =
+    let pipeline: Pipeline<GoldilocksField> =
         make_prepared_pipeline(f, vec![], vec![], LinkerMode::Bus);
-    pipeline.compute_witness().unwrap();
+    pipeline
+        .with_backend(powdr_backend::BackendType::Mock, None)
+        .compute_witness()
+        .unwrap();
 }
 
 #[test]
@@ -399,10 +402,10 @@ fn serialize_deserialize_optimized_pil() {
     let f = "pil/fibonacci.pil";
     let path = powdr_pipeline::test_util::resolve_test_file(f);
 
-    let optimized = powdr_pipeline::Pipeline::<powdr_number::Bn254Field>::default()
-        .from_file(path)
-        .compute_optimized_pil()
-        .unwrap();
+    let mut pipeline =
+        powdr_pipeline::Pipeline::<powdr_number::Bn254Field>::default().from_file(path);
+
+    let optimized = pipeline.compute_optimized_pil().unwrap();
 
     let optimized_serialized = serde_cbor::to_vec(&optimized).unwrap();
     let optimized_deserialized: powdr_ast::analyzed::Analyzed<powdr_number::Bn254Field> =

@@ -1,4 +1,5 @@
 use ::powdr_pipeline::Pipeline;
+use powdr_backend::BackendType;
 use powdr_number::GoldilocksField;
 
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -10,9 +11,11 @@ fn jit_witgen_benchmark(c: &mut Criterion) {
     group.sample_size(10);
 
     // Poseidon benchmark
-    let mut pipeline =
-        Pipeline::<T>::default().from_file("../test_data/std/poseidon_benchmark.asm".into());
-    pipeline.compute_optimized_pil().unwrap();
+    let mut pipeline = Pipeline::<T>::default()
+        .from_file("../test_data/std/poseidon_benchmark.asm".into())
+        .with_backend(BackendType::Mock, None);
+    // this `jit_witgen_benchmark` function will also require backend type
+    pipeline.compute_backend_tuned_pil().unwrap();
     pipeline.compute_fixed_cols().unwrap();
 
     group.bench_function("jit_witgen_benchmark", |b| {
