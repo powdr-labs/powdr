@@ -524,6 +524,35 @@ impl<R> Children<Expression<R>> for TraitDeclaration<Expression<R>> {
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
 )]
+pub struct PublicDeclaration {
+    pub poly_reference: Expression,
+    pub array_index: Option<Expression>,
+    pub row: Expression,
+}
+
+impl Children<Expression> for PublicDeclaration {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(
+            self.array_index
+                .iter()
+                .chain(once(&self.poly_reference))
+                .chain(once(&self.row)),
+        )
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(
+            self.array_index
+                .iter_mut()
+                .chain(once(&mut self.poly_reference))
+                .chain(once(&mut self.row)),
+        )
+    }
+}
+
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct NamedType<E = u64> {
     pub name: String,
     pub ty: Type<E>,
