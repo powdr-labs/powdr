@@ -21,7 +21,7 @@ pub fn resolve_test_file(file_name: &str) -> PathBuf {
     PathBuf::from(format!("../test_data/{file_name}"))
 }
 
-/// Makes a new pipeline for the given file. All steps until witness generation are
+/// Makes a new pipeline for the given file. All steps until optimized pil are
 /// already computed, so that the test can branch off from there, without having to re-compute
 /// these steps.
 pub fn make_simple_prepared_pipeline<T: FieldElement>(
@@ -36,11 +36,11 @@ pub fn make_simple_prepared_pipeline<T: FieldElement>(
         .with_tmp_output()
         .with_linker_params(linker_params)
         .from_file(resolve_test_file(file_name));
-    pipeline.compute_witness().unwrap();
+    pipeline.compute_optimized_pil().unwrap();
     pipeline
 }
 
-/// Makes a new pipeline for the given file and inputs. All steps until witness generation are
+/// Makes a new pipeline for the given file and inputs. All steps until optimized pil are
 /// already computed, so that the test can branch off from there, without having to re-compute
 /// these steps.
 pub fn make_prepared_pipeline<T: FieldElement>(
@@ -59,7 +59,7 @@ pub fn make_prepared_pipeline<T: FieldElement>(
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
         .add_external_witness_values(external_witness_values);
-    pipeline.compute_witness().unwrap();
+    pipeline.compute_optimized_pil().unwrap();
     pipeline
 }
 
@@ -296,14 +296,14 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
     let pil = pipeline.compute_optimized_pil().unwrap();
 
     // Setup
-    let output_dir = pipeline.output_dir().clone().unwrap();
-    let setup_file_path = output_dir.join("params.bin");
     let max_degree = pil
         .degree_ranges()
         .into_iter()
         .map(|range| range.max)
         .max()
         .unwrap();
+    let output_dir = pipeline.output_dir().clone().unwrap();
+    let setup_file_path = output_dir.join("params.bin");
     buffered_write_file(&setup_file_path, |writer| {
         powdr_backend::BackendType::Halo2
             .factory::<Bn254Field>()
