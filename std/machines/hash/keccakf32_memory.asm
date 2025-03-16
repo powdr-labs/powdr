@@ -594,7 +594,7 @@ machine Keccakf32Memory(mem: Memory) with
 
     query |row| compute_from_multi(
         c, row, a,
-        |a_fe| array::new(array::len(c), |i| {
+        |a_fe| array::new(5 * 64, |i| {
             let x = i / 64;
             let z = i % 64;
             let limb = z / 32;
@@ -621,7 +621,7 @@ machine Keccakf32Memory(mem: Memory) with
 
     query |row| compute_from_multi(
         c_prime, row, c,
-        |c_fe| array::new(array::len(c_prime), |i| {
+        |c_fe| array::new(5 * 64, |i| {
             let x = i / 64;
             let z = i % 64;
 
@@ -651,7 +651,7 @@ machine Keccakf32Memory(mem: Memory) with
 
     query |row| compute_from_multi(
         a_prime, row, a + c + c_prime,
-        |inputs| array::new(array::len(a_prime), |i| {
+        |inputs| array::new(5 * 5 * 64, |i| {
             let y = i / 320;
             let x = (i / 64) % 5;
             let z = i % 64;
@@ -659,8 +659,8 @@ machine Keccakf32Memory(mem: Memory) with
             let bit_in_limb = z % 32;
 
             let a_elem = inputs[y * 10 + x * 2 + limb];
-            let c_elem = inputs[x * 64 + z + array::len(a)];
-            let c_prime_elem = inputs[x * 64 + z + array::len(a) + array::len(c)];
+            let c_elem = inputs[x * 64 + z + 5 * 5 * 2];
+            let c_prime_elem = inputs[x * 64 + z + 5 * 5 * 2 + 5 * 64];
 
             fe(((int(a_elem) >> bit_in_limb) & 0x1) ^ int(c_elem) ^ int(c_prime_elem))
         }));
@@ -706,7 +706,7 @@ machine Keccakf32Memory(mem: Memory) with
 
     query |row| compute_from_multi(
         a_prime_prime, row, a_prime,
-        |a_prime_fe| array::new(array::len(a_prime_prime), |i| {
+        |a_prime_fe| array::new(5 * 5 * 2, |i| {
             let y = i / 10;
             let x = (i / 2) % 5;
             let limb = i % 2;
@@ -733,7 +733,7 @@ machine Keccakf32Memory(mem: Memory) with
 
     query |row| compute_from_multi(
         a_prime_prime_0_0_bits, row, a_prime_prime,
-        |a_prime_prime_fe| array::new(array::len(a_prime_prime_0_0_bits), |i| {
+        |a_prime_prime_fe| array::new(64, |i| {
             let limb = i / 32;
             let bit_in_limb = i % 32;
 
