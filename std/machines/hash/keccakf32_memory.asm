@@ -8,7 +8,7 @@ use std::convert::fe;
 use std::prelude::set_hint;
 use std::prelude::Query;
 use std::prover::eval;
-use std::prover::compute_from;
+use std::prover::compute_from_multi;
 use std::machines::large_field::memory::Memory;
 
 machine Keccakf32Memory(mem: Memory) with
@@ -592,21 +592,21 @@ machine Keccakf32Memory(mem: Memory) with
     //     }
     // }
 
-    query |row| {
-        let _ = array::map_enumerated(c, |i, c_i| {
+    query |row| compute_from_multi(
+        c, row, a,
+        |a_fe| array::new(array::len(c), |i| {
             let x = i / 64;
             let z = i % 64;
             let limb = z / 32;
             let bit_in_limb = z % 32;
 
-            let a_elems = array::new(5, |y| a[y * 10 + x * 2 + limb]);
-
-            compute_from(
-                c_i, row, a_elems,
-                |a_elems_fe| fe(utils::fold(
-                    5, |y| (int(a_elems_fe[y]) >> bit_in_limb) & 0x1, 0, |acc, e| acc ^ e)))
-        });
-    };
+            fe(utils::fold(
+                5,
+                |y| (int(a_fe[y * 10 + x * 2 + limb]) >> bit_in_limb) & 0x1,
+                0,
+                |acc, e| acc ^ e
+            ))
+        }));
 
     // // Populate C'[x, z] = xor(C[x, z], C[x - 1, z], C[x + 1, z - 1]).
     // for x in 0..5 {
@@ -619,20 +619,18 @@ machine Keccakf32Memory(mem: Memory) with
     //     }
     // }
 
-    query |row| {
-        let _ = array::map_enumerated(c_prime, |i, c_i| {
+    query |row| compute_from_multi(
+        c_prime, row, c,
+        |c_fe| array::new(array::len(c_prime), |i| {
             let x = i / 64;
             let z = i % 64;
 
-            let c_elems = [
-                c[x * 64 + z],
-                c[((x + 4) % 5) * 64 + z],
-                c[((x + 1) % 5) * 64 + (z + 63) % 64]
-            ];
-
-            compute_from(c_i, row, c_elems, |c_elems_fe| fe(int(c_elems_fe[0]) ^ int(c_elems_fe[1]) ^ int(c_elems_fe[2])));
-        });
-    };
+            fe(
+                int(c_fe[x * 64 + z]) ^
+                int(c_fe[((x + 4) % 5) * 64 + z]) ^
+                int(c_fe[((x + 1) % 5) * 64 + (z + 63) % 64])
+            )
+        }));
 
     // // Populate A'. To avoid shifting indices, we rewrite
     // //     A'[x, y, z] = xor(A[x, y, z], C[x - 1, z], C[x + 1, z - 1])
@@ -651,24 +649,21 @@ machine Keccakf32Memory(mem: Memory) with
     // }
 
 
-    query |row| {
-        let _ = array::map_enumerated(a_prime, |i, a_i| {
+    query |row| compute_from_multi(
+        a_prime, row, a + c + c_prime,
+        |inputs| array::new(array::len(a_prime), |i| {
             let y = i / 320;
             let x = (i / 64) % 5;
             let z = i % 64;
             let limb = z / 32;
             let bit_in_limb = z % 32;
 
-            let a_elem = a[y * 10 + x * 2 + limb];
-            let c_elem = c[x * 64 + z];
-            let c_prime_elem = c_prime[x * 64 + z];
+            let a_elem = inputs[y * 10 + x * 2 + limb];
+            let c_elem = inputs[x * 64 + z + array::len(a)];
+            let c_prime_elem = inputs[x * 64 + z + array::len(a) + array::len(c)];
 
-            compute_from(
-                a_i, row, [a_elem, c_elem, c_prime_elem],
-                |inputs| fe(((int(inputs[0]) >> bit_in_limb) & 0x1) ^ int(inputs[1]) ^ int(inputs[2]))
-            );
-        });
-    };
+            fe(((int(a_elem) >> bit_in_limb) & 0x1) ^ int(c_elem) ^ int(c_prime_elem))
+        }));
 
     // // Populate A''.P
     // // A''[x, y] = xor(B[x, y], andn(B[x + 1, y], B[x + 2, y])).
@@ -709,16 +704,15 @@ machine Keccakf32Memory(mem: Memory) with
             |acc, e| acc * 2 + e
         );
 
-    query |row| {
-        let _ = array::map_enumerated(a_prime_prime, |i, a_i| {
+    query |row| compute_from_multi(
+        a_prime_prime, row, a_prime,
+        |a_prime_fe| array::new(array::len(a_prime_prime), |i| {
             let y = i / 10;
             let x = (i / 2) % 5;
             let limb = i % 2;
 
-            // Seems to be faster to require all 5 * 5 * 64 elements of a_prime
-            compute_from(a_i, row, a_prime, |a_prime| fe(query_a_prime_prime(x, y, limb, a_prime)));
-        });
-    };
+            fe(query_a_prime_prime(x, y, limb, a_prime_fe))
+        }));
 
     // // For the XOR, we split A''[0, 0] to bits.
     // let mut val = 0; // smaller address correspond to less significant limb
@@ -737,19 +731,14 @@ machine Keccakf32Memory(mem: Memory) with
     //     *bit = F::from_bool(val_bits[i]);
     // }
 
-    query |row| {
-        let _ = array::map_enumerated(a_prime_prime_0_0_bits, |i, a_i| {
+    query |row| compute_from_multi(
+        a_prime_prime_0_0_bits, row, a_prime_prime,
+        |a_prime_prime_fe| array::new(array::len(a_prime_prime_0_0_bits), |i| {
             let limb = i / 32;
             let bit_in_limb = i % 32;
 
-            compute_from(
-                a_i, 
-                row,
-                a_prime_prime,
-                |a_prime_prime| fe((int(a_prime_prime[limb]) >> bit_in_limb) & 0x1)
-            );
-        });
-    };
+            fe((int(a_prime_prime_fe[limb]) >> bit_in_limb) & 0x1)
+        }));
 
     // // A''[0, 0] is additionally xor'd with RC.
     // for limb in 0..U64_LIMBS {
@@ -758,16 +747,10 @@ machine Keccakf32Memory(mem: Memory) with
     //         F::from_canonical_u16(row.a_prime_prime[0][0][limb].as_canonical_u64() as u16 ^ rc_lo);
     // }
 
-    query |row| {
-        let _ = array::new(2, |limb| {
-            let a_prime_prime_elem = a_prime_prime[limb];
+    query |row| compute_from_multi(
+        a_prime_prime_prime_0_0_limbs, row, array::sub_array(a_prime_prime, 0, 2),
+        |a_prime_prime_fe| array::new(2, |limb| {
+            fe(int(a_prime_prime_fe[limb]) ^ ((RC[row % NUM_ROUNDS] >> (limb * 32)) & 0xffffffff))
+        }));
 
-            compute_from(
-                a_prime_prime_prime_0_0_limbs[limb], 
-                row,
-                [a_prime_prime_elem],
-                |inputs| fe(int(inputs[0]) ^ ((RC[row % NUM_ROUNDS] >> (limb * 32)) & 0xffffffff))
-            );
-        });
-    };
 }
