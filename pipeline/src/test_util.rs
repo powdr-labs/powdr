@@ -371,7 +371,7 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
 
-    if pipeline.optimized_pil().unwrap().constant_count() > 0 {
+    if pipeline.backend_tuned_pil().unwrap().constant_count() > 0 {
         // Export verification Key
         let output_dir = pipeline.output_dir().as_ref().unwrap();
         let vkey_file_path = output_dir.join("verification_key.bin");
@@ -420,7 +420,7 @@ pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
 
-    if pipeline.optimized_pil().unwrap().constant_count() > 0 {
+    if pipeline.backend_tuned_pil().unwrap().constant_count() > 0 {
         // Export verification Key
         let output_dir = pipeline.output_dir().as_ref().unwrap();
         let vkey_file_path = output_dir.join("verification_key.bin");
