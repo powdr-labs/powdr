@@ -157,11 +157,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
                 cache_key.known_concrete,
             )
             .map_err(|e| {
-                // These errors can be pretty verbose and are quite common currently.
-                log::info!(
-                    "=> Error generating JIT code: {}\n...",
-                    e.lines().take(5).join("\n")
-                );
+                log::info!("{e}");
                 CompilationError::Other(e)
             })?;
 
