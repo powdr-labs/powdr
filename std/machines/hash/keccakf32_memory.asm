@@ -596,7 +596,7 @@ machine Keccakf32Memory(mem: Memory) with
 
     query |row| compute_from_multi(
         c, row, a,
-        |a_fe| array::new(array::len(c), |i| {
+        |a_fe| array::new(5 * 64, |i| {
             let x = i / 64;
             let z = i % 64;
             let limb = z / 32;
@@ -628,7 +628,7 @@ machine Keccakf32Memory(mem: Memory) with
 
     query |row| compute_from_multi(
         a_prime, row, a + c + c_prime,
-        |inputs| array::new(array::len(a_prime), |i| {
+        |inputs| array::new(5 * 5 * 64, |i| {
             let y = i / 320;
             let x = (i / 64) % 5;
             let z = i % 64;
