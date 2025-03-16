@@ -510,14 +510,25 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
 ) {
-    let mut pipeline = Pipeline::<GoldilocksField>::default()
+    let pipeline = Pipeline::<GoldilocksField>::default()
         .with_tmp_output()
-        .from_file(resolve_test_file(file_name))
-        .set_witness(convert_witness(witness));
-    pipeline.compute_witness().unwrap();
+        .from_file(resolve_test_file(file_name));
 
-    assert!(run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic).is_err());
-    assert!(run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).is_err());
+    assert!(run_pilcom_with_backend_variant(
+        pipeline
+            .clone()
+            .with_backend(powdr_backend::BackendType::EStarkDump, None)
+            .set_witness(convert_witness(witness)),
+        BackendVariant::Monolithic
+    )
+    .is_err());
+    assert!(run_pilcom_with_backend_variant(
+        pipeline
+            .with_backend(powdr_backend::BackendType::EStarkDumpComposite, None)
+            .set_witness(convert_witness(witness)),
+        BackendVariant::Composite
+    )
+    .is_err());
 }
 
 #[cfg(not(feature = "estark-starky"))]
@@ -539,13 +550,11 @@ pub fn assert_proofs_fail_for_invalid_witnesses_estark(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
 ) {
-    let pipeline = Pipeline::<GoldilocksField>::default()
-        .from_file(resolve_test_file(file_name))
-        .set_witness(convert_witness(witness));
+    let pipeline = Pipeline::<GoldilocksField>::default().from_file(resolve_test_file(file_name));
 
     assert!(pipeline
-        .clone()
         .with_backend(powdr_backend::BackendType::EStarkStarky, None)
+        .set_witness(convert_witness(witness))
         .compute_proof()
         .is_err());
 }
