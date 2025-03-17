@@ -225,6 +225,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             known_concrete,
         };
 
+        log::info!("Calling compiled function for {:?}", cache_key);
         self.witgen_functions
             .get(&cache_key)
             .or_else(|| {
@@ -239,6 +240,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .expect("compile_cached() returned false!")
             .function
             .call(self.fixed_data, mutable_state, values, data);
+        log::info!("Done calling function");
 
         Ok(true)
     }
