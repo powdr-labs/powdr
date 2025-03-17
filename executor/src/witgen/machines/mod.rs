@@ -142,6 +142,13 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
 
     /// Returns the identity IDs of the connecting identities that this machine is responsible for.
     fn bus_ids(&self) -> Vec<T>;
+
+    fn take_public_values(&mut self) -> HashMap<String, T> {
+        unimplemented!(
+            "Public values are not supported for machine {}",
+            self.name()
+        );
+    }
 }
 
 #[repr(C)]
@@ -237,6 +244,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         match_variant!(self, m => m.take_witness_col_values(mutable_state))
+    }
+
+    fn take_public_values(&mut self) -> HashMap<String, T> {
+        match self {
+            KnownMachine::BlockMachine(m) => m.take_public_values(),
+            KnownMachine::DynamicMachine(m) => m.take_public_values(),
+            _ => HashMap::new(),
+        }
     }
 
     fn bus_ids(&self) -> Vec<T> {

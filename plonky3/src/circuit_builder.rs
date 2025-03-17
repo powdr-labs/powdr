@@ -463,6 +463,8 @@ where
             .flat_map(|(_, cols)| cols.iter().map(|(name, _)| name.clone()))
             .collect();
 
+        println!("old_witness: {:?}", witness_by_machine);
+
         // Compute next-stage witness for each machine in parallel.
         *witness_by_machine = info_span!("Witness generation for next stage").in_scope(|| {
             witness_by_machine
@@ -474,6 +476,8 @@ where
                         challenge_map.clone(),
                         trace_stage,
                     );
+                    println!("trace_stage: {:?}", trace_stage);
+                    println!("new_witness: {:?}", new_witness);
                     (machine_name.clone(), new_witness)
                 })
                 .collect()
