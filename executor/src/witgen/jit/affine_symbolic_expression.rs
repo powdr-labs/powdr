@@ -216,25 +216,19 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             }
             _ => {
                 let r = self.solve_bit_decomposition()?;
+
                 if r.complete {
                     r
                 } else {
-                    // TODO is this part still needed?
-                    // The offset is negated.
                     let negated = -self;
-                    let r = negated.solve_bit_decomposition()?;
-                    if r.complete {
-                        r
-                    } else {
-                        let effects = self
-                            .transfer_constraints()
-                            .into_iter()
-                            .chain(negated.transfer_constraints())
-                            .collect();
-                        ProcessResult {
-                            effects,
-                            complete: false,
-                        }
+                    let effects = self
+                        .transfer_constraints()
+                        .into_iter()
+                        .chain(negated.transfer_constraints())
+                        .collect();
+                    ProcessResult {
+                        effects,
+                        complete: false,
                     }
                 }
             }
