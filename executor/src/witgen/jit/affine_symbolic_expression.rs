@@ -529,10 +529,9 @@ mod test {
         let b = Ase::from_unknown_variable("b", rc.clone());
         let c = Ase::from_unknown_variable("c", rc.clone());
         let z = Ase::from_known_symbol("Z", Default::default());
-        // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 + Z = 0
+        // a * 0x100 - b * 0x10000 + c * 0x1000000 + 10 + Z = 0
         let ten = from_number(10);
-        let constr = mul(&a, &from_number(0x100))
-            + mul(&b, &from_number(0x10000))
+        let constr = mul(&a, &from_number(0x100)) - mul(&b, &from_number(0x10000))
             + mul(&c, &from_number(0x1000000))
             + ten.clone()
             + z.clone();
@@ -541,38 +540,39 @@ mod test {
         assert!(!result.complete && result.effects.is_empty());
         // Now add the range constraint on a, it should be solvable.
         let a = Ase::from_unknown_variable("a", rc.clone());
-        let constr = mul(&a, &from_number(0x100))
-            + mul(&b, &from_number(0x10000))
+        let constr = mul(&a, &from_number(0x100)) - mul(&b, &from_number(0x10000))
             + mul(&c, &from_number(0x1000000))
             + ten.clone()
             + z;
         let result = constr.solve().unwrap();
         assert!(result.complete);
-        let effects = result
-            .effects
-            .into_iter()
-            .map(|effect| match effect {
-                Effect::Assignment(v, expr) => format!("{v} = {expr};\n"),
-                Effect::Assertion(Assertion {
-                    lhs,
-                    rhs,
-                    expected_equal,
-                }) => {
-                    format!(
-                        "assert {lhs} {} {rhs};\n",
-                        if expected_equal { "==" } else { "!=" }
-                    )
-                }
-                _ => panic!(),
+
+        let [effect] = &result.effects[..] else {
+            panic!();
+        };
+        let Effect::BitDecomposition(BitDecomposition { value, components }) = effect else {
+            panic!();
+        };
+        assert_eq!(format!("{value}"), "-(10 + Z)");
+        let formatted = components
+            .iter()
+            .map(|c| {
+                format!(
+                    "{} = (({value} & {}) // {}){};\n",
+                    c.variable,
+                    c.bit_mask,
+                    c.coefficient,
+                    if c.is_negative { " [negative]" } else { "" }
+                )
             })
-            .format("")
-            .to_string();
+            .join("");
+
         assert_eq!(
-            effects,
-            "a = ((-(10 + Z) & 0xff00) // 256);
-b = ((-(10 + Z) & 0xff0000) // 65536);
-c = ((-(10 + Z) & 0xff000000) // 16777216);
-assert (-(10 + Z) & 0xffffffff000000ff) == 0;
+            formatted,
+            "\
+a = ((-(10 + Z) & 65280) // 256);
+b = ((-(10 + Z) & 16711680) // 65536) [negative];
+c = ((-(10 + Z) & 4278190080) // 16777216);
 "
         );
     }
