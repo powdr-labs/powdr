@@ -17,6 +17,8 @@ use super::{symbolic_expression::SymbolicExpression, variable::Variable};
 pub enum Effect<T: FieldElement, V> {
     /// Variable can be assigned a value.
     Assignment(V, SymbolicExpression<T, V>),
+    /// Perform a bit decomposition of a known value, and assign multiple variables.
+    BitDecomposition(BitDecomposition<T, V>),
     /// We learnt a new range constraint on variable.
     RangeConstraint(V, RangeConstraint<T>),
     /// A run-time assertion. If this fails, we have conflicting constraints.
@@ -37,6 +39,11 @@ impl<T: FieldElement> Effect<T, Variable> {
         match self {
             Effect::Assignment(var, _) => Box::new(iter::once((var, false))),
             Effect::RangeConstraint(..) => unreachable!(),
+            Effect::BitDecomposition(BitDecomposition { components, .. }) => Box::new(
+                components
+                    .iter()
+                    .map(|BitDecompositionComponent { variable, .. }| (variable, false)),
+            ),
             Effect::Assertion(..) => Box::new(iter::empty()),
             Effect::MachineCall(_, known, vars) => Box::new(
                 vars.iter()
@@ -59,6 +66,13 @@ impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
         let iter: Box<dyn Iterator<Item = &V>> = match self {
             Effect::Assignment(v, expr) => Box::new(iter::once(v).chain(expr.referenced_symbols())),
             Effect::RangeConstraint(v, _) => Box::new(iter::once(v)),
+            Effect::BitDecomposition(BitDecomposition { value, components }) => Box::new(
+                value.referenced_symbols().chain(
+                    components
+                        .iter()
+                        .map(|BitDecompositionComponent { variable, .. }| variable),
+                ),
+            ),
             Effect::Assertion(Assertion { lhs, rhs, .. }) => {
                 Box::new(lhs.referenced_symbols().chain(rhs.referenced_symbols()))
             }
@@ -77,6 +91,33 @@ impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
         };
         iter.unique()
     }
+}
+
+/// A bit decomposition of a value.
+/// Executing this effect solves the following equation:
+/// value = sum_{i=0}^{components.len()} (-1)^components[i].negative * components[i].coefficient * components[i].variable
+///
+/// This effect can only be created if the equation has a unique solution.
+/// It might be that it leads to a contradiction, which should result in an assertion failure.
+#[derive(Clone, PartialEq, Eq)]
+pub struct BitDecomposition<T: FieldElement, V> {
+    /// The value that is decomposed.
+    pub value: SymbolicExpression<T, V>,
+    /// The components of the decomposition.
+    pub components: Vec<BitDecompositionComponent<T, V>>,
+}
+
+/// A component in the bit decomposition.
+#[derive(Clone, PartialEq, Eq)]
+pub struct BitDecompositionComponent<T: FieldElement, V> {
+    /// The variables that will be assigned to.
+    pub variable: V,
+    /// If the variable occurs negatively in the equation.
+    pub is_negative: bool,
+    /// The (absolute) coefficient of the variable.
+    pub coefficient: T,
+    /// The bit mask for this componont.
+    pub bit_mask: T::Integer,
 }
 
 /// A run-time assertion. If this fails, we have conflicting constraints.
@@ -139,6 +180,27 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
         .iter()
         .map(|effect| match effect {
             Effect::Assignment(v, expr) => format!("{v} = {expr};"),
+            Effect::BitDecomposition(BitDecomposition { value, components }) => {
+                format!(
+                    "{} := {value};",
+                    components
+                        .iter()
+                        .map(
+                            |BitDecompositionComponent {
+                                 variable,
+                                 is_negative,
+                                 coefficient,
+                                 bit_mask: _,
+                             }| {
+                                format!(
+                                    "{}{coefficient} * {variable}",
+                                    if *is_negative { "-" } else { "" }
+                                )
+                            }
+                        )
+                        .join(" + ")
+                )
+            }
             Effect::Assertion(Assertion {
                 lhs,
                 rhs,

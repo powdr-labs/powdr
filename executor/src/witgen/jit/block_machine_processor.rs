@@ -826,9 +826,21 @@ params[2] = S::Z[0];"
 S::Y[0] = params[0];
 S::Z[0] = params[1];
 S::X[0] = (-(S::Y[0] + -S::Z[0]) & 0xff);
-S::carry[0] = -((-(S::Y[0] + -S::Z[0]) & 0x100) // 256);
+S::carry[0] = ((-(S::Y[0] + -S::Z[0]) & 0x100) // 256);
 assert (-(S::Y[0] + -S::Z[0]) & 0xfffffffffffffe00) == 0;
 params[2] = S::carry[0];"
         );
     }
 }
+
+/*
+carry iff Z < Y
+Z = 2
+Y = 4
+R := Z - Y = 0xffffffe
+X = R & 0xff = 0xfe = 254
+R := R - X = 0xfffff00
+carry = (R & 0x100) // 256 = 1
+R := R + 256 * carry = 0
+=> assert zero at end
+*/

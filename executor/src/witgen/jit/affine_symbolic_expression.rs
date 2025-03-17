@@ -11,7 +11,8 @@ use powdr_number::FieldElement;
 use crate::witgen::jit::effect::Assertion;
 
 use super::{
-    super::range_constraints::RangeConstraint, effect::Effect,
+    super::range_constraints::RangeConstraint,
+    effect::{BitDecomposition, BitDecompositionComponent, Effect},
     symbolic_expression::SymbolicExpression,
 };
 
@@ -218,6 +219,8 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
                 if r.complete {
                     r
                 } else {
+                    // TODO is this part still needed?
+                    // The offset is negated.
                     let negated = -self;
                     let r = negated.solve_bit_decomposition()?;
                     if r.complete {
@@ -257,26 +260,23 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
 
         // Check if they are mutually exclusive and compute assignments.
         let mut covered_bits: <T as FieldElement>::Integer = 0.into();
-        let mut effects = vec![];
-        for (var, coeff, constraint) in constrained_coefficients {
+        let mut components = vec![];
+        for (variable, coeff, constraint) in constrained_coefficients {
             let is_negative = !coeff.is_in_lower_half();
             let coeff_abs = if is_negative { -coeff } else { coeff };
-            let mask = *constraint.multiple(coeff_abs).mask();
-            if !(mask & covered_bits).is_zero() {
+            let bit_mask = *constraint.multiple(coeff_abs).mask();
+            if !(bit_mask & covered_bits).is_zero() {
                 // Overlapping range constraints.
                 return Ok(ProcessResult::empty());
             } else {
-                covered_bits |= mask;
+                covered_bits |= bit_mask;
             }
-            let masked = -&self.offset & mask;
-            effects.push(Effect::Assignment(
-                var.clone(),
-                if is_negative {
-                    -masked.integer_div(&coeff_abs.into())
-                } else {
-                    masked.integer_div(&coeff_abs.into())
-                },
-            ));
+            components.push(BitDecompositionComponent {
+                variable,
+                is_negative,
+                coefficient: coeff_abs,
+                bit_mask,
+            });
         }
 
         if covered_bits >= T::modulus() {
@@ -286,18 +286,20 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
         // We need to assert that the masks cover "-offset",
         // otherwise the equation is not solvable.
         // We assert -offset & !masks == 0
+
+        // TODO can this be done even with negative coefficients?
         if let Some(offset) = self.offset.try_to_number() {
             if (-offset).to_integer() & !covered_bits != 0.into() {
                 return Err(Error::ConflictingRangeConstraints);
             }
-        } else {
-            effects.push(Assertion::assert_eq(
-                -&self.offset & !covered_bits,
-                T::from(0).into(),
-            ));
         }
 
-        Ok(ProcessResult::complete(effects))
+        Ok(ProcessResult::complete(vec![Effect::BitDecomposition(
+            BitDecomposition {
+                value: -self.offset.clone(),
+                components,
+            },
+        )]))
     }
 
     fn transfer_constraints(&self) -> Option<Effect<T, V>> {

@@ -23,9 +23,9 @@ use crate::witgen::{
 };
 
 use super::{
-    effect::{Assertion, BranchCondition, Effect, ProverFunctionCall},
+    effect::{Assertion, BitDecomposition, BranchCondition, Effect, ProverFunctionCall},
     prover_function_heuristics::ProverFunction,
-    symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator},
+    symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
     variable::Variable,
 };
 
@@ -371,6 +371,9 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                 format_expression(e)
             )
         }
+        Effect::BitDecomposition(BitDecomposition { value, components }) => {
+            todo!()
+        }
         Effect::RangeConstraint(..) => {
             unreachable!("Final code should not contain pure range constraints.")
         }
@@ -474,19 +477,12 @@ fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable>) -> St
                 BinaryOperator::Sub => format!("({left} - {right})"),
                 BinaryOperator::Mul => format!("({left} * {right})"),
                 BinaryOperator::Div => format!("({left} / {right})"),
-                BinaryOperator::IntegerDiv => format!("integer_div({left}, {right})"),
             }
         }
         SymbolicExpression::UnaryOperation(op, inner, _) => {
             let inner = format_expression(inner);
             match op {
                 UnaryOperator::Neg => format!("-{inner}"),
-            }
-        }
-        SymbolicExpression::BitOperation(left, op, right, _) => {
-            let left = format_expression(left);
-            match op {
-                BitOperator::And => format!("({left} & {right:#x})"),
             }
         }
     }
@@ -955,29 +951,6 @@ extern \"C\" fn witgen(
     }
 
     #[test]
-    fn integer_division() {
-        let x = cell("x", 0, 0);
-        let y = cell("y", 1, 0);
-        let z = cell("z", 2, 0);
-        let effects = vec![
-            assignment(&y, symbol(&x).integer_div(&number(10))),
-            assignment(&z, symbol(&x).integer_div(&-number(10))),
-        ];
-        let known_inputs = vec![x.clone()];
-        let f = compile_effects(3, &known_inputs, &effects).unwrap();
-        let mut data = vec![
-            GoldilocksField::from(23),
-            GoldilocksField::from(0),
-            GoldilocksField::from(0),
-        ];
-        let mut known = vec![0; 1];
-        (f.function)(witgen_fun_params(&mut data, &mut known));
-        assert_eq!(data[0], GoldilocksField::from(23));
-        assert_eq!(data[1], GoldilocksField::from(2));
-        assert_eq!(data[2], GoldilocksField::from(0));
-    }
-
-    #[test]
     fn input_output() {
         let x = param(0);
         let y = param(1);
@@ -991,23 +964,6 @@ extern \"C\" fn witgen(
         let params = witgen_fun_params_with_params(&mut data, &mut known, &mut params);
         (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(7 * 2));
-    }
-
-    #[test]
-    fn bit_ops() {
-        let a = cell("a", 0, 0);
-        let x = cell("x", 1, 0);
-        // Test that the operators & and | work with numbers larger than the modulus.
-        let large_num =
-            <powdr_number::GoldilocksField as powdr_number::FieldElement>::Integer::from(
-                0xffffffffffffffff_u64,
-            );
-        assert!(large_num.to_string().parse::<u64>().unwrap() == 0xffffffffffffffff_u64);
-        assert!(large_num > GoldilocksField::modulus());
-        let effects = vec![assignment(&x, symbol(&a) & large_num)];
-        let known_inputs = vec![a.clone()];
-        let code = witgen_code(&known_inputs, &effects);
-        assert!(code.contains(&format!("let c_x_1_0 = (c_a_0_0 & {large_num:#x});")));
     }
 
     #[test]
