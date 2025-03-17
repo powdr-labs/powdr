@@ -109,24 +109,24 @@ fn full_field_div(_: FieldElement, _: FieldElement) -> FieldElement {
     // for a generic prime field.
 }
 #[inline]
-fn integer_div(a: FieldElement, b: FieldElement) -> FieldElement {
-    FieldElement(a.0 / b.0)
-}
-impl std::ops::BitAnd<FieldElement> for FieldElement {
-    type Output = Self;
-    #[inline]
-    fn bitand(self, b: FieldElement) -> FieldElement {
-        Self(self.0 & b.0)
-    }
-}
-impl std::ops::BitOr<FieldElement> for FieldElement {
-    type Output = Self;
-    #[inline]
-    fn bitor(self, b: FieldElement) -> FieldElement {
-        Self(self.0 | b.0)
-    }
+fn integer_div(a: FieldElement, b: u64) -> FieldElement {
+    FieldElement(a.0 / b)
 }
 
+#[inline]
+fn bitand_unsiged(a: FieldElement, mask: u64) -> FieldElement {
+    FieldElement(a.0 & mask)
+}
+
+/// Treat `a` as a signed number and perform the and-operation in two's complement.
+#[inline]
+fn bitand_signed(a: FieldElement, mask: u64) -> FieldElement {
+    FieldElement(if a.0 <= (MODULUS - 1) / 2 {
+        a.0 & mask
+    } else {
+        ((a.0 as i64) - (MODULUS as i64)) as u64 & mask
+    })
+}
 impl From<ibig::IBig> for FieldElement {
     fn from(x: ibig::IBig) -> Self {
         FieldElement(u64::try_from(x).unwrap())

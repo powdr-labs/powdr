@@ -23,7 +23,10 @@ use crate::witgen::{
 };
 
 use super::{
-    effect::{Assertion, BitDecomposition, BranchCondition, Effect, ProverFunctionCall},
+    effect::{
+        Assertion, BitDecomposition, BitDecompositionComponent, BranchCondition, Effect,
+        ProverFunctionCall,
+    },
     prover_function_heuristics::ProverFunction,
     symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
     variable::Variable,
@@ -372,7 +375,9 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
             )
         }
         Effect::BitDecomposition(BitDecomposition { value, components }) => {
-            todo!()
+            let r = format_bit_decomposition(is_top_level, value, components);
+            println!("Bit decomposition code: {}", r);
+            r
         }
         Effect::RangeConstraint(..) => {
             unreachable!("Final code should not contain pure range constraints.")
@@ -486,6 +491,56 @@ fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable>) -> St
             }
         }
     }
+}
+
+fn format_bit_decomposition<T: FieldElement>(
+    is_top_level: bool,
+    value: &SymbolicExpression<T, Variable>,
+    components: &[BitDecompositionComponent<T, Variable>],
+) -> String {
+    let mut result = format!("let bit_decomp_value = {};\n", format_expression(value));
+
+    // TODO optimize if none of the components are negative?
+
+    // The components need to be sorted so that carry propagates correctly.
+    let components = components
+        .iter()
+        .sorted_by_key(|c| c.coefficient)
+        .collect_vec();
+    let signed = if components.iter().any(|c| c.is_negative) {
+        "signed"
+    } else {
+        "unsigned"
+    };
+    for BitDecompositionComponent {
+        variable,
+        is_negative,
+        coefficient,
+        bit_mask,
+    } in components
+    {
+        assert!(*bit_mask != 0.into());
+        result.push_str(&format!(
+            "let bit_decomp_component = bitand_{signed}(bit_decomp_value, 0x{bit_mask:0x});\n",
+        ));
+        assert!(coefficient.is_in_lower_half());
+        assert!(*coefficient != T::from(0));
+        result.push_str(&format!(
+            // TODO is it correct to do this unsigned?
+            "{}{} = integer_div(bit_decomp_component, {coefficient});\n",
+            if is_top_level { "let " } else { "" },
+            variable_to_string(variable),
+        ));
+        result.push_str(&format!(
+            "let bit_decomp_value = bit_decomp_value {} bit_decomp_component;\n",
+            // Inverted because we remove the extracted vaule.
+            if *is_negative { "+" } else { "-" },
+        ));
+    }
+    result.push_str(&format!(
+        "assert!(bit_decomp_value == FieldElement::from(0));\n",
+    ));
+    result
 }
 
 fn format_condition<T: FieldElement>(
@@ -638,6 +693,7 @@ mod tests {
 
     use powdr_number::GoldilocksField;
 
+    use crate::witgen::jit::effect::BitDecompositionComponent;
     use crate::witgen::jit::prover_function_heuristics::QueryType;
     use crate::witgen::jit::variable::Cell;
     use crate::witgen::jit::variable::MachineCallVariable;
@@ -964,6 +1020,59 @@ extern \"C\" fn witgen(
         let params = witgen_fun_params_with_params(&mut data, &mut known, &mut params);
         (f.function)(params);
         assert_eq!(y_val, GoldilocksField::from(7 * 2));
+    }
+
+    #[test]
+    fn bit_decomposition() {
+        let x = param(0);
+        let a = param(1);
+        let b = param(2);
+        let c = param(3);
+        let x_val: GoldilocksField = 0x1f202.into();
+        let mut a_val: GoldilocksField = 9.into();
+        let mut b_val: GoldilocksField = 9.into();
+        let mut c_val: GoldilocksField = 9.into();
+        let effects = vec![Effect::BitDecomposition(BitDecomposition {
+            value: symbol(&x),
+            components: vec![
+                BitDecompositionComponent {
+                    variable: a.clone(),
+                    is_negative: false,
+                    coefficient: 0x10000.into(),
+                    bit_mask: 0xff0000u64.into(),
+                },
+                BitDecompositionComponent {
+                    variable: b.clone(),
+                    is_negative: true,
+                    coefficient: 0x100.into(),
+                    bit_mask: 0xff00u64.into(),
+                },
+                BitDecompositionComponent {
+                    variable: c.clone(),
+                    is_negative: false,
+                    coefficient: 0x1.into(),
+                    bit_mask: 0xffu64.into(),
+                },
+            ],
+        })];
+        let f = compile_effects(1, &[x], &effects).unwrap();
+        let mut data = vec![];
+        let mut known = vec![];
+        let mut params = vec![
+            LookupCell::Input(&x_val),
+            LookupCell::Output(&mut a_val),
+            LookupCell::Output(&mut b_val),
+            LookupCell::Output(&mut c_val),
+        ];
+        let params = witgen_fun_params_with_params(&mut data, &mut known, &mut params);
+        (f.function)(params);
+        assert_eq!(a_val, GoldilocksField::from(7 * 2));
+        assert_eq!(b_val, GoldilocksField::from(9));
+        assert_eq!(c_val, GoldilocksField::from(9));
+        assert_eq!(
+            GoldilocksField::from(0x1f202),
+            a_val * GoldilocksField::from(0x10000) - b_val * GoldilocksField::from(0x100) + c_val
+        );
     }
 
     #[test]

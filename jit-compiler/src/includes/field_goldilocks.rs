@@ -307,23 +307,23 @@ impl std::fmt::Display for GoldilocksField {
 }
 
 #[inline]
-fn integer_div(a: GoldilocksField, b: GoldilocksField) -> GoldilocksField {
-    GoldilocksField(a.0 / b.0)
+fn integer_div(a: GoldilocksField, b: u64) -> GoldilocksField {
+    GoldilocksField(a.0 / b)
 }
 
-impl std::ops::BitAnd<u64> for GoldilocksField {
-    type Output = Self;
-    #[inline]
-    fn bitand(self, b: u64) -> GoldilocksField {
-        Self(self.0 & b)
-    }
+#[inline]
+fn bitand_unsiged(a: GoldilocksField, mask: u64) -> GoldilocksField {
+    GoldilocksField(a.0 & mask)
 }
-impl std::ops::BitOr<GoldilocksField> for GoldilocksField {
-    type Output = Self;
-    #[inline]
-    fn bitor(self, b: GoldilocksField) -> GoldilocksField {
-        Self(self.0 | b.0)
-    }
+
+/// Treat `a` as a signed number and perform the and-operation in two's complement.
+#[inline]
+fn bitand_signed(a: GoldilocksField, mask: u64) -> GoldilocksField {
+    GoldilocksField(if a.0 <= (GoldilocksField::ORDER - 1) / 2 {
+        a.0 & mask
+    } else {
+        ((a.0 as i64) - (GoldilocksField::ORDER as i64)) as u64 & mask
+    })
 }
 
 impl From<ibig::IBig> for FieldElement {

@@ -108,15 +108,19 @@ pub struct BitDecomposition<T: FieldElement, V> {
 }
 
 /// A component in the bit decomposition.
+/// In a simplified form, we can solve for `variable` using
+/// `(value & bit_mask) / coefficient`.
 #[derive(Clone, PartialEq, Eq)]
 pub struct BitDecompositionComponent<T: FieldElement, V> {
     /// The variables that will be assigned to.
     pub variable: V,
     /// If the variable occurs negatively in the equation.
+    /// Note that the range constraint of the variable itself is always non-negative.
     pub is_negative: bool,
     /// The (absolute) coefficient of the variable.
     pub coefficient: T,
-    /// The bit mask for this componont.
+    /// The bit mask for this component, relative to the value to be decomposed,
+    /// i.e. already scaled by the coefficient.
     pub bit_mask: T::Integer,
 }
 
