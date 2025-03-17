@@ -267,7 +267,11 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             }
             components.push(BitDecompositionComponent {
                 variable,
-                is_negative,
+                // We negate here because we are solving
+                // c_1 * x_1 + c_2 * x_2 + ... + offset = 0,
+                // instead of
+                // c_1 * x_1 + c_2 * x_2 + ... = offset.
+                is_negative: !is_negative,
                 coefficient: coeff_abs,
                 bit_mask,
             });
@@ -283,14 +287,14 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
 
         // TODO can this be done even with negative coefficients?
         if let Some(offset) = self.offset.try_to_number() {
-            if (-offset).to_integer() & !covered_bits != 0.into() {
+            if offset.to_integer() & !covered_bits != 0.into() {
                 return Err(Error::ConflictingRangeConstraints);
             }
         }
 
         Ok(ProcessResult::complete(vec![Effect::BitDecomposition(
             BitDecomposition {
-                value: -self.offset.clone(),
+                value: self.offset.clone(),
                 components,
             },
         )]))
@@ -547,7 +551,7 @@ mod test {
         let Effect::BitDecomposition(BitDecomposition { value, components }) = effect else {
             panic!();
         };
-        assert_eq!(format!("{value}"), "-(10 + Z)");
+        assert_eq!(format!("{value}"), "(10 + Z)");
         let formatted = components
             .iter()
             .map(|c| {
@@ -564,9 +568,9 @@ mod test {
         assert_eq!(
             formatted,
             "\
-a = ((-(10 + Z) & 65280) // 256);
-b = ((-(10 + Z) & 16711680) // 65536) [negative];
-c = ((-(10 + Z) & 4278190080) // 16777216);
+a = (((10 + Z) & 65280) // 256) [negative];
+b = (((10 + Z) & 16711680) // 65536);
+c = (((10 + Z) & 4278190080) // 16777216) [negative];
 "
         );
     }

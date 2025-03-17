@@ -867,27 +867,15 @@ namespace Xor(256 * 256);
         assert_eq!(
             code,
             "\
-Xor::A_byte[6] = ((Xor::A[7] & 0xff000000) // 16777216);
-Xor::A[6] = (Xor::A[7] & 0xffffff);
-assert (Xor::A[7] & 0xffffffff00000000) == 0;
-Xor::C_byte[6] = ((Xor::C[7] & 0xff000000) // 16777216);
-Xor::C[6] = (Xor::C[7] & 0xffffff);
-assert (Xor::C[7] & 0xffffffff00000000) == 0;
-Xor::A_byte[5] = ((Xor::A[6] & 0xff0000) // 65536);
-Xor::A[5] = (Xor::A[6] & 0xffff);
-assert (Xor::A[6] & 0xffffffffff000000) == 0;
-Xor::C_byte[5] = ((Xor::C[6] & 0xff0000) // 65536);
-Xor::C[5] = (Xor::C[6] & 0xffff);
-assert (Xor::C[6] & 0xffffffffff000000) == 0;
+16777216 * Xor::A_byte[6] + 1 * Xor::A[6] := Xor::A[7];
+16777216 * Xor::C_byte[6] + 1 * Xor::C[6] := Xor::C[7];
+65536 * Xor::A_byte[5] + 1 * Xor::A[5] := Xor::A[6];
+65536 * Xor::C_byte[5] + 1 * Xor::C[5] := Xor::C[6];
 call_var(0, 6, 0) = Xor::A_byte[6];
 call_var(0, 6, 2) = Xor::C_byte[6];
 machine_call(1, [Known(call_var(0, 6, 0)), Unknown(call_var(0, 6, 1)), Known(call_var(0, 6, 2))]);
-Xor::A_byte[4] = ((Xor::A[5] & 0xff00) // 256);
-Xor::A[4] = (Xor::A[5] & 0xff);
-assert (Xor::A[5] & 0xffffffffffff0000) == 0;
-Xor::C_byte[4] = ((Xor::C[5] & 0xff00) // 256);
-Xor::C[4] = (Xor::C[5] & 0xff);
-assert (Xor::C[5] & 0xffffffffffff0000) == 0;
+256 * Xor::A_byte[4] + 1 * Xor::A[4] := Xor::A[5];
+256 * Xor::C_byte[4] + 1 * Xor::C[4] := Xor::C[5];
 call_var(0, 5, 0) = Xor::A_byte[5];
 call_var(0, 5, 2) = Xor::C_byte[5];
 machine_call(1, [Known(call_var(0, 5, 0)), Unknown(call_var(0, 5, 1)), Known(call_var(0, 5, 2))]);
