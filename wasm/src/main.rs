@@ -1,8 +1,8 @@
 use std::mem::MaybeUninit;
 
 use wasmparser::{
-    CompositeInnerType, ContType, FuncType, FunctionBody, ModuleArity, Operator, Parser, Payload,
-    RefType, SubType, ValType,
+    CompositeInnerType, ContType, FuncType, FunctionBody, ModuleArity, Operator, OperatorsIterator,
+    Parser, Payload, RefType, SubType, ValType,
 };
 
 fn main() -> wasmparser::Result<()> {
@@ -24,9 +24,9 @@ fn main() -> wasmparser::Result<()> {
                     let ty = match (iter.next(), iter.next()) {
                         (Some(ty), None) => ty,
                         _ => {
-                            // Apparently WebAssembly 2.0 is much more complicated, and has complex
+                            // Apparently WebAssembly 3.0 is much more complicated, and has complex
                             // type definitions, and garbage collector, and exceptions. We should probably
-                            // stick to the 1.0 version for Powdr.
+                            // stick to the 2.0 version for Powdr.
                             panic!("gc proposal not supported")
                         }
                     };
@@ -94,22 +94,22 @@ impl<'a> ModuleArity for ModuleState<'a> {
     }
 }
 
-enum Operation {
+enum Operation<'a> {
     FunctionArgs,
-    WASMOp(Operator<'static>),
+    Inputs,
+    WASMOp(Operator<'a>),
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 struct ValueOrigin {
     node: usize,
-    output_idx: usize,
+    output_idx: u32,
 }
 
-struct Node {
-    operation: Operation,
+struct Node<'a> {
+    operation: Operation<'a>,
     inputs: Vec<ValueOrigin>,
-    outputs: Vec<ValType>,
-    // branch_target: Option<usize>,
+    output_count: u32,
 }
 
 fn infinite_registers_allocation(
@@ -143,7 +143,7 @@ fn infinite_registers_allocation(
 
     for operator in body.get_operators_reader()? {
         let operator = operator?;
-        let arity = operator.operator_arity(&module);
+        let (input_count, output_count) = operator.operator_arity(&module).unwrap();
 
         // Most operators simply creates a new node that consumes some inputs and produces
         // some outputs. But local.* and drop are special that they simply move around
@@ -181,26 +181,259 @@ fn infinite_registers_allocation(
             _ => {}
         }
 
-        // TODO: handle regular operators
+        let node = nodes.len();
+        nodes.push(Node {
+            operation: Operation::WASMOp(operator),
+            inputs: stack.split_off(stack.len().checked_sub(input_count as usize).unwrap()),
+            output_count,
+        });
+        stack.extend((0..output_count).map(|output_idx| ValueOrigin { node, output_idx }));
     }
 
     Ok(())
 }
 
-fn read_locals(
+#[derive(Default, Clone)]
+struct Local {
+    was_written: bool,
+    val_ref: Option<ValueOrigin>,
+}
+
+// Helper struct with some operations.
+struct DagBuilder<'a> {
+    nodes: Vec<Node<'a>>,
+    stack: Vec<ValueOrigin>,
+    locals: Vec<Local>,
+    total_locals_len: u32,
+    hidden_inputs_map: Vec<u32>,
+    hidden_outputs_map: Vec<u32>,
+}
+
+impl<'a> DagBuilder<'a> {
+    fn read_local(&mut self, local_index: u32) -> ValueOrigin {
+        let idx = local_index as usize;
+
+        let local = match self.locals.get_mut(idx) {
+            Some(local) => {
+                if let Some(val) = local.val_ref {
+                    return val;
+                }
+                local
+            }
+            None => {
+                // Locals is not big enough, we have to grow it.
+                assert!(idx < self.total_locals_len as usize);
+                self.locals.resize(idx + 1, Default::default());
+                &mut self.locals[idx]
+            }
+        };
+
+        // This is a hidden input
+        self.hidden_inputs_map.push(idx as u32);
+        let val_ref = ValueOrigin {
+            node: 0,
+            output_idx: self.nodes[0].output_count,
+        };
+
+        self.nodes[0].output_count += 1;
+        self.stack.push(val_ref);
+        local.val_ref = Some(val_ref);
+
+        val_ref
+    }
+
+    fn write_local(&mut self, local_index: u32, val_ref: ValueOrigin) {
+        let idx = local_index as usize;
+        if idx >= self.locals.len() {
+            self.locals.resize(idx + 1, Default::default());
+        }
+
+        let local = &mut self.locals[idx];
+        if local.val_ref == Some(val_ref) {
+            // This write is a nop and can be statically elided.
+            return;
+        }
+
+        local.val_ref = Some(val_ref);
+
+        // This is a hidden output
+        if !local.was_written {
+            self.hidden_outputs_map.push(idx as u32);
+            local.was_written = true;
+        }
+    }
+}
+
+/// Builds a DAG for a block of instructions.
+///
+/// The return values are, in order:
+/// - The DAGs assembled from the block. One for most blocks, but 2 for if...else blocks.
+/// - The local variables this blocks consumes as inputs.
+/// - The local variables this blocks produces as outputs.
+/// - Whether this block finishes with an unconditional "return" or "unreachable".
+fn build_dag_for_block<'a>(
+    stack_input: u32,
+    local_inputs: u32,
+    total_locals_len: u32,
+    module: &mut ModuleState,
+    operators: &'a mut OperatorsIterator,
+) -> wasmparser::Result<(Vec<Vec<Node<'a>>>, Vec<u32>, Vec<u32>, bool)> {
+    // We start a block by defining the input node, containing all the known inputs (stack and locals).
+    let nodes = vec![Node {
+        operation: Operation::Inputs,
+        inputs: Vec::new(),
+        output_count: stack_input + local_inputs,
+    }];
+
+    // Define the stack with the stack inputs
+    let stack = (0..stack_input)
+        .map(|output_idx| ValueOrigin {
+            node: 0,
+            output_idx,
+        })
+        .collect::<Vec<_>>();
+
+    // Define the locals with the local inputs
+    let locals = (0..local_inputs)
+        .map(|output_idx| Local {
+            val_ref: Some(ValueOrigin {
+                node: 0,
+                output_idx: stack_input + output_idx,
+            }),
+            was_written: false,
+        })
+        .collect::<Vec<_>>();
+
+    // If a local that is not an input is read, we consider it as a hidden input.
+    // We have to store the local index of this new input.
+    let hidden_inputs_map = Vec::new();
+
+    // If any local is written, we consider it as a hidden output.
+    // We have to store the local index of this new output.
+    let hidden_outputs_map = Vec::new();
+
+    let mut b = DagBuilder {
+        nodes,
+        stack,
+        locals,
+        total_locals_len,
+        hidden_inputs_map,
+        hidden_outputs_map,
+    };
+
+    while let Some(operator) = operators.next() {
+        let operator = operator?;
+        let (input_count, output_count) = operator.operator_arity(module).unwrap();
+
+        // Most operators simply creates a new node that consumes some inputs and produces
+        // some outputs. But local.* and drop are special that they simply move around
+        // the references between the stack and the locals, and can be resolved statically.
+        match operator {
+            // Special stack and local manipulation operators that don't create nodes:
+            Operator::LocalGet { local_index } => {
+                // LocalGet simply pushes a local value to the stack, and it can be
+                // resolved immediatelly without creating a new node.
+                let val_ref = b.read_local(local_index);
+                b.stack.push(val_ref);
+                continue;
+            }
+            Operator::LocalSet { local_index } => {
+                // LocalSet pops a value from the stack and assigns it to a local.
+                // It also can be resolved statically without generating a node.
+                let val_ref = b.stack.pop().unwrap();
+                b.write_local(local_index, val_ref);
+                continue;
+            }
+            Operator::LocalTee { local_index } => {
+                // LocalTee is like LocalSet, but keeps the value on the stack.
+                let val_ref = *b.stack.last().unwrap();
+                b.write_local(local_index, val_ref);
+                continue;
+            }
+            Operator::Drop => {
+                // Drop could be a node that consumes a value and produces nothing,
+                // but since it has no side effects, we can just resolve it statically.
+                b.stack.pop().unwrap();
+                continue;
+            }
+            // Block operators. They must be recursively handled, and we can't trust
+            // the given arity because we consider locals used as a kind of input and output.
+            Operator::Block { blockty } => {
+                module
+                    .control_stack
+                    .push((blockty, wasmparser::FrameKind::Block));
+                let _ = build_dag_for_block(input_count, 0, total_locals_len, module, operators)?;
+                module.control_stack.pop();
+            }
+            Operator::Loop { blockty } => {
+                module
+                    .control_stack
+                    .push((blockty, wasmparser::FrameKind::Loop));
+                let _ = build_dag_for_block(input_count, 0, total_locals_len, module, operators)?;
+                module.control_stack.pop();
+            }
+            Operator::If { blockty } => {
+                module
+                    .control_stack
+                    .push((blockty, wasmparser::FrameKind::If));
+                // If's block has one less input than other blocks, because of the condition.
+                let _ =
+                    build_dag_for_block(input_count - 1, 0, total_locals_len, module, operators)?;
+                module.control_stack.pop();
+            }
+            Operator::Else => {
+                todo!()
+            }
+            Operator::End => {
+                // End of this current block.
+                break;
+            }
+            // "br", "br_if", "br_table" are special because their inputs might have to be fixed-up
+            // to match the hidden outputs found after they have been processed.
+            // TODO...
+            _ => {}
+        }
+
+        // Take the inputs from the stack:
+        let inputs = b
+            .stack
+            .split_off(b.stack.len().checked_sub(input_count as usize).unwrap());
+
+        let node = b.nodes.len();
+        b.nodes.push(Node {
+            operation: Operation::WASMOp(operator),
+            inputs,
+            output_count,
+        });
+
+        // Push the outputs to the stack:
+        b.stack
+            .extend((0..output_count).map(|output_idx| ValueOrigin { node, output_idx }));
+    }
+
+    // TODO: add an implict "br 0" or "return" (depending on the control stack height) if the
+    // last node is not a "br", "br_if", "br_table", "return" or "unreachable".
+
+    // TODO: fixup the "br", "br_if", "br_table" nodes to match the hidden outputs.
+
+    // TODO: organize the output.
+    Ok(())
+}
+
+fn read_locals<'a>(
     func_type: &FuncType,
     body: &FunctionBody,
-) -> wasmparser::Result<(Vec<Node>, Vec<ValueOrigin>)> {
+) -> wasmparser::Result<(Vec<Node<'a>>, Vec<ValueOrigin>)> {
     // The locals are the function arguments and the explicit locals declaration.
 
     // Function arguments originates from the special FunctionArgs node.
     let args = Node {
         operation: Operation::FunctionArgs,
         inputs: Vec::new(),
-        outputs: func_type.params().into(),
+        output_count: func_type.params().len() as u32,
     };
 
-    let mut locals: Vec<ValueOrigin> = (0..args.outputs.len())
+    let mut locals: Vec<ValueOrigin> = (0..args.output_count)
         .map(|output_idx| ValueOrigin {
             node: 0,
             output_idx,
@@ -216,7 +449,7 @@ fn read_locals(
             nodes.push(Node {
                 operation: default_for_type(value_type),
                 inputs: Vec::new(),
-                outputs: vec![value_type],
+                output_count: 1,
             });
             locals.push(ValueOrigin {
                 node: nodes.len() - 1,
@@ -228,7 +461,7 @@ fn read_locals(
     Ok((nodes, locals))
 }
 
-fn default_for_type(value_type: ValType) -> Operation {
+fn default_for_type<'a>(value_type: ValType) -> Operation<'a> {
     match value_type {
         ValType::I32 => Operation::WASMOp(Operator::I32Const { value: 0 }),
         ValType::I64 => Operation::WASMOp(Operator::I64Const { value: 0 }),
