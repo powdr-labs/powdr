@@ -414,9 +414,9 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
             let store_results = targets
                 .iter()
                 .enumerate()
-                .map(|(i, v)| set(v, &format!("result[{}]", i), is_top_level, false))
+                .map(|(i, v)| set(v, &format!("result[{i}]"), is_top_level, false))
                 .format("\n");
-            let block = format!("{}\n{}", function_call, store_results);
+            let block = format!("{function_call}\n{store_results}");
             format!("{{\n{}\n}}", indent(block, 1))
         }
         Effect::Branch(condition, first, second) => {
