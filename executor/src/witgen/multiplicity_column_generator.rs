@@ -85,7 +85,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                     &expressions.iter().collect::<Vec<_>>(),
                 );
 
-                let index = rhs_tuples
+                let tuple_to_receiver_index = rhs_tuples
                     .into_iter()
                     .map(|(i, tuple)| {
                         // There might be multiple identical rows, but it's fine, we can pick any.
@@ -103,7 +103,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                             })
                             .poly_id,
                         size,
-                        index,
+                        tuple_to_receiver_index,
                     },
                 )
             })
@@ -150,7 +150,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                         .map(|receive_info| {
                             (
                                 receive_info.multiplicity_column,
-                                receive_info.index[&bus_id_and_expressions[1..]],
+                                receive_info.tuple_to_receiver_index[&bus_id_and_expressions[1..]],
                             )
                         })
                 })
@@ -242,5 +242,5 @@ struct ReceiveInfo<T> {
     multiplicity_column: PolyID,
     size: usize,
     /// Maps a tuple of values to its index in the trace.
-    index: HashMap<Vec<T>, usize>,
+    tuple_to_receiver_index: HashMap<Vec<T>, usize>,
 }
