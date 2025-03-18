@@ -117,7 +117,7 @@ fn unsigned_shift(a: FieldElement, shift: u64) -> FieldElement {
     FieldElement(a.0 >> shift)
 }
 #[inline]
-fn bitand_unsiged(a: FieldElement, mask: u64) -> FieldElement {
+fn bitand_unsigned(a: FieldElement, mask: u64) -> FieldElement {
     FieldElement(a.0 & mask)
 }
 

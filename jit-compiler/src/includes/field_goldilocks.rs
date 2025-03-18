@@ -323,7 +323,7 @@ fn unsigned_shift(a: GoldilocksField, shift: u64) -> GoldilocksField {
 }
 
 #[inline]
-fn bitand_unsiged(a: GoldilocksField, mask: u64) -> GoldilocksField {
+fn bitand_unsigned(a: GoldilocksField, mask: u64) -> GoldilocksField {
     GoldilocksField(a.0 & mask)
 }
 
