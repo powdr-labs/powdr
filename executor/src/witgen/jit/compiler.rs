@@ -393,10 +393,16 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                 })
                 .format(", ")
                 .to_string();
-            let var_decls = result_vars
-                .iter()
-                .map(|var_name| set(var_name, "FieldElement::default()", is_top_level, true))
-                .format("\n");
+            let var_decls = if result_vars.len() > 0 {
+                result_vars
+                    .iter()
+                    .map(|var_name| set(var_name, "FieldElement::default()", is_top_level, true))
+                    .format("\n")
+                    .to_string()
+                    + "\n"
+            } else {
+                "".to_string()
+            };
             format!(
                 "{var_decls}assert!(call_machine(mutable_state, {id}.into(), MutSlice::from((&mut [{args}]).as_mut_slice())));"
             )
