@@ -306,6 +306,12 @@ impl std::fmt::Display for GoldilocksField {
     }
 }
 
+impl std::fmt::LowerHex for GoldilocksField {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::LowerHex::fmt(&self.0, f)
+    }
+}
+
 #[inline]
 fn integer_div(a: GoldilocksField, b: u64) -> GoldilocksField {
     GoldilocksField(a.0 / b)
@@ -316,13 +322,32 @@ fn bitand_unsiged(a: GoldilocksField, mask: u64) -> GoldilocksField {
     GoldilocksField(a.0 & mask)
 }
 
+#[inline]
+fn negate_in_mask(a: GoldilocksField, mask: u64) -> GoldilocksField {
+    GoldilocksField(mask.wrapping_sub(a.0))
+}
+
 /// Treat `a` as a signed number and perform the and-operation in two's complement.
 #[inline]
 fn bitand_signed(a: GoldilocksField, mask: u64) -> GoldilocksField {
     GoldilocksField(if a.0 <= (GoldilocksField::ORDER - 1) / 2 {
         a.0 & mask
     } else {
-        ((a.0 as i64) - (GoldilocksField::ORDER as i64)) as u64 & mask
+        // Convert the "negative" number in the field to two's complement.
+        (((a.0 as i64) - (GoldilocksField::ORDER as i64)) as u64) & mask
+    })
+}
+
+/// Treat `a` as a signed number and perform the and-operation in two's complement,
+/// but negates the input before the and-operation.
+#[inline]
+fn bitand_signed_negated(a: GoldilocksField, mask: u64) -> GoldilocksField {
+    GoldilocksField(if a.0 <= (GoldilocksField::ORDER - 1) / 2 {
+        ((-(a.0 as i64)) as u64) & mask
+    } else {
+        // Convert the "negative" number in the field to two's complement
+        // and negate it.
+        (((GoldilocksField::ORDER as i64) - (a.0 as i64)) as u64) & mask
     })
 }
 

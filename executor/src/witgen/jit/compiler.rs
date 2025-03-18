@@ -7,7 +7,7 @@ use powdr_ast::{
     indent,
 };
 use powdr_jit_compiler::{util_code::util_code, CodeGenerator, DefinitionFetcher};
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 use crate::witgen::{
     data_structures::{
@@ -375,9 +375,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
             )
         }
         Effect::BitDecomposition(BitDecomposition { value, components }) => {
-            let r = format_bit_decomposition(is_top_level, value, components);
-            println!("Bit decomposition code: {}", r);
-            r
+            format_bit_decomposition(is_top_level, value, components)
         }
         Effect::RangeConstraint(..) => {
             unreachable!("Final code should not contain pure range constraints.")
@@ -500,8 +498,6 @@ fn format_bit_decomposition<T: FieldElement>(
 ) -> String {
     let mut result = format!("let bit_decomp_value = {};\n", format_expression(value));
 
-    // TODO optimize if none of the components are negative?
-
     // The components need to be sorted so that carry propagates correctly.
     let components = components
         .iter()
@@ -520,16 +516,17 @@ fn format_bit_decomposition<T: FieldElement>(
     } in components
     {
         assert!(*bit_mask != 0.into());
+        let negated = if *is_negative { "_negated" } else { "" };
         result.push_str(&format!(
-            "let bit_decomp_component = bitand_{signed}(bit_decomp_value, 0x{bit_mask:0x});\n",
+            "let bit_decomp_component = bitand_{signed}{negated}(bit_decomp_value, 0x{bit_mask:0x});\n"
         ));
         assert!(coefficient.is_in_lower_half());
         assert!(*coefficient != T::from(0));
+
         result.push_str(&format!(
-            // TODO is it correct to do this unsigned?
             "{}{} = integer_div(bit_decomp_component, {coefficient});\n",
             if is_top_level { "let " } else { "" },
-            variable_to_string(variable),
+            variable_to_string(variable)
         ));
         result.push_str(&format!(
             "let bit_decomp_value = bit_decomp_value {} bit_decomp_component;\n",
@@ -1066,9 +1063,9 @@ extern \"C\" fn witgen(
         ];
         let params = witgen_fun_params_with_params(&mut data, &mut known, &mut params);
         (f.function)(params);
-        assert_eq!(a_val, GoldilocksField::from(7 * 2));
-        assert_eq!(b_val, GoldilocksField::from(9));
-        assert_eq!(c_val, GoldilocksField::from(9));
+        assert_eq!(a_val, GoldilocksField::from(2));
+        assert_eq!(b_val, GoldilocksField::from(0x100 - 0xf2));
+        assert_eq!(c_val, GoldilocksField::from(2));
         assert_eq!(
             GoldilocksField::from(0x1f202),
             a_val * GoldilocksField::from(0x10000) - b_val * GoldilocksField::from(0x100) + c_val

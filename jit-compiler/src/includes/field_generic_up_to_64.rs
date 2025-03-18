@@ -121,12 +121,25 @@ fn bitand_unsiged(a: FieldElement, mask: u64) -> FieldElement {
 /// Treat `a` as a signed number and perform the and-operation in two's complement.
 #[inline]
 fn bitand_signed(a: FieldElement, mask: u64) -> FieldElement {
+    // TODO negate
     FieldElement(if a.0 <= (MODULUS - 1) / 2 {
         a.0 & mask
     } else {
         ((a.0 as i64) - (MODULUS as i64)) as u64 & mask
     })
 }
+
+/// Treat `a` as a signed number and perform the and-operation in two's complement
+/// but negates the input before the and-operation.
+#[inline]
+fn bitand_signed_negated(a: FieldElement, mask: u64) -> FieldElement {
+    FieldElement(if a.0 <= (MODULUS - 1) / 2 {
+        (-(a.0 as i64)) as u64 & mask
+    } else {
+        ((MODULUS as i64) - (a.0 as i64)) as u64 & mask
+    })
+}
+
 impl From<ibig::IBig> for FieldElement {
     fn from(x: ibig::IBig) -> Self {
         FieldElement(u64::try_from(x).unwrap())
