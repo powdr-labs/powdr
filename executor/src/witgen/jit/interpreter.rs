@@ -1,6 +1,6 @@
 // TODO: the unused is only here because the interpreter is not integrated in the final code yet
 #![allow(unused)]
-use super::effect::{Assertion, Effect};
+use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
 
 use super::symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator};
 use super::variable::{Cell, Variable};
@@ -10,7 +10,7 @@ use crate::witgen::machines::LookupCell;
 use crate::witgen::{FixedData, QueryCallback};
 use itertools::Itertools;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -27,10 +27,44 @@ enum InterpreterAction<T: FieldElement> {
     ReadParam(usize, usize),
     ReadFixedColumn(usize, Cell),
     AssignExpression(usize, RPNExpression<T, usize>),
+    BitDecompose(
+        RPNExpression<T, usize>,
+        Vec<IndexedBitDecompositionComponent<T>>,
+        /// If true, there is at least one negative component.
+        bool,
+    ),
     WriteCell(usize, Cell),
     WriteParam(usize, usize),
     MachineCall(T, Vec<MachineCallArgumentIdx>),
     Assertion(RPNExpression<T, usize>, RPNExpression<T, usize>, bool),
+}
+
+/// Version of `effect::BitDecompositionComponents` using indexes instead of variables.
+pub struct IndexedBitDecompositionComponent<T: FieldElement> {
+    pub variable: usize,
+    pub is_negative: bool,
+    pub coefficient: T,
+    pub bit_mask: T::Integer,
+}
+
+impl<T: FieldElement> IndexedBitDecompositionComponent<T> {
+    fn from(
+        components: &BitDecompositionComponent<T, Variable>,
+        var_mapper: &mut VariableMapper,
+    ) -> Self {
+        let BitDecompositionComponent {
+            variable,
+            is_negative,
+            coefficient,
+            bit_mask,
+        } = components.clone();
+        Self {
+            variable: var_mapper.map_var(&variable),
+            is_negative,
+            coefficient,
+            bit_mask,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -111,8 +145,16 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     let idx = var_mapper.map_var(var);
                     InterpreterAction::AssignExpression(idx, var_mapper.map_expr_to_rpn(e))
                 }
-                Effect::BitDecomposition(..) => {
-                    todo!()
+                Effect::BitDecomposition(BitDecomposition { value, components }) => {
+                    let value = var_mapper.map_expr_to_rpn(value);
+                    let components = components
+                        .iter()
+                        // Sorting ascending by coefficient is important for correctness.
+                        .sorted_by_key(|c| c.coefficient)
+                        .map(|c| IndexedBitDecompositionComponent::from(c, var_mapper))
+                        .collect_vec();
+                    let have_negative = components.iter().any(|c| c.is_negative);
+                    InterpreterAction::BitDecompose(value, components, have_negative)
                 }
                 Effect::RangeConstraint(..) => {
                     unreachable!("Final code should not contain pure range constraints.")
@@ -216,6 +258,36 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                 InterpreterAction::AssignExpression(idx, e) => {
                     let val = e.evaluate(&mut eval_stack, &vars[..]);
                     vars[*idx] = val;
+                }
+                InterpreterAction::BitDecompose(value, components, have_negative) => {
+                    let mut val = value.evaluate(&mut eval_stack, &vars[..]);
+                    if *have_negative {
+                        for c in components {
+                            let component = val.to_integer() & c.bit_mask;
+                            // TODO we could also require division on T::Integer.
+                            vars[c.variable] = T::from(
+                                component.to_arbitrary_integer()
+                                    / c.coefficient.to_arbitrary_integer(),
+                            );
+                            if c.is_negative {
+                                val += T::from(component);
+                            } else {
+                                val -= T::from(component);
+                            }
+                        }
+                    } else {
+                        for c in components {
+                            let component = val.to_integer() & c.bit_mask;
+                            // TODO we could require coefficient to be a power of two
+                            // and thus shit.
+                            vars[c.variable] = T::from(
+                                component.to_arbitrary_integer()
+                                    / c.coefficient.to_arbitrary_integer(),
+                            );
+                            val -= T::from(component);
+                        }
+                    }
+                    assert_eq!(val, 0.into());
                 }
                 InterpreterAction::ReadCell(idx, c) => {
                     vars[*idx] = data
