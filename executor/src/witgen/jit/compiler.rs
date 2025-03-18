@@ -223,7 +223,6 @@ fn witgen_code<T: FieldElement>(
     let load_known_inputs = known_inputs
         .iter()
         .map(|v| {
-            let var_name = variable_to_string(v);
             let value = match v {
                 Variable::WitnessCell(c) => {
                     format!("get(data, row_offset, {}, {})", c.row_offset, c.id)
@@ -237,7 +236,8 @@ fn witgen_code<T: FieldElement>(
                     unreachable!("Machine call variables should not be pre-known.")
                 }
             };
-            format!("    let {var_name} = {value};")
+
+            indent(set(v, &value, true, false), 1)
         })
         .format("\n");
 
@@ -252,12 +252,11 @@ fn witgen_code<T: FieldElement>(
         })
         .unique()
         .map(|(var, cell)| {
-            format!(
-                "    let {} = get_fixed_value(fixed_data, {}, (row_offset + {}));",
-                variable_to_string(var),
-                cell.id,
-                cell.row_offset,
-            )
+            let value = format!(
+                "get_fixed_value(fixed_data, {}, (row_offset + {}))",
+                cell.id, cell.row_offset
+            );
+            indent(set(var, &value, true, false), 1)
         })
         .format("\n");
 
@@ -270,7 +269,7 @@ fn witgen_code<T: FieldElement>(
     let store_values = vars_known
         .iter()
         .filter_map(|var| {
-            let value = variable_to_string(var);
+            let value = get(var);
             match var {
                 Variable::WitnessCell(cell) => Some(format!(
                     "    set(data, row_offset, {}, {}, {value});",
@@ -363,14 +362,7 @@ fn format_effects_inner<T: FieldElement>(
 
 fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bool) -> String {
     match effect {
-        Effect::Assignment(var, e) => {
-            format!(
-                "{}{} = {};",
-                if is_top_level { "let " } else { "" },
-                variable_to_string(var),
-                format_expression(e)
-            )
-        }
+        Effect::Assignment(var, e) => set(var, &format_expression(e), is_top_level, false),
         Effect::RangeConstraint(..) => {
             unreachable!("Final code should not contain pure range constraints.")
         }
@@ -390,13 +382,15 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                 .iter()
                 .zip_eq(known)
                 .map(|(v, known)| {
-                    let var_name = variable_to_string(v);
                     if known {
-                        format!("LookupCell::Input(&{var_name})")
+                        let input = get(v);
+                        format!("LookupCell::Input(&{input})")
                     } else {
                         if is_top_level {
-                            result_vars.push(var_name.clone());
+                            result_vars.push(v);
                         }
+                        // Assumes that get returns a simple variable name.
+                        let var_name = get(v);
                         format!("LookupCell::Output(&mut {var_name})")
                     }
                 })
@@ -404,8 +398,8 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                 .to_string();
             let var_decls = result_vars
                 .iter()
-                .map(|var_name| format!("let mut {var_name} = FieldElement::default();\n"))
-                .format("");
+                .map(|var_name| set(var_name, "FieldElement::default()", is_top_level, true))
+                .format("\n");
             format!(
                 "{var_decls}assert!(call_machine(mutable_state, {id}.into(), MutSlice::from((&mut [{args}]).as_mut_slice())));"
             )
@@ -416,12 +410,17 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
             row_offset,
             inputs,
         }) => {
-            format!(
-                "{}[{}] = prover_function_{function_index}(mutable_state, input_from_channel, output_to_channel, row_offset + {row_offset}, &[{}]);",
-                if is_top_level { "let " } else { "" },
-                targets.iter().map(variable_to_string).format(", "),
-                inputs.iter().map(variable_to_string).format(", ")
-            )
+            let function_call = format!(
+                "let result = prover_function_{function_index}(mutable_state, input_from_channel, output_to_channel, row_offset + {row_offset}, &[{}]);",
+                inputs.iter().map(get).format(", ")
+            );
+            let store_results = targets
+                .iter()
+                .enumerate()
+                .map(|(i, v)| set(v, &format!("result[{}]", i), is_top_level, false))
+                .format("\n");
+            let block = format!("{}\n{}", function_call, store_results);
+            format!("{{\n{}\n}}", indent(block, 1))
         }
         Effect::Branch(condition, first, second) => {
             let var_decls = if is_top_level {
@@ -434,14 +433,9 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                     .sorted()
                     .dedup()
                     .map(|(v, needs_mut)| {
-                        let v = variable_to_string(v);
-                        if needs_mut {
-                            format!("let mut {v} = FieldElement::default();\n")
-                        } else {
-                            format!("let {v};\n")
-                        }
+                        set(v, "FieldElement::default()", is_top_level, needs_mut)
                     })
-                    .format("")
+                    .format("\n")
                     .to_string()
             } else {
                 "".to_string()
@@ -465,7 +459,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
 fn format_expression<T: FieldElement>(e: &SymbolicExpression<T, Variable>) -> String {
     match e {
         SymbolicExpression::Concrete(v) => format!("FieldElement::from({v})"),
-        SymbolicExpression::Symbol(symbol, _) => variable_to_string(symbol),
+        SymbolicExpression::Symbol(symbol, _) => get(symbol),
         SymbolicExpression::BinaryOperation(left, op, right, _) => {
             let left = format_expression(left);
             let right = format_expression(right);
@@ -498,13 +492,27 @@ fn format_condition<T: FieldElement>(
         condition,
     }: &BranchCondition<T, Variable>,
 ) -> String {
-    let var = format!("IntType::from({})", variable_to_string(variable));
+    let var = format!("IntType::from({})", get(variable));
     let (min, max) = condition.range();
     match min.cmp(&max) {
         Ordering::Equal => format!("{var} == {min}",),
         Ordering::Less => format!("{min} <= {var} && {var} <= {max}"),
         Ordering::Greater => format!("{var} <= {min} || {var} >= {max}"),
     }
+}
+
+fn set(v: &Variable, value: &str, is_top_level: bool, needs_mut: bool) -> String {
+    format!(
+        "{}{}{} = {};",
+        if is_top_level { "let " } else { "" },
+        if needs_mut { "mut " } else { "" },
+        variable_to_string(v),
+        value
+    )
+}
+
+fn get(v: &Variable) -> String {
+    variable_to_string(v)
 }
 
 /// Returns the name of a local (stack) variable for the given expression variable.
