@@ -137,7 +137,12 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         if !self.witgen_functions.contains_key(cache_key) {
             record_start("Auto-witgen code derivation");
 
-            let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField));
+            // TODO: currently we can't enable the interpreter for
+            // non-goldilocks fields due to a limitation of autowitgen.
+            //
+            // let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField));
+            let interpreted = false;
+
             let f = self.compile_witgen_function(can_process, cache_key, interpreted);
             assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none());
 
