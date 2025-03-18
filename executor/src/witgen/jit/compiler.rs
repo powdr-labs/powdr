@@ -287,22 +287,7 @@ fn witgen_code<T: FieldElement>(
         .format("\n");
     // We do not store "known" together with the values, because we hope
     // that this way, the optimizer can group them better.
-    let store_known = vars_known
-        .iter()
-        .filter_map(|var| match var {
-            Variable::WitnessCell(cell) => Some(cell),
-            Variable::Param(_)
-            | Variable::FixedCell(_)
-            | Variable::IntermediateCell(_)
-            | Variable::MachineCallParam(_) => None,
-        })
-        .map(|cell| {
-            format!(
-                "    set_known(known, row_offset, {}, {});",
-                cell.row_offset, cell.id
-            )
-        })
-        .format("\n");
+    let store_known = "".to_string();
     format!(
         r#"
 #[no_mangle]
