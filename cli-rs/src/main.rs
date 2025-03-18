@@ -162,7 +162,7 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(FieldArgument))]
         field: FieldArgument,
 
-        /// Generate a proof with a given backend.
+        /// The backend to run witgen for
         #[arg(short, long)]
         #[arg(value_parser = clap_enum_variants!(BackendType))]
         backend: BackendType,
@@ -426,7 +426,7 @@ fn execute<F: FieldElement>(
 ) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<F>::default()
         .from_asm_file(file_name.to_path_buf())
-        .with_backend(backend, None) // backend option is not needed because execute only runs till stage 0 witgen
+        .with_backend(backend, None)
         .with_prover_inputs(inputs)
         .with_output(output_dir.into(), true);
 

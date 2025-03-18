@@ -1000,12 +1000,11 @@ impl<T: FieldElement> Pipeline<T> {
 
         let backend_type = self.arguments.backend.expect("no backend selected!");
 
-        // If backend option is set, take the optimized pil from memory.
-        // Then, compute and add the backend-tuned pil to artifacts and return backend-tuned pil.
-        let optimized_pil = self.artifact.optimized_pil.take().unwrap();
+        // If backend option is set, compute and cache the backend-tuned pil in artifacts and return backend-tuned pil.
+        let optimized_pil = self.artifact.optimized_pil.clone().unwrap();
         let factory = backend_type.factory::<T>();
         self.log("Apply backend-specific tuning to optimized pil...");
-        let backend_tuned_pil = factory.tune_analyzed_pil(optimized_pil);
+        let backend_tuned_pil = factory.specialize_pil(optimized_pil);
         self.log("Optimizing pil (post backend-specific tuning)...");
         let reoptimized_pil = powdr_pilopt::optimize(backend_tuned_pil);
         self.maybe_write_pil(&reoptimized_pil, "_backend_tuned")?;

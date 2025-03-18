@@ -326,7 +326,6 @@ where
 #[cfg(test)]
 mod tests {
 
-    use super::Plonky3Prover;
     use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
     use powdr_pipeline::{BackendType, Pipeline};
     use test_log::test;
@@ -352,25 +351,17 @@ mod tests {
         let mut pipeline = Pipeline::<F>::default()
             .with_backend(BackendType::Plonky3, None)
             .from_pil_string(pil.to_string());
-        let pil = pipeline.compute_backend_tuned_pil().unwrap();
-        let witness_callback = pipeline.witgen_callback().unwrap();
-        let witness = &mut pipeline.compute_witness().unwrap();
-        let fixed = pipeline.compute_fixed_cols().unwrap();
 
-        let mut prover = Plonky3Prover::new(pil, fixed);
-        prover.setup();
-        let proof = prover.prove(witness, witness_callback);
-
-        assert!(proof.is_ok());
+        let proof = pipeline.compute_proof().unwrap().clone();
 
         if let Some(publics) = malicious_publics {
-            prover
+            pipeline
                 .verify(
-                    &proof.unwrap(),
-                    &publics
+                    &proof,
+                    &[publics
                         .iter()
                         .map(|i| F::from(*i as u64))
-                        .collect::<Vec<_>>(),
+                        .collect::<Vec<_>>()],
                 )
                 .unwrap()
         }

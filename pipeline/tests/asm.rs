@@ -312,28 +312,26 @@ fn dynamic_vadcop() {
     let f = "asm/dynamic_vadcop.asm";
 
     // Witness generation require backend to be known
-    [BackendType::Mock, BackendType::Plonky3]
-        .iter()
-        .for_each(|backend| {
-            let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
-                .with_backend(*backend, None);
-            let witness = pipeline.compute_witness().unwrap();
-            let witness_by_name = witness
-                .iter()
-                .map(|(k, v)| (k.as_str(), v))
-                .collect::<BTreeMap<_, _>>();
+    for backend in [BackendType::Mock, BackendType::Plonky3].iter() {
+        let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
+            .with_backend(*backend, None);
+        let witness = pipeline.compute_witness().unwrap();
+        let witness_by_name = witness
+            .iter()
+            .map(|(k, v)| (k.as_str(), v))
+            .collect::<BTreeMap<_, _>>();
 
-            // Spot-check some witness columns to have the expected length.
-            assert_eq!(witness_by_name["main::X"].len(), 128);
-            assert_eq!(witness_by_name["main_arith::y"].len(), 32);
-            assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
+        // Spot-check some witness columns to have the expected length.
+        assert_eq!(witness_by_name["main::X"].len(), 128);
+        assert_eq!(witness_by_name["main_arith::y"].len(), 32);
+        assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
 
-            match backend {
-                BackendType::Plonky3 => test_plonky3_pipeline(pipeline),
-                BackendType::Mock => test_mock_backend(pipeline),
-                _ => unreachable!(),
-            }
-        });
+        match backend {
+            BackendType::Plonky3 => test_plonky3_pipeline(pipeline),
+            BackendType::Mock => test_mock_backend(pipeline),
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[test]

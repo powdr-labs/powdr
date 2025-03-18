@@ -179,7 +179,7 @@ pub trait BackendFactory<F: FieldElement> {
         Err(Error::NoSetupAvailable)
     }
 
-    fn tune_analyzed_pil(&self, pil: Analyzed<F>) -> Analyzed<F> {
+    fn specialize_pil(&self, pil: Analyzed<F>) -> Analyzed<F> {
         // TODO: currently defaults to the identity function
         // Move `bus_multi_linker` calls here in the future
         pil
