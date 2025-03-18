@@ -198,6 +198,37 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
         result.code = self.try_ensure_block_shape(result.code, &requested_known)?;
 
+        let needed_machine_call_variables = result
+            .code
+            .iter()
+            .flat_map(|effect| {
+                if let Effect::MachineCall(_, _, arguments) = effect {
+                    for a in arguments {
+                        assert!(matches!(a, Variable::MachineCallParam(_)));
+                    }
+                    arguments.clone()
+                } else {
+                    vec![]
+                }
+            })
+            .collect::<BTreeSet<_>>();
+
+        result.code = result
+            .code
+            .into_iter()
+            .filter(|effect| {
+                if let Effect::Assignment(variable, _) = effect {
+                    if let Variable::MachineCallParam(_) = variable {
+                        needed_machine_call_variables.contains(variable)
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                }
+            })
+            .collect();
+
         Ok((result, prover_functions))
     }
 
