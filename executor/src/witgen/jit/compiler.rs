@@ -271,10 +271,7 @@ fn witgen_code<T: FieldElement>(
         .filter_map(|var| {
             let value = get(var);
             match var {
-                Variable::WitnessCell(cell) => Some(format!(
-                    "    set(data, row_offset, {}, {}, {value});",
-                    cell.row_offset, cell.id,
-                )),
+                Variable::WitnessCell(_) => None,
                 Variable::Param(i) => Some(format!("    set_param(params, {i}, {value});")),
                 Variable::FixedCell(_) => panic!("Fixed columns should not be written to."),
                 Variable::IntermediateCell(_) => {
@@ -502,17 +499,30 @@ fn format_condition<T: FieldElement>(
 }
 
 fn set(v: &Variable, value: &str, is_top_level: bool, needs_mut: bool) -> String {
-    format!(
-        "{}{}{} = {};",
-        if is_top_level { "let " } else { "" },
-        if needs_mut { "mut " } else { "" },
-        variable_to_string(v),
-        value
-    )
+    match v {
+        Variable::WitnessCell(cell) => {
+            format!(
+                "set(data, row_offset, {}, {}, {value});",
+                cell.row_offset, cell.id
+            )
+        }
+        _ => format!(
+            "{}{}{} = {};",
+            if is_top_level { "let " } else { "" },
+            if needs_mut { "mut " } else { "" },
+            variable_to_string(v),
+            value
+        ),
+    }
 }
 
 fn get(v: &Variable) -> String {
-    variable_to_string(v)
+    match v {
+        Variable::WitnessCell(cell) => {
+            format!("get(data, row_offset, {}, {})", cell.row_offset, cell.id)
+        }
+        _ => variable_to_string(v),
+    }
 }
 
 /// Returns the name of a local (stack) variable for the given expression variable.
