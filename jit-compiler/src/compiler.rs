@@ -1,6 +1,7 @@
 use mktemp::Temp;
 use std::{
     fs::{self},
+    path::PathBuf,
     process::Command,
     str::from_utf8,
     sync::Arc,
@@ -83,11 +84,24 @@ fn cargo_toml(opt_level: Option<u32>) -> String {
     }
 }
 
+const DEBUG: bool = false;
+
 /// Compiles the given code and returns the path to the
 /// temporary directory containing the compiled library
 /// and the path to the compiled library.
 pub fn call_cargo(code: &str, opt_level: Option<u32>) -> Result<PathInTempDir, String> {
-    let dir = mktemp::Temp::new_dir().unwrap();
+    let dir_tmp = mktemp::Temp::new_dir().unwrap();
+
+    let dir = if DEBUG {
+        let dir = PathBuf::from("../cargo_dir");
+        // rm -r cargo_dir/*
+        fs::remove_dir_all(&dir).ok();
+        fs::create_dir(&dir).unwrap();
+        dir
+    } else {
+        dir_tmp.as_path().to_path_buf()
+    };
+
     fs::write(dir.join("Cargo.toml"), cargo_toml(opt_level)).unwrap();
     fs::create_dir(dir.join("src")).unwrap();
     fs::write(dir.join("src").join("lib.rs"), code).unwrap();
@@ -132,7 +146,7 @@ pub fn call_cargo(code: &str, opt_level: Option<u32>) -> Result<PathInTempDir, S
         .join("release")
         .join(format!("libpowdr_jit_compiled.{extension}"));
     Ok(PathInTempDir {
-        dir,
+        dir: dir_tmp,
         path: lib_path.to_str().unwrap().to_string(),
     })
 }
