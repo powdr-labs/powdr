@@ -1068,6 +1068,23 @@ extern \"C\" fn witgen(
             GoldilocksField::from(0x1f202),
             a_val * GoldilocksField::from(0x10000) - b_val * GoldilocksField::from(0x100) + c_val
         );
+
+        let x_val = -GoldilocksField::from(0x808);
+        let mut params = vec![
+            LookupCell::Input(&x_val),
+            LookupCell::Output(&mut a_val),
+            LookupCell::Output(&mut b_val),
+            LookupCell::Output(&mut c_val),
+        ];
+        let params = witgen_fun_params_with_params(&mut data, &mut known, &mut params);
+        (f.function)(params);
+        assert_eq!(a_val, GoldilocksField::from(0));
+        assert_eq!(b_val, GoldilocksField::from(9));
+        assert_eq!(c_val, GoldilocksField::from(0xf8));
+        assert_eq!(
+            -GoldilocksField::from(0x808),
+            a_val * GoldilocksField::from(0x10000) - b_val * GoldilocksField::from(0x100) + c_val
+        );
     }
 
     #[test]
