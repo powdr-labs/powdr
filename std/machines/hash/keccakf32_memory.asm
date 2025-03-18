@@ -578,6 +578,8 @@ machine Keccakf32Memory(mem: Memory) with
     });
 
     // Prover function section (for witness generation).
+    // Hints are only needed for c and a_prime, the solver is able to figure out the
+    // rest of the witness.
 
     // // Populate C[x] = xor(A[x, 0], A[x, 1], A[x, 2], A[x, 3], A[x, 4]).
     // for x in 0..5 {
@@ -608,30 +610,6 @@ machine Keccakf32Memory(mem: Memory) with
             ))
         }));
 
-    // // Populate C'[x, z] = xor(C[x, z], C[x - 1, z], C[x + 1, z - 1]).
-    // for x in 0..5 {
-    //     for z in 0..64 {
-    //         row.c_prime[x][z] = xor([
-    //             row.c[x][z],
-    //             row.c[(x + 4) % 5][z],
-    //             row.c[(x + 1) % 5][(z + 63) % 64],
-    //         ]);
-    //     }
-    // }
-
-    query |row| compute_from_multi(
-        c_prime, row, c,
-        |c_fe| array::new(5 * 64, |i| {
-            let x = i / 64;
-            let z = i % 64;
-
-            fe(
-                int(c_fe[x * 64 + z]) ^
-                int(c_fe[((x + 4) % 5) * 64 + z]) ^
-                int(c_fe[((x + 1) % 5) * 64 + (z + 63) % 64])
-            )
-        }));
-
     // // Populate A'. To avoid shifting indices, we rewrite
     // //     A'[x, y, z] = xor(A[x, y, z], C[x - 1, z], C[x + 1, z - 1])
     // // as
@@ -647,7 +625,6 @@ machine Keccakf32Memory(mem: Memory) with
     //         }
     //     }
     // }
-
 
     query |row| compute_from_multi(
         a_prime, row, a + c + c_prime,
@@ -665,92 +642,16 @@ machine Keccakf32Memory(mem: Memory) with
             fe(((int(a_elem) >> bit_in_limb) & 0x1) ^ int(c_elem) ^ int(c_prime_elem))
         }));
 
-    // // Populate A''.P
-    // // A''[x, y] = xor(B[x, y], andn(B[x + 1, y], B[x + 2, y])).
-    // for y in 0..5 {
-    //     for x in 0..5 {
-    //         for limb in 0..U64_LIMBS {
-    //             row.a_prime_prime[y][x][limb] = (limb * BITS_PER_LIMB..(limb + 1) * BITS_PER_LIMB)
-    //                 .rev()
-    //                 .fold(F::zero(), |acc, z| {
-    //                     let bit = xor([
-    //                         row.b(x, y, z),
-    //                         andn(row.b((x + 1) % 5, y, z), row.b((x + 2) % 5, y, z)),
-    //                     ]);
-    //                     acc.double() + bit
-    //                 });
-    //         }
-    //     }
-    // }
-
-
-    let b_index: int, int, int -> int = |x, y, z| {
-        let a: int = (x + 3 * y) % 5;
-        let rot: int = R[a * 5 + x]; // b = x
-        x * 320 + a * 64 + (z + 64 - rot) % 64
-    };
-    let andn_int: int, int -> int = |a, b| (1 - a) * b;
-
-    let query_a_prime_prime: int, int, int, fe[] -> int = query |x, y, limb, a_prime| 
-        utils::fold(
-            32, 
-            |z|
-                int(a_prime[b_index(x, y, (limb + 1) * 32 - 1 - z)]) ^ 
-                int(andn_int(
-                    int(a_prime[b_index((x + 1) % 5, y, (limb + 1) * 32 - 1 - z)]), 
-                    int(a_prime[b_index((x + 2) % 5, y, (limb + 1) * 32 - 1 - z)])
-                )), 
-            0, 
-            |acc, e| acc * 2 + e
+    // TODO: This hint is correct but not needed (the solver can figure this out).
+    // We keep it here because it prevents the JIT solver from succeeding (because of the
+    // use of `provide_value`), because it currently fails when compiling Rust code.
+    // Once these issues are resolved, we can remove this hint.
+    query |row| {
+        std::prover::provide_value(
+            a_prime_prime_0_0_bits[0], 
+            row, 
+            fe((int(eval(a_prime_prime[0]))) & 0x1)
         );
-
-    query |row| compute_from_multi(
-        a_prime_prime, row, a_prime,
-        |a_prime_fe| array::new(5 * 5 * 2, |i| {
-            let y = i / 10;
-            let x = (i / 2) % 5;
-            let limb = i % 2;
-
-            fe(query_a_prime_prime(x, y, limb, a_prime_fe))
-        }));
-
-    // // For the XOR, we split A''[0, 0] to bits.
-    // let mut val = 0; // smaller address correspond to less significant limb
-    // for limb in 0..U64_LIMBS {
-    //     let val_limb = row.a_prime_prime[0][0][limb].as_canonical_u64();
-    //     val |= val_limb << (limb * BITS_PER_LIMB);
-    // }
-    // let val_bits: Vec<bool> = (0..64) // smaller address correspond to less significant bit
-    //     .scan(val, |acc, _| {
-    //         let bit = (*acc & 1) != 0;
-    //         *acc >>= 1;
-    //         Some(bit)
-    //     })
-    //     .collect();
-    // for (i, bit) in row.a_prime_prime_0_0_bits.iter_mut().enumerate() {
-    //     *bit = F::from_bool(val_bits[i]);
-    // }
-
-    query |row| compute_from_multi(
-        a_prime_prime_0_0_bits, row, a_prime_prime,
-        |a_prime_prime_fe| array::new(64, |i| {
-            let limb = i / 32;
-            let bit_in_limb = i % 32;
-
-            fe((int(a_prime_prime_fe[limb]) >> bit_in_limb) & 0x1)
-        }));
-
-    // // A''[0, 0] is additionally xor'd with RC.
-    // for limb in 0..U64_LIMBS {
-    //     let rc_lo = rc_value_limb(round, limb);
-    //     row.a_prime_prime_prime_0_0_limbs[limb] =
-    //         F::from_canonical_u16(row.a_prime_prime[0][0][limb].as_canonical_u64() as u16 ^ rc_lo);
-    // }
-
-    query |row| compute_from_multi(
-        a_prime_prime_prime_0_0_limbs, row, array::sub_array(a_prime_prime, 0, 2),
-        |a_prime_prime_fe| array::new(2, |limb| {
-            fe(int(a_prime_prime_fe[limb]) ^ ((RC[row % NUM_ROUNDS] >> (limb * 32)) & 0xffffffff))
-        }));
+    };
 
 }
