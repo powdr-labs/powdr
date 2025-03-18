@@ -73,19 +73,16 @@ impl GoldilocksField {
         res
     }
 
-    #[inline(always)]
     fn from_canonical_u64(n: u64) -> Self {
         debug_assert!(n < Self::ORDER);
         Self(n)
     }
 
-    #[inline]
     fn to_canonical_u64(self) -> u64 {
         self.0
     }
 }
 
-#[inline]
 fn wrap(x: u64) -> u64 {
     if x >= GoldilocksField::ORDER {
         x - GoldilocksField::ORDER
@@ -97,7 +94,6 @@ fn wrap(x: u64) -> u64 {
 impl std::ops::Neg for GoldilocksField {
     type Output = Self;
 
-    #[inline]
     fn neg(self) -> Self {
         if self.0 == 0 {
             self
@@ -110,7 +106,6 @@ impl std::ops::Neg for GoldilocksField {
 impl std::ops::Add for GoldilocksField {
     type Output = Self;
 
-    #[inline]
     #[allow(clippy::suspicious_arithmetic_impl)]
     fn add(self, rhs: Self) -> Self {
         let (sum, over) = self.0.overflowing_add(rhs.0);
@@ -123,7 +118,6 @@ impl std::ops::Add for GoldilocksField {
 impl std::ops::Sub for GoldilocksField {
     type Output = Self;
 
-    #[inline]
     #[allow(clippy::suspicious_arithmetic_impl)]
     fn sub(self, rhs: Self) -> Self {
         let (diff, under) = self.0.overflowing_sub(rhs.0);
@@ -171,7 +165,6 @@ impl std::ops::Div for GoldilocksField {
     }
 }
 
-#[inline]
 fn try_integer_div_without_remainder(a: u64, b: u64) -> Option<u64> {
     (a % b == 0).then(|| a / b)
 }
@@ -185,7 +178,7 @@ fn full_field_div(a: GoldilocksField, b: GoldilocksField) -> GoldilocksField {
 ///   - It is only correct if x + y < 2**64 + ORDER = 0x1ffffffff00000001.
 ///   - It is only faster in some circumstances. In particular, on x86 it overwrites both inputs in
 ///     the registers, so its use is not recommended when either input will be used again.
-#[inline(always)]
+
 #[cfg(target_arch = "x86_64")]
 unsafe fn add_no_canonicalize_trashing_input(x: u64, y: u64) -> u64 {
     let res_wrapped: u64;
@@ -212,7 +205,6 @@ unsafe fn add_no_canonicalize_trashing_input(x: u64, y: u64) -> u64 {
     res_wrapped + adjustment
 }
 
-#[inline(always)]
 #[cfg(not(target_arch = "x86_64"))]
 const unsafe fn add_no_canonicalize_trashing_input(x: u64, y: u64) -> u64 {
     let (res_wrapped, carry) = x.overflowing_add(y);
@@ -221,7 +213,7 @@ const unsafe fn add_no_canonicalize_trashing_input(x: u64, y: u64) -> u64 {
 }
 
 /// Reduces to a 64-bit value. The result is in canonical form.
-#[inline]
+
 fn reduce128(x: u128) -> GoldilocksField {
     let (x_lo, x_hi) = split(x); // This is a no-op
     let x_hi_hi = x_hi >> 32;
@@ -239,17 +231,15 @@ fn reduce128(x: u128) -> GoldilocksField {
 }
 
 /// Squares the base N number of times and multiplies the result by the tail value.
-#[inline(always)]
+
 fn exp_acc<const N: usize>(base: GoldilocksField, tail: GoldilocksField) -> GoldilocksField {
     base.exp_power_of_2(N) * tail
 }
 
-#[inline]
 const fn split(x: u128) -> (u64, u64) {
     (x as u64, (x >> 64) as u64)
 }
 
-#[inline(always)]
 #[cfg(target_arch = "x86_64")]
 fn assume(p: bool) {
     debug_assert!(p);
@@ -268,7 +258,7 @@ fn assume(p: bool) {
 ///         y = bar();
 ///     }
 /// This function has no semantics. It is a hint only.
-#[inline(always)]
+
 fn branch_hint() {
     // NOTE: These are the currently supported assembly architectures. See the
     // [nightly reference](https://doc.rust-lang.org/nightly/reference/inline-assembly.html) for
@@ -287,14 +277,12 @@ fn branch_hint() {
 }
 
 impl From<u64> for GoldilocksField {
-    #[inline]
     fn from(n: u64) -> Self {
         Self(wrap(n))
     }
 }
 
 impl From<FieldElement> for IntType {
-    #[inline]
     fn from(f: FieldElement) -> Self {
         f.0
     }
@@ -306,21 +294,20 @@ impl std::fmt::Display for GoldilocksField {
     }
 }
 
-#[inline]
 fn integer_div(a: GoldilocksField, b: GoldilocksField) -> GoldilocksField {
     GoldilocksField(a.0 / b.0)
 }
 
 impl std::ops::BitAnd<u64> for GoldilocksField {
     type Output = Self;
-    #[inline]
+
     fn bitand(self, b: u64) -> GoldilocksField {
         Self(self.0 & b)
     }
 }
 impl std::ops::BitOr<GoldilocksField> for GoldilocksField {
     type Output = Self;
-    #[inline]
+
     fn bitor(self, b: GoldilocksField) -> GoldilocksField {
         Self(self.0 | b.0)
     }
