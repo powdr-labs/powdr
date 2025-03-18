@@ -84,7 +84,7 @@ fn cargo_toml(opt_level: Option<u32>) -> String {
     }
 }
 
-const DEBUG: bool = false;
+const DEBUG: bool = true;
 
 /// Compiles the given code and returns the path to the
 /// temporary directory containing the compiled library
