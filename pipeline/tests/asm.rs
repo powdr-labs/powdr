@@ -891,7 +891,6 @@ fn expand_fixed_jit() {
     let file_name = "asm/expand_fixed.asm";
 
     let mut pipeline = Pipeline::<GoldilocksField>::default()
-        .with_backend(BackendType::Mock, None)
         .with_tmp_output()
         .from_file(resolve_test_file(file_name));
     let pil = pipeline.compute_backend_tuned_pil().unwrap();
