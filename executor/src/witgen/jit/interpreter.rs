@@ -70,6 +70,14 @@ impl<T: FieldElement> BranchTest<T> {
             | BranchTest::Outside { var, .. } => *var,
         }
     }
+
+    fn test(&self, vars: &[T]) -> bool {
+        match self {
+            BranchTest::Equal { var, value } => vars[*var] == *value,
+            BranchTest::Inside { var, min, max } => *min <= vars[*var] && vars[*var] <= *max,
+            BranchTest::Outside { var, min, max } => vars[*var] <= *min || vars[*var] >= *max,
+        }
+    }
 }
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
@@ -320,20 +328,11 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                             assert_ne!(lhs_value, rhs_value, "Assertion failed");
                         }
                     }
-                    InterpreterAction::Branch(test, if_branch, else_branch) => {
+                    InterpreterAction::Branch(condition, if_branch, else_branch) => {
                         // push the current block on the stack to continue execution once the branch is done
                         block_stack.push(iter);
                         // test the condition
-                        let condition = match test {
-                            BranchTest::Equal { var, value } => vars[*var] == *value,
-                            BranchTest::Inside { var, min, max } => {
-                                *min <= vars[*var] && vars[*var] <= *max
-                            }
-                            BranchTest::Outside { var, min, max } => {
-                                vars[*var] <= *min || vars[*var] >= *max
-                            }
-                        };
-                        block_stack.push(if condition {
+                        block_stack.push(if condition.test(&vars) {
                             if_branch.iter()
                         } else {
                             else_branch.iter()
