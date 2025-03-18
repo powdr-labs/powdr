@@ -517,14 +517,14 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
     assert!(run_pilcom_with_backend_variant(
         pipeline
             .clone()
-            .with_backend(powdr_backend::BackendType::EStarkDump, None)
+            .with_backend_factory(powdr_backend::BackendType::EStarkDump)
             .set_witness(convert_witness(witness)),
         BackendVariant::Monolithic
     )
     .is_err());
     assert!(run_pilcom_with_backend_variant(
         pipeline
-            .with_backend(powdr_backend::BackendType::EStarkDumpComposite, None)
+            .with_backend_factory(powdr_backend::BackendType::EStarkDumpComposite)
             .set_witness(convert_witness(witness)),
         BackendVariant::Composite
     )

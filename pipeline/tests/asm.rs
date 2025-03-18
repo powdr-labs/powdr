@@ -173,7 +173,7 @@ fn block_to_block_empty_submachine() {
         .iter()
         .for_each(|backend| {
             let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
-                .with_backend(*backend, None);
+                .with_backend_factory(*backend);
             let witness = pipeline.compute_witness().unwrap();
             let arith_size = witness
                 .iter()
@@ -314,7 +314,7 @@ fn dynamic_vadcop() {
     // Witness generation require backend to be known
     for backend in [BackendType::Mock, BackendType::Plonky3].iter() {
         let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
-            .with_backend(*backend, None);
+            .with_backend_factory(*backend);
         let witness = pipeline.compute_witness().unwrap();
         let witness_by_name = witness
             .iter()
