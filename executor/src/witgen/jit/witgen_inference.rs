@@ -393,9 +393,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                                 .iter()
                                 .map(|c| {
                                     format!(
-                                        "{}{} * {}",
+                                        "{}2**{} * {}",
                                         if c.is_negative { "-" } else { "" },
-                                        c.coefficient,
+                                        c.exponent,
                                         c.variable,
                                     )
                                 })
@@ -867,15 +867,15 @@ namespace Xor(256 * 256);
         assert_eq!(
             code,
             "\
-16777216 * Xor::A_byte[6] + 1 * Xor::A[6] := Xor::A[7];
-16777216 * Xor::C_byte[6] + 1 * Xor::C[6] := Xor::C[7];
-65536 * Xor::A_byte[5] + 1 * Xor::A[5] := Xor::A[6];
-65536 * Xor::C_byte[5] + 1 * Xor::C[5] := Xor::C[6];
+2**24 * Xor::A_byte[6] + 2**0 * Xor::A[6] := Xor::A[7];
+2**24 * Xor::C_byte[6] + 2**0 * Xor::C[6] := Xor::C[7];
+2**16 * Xor::A_byte[5] + 2**0 * Xor::A[5] := Xor::A[6];
+2**16 * Xor::C_byte[5] + 2**0 * Xor::C[5] := Xor::C[6];
 call_var(0, 6, 0) = Xor::A_byte[6];
 call_var(0, 6, 2) = Xor::C_byte[6];
 machine_call(1, [Known(call_var(0, 6, 0)), Unknown(call_var(0, 6, 1)), Known(call_var(0, 6, 2))]);
-256 * Xor::A_byte[4] + 1 * Xor::A[4] := Xor::A[5];
-256 * Xor::C_byte[4] + 1 * Xor::C[4] := Xor::C[5];
+2**8 * Xor::A_byte[4] + 2**0 * Xor::A[4] := Xor::A[5];
+2**8 * Xor::C_byte[4] + 2**0 * Xor::C[4] := Xor::C[5];
 call_var(0, 5, 0) = Xor::A_byte[5];
 call_var(0, 5, 2) = Xor::C_byte[5];
 machine_call(1, [Known(call_var(0, 5, 0)), Unknown(call_var(0, 5, 1)), Known(call_var(0, 5, 2))]);

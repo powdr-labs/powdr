@@ -318,6 +318,11 @@ fn integer_div(a: GoldilocksField, b: u64) -> GoldilocksField {
 }
 
 #[inline]
+fn unsigned_shift(a: GoldilocksField, shift: u64) -> GoldilocksField {
+    GoldilocksField(a.0 >> shift)
+}
+
+#[inline]
 fn bitand_unsiged(a: GoldilocksField, mask: u64) -> GoldilocksField {
     GoldilocksField(a.0 & mask)
 }

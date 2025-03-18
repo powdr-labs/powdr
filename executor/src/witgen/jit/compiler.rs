@@ -501,7 +501,7 @@ fn format_bit_decomposition<T: FieldElement>(
     // The components need to be sorted so that carry propagates correctly.
     let components = components
         .iter()
-        .sorted_by_key(|c| c.coefficient)
+        .sorted_by_key(|c| c.exponent)
         .collect_vec();
     let signed = if components.iter().any(|c| c.is_negative) {
         "signed"
@@ -511,7 +511,7 @@ fn format_bit_decomposition<T: FieldElement>(
     for BitDecompositionComponent {
         variable,
         is_negative,
-        coefficient,
+        exponent,
         bit_mask,
     } in components
     {
@@ -520,11 +520,9 @@ fn format_bit_decomposition<T: FieldElement>(
         result.push_str(&format!(
             "let bit_decomp_component = bitand_{signed}{negated}(bit_decomp_value, 0x{bit_mask:0x});\n"
         ));
-        assert!(coefficient.is_in_lower_half());
-        assert!(*coefficient != T::from(0));
 
         result.push_str(&format!(
-            "{}{} = integer_div(bit_decomp_component, {coefficient});\n",
+            "{}{} = unsigned_shift(bit_decomp_component, {exponent});\n",
             if is_top_level { "let " } else { "" },
             variable_to_string(variable)
         ));
@@ -1033,19 +1031,19 @@ extern \"C\" fn witgen(
                 BitDecompositionComponent {
                     variable: a.clone(),
                     is_negative: false,
-                    coefficient: 0x10000.into(),
+                    exponent: 16,
                     bit_mask: 0xff0000u64.into(),
                 },
                 BitDecompositionComponent {
                     variable: b.clone(),
                     is_negative: true,
-                    coefficient: 0x100.into(),
+                    exponent: 8,
                     bit_mask: 0xff00u64.into(),
                 },
                 BitDecompositionComponent {
                     variable: c.clone(),
                     is_negative: false,
-                    coefficient: 0x1.into(),
+                    exponent: 0,
                     bit_mask: 0xffu64.into(),
                 },
             ],

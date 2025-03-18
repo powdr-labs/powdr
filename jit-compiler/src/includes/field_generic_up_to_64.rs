@@ -112,7 +112,10 @@ fn full_field_div(_: FieldElement, _: FieldElement) -> FieldElement {
 fn integer_div(a: FieldElement, b: u64) -> FieldElement {
     FieldElement(a.0 / b)
 }
-
+#[inline]
+fn unsigned_shift(a: FieldElement, shift: u64) -> FieldElement {
+    FieldElement(a.0 >> shift)
+}
 #[inline]
 fn bitand_unsiged(a: FieldElement, mask: u64) -> FieldElement {
     FieldElement(a.0 & mask)

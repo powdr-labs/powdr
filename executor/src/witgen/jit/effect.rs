@@ -95,7 +95,7 @@ impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
 
 /// A bit decomposition of a value.
 /// Executing this effect solves the following equation:
-/// value = sum_{i=0}^{components.len()} (-1)^components[i].negative * components[i].coefficient * components[i].variable
+/// value = sum_{i=0}^{components.len()} (-1)^components[i].negative * 2**components[i].exponent * components[i].variable
 ///
 /// This effect can only be created if the equation has a unique solution.
 /// It might be that it leads to a contradiction, which should result in an assertion failure.
@@ -109,7 +109,7 @@ pub struct BitDecomposition<T: FieldElement, V> {
 
 /// A component in the bit decomposition.
 /// In a simplified form, we can solve for `variable` using
-/// `(value & bit_mask) / coefficient`.
+/// `(value & bit_mask) >> exponent`.
 #[derive(Clone, PartialEq, Eq)]
 pub struct BitDecompositionComponent<T: FieldElement, V> {
     /// The variables that will be assigned to.
@@ -117,8 +117,8 @@ pub struct BitDecompositionComponent<T: FieldElement, V> {
     /// If the variable occurs negatively in the equation.
     /// Note that the range constraint of the variable itself is always non-negative.
     pub is_negative: bool,
-    /// The (absolute) coefficient of the variable.
-    pub coefficient: T,
+    /// The exponent of two, which forms the coefficient of the variable.
+    pub exponent: u64,
     /// The bit mask for this component, relative to the value to be decomposed,
     /// i.e. already scaled by the coefficient.
     pub bit_mask: T::Integer,
@@ -193,11 +193,11 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
                             |BitDecompositionComponent {
                                  variable,
                                  is_negative,
-                                 coefficient,
+                                 exponent,
                                  bit_mask: _,
                              }| {
                                 format!(
-                                    "{}{coefficient} * {variable}",
+                                    "{}2**{exponent} * {variable}",
                                     if *is_negative { "-" } else { "" }
                                 )
                             }

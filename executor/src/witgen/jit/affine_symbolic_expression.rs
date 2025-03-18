@@ -6,7 +6,7 @@ use std::{
 
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_number::FieldElement;
+use powdr_number::{log2_exact, FieldElement};
 
 use crate::witgen::jit::effect::Assertion;
 
@@ -258,6 +258,11 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
         for (variable, coeff, constraint) in constrained_coefficients {
             let is_negative = !coeff.is_in_lower_half();
             let coeff_abs = if is_negative { -coeff } else { coeff };
+            let Some(exponent) = log2_exact(coeff_abs.to_arbitrary_integer()) else {
+                // We could work with non-powers of two, but it would require
+                // division instead of shifts.
+                return Ok(ProcessResult::empty());
+            };
             let bit_mask = *constraint.multiple(coeff_abs).mask();
             if !(bit_mask & covered_bits).is_zero() {
                 // Overlapping range constraints.
@@ -272,7 +277,7 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
                 // instead of
                 // c_1 * x_1 + c_2 * x_2 + ... = offset.
                 is_negative: !is_negative,
-                coefficient: coeff_abs,
+                exponent: exponent as u64,
                 bit_mask,
             });
         }
@@ -556,10 +561,10 @@ mod test {
             .iter()
             .map(|c| {
                 format!(
-                    "{} = (({value} & {}) // {}){};\n",
+                    "{} = (({value} & {}) >> {}){};\n",
                     c.variable,
                     c.bit_mask,
-                    c.coefficient,
+                    c.exponent,
                     if c.is_negative { " [negative]" } else { "" }
                 )
             })
@@ -568,9 +573,9 @@ mod test {
         assert_eq!(
             formatted,
             "\
-a = (((10 + Z) & 65280) // 256) [negative];
-b = (((10 + Z) & 16711680) // 65536);
-c = (((10 + Z) & 4278190080) // 16777216) [negative];
+a = (((10 + Z) & 65280) >> 8) [negative];
+b = (((10 + Z) & 16711680) >> 16);
+c = (((10 + Z) & 4278190080) >> 24) [negative];
 "
         );
     }
