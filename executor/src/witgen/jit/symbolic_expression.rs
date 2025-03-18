@@ -1,6 +1,5 @@
 use auto_enums::auto_enum;
 use itertools::Itertools;
-use num_traits::Zero;
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_number::FieldElement;
 use std::hash::Hash;

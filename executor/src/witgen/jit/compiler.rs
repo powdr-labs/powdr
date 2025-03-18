@@ -7,7 +7,7 @@ use powdr_ast::{
     indent,
 };
 use powdr_jit_compiler::{util_code::util_code, CodeGenerator, DefinitionFetcher};
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::FieldElement;
 
 use crate::witgen::{
     data_structures::{
@@ -534,9 +534,7 @@ fn format_bit_decomposition<T: FieldElement>(
             if *is_negative { "+" } else { "-" },
         ));
     }
-    result.push_str(&format!(
-        "assert!(bit_decomp_value == FieldElement::from(0));\n",
-    ));
+    result.push_str("assert!(bit_decomp_value == FieldElement::from(0));\n");
     result
 }
 
