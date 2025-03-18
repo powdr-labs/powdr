@@ -1,8 +1,8 @@
 use std::mem::MaybeUninit;
 
 use wasmparser::{
-    CompositeInnerType, ContType, FuncType, FunctionBody, ModuleArity, Operator, OperatorsIterator,
-    Parser, Payload, RefType, SubType, ValType,
+    BlockType, CompositeInnerType, ContType, FuncType, FunctionBody, ModuleArity, Operator,
+    OperatorsIterator, Parser, Payload, RefType, SubType, ValType,
 };
 
 fn main() -> wasmparser::Result<()> {
@@ -145,7 +145,7 @@ fn infinite_registers_allocation(
         let operator = operator?;
         let (input_count, output_count) = operator.operator_arity(&module).unwrap();
 
-        // Most operators simply creates a new node that consumes some inputs and produces
+        // Most operators creates a new node that consumes some inputs and produces
         // some outputs. But local.* and drop are special that they simply move around
         // the references between the stack and the locals, and can be resolved statically.
         match operator {
@@ -321,11 +321,13 @@ fn build_dag_for_block<'a>(
         hidden_outputs_map,
     };
 
+    let mut else_nodes = None;
+
     while let Some(operator) = operators.next() {
         let operator = operator?;
         let (input_count, output_count) = operator.operator_arity(module).unwrap();
 
-        // Most operators simply creates a new node that consumes some inputs and produces
+        // Most operators creates a new node that consumes some inputs and produces
         // some outputs. But local.* and drop are special that they simply move around
         // the references between the stack and the locals, and can be resolved statically.
         match operator {
@@ -382,6 +384,15 @@ fn build_dag_for_block<'a>(
                 module.control_stack.pop();
             }
             Operator::Else => {
+                // Else block runs at the same height as the if block.
+                let last_control = module.control_stack.last_mut().unwrap();
+                assert_eq!(last_control.1, wasmparser::FrameKind::If);
+                last_control.1 = wasmparser::FrameKind::Else;
+
+                // We parse the block recursivelly and merge the results with this if block.
+                let (sub_nodes, sub_hidden_inputs, sub_hidden_outputs, sub_finishes) =
+                    build_dag_for_block(input_count, 0, total_locals_len, module, operators)?;
+
                 todo!()
             }
             Operator::End => {
