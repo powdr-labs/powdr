@@ -338,13 +338,26 @@ fn format_effects_inner<T: FieldElement>(
 ) -> String {
     effects
         .iter()
-        .map(|effect| format_effect(effect, is_top_level))
+        .filter_map(|effect| {
+            let code = format_effect(effect, is_top_level);
+            if code.is_empty() {
+                None
+            } else {
+                Some(code)
+            }
+        })
         .join("\n")
 }
 
 fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bool) -> String {
     match effect {
-        Effect::Assignment(var, e) => set(var, &format_expression(e), is_top_level, false),
+        Effect::Assignment(var, e) => {
+            if let Variable::MachineCallParam(_) = var {
+                return "".to_string();
+            } else {
+                set(var, &format_expression(e), is_top_level, false)
+            }
+        }
         Effect::RangeConstraint(..) => {
             unreachable!("Final code should not contain pure range constraints.")
         }
@@ -388,9 +401,10 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                     .to_string()
                     + "\n"
             };
-            format!(
-                "{var_decls}assert!(call_machine(mutable_state, {id}.into(), MutSlice::from((&mut [{args}]).as_mut_slice())));"
-            )
+            // format!(
+            //     "{var_decls}assert!(call_machine(mutable_state, {id}.into(), MutSlice::from((&mut [{args}]).as_mut_slice())));"
+            // )
+            format!("{var_decls}// Skipping machine call")
         }
         Effect::ProverFunctionCall(ProverFunctionCall {
             targets,
@@ -407,8 +421,9 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                 .enumerate()
                 .map(|(i, v)| set(v, &format!("result[{i}]"), is_top_level, false))
                 .format("\n");
-            let block = format!("{function_call}\n{store_results}");
-            format!("{{\n{}\n}}", indent(block, 1))
+            let block = format!("{}\n{}", function_call, store_results);
+            // format!("{{\n{}\n}}", indent(block, 1))
+            "// Skipping prover function".to_string()
         }
         Effect::Branch(condition, first, second) => {
             let var_decls = if is_top_level {
