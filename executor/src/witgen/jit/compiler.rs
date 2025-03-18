@@ -583,7 +583,7 @@ fn prover_function_code<T: FieldElement, D: DefinitionFetcher>(
         ),
         ProverFunctionComputation::ProvideIfUnknown(code) => {
             assert!(!f.compute_multi);
-            format!("({}).call()", codegen.generate_code_for_expression(code)?)
+            format!("({}).call(())", codegen.generate_code_for_expression(code)?)
         }
         ProverFunctionComputation::HandleQueryInputOutput(branches) => {
             let indent = "        ";

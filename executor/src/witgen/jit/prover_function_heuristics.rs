@@ -86,7 +86,7 @@ fn decode_prover_function<T: FieldElement>(
         results.into_iter().nth(index).unwrap()
     } else {
         Err(format!(
-        "Prover function not recognized.\nTried decoding 'provide_if_unknown': {}\nTried decoding 'handle_query': {}\nTried decoding 'compute_from': {}",
+        "Prover function not recognized:\n{function}\nTried decoding 'provide_if_unknown': {}\nTried decoding 'handle_query': {}\nTried decoding 'compute_from': {}",
         results[0].as_ref().err().unwrap(),
         results[1].as_ref().err().unwrap(),
         results[2].as_ref().err().unwrap(),
@@ -122,12 +122,13 @@ fn try_decode_provide_if_unknown<T>(
 }
 
 /// Decodes functions of the form
-/// ```
-/// query |<i>| std::prover::handle_query(<Y>, <i>, match std::prover::eval(<pc>) {
+/// ```rust,ignore
+/// query |<i>| std::prover::handle_query(<Y>, <i>, match std::prover::eval(<pc>)) {
 ///   <value1> => std::prelude::Query::Output(std::convert::int::<fe>(std::prover::eval(<arg1>)), std::prover::eval(<arg2>)),
 ///   <value2> => std::prelude::Query::Input(std::convert::int::<fe>(std::prover::eval(<arg1>)), std::convert::int::<fe>(std::prover::eval(<arg2>))),
 ///   ...
 ///   _ => std::prelude::Query::None,
+/// }
 /// ```
 fn try_decode_handle_query<T>(
     index: usize,

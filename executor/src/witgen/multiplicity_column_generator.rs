@@ -17,7 +17,7 @@ use crate::witgen::{
     machines::profiling::{record_end, record_start},
 };
 
-use super::FixedData;
+use super::{util::try_to_simple_poly, FixedData};
 
 static MULTIPLICITY_WITGEN_NAME: &str = "multiplicity witgen";
 
@@ -31,7 +31,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
     }
 
     /// Takes a map of witness columns and extends it with the multiplicity columns
-    /// reference in the phantom lookups.
+    /// referenced by bus sends with a non-binary multiplicity.
     pub fn generate(
         &self,
         witness_columns: HashMap<String, Vec<T>>,
@@ -93,18 +93,15 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                     })
                     .collect::<HashMap<_, _>>();
 
+                let multiplicity = bus_receive.multiplicity.as_ref().unwrap();
                 (
                     *bus_id,
                     ReceiveInfo {
-                        multiplicity_column: match bus_receive.multiplicity.as_ref().unwrap() {
-                            AlgebraicExpression::Reference(r) => r.poly_id,
-                            _ => {
-                                panic!(
-                                    "Expected simple reference, got: {}",
-                                    bus_receive.multiplicity.as_ref().unwrap()
-                                )
-                            }
-                        },
+                        multiplicity_column: try_to_simple_poly(multiplicity)
+                            .unwrap_or_else(|| {
+                                panic!("Expected simple reference, got: {multiplicity}")
+                            })
+                            .poly_id,
                         size,
                         index,
                     },
