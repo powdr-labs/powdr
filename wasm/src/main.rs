@@ -1,8 +1,8 @@
 use std::iter::once;
 
 use wasmparser::{
-    CompositeInnerType, FuncType, FunctionBody, LocalsReader, Operator, Parser, Payload, RefType,
-    SubType, TableType, ValType,
+    BlockType, CompositeInnerType, FrameKind, FuncType, FunctionBody, LocalsReader, Operator,
+    Parser, Payload, RefType, SubType, TableType, ValType,
 };
 
 const MEM_ALLOCATION_START: u32 = 0x800;
@@ -113,22 +113,171 @@ struct AllocatedVar {
     address: u32,
 }
 
-enum Directive {}
+enum Directive<'a> {
+    WasmOp {
+        op: Operator<'a>,
+        inputs: Vec<AllocatedVar>,
+    },
+    Label(u32),
+    // Akin to jump, but unstructured
+    Jump {
+        target: u32,
+    },
+    // Akin to br_if, but unstructured
+    JumpIf {
+        target: u32,
+        condition: AllocatedVar,
+    },
+}
 
 /// Allocates the locals and the stack at addresses starting
 /// from 0, assuming one byte per address.
-fn infinite_registers_allocation(
-    module: &ModuleContext,
+fn infinite_registers_allocation<'a>(
+    module: &'a ModuleContext,
     func_idx: u32,
     body: FunctionBody,
-) -> wasmparser::Result<Vec<Directive>> {
+) -> wasmparser::Result<Vec<Directive<'a>>> {
     // Tracks the frame stack. Used to calculate arity.
-    let mut tracker = StackTracker::new(module, func_idx, body.get_locals_reader()?)?;
+    let (mut tracker, first_explicit_local) =
+        StackTracker::new(module, func_idx, body.get_locals_reader()?)?;
 
+    // The fist directives are zeroing the explicit locals.
+    let mut directives: Vec<Directive<'a>> = (first_explicit_local..tracker.stack_base)
+        .step_by(4)
+        .map(|address| Directive::WasmOp {
+            op: Operator::I32Const { value: 0 },
+            inputs: vec![AllocatedVar {
+                val_type: ValType::I32,
+                address,
+            }],
+        })
+        .collect();
+
+    let mut labels = 0..;
+
+    // The rest of the directives are taken from the function body definition.
     for operator in body.get_operators_reader()? {
-        let operator = operator?;
+        // Match first the control operators, which require special handling.
+        match operator? {
+            Operator::Block { blockty } => {
+                tracker.control_stack.push(Frame {
+                    blockty,
+                    frame_kind: FrameKind::Block,
+                    if_data: None,
+                    target_label: labels.next().unwrap(),
+                    output_addr: tracker.stack_top,
+                });
+            }
+            Operator::Loop { blockty } => {
+                let target_label = labels.next().unwrap();
+                tracker.control_stack.push(Frame {
+                    blockty,
+                    frame_kind: FrameKind::Loop,
+                    if_data: None,
+                    target_label,
+                    output_addr: tracker.stack_top,
+                });
+                directives.push(Directive::Label(target_label));
+            }
+            Operator::If { blockty } => {
+                // To implement if-else without intruducing a new instruction "jump_if_not",
+                // we need the "else block" to come before the "then block", so that it can be
+                // implemented like this:
+                //
+                //   (condition) (jump_if $then_block)
+                // $else_block:
+                //   else_block_instructions
+                //   (jump $end)
+                // $then_block:
+                //   then_block_instructions
+                // $end:
+                //   ...
+                //
+                // But the trick is that the "then block" is encoded first in the wasm file.
+                // So we decode the blocks in the order they appear, but save where each block
+                // starts in the control stack, and then we reorder them in the "end" directive.
 
-        let op_type = tracker.get_operator_type(&operator);
+                let condition = tracker.stack.pop().unwrap();
+                assert!(condition.val_type == ValType::I32);
+
+                tracker.control_stack.push(Frame {
+                    blockty,
+                    frame_kind: FrameKind::If,
+                    if_data: Some(IfElseData {
+                        condition,
+                        then_start: directives.len(),
+                        else_start: None,
+                    }),
+                    target_label: labels.next().unwrap(),
+                    output_addr: tracker.stack_top,
+                });
+            }
+            Operator::Else => {
+                let last_frame = tracker.control_stack.last_mut().unwrap();
+                assert!(last_frame.frame_kind == FrameKind::If);
+                last_frame.frame_kind = FrameKind::Else;
+                last_frame.if_data.as_mut().unwrap().else_start = Some(directives.len());
+            }
+            Operator::End => {
+                let last_frame = tracker.control_stack.pop().unwrap();
+                match last_frame.frame_kind {
+                    FrameKind::If | FrameKind::Else => {
+                        let IfElseData {
+                            condition,
+                            then_start,
+                            else_start,
+                        } = last_frame.if_data.unwrap();
+                        let else_start = else_start.unwrap_or(directives.len());
+
+                        let else_block = directives.split_off(else_start);
+                        let then_block = directives.split_off(then_start);
+
+                        let then_label = if then_block.is_empty() {
+                            last_frame.target_label
+                        } else {
+                            labels.next().unwrap()
+                        };
+
+                        // Condition check instruction
+                        directives.push(Directive::JumpIf {
+                            target: then_label,
+                            condition,
+                        });
+
+                        // Else block
+                        directives.extend(else_block);
+                        if !then_block.is_empty() {
+                            // Else taken, jump to end
+                            directives.push(Directive::Jump {
+                                target: last_frame.target_label,
+                            });
+
+                            // Then block
+                            directives.push(Directive::Label(then_label));
+                            directives.extend(then_block);
+                        }
+
+                        // Target label for this if-else block
+                        directives.push(Directive::Label(last_frame.target_label));
+                    }
+                    FrameKind::Block => {
+                        directives.push(Directive::Label(last_frame.target_label));
+                    }
+                    FrameKind::Loop => {
+                        // Do nothing, as the loop label was already emited.
+                    }
+                    _ => panic!("unsupported webassembly feature"),
+                }
+            }
+            Operator::Br { .. } => todo!(),
+            Operator::BrIf { .. } => todo!(),
+            Operator::BrTable { .. } => todo!(),
+            Operator::Return => todo!(),
+            op => {
+                let op_type = tracker.get_operator_type(&op);
+                todo!()
+            }
+        }
 
         todo!()
     }
@@ -148,15 +297,29 @@ fn sz(val_type: ValType) -> u32 {
     }
 }
 
+struct IfElseData {
+    condition: AllocatedVar,
+    then_start: usize,
+    else_start: Option<usize>,
+}
+
+struct Frame {
+    blockty: BlockType,
+    frame_kind: FrameKind,
+    if_data: Option<IfElseData>,
+    target_label: u32,
+    output_addr: u32,
+}
+
 struct StackTracker<'a> {
     module: &'a ModuleContext,
     locals: Vec<AllocatedVar>,
-    stack: Vec<ValType>,
+    stack: Vec<AllocatedVar>,
     /// We can't pop beyond the stack base.
     /// Before that the locals are allocated.
     stack_base: u32,
     stack_top: u32,
-    control_stack: Vec<(wasmparser::BlockType, wasmparser::FrameKind)>,
+    control_stack: Vec<Frame>,
 }
 
 impl<'a> StackTracker<'a> {
@@ -164,7 +327,7 @@ impl<'a> StackTracker<'a> {
         module: &'a ModuleContext,
         func_idx: u32,
         locals_reader: LocalsReader<'a>,
-    ) -> wasmparser::Result<Self> {
+    ) -> wasmparser::Result<(Self, u32)> {
         // We start by reading the input and local variables.
         let func_type = module.get_func_type(func_idx);
 
@@ -181,6 +344,8 @@ impl<'a> StackTracker<'a> {
             stack_top += sz(val_type);
         }
 
+        let first_explicit_local = stack_top;
+
         // Explicitly declared locals comes next.
         for local in locals_reader {
             let (count, val_type) = local?;
@@ -193,14 +358,17 @@ impl<'a> StackTracker<'a> {
             }
         }
 
-        Ok(StackTracker {
-            module,
-            control_stack: Vec::new(),
-            locals,
-            stack: Vec::new(),
-            stack_base: stack_top,
-            stack_top,
-        })
+        Ok((
+            StackTracker {
+                module,
+                control_stack: Vec::new(),
+                locals,
+                stack: Vec::new(),
+                stack_base: stack_top,
+                stack_top,
+            },
+            first_explicit_local,
+        ))
     }
 
     /// Returns the list of input types and output types of an operator.
@@ -358,11 +526,11 @@ impl<'a> StackTracker<'a> {
             ),
             Operator::RefIsNull => {
                 // This type is dependant on the input type, so we must look at the stack.
-                let ValType::Ref(ref_type) = self.stack.last().unwrap() else {
+                let ValType::Ref(ref_type) = self.stack.last().unwrap().val_type else {
                     panic!("ref.is_null expects a reference type")
                 };
                 assert!(ref_type.is_func_ref() || ref_type.is_extern_ref());
-                (vec![ValType::Ref(*ref_type)], vec![ValType::I32])
+                (vec![ValType::Ref(ref_type)], vec![ValType::I32])
             }
             Operator::RefFunc { .. } => (vec![], vec![ValType::Ref(RefType::FUNCREF)]),
 
@@ -370,12 +538,13 @@ impl<'a> StackTracker<'a> {
             // lets skip vector instructions for now, as we can switch it off at LLVM...
 
             // # Parametric instructions
-            Operator::Drop => (vec![*self.stack.last().unwrap()], vec![]),
+            Operator::Drop => (vec![self.stack.last().unwrap().val_type], vec![]),
             Operator::Select => {
                 let len = self.stack.len();
                 let choices = &self.stack[(len - 3)..(len - 1)];
-                assert_eq!(choices[0], choices[1]);
-                (vec![choices[0], choices[1], ValType::I32], vec![choices[0]])
+                let ty = choices[0].val_type;
+                assert_eq!(ty, choices[1].val_type);
+                (vec![ty, ty, ValType::I32], vec![ty])
             }
 
             // # Variable instructions
@@ -464,7 +633,7 @@ impl<'a> StackTracker<'a> {
             Operator::DataDrop { .. } => (vec![], vec![]),
 
             // # Control instructions
-            Operator::Nop => (vec![], vec![]),
+            Operator::Nop | Operator::Unreachable => (vec![], vec![]),
             Operator::Call { function_index } => {
                 let func_type = self.module.get_func_type(*function_index);
                 (func_type.params().to_vec(), func_type.results().to_vec())
@@ -483,8 +652,7 @@ impl<'a> StackTracker<'a> {
             }
             // Some control instructions are too complex to be handled here.
             // We return None for them.
-            Operator::Unreachable
-            | Operator::Block { .. }
+            Operator::Block { .. }
             | Operator::Loop { .. }
             | Operator::If { .. }
             | Operator::Else
