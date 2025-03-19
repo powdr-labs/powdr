@@ -125,7 +125,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         can_process: impl CanProcessCall<T>,
         cache_key: &CacheKey<T>,
     ) -> Option<CacheEntry<T>> {
-        log::debug!(
+        log::info!(
             "Compiling JIT function for\n  Machine: {}\n  Connection: {}\n   Inputs: {:?}{}",
             self.machine_name,
             self.parts.bus_receives[&cache_key.bus_id],
@@ -152,14 +152,14 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             )
             .map_err(|e| {
                 // These errors can be pretty verbose and are quite common currently.
-                log::debug!(
+                log::info!(
                     "=> Error generating JIT code: {}\n...",
                     e.to_string().lines().take(5).join("\n")
                 );
             })
             .ok()?;
 
-        log::debug!("=> Success!");
+        log::info!("=> Success!");
         let out_of_bounds_vars = code
             .iter()
             .flat_map(|effect| effect.referenced_variables())
@@ -179,7 +179,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             );
         }
 
-        log::trace!("Generated code ({} steps)", code.len());
+        log::info!("Generated code ({} steps)", code.len());
         let known_inputs = cache_key
             .known_args
             .iter()
@@ -187,7 +187,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .filter_map(|(i, b)| if b { Some(Variable::Param(i)) } else { None })
             .collect::<Vec<_>>();
 
-        log::trace!("Compiling effects...");
+        log::info!("Compiling effects...");
         let function = compile_effects(
             self.fixed_data.analyzed,
             self.column_layout.clone(),
@@ -196,7 +196,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             prover_functions,
         )
         .unwrap();
-        log::trace!("Compilation done.");
+        log::info!("Compilation done.");
 
         Some(CacheEntry {
             function,
