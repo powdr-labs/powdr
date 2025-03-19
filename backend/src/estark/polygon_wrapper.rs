@@ -49,7 +49,7 @@ impl<F: FieldElement> Backend<F> for PolygonBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
-        _publics: &HashMap<String, Option<F>>,
+        _publics: &BTreeMap<String, Option<F>>,
         prev_proof: Option<Proof>,
         // TODO: Implement challenges
         _witgen_callback: WitgenCallback<F>,
