@@ -31,6 +31,7 @@ members = [
     "schemas",
     "backend-utils",
     "executor-utils",
+    "wasm",
 ]
 
 exclude = ["riscv-runtime"]
