@@ -31,7 +31,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
     pub fn generate(
         &self,
         witness_columns: HashMap<String, Vec<T>>,
-        publics: BTreeMap<String, Option<T>>,
+        publics: HashMap<String, Option<T>>,
     ) -> HashMap<String, Vec<T>> {
         record_start(MULTIPLICITY_WITGEN_NAME);
 

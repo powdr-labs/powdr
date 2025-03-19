@@ -1,5 +1,5 @@
 use std::{
-    collections::{btree_map::Entry, BTreeMap},
+    collections::{btree_map::Entry, BTreeMap, HashMap},
     io::{self, Cursor, Read},
     marker::PhantomData,
     path::PathBuf,
@@ -304,6 +304,7 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
+        publics: &HashMap<String, Option<F>>,
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error> {
@@ -339,7 +340,12 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
                         .expect("Machine does not support the given size");
 
                     let status = time_stage(machine, size, 0, || {
-                        sub_prover::run(scope, &inner_machine_data.backend, witness)
+                        sub_prover::run(
+                            scope,
+                            &inner_machine_data.backend,
+                            witness,
+                            publics.clone(),
+                        )
                     });
 
                     Some((status, machine_entry, size))

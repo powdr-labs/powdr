@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     hash::{DefaultHasher, Hash, Hasher},
     io,
     path::PathBuf,
@@ -76,6 +76,7 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
+        _publics: &HashMap<String, Option<F>>,
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error> {

@@ -141,6 +141,7 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
                 .with_external_witness_values(current_witness)
                 .with_challenges(stage, challenges)
                 .generate()
+                .0
         }
     }
 }
@@ -202,7 +203,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
     /// Generates the committed polynomial values
     /// @returns the values (in source order) and the degree of the polynomials.
-    pub fn generate(self) -> Vec<(String, Vec<T>)> {
+    pub fn generate(self) -> (Vec<(String, Vec<T>)>, HashMap<String, Option<T>>) {
         record_start(OUTER_CODE_NAME);
         let fixed = FixedData::new(
             self.analyzed,
@@ -241,9 +242,10 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let machines = MachineExtractor::new(&fixed).split_out_machines();
 
         // Run main machine and extract columns from all machines.
-        let columns = MutableState::new(machines.into_iter(), &self.query_callback).run();
+        let (columns, publics) =
+            MutableState::new(machines.into_iter(), &self.query_callback).run();
 
-        let publics = extract_publics(&columns, self.analyzed);
+        let publics = extract_publics(publics, self.analyzed);
         if !publics.is_empty() {
             log::debug!("Publics:");
         }
@@ -258,7 +260,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
         let mut columns = if self.stage == 0 {
             // Multiplicities should be computed in the first stage
-            MultiplicityColumnGenerator::new(&fixed).generate(columns, publics)
+            MultiplicityColumnGenerator::new(&fixed).generate(columns, publics.clone())
         } else {
             columns
         };
@@ -279,26 +281,21 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 (name, column)
             })
             .collect::<Vec<_>>();
-        witness_cols
+
+        (witness_cols, publics)
     }
 }
 
-pub fn extract_publics<'a, T, I>(witness: I, pil: &Analyzed<T>) -> BTreeMap<String, Option<T>>
+pub fn extract_publics<T>(
+    public_references: HashMap<String, T>,
+    pil: &Analyzed<T>,
+) -> HashMap<String, Option<T>>
 where
     T: FieldElement,
-    I: IntoIterator<Item = (&'a String, &'a Vec<T>)>,
 {
-    let witness = witness
-        .into_iter()
-        .map(|(name, col)| (name.clone(), col))
-        .collect::<BTreeMap<_, _>>();
     pil.public_declarations_in_source_order()
-        .map(|(name, public_declaration)| {
-            let poly_name = &public_declaration.referenced_poly_name();
-            let poly_row = public_declaration.row();
-            let value = witness
-                .get(poly_name)
-                .map(|column| column[poly_row as usize]);
+        .map(|(name, _)| {
+            let value = public_references.get(name).cloned();
             ((*name).clone(), value)
         })
         .collect()

@@ -39,11 +39,11 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
 
     /// Runs the first machine (unless there are no machines) end returns the generated columns.
     /// The first machine might call other machines, which is handled automatically.
-    pub fn run(self) -> HashMap<String, Vec<T>> {
+    pub fn run(self) -> (HashMap<String, Vec<T>>, HashMap<String, T>) {
         if let Some(first_machine) = self.machines.first() {
             first_machine.try_borrow_mut().unwrap().run_timed(&self);
         }
-        self.take_witness_col_values()
+        self.take_witness_col_and_public_values()
     }
 
     pub fn can_process_call_fully(
@@ -96,25 +96,41 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
     }
 
     /// Extracts the witness column values from the machines.
-    fn take_witness_col_values(self) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_and_public_values(self) -> (HashMap<String, Vec<T>>, HashMap<String, T>) {
         // We keep the already processed machines mutably borrowed so that
         // "later" machines do not try to create new rows in already processed
         // machines.
-        let mut processed = vec![];
-        self.machines
-            .iter()
-            .flat_map(|machine| {
-                let mut machine = machine
-                    .try_borrow_mut()
-                    .map_err(|_| {
-                        panic!("Recursive machine dependencies while finishing machines.");
-                    })
-                    .unwrap();
-                let columns = machine.take_witness_col_values(&self).into_iter();
+        let (witness_columns, public_values, _processed) = self.machines.iter().fold(
+            (HashMap::new(), HashMap::new(), Vec::new()),
+            |(mut acc_witness, mut acc_public, mut processed), machine_cell| {
+                let mut machine = machine_cell.try_borrow_mut().unwrap_or_else(|_| {
+                    panic!("Recursive machine dependencies while finishing machines.")
+                });
+
+                // Merge witness columns: each machine provides a HashMap<String, Vec<T>>
+                machine.take_witness_col_values(&self).into_iter().for_each(
+                    |(key, mut vec_vals)| {
+                        acc_witness
+                            .entry(key)
+                            .or_insert_with(Vec::new)
+                            .append(&mut vec_vals);
+                    },
+                );
+
+                // Merge public values: each machine provides a BTreeMap<String, T>
+                machine
+                    .take_public_values()
+                    .into_iter()
+                    .for_each(|(key, value)| {
+                        acc_public.insert(key, value);
+                    });
+
                 processed.push(machine);
-                columns
-            })
-            .collect()
+                (acc_witness, acc_public, processed)
+            },
+        );
+
+        (witness_columns, public_values)
     }
 
     pub fn query_callback(&self) -> &Q {
