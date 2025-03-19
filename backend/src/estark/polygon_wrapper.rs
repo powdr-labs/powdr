@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, fs, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{
