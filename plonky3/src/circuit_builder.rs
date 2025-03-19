@@ -476,8 +476,6 @@ where
                         challenge_map.clone(),
                         trace_stage,
                     );
-                    println!("trace_stage: {:?}", trace_stage);
-                    println!("new_witness: {:?}", new_witness);
                     (machine_name.clone(), new_witness)
                 })
                 .collect()
