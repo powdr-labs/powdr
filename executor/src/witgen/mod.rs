@@ -50,6 +50,9 @@ mod vm_processor;
 pub use affine_expression::{AffineExpression, AffineResult, AlgebraicVariable};
 pub use evaluators::partial_expression_evaluator::{PartialExpressionEvaluator, SymbolicVariables};
 
+pub type Witness<T> = Vec<(String, Vec<T>)>;
+pub type Publics<T> = HashMap<String, Option<T>>;
+
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 
 // TODO change this so that it has functions
@@ -203,7 +206,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
     /// Generates the committed polynomial values
     /// @returns the values (in source order) and the degree of the polynomials.
-    pub fn generate(self) -> (Vec<(String, Vec<T>)>, HashMap<String, Option<T>>) {
+    pub fn generate(self) -> (Witness<T>, Publics<T>) {
         record_start(OUTER_CODE_NAME);
         let fixed = FixedData::new(
             self.analyzed,
@@ -249,14 +252,14 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         if !publics.is_empty() {
             log::debug!("Publics:");
         }
-        for (name, value) in publics.iter() {
-            log::debug!(
-                "  {name:>30}: {}",
-                value
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "Not yet known at this stage".to_string())
-            );
-        }
+        // for (name, value) in publics.iter() {
+        //     log::debug!(
+        //         "  {name:>30}: {}",
+        //         value
+        //             .map(|value| value.to_string())
+        //             .unwrap_or_else(|| "Not yet known at this stage".to_string())
+        //     );
+        // }
 
         let mut columns = if self.stage == 0 {
             // Multiplicities should be computed in the first stage

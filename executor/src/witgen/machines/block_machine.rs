@@ -389,14 +389,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             })
             .collect();
         self.handle_last_row(&mut data);
-        println!("block machine take_public_values: {:?}", self.publics);
         data.into_iter()
             .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
 
     fn take_public_values(&mut self) -> HashMap<String, T> {
-        println!("block machine take_public_values: {:?}", self.publics);
         std::mem::take(&mut self.publics)
             .into_iter()
             .map(|(key, value)| (key.to_string(), value))

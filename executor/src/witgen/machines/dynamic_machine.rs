@@ -118,8 +118,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
         self.fill_remaining_rows(mutable_state);
         self.fix_first_row();
 
-        println!("dynamic_machine::take_public_values: {:?}", self.publics);
-
         self.data
             .take_transposed()
             .map(|(id, (values, _))| (id, values))
@@ -128,7 +126,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
     }
 
     fn take_public_values(&mut self) -> HashMap<String, T> {
-        println!("dynamic_machine::take_public_values: {:?}", self.publics);
         std::mem::take(&mut self.publics)
             .into_iter()
             .map(|(key, value)| (key.to_string(), value))

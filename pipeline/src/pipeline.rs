@@ -3,7 +3,6 @@ use std::{
     collections::HashMap,
     fmt::Display,
     fs,
-    hash::Hash,
     io::{self, BufReader, BufWriter, Write},
     path::{Path, PathBuf},
     rc::Rc,
@@ -24,7 +23,7 @@ use powdr_backend::{Backend, BackendOptions, BackendType, Proof};
 use powdr_executor::{
     constant_evaluator::{self, VariablySizedColumn},
     witgen::{
-        chain_callbacks, extract_publics, unused_query_callback, QueryCallback, WitgenCallback,
+        chain_callbacks, unused_query_callback, QueryCallback, WitgenCallback,
         WitgenCallbackContext, WitnessGenerator,
     },
 };
