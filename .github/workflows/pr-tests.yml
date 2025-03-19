@@ -17,6 +17,7 @@ env:
   CARGO_TERM_COLOR: always
   POWDR_GENERATE_PROOFS: "true"
   MAX_DEGREE_LOG: "20"
+  RUST_MIN_STACK: "1073741824"
 
 jobs:
   build:
@@ -234,6 +235,8 @@ jobs:
       - name: Install pilcom
         run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
       - uses: taiki-e/install-action@nextest
+      - name: Increase Stack Size
+        run: ulimit -s 32768
       - name: Run slow tests
         # Number threads is set to 2 because the runner does not have enough memory for more.
         run: |

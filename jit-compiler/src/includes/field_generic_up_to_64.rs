@@ -14,20 +14,18 @@ impl std::fmt::Display for FieldElement {
 }
 
 impl From<IntType> for FieldElement {
-    #[inline]
     fn from(i: IntType) -> Self {
         Self(i)
     }
 }
 impl From<FieldElement> for IntType {
-    #[inline]
     fn from(f: FieldElement) -> Self {
         f.0
     }
 }
 impl std::ops::Add for FieldElement {
     type Output = Self;
-    #[inline]
+
     fn add(self, b: Self) -> Self {
         // TODO this is inefficient.
         Self(
@@ -40,7 +38,7 @@ impl std::ops::Add for FieldElement {
 }
 impl std::ops::Sub for FieldElement {
     type Output = Self;
-    #[inline]
+
     fn sub(self, b: Self) -> Self {
         // TODO this is inefficient.
         Self(
@@ -54,7 +52,7 @@ impl std::ops::Sub for FieldElement {
 }
 impl std::ops::Neg for FieldElement {
     type Output = Self;
-    #[inline]
+
     fn neg(self) -> Self {
         if self.0 == 0 {
             self
@@ -65,7 +63,7 @@ impl std::ops::Neg for FieldElement {
 }
 impl std::ops::Mul<FieldElement> for FieldElement {
     type Output = Self;
-    #[inline]
+
     fn mul(self, b: FieldElement) -> FieldElement {
         // TODO this is inefficient.
         Self(
@@ -78,7 +76,7 @@ impl std::ops::Mul<FieldElement> for FieldElement {
 }
 impl std::ops::Div<FieldElement> for FieldElement {
     type Output = Self;
-    #[inline]
+
     fn div(self, b: FieldElement) -> FieldElement {
         if b.0 == 0 {
             panic!("Division by zero");
@@ -99,7 +97,7 @@ impl std::ops::Div<FieldElement> for FieldElement {
         }
     }
 }
-#[inline]
+
 fn try_integer_div_without_remainder(a: IntType, b: IntType) -> Option<IntType> {
     (a % b == 0).then(|| a / b)
 }
@@ -108,20 +106,20 @@ fn full_field_div(_: FieldElement, _: FieldElement) -> FieldElement {
     // TODO generate the algorithm we use for goldilocks
     // for a generic prime field.
 }
-#[inline]
+
 fn integer_div(a: FieldElement, b: FieldElement) -> FieldElement {
     FieldElement(a.0 / b.0)
 }
 impl std::ops::BitAnd<FieldElement> for FieldElement {
     type Output = Self;
-    #[inline]
+
     fn bitand(self, b: FieldElement) -> FieldElement {
         Self(self.0 & b.0)
     }
 }
 impl std::ops::BitOr<FieldElement> for FieldElement {
     type Output = Self;
-    #[inline]
+
     fn bitor(self, b: FieldElement) -> FieldElement {
         Self(self.0 | b.0)
     }

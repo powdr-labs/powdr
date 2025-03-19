@@ -2,7 +2,6 @@
 // const column_count: u64 = ...;
 // const first_column_id: u64 = ...;
 
-#[inline]
 fn known_to_slice<'a>(known: *mut u32, len: u64) -> &'a mut [u32] {
     let words_per_row = (column_count + 31) / 32;
     let rows = len / column_count;
@@ -10,14 +9,12 @@ fn known_to_slice<'a>(known: *mut u32, len: u64) -> &'a mut [u32] {
     unsafe { std::slice::from_raw_parts_mut(known, known_len as usize) }
 }
 
-#[inline]
 fn index(global_offset: u64, local_offset: i32, column: u64) -> usize {
     let column = column - first_column_id;
     let row = (global_offset as i64 + local_offset as i64) as u64;
     (row * column_count + column) as usize
 }
 
-#[inline]
 fn index_known(global_offset: u64, local_offset: i32, column: u64) -> (u64, u64) {
     let column = column - first_column_id;
     let row = (global_offset as i64 + local_offset as i64) as u64;
@@ -25,12 +22,10 @@ fn index_known(global_offset: u64, local_offset: i32, column: u64) -> (u64, u64)
     (row * words_per_row + column / 32, column % 32)
 }
 
-#[inline]
 fn get(data: &[FieldElement], global_offset: u64, local_offset: i32, column: u64) -> FieldElement {
     data[index(global_offset, local_offset, column)]
 }
 
-#[inline]
 fn set(
     data: &mut [FieldElement],
     global_offset: u64,
@@ -42,20 +37,17 @@ fn set(
     data[i] = value;
 }
 
-#[inline]
 fn set_known(known: &mut [u32], global_offset: u64, local_offset: i32, column: u64) {
     let (known_idx, known_bit) = index_known(global_offset, local_offset, column);
     known[known_idx as usize] |= 1 << (known_bit);
 }
 
-#[inline]
 fn get_param(params: &[LookupCell<FieldElement>], i: usize) -> FieldElement {
     match params[i] {
         LookupCell::Input(v) => *v,
         LookupCell::Output(_) => panic!("Output cell used as input"),
     }
 }
-#[inline]
 fn set_param(params: &mut [LookupCell<FieldElement>], i: usize, value: FieldElement) {
     match &mut params[i] {
         LookupCell::Input(_) => panic!("Input cell used as output"),
@@ -78,7 +70,6 @@ pub struct MutSlice<T> {
 }
 
 impl<T> From<&mut [T]> for MutSlice<T> {
-    #[inline]
     fn from(slice: &mut [T]) -> Self {
         MutSlice {
             data: slice.as_mut_ptr(),
@@ -88,7 +79,6 @@ impl<T> From<&mut [T]> for MutSlice<T> {
 }
 
 impl<T> MutSlice<T> {
-    #[inline]
     fn to_mut_slice<'a>(self) -> &'a mut [T] {
         unsafe { std::slice::from_raw_parts_mut(self.data, self.len as usize) }
     }

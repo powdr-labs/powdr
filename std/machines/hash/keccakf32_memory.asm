@@ -596,7 +596,7 @@ machine Keccakf32Memory(mem: Memory) with
 
     query |row| compute_from_multi(
         c, row, a,
-        |a_fe| array::new(array::len(c), |i| {
+        |a_fe| array::new(5 * 64, |i| {
             let x = i / 64;
             let z = i % 64;
             let limb = z / 32;
@@ -628,7 +628,7 @@ machine Keccakf32Memory(mem: Memory) with
 
     query |row| compute_from_multi(
         a_prime, row, a + c + c_prime,
-        |inputs| array::new(array::len(a_prime), |i| {
+        |inputs| array::new(5 * 5 * 64, |i| {
             let y = i / 320;
             let x = (i / 64) % 5;
             let z = i % 64;
@@ -641,17 +641,5 @@ machine Keccakf32Memory(mem: Memory) with
 
             fe(((int(a_elem) >> bit_in_limb) & 0x1) ^ int(c_elem) ^ int(c_prime_elem))
         }));
-
-    // TODO: This hint is correct but not needed (the solver can figure this out).
-    // We keep it here because it prevents the JIT solver from succeeding (because of the
-    // use of `provide_value`), because it currently fails when compiling Rust code.
-    // Once these issues are resolved, we can remove this hint.
-    query |row| {
-        std::prover::provide_value(
-            a_prime_prime_0_0_bits[0], 
-            row, 
-            fe((int(eval(a_prime_prime[0]))) & 0x1)
-        );
-    };
 
 }
