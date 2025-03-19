@@ -2,7 +2,7 @@ use std::{collections::HashMap, hash::Hash};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
@@ -136,14 +136,15 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
     ) -> &Option<CacheEntry<T>> {
         if !self.witgen_functions.contains_key(cache_key) {
             record_start("Auto-witgen code derivation");
-
-            // TODO: currently we can't enable the interpreter for
-            // non-goldilocks fields due to a limitation of autowitgen.
-            //
-            // let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField));
-            let interpreted = false;
-
-            let f = self.compile_witgen_function(can_process, cache_key, interpreted);
+            let f = match T::known_field() {
+                // TODO: Currently, code generation only supports the Goldilocks
+                // fields. We can't enable the interpreter for non-goldilocks
+                // fields due to a limitation of autowitgen.
+                Some(KnownField::GoldilocksField) => {
+                    self.compile_witgen_function(can_process, cache_key, false)
+                }
+                _ => None,
+            };
             assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none());
 
             record_end("Auto-witgen code derivation");
