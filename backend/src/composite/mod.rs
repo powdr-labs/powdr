@@ -1,5 +1,5 @@
 use std::{
-    collections::{btree_map::Entry, BTreeMap, HashMap},
+    collections::{btree_map::Entry, BTreeMap},
     io::{self, Cursor, Read},
     marker::PhantomData,
     path::PathBuf,
@@ -304,7 +304,7 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
-        publics: &HashMap<String, Option<F>>,
+        publics: &BTreeMap<String, Option<F>>,
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error> {

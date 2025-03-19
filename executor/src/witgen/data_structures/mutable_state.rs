@@ -39,7 +39,7 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
 
     /// Runs the first machine (unless there are no machines) end returns the generated columns.
     /// The first machine might call other machines, which is handled automatically.
-    pub fn run(self) -> (HashMap<String, Vec<T>>, HashMap<String, T>) {
+    pub fn run(self) -> (HashMap<String, Vec<T>>, BTreeMap<String, T>) {
         if let Some(first_machine) = self.machines.first() {
             first_machine.try_borrow_mut().unwrap().run_timed(&self);
         }
@@ -96,12 +96,12 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
     }
 
     /// Extracts the witness column values from the machines.
-    fn take_witness_col_and_public_values(self) -> (HashMap<String, Vec<T>>, HashMap<String, T>) {
+    fn take_witness_col_and_public_values(self) -> (HashMap<String, Vec<T>>, BTreeMap<String, T>) {
         // We keep the already processed machines mutably borrowed so that
         // "later" machines do not try to create new rows in already processed
         // machines.
         let (witness_columns, public_values, _processed) = self.machines.iter().fold(
-            (HashMap::new(), HashMap::new(), Vec::new()),
+            (HashMap::new(), BTreeMap::new(), Vec::new()),
             |(mut acc_witness, mut acc_public, mut processed), machine_cell| {
                 let mut machine = machine_cell.try_borrow_mut().unwrap_or_else(|_| {
                     panic!("Recursive machine dependencies while finishing machines.")

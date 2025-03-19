@@ -39,7 +39,7 @@ use crate::{
 use std::collections::BTreeMap;
 
 pub type Columns<T> = Vec<(String, Vec<T>)>;
-pub type Publics<T> = HashMap<String, Option<T>>;
+pub type Publics<T> = BTreeMap<String, Option<T>>;
 pub type WitgenResult<T> = Result<(Arc<Columns<T>>, Arc<Publics<T>>), Vec<String>>;
 pub type VariablySizedColumns<T> = Vec<(String, VariablySizedColumn<T>)>;
 
@@ -544,7 +544,7 @@ impl<T: FieldElement> Pipeline<T> {
             artifact: Artifacts {
                 witness: Some(Arc::new(witness)),
                 // need to set publics to Some, or `compute_witness` will run auto witgen
-                publics: Some(Arc::new(HashMap::new())),
+                publics: Some(Arc::new(BTreeMap::new())),
                 // we're changing the witness, clear the current proof
                 proof: None,
                 ..self.artifact
@@ -1047,6 +1047,7 @@ impl<T: FieldElement> Pipeline<T> {
         {
             self.log("All witness columns externally provided, skipping witness generation.");
             self.artifact.witness = Some(Arc::new(external_witness_values));
+            self.artifact.publics = Some(Arc::new(BTreeMap::new()));
         } else {
             self.log("Deducing witness columns...");
             let start = Instant::now();

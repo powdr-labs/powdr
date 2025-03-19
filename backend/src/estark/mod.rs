@@ -5,7 +5,7 @@ pub mod polygon_wrapper;
 pub mod starky_wrapper;
 
 use std::{
-    collections::HashMap,
+    collections::BTreeMap,
     fs::File,
     io::{self, BufWriter, Write},
     iter::{once, repeat},
@@ -262,7 +262,7 @@ impl<F: FieldElement> Backend<F> for DumpBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
-        _publics: &HashMap<String, Option<F>>,
+        _publics: &BTreeMap<String, Option<F>>,
         prev_proof: Option<Proof>,
         // TODO: Implement challenges
         _witgen_callback: WitgenCallback<F>,

@@ -6,7 +6,6 @@ use p3_matrix::dense::RowMajorMatrix;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 use core::fmt;
 use std::collections::BTreeMap;
@@ -207,7 +206,7 @@ where
     pub fn prove(
         &self,
         witness: &[(String, Vec<T>)],
-        _publics: &HashMap<String, Option<T>>,
+        _publics: &BTreeMap<String, Option<T>>,
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
         let mut witness_by_machine = self

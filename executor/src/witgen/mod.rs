@@ -51,7 +51,7 @@ pub use affine_expression::{AffineExpression, AffineResult, AlgebraicVariable};
 pub use evaluators::partial_expression_evaluator::{PartialExpressionEvaluator, SymbolicVariables};
 
 pub type Witness<T> = Vec<(String, Vec<T>)>;
-pub type Publics<T> = HashMap<String, Option<T>>;
+pub type Publics<T> = BTreeMap<String, Option<T>>;
 
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 
@@ -245,21 +245,21 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let machines = MachineExtractor::new(&fixed).split_out_machines();
 
         // Run main machine and extract columns from all machines.
-        let (columns, publics) =
+        let (columns, _publics) =
             MutableState::new(machines.into_iter(), &self.query_callback).run();
 
-        let publics = extract_publics(publics, self.analyzed);
+        let publics = extract_publics(&columns, self.analyzed);
         if !publics.is_empty() {
             log::debug!("Publics:");
         }
-        // for (name, value) in publics.iter() {
-        //     log::debug!(
-        //         "  {name:>30}: {}",
-        //         value
-        //             .map(|value| value.to_string())
-        //             .unwrap_or_else(|| "Not yet known at this stage".to_string())
-        //     );
-        // }
+        for (name, value) in publics.iter() {
+            log::debug!(
+                "  {name:>30}: {}",
+                value
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "Not yet known at this stage".to_string())
+            );
+        }
 
         let mut columns = if self.stage == 0 {
             // Multiplicities should be computed in the first stage
@@ -289,16 +289,22 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     }
 }
 
-pub fn extract_publics<T>(
-    public_references: HashMap<String, T>,
-    pil: &Analyzed<T>,
-) -> HashMap<String, Option<T>>
+pub fn extract_publics<'a, T, I>(witness: I, pil: &Analyzed<T>) -> BTreeMap<String, Option<T>>
 where
     T: FieldElement,
+    I: IntoIterator<Item = (&'a String, &'a Vec<T>)>,
 {
+    let witness = witness
+        .into_iter()
+        .map(|(name, col)| (name.clone(), col))
+        .collect::<BTreeMap<_, _>>();
     pil.public_declarations_in_source_order()
-        .map(|(name, _)| {
-            let value = public_references.get(name).cloned();
+        .map(|(name, public_declaration)| {
+            let poly_name = &public_declaration.referenced_poly_name();
+            let poly_row = public_declaration.row();
+            let value = witness
+                .get(poly_name)
+                .map(|column| column[poly_row as usize]);
             ((*name).clone(), value)
         })
         .collect()

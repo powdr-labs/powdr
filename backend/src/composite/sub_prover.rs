@@ -10,7 +10,6 @@ use std::{
 use crate::{Backend, Error};
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
-use std::collections::HashMap;
 
 /// Runs a prover until it either completes or challenges the caller, in
 /// which case the execution can be resumed from the returned `SubProver`.
@@ -18,7 +17,7 @@ pub fn run<'s, 'env, F: FieldElement>(
     scope: &'s Scope<'s, 'env>,
     prover: &'env Mutex<Box<dyn Backend<F>>>,
     witness: Vec<(String, Vec<F>)>,
-    publics: HashMap<String, Option<F>>,
+    publics: BTreeMap<String, Option<F>>,
 ) -> RunStatus<'s, F>
 where
 {
