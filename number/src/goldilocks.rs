@@ -515,6 +515,7 @@ impl FromStr for GoldilocksField {
 pub struct GLLargeInt(u64);
 
 impl LargeInt for GLLargeInt {
+    const MAX: Self = Self(u64::MAX);
     const NUM_BITS: usize = 64;
 
     fn to_arbitrary_integer(self) -> ibig::UBig {

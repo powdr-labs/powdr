@@ -43,7 +43,7 @@ enum InterpreterAction<T: FieldElement> {
 pub struct IndexedBitDecompositionComponent<T: FieldElement> {
     pub variable: usize,
     pub is_negative: bool,
-    pub coefficient: T,
+    pub exponent: u64,
     pub bit_mask: T::Integer,
 }
 
@@ -55,13 +55,13 @@ impl<T: FieldElement> IndexedBitDecompositionComponent<T> {
         let BitDecompositionComponent {
             variable,
             is_negative,
-            coefficient,
+            exponent,
             bit_mask,
         } = components.clone();
         Self {
             variable: var_mapper.map_var(&variable),
             is_negative,
-            coefficient,
+            exponent,
             bit_mask,
         }
     }
@@ -149,8 +149,8 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     let value = var_mapper.map_expr_to_rpn(value);
                     let components = components
                         .iter()
-                        // Sorting ascending by coefficient is important for correctness.
-                        .sorted_by_key(|c| c.coefficient)
+                        // Sorting ascending by exponentis important for correctness.
+                        .sorted_by_key(|c| c.exponent)
                         .map(|c| IndexedBitDecompositionComponent::from(c, var_mapper))
                         .collect_vec();
                     let have_negative = components.iter().any(|c| c.is_negative);
@@ -263,12 +263,16 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     let mut val = value.evaluate(&mut eval_stack, &vars[..]);
                     if *have_negative {
                         for c in components {
-                            let component = val.to_integer() & c.bit_mask;
-                            // TODO we could also require division on T::Integer.
-                            vars[c.variable] = T::from(
-                                component.to_arbitrary_integer()
-                                    / c.coefficient.to_arbitrary_integer(),
-                            );
+                            let mut component =
+                                if c.is_negative { (-val) } else { val }.to_integer();
+                            if !val.is_in_lower_half() {
+                                // Convert a signed finite field element into two's complement.
+                                // a regular subtraction would underflow, so we do this.
+                                component =
+                                    ((T::Integer::MAX - T::modulus()) + component) + 1.into()
+                            };
+                            component = component & c.bit_mask;
+                            vars[c.variable] = T::from(component >> (c.exponent as usize));
                             if c.is_negative {
                                 val += T::from(component);
                             } else {
@@ -278,12 +282,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     } else {
                         for c in components {
                             let component = val.to_integer() & c.bit_mask;
-                            // TODO we could require coefficient to be a power of two
-                            // and thus shit.
-                            vars[c.variable] = T::from(
-                                component.to_arbitrary_integer()
-                                    / c.coefficient.to_arbitrary_integer(),
-                            );
+                            vars[c.variable] = T::from(component >> (c.exponent as usize));
                             val -= T::from(component);
                         }
                     }
