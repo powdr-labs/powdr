@@ -481,7 +481,18 @@ impl<'a> StackTracker<'a> {
                     func_type.results().to_vec(),
                 )
             }
-
+            // Some control instructions are too complex to be handled here.
+            // We return None for them.
+            Operator::Unreachable
+            | Operator::Block { .. }
+            | Operator::Loop { .. }
+            | Operator::If { .. }
+            | Operator::Else
+            | Operator::End
+            | Operator::Br { .. }
+            | Operator::BrIf { .. }
+            | Operator::BrTable { .. }
+            | Operator::Return => return None,
             _ => todo!(),
         };
 
