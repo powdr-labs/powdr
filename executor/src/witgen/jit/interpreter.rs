@@ -1,4 +1,4 @@
-use super::effect::{Assertion, BranchCondition, Effect};
+use super::effect::{Assertion, BranchCondition, Effect, ProverFunctionCall};
 
 use super::symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator};
 use super::variable::{Cell, Variable};
@@ -31,6 +31,7 @@ enum InterpreterAction<T: FieldElement> {
     WriteCell(usize, Cell),
     WriteParam(usize, usize),
     MachineCall(T, Vec<MachineCallArgumentIdx>),
+    ProverFunctionCall(IndexedProverFunctionCall),
     Assertion(RPNExpression<T, usize>, RPNExpression<T, usize>, bool),
     Branch(
         BranchTest<T>,
@@ -88,26 +89,17 @@ pub enum MachineCallArgumentIdx {
     Unknown(usize),
 }
 
+/// Version of ``effect::ProverFunctionCall`` with variables replaced by their indices.
+#[derive(Debug)]
+struct IndexedProverFunctionCall {
+    pub targets: Vec<usize>,
+    pub function_index: usize,
+    pub row_offset: i32,
+    pub inputs: Vec<usize>,
+}
+
 impl<T: FieldElement> EffectsInterpreter<T> {
     pub fn try_new(known_inputs: &[Variable], effects: &[Effect<T, Variable>]) -> Option<Self> {
-        // TODO: interpreter doesn't support prover functions yet
-        fn has_prover_fn<T: FieldElement>(effect: &Effect<T, Variable>) -> bool {
-            match effect {
-                Effect::ProverFunctionCall(..) => true,
-                Effect::Branch(_, if_branch, else_branch) => {
-                    if if_branch.iter().any(has_prover_fn) || else_branch.iter().any(has_prover_fn)
-                    {
-                        return true;
-                    }
-                    false
-                }
-                _ => false,
-            }
-        }
-        if effects.iter().any(has_prover_fn) {
-            return None;
-        }
-
         let mut actions = vec![];
         let mut var_mapper = VariableMapper::new();
 
@@ -202,9 +194,20 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                         .collect();
                     InterpreterAction::MachineCall(*id, arguments)
                 }
-                Effect::ProverFunctionCall(..) => {
-                    // TODO We cannot compile them here, but we should be able to use the PIL evaluator.
-                    unimplemented!("Prover function calls are not supported in the interpreter yet")
+                Effect::ProverFunctionCall(ProverFunctionCall {
+                    targets,
+                    function_index,
+                    row_offset,
+                    inputs,
+                }) => {
+                    let targets = targets.iter().map(|v| var_mapper.map_var(v)).collect();
+                    let inputs = inputs.iter().map(|v| var_mapper.map_var(v)).collect();
+                    InterpreterAction::ProverFunctionCall(IndexedProverFunctionCall {
+                        targets,
+                        function_index: *function_index,
+                        row_offset: *row_offset,
+                        inputs,
+                    })
                 }
                 Effect::Branch(condition, if_branch, else_branch) => {
                     let mut if_actions = vec![];
@@ -319,6 +322,10 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                             .collect::<Vec<_>>();
                         mutable_state.call_direct(*id, &mut args[..]).unwrap();
                     }
+                    InterpreterAction::ProverFunctionCall(call) => {
+                        let inputs = call.inputs.iter().map(|i| vars[*i]).collect::<Vec<_>>();
+                        todo!()
+                    }
                     InterpreterAction::Assertion(e1, e2, expected_equal) => {
                         let lhs_value = e1.evaluate(&mut eval_stack, &vars);
                         let rhs_value = e2.evaluate(&mut eval_stack, &vars);
@@ -389,6 +396,9 @@ impl<T: FieldElement> InterpreterAction<T> {
                     set.insert(*v);
                 }
             }),
+            InterpreterAction::ProverFunctionCall(call) => {
+                set.extend(call.targets.iter().copied());
+            }
             InterpreterAction::Branch(_branch_test, if_actions, else_actions) => {
                 set.extend(
                     if_actions
@@ -422,6 +432,9 @@ impl<T: FieldElement> InterpreterAction<T> {
                     set.insert(*v);
                 }
             }),
+            InterpreterAction::ProverFunctionCall(call) => {
+                set.extend(call.inputs.iter().copied());
+            }
             InterpreterAction::Assertion(lhs, rhs, _) => {
                 lhs.elems.iter().for_each(|e| {
                     if let RPNExpressionElem::Symbol(idx) = e {
