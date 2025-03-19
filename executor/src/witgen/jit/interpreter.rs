@@ -260,33 +260,8 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     vars[*idx] = val;
                 }
                 InterpreterAction::BitDecompose(value, components, have_negative) => {
-                    let mut val = value.evaluate(&mut eval_stack, &vars[..]);
-                    if *have_negative {
-                        for c in components {
-                            let mut component =
-                                if c.is_negative { (-val) } else { val }.to_integer();
-                            if !val.is_in_lower_half() {
-                                // Convert a signed finite field element into two's complement.
-                                // a regular subtraction would underflow, so we do this.
-                                component =
-                                    ((T::Integer::MAX - T::modulus()) + component) + 1.into()
-                            };
-                            component = component & c.bit_mask;
-                            vars[c.variable] = T::from(component >> (c.exponent as usize));
-                            if c.is_negative {
-                                val += T::from(component);
-                            } else {
-                                val -= T::from(component);
-                            }
-                        }
-                    } else {
-                        for c in components {
-                            let component = val.to_integer() & c.bit_mask;
-                            vars[c.variable] = T::from(component >> (c.exponent as usize));
-                            val -= T::from(component);
-                        }
-                    }
-                    assert_eq!(val, 0.into());
+                    let value = value.evaluate(&mut eval_stack, &vars[..]);
+                    perform_bit_decomposition(&mut vars, components, *have_negative, value);
                 }
                 InterpreterAction::ReadCell(idx, c) => {
                     vars[*idx] = data
@@ -345,6 +320,38 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         }
         assert!(eval_stack.is_empty());
     }
+}
+
+fn perform_bit_decomposition<T: FieldElement>(
+    variables: &mut [T],
+    components: &[IndexedBitDecompositionComponent<T>],
+    have_negative: bool,
+    mut value: T,
+) {
+    if have_negative {
+        for c in components {
+            let mut component = if c.is_negative { (-value) } else { value }.to_integer();
+            if component > (T::modulus() - 1.into()) >> 1 {
+                // Convert a signed finite field element into two's complement.
+                // a regular subtraction would underflow, so we do this.
+                component = (T::Integer::MAX - T::modulus() + 1.into()) + component;
+            };
+            component = component & c.bit_mask;
+            variables[c.variable] = T::from(component >> (c.exponent as usize));
+            if c.is_negative {
+                value += T::from(component);
+            } else {
+                value -= T::from(component);
+            }
+        }
+    } else {
+        for c in components {
+            let component = value.to_integer() & c.bit_mask;
+            variables[c.variable] = T::from(component >> (c.exponent as usize));
+            value -= T::from(component);
+        }
+    }
+    assert_eq!(value, 0.into());
 }
 
 impl<T: FieldElement> InterpreterAction<T> {
@@ -544,18 +551,26 @@ mod test {
     use std::fs::read_to_string;
 
     use super::EffectsInterpreter;
-    use crate::witgen::data_structures::{
-        finalizable_data::{CompactData, CompactDataRef},
-        mutable_state::MutableState,
-    };
     use crate::witgen::global_constraints;
     use crate::witgen::jit::block_machine_processor::BlockMachineProcessor;
+    use crate::witgen::jit::effect::{BitDecomposition, BitDecompositionComponent};
+    use crate::witgen::jit::interpreter::{
+        perform_bit_decomposition, IndexedBitDecompositionComponent,
+    };
+    use crate::witgen::jit::symbolic_expression::SymbolicExpression;
     use crate::witgen::jit::test_util::read_pil;
     use crate::witgen::jit::variable::Variable;
     use crate::witgen::machines::{
         machine_extractor::MachineExtractor, KnownMachine, LookupCell, Machine,
     };
     use crate::witgen::FixedData;
+    use crate::witgen::{
+        data_structures::{
+            finalizable_data::{CompactData, CompactDataRef},
+            mutable_state::MutableState,
+        },
+        jit::effect::Effect,
+    };
 
     use bit_vec::BitVec;
     use itertools::Itertools;
@@ -650,5 +665,39 @@ mod test {
                 GoldilocksField::from(14345658006221440202u64),
             ]
         )
+    }
+
+    #[test]
+    fn bit_decomposition_goldilocks() {
+        let mut variables = [GoldilocksField::default(); 2];
+        let components = vec![
+            IndexedBitDecompositionComponent {
+                variable: 0,
+                is_negative: true,
+                exponent: 0,
+                bit_mask: From::from(0xffu32),
+            },
+            IndexedBitDecompositionComponent {
+                variable: 1,
+                is_negative: false,
+                exponent: 8,
+                bit_mask: From::from(0xff00u32),
+            },
+        ];
+        perform_bit_decomposition(&mut variables, &components, true, 0x1ff.into());
+        assert_eq!(
+            &variables,
+            &[GoldilocksField::from(1), GoldilocksField::from(2)]
+        );
+        perform_bit_decomposition(
+            &mut variables,
+            &components,
+            true,
+            -(GoldilocksField::from(7)),
+        );
+        assert_eq!(
+            &variables,
+            &[GoldilocksField::from(7), GoldilocksField::from(0)]
+        );
     }
 }
