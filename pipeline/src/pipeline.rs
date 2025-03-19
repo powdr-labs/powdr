@@ -543,6 +543,8 @@ impl<T: FieldElement> Pipeline<T> {
         Pipeline {
             artifact: Artifacts {
                 witness: Some(Arc::new(witness)),
+                // need to set publics to Some, or `compute_witness` will run auto witgen
+                publics: Some(Arc::new(HashMap::new())),
                 // we're changing the witness, clear the current proof
                 proof: None,
                 ..self.artifact
