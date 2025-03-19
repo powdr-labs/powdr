@@ -79,6 +79,7 @@ where
     fn prove(
         &self,
         witness: &[(String, Vec<M31>)],
+        _publics: &HashMap<String, Option<M31>>,
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<M31>,
     ) -> Result<Proof, Error> {
