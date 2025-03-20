@@ -343,19 +343,6 @@ fn bitand_signed(a: GoldilocksField, mask: u64) -> GoldilocksField {
     })
 }
 
-/// Treat `a` as a signed number and perform the and-operation in two's complement,
-/// but negates the input before the and-operation.
-#[inline]
-fn bitand_signed_negated(a: GoldilocksField, mask: u64) -> GoldilocksField {
-    GoldilocksField(if a.0 <= (GoldilocksField::ORDER - 1) / 2 {
-        ((-(a.0 as i64)) as u64) & mask
-    } else {
-        // Convert the "negative" number in the field to two's complement
-        // and negate it.
-        (((GoldilocksField::ORDER as i64) - (a.0 as i64)) as u64) & mask
-    })
-}
-
 impl From<ibig::IBig> for FieldElement {
     fn from(x: ibig::IBig) -> Self {
         FieldElement::from(u64::try_from(x).unwrap())

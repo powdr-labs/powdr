@@ -516,9 +516,9 @@ fn format_bit_decomposition<T: FieldElement>(
     } in components
     {
         assert!(*bit_mask != 0.into());
-        let negated = if *is_negative { "_negated" } else { "" };
         result.push_str(&format!(
-            "let bit_decomp_component = bitand_{signed}{negated}(bit_decomp_value, 0x{bit_mask:0x});\n"
+            "let bit_decomp_component = bitand_{signed}({}bit_decomp_value, 0x{bit_mask:0x});\n",
+            if *is_negative { "-" } else { "" },
         ));
 
         result.push_str(&format!(
