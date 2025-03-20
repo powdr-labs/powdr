@@ -111,10 +111,10 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         let mut actions = vec![];
         let mut var_mapper = VariableMapper::new();
 
-        Self::load_fixed_column_values(&mut var_mapper, &mut actions, effects);
-        Self::load_known_inputs(&mut var_mapper, &mut actions, known_inputs);
-        Self::process_effects(&mut var_mapper, &mut actions, effects);
-        Self::write_data(&mut var_mapper, &mut actions, effects);
+        actions.extend(Self::load_fixed_column_values(&mut var_mapper, effects));
+        actions.extend(Self::load_known_inputs(&mut var_mapper, known_inputs));
+        actions.extend(Self::process_effects(&mut var_mapper, effects));
+        actions.extend(Self::write_data(&mut var_mapper, effects));
 
         let ret = Self {
             var_count: var_mapper.var_count(),
@@ -124,33 +124,31 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         Some(ret)
     }
 
-    fn load_fixed_column_values(
-        var_mapper: &mut VariableMapper,
-        actions: &mut Vec<InterpreterAction<T>>,
-        effects: &[Effect<T, Variable>],
-    ) {
-        actions.extend(
-            effects
-                .iter()
-                .flat_map(|e| e.referenced_variables())
-                .filter_map(|v| match v {
-                    Variable::FixedCell(c) => Some((v, c)),
-                    _ => None,
-                })
-                .unique()
-                .map(|(var, cell)| {
-                    let idx = var_mapper.map_var(var);
-                    InterpreterAction::ReadFixedColumn(idx, cell.clone())
-                }),
-        )
+    /// Returns an iterator of actions to load all accessed fixed column values into variables.
+    fn load_fixed_column_values<'a>(
+        var_mapper: &'a mut VariableMapper,
+        effects: &'a [Effect<T, Variable>],
+    ) -> impl Iterator<Item = InterpreterAction<T>> + 'a {
+        effects
+            .iter()
+            .flat_map(|e| e.referenced_variables())
+            .filter_map(|v| match v {
+                Variable::FixedCell(c) => Some((v, c)),
+                _ => None,
+            })
+            .unique()
+            .map(|(var, cell)| {
+                let idx = var_mapper.map_var(var);
+                InterpreterAction::ReadFixedColumn(idx, cell.clone())
+            })
     }
 
-    fn load_known_inputs(
-        var_mapper: &mut VariableMapper,
-        actions: &mut Vec<InterpreterAction<T>>,
-        known_inputs: &[Variable],
-    ) {
-        actions.extend(known_inputs.iter().map(|var| match var {
+    /// Returns an iterator of actions to load all known inputs into variables.
+    fn load_known_inputs<'a>(
+        var_mapper: &'a mut VariableMapper,
+        known_inputs: &'a [Variable],
+    ) -> impl Iterator<Item = InterpreterAction<T>> + 'a {
+        known_inputs.iter().map(|var| match var {
             Variable::WitnessCell(c) => {
                 let idx = var_mapper.map_var(var);
                 InterpreterAction::ReadCell(idx, c.clone())
@@ -162,16 +160,16 @@ impl<T: FieldElement> EffectsInterpreter<T> {
             Variable::FixedCell(_)
             | Variable::MachineCallParam(_)
             | Variable::IntermediateCell(_) => unreachable!(),
-        }));
+        })
     }
 
-    fn process_effects(
-        var_mapper: &mut VariableMapper,
-        actions: &mut Vec<InterpreterAction<T>>,
-        effects: &[Effect<T, Variable>],
-    ) {
-        effects.iter().for_each(|effect| {
-            let action = match effect {
+    /// Returns an iterator of actions equivalent to the effects.
+    fn process_effects<'a>(
+        var_mapper: &'a mut VariableMapper,
+        effects: &'a [Effect<T, Variable>],
+    ) -> impl Iterator<Item = InterpreterAction<T>> + 'a {
+        effects.iter().map(|effect| {
+            match effect {
                 Effect::Assignment(var, e) => {
                     let idx = var_mapper.map_var(var);
                     InterpreterAction::AssignExpression(idx, var_mapper.map_expr_to_rpn(e))
@@ -207,45 +205,44 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     unimplemented!("Prover function calls are not supported in the interpreter yet")
                 }
                 Effect::Branch(condition, if_branch, else_branch) => {
-                    let mut if_actions = vec![];
-                    Self::process_effects(var_mapper, &mut if_actions, if_branch);
-                    let mut else_actions = vec![];
-                    Self::process_effects(var_mapper, &mut else_actions, else_branch);
+                    let if_actions = Self::process_effects(var_mapper, if_branch).collect();
+                    let else_actions = Self::process_effects(var_mapper, else_branch).collect();
                     let test = BranchTest::new(var_mapper, condition);
                     InterpreterAction::Branch(test, if_actions, else_actions)
                 }
-            };
-            actions.push(action);
+            }
         })
     }
 
-    fn write_data(
-        var_mapper: &mut VariableMapper,
-        actions: &mut Vec<InterpreterAction<T>>,
-        effects: &[Effect<T, Variable>],
-    ) {
+    /// Returns an iterator of actions to write all written variables to the data.
+    fn write_data<'a>(
+        var_mapper: &'a mut VariableMapper,
+        effects: &'a [Effect<T, Variable>],
+    ) -> impl Iterator<Item = InterpreterAction<T>> + 'a {
         effects
             .iter()
             .flat_map(Effect::written_vars)
-            .for_each(|(var, _mutable)| {
+            .filter_map(|(var, _mutable)| {
                 match var {
                     Variable::WitnessCell(cell) => {
                         let idx = var_mapper.get_var(var).unwrap();
-                        actions.push(InterpreterAction::WriteCell(idx, cell.clone()));
+                        Some(InterpreterAction::WriteCell(idx, cell.clone()))
                     }
                     Variable::Param(i) => {
                         let idx = var_mapper.get_var(var).unwrap();
-                        actions.push(InterpreterAction::WriteParam(idx, *i));
+                        Some(InterpreterAction::WriteParam(idx, *i))
                     }
                     Variable::FixedCell(_) => panic!("Should not write to fixed column."),
                     Variable::IntermediateCell(_) => {
                         // Intermediate cells are not stored permanently
+                        None
                     }
                     Variable::MachineCallParam(_) => {
                         // This is just an internal variable.
+                        None
                     }
                 }
-            });
+            })
     }
 
     /// Execute the machine effects for the given the parameters
