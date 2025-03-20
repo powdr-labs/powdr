@@ -133,7 +133,7 @@ fn empty() {
 
 #[test]
 // TODO: https://github.com/powdr-labs/powdr/issues/2292
-#[should_panic = "No column references found: []"]
+#[should_panic = "No column references found: 1 $ []"]
 fn single_operation() {
     let f = "asm/single_operation.asm";
     regular_test_all_fields(f, &[]);
@@ -251,7 +251,6 @@ fn static_bus_multi() {
 }
 
 #[test]
-#[should_panic = "Expected first payload entry to be a static ID"]
 fn dynamic_bus() {
     // Witgen does not currently support this.
     let f = "asm/dynamic_bus.asm";
