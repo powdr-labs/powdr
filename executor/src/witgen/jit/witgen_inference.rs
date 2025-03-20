@@ -14,7 +14,6 @@ use powdr_number::FieldElement;
 use crate::witgen::{
     data_structures::{identity::Identity, mutable_state::MutableState},
     global_constraints::RangeConstraintSet,
-    jit::effect::BitDecomposition,
     range_constraints::RangeConstraint,
     FixedData, QueryCallback,
 };
@@ -378,29 +377,16 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                         self.code.push(e);
                     }
                 }
-                Effect::BitDecomposition(BitDecomposition { value, components }) => {
+                Effect::BitDecomposition(bit_decomp) => {
                     let mut something_updated = false;
-                    for c in components {
+                    for c in &bit_decomp.components {
                         if self.record_known(c.variable.clone()) {
                             updated_variables.push(c.variable.clone());
                             something_updated = true;
                         }
                     }
                     if something_updated {
-                        log::trace!(
-                            "{} := {value}",
-                            components
-                                .iter()
-                                .map(|c| {
-                                    format!(
-                                        "{}2**{} * {}",
-                                        if c.is_negative { "-" } else { "" },
-                                        c.exponent,
-                                        c.variable,
-                                    )
-                                })
-                                .format(" + ")
-                        );
+                        log::trace!("{bit_decomp}");
                         self.code.push(e);
                     }
                 }

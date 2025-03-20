@@ -561,7 +561,7 @@ mod test {
             .iter()
             .map(|c| {
                 format!(
-                    "{} = (({value} & {}) >> {}){};\n",
+                    "{} = (({value} & 0x{:0x}) >> {}){};\n",
                     c.variable,
                     c.bit_mask,
                     c.exponent,
@@ -573,9 +573,9 @@ mod test {
         assert_eq!(
             formatted,
             "\
-a = (((10 + Z) & 65280) >> 8) [negative];
-b = (((10 + Z) & 16711680) >> 16);
-c = (((10 + Z) & 4278190080) >> 24) [negative];
+a = (((10 + Z) & 0xff00) >> 8) [negative];
+b = (((10 + Z) & 0xff0000) >> 16);
+c = (((10 + Z) & 0xff000000) >> 24) [negative];
 "
         );
     }

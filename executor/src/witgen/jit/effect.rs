@@ -1,6 +1,7 @@
-use std::cmp::Ordering;
+use std::fmt::Formatter;
+use std::{cmp::Ordering, fmt::Display};
 
-use std::iter;
+use std::{fmt, iter};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
@@ -95,7 +96,7 @@ impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
 
 /// A bit decomposition of a value.
 /// Executing this effect solves the following equation:
-/// value = sum_{i=0}^{components.len()} (-1)^components[i].negative * 2**components[i].exponent * components[i].variable
+/// value = sum_{i=0}^{components.len() - 1} (-1)**components[i].negative * 2**components[i].exponent * components[i].variable
 ///
 /// This effect can only be created if the equation has a unique solution.
 /// It might be that it leads to a contradiction, which should result in an assertion failure.
@@ -184,27 +185,7 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
         .iter()
         .map(|effect| match effect {
             Effect::Assignment(v, expr) => format!("{v} = {expr};"),
-            Effect::BitDecomposition(BitDecomposition { value, components }) => {
-                format!(
-                    "{} := {value};",
-                    components
-                        .iter()
-                        .map(
-                            |BitDecompositionComponent {
-                                 variable,
-                                 is_negative,
-                                 exponent,
-                                 bit_mask: _,
-                             }| {
-                                format!(
-                                    "{}2**{exponent} * {variable}",
-                                    if *is_negative { "-" } else { "" }
-                                )
-                            }
-                        )
-                        .join(" + ")
-                )
-            }
+            Effect::BitDecomposition(bit_decomp) => format!("{bit_decomp}"),
             Effect::Assertion(Assertion {
                 lhs,
                 rhs,
@@ -276,6 +257,29 @@ fn format_condition<T: FieldElement>(
         Ordering::Equal => format!("{variable} == {min}"),
         Ordering::Less => format!("{min} <= {variable} && {variable} <= {max}"),
         Ordering::Greater => format!("{variable} <= {min} || {variable} >= {max}"),
+    }
+}
+
+impl<T: FieldElement, V: Display> Display for BitDecomposition<T, V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let BitDecomposition { value, components } = self;
+        write!(f, "{} := {value};", components.iter().format(" + "))
+    }
+}
+
+impl<T: FieldElement, V: Display> Display for BitDecompositionComponent<T, V> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let BitDecompositionComponent {
+            variable,
+            is_negative,
+            exponent,
+            bit_mask: _,
+        } = self;
+        write!(
+            f,
+            "{}2**{exponent} * {variable}",
+            if *is_negative { "-" } else { "" },
+        )
     }
 }
 
