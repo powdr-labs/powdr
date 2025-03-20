@@ -334,8 +334,10 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
                     }
                     InterpreterAction::ProverFunctionCall(call) => {
                         let inputs = call.inputs.iter().map(|i| vars[*i]).collect::<Vec<_>>();
-                        self.evaluate_prover_function(call, inputs, fixed_data);
-                        todo!()
+                        let result = self.evaluate_prover_function(call, inputs, fixed_data);
+                        for (idx, val) in call.targets.iter().zip_eq(result) {
+                            vars[*idx] = val;
+                        }
                     }
                     InterpreterAction::Assertion(e1, e2, expected_equal) => {
                         let lhs_value = e1.evaluate(&mut eval_stack, &vars);
@@ -381,23 +383,26 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
                 let f = evaluator::evaluate::<T>(code, &mut symbols).unwrap();
                 let result = evaluator::evaluate_function_call(
                     f,
-                    inputs
-                        .into_iter()
-                        .map(|v| Arc::new(Value::FieldElement(v)))
-                        .collect(),
+                    vec![Arc::new(Value::Array(
+                        inputs
+                            .into_iter()
+                            .map(|v| Arc::new(Value::FieldElement(v)))
+                            .collect(),
+                    ))],
                     &mut symbols,
                 )
                 .unwrap();
                 match result.as_ref() {
-                    Value::Array(v) => v,
-                    _ => unreachable!(),
+                    Value::Array(v) if function.compute_multi => v
+                        .iter()
+                        .map(|v| match v.as_ref() {
+                            Value::FieldElement(v) => *v,
+                            _ => unreachable!(),
+                        })
+                        .collect(),
+                    Value::FieldElement(v) if !function.compute_multi => vec![*v],
+                    _ => panic!("Type error"),
                 }
-                .iter()
-                .map(|v| match v.as_ref() {
-                    Value::FieldElement(v) => *v,
-                    _ => unreachable!(),
-                })
-                .collect()
             }
             ProverFunctionComputation::ProvideIfUnknown(code) => {
                 assert!(!function.compute_multi);

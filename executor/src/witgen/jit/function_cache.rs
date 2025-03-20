@@ -136,15 +136,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
     ) -> &Option<CacheEntry<T>> {
         if !self.witgen_functions.contains_key(cache_key) {
             record_start("Auto-witgen code derivation");
-            let f = match T::known_field() {
-                // TODO: Currently, code generation only supports the Goldilocks
-                // fields. We can't enable the interpreter for non-goldilocks
-                // fields due to a limitation of autowitgen.
-                Some(KnownField::GoldilocksField) => {
-                    self.compile_witgen_function(can_process, cache_key, false)
-                }
-                _ => None,
-            };
+            let f = self.compile_witgen_function(can_process, cache_key, true);
             assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none());
 
             record_end("Auto-witgen code derivation");
