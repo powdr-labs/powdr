@@ -229,11 +229,11 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         let has_prover_function_call = has_prover_function_call(&result.code);
         // Use the compiler for goldilocks with at most MAX_COMPILED_CODE_SIZE statements and
         // the interpreter otherwise.
-        let interpreted = matches!(T::known_field(), Some(KnownField::GoldilocksField))
+        let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField))
             || (code_size(&result.code) > MAX_COMPILED_CODE_SIZE && !has_prover_function_call);
 
-        if has_prover_function_call && interpreted {
-            log::debug!("Code contains prover function calls but requires interpreter. Using run-time solving until prover functions are implemented.");
+        if interpreted {
+            log::debug!("Interpreter disabled for now.");
             return None;
         }
 
