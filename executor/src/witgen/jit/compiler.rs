@@ -1213,7 +1213,7 @@ extern \"C\" fn witgen(
                 vec![assignment(&y, symbol(&x) + number(3))],
             )],
         );
-        let expectation = "    let p_1;
+        let expectation = "    let mut p_1 = FieldElement::default();
     if 7 <= IntType::from(p_0) && IntType::from(p_0) <= 20 {
         p_1 = (p_0 + FieldElement::from(1));
     } else if 7 <= IntType::from(p_2) && IntType::from(p_2) <= 20 {
