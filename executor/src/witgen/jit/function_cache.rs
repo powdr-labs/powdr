@@ -25,6 +25,9 @@ use super::{
     witgen_inference::CanProcessCall,
 };
 
+/// Inferred witness generation routines that are larger than
+/// this number of "statements" will use the interpreter instead of the compiler
+/// due to the large compilation ressources required.
 const MAX_COMPILED_CODE_SIZE: usize = 500;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
