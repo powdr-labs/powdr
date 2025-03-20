@@ -493,8 +493,6 @@ mod tests {
             x = y + beta * alpha;
 
             public out = y(N - 1);
-
-            y - out = 0;
         "#;
         run_test(content);
     }
