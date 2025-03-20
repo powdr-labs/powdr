@@ -468,12 +468,13 @@ where
             witness_by_machine
                 .par_iter()
                 .map(|(machine_name, machine_witness)| {
-                    let new_witness = self.witgen_callback.as_ref().unwrap().next_stage_witness(
-                        &self.split[machine_name].0,
-                        machine_witness,
-                        challenge_map.clone(),
-                        trace_stage,
-                    );
+                    let (new_witness, _) =
+                        self.witgen_callback.as_ref().unwrap().next_stage_witness(
+                            &self.split[machine_name].0,
+                            machine_witness,
+                            challenge_map.clone(),
+                            trace_stage,
+                        );
                     (machine_name.clone(), new_witness)
                 })
                 .collect()

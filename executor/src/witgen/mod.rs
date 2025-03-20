@@ -111,7 +111,7 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
         current_witness: &[(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
         stage: u8,
-    ) -> Vec<(String, Vec<T>)> {
+    ) -> (Witness<T>, Publics<T>) {
         let has_phantom_bus_sends = pil
             .identities
             .iter()
@@ -135,7 +135,10 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
                 challenges,
             );
 
-            current_witness.iter().cloned().chain(bus_columns).collect()
+            (
+                current_witness.iter().cloned().chain(bus_columns).collect(),
+                BTreeMap::new(),
+            )
         } else {
             log::debug!("Using automatic stage-1 witgen.");
             let size = current_witness.iter().next().unwrap().1.len() as DegreeType;
@@ -144,7 +147,6 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
                 .with_external_witness_values(current_witness)
                 .with_challenges(stage, challenges)
                 .generate()
-                .0
         }
     }
 }
@@ -245,10 +247,10 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let machines = MachineExtractor::new(&fixed).split_out_machines();
 
         // Run main machine and extract columns from all machines.
-        let (columns, _publics) =
+        let (columns, publics) =
             MutableState::new(machines.into_iter(), &self.query_callback).run();
 
-        let publics = extract_publics(&columns, self.analyzed);
+        let publics = extract_publics(publics, self.analyzed);
         if !publics.is_empty() {
             log::debug!("Publics:");
         }
@@ -289,22 +291,16 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     }
 }
 
-pub fn extract_publics<'a, T, I>(witness: I, pil: &Analyzed<T>) -> BTreeMap<String, Option<T>>
+pub fn extract_publics<T>(
+    public_references: BTreeMap<String, T>,
+    pil: &Analyzed<T>,
+) -> BTreeMap<String, Option<T>>
 where
     T: FieldElement,
-    I: IntoIterator<Item = (&'a String, &'a Vec<T>)>,
 {
-    let witness = witness
-        .into_iter()
-        .map(|(name, col)| (name.clone(), col))
-        .collect::<BTreeMap<_, _>>();
     pil.public_declarations_in_source_order()
-        .map(|(name, public_declaration)| {
-            let poly_name = &public_declaration.referenced_poly_name();
-            let poly_row = public_declaration.row();
-            let value = witness
-                .get(poly_name)
-                .map(|column| column[poly_row as usize]);
+        .map(|(name, _)| {
+            let value = public_references.get(name).cloned();
             ((*name).clone(), value)
         })
         .collect()
