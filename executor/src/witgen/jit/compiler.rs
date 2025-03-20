@@ -528,7 +528,7 @@ fn format_bit_decomposition<T: FieldElement>(
         ));
         result.push_str(&format!(
             "let bit_decomp_value = bit_decomp_value {} bit_decomp_component;\n",
-            // Inverted because we remove the extracted vaule.
+            // Inverted because we remove the extracted value.
             if *is_negative { "+" } else { "-" },
         ));
     }
