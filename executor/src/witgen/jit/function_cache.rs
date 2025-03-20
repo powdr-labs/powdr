@@ -38,19 +38,19 @@ pub struct FunctionCache<'a, T: FieldElement> {
     processor: BlockMachineProcessor<'a, T>,
     /// The cache of JIT functions and the returned range constraints.
     /// If the entry is None, we attempted to generate the function but failed.
-    witgen_functions: HashMap<CacheKey<T>, Option<CacheEntry<T>>>,
+    witgen_functions: HashMap<CacheKey<T>, Option<CacheEntry<'a, T>>>,
     column_layout: ColumnLayout,
     block_size: usize,
     machine_name: String,
     parts: MachineParts<'a, T>,
 }
 
-enum WitgenFunction<T: FieldElement> {
+enum WitgenFunction<'a, T: FieldElement> {
     Compiled(CompiledFunction<T>),
-    Interpreted(EffectsInterpreter<T>),
+    Interpreted(EffectsInterpreter<'a, T>),
 }
 
-impl<T: FieldElement> WitgenFunction<T> {
+impl<T: FieldElement> WitgenFunction<'_, T> {
     /// Call the witgen function to fill the data and "known" tables
     /// given a slice of parameters.
     /// The `row_offset` is the index inside `data` of the row considered to be "row zero".
@@ -73,8 +73,8 @@ impl<T: FieldElement> WitgenFunction<T> {
     }
 }
 
-pub struct CacheEntry<T: FieldElement> {
-    function: WitgenFunction<T>,
+pub struct CacheEntry<'a, T: FieldElement> {
+    function: WitgenFunction<'a, T>,
     pub range_constraints: Vec<RangeConstraint<T>>,
 }
 
@@ -157,7 +157,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         can_process: impl CanProcessCall<T>,
         cache_key: &CacheKey<T>,
         interpreted: bool,
-    ) -> Option<CacheEntry<T>> {
+    ) -> Option<CacheEntry<'a, T>> {
         log::debug!(
             "Compiling JIT function for\n  Machine: {}\n  Connection: {}\n   Inputs: {:?}{}",
             self.machine_name,
@@ -222,7 +222,11 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
 
         let function = if interpreted {
             log::trace!("Building effects interpreter...");
-            WitgenFunction::Interpreted(EffectsInterpreter::try_new(&known_inputs, &code)?)
+            WitgenFunction::Interpreted(EffectsInterpreter::new(
+                &known_inputs,
+                &code,
+                prover_functions,
+            ))
         } else {
             log::trace!("Compiling effects...");
             WitgenFunction::Compiled(

@@ -1,5 +1,6 @@
 use super::effect::{Assertion, BranchCondition, Effect, ProverFunctionCall};
 
+use super::prover_function_heuristics::ProverFunction;
 use super::symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator};
 use super::variable::{Cell, Variable};
 use crate::witgen::data_structures::finalizable_data::CompactDataRef;
@@ -15,9 +16,10 @@ use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
 
 /// Interpreter for instructions compiled from witgen effects.
-pub struct EffectsInterpreter<T: FieldElement> {
+pub struct EffectsInterpreter<'a, T: FieldElement> {
     var_count: usize,
     actions: Vec<InterpreterAction<T>>,
+    prover_functions: Vec<ProverFunction<'a, T>>,
 }
 
 /// Witgen effects compiled into instructions for a stack machine.
@@ -98,8 +100,12 @@ struct IndexedProverFunctionCall {
     pub inputs: Vec<usize>,
 }
 
-impl<T: FieldElement> EffectsInterpreter<T> {
-    pub fn try_new(known_inputs: &[Variable], effects: &[Effect<T, Variable>]) -> Option<Self> {
+impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
+    pub fn new(
+        known_inputs: &[Variable],
+        effects: &[Effect<T, Variable>],
+        prover_functions: Vec<ProverFunction<'a, T>>,
+    ) -> Self {
         let mut actions = vec![];
         let mut var_mapper = VariableMapper::new();
 
@@ -111,9 +117,10 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         let ret = Self {
             var_count: var_mapper.var_count(),
             actions,
+            prover_functions,
         };
         assert!(actions_are_valid(&ret.actions, BTreeSet::new()));
-        Some(ret)
+        ret
     }
 
     fn load_fixed_column_values(
@@ -696,7 +703,7 @@ namespace arith(8);
         );
         let known_inputs = (0..num_inputs).map(Variable::Param).collect::<Vec<_>>();
 
-        let (result, _prover_functions) = processor
+        let (result, prover_functions) = processor
             .generate_code(&mutable_state, bus_id, &known_values, None)
             .unwrap();
 
@@ -704,7 +711,7 @@ namespace arith(8);
         assert!(result.code.iter().any(|a| matches!(a, Effect::Branch(..))));
 
         // generate and call the interpreter
-        let interpreter = EffectsInterpreter::try_new(&known_inputs, &result.code).unwrap();
+        let interpreter = EffectsInterpreter::new(&known_inputs, &result.code, prover_functions);
 
         let poly_ids = analyzed
             .committed_polys_in_source_order()
@@ -791,7 +798,7 @@ namespace arith(8);
             .unwrap();
 
         // generate and call the interpreter
-        let interpreter = EffectsInterpreter::try_new(&known_inputs, &result.code).unwrap();
+        let interpreter = EffectsInterpreter::new(&known_inputs, &result.code, vec![]);
         let mut params = [GoldilocksField::default(); 16];
         let mut param_lookups = params
             .iter_mut()
