@@ -128,6 +128,12 @@ enum Directive<'a> {
         target: u32,
         condition: AllocatedVar,
     },
+    // Move a 32-bit value from one relative address to another.
+    // The materialization of local.get, local.set and local.tee.
+    MoveRel32 {
+        src: u32,
+        dest: u32,
+    },
 }
 
 /// Allocates the locals and the stack at addresses starting
@@ -161,21 +167,21 @@ fn infinite_registers_allocation<'a>(
         match operator? {
             Operator::Block { blockty } => {
                 tracker.control_stack.push(Frame {
+                    stack_height: tracker.frame_height(blockty),
                     blockty,
                     frame_kind: FrameKind::Block,
                     if_data: None,
                     target_label: labels.next().unwrap(),
-                    output_addr: tracker.stack_top,
                 });
             }
             Operator::Loop { blockty } => {
                 let target_label = labels.next().unwrap();
                 tracker.control_stack.push(Frame {
+                    stack_height: tracker.frame_height(blockty),
                     blockty,
                     frame_kind: FrameKind::Loop,
                     if_data: None,
                     target_label,
-                    output_addr: tracker.stack_top,
                 });
                 directives.push(Directive::Label(target_label));
             }
@@ -201,6 +207,7 @@ fn infinite_registers_allocation<'a>(
                 assert!(condition.val_type == ValType::I32);
 
                 tracker.control_stack.push(Frame {
+                    stack_height: tracker.frame_height(blockty),
                     blockty,
                     frame_kind: FrameKind::If,
                     if_data: Some(IfElseData {
@@ -209,7 +216,6 @@ fn infinite_registers_allocation<'a>(
                         else_start: None,
                     }),
                     target_label: labels.next().unwrap(),
-                    output_addr: tracker.stack_top,
                 });
             }
             Operator::Else => {
@@ -269,7 +275,87 @@ fn infinite_registers_allocation<'a>(
                     _ => panic!("unsupported webassembly feature"),
                 }
             }
-            Operator::Br { .. } => todo!(),
+            Operator::Br { relative_depth } => {
+                // When breaking, it is not guaranteed that the stack is at the required height for the target label.
+                // If not, we must unwind the stack and copy the outputs to the expected height.
+                let cs_len = tracker.control_stack.len();
+                assert!(relative_depth < cs_len as u32);
+
+                tracker
+                    .control_stack
+                    .truncate(cs_len - relative_depth as usize);
+                let target_frame = tracker.control_stack.last().unwrap();
+
+                let mut single_arg = [ValType::I32];
+                let args = if target_frame.frame_kind == FrameKind::Loop {
+                    // Loop is special because br sends the execution to
+                    // the top of the loop, so the arguments are the inputs.
+                    match target_frame.blockty {
+                        BlockType::Empty | BlockType::Type(_) => &[],
+                        BlockType::FuncType(idx) => {
+                            let func_type = module.get_type(idx);
+                            func_type.params()
+                        }
+                    }
+                } else {
+                    match target_frame.blockty {
+                        BlockType::Empty => &[][..],
+                        BlockType::Type(val_type) => {
+                            single_arg[0] = val_type;
+                            &single_arg
+                        }
+                        BlockType::FuncType(idx) => {
+                            let func_type = module.get_type(idx);
+                            func_type.results()
+                        }
+                    }
+                };
+
+                let stack = &mut tracker.stack;
+                assert!(stack.len() >= args.len());
+                assert!(stack[stack.len() - args.len()..]
+                    .iter()
+                    .zip(args)
+                    .all(|(stack_var, ty)| stack_var.val_type == *ty));
+
+                // Copy the outputs to the expected height, if needed
+                if stack[stack.len() - args.len()].address != target_frame.stack_height {
+                    let src_args = stack.split_off(stack.len() - args.len());
+
+                    let new_len = stack.partition_point(|v| v.address < target_frame.stack_height);
+                    stack.truncate(new_len);
+
+                    tracker.stack_top = stack
+                        .last()
+                        .map(|v| v.address + sz(v.val_type))
+                        .unwrap_or(tracker.stack_base);
+                    assert_eq!(tracker.stack_top, target_frame.stack_height);
+
+                    for src in src_args {
+                        let dest = AllocatedVar {
+                            val_type: src.val_type,
+                            address: tracker.stack_top,
+                        };
+                        let var_size = sz(src.val_type);
+                        tracker.stack_top += var_size;
+
+                        // Emit one move instruction for each 32-bit chunk.
+                        assert!(var_size % 4 == 0);
+                        for i in (0..var_size).step_by(4) {
+                            directives.push(Directive::MoveRel32 {
+                                src: src.address + i,
+                                dest: dest.address + i,
+                            });
+                        }
+
+                        stack.push(dest);
+                    }
+                }
+
+                directives.push(Directive::Jump {
+                    target: target_frame.target_label,
+                });
+            }
             Operator::BrIf { .. } => todo!(),
             Operator::BrTable { .. } => todo!(),
             Operator::Return => todo!(),
@@ -297,6 +383,11 @@ fn sz(val_type: ValType) -> u32 {
     }
 }
 
+/// Size of many types, in bytes
+fn many_sz(val_types: &[ValType]) -> u32 {
+    val_types.iter().map(|&ty| sz(ty)).sum()
+}
+
 struct IfElseData {
     condition: AllocatedVar,
     then_start: usize,
@@ -308,7 +399,8 @@ struct Frame {
     frame_kind: FrameKind,
     if_data: Option<IfElseData>,
     target_label: u32,
-    output_addr: u32,
+    /// The stack height of the block, in bytes, not counting the inputs or outputs.
+    stack_height: u32,
 }
 
 struct StackTracker<'a> {
@@ -369,6 +461,22 @@ impl<'a> StackTracker<'a> {
             },
             first_explicit_local,
         ))
+    }
+
+    /// Return the height of the stack where the frame inputs and outputs sits on top of.
+    fn frame_height(&self, blockty: BlockType) -> u32 {
+        // When we enter a block, the stack contains the inputs to the block.
+        // We must subtract the height of the inputs to know the stack height
+        // where the outputs must be placed.
+        let input_size = match blockty {
+            BlockType::Empty | BlockType::Type(_) => 0,
+            BlockType::FuncType(idx) => {
+                let func_type = self.module.get_type(idx);
+                many_sz(func_type.params())
+            }
+        };
+
+        self.stack_top - input_size
     }
 
     /// Returns the list of input types and output types of an operator.
