@@ -123,6 +123,7 @@ pub fn compile_effects<T: FieldElement, D: DefinitionFetcher>(
     effects: &[Effect<T, Variable>],
     prover_functions: Vec<ProverFunction<'_, T>>,
 ) -> Result<WitgenFunction<T>, String> {
+    println!("Compiling effects:\n{}", format_effects(effects));
     let utils = util_code::<T>()?;
     let interface = interface_code(column_layout);
     let mut codegen = CodeGenerator::<T, _>::new(definitions);
@@ -439,13 +440,9 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                     .flat_map(|e| e.written_vars())
                     .sorted()
                     .dedup()
-                    .map(|(v, needs_mut)| {
+                    .map(|(v, _)| {
                         let v = variable_to_string(v);
-                        if needs_mut {
-                            format!("let mut {v} = FieldElement::default();\n")
-                        } else {
-                            format!("let {v};\n")
-                        }
+                        format!("let mut {v} = FieldElement::default();\n")
                     })
                     .format("")
                     .to_string()
