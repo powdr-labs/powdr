@@ -82,7 +82,7 @@ impl<T: FieldElement> BranchTest<T> {
 }
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
-pub enum MachineCallArgumentIdx {
+enum MachineCallArgumentIdx {
     /// var index of the evaluated known argument expression
     Known(usize),
     /// var index of the unknown
@@ -467,7 +467,7 @@ impl<T: FieldElement> InterpreterAction<T> {
 
 /// Helper struct to map variables to contiguous indices, so they can be kept in
 /// sequential memory and quickly refered to during execution.
-pub struct VariableMapper {
+struct VariableMapper {
     var_idx: HashMap<Variable, usize>,
     count: usize,
 }
@@ -508,12 +508,12 @@ impl VariableMapper {
 
 /// An expression in Reverse Polish Notation.
 #[derive(Debug)]
-pub struct RPNExpression<T: FieldElement, S> {
+struct RPNExpression<T: FieldElement, S> {
     pub elems: Vec<RPNExpressionElem<T, S>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RPNExpressionElem<T: FieldElement, S> {
+enum RPNExpressionElem<T: FieldElement, S> {
     Concrete(T),
     Symbol(S),
     BinaryOperation(BinaryOperator),
