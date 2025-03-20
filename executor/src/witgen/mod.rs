@@ -111,7 +111,7 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
         current_witness: &[(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
         stage: u8,
-    ) -> Vec<(String, Vec<T>)> {
+    ) -> (Witness<T>, Publics<T>) {
         let has_phantom_bus_sends = pil
             .identities
             .iter()
@@ -135,7 +135,10 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
                 challenges,
             );
 
-            current_witness.iter().cloned().chain(bus_columns).collect()
+            (
+                current_witness.iter().cloned().chain(bus_columns).collect(),
+                BTreeMap::new(),
+            )
         } else {
             log::debug!("Using automatic stage-1 witgen.");
             let size = current_witness.iter().next().unwrap().1.len() as DegreeType;
@@ -144,7 +147,6 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
                 .with_external_witness_values(current_witness)
                 .with_challenges(stage, challenges)
                 .generate()
-                .0
         }
     }
 }

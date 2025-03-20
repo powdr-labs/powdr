@@ -14,10 +14,18 @@ pub mod expression_evaluator;
 /// - The current witness.
 /// - The challenges sampled so far.
 pub type WitgenCallbackFn<T> = Arc<
-    dyn Fn(&Analyzed<T>, &[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)>
+    dyn Fn(
+            &Analyzed<T>,
+            &[(String, Vec<T>)],
+            BTreeMap<u64, T>,
+            u8,
+        ) -> (Vec<(String, Vec<T>)>, BTreeMap<String, Option<T>>)
         + Send
         + Sync,
 >;
+
+pub type Witness<T> = Vec<(String, Vec<T>)>;
+pub type Publics<T> = BTreeMap<String, Option<T>>;
 
 #[derive(Clone)]
 pub struct WitgenCallback<T>(WitgenCallbackFn<T>);
@@ -34,7 +42,7 @@ impl<T: FieldElement> WitgenCallback<T> {
         current_witness: &[(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
         stage: u8,
-    ) -> Vec<(String, Vec<T>)> {
+    ) -> (Witness<T>, Publics<T>) {
         (self.0)(pil, current_witness, challenges, stage)
     }
 }

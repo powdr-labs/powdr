@@ -393,7 +393,7 @@ impl<T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCircui
                     "Running witness generation for stage {stage} ({} challenges)!",
                     challenges.len()
                 );
-                new_witness = self
+                (new_witness, _) = self
                     .witgen_callback
                     .as_ref()
                     .expect("Expected witgen callback!")

@@ -250,6 +250,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         match self {
             KnownMachine::BlockMachine(m) => m.take_public_values(),
             KnownMachine::DynamicMachine(m) => m.take_public_values(),
+            KnownMachine::SecondStageMachine(m) => m.take_public_values(),
             _ => BTreeMap::new(),
         }
     }
