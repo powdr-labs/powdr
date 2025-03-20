@@ -286,14 +286,14 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             return Ok(ProcessResult::empty());
         }
 
-        // We need to assert that the masks cover "-offset",
-        // otherwise the equation is not solvable.
-        // We assert -offset & !masks == 0
-
-        // TODO can this be done even with negative coefficients?
-        if let Some(offset) = self.offset.try_to_number() {
-            if offset.to_integer() & !covered_bits != 0.into() {
-                return Err(Error::ConflictingRangeConstraints);
+        if !components.iter().any(|c| c.is_negative) {
+            // If all coefficients are positive and the offset is known, we can check
+            // that all bits are covered. If not, then there is no way to extract
+            // the components and thus we have a conflict.
+            if let Some(offset) = self.offset.try_to_number() {
+                if offset.to_integer() & !covered_bits != 0.into() {
+                    return Err(Error::ConflictingRangeConstraints);
+                }
             }
         }
 
