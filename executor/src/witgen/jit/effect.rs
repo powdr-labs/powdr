@@ -226,7 +226,7 @@ mod test {
 
     fn var(id: u64) -> Variable {
         Variable::WitnessCell(Cell {
-            column_name: format!("v{id}"),
+            column_name: "cell",
             id,
             row_offset: 0,
         })

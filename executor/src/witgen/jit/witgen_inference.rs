@@ -643,6 +643,8 @@ impl<T: FieldElement, Q: QueryCallback<T>> CanProcessCall<T> for &MutableState<'
 
 #[cfg(test)]
 mod test {
+    use std::sync::Arc;
+
     use powdr_ast::analyzed::{PolyID, PolynomialIdentity, PolynomialType};
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
@@ -693,7 +695,7 @@ mod test {
         let known_cells = known_cells.iter().map(|(name, row_offset)| {
             let id = fixed_data.try_column_by_name(name).unwrap().id;
             Variable::WitnessCell(Cell {
-                column_name: name.to_string(),
+                column_name: "cell",
                 id,
                 row_offset: *row_offset,
             })

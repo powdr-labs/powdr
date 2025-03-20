@@ -1,6 +1,8 @@
 use std::{
     fmt::{self, Display, Formatter},
     hash::{Hash, Hasher},
+    rc::Rc,
+    sync::Arc,
 };
 
 use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
@@ -43,7 +45,7 @@ impl Variable {
     /// Create a variable from an algebraic reference.
     pub fn from_reference(r: &AlgebraicReference, row_offset: i32) -> Self {
         let cell = Cell {
-            column_name: r.name.clone(),
+            column_name: "cell",
             id: r.poly_id.id,
             row_offset: r.next as i32 + row_offset,
         };
@@ -88,7 +90,7 @@ pub struct MachineCallVariable {
 #[derive(Debug, Clone, Eq)]
 pub struct Cell {
     /// Name of the column, used only for display purposes.
-    pub column_name: String,
+    pub column_name: &'static str,
     pub id: u64,
     pub row_offset: i32,
 }

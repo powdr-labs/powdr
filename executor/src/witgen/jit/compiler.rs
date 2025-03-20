@@ -684,7 +684,7 @@ mod tests {
 
     fn cell(column_name: &str, id: u64, row_offset: i32) -> Variable {
         Variable::WitnessCell(Cell {
-            column_name: column_name.to_string(),
+            column_name: "cell",
             row_offset,
             id,
         })
@@ -1011,7 +1011,7 @@ extern \"C\" fn witgen(
     fn fixed_column_access() {
         let a = cell("a", 0, 0);
         let x = Variable::FixedCell(Cell {
-            column_name: "X".to_string(),
+            column_name: "cell",
             id: 15,
             row_offset: 6,
         });

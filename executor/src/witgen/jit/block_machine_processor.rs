@@ -147,7 +147,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 queue_items.push(QueueItem::variable_assignment(
                     value,
                     Variable::IntermediateCell(Cell {
-                        column_name: name.clone(),
+                        column_name: "cell",
                         id: poly_id.id,
                         row_offset,
                     }),
@@ -219,12 +219,12 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         for (column_id, row_offsets) in written_rows_per_column(&code) {
             for (outside, inside) in self.conflicting_row_offsets(&row_offsets) {
                 let first_var = Variable::WitnessCell(Cell {
-                    column_name: String::new(),
+                    column_name: "cell",
                     id: column_id,
                     row_offset: outside,
                 });
                 let second_var = Variable::WitnessCell(Cell {
-                    column_name: String::new(),
+                    column_name: "cell",
                     id: column_id,
                     row_offset: inside,
                 });
