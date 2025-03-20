@@ -14,6 +14,7 @@ use powdr_number::FieldElement;
 use crate::witgen::{
     data_structures::{identity::Identity, mutable_state::MutableState},
     global_constraints::RangeConstraintSet,
+    jit::effect::BitDecomposition,
     range_constraints::RangeConstraint,
     FixedData, QueryCallback,
 };
@@ -374,6 +375,32 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     if self.record_known(variable.clone()) {
                         log::trace!("{variable} := {assignment}");
                         updated_variables.push(variable.clone());
+                        self.code.push(e);
+                    }
+                }
+                Effect::BitDecomposition(BitDecomposition { value, components }) => {
+                    let mut something_updated = false;
+                    for c in components {
+                        if self.record_known(c.variable.clone()) {
+                            updated_variables.push(c.variable.clone());
+                            something_updated = true;
+                        }
+                    }
+                    if something_updated {
+                        log::trace!(
+                            "{} := {value}",
+                            components
+                                .iter()
+                                .map(|c| {
+                                    format!(
+                                        "{}2**{} * {}",
+                                        if c.is_negative { "-" } else { "" },
+                                        c.exponent,
+                                        c.variable,
+                                    )
+                                })
+                                .format(" + ")
+                        );
                         self.code.push(e);
                     }
                 }
@@ -840,27 +867,15 @@ namespace Xor(256 * 256);
         assert_eq!(
             code,
             "\
-Xor::A_byte[6] = ((Xor::A[7] & 0xff000000) // 16777216);
-Xor::A[6] = (Xor::A[7] & 0xffffff);
-assert (Xor::A[7] & 0xffffffff00000000) == 0;
-Xor::C_byte[6] = ((Xor::C[7] & 0xff000000) // 16777216);
-Xor::C[6] = (Xor::C[7] & 0xffffff);
-assert (Xor::C[7] & 0xffffffff00000000) == 0;
-Xor::A_byte[5] = ((Xor::A[6] & 0xff0000) // 65536);
-Xor::A[5] = (Xor::A[6] & 0xffff);
-assert (Xor::A[6] & 0xffffffffff000000) == 0;
-Xor::C_byte[5] = ((Xor::C[6] & 0xff0000) // 65536);
-Xor::C[5] = (Xor::C[6] & 0xffff);
-assert (Xor::C[6] & 0xffffffffff000000) == 0;
+2**24 * Xor::A_byte[6] + 2**0 * Xor::A[6] := Xor::A[7];
+2**24 * Xor::C_byte[6] + 2**0 * Xor::C[6] := Xor::C[7];
+2**16 * Xor::A_byte[5] + 2**0 * Xor::A[5] := Xor::A[6];
+2**16 * Xor::C_byte[5] + 2**0 * Xor::C[5] := Xor::C[6];
 call_var(0, 6, 0) = Xor::A_byte[6];
 call_var(0, 6, 2) = Xor::C_byte[6];
 machine_call(1, [Known(call_var(0, 6, 0)), Unknown(call_var(0, 6, 1)), Known(call_var(0, 6, 2))]);
-Xor::A_byte[4] = ((Xor::A[5] & 0xff00) // 256);
-Xor::A[4] = (Xor::A[5] & 0xff);
-assert (Xor::A[5] & 0xffffffffffff0000) == 0;
-Xor::C_byte[4] = ((Xor::C[5] & 0xff00) // 256);
-Xor::C[4] = (Xor::C[5] & 0xff);
-assert (Xor::C[5] & 0xffffffffffff0000) == 0;
+2**8 * Xor::A_byte[4] + 2**0 * Xor::A[4] := Xor::A[5];
+2**8 * Xor::C_byte[4] + 2**0 * Xor::C[4] := Xor::C[5];
 call_var(0, 5, 0) = Xor::A_byte[5];
 call_var(0, 5, 2) = Xor::C_byte[5];
 machine_call(1, [Known(call_var(0, 5, 0)), Unknown(call_var(0, 5, 1)), Known(call_var(0, 5, 2))]);
