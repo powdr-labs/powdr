@@ -107,7 +107,6 @@ pub fn call_cargo(code: &str, opt_level: Option<u32>) -> Result<PathInTempDir, S
         .unwrap();
     if !out.status.success() {
         let stderr = from_utf8(&out.stderr).unwrap_or("UTF-8 error in error message.");
-        println!("Error message:\n{}", stderr);
         return Err(format!(
                 "Rust compiler error when JIT-compiling. Will use interpreter instead. Error message:\n{stderr}."
             ));
