@@ -123,7 +123,6 @@ pub fn compile_effects<T: FieldElement, D: DefinitionFetcher>(
     effects: &[Effect<T, Variable>],
     prover_functions: Vec<ProverFunction<'_, T>>,
 ) -> Result<WitgenFunction<T>, String> {
-    println!("Compiling effects:\n{}", format_effects(effects));
     let utils = util_code::<T>()?;
     let interface = interface_code(column_layout);
     let mut codegen = CodeGenerator::<T, _>::new(definitions);
