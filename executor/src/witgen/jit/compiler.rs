@@ -503,6 +503,8 @@ fn format_bit_decomposition<T: FieldElement>(
         .iter()
         .sorted_by_key(|c| c.exponent)
         .collect_vec();
+    // If no component is negative, we can assume that the value is unsigned
+    // which makes some functions much easier.
     let signed = if components.iter().any(|c| c.is_negative) {
         "signed"
     } else {
