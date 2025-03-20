@@ -1,6 +1,6 @@
 use super::effect::{Assertion, BranchCondition, Effect, ProverFunctionCall};
 
-use super::prover_function_heuristics::ProverFunction;
+use super::prover_function_heuristics::{ProverFunction, ProverFunctionComputation};
 use super::symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator};
 use super::variable::{Cell, Variable};
 use crate::witgen::data_structures::finalizable_data::CompactDataRef;
@@ -9,11 +9,14 @@ use crate::witgen::machines::LookupCell;
 use crate::witgen::{FixedData, QueryCallback};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{PolyID, PolynomialType};
+use powdr_ast::analyzed::{self, Expression, PolyID, PolynomialType};
+use powdr_ast::parsed::FunctionCall;
 use powdr_number::FieldElement;
+use powdr_pil_analyzer::evaluator::{self, Definitions, Value};
 
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
+use std::sync::Arc;
 
 /// Interpreter for instructions compiled from witgen effects.
 pub struct EffectsInterpreter<'a, T: FieldElement> {
@@ -331,6 +334,7 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
                     }
                     InterpreterAction::ProverFunctionCall(call) => {
                         let inputs = call.inputs.iter().map(|i| vars[*i]).collect::<Vec<_>>();
+                        self.evaluate_prover_function(call, inputs, fixed_data);
                         todo!()
                     }
                     InterpreterAction::Assertion(e1, e2, expected_equal) => {
@@ -358,6 +362,56 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
             }
         }
         assert!(eval_stack.is_empty());
+    }
+
+    fn evaluate_prover_function(
+        &self,
+        call: &IndexedProverFunctionCall,
+        inputs: Vec<T>,
+        fixed_data: &FixedData<'_, T>,
+    ) -> Vec<T> {
+        let mut symbols = Definitions {
+            definitions: &fixed_data.analyzed.definitions,
+            solved_impls: &fixed_data.analyzed.solved_impls,
+        };
+        let function = &self.prover_functions[call.function_index];
+        match &function.computation {
+            ProverFunctionComputation::ComputeFrom(code) => {
+                // TODO use a cache for the symbols?
+                let f = evaluator::evaluate::<T>(code, &mut symbols).unwrap();
+                let result = evaluator::evaluate_function_call(
+                    f,
+                    inputs
+                        .into_iter()
+                        .map(|v| Arc::new(Value::FieldElement(v)))
+                        .collect(),
+                    &mut symbols,
+                )
+                .unwrap();
+                match result.as_ref() {
+                    Value::Array(v) => v,
+                    _ => unreachable!(),
+                }
+                .iter()
+                .map(|v| match v.as_ref() {
+                    Value::FieldElement(v) => *v,
+                    _ => unreachable!(),
+                })
+                .collect()
+            }
+            ProverFunctionComputation::ProvideIfUnknown(code) => {
+                assert!(!function.compute_multi);
+                assert!(inputs.is_empty());
+                // TODO use a cache for the symbols?
+                let f = evaluator::evaluate::<T>(code, &mut symbols).unwrap();
+                let value = evaluator::evaluate_function_call(f, vec![], &mut symbols).unwrap();
+                match *value {
+                    Value::FieldElement(v) => vec![v],
+                    _ => unreachable!(),
+                }
+            }
+            ProverFunctionComputation::HandleQueryInputOutput(branches) => todo!(),
+        }
     }
 }
 
