@@ -91,7 +91,7 @@ fn bn254_sanity_check() {
         &[],
         Default::default(),
     );
-    test_mock_backend(pipeline, BackendVariant::Composite);
+    test_mock_backend(pipeline);
 }
 */
 
