@@ -8,9 +8,9 @@ use powdr_pipeline::{
     test_runner::run_tests,
     test_util::{
         evaluate_function, evaluate_integer_function, gen_estark_proof_with_backend_variant,
-        gen_halo2_proof, make_simple_prepared_pipeline, regular_test_bb, regular_test_gl,
-        regular_test_small_field, std_analyzed, test_halo2_with_backend_variant, test_mock_backend,
-        test_plonky3_pipeline, BackendVariant,
+        gen_halo2_proof, make_prepared_pipeline, make_simple_prepared_pipeline, regular_test_bb,
+        regular_test_gl, regular_test_small_field, std_analyzed, test_halo2_with_backend_variant,
+        test_mock_backend, test_plonky3_pipeline, BackendVariant,
     },
     Pipeline,
 };
@@ -139,8 +139,15 @@ fn arith_small_test() {
 #[test]
 #[ignore = "Too slow"]
 fn arith_large_test() {
+    // We just run this test for the mock backend in bus linker mode,
+    // because witgen and proving should be similar to the other backends.
     let f = "std/arith_large_test.asm";
-    regular_test_gl(f, &[]);
+    test_mock_backend(make_prepared_pipeline::<GoldilocksField>(
+        f,
+        vec![],
+        vec![],
+        LinkerMode::Bus,
+    ));
 }
 
 #[test]
@@ -153,8 +160,15 @@ fn arith256_small_test() {
 #[test]
 #[ignore = "Too slow"]
 fn arith256_memory_large_test() {
+    // We just run this test for the mock backend in bus linker mode,
+    // because witgen and proving should be similar to the other backends.
     let f = "std/arith256_memory_large_test.asm";
-    regular_test_gl(f, &[]);
+    test_mock_backend(make_prepared_pipeline::<GoldilocksField>(
+        f,
+        vec![],
+        vec![],
+        LinkerMode::Bus,
+    ));
 }
 
 #[test]
