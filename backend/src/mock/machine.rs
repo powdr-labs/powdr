@@ -21,6 +21,7 @@ impl<'a, F: FieldElement> Machine<'a, F> {
     pub fn try_new(
         machine_name: String,
         witness: &'a [(String, Vec<F>)],
+        publics: &'a BTreeMap<String, Option<F>>,
         fixed: &'a [(String, VariablySizedColumn<F>)],
         pil: &'a Analyzed<F>,
         witgen_callback: &WitgenCallback<F>,
@@ -56,8 +57,8 @@ impl<'a, F: FieldElement> Machine<'a, F> {
         let intermediate_definitions = pil.intermediate_definitions();
 
         // TODO: Supports publics.
-        let values =
-            OwnedTerminalValues::new(pil, witness, fixed).with_challenges(challenges.clone());
+        let values = OwnedTerminalValues::new(pil, witness, publics.clone(), fixed)
+            .with_challenges(challenges.clone());
 
         Some(Self {
             machine_name,
