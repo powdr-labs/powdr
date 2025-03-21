@@ -17,7 +17,8 @@ use crate::witgen::{
 
 use super::{
     block_machine_processor::BlockMachineProcessor,
-    compiler::{compile_effects, WitgenFunction},
+    compiler::{compile_effects, CompiledFunction},
+    interpreter::EffectsInterpreter,
     variable::Variable,
     witgen_inference::CanProcessCall,
 };
@@ -44,8 +45,36 @@ pub struct FunctionCache<'a, T: FieldElement> {
     parts: MachineParts<'a, T>,
 }
 
+enum WitgenFunction<T: FieldElement> {
+    Compiled(CompiledFunction<T>),
+    Interpreted(EffectsInterpreter<T>),
+}
+
+impl<T: FieldElement> WitgenFunction<T> {
+    /// Call the witgen function to fill the data and "known" tables
+    /// given a slice of parameters.
+    /// The `row_offset` is the index inside `data` of the row considered to be "row zero".
+    /// This function always succeeds (unless it panics).
+    pub fn call<Q: QueryCallback<T>>(
+        &self,
+        fixed_data: &FixedData<'_, T>,
+        mutable_state: &MutableState<'_, T, Q>,
+        params: &mut [LookupCell<T>],
+        data: CompactDataRef<'_, T>,
+    ) {
+        match self {
+            WitgenFunction::Compiled(compiled_function) => {
+                compiled_function.call(fixed_data, mutable_state, params, data);
+            }
+            WitgenFunction::Interpreted(interpreter) => {
+                interpreter.call::<Q>(fixed_data, mutable_state, params, data)
+            }
+        }
+    }
+}
+
 pub struct CacheEntry<T: FieldElement> {
-    pub function: WitgenFunction<T>,
+    function: WitgenFunction<T>,
     pub range_constraints: Vec<RangeConstraint<T>>,
 }
 
@@ -108,13 +137,16 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         if !self.witgen_functions.contains_key(cache_key) {
             record_start("Auto-witgen code derivation");
             let f = match T::known_field() {
-                // Currently, we only support the Goldilocks fields
+                // TODO: Currently, code generation only supports the Goldilocks
+                // fields. We can't enable the interpreter for non-goldilocks
+                // fields due to a limitation of autowitgen.
                 Some(KnownField::GoldilocksField) => {
-                    self.compile_witgen_function(can_process, cache_key)
+                    self.compile_witgen_function(can_process, cache_key, false)
                 }
                 _ => None,
             };
             assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none());
+
             record_end("Auto-witgen code derivation");
         }
         self.witgen_functions.get(cache_key).unwrap()
@@ -124,6 +156,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         &self,
         can_process: impl CanProcessCall<T>,
         cache_key: &CacheKey<T>,
+        interpreted: bool,
     ) -> Option<CacheEntry<T>> {
         log::debug!(
             "Compiling JIT function for\n  Machine: {}\n  Connection: {}\n   Inputs: {:?}{}",
@@ -187,15 +220,22 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .filter_map(|(i, b)| if b { Some(Variable::Param(i)) } else { None })
             .collect::<Vec<_>>();
 
-        log::trace!("Compiling effects...");
-        let function = compile_effects(
-            self.fixed_data.analyzed,
-            self.column_layout.clone(),
-            &known_inputs,
-            &code,
-            prover_functions,
-        )
-        .unwrap();
+        let function = if interpreted {
+            log::trace!("Building effects interpreter...");
+            WitgenFunction::Interpreted(EffectsInterpreter::try_new(&known_inputs, &code)?)
+        } else {
+            log::trace!("Compiling effects...");
+            WitgenFunction::Compiled(
+                compile_effects(
+                    self.fixed_data.analyzed,
+                    self.column_layout.clone(),
+                    &known_inputs,
+                    &code,
+                    prover_functions,
+                )
+                .unwrap(),
+            )
+        };
         log::trace!("Compilation done.");
 
         Some(CacheEntry {
