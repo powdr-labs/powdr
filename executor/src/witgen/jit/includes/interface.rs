@@ -4,7 +4,7 @@
 
 #[inline]
 fn known_to_slice<'a>(known: *mut u32, len: u64) -> &'a mut [u32] {
-    let words_per_row = (column_count + 31) / 32;
+    let words_per_row = column_count.div_ceil(32);
     let rows = len / column_count;
     let known_len = rows * words_per_row;
     unsafe { std::slice::from_raw_parts_mut(known, known_len as usize) }
@@ -21,7 +21,7 @@ fn index(global_offset: u64, local_offset: i32, column: u64) -> usize {
 fn index_known(global_offset: u64, local_offset: i32, column: u64) -> (u64, u64) {
     let column = column - first_column_id;
     let row = (global_offset as i64 + local_offset as i64) as u64;
-    let words_per_row = (column_count + 31) / 32;
+    let words_per_row = column_count.div_ceil(32);
     (row * words_per_row + column / 32, column % 32)
 }
 
