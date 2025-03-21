@@ -229,7 +229,7 @@ where
 ///
 /// # Example
 /// ```rust
-/// use powdr_pipeline::{Pipeline, verify, BackendType, test_util::resolve_test_file};
+/// use powdr_pipeline::{Pipeline, BackendType, test_util::resolve_test_file};
 /// use std::path::PathBuf;
 /// use powdr_number::GoldilocksField;
 ///
@@ -542,7 +542,7 @@ impl<T: FieldElement> Pipeline<T> {
     /// Sets the witness to the provided value.
     pub fn set_witness(mut self, witness: Vec<(String, Vec<T>)>) -> Self {
         if self.output_dir.is_some() {
-            // Some future steps (e.g. Pilcom verification) require the witness to be persisted.
+            // Some future steps require the witness to be persisted.
             let fixed_cols = self.compute_fixed_cols().unwrap();
             self.maybe_write_witness(&fixed_cols, &witness).unwrap();
         }
