@@ -37,10 +37,11 @@ pub struct RowValues<'a, F> {
     row: usize,
 }
 
-impl<F: std::fmt::Debug> OwnedTerminalValues<F> {
+impl<F: std::fmt::Debug + Clone> OwnedTerminalValues<F> {
     pub fn new(
         pil: &Analyzed<F>,
         witness_columns: Vec<(String, Vec<F>)>,
+        publics: BTreeMap<String, Option<F>>,
         fixed_columns: Vec<(String, Vec<F>)>,
     ) -> Self {
         let mut columns_by_name = witness_columns
@@ -57,9 +58,13 @@ impl<F: std::fmt::Debug> OwnedTerminalValues<F> {
                     .map(|column| (poly_id, column))
             })
             .collect();
+        let publics = publics
+            .iter()
+            .map(|(name, value)| (name.clone(), value.clone().unwrap()))
+            .collect();
         Self {
             trace,
-            public_values: Default::default(),
+            public_values: publics,
             challenge_values: Default::default(),
         }
     }
@@ -113,6 +118,8 @@ impl<F: FieldElement, T: From<F>> TerminalAccess<T> for RowValues<'_, F> {
     }
 
     fn get_public(&self, public: &str) -> T {
+        println!("get_public key: {}", public);
+        println!("get_public map: {:?}", self.values.public_values);
         self.values.public_values[public].into()
     }
 
