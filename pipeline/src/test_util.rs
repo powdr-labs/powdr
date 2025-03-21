@@ -506,7 +506,7 @@ pub fn assert_proofs_fail_for_invalid_witnesses_mock(
 }
 
 #[cfg(feature = "estark-starky")]
-pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
+pub fn assert_proofs_fail_for_invalid_witnesses_pilcom_monolithic(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
 ) {
@@ -522,6 +522,17 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
         BackendVariant::Monolithic
     )
     .is_err());
+}
+
+#[cfg(feature = "estark-starky")]
+pub fn assert_proofs_fail_for_invalid_witnesses_pilcom_composite(
+    file_name: &str,
+    witness: &[(String, Vec<u64>)],
+) {
+    let pipeline = Pipeline::<GoldilocksField>::default()
+        .with_tmp_output()
+        .from_file(resolve_test_file(file_name));
+
     assert!(run_pilcom_with_backend_variant(
         pipeline
             .with_backend_factory(powdr_backend::BackendType::EStarkDumpComposite)
@@ -532,7 +543,14 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
 }
 
 #[cfg(not(feature = "estark-starky"))]
-pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
+pub fn assert_proofs_fail_for_invalid_witnesses_pilcom_monolithic(
+    _file_name: &str,
+    _witness: &[(String, Vec<u64>)],
+) {
+}
+
+#[cfg(not(feature = "estark-starky"))]
+pub fn assert_proofs_fail_for_invalid_witnesses_pilcom_composite(
     _file_name: &str,
     _witness: &[(String, Vec<u64>)],
 ) {
@@ -590,7 +608,8 @@ pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
 
 pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(String, Vec<u64>)]) {
     assert_proofs_fail_for_invalid_witnesses_mock(file_name, witness);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(file_name, witness);
+    assert_proofs_fail_for_invalid_witnesses_pilcom_monolithic(file_name, witness);
+    assert_proofs_fail_for_invalid_witnesses_pilcom_composite(file_name, witness);
     assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness);
     #[cfg(feature = "halo2")]
     assert_proofs_fail_for_invalid_witnesses_halo2(file_name, witness);
