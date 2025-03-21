@@ -207,7 +207,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         // If there is a condition, only continue if the constraint
         // is known to hold.
         if let Some(condition) = prover_function.condition.as_ref() {
-            if self.evaluate_to_known_number(condition, row_offset) != Some(T::zero()) {
+            if self.try_evaluate_to_known_number(condition, row_offset) != Some(T::zero()) {
                 return Ok(vec![]);
             }
         }
@@ -292,8 +292,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     ) -> ProcessResult<T, Variable> {
         // We need to know the selector and bus ID.
         let (Some(selector), Some(bus_id)) = (
-            self.evaluate_to_known_number(&bus_send.selected_payload.selector, row_offset),
-            self.evaluate_to_known_number(&bus_send.bus_id, row_offset),
+            self.try_evaluate_to_known_number(&bus_send.selected_payload.selector, row_offset),
+            self.try_evaluate_to_known_number(&bus_send.bus_id, row_offset),
         ) else {
             return ProcessResult::empty();
         };
@@ -486,7 +486,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         Evaluator::new(self).evaluate(expr, offset)
     }
 
-    pub fn evaluate_to_known_number(&self, expr: &Expression<T>, offset: i32) -> Option<T> {
+    pub fn try_evaluate_to_known_number(&self, expr: &Expression<T>, offset: i32) -> Option<T> {
         self.evaluate(expr, offset)
             .and_then(|s| s.try_to_known().map(|k| k.try_to_number()))
             .flatten()
