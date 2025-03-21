@@ -1,5 +1,6 @@
-use super::effect::{Assertion, BranchCondition, Effect};
+use super::effect::{Assertion, BranchCondition, Effect, ProverFunctionCall};
 
+use super::prover_function_heuristics::{ProverFunction, ProverFunctionComputation};
 use super::symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator};
 use super::variable::{Cell, Variable};
 use crate::witgen::data_structures::finalizable_data::CompactDataRef;
@@ -8,16 +9,20 @@ use crate::witgen::machines::LookupCell;
 use crate::witgen::{FixedData, QueryCallback};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{PolyID, PolynomialType};
+use powdr_ast::analyzed::{self, Expression, PolyID, PolynomialType};
+use powdr_ast::parsed::FunctionCall;
 use powdr_number::FieldElement;
+use powdr_pil_analyzer::evaluator::{self, Definitions, Value};
 
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
+use std::sync::Arc;
 
 /// Interpreter for instructions compiled from witgen effects.
-pub struct EffectsInterpreter<T: FieldElement> {
+pub struct EffectsInterpreter<'a, T: FieldElement> {
     var_count: usize,
     actions: Vec<InterpreterAction<T>>,
+    prover_functions: Vec<ProverFunction<'a, T>>,
 }
 
 /// Witgen effects compiled into instructions for a stack machine.
@@ -31,6 +36,7 @@ enum InterpreterAction<T: FieldElement> {
     WriteCell(usize, Cell),
     WriteParam(usize, usize),
     MachineCall(T, Vec<MachineCallArgumentIdx>),
+    ProverFunctionCall(IndexedProverFunctionCall),
     Assertion(RPNExpression<T, usize>, RPNExpression<T, usize>, bool),
     Branch(
         BranchTest<T>,
@@ -88,26 +94,21 @@ enum MachineCallArgumentIdx {
     Unknown(usize),
 }
 
-impl<T: FieldElement> EffectsInterpreter<T> {
-    pub fn try_new(known_inputs: &[Variable], effects: &[Effect<T, Variable>]) -> Option<Self> {
-        // TODO: interpreter doesn't support prover functions yet
-        fn has_prover_fn<T: FieldElement>(effect: &Effect<T, Variable>) -> bool {
-            match effect {
-                Effect::ProverFunctionCall(..) => true,
-                Effect::Branch(_, if_branch, else_branch) => {
-                    if if_branch.iter().any(has_prover_fn) || else_branch.iter().any(has_prover_fn)
-                    {
-                        return true;
-                    }
-                    false
-                }
-                _ => false,
-            }
-        }
-        if effects.iter().any(has_prover_fn) {
-            return None;
-        }
+/// Version of ``effect::ProverFunctionCall`` with variables replaced by their indices.
+#[derive(Debug)]
+struct IndexedProverFunctionCall {
+    pub targets: Vec<usize>,
+    pub function_index: usize,
+    pub row_offset: i32,
+    pub inputs: Vec<usize>,
+}
 
+impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
+    pub fn new(
+        known_inputs: &[Variable],
+        effects: &[Effect<T, Variable>],
+        prover_functions: Vec<ProverFunction<'a, T>>,
+    ) -> Self {
         let mut actions = vec![];
         let mut var_mapper = VariableMapper::new();
 
@@ -119,9 +120,10 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         let ret = Self {
             var_count: var_mapper.var_count(),
             actions,
+            prover_functions,
         };
         assert!(actions_are_valid(&ret.actions, BTreeSet::new()));
-        Some(ret)
+        ret
     }
 
     /// Returns an iterator of actions to load all accessed fixed column values into variables.
@@ -200,9 +202,20 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                         .collect();
                     InterpreterAction::MachineCall(*id, arguments)
                 }
-                Effect::ProverFunctionCall(..) => {
-                    // TODO We cannot compile them here, but we should be able to use the PIL evaluator.
-                    unimplemented!("Prover function calls are not supported in the interpreter yet")
+                Effect::ProverFunctionCall(ProverFunctionCall {
+                    targets,
+                    function_index,
+                    row_offset,
+                    inputs,
+                }) => {
+                    let targets = targets.iter().map(|v| var_mapper.map_var(v)).collect();
+                    let inputs = inputs.iter().map(|v| var_mapper.map_var(v)).collect();
+                    InterpreterAction::ProverFunctionCall(IndexedProverFunctionCall {
+                        targets,
+                        function_index: *function_index,
+                        row_offset: *row_offset,
+                        inputs,
+                    })
                 }
                 Effect::Branch(condition, if_branch, else_branch) => {
                     let if_actions = Self::process_effects(var_mapper, if_branch).collect();
@@ -316,6 +329,13 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                             .collect::<Vec<_>>();
                         mutable_state.call_direct(*id, &mut args[..]).unwrap();
                     }
+                    InterpreterAction::ProverFunctionCall(call) => {
+                        let inputs = call.inputs.iter().map(|i| vars[*i]).collect::<Vec<_>>();
+                        let result = self.evaluate_prover_function(call, inputs, fixed_data);
+                        for (idx, val) in call.targets.iter().zip_eq(result) {
+                            vars[*idx] = val;
+                        }
+                    }
                     InterpreterAction::Assertion(e1, e2, expected_equal) => {
                         let lhs_value = e1.evaluate(&mut eval_stack, &vars);
                         let rhs_value = e2.evaluate(&mut eval_stack, &vars);
@@ -341,6 +361,65 @@ impl<T: FieldElement> EffectsInterpreter<T> {
             }
         }
         assert!(eval_stack.is_empty());
+    }
+
+    fn evaluate_prover_function(
+        &self,
+        call: &IndexedProverFunctionCall,
+        inputs: Vec<T>,
+        fixed_data: &FixedData<'_, T>,
+    ) -> Vec<T> {
+        let mut symbols = Definitions {
+            definitions: &fixed_data.analyzed.definitions,
+            solved_impls: &fixed_data.analyzed.solved_impls,
+        };
+        let function = &self.prover_functions[call.function_index];
+
+        // TODO for all kinds of prover functions, we need to set
+        // `row_offset` to the first local variable.
+        // can we evaluate some closure or something?
+        // probably difficult without cloning `code`.
+        // or we could call it twice or something? Or add another function argument?
+        match &function.computation {
+            ProverFunctionComputation::ComputeFrom(code) => {
+                // TODO use a cache for the symbols?
+                let f = evaluator::evaluate::<T>(code, &mut symbols).unwrap();
+                let result = evaluator::evaluate_function_call(
+                    f,
+                    vec![Arc::new(Value::Array(
+                        inputs
+                            .into_iter()
+                            .map(|v| Arc::new(Value::FieldElement(v)))
+                            .collect(),
+                    ))],
+                    &mut symbols,
+                )
+                .unwrap();
+                match result.as_ref() {
+                    Value::Array(v) if function.compute_multi => v
+                        .iter()
+                        .map(|v| match v.as_ref() {
+                            Value::FieldElement(v) => *v,
+                            _ => unreachable!(),
+                        })
+                        .collect(),
+                    Value::FieldElement(v) if !function.compute_multi => vec![*v],
+                    _ => panic!("Type error"),
+                }
+            }
+            ProverFunctionComputation::ProvideIfUnknown(code) => {
+                assert!(!function.compute_multi);
+                assert!(inputs.is_empty());
+                // TODO use a cache for the symbols?
+                let f = evaluator::evaluate::<T>(code, &mut symbols).unwrap();
+                let value = evaluator::evaluate_function_call(f, vec![], &mut symbols).unwrap();
+                match *value {
+                    Value::FieldElement(v) => vec![v],
+                    _ => unreachable!(),
+                }
+            }
+            ProverFunctionComputation::HandleQueryInputOutput(branches) => todo!(),
+        }
     }
 }
 
@@ -386,6 +465,9 @@ impl<T: FieldElement> InterpreterAction<T> {
                     set.insert(*v);
                 }
             }),
+            InterpreterAction::ProverFunctionCall(call) => {
+                set.extend(call.targets.iter().copied());
+            }
             InterpreterAction::Branch(_branch_test, if_actions, else_actions) => {
                 set.extend(
                     if_actions
@@ -419,6 +501,9 @@ impl<T: FieldElement> InterpreterAction<T> {
                     set.insert(*v);
                 }
             }),
+            InterpreterAction::ProverFunctionCall(call) => {
+                set.extend(call.inputs.iter().copied());
+            }
             InterpreterAction::Assertion(lhs, rhs, _) => {
                 lhs.elems.iter().for_each(|e| {
                     if let RPNExpressionElem::Symbol(idx) = e {
@@ -680,7 +765,7 @@ namespace arith(8);
         );
         let known_inputs = (0..num_inputs).map(Variable::Param).collect::<Vec<_>>();
 
-        let (result, _prover_functions) = processor
+        let (result, prover_functions) = processor
             .generate_code(&mutable_state, bus_id, &known_values, None)
             .unwrap();
 
@@ -688,7 +773,7 @@ namespace arith(8);
         assert!(result.code.iter().any(|a| matches!(a, Effect::Branch(..))));
 
         // generate and call the interpreter
-        let interpreter = EffectsInterpreter::try_new(&known_inputs, &result.code).unwrap();
+        let interpreter = EffectsInterpreter::new(&known_inputs, &result.code, prover_functions);
 
         let poly_ids = analyzed
             .committed_polys_in_source_order()
@@ -775,7 +860,7 @@ namespace arith(8);
             .unwrap();
 
         // generate and call the interpreter
-        let interpreter = EffectsInterpreter::try_new(&known_inputs, &result.code).unwrap();
+        let interpreter = EffectsInterpreter::new(&known_inputs, &result.code, vec![]);
         let mut params = [GoldilocksField::default(); 16];
         let mut param_lookups = params
             .iter_mut()
