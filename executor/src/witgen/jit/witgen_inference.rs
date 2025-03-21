@@ -294,7 +294,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         bus_send: &BusSend<T>,
         row_offset: i32,
     ) -> ProcessResult<T, Variable> {
-        // We need to know the selector.
+        // We need to know the selector and bus ID.
         let (Some(selector), Some(bus_id)) = (
             self.evaluate_to_known_number(&bus_send.selected_payload.selector, row_offset),
             self.evaluate_to_known_number(&bus_send.bus_id, row_offset),
