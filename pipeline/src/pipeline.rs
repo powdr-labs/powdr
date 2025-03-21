@@ -536,7 +536,11 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     /// Sets the witness to the provided value.
-    pub fn set_witness(mut self, witness: Vec<(String, Vec<T>)>) -> Self {
+    pub fn set_witness_and_publics(
+        mut self,
+        witness: Vec<(String, Vec<T>)>,
+        publics: BTreeMap<String, Option<T>>,
+    ) -> Self {
         if self.output_dir.is_some() {
             // Some future steps (e.g. Pilcom verification) require the witness to be persisted.
             let fixed_cols = self.compute_fixed_cols().unwrap();
@@ -545,6 +549,7 @@ impl<T: FieldElement> Pipeline<T> {
         Pipeline {
             artifact: Artifacts {
                 witness: Some(Arc::new(witness)),
+                publics: Some(Arc::new(publics)),
                 // we're changing the witness, clear the current proof
                 proof: None,
                 ..self.artifact
@@ -1169,7 +1174,6 @@ impl<T: FieldElement> Pipeline<T> {
         }
 
         let (witness, publics) = self.compute_witness()?;
-        println!("compute_proof publics: {:?}", publics);
         let witgen_callback = self.witgen_callback()?;
 
         // Reads the existing proof file, if set.

@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use powdr_linker::LinkerMode;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::test_util::{make_simple_prepared_pipeline, test_mock_backend};
@@ -17,14 +19,17 @@ fn fibonacci_wrong_initialization() {
     // -> fails `ISLAST * (y' - 1) = 0;` in the last row
     let f = "pil/fibonacci.pil";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
-    let pipeline = pipeline.set_witness(vec![
-        // This would be the correct witness:
-        // col("Fibonacci::x", [1, 1, 2, 3]),
-        // col("Fibonacci::y", [1, 2, 3, 5]),
-        // This satisfies the constraints, except the initialization of y:
-        col("Fibonacci::x", [1, 2, 3, 5]),
-        col("Fibonacci::y", [2, 3, 5, 8]),
-    ]);
+    let pipeline = pipeline.set_witness_and_publics(
+        vec![
+            // This would be the correct witness:
+            // col("Fibonacci::x", [1, 1, 2, 3]),
+            // col("Fibonacci::y", [1, 2, 3, 5]),
+            // This satisfies the constraints, except the initialization of y:
+            col("Fibonacci::x", [1, 2, 3, 5]),
+            col("Fibonacci::y", [2, 3, 5, 8]),
+        ],
+        BTreeMap::from([("Fibonacci::out".to_string(), Some(GoldilocksField::from(8)))]),
+    );
     test_mock_backend(pipeline);
 }
 
@@ -56,6 +61,6 @@ fn block_to_block_wrong_connection() {
         })
         .collect::<Vec<_>>();
 
-    let pipeline = pipeline.set_witness(witness);
+    let pipeline = pipeline.set_witness_and_publics(witness, BTreeMap::new());
     test_mock_backend(pipeline);
 }

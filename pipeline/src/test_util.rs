@@ -5,6 +5,7 @@ use powdr_number::{
     Mersenne31Field,
 };
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
+use std::collections::BTreeMap;
 use std::env;
 use std::path::PathBuf;
 
@@ -36,9 +37,7 @@ pub fn make_simple_prepared_pipeline<T: FieldElement>(
         .with_tmp_output()
         .with_linker_params(linker_params)
         .from_file(resolve_test_file(file_name));
-    println!("pipeline created");
     pipeline.compute_witness().unwrap();
-    println!("witness computed");
     pipeline
 }
 
@@ -493,14 +492,24 @@ fn convert_witness<T: FieldElement>(witness: &[(String, Vec<u64>)]) -> Vec<(Stri
         .collect()
 }
 
+fn convert_publics<T: FieldElement>(
+    publics: &BTreeMap<String, u64>,
+) -> BTreeMap<String, Option<T>> {
+    publics
+        .iter()
+        .map(|(k, v)| (k.clone(), Some(T::from(*v))))
+        .collect()
+}
+
 pub fn assert_proofs_fail_for_invalid_witnesses_mock(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
+    publics: &BTreeMap<String, u64>,
 ) {
     assert!(Pipeline::<GoldilocksField>::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
-        .set_witness(convert_witness(witness))
+        .set_witness_and_publics(convert_witness(witness), convert_publics(publics))
         .with_backend(powdr_backend::BackendType::Mock, None)
         .compute_proof()
         .is_err());
@@ -510,11 +519,12 @@ pub fn assert_proofs_fail_for_invalid_witnesses_mock(
 pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
+    publics: &BTreeMap<String, u64>,
 ) {
     let mut pipeline = Pipeline::<GoldilocksField>::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
-        .set_witness(convert_witness(witness));
+        .set_witness_and_publics(convert_witness(witness), convert_publics(publics));
     pipeline.compute_witness().unwrap();
 
     assert!(run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic).is_err());
@@ -525,6 +535,7 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
 pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
     _file_name: &str,
     _witness: &[(String, Vec<u64>)],
+    _publics: &BTreeMap<String, u64>,
 ) {
 }
 
@@ -532,6 +543,7 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
 pub fn assert_proofs_fail_for_invalid_witnesses_estark(
     _file_name: &str,
     _witness: &[(String, Vec<u64>)],
+    _publics: &BTreeMap<String, u64>,
 ) {
 }
 
@@ -539,10 +551,11 @@ pub fn assert_proofs_fail_for_invalid_witnesses_estark(
 pub fn assert_proofs_fail_for_invalid_witnesses_estark(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
+    publics: &BTreeMap<String, u64>,
 ) {
     let pipeline = Pipeline::<GoldilocksField>::default()
         .from_file(resolve_test_file(file_name))
-        .set_witness(convert_witness(witness));
+        .set_witness_and_publics(convert_witness(witness), convert_publics(publics));
 
     assert!(pipeline
         .clone()
@@ -555,10 +568,11 @@ pub fn assert_proofs_fail_for_invalid_witnesses_estark(
 pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
+    publics: &BTreeMap<String, u64>,
 ) {
     let pipeline = Pipeline::<Bn254Field>::default()
         .from_file(resolve_test_file(file_name))
-        .set_witness(convert_witness(witness));
+        .set_witness_and_publics(convert_witness(witness), convert_publics(publics));
 
     assert!(pipeline
         .clone()
@@ -580,14 +594,18 @@ pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
 ) {
 }
 
-pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(String, Vec<u64>)]) {
-    assert_proofs_fail_for_invalid_witnesses_mock(file_name, witness);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(file_name, witness);
-    assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness);
+pub fn assert_proofs_fail_for_invalid_witnesses(
+    file_name: &str,
+    witness: &[(String, Vec<u64>)],
+    publics: &BTreeMap<String, u64>,
+) {
+    assert_proofs_fail_for_invalid_witnesses_mock(file_name, witness, publics);
+    assert_proofs_fail_for_invalid_witnesses_pilcom(file_name, witness, publics);
+    assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness, publics);
     #[cfg(feature = "halo2")]
-    assert_proofs_fail_for_invalid_witnesses_halo2(file_name, witness);
+    assert_proofs_fail_for_invalid_witnesses_halo2(file_name, witness, publics);
     #[cfg(feature = "stwo")]
-    assert_proofs_fail_for_invalid_witnesses_stwo(file_name, witness);
+    assert_proofs_fail_for_invalid_witnesses_stwo(file_name, witness, publics);
 }
 
 pub fn run_reparse_test(file: &str) {
@@ -642,10 +660,11 @@ pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
 pub fn assert_proofs_fail_for_invalid_witnesses_stwo(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
+    publics: &BTreeMap<String, u64>,
 ) {
     let pipeline = Pipeline::<Mersenne31Field>::default()
         .from_file(resolve_test_file(file_name))
-        .set_witness(convert_witness(witness));
+        .set_witness_and_publics(convert_witness(witness), convert_publics(publics));
 
     assert!(pipeline
         .clone()
@@ -692,6 +711,7 @@ pub fn test_stwo_stage1_public(
 pub fn assert_proofs_fail_for_invalid_witnesses_stwo(
     _file_name: &str,
     _witness: &[(String, Vec<u64>)],
+    _publics: &BTreeMap<String, u64>,
 ) {
 }
 
