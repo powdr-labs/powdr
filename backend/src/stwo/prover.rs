@@ -1,10 +1,14 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
+use powdr_ast::analyzed::Identity;
 use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, DegreeRange};
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
+use stwo_prover::core::lookups::gkr_prover::Layer;
+use stwo_prover::core::lookups::mle::Mle;
+use stwo_prover::core::lookups::gkr_prover::prove_batch;
 
 use powdr_number::{FieldElement, LargeInt, Mersenne31Field as M31};
 
@@ -23,6 +27,7 @@ use crate::stwo::circuit_builder::{
     gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
     PREPROCESSED_TRACE_IDX, STAGE0_TRACE_IDX, STAGE1_TRACE_IDX,
 };
+use crate::stwo::logup_gkr::extract_lookup_payload;
 use crate::stwo::proof::{
     Proof, SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
 };
@@ -45,6 +50,9 @@ const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 const LOG_LAST_LAYER_DEGREE_BOUND: usize = 0;
+
+// for now, using this flag to enable logup-GKR
+pub const LOGUP_GKR: bool = true;
 
 pub enum KeyExportError {
     NoProvingKey,
@@ -249,6 +257,7 @@ where
         witness: &[(String, Vec<M31>)],
         witgen_callback: WitgenCallback<M31>,
     ) -> Result<Vec<u8>, String> {
+        println!("witness is {:?}", witness);
         let prove_span = span!(Level::INFO, "stwo backend prover").entered();
         let config = get_config();
 
@@ -394,6 +403,74 @@ where
         // Generate challenges for stage 1 based on stage 0 traces.
         // Stwo supports a maximum of 2 stages, and challenges are created only after stage 0.
         let stage0_challenges = get_challenges::<MC>(&self.analyzed, prover_channel);
+
+        if LOGUP_GKR {
+            // find senders and receivers to build denominator traces
+
+            // logup challenge alpha
+            let alpha = prover_channel.draw_felt();
+
+            // Collect all the top layer inputs of GKR, each of them is a GKR instance for now, later they should be linear combined
+
+            let mut gkr_top_layers = Vec::new();
+            for id in &self.analyzed.identities {
+                match id {
+                    Identity::PhantomBusInteraction(identity) => {
+                        identity.payload.0.iter().for_each(|e| {
+                            println!("payload is {:?}", e);
+                            let lookup_trace = witness
+                                .iter()
+                                .find(|(name, _)| {
+                                    if let AlgebraicExpression::Reference(r) = e {
+                                        name == &r.name
+                                    } else {
+                                        false
+                                    }
+                                })
+                                .unwrap();
+
+                            // create fractions that are to be added by GKR circuit
+                            let numerator_values: Vec<_> = (0..self.analyzed.degree())
+                                .map(|_| {
+                                    SecureField::from_m31(1.into(), 0.into(), 0.into(), 0.into())
+                                })
+                                .collect();
+                            let denominator_values: Vec<_> = (0..self.analyzed.degree())
+                                .map(|index| {
+                                    let a_secure_field = SecureField::from_m31(
+                                        into_stwo_field(&lookup_trace.1[index as usize]).into(),
+                                        0.into(),
+                                        0.into(),
+                                        0.into(),
+                                    );
+                                    a_secure_field - alpha
+                                })
+                                .collect();
+
+                            let numerator_secure_column =
+                                numerator_values.iter().map(|&i| i).collect();
+                            let denominator_secure_column =
+                                denominator_values.iter().map(|&i| i).collect();
+
+                            // create multilinear polynomial for the input layer
+                            let mle_numerator = Mle::<B, SecureField>::new(numerator_secure_column);
+                            let mle_denominator =
+                                Mle::<B, SecureField>::new(denominator_secure_column);
+
+                            let top_layer = Layer::LogUpGeneric {
+                                numerators: mle_numerator.clone(),
+                                denominators: mle_denominator.clone(),
+                            };
+
+                            gkr_top_layers.push(top_layer);
+                        });
+                    }
+                    _ => {}
+                }
+            }
+
+            let (gkr_proof, gkr_artifacts) = prove_batch(prover_channel, gkr_top_layers);
+        }
 
         if self.analyzed.stage_count() > 1 {
             // Build witness columns for stage 1 using the callback function, with the generated challenges
