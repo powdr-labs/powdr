@@ -36,7 +36,9 @@ pub fn make_simple_prepared_pipeline<T: FieldElement>(
         .with_tmp_output()
         .with_linker_params(linker_params)
         .from_file(resolve_test_file(file_name));
+    println!("pipeline created");
     pipeline.compute_witness().unwrap();
+    println!("witness computed");
     pipeline
 }
 

@@ -382,12 +382,22 @@ mod tests {
             pol fixed FIRST = [1] + [0]*;
             pol witness x;
             pol witness y;
-            y * y = y;
+            y = 1;
             x' = (1 - FIRST') * (x + 1);
             public out0 = x(6);
             public out1 = x(7);
             public out2 = y(3);
             public out3 = y(5);
+            
+            pol fixed IS_6 = [0, 0, 0, 0, 0, 0, 1, 0]*;
+            pol fixed IS_7 = [0, 0, 0, 0, 0, 0, 0, 1]*;
+            pol fixed IS_3 = [0, 0, 0, 1, 0, 0, 0, 0]*;
+            pol fixed IS_5 = [0, 0, 0, 0, 0, 1, 0, 0]*;
+
+            IS_6 * (x - out0) = 0;
+            IS_7 * (x - out1) = 0;
+            IS_3 * (y - out2) = 0;
+            IS_5 * (y - out3) = 0;
         ";
         run_test(content);
     }
@@ -419,6 +429,9 @@ mod tests {
             x + y = z;
 
             public outz = z(7);
+
+            col fixed IS_LAST = [0]* + [1];
+            IS_LAST * (z - outz) = 0;
         "#;
         let malicious_publics = Some(vec![0]);
         run_test_publics(content, &malicious_publics);
@@ -493,6 +506,9 @@ mod tests {
             x = y + beta * alpha;
 
             public out = y(N - 1);
+
+            col fixed IS_LAST = [0]* + [1];
+            IS_LAST * (y - out) = 0;
         "#;
         run_test(content);
     }

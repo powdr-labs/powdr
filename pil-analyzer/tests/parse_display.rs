@@ -31,6 +31,8 @@ namespace std::prover(65536);
 namespace std::convert(65536);
     let int = [];
 namespace T(65536);
+    col fixed IS_2 = [0_fe, 0_fe, 1_fe] + [0_fe]*;
+    T::IS_2 * (P - T::pc) = 0;
     col fixed first_step = [1_fe] + [0_fe]*;
     col fixed line(i) { i };
     let ops: int -> bool = |i| i < 7_int && 6_int >= -i;

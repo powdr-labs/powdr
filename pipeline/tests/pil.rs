@@ -340,6 +340,7 @@ fn fixed_columns() {
 #[test]
 fn witness_via_let() {
     let f = "pil/witness_via_let.pil";
+    println!("test test");
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
 }

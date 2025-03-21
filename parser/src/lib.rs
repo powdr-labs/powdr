@@ -306,7 +306,8 @@ namespace Fibonacci(N);
     [x + 2, y'] in [ISLAST, 7];
     y $ [x + 2, y'] is ISLAST $ [ISLAST, 7];
     (x - 2) * y = 8;
-    public out = y(%last_row);"#;
+    public out = y(%last_row);
+    ISLAST * (y - out) = 0;"#;
         let printed = format!("{}", parse(Some("input"), input).unwrap());
         assert_eq!(input.trim(), printed.trim());
     }

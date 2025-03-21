@@ -11,3 +11,7 @@ namespace Global(N);
 
     public out = y(N - 1);
     public out_sec= x(N - 1);
+
+    col fixed ISLAST(i) { if i == N - 1 { 1 } else { 0 } };
+    ISLAST * (y - out) = 0;
+    ISLAST * (x - out_sec) = 0;

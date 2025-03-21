@@ -11,3 +11,5 @@ namespace ConstantInIdentity(N);
     (1-ISLAST) * (x' - x - offset) = 0;
 
     public out = x(N - 1);
+    
+    ISLAST * (x - out) = 0;
