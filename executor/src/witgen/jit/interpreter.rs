@@ -377,6 +377,12 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
             solved_impls: &fixed_data.analyzed.solved_impls,
         };
         let function = &self.prover_functions[call.function_index];
+
+        // TODO for all kinds of prover functions, we need to set
+        // `row_offset` to the first local variable.
+        // can we evaluate some closure or something?
+        // probably difficult without cloning `code`.
+        // or we could call it twice or something? Or add another function argument?
         match &function.computation {
             ProverFunctionComputation::ComputeFrom(code) => {
                 // TODO use a cache for the symbols?
