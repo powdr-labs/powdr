@@ -20,6 +20,7 @@ use crate::params::poseidon2;
 
 use powdr_number::KoalaBearField;
 
+
 const D: u64 = 3;
 const WIDTH: usize = 16;
 type Perm =
@@ -48,6 +49,8 @@ type ValMmcs = MerkleTreeMmcs<
 type ChallengeMmcs = ExtensionMmcs<KoalaBear, FriChallenge, ValMmcs>;
 type Dft = Radix2DitParallel<KoalaBear>;
 type MyPcs = TwoAdicFriPcs<KoalaBear, Dft, ValMmcs, ChallengeMmcs>;
+
+
 
 const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
@@ -92,16 +95,23 @@ impl FieldElementMap for KoalaBearField {
 
         let dft = Dft::default();
 
+
+        let (log_blowup, num_queries, proof_of_work_bits) = Self::get_fri_parameters();
+
         let fri_config = FriConfig {
-            log_blowup: FRI_LOG_BLOWUP,
-            num_queries: FRI_NUM_QUERIES,
-            proof_of_work_bits: FRI_PROOF_OF_WORK_BITS,
+            log_blowup,
+            num_queries,
+            proof_of_work_bits,
             mmcs: challenge_mmcs,
         };
 
         let pcs = MyPcs::new(dft, val_mmcs, fri_config);
 
         Self::Config::new(pcs)
+    }
+
+    fn get_fri_parameters() -> (usize,usize,usize) {
+        (FRI_LOG_BLOWUP, FRI_NUM_QUERIES, FRI_PROOF_OF_WORK_BITS)
     }
 
     fn degree_bound() -> usize {

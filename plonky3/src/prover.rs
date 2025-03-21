@@ -13,7 +13,7 @@ use p3_matrix::dense::{DenseMatrix, RowMajorMatrix};
 use p3_matrix::Matrix;
 use p3_maybe_rayon::prelude::*;
 use p3_util::log2_strict_usize;
-use tracing::{info_span, instrument};
+use tracing::{info, info_span, instrument};
 
 use crate::circuit_builder::{generate_matrix, PowdrCircuit, PowdrTable};
 use crate::params::{Challenge, Challenger, Pcs};
@@ -408,6 +408,8 @@ where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
+    let mut table_max_degree=BTreeMap::new();
+    let degree_bound = T::degree_bound();
     let (tables, stage_0): (BTreeMap<_, _>, BTreeMap<_, _>) = witness_by_machine
         .iter()
         .map(|(name, columns)| {
@@ -421,8 +423,8 @@ where
 
             // Sanity-check that the degree bound is not exceeded
             // If we don't panic here, Plonky3 panics with a bad error message when computing the quotient polynomial
-            let degree_bound = T::degree_bound();
             let max_degree = table.max_constraint_degree();
+            table_max_degree.insert(name.clone(), max_degree);
             if max_degree > degree_bound {
                 panic!(
                     "Table {} has a constraint of degree {} which exceeds the degree bound of {}.",
@@ -456,6 +458,8 @@ where
         })
         .unzip();
 
+       
+
     if tables.is_empty() {
         panic!("No tables to prove");
     }
@@ -463,6 +467,12 @@ where
     let multi_table = MultiTable { tables };
 
     let config = T::get_config();
+    info!("Proving with conjectured soundness level of: {:?} bits", T::get_fri_parameters());
+
+    let max_degree = *table_max_degree.values().max().unwrap();
+    if max_degree < degree_bound && max_degree >= (degree_bound-1)>>1 {
+        info!("FRI config parameter log_blowup can be optimized to (log_blowup - 1) for the current circuit");
+    }
 
     assert_eq!(stage_0.keys().collect_vec(), multi_table.table_names());
 
