@@ -207,11 +207,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         // If there is a condition, only continue if the constraint
         // is known to hold.
         if let Some(condition) = prover_function.condition.as_ref() {
-            if self
-                .evaluate(condition, row_offset)
-                .and_then(|c| c.try_to_known().map(|c| c.is_known_zero()))
-                != Some(true)
-            {
+            if self.evaluate_to_known_number(condition, row_offset) != Some(T::zero()) {
                 return Ok(vec![]);
             }
         }
