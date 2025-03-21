@@ -277,10 +277,11 @@ impl Runtime {
             None,
             "poseidon2_gl",
             vec!["memory", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
-            [r#"instr poseidon2_gl X, Y
+            [r#"instr poseidon2_gl X, Y, Z
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
-                    link ~> poseidon2_gl.poseidon2_permutation(tmp1_col, tmp2_col, STEP)
+                    link ~> tmp3_col = regs.mload(Z, STEP + 2)
+                    link ~> poseidon2_gl.permute(tmp1_col, STEP, tmp2_col, STEP + 1, tmp3_col)
                 {
                     // make sure tmp1_col and tmp2_col are 4-byte aligned memory addresses
                     tmp1_col = 4 * (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000),
@@ -290,7 +291,7 @@ impl Runtime {
         );
 
         self.add_submachine(
-            "std::machines::split::split_gl_vec::SplitGLVec8",
+            "std::machines::split::split_gl_vec::SplitGLVec4",
             None,
             "split_gl_vec",
             vec!["memory", "split_gl", "MIN_DEGREE", "MAIN_MAX_DEGREE"],
@@ -298,7 +299,7 @@ impl Runtime {
                 r#"instr split_gl_vec X, Y
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
-                    link ~> split_gl_vec.split(tmp1_col, tmp2_col, STEP + 2)
+                    link ~> split_gl_vec.split(tmp1_col, tmp2_col, STEP)
                 {
                     // make sure tmp1_col and tmp2_col are 4-byte aligned memory addresses
                     tmp1_col = 4 * (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000),
@@ -331,7 +332,7 @@ impl Runtime {
         // they can overlap.
         self.add_syscall(
             Syscall::Poseidon2GL,
-            std::iter::once("poseidon2_gl 10, 11;".to_string()),
+            std::iter::once(format!("{} 10, 11, 12;", Syscall::Poseidon2GL.name())),
         );
 
         self.add_syscall(
