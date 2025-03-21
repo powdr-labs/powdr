@@ -124,8 +124,8 @@ enum Directive<'a> {
     Label(u32),
     Call {
         function_index: u32,
-        /// The value of the called function frame pointer.
-        new_fp: u32,
+        /// How much to increase the frame pointer for the called function.
+        new_fp_delta: u32,
         /// Where to save the current frame pointer and return address,
         /// so that "return" can restore it.
         save_return_info_to: AllocatedVar,
@@ -148,7 +148,14 @@ enum Directive<'a> {
     /// Primitive used to implement "br_table".
     ImmMin {
         immediate: u32,
-        param: AllocatedVar,
+        input: AllocatedVar,
+        output: AllocatedVar,
+    },
+    /// Skips the "multiple * count" of the next instructions.
+    /// Primitive used to implement "br_table".
+    SkipMultiple {
+        multiple: u32,
+        count: AllocatedVar,
     },
     /// Moves a 32-bit value from one relative address to another.
     /// The materialization of local.get, local.set and local.tee.
@@ -272,17 +279,86 @@ fn infinite_registers_allocation<'a>(
                 directives.extend(tracker.br_code(relative_depth));
                 directives.push(Directive::Label(br_not_taken));
             }
-            Operator::BrTable { .. } => todo!(),
+            Operator::BrTable { targets } => {
+                let targets = targets
+                    .targets()
+                    .collect::<wasmparser::Result<Vec<u32>>>()?;
+
+                // Ensure the table selector is within range, defaulting to the
+                // last one if out of range.
+                let selector = tracker.stack.pop().unwrap();
+                assert_eq!(selector.val_type, ValType::I32);
+                directives.push(Directive::ImmMin {
+                    immediate: targets.len() as u32 - 1,
+                    input: selector,
+                    output: selector,
+                });
+
+                // Each target is a br, which expands to a different number of instructions.
+                // So we generate all the br's, and pad each to the maximum size.
+                //
+                // NOTE: This assumes there is a one to one mapping from these operations
+                // to Powdr-ASM instructions.
+                let mut max_size = 0;
+                let mut breaks = Vec::new();
+                for target in targets {
+                    let br_code = tracker.br_code(target);
+                    max_size = max_size.max(br_code.len());
+                    breaks.push(br_code);
+                }
+
+                // Do the padding
+                for br_code in breaks.iter_mut() {
+                    br_code.resize_with(max_size, || Directive::WasmOp {
+                        op: Operator::Nop,
+                        inputs: vec![],
+                    });
+                }
+
+                // Emit the SkipMultiple instruction that will land in the correct "br" code.
+                directives.push(Directive::SkipMultiple {
+                    multiple: max_size as u32,
+                    count: selector,
+                });
+                directives.extend(breaks.into_iter().flatten());
+
+                // The code after the br_table is unreachable.
+                tracker.discard_unreachable_and_fix_the_stack();
+            }
             Operator::Return => {
                 directives.extend(tracker.br_code(tracker.control_stack.len() as u32));
                 tracker.discard_unreachable_and_fix_the_stack();
             }
-            Operator::Unreachable => todo!(),
+            Operator::Unreachable => {
+                directives.push(Directive::WasmOp {
+                    op: Operator::Unreachable,
+                    inputs: vec![],
+                });
+                tracker.discard_unreachable_and_fix_the_stack();
+            }
+            Operator::Call { function_index } => {
+                // For the lack of a better type, the return info is a i64, where
+                // the first 32 bits (address-wise) are the saved frame pointer, and the
+                // other 32 bits are the return address.
+                let return_info = AllocatedVar {
+                    val_type: ValType::I64,
+                    address: tracker.stack_top,
+                };
+
+                // Consume the function arguments and place the outputs on the stack.
+                let func_type = module.get_func_type(function_index);
+                let bottom_addr = tracker.apply_operation_to_stack(func_type);
+
+                directives.push(Directive::Call {
+                    function_index,
+                    new_fp_delta: bottom_addr,
+                    save_return_info_to: return_info,
+                });
+            }
             Operator::CallIndirect {
                 type_index,
                 table_index,
             } => todo!(),
-            Operator::Call { function_index } => todo!(),
             op => {
                 let op_type = tracker.get_operator_type(&op);
                 todo!()
@@ -504,6 +580,34 @@ impl<'a> StackTracker<'a> {
         directives.push(jump_directive);
 
         directives
+    }
+
+    /// The usual operation of a wasm instruction is to consume some values from the stack,
+    /// and produce some other values on the stack. This function performs this operation,
+    /// given the instruciton type.
+    ///
+    /// Returns the lowest address it got into the stack after popping all the inputs.
+    fn apply_operation_to_stack(&mut self, operation_type: &FuncType) -> u32 {
+        let inputs = operation_type.params();
+        for ty in inputs.iter().rev() {
+            let var = self.stack.pop().unwrap();
+            assert_eq!(var.val_type, *ty);
+            self.stack_top = var.address;
+        }
+
+        let bottom_addr = self.stack_top;
+        assert!(bottom_addr >= self.stack_base);
+
+        let outputs = operation_type.results();
+        for &ty in outputs {
+            self.stack.push(AllocatedVar {
+                val_type: ty,
+                address: self.stack_top,
+            });
+            self.stack_top += sz(ty);
+        }
+
+        bottom_addr
     }
 
     /// Some instructions unconditionally divert the control flow, leaving everithing between
