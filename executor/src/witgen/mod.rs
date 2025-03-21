@@ -50,6 +50,9 @@ mod vm_processor;
 pub use affine_expression::{AffineExpression, AffineResult, AlgebraicVariable};
 pub use evaluators::partial_expression_evaluator::{PartialExpressionEvaluator, SymbolicVariables};
 
+pub type Witness<T> = Vec<(String, Vec<T>)>;
+pub type Publics<T> = BTreeMap<String, Option<T>>;
+
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 
 // TODO change this so that it has functions
@@ -141,6 +144,7 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
                 .with_external_witness_values(current_witness)
                 .with_challenges(stage, challenges)
                 .generate()
+                .0
         }
     }
 }
@@ -202,7 +206,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
     /// Generates the committed polynomial values
     /// @returns the values (in source order) and the degree of the polynomials.
-    pub fn generate(self) -> Vec<(String, Vec<T>)> {
+    pub fn generate(self) -> (Witness<T>, Publics<T>) {
         record_start(OUTER_CODE_NAME);
         let fixed = FixedData::new(
             self.analyzed,
@@ -241,7 +245,8 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let machines = MachineExtractor::new(&fixed).split_out_machines();
 
         // Run main machine and extract columns from all machines.
-        let columns = MutableState::new(machines.into_iter(), &self.query_callback).run();
+        let (columns, _publics) =
+            MutableState::new(machines.into_iter(), &self.query_callback).run();
 
         let publics = extract_publics(&columns, self.analyzed);
         if !publics.is_empty() {
@@ -258,7 +263,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
         let mut columns = if self.stage == 0 {
             // Multiplicities should be computed in the first stage
-            MultiplicityColumnGenerator::new(&fixed).generate(columns, publics)
+            MultiplicityColumnGenerator::new(&fixed).generate(columns, publics.clone())
         } else {
             columns
         };
@@ -279,7 +284,8 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 (name, column)
             })
             .collect::<Vec<_>>();
-        witness_cols
+
+        (witness_cols, publics)
     }
 }
 

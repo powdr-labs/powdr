@@ -1,6 +1,6 @@
 mod stark;
 
-use std::{io, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
@@ -71,6 +71,7 @@ where
     fn prove(
         &self,
         witness: &[(String, Vec<T>)],
+        publics: &BTreeMap<String, Option<T>>,
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Proof, Error> {
@@ -78,7 +79,7 @@ where
             return Err(Error::NoAggregationAvailable);
         }
 
-        Ok(self.prove(witness, witgen_callback)?)
+        Ok(self.prove(witness, publics, witgen_callback)?)
     }
 
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {

@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, fs, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{
@@ -49,6 +49,7 @@ impl<F: FieldElement> Backend<F> for PolygonBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
+        _publics: &BTreeMap<String, Option<F>>,
         prev_proof: Option<Proof>,
         // TODO: Implement challenges
         _witgen_callback: WitgenCallback<F>,

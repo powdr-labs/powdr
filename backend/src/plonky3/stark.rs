@@ -206,6 +206,7 @@ where
     pub fn prove(
         &self,
         witness: &[(String, Vec<T>)],
+        _publics: &BTreeMap<String, Option<T>>,
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
         let mut witness_by_machine = self
@@ -352,12 +353,12 @@ mod tests {
         let mut pipeline = Pipeline::<F>::default().from_pil_string(pil.to_string());
         let pil = pipeline.compute_optimized_pil().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
-        let witness = &mut pipeline.compute_witness().unwrap();
+        let (witness, publics) = &mut pipeline.compute_witness().unwrap();
         let fixed = pipeline.compute_fixed_cols().unwrap();
 
         let mut prover = Plonky3Prover::new(pil, fixed);
         prover.setup();
-        let proof = prover.prove(witness, witness_callback);
+        let proof = prover.prove(witness, publics, witness_callback);
 
         assert!(proof.is_ok());
 

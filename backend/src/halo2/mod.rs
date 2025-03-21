@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -144,6 +145,7 @@ impl Backend<Bn254Field> for Halo2Prover {
     fn prove(
         &self,
         witness: &[(String, Vec<Bn254Field>)],
+        _publics: &BTreeMap<String, Option<Bn254Field>>,
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<Bn254Field>,
     ) -> Result<Proof, Error> {
@@ -231,6 +233,7 @@ impl<T: FieldElement> Backend<T> for Halo2Mock<T> {
     fn prove(
         &self,
         witness: &[(String, Vec<T>)],
+        _publics: &BTreeMap<String, Option<T>>,
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Proof, Error> {
