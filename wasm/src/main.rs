@@ -253,7 +253,11 @@ fn infinite_registers_allocation<'a>(
                 directives.push(Directive::Label(br_not_taken));
             }
             Operator::BrTable { .. } => todo!(),
-            Operator::Return => todo!(),
+            Operator::Return => {
+                directives.extend(tracker.br_code(tracker.control_stack.len() as u32));
+                tracker.discard_unreachable_and_fix_the_stack();
+            }
+            Operator::Unreachable => todo!(),
             op => {
                 let op_type = tracker.get_operator_type(&op);
                 todo!()
