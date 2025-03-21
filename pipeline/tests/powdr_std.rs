@@ -8,9 +8,9 @@ use powdr_pipeline::{
     test_runner::run_tests,
     test_util::{
         evaluate_function, evaluate_integer_function, gen_estark_proof_with_backend_variant,
-        gen_halo2_proof, make_simple_prepared_pipeline, regular_test_bb, regular_test_gl,
-        regular_test_small_field, std_analyzed, test_halo2_with_backend_variant, test_mock_backend,
-        test_plonky3_pipeline, BackendVariant,
+        gen_halo2_proof, make_prepared_pipeline, make_simple_prepared_pipeline, regular_test_bb,
+        regular_test_gl, regular_test_small_field, run_pilcom_with_backend_variant, std_analyzed,
+        test_halo2_with_backend_variant, test_mock_backend, test_plonky3_pipeline, BackendVariant,
     },
     Pipeline,
 };
@@ -138,9 +138,37 @@ fn arith_small_test() {
 
 #[test]
 #[ignore = "Too slow"]
-fn arith_large_test() {
+fn arith_large_test_mock() {
     let f = "std/arith_large_test.asm";
-    regular_test_gl(f, &[]);
+    test_mock_backend(make_prepared_pipeline::<GoldilocksField>(
+        f,
+        vec![],
+        vec![],
+        LinkerMode::Bus,
+    ));
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn arith_large_test_pilcom() {
+    let f = "std/arith_large_test.asm";
+    run_pilcom_with_backend_variant(
+        make_prepared_pipeline::<GoldilocksField>(f, vec![], vec![], LinkerMode::Native),
+        BackendVariant::Composite,
+    )
+    .unwrap();
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn arith_large_test_plonky3() {
+    let f = "std/arith_large_test.asm";
+    test_plonky3_pipeline(make_prepared_pipeline::<GoldilocksField>(
+        f,
+        vec![],
+        vec![],
+        LinkerMode::Bus,
+    ));
 }
 
 #[test]
@@ -152,9 +180,37 @@ fn arith256_small_test() {
 
 #[test]
 #[ignore = "Too slow"]
-fn arith256_memory_large_test() {
+fn arith256_memory_large_test_mock() {
     let f = "std/arith256_memory_large_test.asm";
-    regular_test_gl(f, &[]);
+    test_mock_backend(make_prepared_pipeline::<GoldilocksField>(
+        f,
+        vec![],
+        vec![],
+        LinkerMode::Bus,
+    ));
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn arith256_memory_large_test_pilcom() {
+    let f = "std/arith256_memory_large_test.asm";
+    run_pilcom_with_backend_variant(
+        make_prepared_pipeline::<GoldilocksField>(f, vec![], vec![], LinkerMode::Native),
+        BackendVariant::Composite,
+    )
+    .unwrap();
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn arith256_memory_large_test_plonky3() {
+    let f = "std/arith256_memory_large_test.asm";
+    test_plonky3_pipeline(make_prepared_pipeline::<GoldilocksField>(
+        f,
+        vec![],
+        vec![],
+        LinkerMode::Bus,
+    ));
 }
 
 #[test]
