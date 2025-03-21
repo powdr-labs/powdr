@@ -615,7 +615,7 @@ mod test {
     use crate::witgen::FixedData;
 
     use powdr_ast::analyzed::Analyzed;
-    
+
     use pretty_assertions::assert_eq;
     use test_log::test;
 
