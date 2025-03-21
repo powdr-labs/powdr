@@ -108,6 +108,7 @@ fn main() -> wasmparser::Result<()> {
     Ok(())
 }
 
+#[derive(Clone, Copy)]
 struct AllocatedVar {
     val_type: ValType,
     /// If it is a local or stack, this address is relative to the stack base.
@@ -121,17 +122,36 @@ enum Directive<'a> {
         inputs: Vec<AllocatedVar>,
     },
     Label(u32),
-    // Primitive used to implement "br".
+    Call {
+        function_index: u32,
+        /// The value of the called function frame pointer.
+        new_fp: u32,
+        /// Where to save the current frame pointer and return address,
+        /// so that "return" can restore it.
+        save_return_info_to: AllocatedVar,
+    },
+    Return {
+        return_info: AllocatedVar,
+    },
+    /// Uncoditional jump to a label.
+    /// Primitive used to implement "br".
     Jump {
         target: u32,
     },
-    // Primitive used to implement "if" and "br_if".
+    /// Jump to a label if the condition is zero.
+    /// Primitive used to implement "if" and "br_if".
     JumpIfZero {
         target: u32,
         condition: AllocatedVar,
     },
-    // Move a 32-bit value from one relative address to another.
-    // The materialization of local.get, local.set and local.tee.
+    /// Minimum between an immediate u32 value and a parameter.
+    /// Primitive used to implement "br_table".
+    ImmMin {
+        immediate: u32,
+        param: AllocatedVar,
+    },
+    /// Moves a 32-bit value from one relative address to another.
+    /// The materialization of local.get, local.set and local.tee.
     MoveRel32 {
         src: u32,
         dest: u32,
@@ -258,6 +278,11 @@ fn infinite_registers_allocation<'a>(
                 tracker.discard_unreachable_and_fix_the_stack();
             }
             Operator::Unreachable => todo!(),
+            Operator::CallIndirect {
+                type_index,
+                table_index,
+            } => todo!(),
+            Operator::Call { function_index } => todo!(),
             op => {
                 let op_type = tracker.get_operator_type(&op);
                 todo!()
@@ -300,6 +325,10 @@ struct StackTracker<'a> {
     module: &'a ModuleContext,
     func_type: &'a FuncType,
     locals: Vec<AllocatedVar>,
+    /// In the middle of the locals, right after the function arguments, in a place
+    /// "call" will be able to write, we have the return address and the frame pointer
+    /// of the previous frame, which must be restored by the "return" instruction.
+    return_info: AllocatedVar,
     stack: Vec<AllocatedVar>,
     /// We can't pop beyond the stack base.
     /// Before that the locals are allocated.
@@ -321,7 +350,8 @@ impl<'a> StackTracker<'a> {
         let mut stack_top = 0;
         let mut locals = Vec::new();
 
-        // Function arguments are the first locals.
+        // Function arguments are the first locals. They are the last thing the
+        // caller wrote to its stack, so they end up at the bottom of our stack.
         for &val_type in func_type.params() {
             locals.push(AllocatedVar {
                 val_type,
@@ -329,6 +359,14 @@ impl<'a> StackTracker<'a> {
             });
             stack_top += sz(val_type);
         }
+
+        // Right before adjusting the frame pointer and jumping, "call" writes the
+        // frame pointer of the previous frame on the top of its stack, which ends up here.
+        let return_info = AllocatedVar {
+            val_type: ValType::I64,
+            address: stack_top,
+        };
+        stack_top += 4;
 
         let first_explicit_local = stack_top;
 
@@ -350,6 +388,7 @@ impl<'a> StackTracker<'a> {
                 func_type,
                 control_stack: Vec::new(),
                 locals,
+                return_info,
                 stack: Vec::new(),
                 stack_base: stack_top,
                 stack_top,
@@ -383,12 +422,11 @@ impl<'a> StackTracker<'a> {
 
         let single_arg;
         let (args, jump_directive, target_height) = if relative_depth == cs_len as u32 {
-            // The target is the function itself.
+            // The target is the function itself, this is a return.
             (
                 self.func_type.results(),
-                Directive::WasmOp {
-                    op: Operator::Return,
-                    inputs: Vec::new(),
+                Directive::Return {
+                    return_info: self.return_info,
                 },
                 self.stack_base,
             )
