@@ -1,8 +1,6 @@
-use std::iter::once;
-
 use wasmparser::{
     BlockType, CompositeInnerType, FrameKind, FuncType, FunctionBody, LocalsReader, Operator,
-    Parser, Payload, RefType, SubType, TableType, ValType, Validator,
+    OperatorsIterator, Parser, Payload, RefType, SubType, TableType, ValType,
 };
 
 const MEM_ALLOCATION_START: u32 = 0x800;
@@ -170,7 +168,7 @@ enum Directive<'a> {
 fn infinite_registers_allocation<'a>(
     module: &'a ModuleContext,
     func_idx: u32,
-    body: FunctionBody,
+    body: FunctionBody<'a>,
 ) -> wasmparser::Result<Vec<Directive<'a>>> {
     // Tracks the frame stack. Used to calculate arity.
     let (mut tracker, first_explicit_local) =
@@ -191,7 +189,8 @@ fn infinite_registers_allocation<'a>(
     let mut labels = 0..;
 
     // The rest of the directives are taken from the function body definition.
-    for operator in body.get_operators_reader()? {
+    let mut op_reader = body.get_operators_reader()?.into_iter();
+    while let Some(operator) = op_reader.next() {
         // Match first the control operators, which require special handling.
         match operator? {
             Operator::Block { blockty } => {
@@ -262,7 +261,7 @@ fn infinite_registers_allocation<'a>(
             }
             Operator::Br { relative_depth } => {
                 directives.extend(tracker.br_code(relative_depth));
-                tracker.discard_unreachable_and_fix_the_stack();
+                tracker.discard_unreachable_and_fix_the_stack(&mut op_reader)?;
             }
             Operator::BrIf { relative_depth } => {
                 let br_not_taken = labels.next().unwrap();
@@ -323,18 +322,18 @@ fn infinite_registers_allocation<'a>(
                 directives.extend(breaks.into_iter().flatten());
 
                 // The code after the br_table is unreachable.
-                tracker.discard_unreachable_and_fix_the_stack();
+                tracker.discard_unreachable_and_fix_the_stack(&mut op_reader)?;
             }
             Operator::Return => {
                 directives.extend(tracker.br_code(tracker.control_stack.len() as u32));
-                tracker.discard_unreachable_and_fix_the_stack();
+                tracker.discard_unreachable_and_fix_the_stack(&mut op_reader)?;
             }
             Operator::Unreachable => {
                 directives.push(Directive::WasmOp {
                     op: Operator::Unreachable,
                     inputs: vec![],
                 });
-                tracker.discard_unreachable_and_fix_the_stack();
+                tracker.discard_unreachable_and_fix_the_stack(&mut op_reader)?;
             }
             Operator::Call { function_index } => {
                 // For the lack of a better type, the return info is a i64, where
@@ -347,7 +346,8 @@ fn infinite_registers_allocation<'a>(
 
                 // Consume the function arguments and place the outputs on the stack.
                 let func_type = module.get_func_type(function_index);
-                let bottom_addr = tracker.apply_operation_to_stack(func_type);
+                let (bottom_addr, _) =
+                    tracker.apply_operation_to_stack(func_type.params(), func_type.results());
 
                 directives.push(Directive::Call {
                     function_index,
@@ -360,15 +360,20 @@ fn infinite_registers_allocation<'a>(
                 table_index,
             } => todo!(),
             op => {
-                let op_type = tracker.get_operator_type(&op);
-                todo!()
+                let (inputs, outputs) = tracker.get_operator_type(&op).unwrap();
+
+                let (_, inputs) = tracker.apply_operation_to_stack(&inputs, &outputs);
+                directives.push(Directive::WasmOp { op, inputs });
             }
         }
-
-        todo!()
     }
 
-    todo!()
+    // The function has ended, insert a return instruction.
+    directives.push(Directive::Return {
+        return_info: tracker.return_info,
+    });
+
+    Ok(directives)
 }
 
 /// Type size, in bytes
@@ -586,19 +591,33 @@ impl<'a> StackTracker<'a> {
     /// and produce some other values on the stack. This function performs this operation,
     /// given the instruciton type.
     ///
-    /// Returns the lowest address it got into the stack after popping all the inputs.
-    fn apply_operation_to_stack(&mut self, operation_type: &FuncType) -> u32 {
-        let inputs = operation_type.params();
-        for ty in inputs.iter().rev() {
-            let var = self.stack.pop().unwrap();
-            assert_eq!(var.val_type, *ty);
+    /// Returns the lowest address it got into the stack after popping all the inputs,
+    /// followed by the input vars.
+    fn apply_operation_to_stack(
+        &mut self,
+        inputs: &[ValType],
+        outputs: &[ValType],
+    ) -> (u32, Vec<AllocatedVar>) {
+        assert!(self.stack.len() >= inputs.len());
+        let input_vars = self.stack.split_off(self.stack.len() - inputs.len());
+        if let Some(var) = input_vars.last() {
             self.stack_top = var.address;
         }
 
-        let bottom_addr = self.stack_top;
-        assert!(bottom_addr >= self.stack_base);
+        // Sanit check the input types
+        for (var, input) in input_vars.iter().zip(inputs.iter()) {
+            assert_eq!(var.val_type, *input);
+        }
 
-        let outputs = operation_type.results();
+        let bottom_addr = self.stack_top;
+
+        // Sanit check the stack
+        let bottom_limit = self
+            .control_stack
+            .last()
+            .map_or(self.stack_base, |frame| frame.stack_height);
+        assert!(bottom_addr >= bottom_limit);
+
         for &ty in outputs {
             self.stack.push(AllocatedVar {
                 val_type: ty,
@@ -607,7 +626,7 @@ impl<'a> StackTracker<'a> {
             self.stack_top += sz(ty);
         }
 
-        bottom_addr
+        (bottom_addr, input_vars)
     }
 
     /// Some instructions unconditionally divert the control flow, leaving everithing between
@@ -616,8 +635,67 @@ impl<'a> StackTracker<'a> {
     ///
     /// Call this function after processing such instructions to discard the unreachable code
     /// and fix the stack.
-    fn discard_unreachable_and_fix_the_stack(&mut self) {
-        todo!()
+    fn discard_unreachable_and_fix_the_stack(
+        &mut self,
+        op_reader: &mut OperatorsIterator<'_>,
+    ) -> wasmparser::Result<()> {
+        // Discard unreachable code
+        let mut stack_count = 0;
+        for operator in op_reader {
+            match operator? {
+                Operator::Block { .. } | Operator::Loop { .. } | Operator::If { .. } => {
+                    stack_count += 1;
+                }
+                Operator::Else => {
+                    if stack_count == 0 {
+                        break;
+                    }
+                }
+                Operator::End => {
+                    if stack_count == 0 {
+                        break;
+                    }
+                    stack_count -= 1;
+                }
+                _ => {}
+            }
+        }
+
+        // Fix the stack
+        // Clear the leftovers from this frame:
+        let last_frame = self.control_stack.last().unwrap();
+        while self
+            .stack
+            .last()
+            .is_some_and(|var| var.address >= last_frame.stack_height)
+        {
+            self.stack_top = self.stack.pop().unwrap().address;
+        }
+        assert!(self.stack_top == last_frame.stack_height);
+
+        // Create the expected outputs:
+        let single_output;
+        let types = match last_frame.blockty {
+            BlockType::Empty => &[],
+            BlockType::Type(val_type) => {
+                single_output = [val_type];
+                &single_output[..]
+            }
+            BlockType::FuncType(idx) => {
+                let func_type = self.module.get_type(idx);
+                func_type.results()
+            }
+        };
+
+        for &ty in types {
+            self.stack.push(AllocatedVar {
+                val_type: ty,
+                address: self.stack_top,
+            });
+            self.stack_top += sz(ty);
+        }
+
+        Ok(())
     }
 
     /// Returns the list of input types and output types of an operator.
@@ -882,26 +960,13 @@ impl<'a> StackTracker<'a> {
             Operator::DataDrop { .. } => (vec![], vec![]),
 
             // # Control instructions
-            Operator::Nop | Operator::Unreachable => (vec![], vec![]),
-            Operator::Call { function_index } => {
-                let func_type = self.module.get_func_type(*function_index);
-                (func_type.params().to_vec(), func_type.results().to_vec())
-            }
-            Operator::CallIndirect { type_index, .. } => {
-                let func_type = self.module.get_type(*type_index);
-                (
-                    func_type
-                        .params()
-                        .iter()
-                        .cloned()
-                        .chain(once(ValType::I32))
-                        .collect(),
-                    func_type.results().to_vec(),
-                )
-            }
-            // Some control instructions are too complex to be handled here.
-            // We return None for them.
-            Operator::Block { .. }
+            Operator::Nop => (vec![], vec![]),
+            // Most control instructions must be handled separately.
+            // We return None for them:
+            Operator::Unreachable
+            | Operator::Call { .. }
+            | Operator::CallIndirect { .. }
+            | Operator::Block { .. }
             | Operator::Loop { .. }
             | Operator::If { .. }
             | Operator::Else
