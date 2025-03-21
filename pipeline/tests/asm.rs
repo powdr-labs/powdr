@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use powdr_backend::BackendType;
 use powdr_executor::constant_evaluator;
 use powdr_linker::{LinkerMode, LinkerParams};
 use powdr_number::{BabyBearField, FieldElement, GoldilocksField, Mersenne31Field};
@@ -7,7 +8,7 @@ use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, make_prepared_pipeline, make_simple_prepared_pipeline,
         regular_test_all_fields, regular_test_gl, resolve_test_file, test_mock_backend,
-        test_pilcom, test_plonky3_pipeline, test_stwo_pipeline, BackendVariant,
+        test_pilcom, test_plonky3_pipeline, test_stwo_pipeline,
     },
     Pipeline,
 };
@@ -90,7 +91,7 @@ fn mem_write_once_external_write() {
     mem[17] = GoldilocksField::from(42);
     mem[62] = GoldilocksField::from(123);
     mem[255] = GoldilocksField::from(-1);
-    let mut pipeline = Pipeline::default()
+    let pipeline = Pipeline::default()
         .with_tmp_output()
         .from_file(resolve_test_file(f))
         .add_external_witness_values(vec![("main_memory::value".to_string(), mem)])
@@ -98,7 +99,6 @@ fn mem_write_once_external_write() {
             degree_mode: powdr_linker::DegreeMode::Monolithic,
             ..Default::default()
         });
-    pipeline.compute_witness().unwrap();
     test_pilcom(pipeline.clone());
     test_mock_backend(pipeline);
 }
@@ -165,21 +165,30 @@ fn block_to_block() {
 }
 
 #[test]
+#[cfg(feature = "plonky3")]
 fn block_to_block_empty_submachine() {
     let f = "asm/block_to_block_empty_submachine.asm";
-    let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
 
-    let witness = pipeline.compute_witness().unwrap();
-    let arith_size = witness
+    [BackendType::Mock, BackendType::Plonky3]
         .iter()
-        .find(|(k, _)| k == "main_arith::x")
-        .unwrap()
-        .1
-        .len();
-    assert_eq!(arith_size, 0);
+        .for_each(|backend| {
+            let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
+                .with_backend(*backend, None);
+            let witness = pipeline.compute_witness().unwrap();
+            let arith_size = witness
+                .iter()
+                .find(|(k, _)| k == "main_arith::x")
+                .unwrap()
+                .1
+                .len();
+            assert_eq!(arith_size, 0);
 
-    test_mock_backend(pipeline.clone());
-    test_plonky3_pipeline(pipeline);
+            match backend {
+                BackendType::Plonky3 => test_plonky3_pipeline(pipeline),
+                BackendType::Mock => test_mock_backend(pipeline),
+                _ => unreachable!(),
+            }
+        });
 }
 
 #[test]
@@ -219,7 +228,7 @@ fn block_to_block_with_bus_composite() {
     //   not satisfied.
 
     use powdr_number::Bn254Field;
-    use powdr_pipeline::test_util::test_halo2_with_backend_variant;
+    use powdr_pipeline::test_util::{test_halo2_with_backend_variant, BackendVariant};
     let f = "asm/block_to_block_with_bus.asm";
     let pipeline = make_simple_prepared_pipeline::<Bn254Field>(f, LinkerMode::Bus);
     test_mock_backend(pipeline);
@@ -297,23 +306,31 @@ fn vm_to_block_array() {
 
 #[test]
 #[ignore = "Too slow"]
+#[cfg(feature = "plonky3")]
 fn dynamic_vadcop() {
     let f = "asm/dynamic_vadcop.asm";
 
-    let mut pipeline_gl = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
-    let witness = pipeline_gl.compute_witness().unwrap();
-    let witness_by_name = witness
-        .iter()
-        .map(|(k, v)| (k.as_str(), v))
-        .collect::<BTreeMap<_, _>>();
+    // Witness generation require backend to be known
+    for backend in [BackendType::Mock, BackendType::Plonky3].iter() {
+        let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
+            .with_backend(*backend, None);
+        let witness = pipeline.compute_witness().unwrap();
+        let witness_by_name = witness
+            .iter()
+            .map(|(k, v)| (k.as_str(), v))
+            .collect::<BTreeMap<_, _>>();
 
-    // Spot-check some witness columns to have the expected length.
-    assert_eq!(witness_by_name["main::X"].len(), 128);
-    assert_eq!(witness_by_name["main_arith::y"].len(), 32);
-    assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
+        // Spot-check some witness columns to have the expected length.
+        assert_eq!(witness_by_name["main::X"].len(), 128);
+        assert_eq!(witness_by_name["main_arith::y"].len(), 32);
+        assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
 
-    test_mock_backend(pipeline_gl.clone());
-    test_plonky3_pipeline(pipeline_gl);
+        match backend {
+            BackendType::Plonky3 => test_plonky3_pipeline(pipeline),
+            BackendType::Mock => test_mock_backend(pipeline),
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[test]
@@ -449,7 +466,7 @@ fn read_poly_files() {
             })
             .with_backend(BackendType::EStarkDump, None);
         pipeline.compute_witness().unwrap();
-        let pil = pipeline.compute_optimized_pil().unwrap();
+        let pil = pipeline.compute_backend_tuned_pil().unwrap().clone();
         pipeline.compute_proof().unwrap();
 
         // check fixed cols (may have no fixed cols)
@@ -873,9 +890,10 @@ fn expand_fixed_jit() {
     let file_name = "asm/expand_fixed.asm";
 
     let mut pipeline = Pipeline::<GoldilocksField>::default()
+        .with_backend(BackendType::Mock, None)
         .with_tmp_output()
         .from_file(resolve_test_file(file_name));
-    let pil = pipeline.compute_optimized_pil().unwrap();
+    let pil = pipeline.compute_backend_tuned_pil().unwrap();
 
     let fixed_cols = constant_evaluator::generate_only_via_jit(&pil);
 

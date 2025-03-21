@@ -430,6 +430,7 @@ fn read_slice_with_options<T: FieldElement>(options: CompilerOptions) {
 
     let mut pipeline = Pipeline::<T>::default()
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
+        .with_backend(powdr_backend::BackendType::Mock, None)
         .with_prover_inputs(vec![answer.into()])
         .with_prover_dict_inputs(d);
 
@@ -614,6 +615,7 @@ fn output_syscall_with_options<T: FieldElement>(options: CompilerOptions) {
 
     let inputs = vec![1u32, 2, 3].into_iter().map(T::from).collect();
     let mut pipeline = Pipeline::<T>::default()
+        .with_backend(powdr_backend::BackendType::Mock, None)
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
         .with_prover_inputs(inputs);
 

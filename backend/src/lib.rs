@@ -178,6 +178,12 @@ pub trait BackendFactory<F: FieldElement> {
     fn generate_setup(&self, _size: DegreeType, _output: &mut dyn io::Write) -> Result<(), Error> {
         Err(Error::NoSetupAvailable)
     }
+
+    fn specialize_pil(&self, pil: Analyzed<F>) -> Analyzed<F> {
+        // TODO: currently defaults to the identity function
+        // Move `bus_multi_linker` calls here in the future
+        pil
+    }
 }
 
 /// Dynamic interface for a backend.
