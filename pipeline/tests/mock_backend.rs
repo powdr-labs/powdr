@@ -16,8 +16,7 @@ fn fibonacci_wrong_initialization() {
     // Initializes y with 2 instead of 1
     // -> fails `ISLAST * (y' - 1) = 0;` in the last row
     let f = "pil/fibonacci.pil";
-    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
-        .with_backend(powdr_backend::BackendType::Mock, None);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
     let pipeline = pipeline.set_witness(vec![
         // This would be the correct witness:
         // col("Fibonacci::x", [1, 1, 2, 3]),
@@ -36,8 +35,7 @@ fn block_to_block_wrong_connection() {
     // So, if we multiply all columns with a constant, the constraint
     // should still be satisfied, but the connection argument should fail.
     let f = "asm/block_to_block.asm";
-    let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
-        .with_backend(powdr_backend::BackendType::Mock, None);
+    let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
 
     pipeline.compute_witness().unwrap();
 

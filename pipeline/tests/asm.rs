@@ -173,7 +173,7 @@ fn block_to_block_empty_submachine() {
         .iter()
         .for_each(|backend| {
             let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
-                .with_backend(*backend, None);
+                .with_backend_factory(*backend);
             let witness = pipeline.compute_witness().unwrap();
             let arith_size = witness
                 .iter()
@@ -314,7 +314,7 @@ fn dynamic_vadcop() {
     // Witness generation require backend to be known
     for backend in [BackendType::Mock, BackendType::Plonky3].iter() {
         let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
-            .with_backend(*backend, None);
+            .with_backend_factory(*backend);
         let witness = pipeline.compute_witness().unwrap();
         let witness_by_name = witness
             .iter()
@@ -891,7 +891,6 @@ fn expand_fixed_jit() {
     let file_name = "asm/expand_fixed.asm";
 
     let mut pipeline = Pipeline::<GoldilocksField>::default()
-        .with_backend(BackendType::Mock, None)
         .with_tmp_output()
         .from_file(resolve_test_file(file_name));
     let pil = pipeline.compute_backend_tuned_pil().unwrap();
