@@ -811,4 +811,19 @@ namespace arith(8);
             ],
         );
     }
+
+    #[test]
+    fn add_sub_bb() {
+        let pil = read_to_string("../test_data/pil/add_sub_bb.pil").unwrap();
+        let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(&pil);
+        let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
+        let fixed_data = global_constraints::set_global_constraints(fixed_data);
+        let interpreter_gt =
+            TestInterpreter::new(&analyzed, &fixed_data, "main_add_sub", 4, 1, &|_| {
+                Err("Query not implemented".to_string())
+            });
+        interpreter_gt.test(&[1, 2, 3, 4, 0], &[1, 2, 3, 4, 0]);
+        interpreter_gt.test(&[3, 2, 3, 4, 0], &[3, 2, 3, 4, 0]);
+        interpreter_gt.test(&[5, 2, 3, 4, 0], &[5, 2, 3, 4, 1]);
+    }
 }
