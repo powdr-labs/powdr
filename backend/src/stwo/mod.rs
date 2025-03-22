@@ -42,7 +42,7 @@ impl BackendFactory<M31> for RestrictedFactory {
 
         assert!(pil.stage_count() <= 2, "stwo supports max 2 stages");
 
-        let mut stwo: Box<StwoProver<SimdBackend, Blake2sMerkleChannel, Blake2sChannel>> =
+        let mut stwo: Box<StwoProver<Blake2sMerkleChannel, Blake2sChannel>> =
             Box::new(StwoProver::new(pil, fixed)?);
 
         match (proving_key, verification_key) {
@@ -61,7 +61,7 @@ impl BackendFactory<M31> for RestrictedFactory {
 
 generalize_factory!(Factory <- RestrictedFactory, [M31]);
 
-impl<MC: MerkleChannel + Send, C: Channel + Send> Backend<M31> for StwoProver<SimdBackend, MC, C>
+impl<MC: MerkleChannel + Send, C: Channel + Send> Backend<M31> for StwoProver<MC, C>
 where
     SimdBackend: BackendForChannel<MC>,
     MC: MerkleChannel,
