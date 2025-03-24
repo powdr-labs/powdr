@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 wasmparser = "0.227"
+log = "0.4.17"
 
 [lints]
 workspace = true

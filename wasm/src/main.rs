@@ -46,8 +46,14 @@ fn main() -> wasmparser::Result<()> {
 
     // The payloads are processed in the order they appear in the file, so each variable written
     // in one step is available in the next steps.
+    let mut unsupported_feature_found = false;
     for payload in parser.parse_all(&wasm_file) {
         match payload? {
+            Payload::Version {
+                num,
+                encoding,
+                range,
+            } => todo!(),
             Payload::TypeSection(section) => {
                 for rec_group in section {
                     let mut iter = rec_group?.into_types();
@@ -57,11 +63,28 @@ fn main() -> wasmparser::Result<()> {
                             // Apparently WebAssembly 3.0 is much more complicated, and has complex
                             // type definitions, and garbage collector, and exceptions. We should probably
                             // stick to the 2.0 version for Powdr.
-                            panic!("gc proposal not supported")
+                            unsupported_feature_found = true;
+                            log::error!("unsupported types from GC proposal found");
+                            continue;
                         }
                     };
                     ctx.types.push(ty);
                 }
+            }
+            Payload::ImportSection(section) => {
+                // TODO: we could implement module load and cross module dependencies,
+                // but this is not a very used feature in WASM and modules are usually
+                // self-contained.
+                //
+                // For now, the imports only deal with powdr provided functions.
+                for import in section {
+                    let import = import?;
+                    if import.module != "powdr" {
+                        panic!("Only \"powdr\" module is available for imports");
+                    }
+                    // TODO: make each powdr-syscall be a function that can be imported...
+                }
+                todo!()
             }
             Payload::FunctionSection(section) => {
                 for ty in section {
@@ -75,6 +98,7 @@ fn main() -> wasmparser::Result<()> {
                     // TODO: initialize the tables with their values
                 }
             }
+            Payload::MemorySection(section_limited) => todo!(),
             Payload::GlobalSection(section) => {
                 let mut globals_addr = MEM_ALLOCATION_START;
                 for global in section {
@@ -90,6 +114,13 @@ fn main() -> wasmparser::Result<()> {
                     // TODO: initialize the globals with the init_expr
                 }
             }
+            Payload::ExportSection(section_limited) => {
+                // TODO: support modules loading and cross module dependencies.
+                // While we don't support that, export does nothing and can be ignored.
+            }
+            Payload::StartSection { func, range } => todo!(),
+            Payload::ElementSection(section_limited) => todo!(),
+            Payload::DataCountSection { count, range } => todo!(),
             Payload::CodeSectionEntry(function) => {
                 // By the time we get here, the ctx will be complete,
                 // because all previous sections have been processed.
@@ -97,11 +128,19 @@ fn main() -> wasmparser::Result<()> {
                 infinite_registers_allocation(&ctx, func_idx, function)?;
                 func_idx += 1;
             }
-            _ => {
-                // uninteresting section
+            Payload::DataSection(section_limited) => todo!(),
+            Payload::End(_) => todo!(),
+            unsupported_section => {
+                unsupported_feature_found = true;
+                log::error!("Unsupported section found: {:?}", unsupported_section);
             }
         }
     }
+
+    assert!(
+        !unsupported_feature_found,
+        "Only WebAssembly Release 2.0 is supported"
+    );
 
     Ok(())
 }
