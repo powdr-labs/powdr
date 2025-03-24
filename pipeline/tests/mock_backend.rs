@@ -21,16 +21,16 @@ fn fibonacci_wrong_initialization() {
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
         .with_backend(powdr_backend::BackendType::Mock, None)
         .set_witness_and_publics(
-        vec![
-            // This would be the correct witness:
-            // col("Fibonacci::x", [1, 1, 2, 3]),
-            // col("Fibonacci::y", [1, 2, 3, 5]),
-            // This satisfies the constraints, except the initialization of y:
-            col("Fibonacci::x", [1, 2, 3, 5]),
-            col("Fibonacci::y", [2, 3, 5, 8]),
-        ],
-        BTreeMap::from([("Fibonacci::out".to_string(), Some(GoldilocksField::from(8)))]),
-    );
+            vec![
+                // This would be the correct witness:
+                // col("Fibonacci::x", [1, 1, 2, 3]),
+                // col("Fibonacci::y", [1, 2, 3, 5]),
+                // This satisfies the constraints, except the initialization of y:
+                col("Fibonacci::x", [1, 2, 3, 5]),
+                col("Fibonacci::y", [2, 3, 5, 8]),
+            ],
+            BTreeMap::from([("Fibonacci::out".to_string(), Some(GoldilocksField::from(8)))]),
+        );
     test_mock_backend(pipeline);
 }
 
