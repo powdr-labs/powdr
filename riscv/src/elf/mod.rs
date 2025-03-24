@@ -14,7 +14,7 @@ use goblin::elf::{
 };
 use itertools::{Either, Itertools};
 use powdr_isa_utils::SingleDataValue;
-use powdr_riscv_syscalls::Syscall;
+use powdr_syscalls::Syscall;
 use raki::{
     decode::Decode,
     instruction::{Extensions, Instruction as Ins, OpcodeKind as Op},
