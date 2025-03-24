@@ -328,7 +328,8 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
                     }
                     InterpreterAction::ProverFunctionCall(call) => {
                         let inputs = call.inputs.iter().map(|i| vars[*i]).collect::<Vec<_>>();
-                        let result = self.evaluate_prover_function(call, inputs, fixed_data);
+                        let result =
+                            self.evaluate_prover_function(call, row_offset, inputs, fixed_data);
                         for (idx, val) in call.targets.iter().zip_eq(result) {
                             vars[*idx] = val;
                         }
@@ -363,6 +364,7 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
     fn evaluate_prover_function(
         &self,
         call: &IndexedProverFunctionCall,
+        row_offset: i64,
         inputs: Vec<T>,
         fixed_data: &FixedData<'_, T>,
     ) -> Vec<T> {
@@ -381,6 +383,7 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
             ProverFunctionComputation::ComputeFrom(code) => {
                 // TODO use a cache for the symbols?
                 let f = evaluator::evaluate::<T>(code, &mut symbols).unwrap();
+                let f = inject_row_offset(f, call.row_offset as i64 + row_offset);
                 let result = evaluator::evaluate_function_call(
                     f,
                     vec![Arc::new(Value::Array(
@@ -409,6 +412,7 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
                 assert!(inputs.is_empty());
                 // TODO use a cache for the symbols?
                 let f = evaluator::evaluate::<T>(code, &mut symbols).unwrap();
+                let f = inject_row_offset(f, call.row_offset as i64 + row_offset);
                 let value = evaluator::evaluate_function_call(f, vec![], &mut symbols).unwrap();
                 match *value {
                     Value::FieldElement(v) => vec![v],
@@ -418,6 +422,23 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
             ProverFunctionComputation::HandleQueryInputOutput(branches) => todo!(),
         }
     }
+}
+
+/// Inject the row offset as an environment variable into the closure.
+fn inject_row_offset<'a, T: FieldElement>(
+    f: Arc<Value<'a, T>>,
+    row_offset: i64,
+) -> Arc<Value<'a, T>> {
+    let Value::Closure(closure) = f.as_ref() else {
+        panic!("Expected closure.");
+    };
+    let mut environment = closure.environment.clone();
+    environment.push(Arc::new(Value::Integer(row_offset.into())));
+    Arc::new(Value::Closure(evaluator::Closure {
+        lambda: closure.lambda,
+        environment,
+        type_args: closure.type_args.clone(),
+    }))
 }
 
 /// Check if an action is valid: it doesn't overwrite a variable and doesn't read it before it's been written to
@@ -703,7 +724,7 @@ mod test {
 
     use bit_vec::BitVec;
     use itertools::Itertools;
-    use powdr_number::{FieldElement, GoldilocksField};
+    use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 
     struct TestInterpreter<'a, T: FieldElement, Q: QueryCallback<T>> {
         analyzed: &'a Analyzed<T>,
@@ -782,6 +803,10 @@ mod test {
         }
 
         pub fn test(&self, params: &[u64], expected_out: &[u64]) {
+            self.test_on_row(0, params, expected_out);
+        }
+
+        pub fn test_on_row(&self, row: usize, params: &[u64], expected_out: &[u64]) {
             assert_eq!(params.len(), self.num_inputs + self.num_outputs);
             assert_eq!(expected_out.len(), self.num_inputs + self.num_outputs);
             let mut params = params.iter().map(|v| T::from(*v)).collect::<Vec<_>>();
@@ -792,9 +817,11 @@ mod test {
                 .flat_map(|p| p.0.array_elements().map(|e| e.1))
                 .collect_vec();
             let mut data = CompactData::new(poly_ids.iter());
-            data.append_new_rows(self.block_size);
+            while data.len() < row + self.block_size {
+                data.append_new_rows(self.block_size);
+            }
 
-            let data_ref = CompactDataRef::new(&mut data, 0);
+            let data_ref = CompactDataRef::new(&mut data, row);
             let mut param_lookups = params
                 .iter_mut()
                 .enumerate()
@@ -893,5 +920,45 @@ namespace arith(8);
                 14345658006221440202u64,
             ],
         );
+    }
+
+    #[test]
+    fn prover_functions() {
+        let pil = r"
+namespace std::convert;
+    let fe = [];
+namespace std::prover;
+    let provide_if_unknown: expr, int, (-> fe) -> () = query |column, row, f| ();
+    let compute_from: expr, int, expr[], (fe[] -> fe) -> () = query |dest_col, row, input_cols, f| ();
+    let compute_from_multi: expr[], int, expr[], (fe[] -> fe[]) -> () = query |dest_cols, row, input_cols, f| ();
+
+namespace main(128);
+    col witness a, b, add, mul, sub, res;
+    [a, b, add, mul, sub, res] is [arith::a, arith::b, arith::c, arith::d, arith::e, arith::f];
+
+namespace arith(8);
+    let a;
+    let b;
+    let c;
+    let d;
+    let e;
+    let f;
+
+    query |i| std::prover::provide_if_unknown(a, i, || std::convert::fe(i));
+    query |i| std::prover::provide_if_unknown(b, i, || 7);
+    query |i| std::prover::compute_from(c, i, [a, b], |values| values[0] + values[1] + std::convert::fe(i));
+    query |i| std::prover::compute_from_multi([d, e, f], i, [a, b], |values| [values[0] * values[1], values[0] - values[1], 17]);
+    ";
+        let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(pil);
+        let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
+        let fixed_data = global_constraints::set_global_constraints(fixed_data);
+        let interpreter = TestInterpreter::new(&analyzed, &fixed_data, "arith", 0, 6, &|_| {
+            Err("Query not implemented".to_string())
+        });
+
+        let modulus = GoldilocksField::modulus().try_into_u64().unwrap();
+        interpreter.test_on_row(0, &[0, 0, 0, 0, 0, 0], &[0, 7, 7, 0, modulus - 7, 17]);
+        interpreter.test_on_row(1, &[0, 0, 0, 0, 0, 0], &[1, 7, 9, 7, modulus - 7 + 1, 17]);
+        interpreter.test_on_row(8, &[0, 0, 0, 0, 0, 0], &[8, 7, 23, 56, 1, 17]);
     }
 }
