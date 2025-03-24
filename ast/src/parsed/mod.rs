@@ -1389,7 +1389,9 @@ impl Children<Expression> for FunctionDefinition {
             FunctionDefinition::Expression(e) => Box::new(once(e)),
             FunctionDefinition::TypeDeclaration(_enum_declaration) => todo!(),
             FunctionDefinition::TraitDeclaration(trait_declaration) => trait_declaration.children(),
-            FunctionDefinition::PublicDeclaration(_, _, _) => todo!(),
+            FunctionDefinition::PublicDeclaration(_, array_index, row) => {
+                Box::new(array_index.iter().chain(once(row)))
+            }
         }
     }
 
@@ -1401,7 +1403,9 @@ impl Children<Expression> for FunctionDefinition {
             FunctionDefinition::TraitDeclaration(trait_declaration) => {
                 trait_declaration.children_mut()
             }
-            FunctionDefinition::PublicDeclaration(_, _, _) => todo!(),
+            FunctionDefinition::PublicDeclaration(_, array_index, row) => {
+                Box::new(array_index.iter_mut().chain(once(row)))
+            }
         }
     }
 }
