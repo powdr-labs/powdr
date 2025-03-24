@@ -8,7 +8,6 @@ use env_logger::{Builder, Target};
 use log::LevelFilter;
 
 use powdr::backend::BackendType;
-use powdr::backend::BackendType;
 use powdr::number::{
     BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KnownField, KoalaBearField,
 };
