@@ -8,6 +8,8 @@ homepage.workspace = true
 repository.workspace = true
 
 [dependencies]
+powdr-syscalls.workspace = true
+
 wasmparser = "0.227"
 log = "0.4.17"
 

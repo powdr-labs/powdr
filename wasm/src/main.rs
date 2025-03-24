@@ -1,6 +1,9 @@
+use std::str::FromStr;
+
+use powdr_syscalls::Syscall;
 use wasmparser::{
     BlockType, CompositeInnerType, FrameKind, FuncType, FunctionBody, LocalsReader, Operator,
-    OperatorsIterator, Parser, Payload, RefType, SubType, TableType, ValType,
+    OperatorsIterator, Parser, Payload, RefType, SubType, TableType, TypeRef, ValType,
 };
 
 const MEM_ALLOCATION_START: u32 = 0x800;
@@ -40,7 +43,8 @@ fn main() -> wasmparser::Result<()> {
         globals: Vec::new(),
     };
 
-    let mut func_idx = 0;
+    let mut imported_functions = Vec::new();
+    let mut defined_functions = Vec::new();
 
     // TODO: validate while parsing
 
@@ -82,9 +86,31 @@ fn main() -> wasmparser::Result<()> {
                     if import.module != "powdr" {
                         panic!("Only \"powdr\" module is available for imports");
                     }
-                    // TODO: make each powdr-syscall be a function that can be imported...
+                    if let TypeRef::Func(type_idx) = import.ty {
+                        // Lets see if the name is known
+                        if let Ok(syscall) = Syscall::from_str(import.name) {
+                            // Lets see if the type matches the expectations.
+                            let ty = ctx.get_type(type_idx);
+                            let given_arity = (many_sz(ty.params()) / 4, many_sz(ty.results()) / 4);
+
+                            let expected_arity = syscall.arity();
+                            if given_arity != expected_arity {
+                                panic!(
+                                    "Syscall \"{}\" expects {} 32-bit inputs and {} 32-bit outputs, but was imported with {} 32-bit inputs and {} 32-bit outputs",
+                                    import.name, expected_arity.0, expected_arity.1, given_arity.0, given_arity.1
+                                );
+                            }
+
+                            imported_functions.push(syscall);
+
+                            continue;
+                        }
+                    }
+                    panic!(
+                        "Tried to import unknown entity \"{}.{}\"",
+                        import.module, import.name
+                    );
                 }
-                todo!()
             }
             Payload::FunctionSection(section) => {
                 for ty in section {
@@ -125,8 +151,9 @@ fn main() -> wasmparser::Result<()> {
                 // By the time we get here, the ctx will be complete,
                 // because all previous sections have been processed.
 
-                infinite_registers_allocation(&ctx, func_idx, function)?;
-                func_idx += 1;
+                let definition =
+                    infinite_registers_allocation(&ctx, defined_functions.len() as u32, function)?;
+                defined_functions.push(definition);
             }
             Payload::DataSection(section_limited) => todo!(),
             Payload::End(_) => todo!(),
@@ -205,7 +232,7 @@ enum Directive<'a> {
 /// Allocates the locals and the stack at addresses starting
 /// from 0, assuming one byte per address.
 fn infinite_registers_allocation<'a>(
-    module: &'a ModuleContext,
+    module: &ModuleContext,
     func_idx: u32,
     body: FunctionBody<'a>,
 ) -> wasmparser::Result<Vec<Directive<'a>>> {
@@ -534,7 +561,7 @@ impl<'a> StackTracker<'a> {
     }
 
     /// Generate the code of a break ("br"), ensuring the outputs are at the expected height.
-    fn br_code(&self, relative_depth: u32) -> Vec<Directive<'a>> {
+    fn br_code<'b>(&self, relative_depth: u32) -> Vec<Directive<'b>> {
         // When breaking, the stack might be bigger than the required height for the target label.
         // If so, we must copy the outputs to the expected height.
         let cs_len = self.control_stack.len();
