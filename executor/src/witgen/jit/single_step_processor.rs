@@ -311,7 +311,7 @@ call_var(2, 1, 0) = VM::pc[1];
 VM::instr_add[1] = 0;
 call_var(2, 1, 1) = 0;
 call_var(2, 1, 2) = 1;
-machine_call(2, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(call_var(2, 1, 2))]);
+machine_call(1, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(call_var(2, 1, 2))]);
 VM::instr_mul[1] = 1;"
         );
     }

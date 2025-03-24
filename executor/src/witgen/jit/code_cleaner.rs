@@ -120,7 +120,7 @@ fn remove_machine_calls_from_effect<T: FieldElement>(
     to_remove: &HashSet<(u64, i32)>,
 ) -> Option<Effect<T, Variable>> {
     match effect {
-        Effect::MachineCall(id, known, arguments) => {
+        Effect::MachineCall(bus_id, known, arguments) => {
             let Variable::MachineCallParam(MachineCallVariable {
                 identity_id,
                 row_offset,
@@ -129,11 +129,10 @@ fn remove_machine_calls_from_effect<T: FieldElement>(
             else {
                 panic!()
             };
-            assert_eq!(id, *identity_id);
-            if to_remove.contains(&(id, *row_offset)) {
+            if to_remove.contains(&(*identity_id, *row_offset)) {
                 None
             } else {
-                Some(Effect::MachineCall(id, known, arguments))
+                Some(Effect::MachineCall(bus_id, known, arguments))
             }
         }
         Effect::Branch(condition, first, second) => {

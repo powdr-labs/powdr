@@ -25,7 +25,7 @@ use powdr_number::{DegreeType, FieldElement};
 ///  - POSITIVE has all values from 1 to half of the field size.
 pub struct SortedWitnesses<'a, T: FieldElement> {
     degree: DegreeType,
-    rhs_references: BTreeMap<u64, Vec<&'a AlgebraicReference>>,
+    rhs_references: BTreeMap<T, Vec<&'a AlgebraicReference>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
@@ -47,7 +47,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
             // Expecting exactly one identity
             return None;
         }
-        if parts.connections.is_empty() {
+        if parts.bus_receives.is_empty() {
             return None;
         }
 
@@ -64,11 +64,11 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 .collect();
 
             let rhs_references = parts
-                .connections
+                .bus_receives
                 .iter()
-                .filter_map(|(id, &identity)| {
-                    let rhs_expressions = identity
-                        .right
+                .filter_map(|(id, &receive)| {
+                    let rhs_expressions = receive
+                        .selected_payload
                         .expressions
                         .iter()
                         .map(|expr| match expr {
@@ -82,7 +82,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 })
                 .collect::<BTreeMap<_, _>>();
 
-            if rhs_references.len() != parts.connections.len() {
+            if rhs_references.len() != parts.bus_receives.len() {
                 // Not all connected identities meet the criteria above, so this is not a DoubleSortedWitnesses machine.
                 return None;
             }
@@ -202,13 +202,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b MutableState<'a, T, Q>,
-        _identity_id: u64,
+        _bus_id: T,
         _values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         unimplemented!("Direct lookup not supported by machine {}.", self.name())
     }
 
-    fn identity_ids(&self) -> Vec<u64> {
+    fn bus_ids(&self) -> Vec<T> {
         self.rhs_references.keys().cloned().collect()
     }
 
@@ -219,11 +219,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         _range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, arguments)
+        self.process_plookup_internal(bus_id, arguments)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -260,10 +260,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
 impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     fn process_plookup_internal(
         &mut self,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
     ) -> EvalResult<'a, T> {
-        let rhs = self.rhs_references.get(&identity_id).unwrap();
+        let rhs = self.rhs_references.get(&bus_id).unwrap();
         let key_index = rhs.iter().position(|&x| x.poly_id == self.key_col).unwrap();
 
         let key_value = arguments[key_index].constant_value().ok_or_else(|| {

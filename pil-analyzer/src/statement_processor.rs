@@ -10,18 +10,19 @@ use powdr_ast::parsed::types::TupleType;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
-    EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression, NamedType,
-    PilStatement, PolynomialName, TraitDeclaration,
+    EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, IndexAccess, LambdaExpression,
+    NamedType, PilStatement, PolynomialName, TraitDeclaration,
 };
 use powdr_ast::parsed::{
-    ArrayExpression, NamedExpression, StructDeclaration, SymbolCategory, TraitImplementation,
-    TypeDeclaration,
+    ArrayExpression, FunctionCall, NamedExpression, NamespacedPolynomialReference,
+    StructDeclaration, SymbolCategory, TraitImplementation, TypeDeclaration,
 };
 use powdr_parser_util::{Error, SourceRef};
 use std::str::FromStr;
 
 use powdr_ast::analyzed::{
-    Expression, FunctionValueDefinition, PolynomialType, PublicDeclaration, Symbol, SymbolKind,
+    Expression, FunctionValueDefinition, PolynomialType, PublicDeclaration, Reference::Poly,
+    Symbol, SymbolKind,
 };
 
 use crate::type_processor::TypeProcessor;
@@ -31,7 +32,6 @@ use crate::expression_processor::ExpressionProcessor;
 
 pub enum PILItem {
     Definition(Symbol, Option<FunctionValueDefinition>),
-    PublicDeclaration(PublicDeclaration),
     ProofItem(Expression),
     TraitImplementation(TraitImplementation<Expression>),
 }
@@ -39,7 +39,6 @@ pub enum PILItem {
 pub struct Counters {
     symbol_counters: BTreeMap<SymbolKind, u64>,
     identity_counter: u64,
-    public_counter: u64,
 }
 
 impl Default for Counters {
@@ -50,12 +49,12 @@ impl Default for Counters {
                 SymbolKind::Poly(PolynomialType::Constant),
                 SymbolKind::Poly(PolynomialType::Intermediate),
                 SymbolKind::Other(),
+                SymbolKind::Public(),
             ]
             .into_iter()
             .map(|k| (k, 0))
             .collect(),
             identity_counter: 0,
-            public_counter: 0,
         }
     }
 }
@@ -66,14 +65,10 @@ impl Counters {
     pub fn with_existing<'a>(
         symbols: impl IntoIterator<Item = &'a Symbol>,
         identity: Option<u64>,
-        public: Option<u64>,
     ) -> Self {
         let mut counters = Self::default();
         if let Some(id) = identity {
             counters.identity_counter = id + 1;
-        }
-        if let Some(id) = public {
-            counters.public_counter = id + 1;
         }
         for symbol in symbols {
             let counter = counters.symbol_counters.get_mut(&symbol.kind).unwrap();
@@ -93,12 +88,6 @@ impl Counters {
         let counter = self.symbol_counters.get_mut(&kind).unwrap();
         let id = *counter;
         *counter += length.unwrap_or(1);
-        id
-    }
-
-    pub fn dispense_public_id(&mut self) -> u64 {
-        let id = self.public_counter;
-        self.public_counter += 1;
         id
     }
 }
@@ -141,7 +130,19 @@ where
                 )
             }
             PilStatement::PublicDeclaration(source, name, polynomial, array_index, index) => {
-                self.handle_public_declaration(source, name, polynomial, array_index, index)
+                let value = Some(FunctionDefinition::PublicDeclaration(
+                    polynomial,
+                    array_index,
+                    index,
+                ));
+                self.handle_symbol_definition(
+                    source,
+                    name,
+                    SymbolKind::Public(),
+                    None,
+                    Some(Type::Expr.into()),
+                    value,
+                )
             }
             PilStatement::PolynomialConstantDefinition(source, name, definition) => self
                 .handle_symbol_definition(
@@ -431,6 +432,10 @@ where
             Some(FunctionDefinition::Array(value)) => {
                 self.process_array_symbol(symbol, type_scheme, value)
             }
+            Some(FunctionDefinition::PublicDeclaration(polynomial, array_index, row)) => {
+                assert_eq!(symbol_kind, SymbolKind::Public());
+                self.process_public_declaration(symbol, polynomial, array_index, row)
+            }
             None => Ok(vec![PILItem::Definition(symbol, None)]),
         }
     }
@@ -508,47 +513,92 @@ where
             .collect()
     }
 
-    fn handle_public_declaration(
+    fn process_public_declaration(
         &mut self,
-        source: SourceRef,
-        name: String,
-        poly: parsed::NamespacedPolynomialReference,
+        symbol: Symbol,
+        polynomial: NamespacedPolynomialReference,
         array_index: Option<parsed::Expression>,
-        index: parsed::Expression,
+        row: parsed::Expression,
     ) -> Result<Vec<PILItem>, Error> {
-        let id = self.counters.dispense_public_id();
-        let name = self.driver.resolve_decl(&name);
-        let polynomial = self
-            .expression_processor(&Default::default())
-            .process_namespaced_polynomial_reference(poly)
-            .map_err(|err| source.with_error(err))?;
-        let type_vars = Default::default();
-        let mut expression_processor = self.expression_processor(&type_vars);
-        let array_index = array_index
-            .map(|i| {
-                let i = expression_processor.process_expression(i).map_err(|err| {
-                    err.extend_message(|m| format!("Failed to process array index: {m}"))
-                })?;
-                let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
-                    .unwrap()
-                    .try_into()
-                    .unwrap();
-                assert!(index <= usize::MAX as u64);
-                Ok(index as usize)
-            })
-            .transpose()?;
-        let index = expression_processor.process_expression(index)?;
-        Ok(vec![PILItem::PublicDeclaration(PublicDeclaration {
+        let Symbol {
             id,
             source,
-            name: name.to_string(),
-            polynomial,
-            array_index,
-            index: untyped_evaluator::evaluate_expression_to_int(self.driver, index)
-                .unwrap()
-                .try_into()
-                .unwrap(),
-        })])
+            absolute_name,
+            ..
+        } = symbol.clone();
+
+        let row: u32 = untyped_evaluator::evaluate_expression_to_int(
+            self.driver,
+            self.expression_processor(&Default::default())
+                .process_expression(row)?,
+        ) // evaluate to int first to make sure it's an Expression::Number at this point
+        .unwrap()
+        .try_into()
+        .unwrap();
+        let row = Expression::from(row);
+
+        assert!(matches!(row, Expression::Number(..)));
+
+        let poly_reference = Poly(
+            self.expression_processor(&Default::default())
+                .process_namespaced_polynomial_reference(polynomial)
+                .map_err(|err| source.with_error(err))?,
+        );
+
+        let value = match array_index {
+            None => Expression::FunctionCall(
+                SourceRef::unknown(),
+                FunctionCall {
+                    function: Box::new(Expression::Reference(SourceRef::unknown(), poly_reference)),
+                    arguments: vec![row],
+                },
+            ),
+            Some(i) => {
+                let i = self
+                    .expression_processor(&Default::default())
+                    .process_expression(i)
+                    .map_err(|err| {
+                        err.extend_message(|m| format!("Failed to process array index: {m}"))
+                    })?;
+                let array_index: u32 =
+                    untyped_evaluator::evaluate_expression_to_int(self.driver, i)
+                        .unwrap()
+                        .try_into()
+                        .unwrap(); // evaluate to int first to make sure it's an Expression::Number at this point
+                let array_index = Expression::from(array_index);
+
+                assert!(matches!(array_index, Expression::Number(..)));
+
+                Expression::FunctionCall(
+                    SourceRef::unknown(),
+                    FunctionCall {
+                        function: Box::new(Expression::IndexAccess(
+                            SourceRef::unknown(),
+                            IndexAccess {
+                                array: Box::new(Expression::Reference(
+                                    SourceRef::unknown(),
+                                    poly_reference,
+                                )),
+                                index: Box::new(array_index),
+                            },
+                        )),
+                        arguments: vec![row],
+                    },
+                )
+            }
+        };
+
+        Ok(vec![PILItem::Definition(
+            symbol,
+            Some(FunctionValueDefinition::PublicDeclaration(
+                PublicDeclaration {
+                    id,
+                    source: source.clone(),
+                    name: absolute_name,
+                    value,
+                },
+            )),
+        )])
     }
 
     fn expression_processor<'b>(

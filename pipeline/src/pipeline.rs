@@ -127,29 +127,6 @@ struct Arguments<T: FieldElement> {
     existing_proof_file: Option<PathBuf>,
 }
 
-impl<T> Default for Arguments<T>
-where
-    T: FieldElement,
-{
-    fn default() -> Self {
-        Arguments {
-            external_witness_values: vec![],
-            query_callback: None,
-            backend: BackendType::Mock, // the only non-default value
-            backend_options: Default::default(),
-            linker_params: Default::default(),
-            csv_render_mode: Default::default(),
-            export_witness_csv: false,
-            export_all_columns_csv: false,
-            setup_file: None,
-            pkey_file: None,
-            vkey_file: None,
-            vkey_app_file: None,
-            existing_proof_file: None,
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct Pipeline<T: FieldElement> {
     /// Stores all artifacts at the same time.
@@ -219,7 +196,21 @@ where
             name: None,
             force_overwrite: false,
             pilo: false,
-            arguments: Arguments::default(),
+            arguments: Arguments {
+                external_witness_values: vec![],
+                query_callback: None,
+                backend: BackendType::Mock, // the only non-default argument
+                backend_options: Default::default(),
+                linker_params: Default::default(),
+                csv_render_mode: Default::default(),
+                export_witness_csv: false,
+                export_all_columns_csv: false,
+                setup_file: None,
+                pkey_file: None,
+                vkey_file: None,
+                vkey_app_file: None,
+                existing_proof_file: None,
+            },
             host_context: ctx,
             initial_memory: vec![],
         }

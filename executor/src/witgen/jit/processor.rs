@@ -265,15 +265,12 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                         witgen.process_equation_on_row(expression, None, 0.into(), row_offset)
                     }
-                    Identity::BusSend(BusSend {
-                        bus_id: _,
-                        identity_id,
-                        selected_payload,
-                    }) => witgen.process_call(
+                    Identity::BusSend(bus_send) => witgen.process_call(
                         can_process.clone(),
-                        *identity_id,
-                        &selected_payload.selector,
-                        selected_payload.expressions.len(),
+                        bus_send.identity_id,
+                        bus_send.bus_id().unwrap(),
+                        &bus_send.selected_payload.selector,
+                        bus_send.selected_payload.expressions.len(),
                         row_offset,
                     ),
                     Identity::Connect(..) => Ok(vec![]),
