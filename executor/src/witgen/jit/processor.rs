@@ -139,6 +139,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 &mut witgen,
                 identity_queue.clone(),
             )
+            && self.all_polynomial_identities_solved_in_block(&witgen)
         {
             let range_constraints = self
                 .requested_range_constraints
@@ -174,6 +175,8 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             } else {
                 ErrorReason::MaxBranchDepthReached(self.max_branch_depth)
             };
+            // TODO mark missing identities?
+            // TODO maybe just sort?
             return Err(Error {
                 reason,
                 witgen,
@@ -402,6 +405,49 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         } else {
             false
         }
+    }
+
+    /// Returns true if all polynomial identities are solved for at least `self.block_size` rows
+    /// in the middle of the rows. A polynomial identities is solved if it evaulates to
+    /// a known value.
+    fn all_polynomial_identities_solved_in_block<FixedEval: FixedEvaluator<T>>(
+        &self,
+        witgen: &WitgenInference<'a, T, FixedEval>,
+    ) -> bool {
+        // Group all identity-row-pairs by their identities.
+        self.identities
+            .iter()
+            .filter_map(|(id, row_offset)| {
+                if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
+                    Some((id.id(), (expression, *row_offset)))
+                } else {
+                    None
+                }
+            })
+            .into_group_map()
+            .into_values()
+            .all(|identities| {
+                // For each identity, check if it is fully solved
+                // for at least "self.blocks_size" rows.
+                let solved = identities
+                    .into_iter()
+                    .map(
+                        |(expression, row_offset)| match witgen.evaluate(expression, row_offset) {
+                            None => false,
+                            Some(value) => value.try_to_known().is_some(),
+                        },
+                    )
+                    .collect_vec();
+
+                let solved_count = solved.iter().filter(|v| **v).count();
+                let unsolved_prefix = solved.iter().take_while(|v| !**v).count();
+                let unsolved_suffix = solved.iter().rev().take_while(|v| !**v).count();
+                // There need to be at least `self.block_size` solved identities
+                // and there can be unsolved rows at the start or at the end, but not
+                // in the middle.
+                solved_count >= self.block_size
+                    && solved_count + unsolved_prefix + unsolved_suffix == solved.len()
+            })
     }
 }
 
