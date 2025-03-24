@@ -17,15 +17,9 @@ macro_rules! syscalls {
                 }
             }
 
-            pub const fn input_count(&self) -> usize {
+            pub const fn arity(&self) -> (u32, u32) {
                 match self {
-                    $(Syscall::$identifier => $input_count),*
-                }
-            }
-
-            pub const fn output_count(&self) -> usize {
-                match self {
-                    $(Syscall::$identifier => $output_count),*
+                    $(Syscall::$identifier => ($input_count, $output_count)),*
                 }
             }
         }
