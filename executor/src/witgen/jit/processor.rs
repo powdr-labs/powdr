@@ -175,8 +175,6 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             } else {
                 ErrorReason::MaxBranchDepthReached(self.max_branch_depth)
             };
-            // TODO mark missing identities?
-            // TODO maybe just sort?
             return Err(Error {
                 reason,
                 witgen,
