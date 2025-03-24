@@ -29,7 +29,7 @@ use super::{
     variable::Variable,
 };
 
-pub struct WitgenFunction<T> {
+pub struct CompiledFunction<T> {
     // TODO We might want to pass arguments as direct function parameters
     // (instead of a struct), so that
     // they are stored in registers instead of the stack. Should be checked.
@@ -37,11 +37,7 @@ pub struct WitgenFunction<T> {
     _library: Arc<Library>,
 }
 
-impl<T: FieldElement> WitgenFunction<T> {
-    /// Call the witgen function to fill the data and "known" tables
-    /// given a slice of parameters.
-    /// The `row_offset` is the index inside `data` of the row considered to be "row zero".
-    /// This function always succeeds (unless it panics).
+impl<T: FieldElement> CompiledFunction<T> {
     pub fn call<Q: QueryCallback<T>>(
         &self,
         fixed_data: &FixedData<'_, T>,
@@ -51,7 +47,7 @@ impl<T: FieldElement> WitgenFunction<T> {
     ) {
         let row_offset = data.row_offset.try_into().unwrap();
         let (data, known) = data.as_mut_slices();
-        (self.function)(WitgenFunctionParams {
+        let params = WitgenFunctionParams {
             data: data.into(),
             known: known.as_mut_ptr(),
             row_offset,
@@ -62,7 +58,8 @@ impl<T: FieldElement> WitgenFunction<T> {
             get_fixed_value: get_fixed_value::<T>,
             input_from_channel: input_from_channel::<T, Q>,
             output_to_channel: output_to_channel::<T, Q>,
-        });
+        };
+        (self.function)(params);
     }
 }
 
@@ -119,7 +116,7 @@ pub fn compile_effects<T: FieldElement, D: DefinitionFetcher>(
     known_inputs: &[Variable],
     effects: &[Effect<T, Variable>],
     prover_functions: Vec<ProverFunction<'_, T>>,
-) -> Result<WitgenFunction<T>, String> {
+) -> Result<CompiledFunction<T>, String> {
     let utils = util_code::<T>()?;
     let interface = interface_code(column_layout);
     let mut codegen = CodeGenerator::<T, _>::new(definitions);
@@ -153,7 +150,7 @@ pub fn compile_effects<T: FieldElement, D: DefinitionFetcher>(
 
     let library = Arc::new(unsafe { libloading::Library::new(&lib_path.path).unwrap() });
     let witgen_fun = unsafe { library.get(b"witgen\0") }.unwrap();
-    Ok(WitgenFunction {
+    Ok(CompiledFunction {
         function: *witgen_fun,
         _library: library,
     })
@@ -660,7 +657,7 @@ mod tests {
         column_count: usize,
         known_inputs: &[Variable],
         effects: &[Effect<GoldilocksField, Variable>],
-    ) -> Result<WitgenFunction<GoldilocksField>, String> {
+    ) -> Result<CompiledFunction<GoldilocksField>, String> {
         super::compile_effects(
             &NoDefinitions,
             ColumnLayout {
