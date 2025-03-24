@@ -17,6 +17,7 @@ pub fn run<'s, 'env, F: FieldElement>(
     scope: &'s Scope<'s, 'env>,
     prover: &'env Mutex<Box<dyn Backend<F>>>,
     witness: Vec<(String, Vec<F>)>,
+    publics: BTreeMap<String, Option<F>>,
 ) -> RunStatus<'s, F>
 where
 {
@@ -44,7 +45,10 @@ where
         // proof, even if it's not needed anymore. We should probably change
         // this API so the Vec is moved into the prover, and returned in the
         // callback and result.
-        prover.lock().unwrap().prove(&witness, None, callback)
+        prover
+            .lock()
+            .unwrap()
+            .prove(&witness, &publics, None, callback)
     });
 
     SubProver {
