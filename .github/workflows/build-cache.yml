@@ -46,6 +46,12 @@ jobs:
     - name: Delete the old cache
       uses: WarpBuilds/cache@v1
       with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+          Cargo.lock
         key: ${{ runner.os }}-cargo-pr-tests
         delete-cache: true
     
