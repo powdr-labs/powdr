@@ -226,7 +226,6 @@ pub fn gen_estark_proof_with_backend_variant(
 
     let publics: Vec<GoldilocksField> = pipeline
         .publics()
-        .unwrap()
         .iter()
         .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
@@ -328,7 +327,6 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
 
     let publics: Vec<Bn254Field> = pipeline
         .publics()
-        .unwrap()
         .iter()
         .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
@@ -363,8 +361,6 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
 
     let publics: Vec<T> = pipeline
         .publics()
-        .clone()
-        .unwrap()
         .iter()
         .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
@@ -412,8 +408,6 @@ pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
 
     let publics: Vec<T> = pipeline
         .publics()
-        .clone()
-        .unwrap()
         .iter()
         .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
@@ -640,9 +634,8 @@ pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
     let publics: Vec<Mersenne31Field> = pipeline
         .publics()
         .clone()
-        .unwrap()
-        .iter()
-        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
+        .values()
+        .map(|v| v.expect("all publics should be known since we created a proof"))
         .collect();
     pipeline.verify(&proof, &[publics]).unwrap();
 }
@@ -670,9 +663,8 @@ pub fn test_stwo_pipeline(pipeline: Pipeline<Mersenne31Field>) {
     let publics: Vec<Mersenne31Field> = pipeline
         .publics()
         .clone()
-        .unwrap()
-        .iter()
-        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
+        .values()
+        .map(|v| v.expect("all publics should be known since we created a proof"))
         .collect();
     pipeline.verify(&proof, &[publics]).unwrap();
 }

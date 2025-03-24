@@ -206,6 +206,7 @@ where
     pub fn prove(
         &self,
         witness: &[(String, Vec<T>)],
+        _publics: &BTreeMap<String, Option<T>>,
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
         let mut witness_by_machine = self
