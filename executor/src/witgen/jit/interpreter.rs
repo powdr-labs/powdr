@@ -814,6 +814,8 @@ namespace arith(8);
 
     #[test]
     fn add_sub_bb() {
+        // TODO change this to baby bear
+
         let pil = read_to_string("../test_data/pil/add_sub_bb.pil").unwrap();
         let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(&pil);
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
