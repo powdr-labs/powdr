@@ -209,10 +209,9 @@ jobs:
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
       - uses: taiki-e/install-action@nextest
       - name: Run slow tests
-        # Number threads is set to 2 because the runner does not have enough memory for more.
         run: |
           NIGHTLY_TESTS=$(cat .github/workflows/nightly_tests_list.txt)
-          cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 2 --partition hash:"${{ matrix.test }}"/8
+          cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --partition hash:"${{ matrix.test }}"/8
         shell: bash
         env:
           POWDR_STD: ${{ github.workspace }}/std/

@@ -76,5 +76,4 @@ jobs:
     - name: Build
       run: cargo build --all --release --all-features
     - name: Run tests
-      # Number threads is set to 1 because the runner does not have enough memory for more.
-      run: cargo test --all --release --verbose --all-features -- --include-ignored --nocapture --test-threads=1
+      run: cargo test --all --release --verbose --all-features -- --include-ignored --nocapture
