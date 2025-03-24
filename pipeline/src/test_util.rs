@@ -634,9 +634,8 @@ pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
     let publics: Vec<Mersenne31Field> = pipeline
         .publics()
         .clone()
-        .unwrap()
-        .iter()
-        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
+        .values()
+        .map(|v| v.expect("all publics should be known since we created a proof"))
         .collect();
     pipeline.verify(&proof, &[publics]).unwrap();
 }
@@ -664,9 +663,8 @@ pub fn test_stwo_pipeline(pipeline: Pipeline<Mersenne31Field>) {
     let publics: Vec<Mersenne31Field> = pipeline
         .publics()
         .clone()
-        .unwrap()
-        .iter()
-        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
+        .values()
+        .map(|v| v.expect("all publics should be known since we created a proof"))
         .collect();
     pipeline.verify(&proof, &[publics]).unwrap();
 }
