@@ -27,22 +27,22 @@ jobs:
       run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
     - name: Cargo check with Rust 1.81 (default features)
       run: cargo +1.81-x86_64-unknown-linux-gnu check --all-targets
-    #- name: Lint no default features
-    #  run: cargo clippy --all --all-targets --no-default-features --profile pr-tests --verbose -- -D warnings
-    #- name: Lint all features
-    #  run: cargo clippy --all --all-targets --all-features --profile pr-tests --verbose -- -D warnings
-    #- name: Format
-    #  run: cargo fmt --all --check --verbose
-    #- name: Build
-    #  run: cargo build --all-targets --all --all-features --profile pr-tests --verbose
+    - name: Lint no default features
+      run: cargo clippy --all --all-targets --no-default-features --profile pr-tests --verbose -- -D warnings
+    - name: Lint all features
+      run: cargo clippy --all --all-targets --all-features --profile pr-tests --verbose -- -D warnings
+    - name: Format
+      run: cargo fmt --all --check --verbose
+    - name: Build
+      run: cargo build --all-targets --all --all-features --profile pr-tests --verbose
     ###############################################################################
 
     - name: Save date of cache build
       run: date -R -u > target/cache-build-date.txt
 
-    # It seems WarpBuild no longer charges for cache storage, so they removed the
-    # ability to overwrite the caches. But they still allow deleting caches,
-    # so let's try deleting it just before saving.
+    # It seems that in an attempt to be more compatible with GitHub, WarpBuild removed
+    # the ability to overwrite an old cache and they longer charge for cache storage.
+    # But they still allow deleting caches, so we can just delete it before saving.
     - name: Delete the old cache
       uses: WarpBuilds/cache@v1
       with:
