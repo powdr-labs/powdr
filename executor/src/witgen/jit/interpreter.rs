@@ -621,7 +621,7 @@ mod test {
 
     use bit_vec::BitVec;
     use itertools::Itertools;
-    use powdr_number::{FieldElement, GoldilocksField};
+    use powdr_number::{BabyBearField, FieldElement, GoldilocksField};
 
     struct TestInterpreter<'a, T: FieldElement, Q: QueryCallback<T>> {
         analyzed: &'a Analyzed<T>,
@@ -814,10 +814,8 @@ namespace arith(8);
 
     #[test]
     fn add_sub_bb() {
-        // TODO change this to baby bear
-
         let pil = read_to_string("../test_data/pil/add_sub_bb.pil").unwrap();
-        let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(&pil);
+        let (analyzed, fixed_col_vals) = read_pil::<BabyBearField>(&pil);
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let fixed_data = global_constraints::set_global_constraints(fixed_data);
         let interpreter_gt =
