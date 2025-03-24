@@ -37,11 +37,9 @@ fn block_to_block_wrong_connection() {
     let f = "asm/block_to_block.asm";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
 
-    // Get the correct witness
-    let witness = pipeline.witness().unwrap();
-
     // Multiply all values in main_arith with 42
-    let witness = witness
+    let witness = pipeline
+        .witness()
         .iter()
         .map(|(name, values)| {
             if name.starts_with("main_arith") {

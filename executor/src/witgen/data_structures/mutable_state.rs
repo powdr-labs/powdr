@@ -97,38 +97,34 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
 
     /// Extracts the witness column values from the machines.
     fn take_witness_col_and_public_values(self) -> (HashMap<String, Vec<T>>, BTreeMap<String, T>) {
-        // We keep the already processed machines mutably borrowed so that
-        // "later" machines do not try to create new rows in already processed
-        // machines.
-        let (witness_columns, public_values, _processed) = self.machines.iter().fold(
-            (HashMap::new(), BTreeMap::new(), Vec::new()),
-            |(mut acc_witness, mut acc_public, mut processed), machine_cell| {
-                let mut machine = machine_cell.try_borrow_mut().unwrap_or_else(|_| {
-                    panic!("Recursive machine dependencies while finishing machines.")
-                });
-
-                // Merge witness columns: each machine provides a HashMap<String, Vec<T>>
-                machine.take_witness_col_values(&self).into_iter().for_each(
-                    |(key, mut vec_vals)| {
-                        acc_witness
-                            .entry(key)
-                            .or_insert_with(Vec::new)
-                            .append(&mut vec_vals);
-                    },
-                );
-
-                // Merge public values: each machine provides a BTreeMap<String, T>
-                machine
-                    .take_public_values()
-                    .into_iter()
-                    .for_each(|(key, value)| {
-                        acc_public.insert(key, value);
+        let witness_columns = {
+            // We keep the already processed machines mutably borrowed so that
+            // "later" machines do not try to create new rows in already processed
+            // machines.
+            let mut processed = vec![];
+            self.machines
+                .iter()
+                .flat_map(|machine| {
+                    let mut machine = machine.try_borrow_mut().unwrap_or_else(|_| {
+                        panic!("Recursive machine dependencies while finishing machines.");
                     });
+                    let columns = machine.take_witness_col_values(&self).into_iter();
+                    processed.push(machine);
+                    columns
+                })
+                .collect()
+        };
 
-                processed.push(machine);
-                (acc_witness, acc_public, processed)
-            },
-        );
+        let public_values = self
+            .machines
+            .iter()
+            .flat_map(|machine| {
+                let mut machine = machine.try_borrow_mut().unwrap_or_else(|_| {
+                    panic!("Recursive machine dependencies while finishing machines.");
+                });
+                machine.take_public_values().into_iter()
+            })
+            .collect();
 
         (witness_columns, public_values)
     }

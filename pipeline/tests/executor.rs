@@ -1,15 +1,14 @@
 use powdr_number::{FieldElement, GoldilocksField};
 use powdr_pipeline::pipeline::Columns;
 use powdr_pipeline::Pipeline;
-use std::sync::Arc;
 use test_log::test;
 
-fn run_witgen_pil<T: FieldElement>(pil: &str) -> Arc<Columns<T>> {
-    Pipeline::default()
+fn run_witgen_pil<T: FieldElement>(pil: &str) -> Columns<T> {
+    let witness_and_publics = Pipeline::default()
         .from_pil_string(pil.to_string())
         .compute_witness()
-        .unwrap()
-        .0
+        .unwrap();
+    witness_and_publics.0.clone()
 }
 
 #[test]

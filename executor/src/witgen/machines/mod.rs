@@ -144,10 +144,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn bus_ids(&self) -> Vec<T>;
 
     fn take_public_values(&mut self) -> BTreeMap<String, T> {
-        unimplemented!(
-            "Public values are not supported for machine {}",
-            self.name()
-        );
+        BTreeMap::new()
     }
 }
 
@@ -247,11 +244,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     }
 
     fn take_public_values(&mut self) -> BTreeMap<String, T> {
-        match self {
-            KnownMachine::BlockMachine(m) => m.take_public_values(),
-            KnownMachine::DynamicMachine(m) => m.take_public_values(),
-            _ => BTreeMap::new(),
-        }
+        match_variant!(self, m => m.take_public_values())
     }
 
     fn bus_ids(&self) -> Vec<T> {
