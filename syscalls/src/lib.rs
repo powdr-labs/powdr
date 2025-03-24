@@ -1,7 +1,7 @@
 #![no_std]
 
 macro_rules! syscalls {
-    ($(($num:expr, $identifier:ident, $name:expr)),* $(,)?) => {
+    ($(($num:expr, $identifier:ident, $name:expr, $input_count:expr, $output_count:expr)),* $(,)?) => {
         /// We use repr(u8) to make sure the enum discriminant will fit into the
         /// 12 bits of the immediate field of the `addi` instruction,
         #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -11,9 +11,21 @@ macro_rules! syscalls {
         }
 
         impl Syscall {
-            pub fn name(&self) -> &'static str {
+            pub const fn name(&self) -> &'static str {
                 match self {
                     $(Syscall::$identifier => $name),*
+                }
+            }
+
+            pub const fn input_count(&self) -> usize {
+                match self {
+                    $(Syscall::$identifier => $input_count),*
+                }
+            }
+
+            pub const fn output_count(&self) -> usize {
+                match self {
+                    $(Syscall::$identifier => $output_count),*
                 }
             }
         }
@@ -56,19 +68,19 @@ macro_rules! syscalls {
 
 // Generate `Syscall` enum with supported syscalls and their numbers.
 syscalls!(
-    (1, Input, "input"),
-    (2, Output, "output"),
-    (3, PoseidonGL, "poseidon_gl"),
-    (4, Affine256, "affine_256"),
-    (5, EcAdd, "ec_add"),
-    (6, EcDouble, "ec_double"),
-    (7, KeccakF, "keccakf"),
-    (8, Mod256, "mod_256"),
-    (9, Halt, "halt"),
-    (10, Poseidon2GL, "poseidon2_gl"),
-    (11, NativeHash, "native_hash"),
-    (12, CommitPublic, "commit_public"),
-    (13, InvertGL, "invert_gl"),
-    (14, SplitGLVec, "split_gl_vec"),
-    (15, MergeGL, "merge_gl"),
+    (1, Input, "input", 2, 1),
+    (2, Output, "output", 2, 0),
+    (3, PoseidonGL, "poseidon_gl", 1, 0),
+    (4, Affine256, "affine_256", 4, 0),
+    (5, EcAdd, "ec_add", 3, 0),
+    (6, EcDouble, "ec_double", 2, 0),
+    (7, KeccakF, "keccakf", 2, 0),
+    (8, Mod256, "mod_256", 3, 0),
+    (9, Halt, "halt", 0, 0),
+    (10, Poseidon2GL, "poseidon2_gl", 2, 0),
+    (11, NativeHash, "native_hash", 1, 0),
+    (12, CommitPublic, "commit_public", 2, 0),
+    (13, InvertGL, "invert_gl", 2, 2),
+    (14, SplitGLVec, "split_gl_vec", 2, 0),
+    (15, MergeGL, "merge_gl", 3, 0),
 );
