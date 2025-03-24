@@ -204,6 +204,14 @@ jobs:
           - "6"
           - "7"
           - "8"
+          - "9"
+          - "10"
+          - "11"
+          - "12"
+          - "13"
+          - "14"
+          - "15"
+          - "16"
     needs: build
     runs-on: ubuntu-24.04
 
@@ -238,7 +246,7 @@ jobs:
         # Number threads is set to 2 because the runner does not have enough memory for more.
         run: |
           NIGHTLY_TESTS=$(cat .github/workflows/nightly_tests_list.txt)
-          cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 2 --partition hash:"${{ matrix.test }}"/8
+          cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 4 --partition hash:"${{ matrix.test }}"/16
         shell: bash
         env:
           PILCOM: ${{ github.workspace }}/pilcom/
