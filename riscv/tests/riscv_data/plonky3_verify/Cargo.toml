@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-powdr-riscv-syscalls = { path = "../../../../riscv-syscalls" }
-powdr-riscv-runtime = { path = "../../../../riscv-runtime", features = ["std"]}
-powdr-plonky3 = { path = "../../../../plonky3", features = ["powdr-accel"]}
+powdr-syscalls = { path = "../../../../syscalls" }
+powdr-riscv-runtime = { path = "../../../../riscv-runtime", features = ["std"] }
+powdr-plonky3 = { path = "../../../../plonky3", features = ["powdr-accel"] }
 
 [workspace]

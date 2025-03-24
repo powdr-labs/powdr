@@ -1,6 +1,6 @@
 use super::effect::{Assertion, BranchCondition, Effect};
 
-use super::symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator};
+use super::symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator};
 use super::variable::{Cell, Variable};
 use crate::witgen::data_structures::finalizable_data::CompactDataRef;
 use crate::witgen::data_structures::mutable_state::MutableState;
@@ -173,6 +173,9 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                 Effect::Assignment(var, e) => {
                     let idx = var_mapper.map_var(var);
                     InterpreterAction::AssignExpression(idx, var_mapper.map_expr_to_rpn(e))
+                }
+                Effect::BitDecomposition(..) => {
+                    todo!()
                 }
                 Effect::RangeConstraint(..) => {
                     unreachable!("Final code should not contain pure range constraints.")
@@ -502,7 +505,6 @@ enum RPNExpressionElem<T: FieldElement, S> {
     Symbol(S),
     BinaryOperation(BinaryOperator),
     UnaryOperation(UnaryOperator),
-    BitOperation(BitOperator, T::Integer),
 }
 
 impl<T: FieldElement> RPNExpression<T, usize> {
@@ -529,10 +531,6 @@ impl<T: FieldElement> RPNExpression<T, usize> {
                     inner(expr, elems, var_mapper);
                     elems.push(RPNExpressionElem::UnaryOperation(op.clone()));
                 }
-                SymbolicExpression::BitOperation(expr, op, n, _) => {
-                    inner(expr, elems, var_mapper);
-                    elems.push(RPNExpressionElem::BitOperation(op.clone(), *n));
-                }
             }
         }
         let mut elems = Vec::new();
@@ -555,9 +553,6 @@ impl<T: FieldElement> RPNExpression<T, usize> {
                     BinaryOperator::Sub => left - right,
                     BinaryOperator::Mul => left * right,
                     BinaryOperator::Div => left / right,
-                    BinaryOperator::IntegerDiv => {
-                        T::from(left.to_arbitrary_integer() / right.to_arbitrary_integer())
-                    }
                 };
                 stack.push(result);
             }
@@ -565,13 +560,6 @@ impl<T: FieldElement> RPNExpression<T, usize> {
                 let inner = stack.pop().unwrap();
                 let result = match op {
                     UnaryOperator::Neg => -inner,
-                };
-                stack.push(result);
-            }
-            RPNExpressionElem::BitOperation(op, right) => {
-                let left = stack.pop().unwrap();
-                let result = match op {
-                    BitOperator::And => T::from(left.to_integer() & *right),
                 };
                 stack.push(result);
             }

@@ -50,7 +50,7 @@ fn optional_vars_in_effect<T: FieldElement>(
     required: &mut HashSet<Variable>,
 ) -> HashSet<Variable> {
     let needed = match &effect {
-        Effect::Assignment(..) | Effect::ProverFunctionCall(..) => {
+        Effect::Assignment(..) | Effect::ProverFunctionCall(..) | Effect::BitDecomposition(_) => {
             effect.written_vars().any(|(v, _)| required.contains(v))
         }
         Effect::Assertion(_) => false,

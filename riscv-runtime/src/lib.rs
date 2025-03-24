@@ -28,7 +28,7 @@ mod no_std_support;
 mod std_support;
 
 use core::arch::{asm, global_asm};
-use powdr_riscv_syscalls::Syscall;
+use powdr_syscalls::Syscall;
 
 #[no_mangle]
 pub fn halt() -> ! {

@@ -26,7 +26,7 @@ powdr-parser.workspace = true
 powdr-parser-util.workspace = true
 powdr-pipeline.workspace = true
 powdr-riscv-executor.workspace = true
-powdr-riscv-syscalls.workspace = true
+powdr-syscalls.workspace = true
 
 gimli = "0.31"
 goblin = "0.8"
