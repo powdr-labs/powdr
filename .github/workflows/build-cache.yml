@@ -41,6 +41,9 @@ jobs:
       run: date -R -u > target/cache-build-date.txt
     - name: ⚡ Save rust cache
       uses: WarpBuilds/cache/save@v1
+      # We actually want to fail if the cache is not saved,
+      # this is the closest option I found:
+      fail-on-cache-miss: true
       with:
         path: |
           ~/.cargo/registry/index/
