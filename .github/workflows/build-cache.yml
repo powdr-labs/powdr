@@ -43,24 +43,18 @@ jobs:
     # It seems WarpBuild no longer charges for cache storage, so they removed the
     # ability to overwrite the caches. But they still allow deleting caches,
     # so let's try deleting it just before saving.
-    - name: Delete teh cache
-      uses: WarpBuilds/cache@v1
-      with:
-        path: |
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          target/
-          Cargo.lock
-        key: ${{ runner.os }}-cargo-pr-tests
-        delete-cache: true
+    #- name: Delete teh cache
+    #  uses: WarpBuilds/cache@v1
+    #  with:
+    #    key: ${{ runner.os }}-cargo-pr-tests
+    #    delete-cache: true
 
     - name: ⚡ Save rust cache
       uses: WarpBuilds/cache/save@v1
-      # We actually want to fail if the cache is not saved,
-      # this is the closest option I found:
-      fail-on-cache-miss: true
       with:
+        # We actually want to fail if the cache is not saved,
+        # this is the closest option I found:
+        fail-on-cache-miss: true
         path: |
           ~/.cargo/registry/index/
           ~/.cargo/registry/cache/
