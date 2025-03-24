@@ -3,13 +3,14 @@ use powdr_pipeline::pipeline::Columns;
 use powdr_pipeline::Pipeline;
 use test_log::test;
 
-fn run_witgen_pil<T: FieldElement>(pil: &str) -> Arc<Columns<T>> {
+fn run_witgen_pil<T: FieldElement>(pil: &str) -> Columns<T> {
     Pipeline::default()
         .with_backend(powdr_pipeline::BackendType::Mock, None)
         .from_pil_string(pil.to_string())
         .compute_witness()
-        .unwrap();
-    witness_and_publics.0.clone()
+        .unwrap()
+        .0
+        .clone()
 }
 
 #[test]
