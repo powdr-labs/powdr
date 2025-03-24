@@ -1,4 +1,6 @@
-use super::effect::{Assertion, BranchCondition, Effect};
+use super::effect::{
+    Assertion, BitDecomposition, BitDecompositionComponent, BranchCondition, Effect,
+};
 
 use super::symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator};
 use super::variable::{Cell, Variable};
@@ -9,7 +11,7 @@ use crate::witgen::{FixedData, QueryCallback};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
@@ -28,6 +30,12 @@ enum InterpreterAction<T: FieldElement> {
     ReadParam(usize, usize),
     ReadFixedColumn(usize, Cell),
     AssignExpression(usize, RPNExpression<T, usize>),
+    BitDecompose(
+        RPNExpression<T, usize>,
+        Vec<IndexedBitDecompositionComponent<T>>,
+        /// If true, there is at least one negative component.
+        bool,
+    ),
     WriteCell(usize, Cell),
     WriteParam(usize, usize),
     MachineCall(T, Vec<MachineCallArgumentIdx>),
@@ -76,6 +84,35 @@ impl<T: FieldElement> BranchTest<T> {
             BranchTest::Equal { var, value } => vars[*var] == *value,
             BranchTest::Inside { var, min, max } => *min <= vars[*var] && vars[*var] <= *max,
             BranchTest::Outside { var, min, max } => vars[*var] <= *min || vars[*var] >= *max,
+        }
+    }
+}
+
+/// Version of `effect::BitDecompositionComponents` using indexes instead of variables.
+#[derive(Debug)]
+pub struct IndexedBitDecompositionComponent<T: FieldElement> {
+    pub variable: usize,
+    pub is_negative: bool,
+    pub exponent: u64,
+    pub bit_mask: T::Integer,
+}
+
+impl<T: FieldElement> IndexedBitDecompositionComponent<T> {
+    fn from(
+        components: &BitDecompositionComponent<T, Variable>,
+        var_mapper: &mut VariableMapper,
+    ) -> Self {
+        let BitDecompositionComponent {
+            variable,
+            is_negative,
+            exponent,
+            bit_mask,
+        } = components.clone();
+        Self {
+            variable: var_mapper.map_var(&variable),
+            is_negative,
+            exponent,
+            bit_mask,
         }
     }
 }
@@ -174,8 +211,16 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     let idx = var_mapper.map_var(var);
                     InterpreterAction::AssignExpression(idx, var_mapper.map_expr_to_rpn(e))
                 }
-                Effect::BitDecomposition(..) => {
-                    todo!()
+                Effect::BitDecomposition(BitDecomposition { value, components }) => {
+                    let value = var_mapper.map_expr_to_rpn(value);
+                    let components = components
+                        .iter()
+                        // Sorting ascending by exponentis important for correctness.
+                        .sorted_by_key(|c| c.exponent)
+                        .map(|c| IndexedBitDecompositionComponent::from(c, var_mapper))
+                        .collect_vec();
+                    let have_negative = components.iter().any(|c| c.is_negative);
+                    InterpreterAction::BitDecompose(value, components, have_negative)
                 }
                 Effect::RangeConstraint(..) => {
                     unreachable!("Final code should not contain pure range constraints.")
@@ -274,6 +319,10 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     InterpreterAction::AssignExpression(idx, e) => {
                         let val = e.evaluate(&mut eval_stack, &vars[..]);
                         vars[*idx] = val;
+                    }
+                    InterpreterAction::BitDecompose(value, components, have_negative) => {
+                        let value = value.evaluate(&mut eval_stack, &vars[..]);
+                        perform_bit_decomposition(&mut vars, components, *have_negative, value);
                     }
                     InterpreterAction::ReadCell(idx, c) => {
                         vars[*idx] = data
@@ -374,6 +423,38 @@ fn actions_are_valid<T: FieldElement>(
     true
 }
 
+fn perform_bit_decomposition<T: FieldElement>(
+    variables: &mut [T],
+    components: &[IndexedBitDecompositionComponent<T>],
+    have_negative: bool,
+    mut value: T,
+) {
+    if have_negative {
+        for c in components {
+            let mut component = if c.is_negative { -value } else { value }.to_integer();
+            if component > (T::modulus() - 1.into()) >> 1 {
+                // Convert a signed finite field element into two's complement.
+                // a regular subtraction would underflow, so we do this.
+                component = (T::Integer::MAX - T::modulus() + 1.into()) + component;
+            };
+            component &= c.bit_mask;
+            variables[c.variable] = T::from(component >> (c.exponent as usize));
+            if c.is_negative {
+                value += T::from(component);
+            } else {
+                value -= T::from(component);
+            }
+        }
+    } else {
+        for c in components {
+            let component = value.to_integer() & c.bit_mask;
+            variables[c.variable] = T::from(component >> (c.exponent as usize));
+            value -= T::from(component);
+        }
+    }
+    assert_eq!(value, 0.into());
+}
+
 impl<T: FieldElement> InterpreterAction<T> {
     /// variable indexes written by the action
     fn writes(&self) -> BTreeSet<usize> {
@@ -383,6 +464,9 @@ impl<T: FieldElement> InterpreterAction<T> {
             | InterpreterAction::ReadParam(idx, _)
             | InterpreterAction::AssignExpression(idx, _) => {
                 set.insert(*idx);
+            }
+            InterpreterAction::BitDecompose(_, components, _) => {
+                set.extend(components.iter().map(|c| c.variable));
             }
             InterpreterAction::MachineCall(_, params) => params.iter().for_each(|p| {
                 if let MachineCallArgumentIdx::Unknown(v) = p {
@@ -412,7 +496,8 @@ impl<T: FieldElement> InterpreterAction<T> {
             InterpreterAction::WriteCell(idx, _) | InterpreterAction::WriteParam(idx, _) => {
                 set.insert(*idx);
             }
-            InterpreterAction::AssignExpression(_, expr) => expr.elems.iter().for_each(|e| {
+            InterpreterAction::AssignExpression(_, expr)
+            | InterpreterAction::BitDecompose(expr, _, _) => expr.elems.iter().for_each(|e| {
                 if let RPNExpressionElem::Symbol(idx) = e {
                     set.insert(*idx);
                 }
@@ -592,15 +677,11 @@ mod test {
         finalizable_data::{CompactData, CompactDataRef},
         mutable_state::MutableState,
     };
-    use crate::witgen::global_constraints;
-    use crate::witgen::jit::block_machine_processor::BlockMachineProcessor;
-    use crate::witgen::jit::effect::Effect;
-    use crate::witgen::jit::test_util::read_pil;
-    use crate::witgen::jit::variable::Variable;
-    use crate::witgen::machines::{
-        machine_extractor::MachineExtractor, KnownMachine, LookupCell, Machine,
+    use crate::witgen::{
+        global_constraints,
+        jit::{block_machine_processor::BlockMachineProcessor, test_util::read_pil},
+        machines::{machine_extractor::MachineExtractor, KnownMachine, Machine},
     };
-    use crate::witgen::FixedData;
 
     use powdr_ast::analyzed::Analyzed;
 
@@ -813,5 +894,39 @@ namespace arith(8);
         interpreter_gt.test(&[1, 2, 3, 4, 0], &[1, 2, 3, 4, 0]);
         interpreter_gt.test(&[3, 2, 3, 4, 0], &[3, 2, 3, 4, 0]);
         interpreter_gt.test(&[5, 2, 3, 4, 0], &[5, 2, 3, 4, 1]);
+    }
+
+    #[test]
+    fn bit_decomposition_goldilocks() {
+        let mut variables = [GoldilocksField::default(); 2];
+        let components = vec![
+            IndexedBitDecompositionComponent {
+                variable: 0,
+                is_negative: true,
+                exponent: 0,
+                bit_mask: From::from(0xffu32),
+            },
+            IndexedBitDecompositionComponent {
+                variable: 1,
+                is_negative: false,
+                exponent: 8,
+                bit_mask: From::from(0xff00u32),
+            },
+        ];
+        perform_bit_decomposition(&mut variables, &components, true, 0x1ff.into());
+        assert_eq!(
+            &variables,
+            &[GoldilocksField::from(1), GoldilocksField::from(2)]
+        );
+        perform_bit_decomposition(
+            &mut variables,
+            &components,
+            true,
+            -(GoldilocksField::from(7)),
+        );
+        assert_eq!(
+            &variables,
+            &[GoldilocksField::from(7), GoldilocksField::from(0)]
+        );
     }
 }
