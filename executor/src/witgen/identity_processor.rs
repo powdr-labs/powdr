@@ -7,7 +7,7 @@ use powdr_number::FieldElement;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::{global_constraints::CombinedRangeConstraintSet, EvalError};
 
-use super::data_structures::identity::Identity;
+use super::data_structures::identity::{BusSend, Identity};
 use super::{
     affine_expression::AlgebraicVariable, processor::OuterQuery, rows::RowPair, EvalResult,
     EvalValue, IncompleteCause, QueryCallback,
@@ -37,11 +37,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
     ) -> EvalResult<'a, T> {
         let result = match identity {
             Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
-            Identity::BusSend(bus_interaction) => self.process_machine_call(
-                bus_interaction.bus_id().unwrap(),
-                &bus_interaction.selected_payload,
-                rows,
-            ),
+            Identity::BusSend(bus_send) => self.process_machine_call(bus_send, rows),
             Identity::Connect(..) => {
                 // TODO this is not the right cause.
                 Ok(EvalValue::incomplete(IncompleteCause::SolvingFailed))
@@ -67,15 +63,15 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
 
     fn process_machine_call(
         &mut self,
-        bus_id: T,
-        left: &'a powdr_ast::analyzed::SelectedExpressions<T>,
+        bus_send: &'a BusSend<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        if let Some(status) = self.handle_left_selector(&left.selector, rows) {
+        if let Some(status) = self.handle_left_selector(&bus_send.selected_payload.selector, rows) {
             return Ok(status);
         }
 
-        let left = match left
+        let arguments = match bus_send
+            .selected_payload
             .expressions
             .iter()
             .map(|e| rows.evaluate(e))
@@ -85,7 +81,15 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'c, T, 
             Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
         };
 
-        self.mutable_state.call(bus_id, &left, rows)
+        let bus_id = match rows.evaluate(&bus_send.bus_id) {
+            Ok(bus_id) => match bus_id.constant_value() {
+                Some(bus_id) => bus_id,
+                None => return Ok(EvalValue::incomplete(IncompleteCause::NonConstantBusID)),
+            },
+            Err(incomplete_cause) => return Ok(EvalValue::incomplete(incomplete_cause)),
+        };
+
+        self.mutable_state.call(bus_id, &arguments, rows)
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.
