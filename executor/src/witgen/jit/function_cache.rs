@@ -230,13 +230,17 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .collect::<Vec<_>>();
 
         let has_prover_function_call = has_prover_function_call(&result.code);
-        // Use the compiler for goldilocks with at most MAX_COMPILED_CODE_SIZE statements and
-        // the interpreter otherwise.
-        let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField))
-            || (code_size(&result.code) > MAX_COMPILED_CODE_SIZE && !has_prover_function_call);
 
-        if interpreted {
-            log::debug!("Interpreter disabled for now.");
+        // TODO This is the goal, but we need to implement prover unctions for the interpreter first.
+        // // Use the compiler for goldilocks with at most MAX_COMPILED_CODE_SIZE statements and
+        // // the interpreter otherwise.
+        // let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField))
+        //     || (code_size(&result.code) > MAX_COMPILED_CODE_SIZE && !has_prover_function_call);
+
+        let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField));
+
+        if interpreted && has_prover_function_call {
+            log::debug!("Interpreter does not yet implement prover functions.");
             return None;
         }
 
