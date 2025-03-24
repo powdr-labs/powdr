@@ -817,6 +817,14 @@ fn keccak() {
 }
 
 #[test]
+#[should_panic = "Connection constraints are not supported"]
+fn connect_no_witgen() {
+    let f = "asm/connect_no_witgen.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Native);
+    test_mock_backend(pipeline);
+}
+
+#[test]
 fn generics_preservation() {
     let f = "asm/generics_preservation.asm";
     make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus);
