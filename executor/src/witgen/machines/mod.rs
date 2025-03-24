@@ -3,7 +3,7 @@ use std::fmt::Display;
 
 use bit_vec::BitVec;
 use dynamic_machine::DynamicMachine;
-use powdr_ast::analyzed::{self, AlgebraicExpression, ContainsNextRef, DegreeRange, PolyID};
+use powdr_ast::analyzed::{self, ContainsNextRef, DegreeRange, PolyID};
 
 use powdr_number::DegreeType;
 use powdr_number::FieldElement;
@@ -69,7 +69,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn can_process_call_fully(
         &mut self,
         _can_process: impl CanProcessCall<T>,
-        _identity_id: u64,
+        _bus_id: T,
         _known_arguments: &BitVec,
         range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
@@ -80,12 +80,12 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn process_plookup_timed<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
         record_start(self.name());
-        let result = self.process_plookup(mutable_state, identity_id, arguments, range_constraints);
+        let result = self.process_plookup(mutable_state, bus_id, arguments, range_constraints);
         record_end(self.name());
         result
     }
@@ -94,11 +94,11 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn process_lookup_direct_timed<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         record_start(self.name());
-        let result = self.process_lookup_direct(mutable_state, identity_id, values);
+        let result = self.process_lookup_direct(mutable_state, bus_id, values);
         record_end(self.name());
         result
     }
@@ -112,7 +112,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T>;
@@ -130,7 +130,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>>;
 
@@ -141,7 +141,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     ) -> HashMap<String, Vec<T>>;
 
     /// Returns the identity IDs of the connecting identities that this machine is responsible for.
-    fn identity_ids(&self) -> Vec<u64>;
+    fn bus_ids(&self) -> Vec<T>;
 }
 
 #[repr(C)]
@@ -199,33 +199,33 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     fn can_process_call_fully(
         &mut self,
         can_process: impl CanProcessCall<T>,
-        identity_id: u64,
+        bus_id: T,
         known_arguments: &BitVec,
         range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
         match_variant!(
             self,
-            m => m.can_process_call_fully(can_process, identity_id, known_arguments, range_constraints)
+            m => m.can_process_call_fully(can_process, bus_id, known_arguments, range_constraints)
         )
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        match_variant!(self, m => m.process_plookup(mutable_state, identity_id, arguments, range_constraints))
+        match_variant!(self, m => m.process_plookup(mutable_state, bus_id, arguments, range_constraints))
     }
 
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
-        match_variant!(self, m => m.process_lookup_direct(mutable_state, identity_id, values))
+        match_variant!(self, m => m.process_lookup_direct(mutable_state, bus_id, values))
     }
 
     fn name(&self) -> &str {
@@ -239,78 +239,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         match_variant!(self, m => m.take_witness_col_values(mutable_state))
     }
 
-    fn identity_ids(&self) -> Vec<u64> {
-        match_variant!(self, m => m.identity_ids())
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-/// A connection is a witness generation directive to propagate rows across machines
-pub struct Connection<'a, T> {
-    pub id: u64,
-    pub left: &'a analyzed::SelectedExpressions<T>,
-    pub right: &'a analyzed::SelectedExpressions<T>,
-    /// For [ConnectionKind::Permutation], rows of `left` are a permutation of rows of `right`. For [ConnectionKind::Lookup], all rows in `left` are in `right`.
-    pub kind: ConnectionKind,
-    /// If the connection comes from a phantom lookup, this is the multiplicity column.
-    /// For each row of `right` it counts how often that row occurs in `left`.
-    /// Note that multiple connections can share the same multiplicity column.
-    pub multiplicity_column: Option<PolyID>,
-}
-
-impl<T: Display> Display for Connection<'_, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {} {}", self.left, self.kind, self.right)
-    }
-}
-
-impl<'a, T: FieldElement> Connection<'a, T> {
-    /// Creates a connection if the identity is a bus send.
-    pub fn try_new(
-        identity: &'a Identity<T>,
-        bus_receives: &'a BTreeMap<T, BusReceive<T>>,
-    ) -> Option<Self> {
-        match identity {
-            Identity::BusSend(bus_interaction) => {
-                let send = bus_interaction;
-                let receive = send
-                    .try_match_static(bus_receives)
-                    .expect("No matching receive!");
-                let multiplicity_column = if receive.has_arbitrary_multiplicity() {
-                    receive
-                        .multiplicity
-                        .as_ref()
-                        .and_then(|multiplicity| match multiplicity {
-                            AlgebraicExpression::Reference(reference) => Some(reference.poly_id),
-                            // For receives of permutations, we would have complex expressions here.
-                            _ => None,
-                        })
-                } else {
-                    // For permutations, the selector is already generated by "normal" witgen.
-                    None
-                };
-                Some(Connection {
-                    id: send.identity_id,
-                    left: &send.selected_payload,
-                    right: &receive.selected_payload,
-                    kind: if receive.has_arbitrary_multiplicity() {
-                        ConnectionKind::Lookup
-                    } else {
-                        ConnectionKind::Permutation
-                    },
-                    multiplicity_column,
-                })
-            }
-            _ => None,
-        }
-    }
-
-    fn is_permutation(&self) -> bool {
-        self.kind == ConnectionKind::Permutation
-    }
-
-    fn is_lookup(&self) -> bool {
-        self.kind == ConnectionKind::Lookup
+    fn bus_ids(&self) -> Vec<T> {
+        match_variant!(self, m => m.bus_ids())
     }
 }
 
@@ -334,10 +264,9 @@ impl Display for ConnectionKind {
 #[derive(Clone)]
 pub struct MachineParts<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
-    /// Connecting identities, indexed by their ID.
-    /// These are the identities that connect another machine to this one,
-    /// where this one is on the RHS of a lookup.
-    pub connections: BTreeMap<u64, Connection<'a, T>>,
+    /// Bus receives, indexed by their bus ID.
+    /// These represent the machine listening on a specific bus to receive calls.
+    pub bus_receives: BTreeMap<T, &'a BusReceive<T>>,
     /// Identities relevant to this machine and only this machine.
     pub identities: Vec<&'a Identity<T>>,
     /// Witness columns relevant to this machine.
@@ -351,7 +280,7 @@ pub struct MachineParts<'a, T: FieldElement> {
 impl<'a, T: FieldElement> MachineParts<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        connections: BTreeMap<u64, Connection<'a, T>>,
+        bus_receives: BTreeMap<T, &'a BusReceive<T>>,
         identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
         intermediates: HashMap<PolyID, String>,
@@ -359,7 +288,7 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
     ) -> Self {
         Self {
             fixed_data,
-            connections,
+            bus_receives,
             identities,
             witnesses,
             intermediates,
@@ -391,9 +320,9 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
         self.fixed_data.common_degree_range(&self.witnesses)
     }
 
-    /// Returns the IDs of the connecting identities.
-    pub fn identity_ids(&self) -> Vec<u64> {
-        self.connections.keys().cloned().collect()
+    /// Returns the bus IDs of the bus receives in this machine.
+    pub fn bus_ids(&self) -> Vec<T> {
+        self.bus_receives.keys().copied().collect()
     }
 
     /// Returns the name of a column.

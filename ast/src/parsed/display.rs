@@ -172,7 +172,7 @@ impl Display for LinkDeclaration {
         write!(
             f,
             "link {}{} {}",
-            if self.flag == 1.into() {
+            if self.flag == 1u32.into() {
                 "".to_string()
             } else {
                 format!("if {} ", self.flag)
@@ -555,7 +555,17 @@ impl Display for FunctionDefinition {
                 )
             }
             FunctionDefinition::Expression(e) => write!(f, " = {e}"),
-            FunctionDefinition::TypeDeclaration(_) | FunctionDefinition::TraitDeclaration(_) => {
+            FunctionDefinition::PublicDeclaration(poly, array_index, index) => {
+                write!(
+                    f,
+                    " = {poly}{}({index});",
+                    array_index
+                        .as_ref()
+                        .map(|i| format!("[{i}]"))
+                        .unwrap_or_default()
+                )
+            }
+            FunctionDefinition::TraitDeclaration(_) | FunctionDefinition::TypeDeclaration(_) => {
                 panic!("Should not use this formatting function.")
             }
         }
@@ -717,7 +727,6 @@ impl<Ref: Display> Display for Expression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Expression::Reference(_, reference) => write!(f, "{reference}"),
-            Expression::PublicReference(_, name) => write!(f, ":{name}"),
             Expression::Number(_, n) => write!(f, "{n}"),
             Expression::String(_, value) => write!(f, "{}", quote(value)),
             Expression::Tuple(_, items) => write!(f, "({})", format_list(items)),

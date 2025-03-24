@@ -17,14 +17,15 @@ use crate::witgen::{
 
 use super::{
     block_machine_processor::BlockMachineProcessor,
-    compiler::{compile_effects, WitgenFunction},
+    compiler::{compile_effects, CompiledFunction},
+    interpreter::EffectsInterpreter,
     variable::Variable,
     witgen_inference::CanProcessCall,
 };
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct CacheKey<T: FieldElement> {
-    identity_id: u64,
+    bus_id: T,
     /// If `Some((index, value))`, then this function is used only if the
     /// `index`th argument is set to `value`.
     known_concrete: Option<(usize, T)>,
@@ -44,8 +45,36 @@ pub struct FunctionCache<'a, T: FieldElement> {
     parts: MachineParts<'a, T>,
 }
 
+enum WitgenFunction<T: FieldElement> {
+    Compiled(CompiledFunction<T>),
+    Interpreted(EffectsInterpreter<T>),
+}
+
+impl<T: FieldElement> WitgenFunction<T> {
+    /// Call the witgen function to fill the data and "known" tables
+    /// given a slice of parameters.
+    /// The `row_offset` is the index inside `data` of the row considered to be "row zero".
+    /// This function always succeeds (unless it panics).
+    pub fn call<Q: QueryCallback<T>>(
+        &self,
+        fixed_data: &FixedData<'_, T>,
+        mutable_state: &MutableState<'_, T, Q>,
+        params: &mut [LookupCell<T>],
+        data: CompactDataRef<'_, T>,
+    ) {
+        match self {
+            WitgenFunction::Compiled(compiled_function) => {
+                compiled_function.call(fixed_data, mutable_state, params, data);
+            }
+            WitgenFunction::Interpreted(interpreter) => {
+                interpreter.call::<Q>(fixed_data, mutable_state, params, data)
+            }
+        }
+    }
+}
+
 pub struct CacheEntry<T: FieldElement> {
-    pub function: WitgenFunction<T>,
+    function: WitgenFunction<T>,
     pub range_constraints: Vec<RangeConstraint<T>>,
 }
 
@@ -78,45 +107,61 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
     pub fn compile_cached(
         &mut self,
         can_process: impl CanProcessCall<T>,
-        identity_id: u64,
+        bus_id: T,
         known_args: &BitVec,
         known_concrete: Option<(usize, T)>,
-    ) -> Option<&CacheEntry<T>> {
-        let cache_key = CacheKey {
-            identity_id,
+    ) -> &Option<CacheEntry<T>> {
+        // First try the generic version, then the specific.
+        let mut key = CacheKey {
+            bus_id,
             known_args: known_args.clone(),
-            known_concrete,
+            known_concrete: None,
         };
-        self.ensure_cache(can_process, &cache_key);
-        self.witgen_functions.get(&cache_key).unwrap().as_ref()
+
+        if self.ensure_cache(can_process.clone(), &key).is_none() && known_concrete.is_some() {
+            key = CacheKey {
+                bus_id,
+                known_args: known_args.clone(),
+                known_concrete,
+            };
+            self.ensure_cache(can_process.clone(), &key);
+        }
+        self.ensure_cache(can_process, &key)
     }
 
-    fn ensure_cache(&mut self, can_process: impl CanProcessCall<T>, cache_key: &CacheKey<T>) {
-        if self.witgen_functions.contains_key(cache_key) {
-            return;
-        }
+    fn ensure_cache(
+        &mut self,
+        can_process: impl CanProcessCall<T>,
+        cache_key: &CacheKey<T>,
+    ) -> &Option<CacheEntry<T>> {
+        if !self.witgen_functions.contains_key(cache_key) {
+            record_start("Auto-witgen code derivation");
+            let f = match T::known_field() {
+                // TODO: Currently, code generation only supports the Goldilocks
+                // fields. We can't enable the interpreter for non-goldilocks
+                // fields due to a limitation of autowitgen.
+                Some(KnownField::GoldilocksField) => {
+                    self.compile_witgen_function(can_process, cache_key, false)
+                }
+                _ => None,
+            };
+            assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none());
 
-        record_start("Auto-witgen code derivation");
-        let f = match T::known_field() {
-            // Currently, we only support the Goldilocks fields
-            Some(KnownField::GoldilocksField) => {
-                self.compile_witgen_function(can_process, cache_key)
-            }
-            _ => None,
-        };
-        assert!(self.witgen_functions.insert(cache_key.clone(), f).is_none());
-        record_end("Auto-witgen code derivation");
+            record_end("Auto-witgen code derivation");
+        }
+        self.witgen_functions.get(cache_key).unwrap()
     }
 
     fn compile_witgen_function(
         &self,
         can_process: impl CanProcessCall<T>,
         cache_key: &CacheKey<T>,
+        interpreted: bool,
     ) -> Option<CacheEntry<T>> {
         log::debug!(
             "Compiling JIT function for\n  Machine: {}\n  Connection: {}\n   Inputs: {:?}{}",
             self.machine_name,
-            self.parts.connections[&cache_key.identity_id],
+            self.parts.bus_receives[&cache_key.bus_id],
             cache_key.known_args,
             cache_key
                 .known_concrete
@@ -134,7 +179,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .processor
             .generate_code(
                 can_process,
-                cache_key.identity_id,
+                cache_key.bus_id,
                 &cache_key.known_args,
                 cache_key.known_concrete,
             )
@@ -175,15 +220,22 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .filter_map(|(i, b)| if b { Some(Variable::Param(i)) } else { None })
             .collect::<Vec<_>>();
 
-        log::trace!("Compiling effects...");
-        let function = compile_effects(
-            self.fixed_data.analyzed,
-            self.column_layout.clone(),
-            &known_inputs,
-            &code,
-            prover_functions,
-        )
-        .unwrap();
+        let function = if interpreted {
+            log::trace!("Building effects interpreter...");
+            WitgenFunction::Interpreted(EffectsInterpreter::try_new(&known_inputs, &code)?)
+        } else {
+            log::trace!("Compiling effects...");
+            WitgenFunction::Compiled(
+                compile_effects(
+                    self.fixed_data.analyzed,
+                    self.column_layout.clone(),
+                    &known_inputs,
+                    &code,
+                    prover_functions,
+                )
+                .unwrap(),
+            )
+        };
         log::trace!("Compilation done.");
 
         Some(CacheEntry {
@@ -195,7 +247,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
     pub fn process_lookup_direct<'c, 'd, Q: QueryCallback<T>>(
         &self,
         mutable_state: &MutableState<'a, T, Q>,
-        connection_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
         data: CompactDataRef<'d, T>,
         known_concrete: Option<(usize, T)>,
@@ -206,7 +258,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .collect::<BitVec>();
 
         let cache_key = CacheKey {
-            identity_id: connection_id,
+            bus_id,
             known_args: known_args.clone(),
             known_concrete,
         };
@@ -215,7 +267,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .get(&cache_key)
             .or_else(|| {
                 self.witgen_functions.get(&CacheKey {
-                    identity_id: connection_id,
+                    bus_id,
                     known_args: known_args.clone(),
                     known_concrete: None,
                 })

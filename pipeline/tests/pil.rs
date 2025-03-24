@@ -113,9 +113,12 @@ fn fibonacci() {
 fn fibonacci_with_public() {
     // Public references are not supported by the backends yet, but we can test witness generation.
     let f = "pil/fibonacci_with_public.pil";
-    let mut pipeline: Pipeline<GoldilocksField> =
+    let pipeline: Pipeline<GoldilocksField> =
         make_prepared_pipeline(f, vec![], vec![], LinkerMode::Bus);
-    pipeline.compute_witness().unwrap();
+    pipeline
+        .with_backend(powdr_backend::BackendType::Mock, None)
+        .compute_witness()
+        .unwrap();
 }
 
 #[test]

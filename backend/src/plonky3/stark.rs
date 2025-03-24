@@ -393,7 +393,7 @@ mod tests {
             col witness y;
             public oldstate = x(0);
             x = 0;
-            y = 1 + :oldstate;
+            y = 1 + oldstate;
         "#;
         run_test(content);
     }
