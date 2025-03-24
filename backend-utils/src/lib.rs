@@ -153,7 +153,7 @@ pub fn referenced_namespaces_algebraic_expression<F: FieldElement>(
         .all_children()
         .filter_map(|expr| match expr {
             AlgebraicExpression::Reference(reference) => Some(extract_namespace(&reference.name)),
-            AlgebraicExpression::PublicReference(_) => unimplemented!(),
+            AlgebraicExpression::PublicReference(name) => Some(extract_namespace(name)),
             AlgebraicExpression::Challenge(_)
             | AlgebraicExpression::Number(_)
             | AlgebraicExpression::BinaryOperation(_)

@@ -232,7 +232,6 @@ impl Session {
         let pubs: Vec<u32> = self
             .pipeline
             .publics()
-            .unwrap()
             .iter()
             .map(|(_, v)| v.unwrap().to_integer().try_into_u32().unwrap())
             .collect();
