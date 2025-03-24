@@ -232,10 +232,12 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         let has_prover_function_call = has_prover_function_call(&result.code);
 
         // TODO This is the goal, but we need to implement prover unctions for the interpreter first.
-        // // Use the compiler for goldilocks with at most MAX_COMPILED_CODE_SIZE statements and
-        // // the interpreter otherwise.
-        // let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField))
-        //     || (code_size(&result.code) > MAX_COMPILED_CODE_SIZE && !has_prover_function_call);
+
+        // Use the compiler for goldilocks with at most MAX_COMPILED_CODE_SIZE statements and
+        // the interpreter otherwise.
+        #[allow(unused)]
+        let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField))
+            || code_size(&result.code) > MAX_COMPILED_CODE_SIZE;
 
         let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField));
 
