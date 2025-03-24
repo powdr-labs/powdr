@@ -558,7 +558,9 @@ params[3] = main_binary::C[3];"
     #[test]
     fn poseidon() {
         let input = read_to_string("../test_data/pil/poseidon_gl.pil").unwrap();
-        generate_for_block_machine(&input, "main_poseidon", 12, 4).unwrap();
+        generate_for_block_machine(&input, "main_poseidon", 12, 4)
+            .map_err(|e| eprintln!("{e}"))
+            .unwrap();
     }
 
     #[test]
