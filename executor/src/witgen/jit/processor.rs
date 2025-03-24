@@ -406,7 +406,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
     }
 
     /// Returns true if all polynomial identities are solved for at least `self.block_size` rows
-    /// in the middle of the rows. A polynomial identities is solved if it evaulates to
+    /// in the middle of the rows. A polynomial identities is solved if it evaluates to
     /// a known value.
     fn all_polynomial_identities_solved_in_block<FixedEval: FixedEvaluator<T>>(
         &self,

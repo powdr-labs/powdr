@@ -4,7 +4,7 @@ use core::slice;
 
 extern crate alloc;
 
-use powdr_riscv_syscalls::Syscall;
+use powdr_syscalls::Syscall;
 
 use alloc::vec;
 use alloc::vec::Vec;
