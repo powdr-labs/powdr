@@ -1,6 +1,6 @@
 use core::arch::asm;
 
-use powdr_riscv_syscalls::Syscall;
+use powdr_syscalls::Syscall;
 
 use crate::ecall;
 

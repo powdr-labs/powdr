@@ -27,7 +27,7 @@ members = [
     "isa-utils",
     "airgen",
     "riscv-executor",
-    "riscv-syscalls",
+    "syscalls",
     "schemas",
     "backend-utils",
     "executor-utils",
@@ -68,7 +68,7 @@ powdr-pipeline = { path = "./pipeline", version = "0.1.4" }
 powdr-plonky3 = { path = "./plonky3", version = "0.1.4" }
 powdr-riscv = { path = "./riscv", version = "0.1.4" }
 powdr-riscv-executor = { path = "./riscv-executor", version = "0.1.4" }
-powdr-riscv-syscalls = { path = "./riscv-syscalls", version = "0.1.4" }
+powdr-syscalls = { path = "./syscalls", version = "0.1.4" }
 powdr-schemas = { path = "./schemas", version = "0.1.4" }
 
 [profile.pr-tests]
