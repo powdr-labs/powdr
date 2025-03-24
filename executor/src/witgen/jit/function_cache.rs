@@ -2,7 +2,7 @@ use std::{collections::HashMap, hash::Hash};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_number::{FieldElement, KnownField};
+use powdr_number::FieldElement;
 
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},

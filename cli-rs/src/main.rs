@@ -7,6 +7,7 @@ use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 
+use powdr::backend::BackendType;
 use powdr::number::{
     BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KnownField, KoalaBearField,
 };
@@ -161,6 +162,11 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(FieldArgument))]
         field: FieldArgument,
 
+        /// The backend to run witgen for
+        #[arg(short, long)]
+        #[arg(value_parser = clap_enum_variants!(BackendType))]
+        backend: BackendType,
+
         /// Comma-separated list of free inputs (numbers).
         #[arg(short, long)]
         #[arg(default_value_t = String::new())]
@@ -304,6 +310,7 @@ fn run_command(command: Commands) {
         Commands::Witgen {
             file,
             field,
+            backend,
             inputs,
             output_directory,
             continuations,
@@ -326,6 +333,7 @@ fn run_command(command: Commands) {
             };
             call_with_field!(execute::<field>(
                 Path::new(&file),
+                backend,
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 continuations,
@@ -409,6 +417,7 @@ fn execute_fast<F: FieldElement>(
 #[allow(clippy::too_many_arguments)]
 fn execute<F: FieldElement>(
     file_name: &Path,
+    backend: BackendType,
     inputs: Vec<F>,
     output_dir: &Path,
     continuations: bool,
@@ -417,6 +426,7 @@ fn execute<F: FieldElement>(
 ) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<F>::default()
         .from_asm_file(file_name.to_path_buf())
+        .with_backend(backend, None)
         .with_prover_inputs(inputs)
         .with_output(output_dir.into(), true);
 
@@ -432,7 +442,7 @@ fn execute<F: FieldElement>(
     } else {
         let fixed = pipeline.compute_fixed_cols().unwrap().clone();
         let asm = pipeline.compute_analyzed_asm().unwrap().clone();
-        let pil = pipeline.compute_optimized_pil().unwrap();
+        let pil = pipeline.compute_backend_tuned_pil().unwrap().clone();
 
         let start = Instant::now();
 
