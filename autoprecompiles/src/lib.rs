@@ -338,6 +338,21 @@ impl<T: FieldElement> Autoprecompiles<T> {
             &self.instruction_kind,
             &self.instruction_machines,
         );
+        println!("\nMachine after autoprecompile");
+        for c in &machine.constraints {
+            println!("Constraint: {}", c.expr);
+        }
+        for b in &machine.bus_interactions {
+            println!(
+                "\nBus interaction id = {}, kind = {:?}, mult = {}",
+                b.id, b.kind, b.mult
+            );
+            for a in &b.args {
+                println!("arg = {a}");
+            }
+            println!("\n");
+        }
+
         let c = machine.columns();
         let i = machine.column_ids();
         // println!("\n\nCollecting info");
@@ -358,7 +373,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
         // }
         assert_eq!(c.len(), i.len());
         assert_eq!(machine.columns().len(), machine.column_ids().len());
-        let machine = optimize_precompile(machine);
+        //let machine = optimize_precompile(machine);
 
         let mut bus: BTreeMap<u64, Vec<&SymbolicBusInteraction<T>>> = BTreeMap::new();
         for b in &machine.bus_interactions {
@@ -389,9 +404,9 @@ impl<T: FieldElement> Autoprecompiles<T> {
         //     println!("\n");
         // }
         //
-        let machine = powdr_optimize(machine);
+        //let machine = powdr_optimize(machine);
 
-        let machine = remove_range_checks(machine);
+        //let machine = remove_range_checks(machine);
 
         (machine, subs)
     }
@@ -491,9 +506,9 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
     let mut local_reg_mem: BTreeMap<u32, Vec<AlgebraicExpression<T>>> = BTreeMap::new();
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     machine.bus_interactions.retain(|bus_int| {
-        if bus_int.id == PC_LOOKUP_BUS_ID || bus_int.id == EXECUTION_BUS_ID {
-            return false;
-        }
+        // if bus_int.id == PC_LOOKUP_BUS_ID || bus_int.id == EXECUTION_BUS_ID {
+        //     return false;
+        // }
 
         if bus_int.id != MEMORY_BUS_ID {
             return true;
@@ -659,6 +674,20 @@ pub fn generate_precompile<T: FieldElement>(
                 let (instr_def, mut machine) =
                     instruction_machines.get(&instr.name).unwrap().clone();
 
+                println!("Machine before autoprecompile");
+                for c in &machine.constraints {
+                    println!("Constraint: {}", c.expr);
+                }
+                for b in &machine.bus_interactions {
+                    println!(
+                        "\nBus interaction id = {}, kind = {:?}, mult = {}",
+                        b.id, b.kind, b.mult
+                    );
+                    for a in &b.args {
+                        println!("arg = {a}");
+                    }
+                    println!("\n");
+                }
                 let pc_lookup: PcLookupBusInteraction<T> = machine
                     .bus_interactions
                     .iter()
