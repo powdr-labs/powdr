@@ -414,16 +414,13 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
                     _ => unreachable!(),
                 }
             }
-            ProverFunctionComputation::HandleQueryInputOutput(branches) => todo!(),
+            ProverFunctionComputation::HandleQueryInputOutput(_branches) => todo!(),
         }
     }
 }
 
 /// Inject the row offset as an environment variable into the closure.
-fn inject_row_offset<'a, T: FieldElement>(
-    f: Arc<Value<'a, T>>,
-    row_offset: i64,
-) -> Arc<Value<'a, T>> {
+fn inject_row_offset<T: FieldElement>(f: Arc<Value<'_, T>>, row_offset: i64) -> Arc<Value<'_, T>> {
     let Value::Closure(closure) = f.as_ref() else {
         panic!("Expected closure.");
     };

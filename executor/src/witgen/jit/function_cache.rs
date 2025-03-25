@@ -2,7 +2,7 @@ use std::{collections::HashMap, hash::Hash};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
     data_structures::finalizable_data::{ColumnLayout, CompactDataRef},
@@ -18,9 +18,9 @@ use crate::witgen::{
 use super::{
     block_machine_processor::BlockMachineProcessor,
     compiler::{compile_effects, CompiledFunction},
-    effect::Effect,
+    effect::{Effect, ProverFunctionCall},
     interpreter::EffectsInterpreter,
-    prover_function_heuristics::ProverFunction,
+    prover_function_heuristics::{ProverFunction, ProverFunctionComputation},
     variable::Variable,
     witgen_inference::CanProcessCall,
 };
@@ -221,7 +221,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         result: ProcessorResult<T>,
         prover_functions: Vec<ProverFunction<'a, T>>,
         cache_key: &CacheKey<T>,
-    ) -> Option<CacheEntry<T>> {
+    ) -> Option<CacheEntry<'a, T>> {
         let known_inputs = cache_key
             .known_args
             .iter()
@@ -229,7 +229,8 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .filter_map(|(i, b)| if b { Some(Variable::Param(i)) } else { None })
             .collect::<Vec<_>>();
 
-        let has_prover_function_call = has_prover_function_call(&result.code);
+        let has_prover_function_call =
+            has_input_output_prover_function_call(&prover_functions, &result.code);
 
         // TODO This is the goal, but we need to implement prover unctions for the interpreter first.
 
@@ -242,7 +243,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField));
 
         if interpreted && has_prover_function_call {
-            log::debug!("Interpreter does not yet implement prover functions.");
+            log::debug!("Interpreter does not yet implement input/output prover functions.");
             return None;
         }
 
@@ -326,15 +327,23 @@ fn code_size<T: FieldElement>(code: &[Effect<T, Variable>]) -> usize {
         .sum()
 }
 
-/// Returns true if there is any prover function call in the code.
-fn has_prover_function_call<'a, T: FieldElement>(
+/// Returns true if there is any input/output prover function call in the code.
+fn has_input_output_prover_function_call<'a, T: FieldElement>(
+    prover_functions: &[ProverFunction<'a, T>],
     code: impl IntoIterator<Item = &'a Effect<T, Variable>> + 'a,
 ) -> bool {
     code.into_iter().any(|effect| match effect {
-        Effect::ProverFunctionCall(..) => true,
-        Effect::Branch(_, if_branch, else_branch) => {
-            has_prover_function_call(if_branch) || has_prover_function_call(else_branch)
+        Effect::ProverFunctionCall(ProverFunctionCall { function_index, .. }) => {
+            match prover_functions[*function_index].computation {
+                ProverFunctionComputation::ProvideIfUnknown(..)
+                | ProverFunctionComputation::ComputeFrom(..) => false,
+                ProverFunctionComputation::HandleQueryInputOutput(..) => true,
+            }
         }
+        Effect::Branch(_, if_branch, else_branch) => has_input_output_prover_function_call(
+            prover_functions,
+            if_branch.iter().chain(else_branch),
+        ),
         Effect::Assignment(..)
         | Effect::RangeConstraint(..)
         | Effect::Assertion(..)
