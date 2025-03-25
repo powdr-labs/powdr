@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, VecDeque},
     rc::Rc,
 };
 
@@ -23,50 +23,65 @@ use super::{prover_function_heuristics::ProverFunction, variable::Variable};
 /// updates this list based on the occurrence of updated variables
 /// in identities.
 #[derive(Clone)]
-pub struct IdentityQueue<'a, T: FieldElement> {
-    queue: BTreeSet<QueueItem<'a, T>>,
-    occurrences: Rc<HashMap<Variable, Vec<QueueItem<'a, T>>>>,
+pub struct IdentityQueue<'ast, 'queue, T: FieldElement> {
+    items: &'queue Vec<QueueItem<'ast, T>>,
+    in_queue: Vec<bool>,
+    queue: VecDeque<usize>,
+    occurrences: Rc<HashMap<Variable, Vec<usize>>>,
 }
 
-impl<'a, T: FieldElement> IdentityQueue<'a, T> {
+impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
     pub fn new(
-        fixed_data: &'a FixedData<'a, T>,
-        items: impl IntoIterator<Item = QueueItem<'a, T>>,
+        fixed_data: &'ast FixedData<'ast, T>,
+        items: &'queue Vec<QueueItem<'ast, T>>,
     ) -> Self {
-        let queue: BTreeSet<_> = items.into_iter().collect();
+        println!("Queue of {} items", items.len());
         let mut references = ReferencesComputer::new(fixed_data);
         let occurrences = Rc::new(
-            queue
+            items
                 .iter()
-                .flat_map(|item| {
+                .enumerate()
+                .flat_map(|(id, item)| {
                     references
                         .references(item)
                         .iter()
-                        .map(|v| (v.clone(), item.clone()))
+                        .map(|v| (v.clone(), id))
                         .collect_vec()
                 })
                 .into_group_map(),
         );
-        Self { queue, occurrences }
+        Self {
+            items,
+            in_queue: vec![true; items.len()],
+            queue: (0..items.len()).into_iter().collect(),
+            occurrences,
+        }
     }
 
     /// Returns the next identity to be processed and its row and
     /// removes it from the queue.
-    pub fn next(&mut self) -> Option<QueueItem<'a, T>> {
-        self.queue.pop_first()
+    pub fn next(&mut self) -> Option<&'queue QueueItem<'ast, T>> {
+        self.queue.pop_front().map(|id| {
+            self.in_queue[id] = false;
+            // TODO can we return a reference?
+            &self.items[id]
+        })
     }
 
     pub fn variables_updated(&mut self, variables: impl IntoIterator<Item = Variable>) {
         // Note that this will usually re-add the item that caused the update,
         // which is fine, since there are situations where we can further process
         // it from an update (for example a range constraint).
-        self.queue.extend(
-            variables
-                .into_iter()
-                .flat_map(|var| self.occurrences.get(&var))
-                .flatten()
-                .cloned(),
-        )
+        for id in variables
+            .into_iter()
+            .flat_map(|var| self.occurrences.get(&var))
+            .flatten()
+        {
+            if !self.in_queue[*id] {
+                self.in_queue[*id] = true;
+                self.queue.push_back(id.clone());
+            }
+        }
     }
 }
 

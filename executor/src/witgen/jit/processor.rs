@@ -103,7 +103,8 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             }
         }));
         let branch_depth = 0;
-        let identity_queue = IdentityQueue::new(self.fixed_data, queue_items);
+        queue_items.sort();
+        let identity_queue = IdentityQueue::new(self.fixed_data, &queue_items);
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
     }
 
@@ -111,7 +112,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         &self,
         can_process: impl CanProcessCall<T>,
         mut witgen: WitgenInference<'a, T, FixedEval>,
-        mut identity_queue: IdentityQueue<'a, T>,
+        mut identity_queue: IdentityQueue<'a, '_, T>,
         branch_depth: usize,
     ) -> Result<ProcessorResult<T>, Error<'a, T, FixedEval>> {
         if self
@@ -254,17 +255,17 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         Ok(result)
     }
 
-    fn process_until_no_progress<FixedEval: FixedEvaluator<T>>(
+    fn process_until_no_progress<'queue, FixedEval: FixedEvaluator<T>>(
         &self,
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        mut identity_queue: IdentityQueue<'a, T>,
+        mut identity_queue: IdentityQueue<'a, 'queue, T>,
     ) -> Result<(), affine_symbolic_expression::Error> {
         while let Some(item) = identity_queue.next() {
             let updated_vars = match item {
                 QueueItem::Identity(identity, row_offset) => match identity {
                     Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                        witgen.process_equation_on_row(expression, None, 0.into(), row_offset)
+                        witgen.process_equation_on_row(expression, None, 0.into(), *row_offset)
                     }
                     Identity::BusSend(bus_send) => witgen.process_call(
                         can_process.clone(),
@@ -272,7 +273,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                         bus_send.bus_id().unwrap(),
                         &bus_send.selected_payload.selector,
                         bus_send.selected_payload.expressions.len(),
-                        row_offset,
+                        *row_offset,
                     ),
                     Identity::Connect(..) => Ok(vec![]),
                 },
@@ -289,7 +290,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     assignment.row_offset,
                 ),
                 QueueItem::ProverFunction(prover_function, row_offset) => {
-                    witgen.process_prover_function(&prover_function, row_offset)
+                    witgen.process_prover_function(&prover_function, *row_offset)
                 }
             }?;
             identity_queue.variables_updated(updated_vars);
@@ -354,7 +355,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         incomplete_machine_calls: &[(&Identity<T>, i32)],
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        mut identity_queue: IdentityQueue<'a, T>,
+        mut identity_queue: IdentityQueue<'a, '_, T>,
     ) -> bool {
         let missing_sends_in_block = incomplete_machine_calls
             .iter()
