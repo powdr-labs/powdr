@@ -313,6 +313,7 @@ fn code_size<T: FieldElement>(code: &[Effect<T, Variable>]) -> usize {
     code.iter()
         .map(|effect| match effect {
             Effect::Assignment(..)
+            | Effect::BitDecomposition(..)
             | Effect::Assertion(..)
             | Effect::MachineCall(..)
             | Effect::ProverFunctionCall(..) => 1,
@@ -332,6 +333,7 @@ fn has_prover_function_call<'a, T: FieldElement>(
             has_prover_function_call(if_branch) || has_prover_function_call(else_branch)
         }
         Effect::Assignment(..)
+        | Effect::BitDecomposition(..)
         | Effect::RangeConstraint(..)
         | Effect::Assertion(..)
         | Effect::MachineCall(..) => false,
