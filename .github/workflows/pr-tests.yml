@@ -234,11 +234,52 @@ jobs:
       - name: Install pilcom
         run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
       - uses: taiki-e/install-action@nextest
+      # Calculate the subset of tests for this runner.
+      - name: Calculate test subset
+        id: calc
+        run: |
+          total_tests=55
+          total_runners=16
+          runner_index=${{ matrix.runner }}
+          # Calculate tests per runner, rounding up
+          tests_per_runner=$(( (total_tests + total_runners - 1) / total_runners ))
+          start_index=$(( (runner_index - 1) * tests_per_runner + 1 ))
+          end_index=$(( runner_index * tests_per_runner ))
+          if [ $end_index -gt $total_tests ]; then
+            end_index=$total_tests
+          fi
+          echo "Runner $runner_index will run tests from $start_index to $end_index"
+          echo "START_INDEX=$start_index" >> $GITHUB_ENV
+          echo "END_INDEX=$end_index" >> $GITHUB_ENV
+      # Extract the assigned tests from slow_tests_list.txt.
+      - name: Extract assigned tests
+        id: get_tests
+        run: |
+          sed -n "${START_INDEX},${END_INDEX}p" slow_tests_list.txt > tests_to_run.txt
+          echo "Assigned tests for runner ${{ matrix.runner }}:"
+          cat tests_to_run.txt
+      # If no tests are assigned, exit gracefully.
+      - name: Check if tests are assigned
+        id: check_tests
+        run: |
+          if [ ! -s tests_to_run.txt ]; then
+            echo "No tests assigned for runner ${{ matrix.runner }}, exiting."
+            exit 0
+          fi
+      # Construct a regex filter from the assigned tests.
+      - name: Construct test filter
+        id: construct_filter
+        run: |
+          tests=$(paste -sd '|' tests_to_run.txt)
+          filter="^(${tests})$"
+          echo "Constructed filter: $filter"
+          echo "FILTER=$filter" >> $GITHUB_ENV
+      # Run the assigned tests using nextest with 4 threads.
       - name: Run slow tests
-        # Number threads is set to 2 because the runner does not have enough memory for more.
         run: |
           NIGHTLY_TESTS=$(cat .github/workflows/nightly_tests_list.txt)
-          cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 2 --partition hash:"${{ matrix.test }}"/8
+          cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose \
+            --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 4 "$FILTER"
         shell: bash
         env:
           PILCOM: ${{ github.workspace }}/pilcom/
