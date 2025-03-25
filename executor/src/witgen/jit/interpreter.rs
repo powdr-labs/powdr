@@ -911,7 +911,10 @@ namespace arith(8);
         interpreter_gt.test(&[3, 0, 2, 4, 0], &[3, 0, 2, 4, 0]);
         interpreter_gt.test(&[5, 2, 0, 4, 0], &[5, 2, 0, 4, 0]);
 
-        // TODO this should actually panic.
+        // This should actually panic, but it does not, because
+        // A_h is assigned a value outside of the two-byte range.
+        // We do not detect this because lookups that only result
+        // in range constraints are removed.
         interpreter_gt.test(&[1, 2, 3, 4, 0], &[1, 2, 3, 4, 0]);
     }
 
