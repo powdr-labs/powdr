@@ -27,6 +27,7 @@ pub struct IdentityQueue<'ast, 'queue, T: FieldElement> {
     items: &'queue Vec<QueueItem<'ast, T>>,
     in_queue: Vec<bool>,
     queue: VecDeque<usize>,
+    prover_function_queue: VecDeque<usize>,
     occurrences: Rc<HashMap<Variable, Vec<usize>>>,
 }
 
@@ -53,7 +54,12 @@ impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
         Self {
             items,
             in_queue: vec![true; items.len()],
-            queue: (0..items.len()).into_iter().collect(),
+            queue: (0..items.len())
+                .filter(|id| !is_prover_function(&items[*id]))
+                .collect(),
+            prover_function_queue: (0..items.len())
+                .filter(|id| is_prover_function(&items[*id]))
+                .collect(),
             occurrences,
         }
     }
@@ -61,11 +67,18 @@ impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
     /// Returns the next identity to be processed and its row and
     /// removes it from the queue.
     pub fn next(&mut self) -> Option<&'queue QueueItem<'ast, T>> {
-        self.queue.pop_front().map(|id| {
-            self.in_queue[id] = false;
-            // TODO can we return a reference?
-            &self.items[id]
-        })
+        self.queue
+            .pop_front()
+            .map(|id| {
+                self.in_queue[id] = false;
+                &self.items[id]
+            })
+            .or_else(|| {
+                self.prover_function_queue.pop_front().map(|id| {
+                    self.in_queue[id] = false;
+                    &self.items[id]
+                })
+            })
     }
 
     pub fn variables_updated(&mut self, variables: impl IntoIterator<Item = Variable>) {
@@ -79,10 +92,19 @@ impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
         {
             if !self.in_queue[*id] {
                 self.in_queue[*id] = true;
-                self.queue.push_back(id.clone());
+                if is_prover_function(&self.items[*id]) {
+                    &mut self.prover_function_queue
+                } else {
+                    &mut self.queue
+                }
+                .push_back(id.clone());
             }
         }
     }
+}
+
+fn is_prover_function<T: FieldElement>(item: &QueueItem<'_, T>) -> bool {
+    matches!(item, QueueItem::ProverFunction(..))
 }
 
 #[derive(Clone)]
