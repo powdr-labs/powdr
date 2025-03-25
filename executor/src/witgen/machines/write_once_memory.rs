@@ -163,8 +163,8 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             .map(|v| v.constant_value())
             .collect::<Vec<_>>();
 
-        log::trace!("Key: {:?}", key);
-        log::trace!("Value: {:?}", value);
+        log::trace!("Key: {key:?}");
+        log::trace!("Value: {value:?}");
 
         let Some(key) = key else {
             return Ok(EvalValue::incomplete(

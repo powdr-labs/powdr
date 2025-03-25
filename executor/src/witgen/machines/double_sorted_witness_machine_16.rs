@@ -469,10 +469,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         let value2_expr = &arguments[5];
 
         log::trace!(
-            "Query addr=0x{:x}, step={step}, write: {is_write}, value: ({} {})",
-            addr_int,
-            value1_expr,
-            value2_expr
+            "Query addr=0x{addr_int:x}, step={step}, write: {is_write}, value: ({value1_expr} {value2_expr})"
         );
 
         // TODO this does not check any of the failure modes
@@ -490,9 +487,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
             let value_int: u64 = value.into();
 
             log::trace!(
-                "Memory write: addr=0x{:x}, step={step}, value=0x{:x}",
-                addr_int,
-                value_int
+                "Memory write: addr=0x{addr_int:x}, step={step}, value=0x{value_int:x}"
             );
             self.data.insert(addr_int, value_int);
             self.trace
@@ -509,9 +504,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         } else {
             let value = self.data.entry(addr_int).or_default();
             log::trace!(
-                "Memory read: addr=0x{:x}, step={step}, value=0x{:x}",
-                addr_int,
-                value
+                "Memory read: addr=0x{addr_int:x}, step={step}, value=0x{value:x}"
             );
 
             let value_int: u64 = *value;

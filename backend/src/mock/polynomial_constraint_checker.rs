@@ -121,7 +121,7 @@ impl<F: fmt::Display> MachineResult<'_, F> {
 
         for error in self.errors.iter().take(MAX_ERRORS) {
             let error_indented = error.to_string().replace("\n", "\n  ");
-            log::error!("  Error: {}", error_indented);
+            log::error!("  Error: {error_indented}");
         }
         if num_errors > MAX_ERRORS {
             log::error!("  ... and {} more errors", num_errors - MAX_ERRORS);
