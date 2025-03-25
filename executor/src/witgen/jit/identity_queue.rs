@@ -26,7 +26,8 @@ use super::{prover_function_heuristics::ProverFunction, variable::Variable};
 pub struct IdentityQueue<'ast, 'queue, T: FieldElement> {
     items: &'queue Vec<QueueItem<'ast, T>>,
     in_queue: Vec<bool>,
-    queue: VecDeque<usize>,
+    identity_queue: VecDeque<usize>,
+    machine_call_queue: BTreeSet<(&'queue QueueItem<'ast, T>, usize)>,
     prover_function_queue: VecDeque<usize>,
     occurrences: Rc<HashMap<Variable, Vec<usize>>>,
 }
@@ -36,7 +37,6 @@ impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
         fixed_data: &'ast FixedData<'ast, T>,
         items: &'queue Vec<QueueItem<'ast, T>>,
     ) -> Self {
-        println!("Queue of {} items", items.len());
         let mut references = ReferencesComputer::new(fixed_data);
         let occurrences = Rc::new(
             items
@@ -54,8 +54,11 @@ impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
         Self {
             items,
             in_queue: vec![true; items.len()],
-            queue: (0..items.len())
-                .filter(|id| !is_prover_function(&items[*id]))
+            identity_queue: (0..items.len())
+                .filter(|id| is_polynomial_identity_or_assignment(&items[*id]))
+                .collect(),
+            machine_call_queue: (0..items.len())
+                .filter_map(|id| is_submachine_call(&items[id]).then_some((&items[id], id)))
                 .collect(),
             prover_function_queue: (0..items.len())
                 .filter(|id| is_prover_function(&items[*id]))
@@ -67,11 +70,17 @@ impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
     /// Returns the next identity to be processed and its row and
     /// removes it from the queue.
     pub fn next(&mut self) -> Option<&'queue QueueItem<'ast, T>> {
-        self.queue
+        self.identity_queue
             .pop_front()
             .map(|id| {
                 self.in_queue[id] = false;
                 &self.items[id]
+            })
+            .or_else(|| {
+                self.machine_call_queue.pop_first().map(|(identity, id)| {
+                    self.in_queue[id] = false;
+                    identity
+                })
             })
             .or_else(|| {
                 self.prover_function_queue.pop_front().map(|id| {
@@ -92,15 +101,32 @@ impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
         {
             if !self.in_queue[*id] {
                 self.in_queue[*id] = true;
-                if is_prover_function(&self.items[*id]) {
-                    &mut self.prover_function_queue
+                if is_polynomial_identity_or_assignment(&self.items[*id]) {
+                    self.identity_queue.push_back(*id);
+                } else if is_submachine_call(&self.items[*id]) {
+                    self.machine_call_queue.insert((&self.items[*id], *id));
                 } else {
-                    &mut self.queue
+                    assert!(is_prover_function(&self.items[*id]));
+                    self.prover_function_queue.push_back(*id);
                 }
-                .push_back(id.clone());
             }
         }
     }
+}
+
+fn is_polynomial_identity_or_assignment<T: FieldElement>(item: &QueueItem<'_, T>) -> bool {
+    match item {
+        QueueItem::Identity(Identity::Polynomial(..), _) => true,
+        QueueItem::Identity(Identity::BusSend(..), _) => false,
+        QueueItem::Identity(Identity::Connect(..), _) => unreachable!(),
+        QueueItem::VariableAssignment(..) => true,
+        QueueItem::ConstantAssignment(..) => true,
+        QueueItem::ProverFunction(..) => false,
+    }
+}
+
+fn is_submachine_call<T: FieldElement>(item: &QueueItem<'_, T>) -> bool {
+    matches!(item, QueueItem::Identity(Identity::BusSend(..), _))
 }
 
 fn is_prover_function<T: FieldElement>(item: &QueueItem<'_, T>) -> bool {

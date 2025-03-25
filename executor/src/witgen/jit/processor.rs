@@ -290,7 +290,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     assignment.row_offset,
                 ),
                 QueueItem::ProverFunction(prover_function, row_offset) => {
-                    witgen.process_prover_function(&prover_function, *row_offset)
+                    witgen.process_prover_function(prover_function, *row_offset)
                 }
             }?;
             identity_queue.variables_updated(updated_vars);
