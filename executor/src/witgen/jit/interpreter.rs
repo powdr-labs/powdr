@@ -104,8 +104,8 @@ struct IndexedProverFunctionCall {
 
 impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
     pub fn new(
-        known_inputs: &'_ [Variable],
-        effects: &'_ [Effect<T, Variable>],
+        known_inputs: &[Variable],
+        effects: &[Effect<T, Variable>],
         prover_functions: Vec<ProverFunction<'a, T>>,
     ) -> Self {
         let mut actions = vec![];
