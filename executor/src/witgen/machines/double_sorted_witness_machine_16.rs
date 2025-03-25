@@ -486,9 +486,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
 
             let value_int: u64 = value.into();
 
-            log::trace!(
-                "Memory write: addr=0x{addr_int:x}, step={step}, value=0x{value_int:x}"
-            );
+            log::trace!("Memory write: addr=0x{addr_int:x}, step={step}, value=0x{value_int:x}");
             self.data.insert(addr_int, value_int);
             self.trace
                 .insert(
@@ -503,9 +501,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
                 .is_none()
         } else {
             let value = self.data.entry(addr_int).or_default();
-            log::trace!(
-                "Memory read: addr=0x{addr_int:x}, step={step}, value=0x{value:x}"
-            );
+            log::trace!("Memory read: addr=0x{addr_int:x}, step={step}, value=0x{value:x}");
 
             let value_int: u64 = *value;
             let value_low = value_int & 0xffff;
