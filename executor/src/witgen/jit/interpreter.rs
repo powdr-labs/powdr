@@ -673,9 +673,12 @@ mod test {
     use std::fs::read_to_string;
 
     use super::*;
-    use crate::witgen::data_structures::{
-        finalizable_data::{CompactData, CompactDataRef},
-        mutable_state::MutableState,
+    use crate::witgen::{
+        data_structures::{
+            finalizable_data::{CompactData, CompactDataRef},
+            mutable_state::MutableState,
+        },
+        jit::effect::format_code,
     };
     use crate::witgen::{
         global_constraints,
@@ -747,6 +750,8 @@ mod test {
             let (result, _prover_functions) = processor
                 .generate_code(&mutable_state, bus_id, &known_values, None)
                 .unwrap();
+
+            println!("Code:\n{}", format_code(&result.code));
 
             // generate and call the interpreter
             let interpreter = EffectsInterpreter::try_new(&known_inputs, &result.code).unwrap();
@@ -887,13 +892,27 @@ namespace arith(8);
         let (analyzed, fixed_col_vals) = read_pil::<BabyBearField>(&pil);
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
         let fixed_data = global_constraints::set_global_constraints(fixed_data);
+
+        // First try to compute the "gt" flag.
         let interpreter_gt =
             TestInterpreter::new(&analyzed, &fixed_data, "main_add_sub", 4, 1, &|_| {
                 Err("Query not implemented".to_string())
             });
+        interpreter_gt.test(&[1, 2, 3, 4, 0], &[1, 2, 3, 4, 1]);
+        interpreter_gt.test(&[3, 0, 2, 4, 0], &[3, 0, 2, 4, 0]);
+        interpreter_gt.test(&[5, 2, 0, 4, 0], &[5, 2, 0, 4, 0]);
+
+        // Then check that it also works if the result is already provided.
+        let interpreter_gt =
+            TestInterpreter::new(&analyzed, &fixed_data, "main_add_sub", 5, 0, &|_| {
+                Err("Query not implemented".to_string())
+            });
+        interpreter_gt.test(&[1, 2, 3, 4, 1], &[1, 2, 3, 4, 1]);
+        interpreter_gt.test(&[3, 0, 2, 4, 0], &[3, 0, 2, 4, 0]);
+        interpreter_gt.test(&[5, 2, 0, 4, 0], &[5, 2, 0, 4, 0]);
+
+        // TODO this should actually panic.
         interpreter_gt.test(&[1, 2, 3, 4, 0], &[1, 2, 3, 4, 0]);
-        interpreter_gt.test(&[3, 2, 3, 4, 0], &[3, 2, 3, 4, 0]);
-        interpreter_gt.test(&[5, 2, 3, 4, 0], &[5, 2, 3, 4, 1]);
     }
 
     #[test]
