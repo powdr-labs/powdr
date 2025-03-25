@@ -42,9 +42,6 @@ jobs:
     - name: Save date of cache build
       run: date -R -u > target/cache-build-date.txt
 
-    # It seems that in an attempt to be more compatible with GitHub, WarpBuild removed
-    # the ability to overwrite an old cache and they longer charge for cache storage.
-    # But they still allow deleting caches, so we can just delete it before saving.
     - name: Delete the old cache
       uses: WarpBuilds/cache@v1
       with:
