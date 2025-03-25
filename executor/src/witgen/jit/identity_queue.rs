@@ -116,12 +116,11 @@ impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
 
 fn is_polynomial_identity_or_assignment<T: FieldElement>(item: &QueueItem<'_, T>) -> bool {
     match item {
-        QueueItem::Identity(Identity::Polynomial(..), _) => true,
-        QueueItem::Identity(Identity::BusSend(..), _) => false,
+        QueueItem::Identity(Identity::Polynomial(..), _)
+        | QueueItem::VariableAssignment(..)
+        | QueueItem::ConstantAssignment(..) => true,
+        QueueItem::Identity(Identity::BusSend(..), _) | QueueItem::ProverFunction(..) => false,
         QueueItem::Identity(Identity::Connect(..), _) => unreachable!(),
-        QueueItem::VariableAssignment(..) => true,
-        QueueItem::ConstantAssignment(..) => true,
-        QueueItem::ProverFunction(..) => false,
     }
 }
 
