@@ -461,9 +461,7 @@ impl<T: FieldElement> DoubleSortedWitnesses32<'_, T> {
                 LookupCell::Output(_) => return Ok(false),
             };
 
-            log::trace!(
-                "Memory write: addr={addr:x}, step={step}, value={value:x}"
-            );
+            log::trace!("Memory write: addr={addr:x}, step={step}, value={value:x}");
             self.data.write(*addr, *value);
             self.trace
                 .insert(
@@ -478,9 +476,7 @@ impl<T: FieldElement> DoubleSortedWitnesses32<'_, T> {
                 .is_none()
         } else {
             let value = self.data.read(*addr);
-            log::trace!(
-                "Memory read: addr={addr:x}, step={step}, value={value:x}"
-            );
+            log::trace!("Memory read: addr={addr:x}, step={step}, value={value:x}");
             match value_ptr {
                 LookupCell::Input(v) => {
                     if *v != &value {
