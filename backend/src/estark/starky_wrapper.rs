@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -192,6 +193,7 @@ impl Backend<GoldilocksField> for EStark {
     fn prove(
         &self,
         witness: &[(String, Vec<GoldilocksField>)],
+        _publics: &BTreeMap<String, Option<GoldilocksField>>,
         prev_proof: Option<crate::Proof>,
         // TODO: Implement challenges
         _witgen_callback: WitgenCallback<GoldilocksField>,

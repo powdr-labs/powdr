@@ -9,7 +9,7 @@
 
 use core::{alloc::Layout, arch::asm, slice};
 
-use powdr_riscv_syscalls::Syscall;
+use powdr_syscalls::Syscall;
 
 use crate::io::write_slice;
 
