@@ -15,7 +15,7 @@ pub fn generate_values<T: FieldElement>(
     let compiled_pil = match powdr_jit_compiler::compile(analyzed, &symbols_to_compile(analyzed)) {
         Err(err) => {
             // TODO this should be changed back to Error after the introduction of the ToCol trait.
-            log::debug!("Failed to compile some constant columns: {}", err);
+            log::debug!("Failed to compile some constant columns: {err}");
             return HashMap::new();
         }
         Ok(fun_map) => fun_map,

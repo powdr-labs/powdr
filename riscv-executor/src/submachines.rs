@@ -135,8 +135,7 @@ impl<F: FieldElement, M: SubmachineKind> SubmachineImpl<F, M> {
         let cols = M::cols();
         if witness_cols.is_empty() {
             log::info!(
-                "namespace {} has no witness columns in the optimized pil",
-                namespace
+                "namespace {namespace} has no witness columns in the optimized pil"
             );
         }
         SubmachineImpl {

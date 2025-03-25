@@ -190,7 +190,7 @@ fn load_elf(file_name: &Path) -> ElfProgram {
                     log::info!("No DWARF debug information found.")
                 }
                 err => {
-                    log::warn!("Error reading DWARF debug information: {}", err)
+                    log::warn!("Error reading DWARF debug information: {err}")
                 }
             }
             log::info!("Falling back to using ELF symbol table.");
