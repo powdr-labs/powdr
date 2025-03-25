@@ -49,10 +49,7 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
                     };
                     log::log!(
                         log_level,
-                        "  Generated values for {} ({}) in {:.2}s",
-                        name,
-                        range,
-                        time
+                        "  Generated values for {name} ({range}) in {time:.2}s"
                     );
                     column
                 });

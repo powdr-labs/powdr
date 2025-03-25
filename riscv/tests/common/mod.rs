@@ -106,7 +106,7 @@ pub fn compile_riscv_asm_file(asm_file: &Path, options: CompilerOptions, use_pie
 
     // Assemble with GNU
     let assembler = find_assembler();
-    log::info!("Using assembler: {}", assembler);
+    log::info!("Using assembler: {assembler}");
     Command::new(assembler)
         .arg("-march=rv32imac")
         .arg("-mabi=ilp32")
