@@ -100,6 +100,8 @@ jobs:
           path: |
             ~/pilcom/node_modules
           key: ${{ runner.os }}-pilcom-node-modules
+      - name: Clean stale rust installation
+        run: rm -rf ~/.cargo/bin/rust-analyzer ~/.cargo/bin/rustfmt ~/.cargo/bin/cargo-fmt
       - name: Install Rust toolchain nightly-2024-12-17 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
       - name: Install nightly-2024-08-01
@@ -137,6 +139,8 @@ jobs:
             target/
             Cargo.lock
           key: ${{ runner.os }}-cargo-pr-tests
+      - name: Clean stale rust installation
+        run: rm -rf ~/.cargo/bin/rust-analyzer ~/.cargo/bin/rustfmt ~/.cargo/bin/cargo-fmt
       - name: Install Rust toolchain nightly-2024-12-17 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
       - name: Install nightly
@@ -173,6 +177,8 @@ jobs:
           path: |
             ~/pilcom/node_modules
           key: ${{ runner.os }}-pilcom-node-modules
+      - name: Clean stale rust installation
+        run: rm -rf ~/.cargo/bin/rust-analyzer ~/.cargo/bin/rustfmt ~/.cargo/bin/cargo-fmt
       - name: Install Rust toolchain nightly-2024-12-17(with clippy and rustfmt)
         run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
       - name: Install nightly-2024-08-01
@@ -223,6 +229,8 @@ jobs:
           path: |
             ~/pilcom/node_modules
           key: ${{ runner.os }}-pilcom-node-modules
+      - name: Clean stale rust installation
+        run: rm -rf ~/.cargo/bin/rust-analyzer ~/.cargo/bin/rustfmt ~/.cargo/bin/cargo-fmt
       - name: Install Rust toolchain nightly-2024-12-17 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
       - name: Install test dependencies
@@ -268,6 +276,8 @@ jobs:
             target/
             Cargo.lock
           key: ${{ runner.os }}-cargo-pr-tests
+      - name: Clean stale rust installation
+        run: rm -rf ~/.cargo/bin/rust-analyzer ~/.cargo/bin/rustfmt ~/.cargo/bin/cargo-fmt
       - name: Install Rust toolchain nightly-2024-12-17 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
       - name: Install Rust toolchain 1.81

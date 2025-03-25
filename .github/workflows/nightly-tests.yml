@@ -65,6 +65,8 @@ jobs:
         path: |
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
+    - name: Clean stale rust installation
+      run: rm -rf ~/.cargo/bin/rust-analyzer ~/.cargo/bin/rustfmt ~/.cargo/bin/cargo-fmt
     - name: Install Rust toolchain 1.81
       run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu
     - name: Install nightly
