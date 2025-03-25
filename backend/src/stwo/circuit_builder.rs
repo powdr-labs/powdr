@@ -20,6 +20,7 @@ use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_i
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 pub const STAGE0_TRACE_IDX: usize = 1;
 pub const STAGE1_TRACE_IDX: usize = 2;
+pub const MLE_TRACE_IDX: usize = 3;
 
 pub type PowdrComponent = FrameworkComponent<PowdrEval>;
 
