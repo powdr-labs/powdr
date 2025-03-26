@@ -189,6 +189,20 @@ macro_rules! powdr_field {
             }
         }
 
+        impl SubAssign for LargeIntImpl {
+            fn sub_assign(&mut self, other: Self) {
+                self.value.sub_with_borrow(&other.value);
+            }
+        }
+
+        impl Sub for LargeIntImpl {
+            type Output = Self;
+            fn sub(mut self, other: Self) -> Self {
+                self.sub_assign(other);
+                self
+            }
+        }
+
         impl Zero for LargeIntImpl {
             #[inline]
             fn zero() -> Self {
@@ -212,6 +226,9 @@ macro_rules! powdr_field {
         }
 
         impl LargeInt for LargeIntImpl {
+            const MAX: Self = LargeIntImpl::new(<$ark_type as PrimeField>::BigInt::new(
+                [u64::MAX; <$ark_type as PrimeField>::BigInt::NUM_LIMBS],
+            ));
             const NUM_BITS: usize = <$ark_type as PrimeField>::BigInt::NUM_LIMBS * 64;
             #[inline]
             fn to_arbitrary_integer(self) -> BigUint {

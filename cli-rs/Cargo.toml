@@ -20,11 +20,11 @@ powdr.workspace = true
 
 clap = { version = "^4.3", features = ["derive"] }
 env_logger = "0.10.0"
-log = "0.4.17"
+log = "0.4.27"
 strum = { version = "0.24.1", features = ["derive"] }
 clap-markdown = "0.1.3"
 
 [[bin]]
 name = "powdr-rs"
 path = "src/main.rs"
-bench = false # See https://github.com/bheisler/criterion.rs/issues/458
+bench = false        # See https://github.com/bheisler/criterion.rs/issues/458

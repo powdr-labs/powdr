@@ -50,14 +50,14 @@ jobs:
         run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu
       - name: Set cargo to perform shallow clones
         run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+      - name: Format
+        run: cargo fmt --all --check --verbose
       - name: Cargo check with Rust 1.81 (default features)
         run: cargo +1.81-x86_64-unknown-linux-gnu check --all-targets
       - name: Lint no default features
         run: cargo clippy --all --all-targets --no-default-features --profile pr-tests --verbose -- -D warnings
       - name: Lint all features
         run: cargo clippy --all --all-targets --all-features --profile pr-tests --verbose -- -D warnings
-      - name: Format
-        run: cargo fmt --all --check --verbose
       - name: Build
         run: cargo build --all-targets --all --all-features --profile pr-tests --verbose
       ###############################################################################
@@ -186,6 +186,15 @@ jobs:
           - "6"
           - "7"
           - "8"
+          - "9"
+          - "10"
+          - "11"
+          - "12"
+          - "13"
+          - "14"
+          - "15"
+          - "16"
+          - "17"
     needs: build
     runs-on: ubuntu-24.04
 
@@ -211,7 +220,7 @@ jobs:
       - name: Run slow tests
         run: |
           NIGHTLY_TESTS=$(cat .github/workflows/nightly_tests_list.txt)
-          cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --partition hash:"${{ matrix.test }}"/8
+          cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --partition hash:"${{ matrix.test }}"/17
         shell: bash
         env:
           POWDR_STD: ${{ github.workspace }}/std/

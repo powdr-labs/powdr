@@ -1,6 +1,10 @@
-use super::effect::{Assertion, BranchCondition, Effect};
+use super::effect::{
+    Assertion, BitDecomposition, BitDecompositionComponent, BranchCondition, Effect,
+    ProverFunctionCall,
+};
 
-use super::symbolic_expression::{BinaryOperator, BitOperator, SymbolicExpression, UnaryOperator};
+use super::prover_function_heuristics::{ProverFunction, ProverFunctionComputation};
+use super::symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator};
 use super::variable::{Cell, Variable};
 use crate::witgen::data_structures::finalizable_data::CompactDataRef;
 use crate::witgen::data_structures::mutable_state::MutableState;
@@ -9,15 +13,18 @@ use crate::witgen::{FixedData, QueryCallback};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
+use powdr_pil_analyzer::evaluator::{self, Definitions, Value};
 
 use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashMap};
+use std::sync::Arc;
 
 /// Interpreter for instructions compiled from witgen effects.
-pub struct EffectsInterpreter<T: FieldElement> {
+pub struct EffectsInterpreter<'a, T: FieldElement> {
     var_count: usize,
     actions: Vec<InterpreterAction<T>>,
+    prover_functions: Vec<ProverFunction<'a, T>>,
 }
 
 /// Witgen effects compiled into instructions for a stack machine.
@@ -28,9 +35,19 @@ enum InterpreterAction<T: FieldElement> {
     ReadParam(usize, usize),
     ReadFixedColumn(usize, Cell),
     AssignExpression(usize, RPNExpression<T, usize>),
+    BitDecompose(
+        /// Evaluates to the value to be decomposed.
+        RPNExpression<T, usize>,
+        /// The components, sorted by their exponent.
+        Vec<IndexedBitDecompositionComponent<T>>,
+        /// If true, there is at least one negative component.
+        /// Pre-computed for performance reasons.
+        bool,
+    ),
     WriteCell(usize, Cell),
     WriteParam(usize, usize),
     MachineCall(T, Vec<MachineCallArgumentIdx>),
+    ProverFunctionCall(IndexedProverFunctionCall),
     Assertion(RPNExpression<T, usize>, RPNExpression<T, usize>, bool),
     Branch(
         BranchTest<T>,
@@ -80,6 +97,35 @@ impl<T: FieldElement> BranchTest<T> {
     }
 }
 
+/// Version of `effect::BitDecompositionComponent` using indices instead of variables.
+#[derive(Debug)]
+pub struct IndexedBitDecompositionComponent<T: FieldElement> {
+    pub variable: usize,
+    pub is_negative: bool,
+    pub exponent: u64,
+    pub bit_mask: T::Integer,
+}
+
+impl<T: FieldElement> IndexedBitDecompositionComponent<T> {
+    fn from(
+        components: &BitDecompositionComponent<T, Variable>,
+        var_mapper: &mut VariableMapper,
+    ) -> Self {
+        let BitDecompositionComponent {
+            variable,
+            is_negative,
+            exponent,
+            bit_mask,
+        } = components.clone();
+        Self {
+            variable: var_mapper.map_var(&variable),
+            is_negative,
+            exponent,
+            bit_mask,
+        }
+    }
+}
+
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 enum MachineCallArgumentIdx {
     /// var index of the evaluated known argument expression
@@ -88,8 +134,21 @@ enum MachineCallArgumentIdx {
     Unknown(usize),
 }
 
-impl<T: FieldElement> EffectsInterpreter<T> {
-    pub fn new(known_inputs: &[Variable], effects: &[Effect<T, Variable>]) -> Self {
+/// Version of ``effect::ProverFunctionCall`` with variables replaced by their indices.
+#[derive(Debug)]
+struct IndexedProverFunctionCall {
+    pub targets: Vec<usize>,
+    pub function_index: usize,
+    pub row_offset: i32,
+    pub inputs: Vec<usize>,
+}
+
+impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
+    pub fn new(
+        known_inputs: &[Variable],
+        effects: &[Effect<T, Variable>],
+        prover_functions: Vec<ProverFunction<'a, T>>,
+    ) -> Self {
         let mut actions = vec![];
         let mut var_mapper = VariableMapper::new();
 
@@ -101,16 +160,17 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         let ret = Self {
             var_count: var_mapper.var_count(),
             actions,
+            prover_functions,
         };
         assert!(actions_are_valid(&ret.actions, BTreeSet::new()));
         ret
     }
 
     /// Returns an iterator of actions to load all accessed fixed column values into variables.
-    fn load_fixed_column_values<'a>(
-        var_mapper: &'a mut VariableMapper,
-        effects: &'a [Effect<T, Variable>],
-    ) -> impl Iterator<Item = InterpreterAction<T>> + 'a {
+    fn load_fixed_column_values<'b>(
+        var_mapper: &'b mut VariableMapper,
+        effects: &'b [Effect<T, Variable>],
+    ) -> impl Iterator<Item = InterpreterAction<T>> + 'b {
         effects
             .iter()
             .flat_map(|e| e.referenced_variables())
@@ -126,10 +186,10 @@ impl<T: FieldElement> EffectsInterpreter<T> {
     }
 
     /// Returns an iterator of actions to load all known inputs into variables.
-    fn load_known_inputs<'a>(
-        var_mapper: &'a mut VariableMapper,
-        known_inputs: &'a [Variable],
-    ) -> impl Iterator<Item = InterpreterAction<T>> + 'a {
+    fn load_known_inputs<'b>(
+        var_mapper: &'b mut VariableMapper,
+        known_inputs: &'b [Variable],
+    ) -> impl Iterator<Item = InterpreterAction<T>> + 'b {
         known_inputs.iter().map(|var| match var {
             Variable::WitnessCell(c) => {
                 let idx = var_mapper.map_var(var);
@@ -146,65 +206,85 @@ impl<T: FieldElement> EffectsInterpreter<T> {
     }
 
     /// Returns an iterator of actions equivalent to the effects.
-    fn process_effects<'a>(
-        var_mapper: &'a mut VariableMapper,
-        effects: &'a [Effect<T, Variable>],
-    ) -> impl Iterator<Item = InterpreterAction<T>> + 'a {
-        effects.iter().map(|effect| {
-            match effect {
-                Effect::Assignment(var, e) => {
-                    let idx = var_mapper.map_var(var);
-                    InterpreterAction::AssignExpression(idx, var_mapper.map_expr_to_rpn(e))
-                }
-                Effect::RangeConstraint(..) => {
-                    unreachable!("Final code should not contain pure range constraints.")
-                }
-                Effect::Assertion(Assertion {
-                    lhs,
-                    rhs,
-                    expected_equal,
-                }) => InterpreterAction::Assertion(
-                    var_mapper.map_expr_to_rpn(lhs),
-                    var_mapper.map_expr_to_rpn(rhs),
-                    *expected_equal,
-                ),
-                Effect::MachineCall(id, known_inputs, arguments) => {
-                    let arguments = known_inputs
-                        .iter()
-                        .zip(arguments)
-                        .map(|(is_input, var)| {
-                            if is_input {
-                                MachineCallArgumentIdx::Known(var_mapper.map_var(var))
-                            } else {
-                                MachineCallArgumentIdx::Unknown(var_mapper.map_var(var))
-                            }
-                        })
-                        .collect();
-                    InterpreterAction::MachineCall(*id, arguments)
-                }
-                Effect::ProverFunctionCall(..) => {
-                    // TODO We cannot compile them here, but we should be able to use the PIL evaluator.
-                    unimplemented!("Prover function calls are not supported in the interpreter yet")
-                }
-                Effect::Branch(condition, if_branch, else_branch) => {
-                    let if_actions = Self::process_effects(var_mapper, if_branch).collect();
-                    let else_actions = Self::process_effects(var_mapper, else_branch).collect();
-                    let test = BranchTest::new(var_mapper, condition);
-                    InterpreterAction::Branch(test, if_actions, else_actions)
-                }
+    fn process_effects<'b>(
+        var_mapper: &'b mut VariableMapper,
+        effects: &'b [Effect<T, Variable>],
+    ) -> impl Iterator<Item = InterpreterAction<T>> + 'b {
+        effects.iter().map(|effect| match effect {
+            Effect::Assignment(var, e) => {
+                let idx = var_mapper.map_var(var);
+                InterpreterAction::AssignExpression(idx, var_mapper.map_expr_to_rpn(e))
+            }
+            Effect::BitDecomposition(BitDecomposition { value, components }) => {
+                let value = var_mapper.map_expr_to_rpn(value);
+                let components = components
+                    .iter()
+                    // Sorting ascending by exponents important for correctness.
+                    .sorted_by_key(|c| c.exponent)
+                    .map(|c| IndexedBitDecompositionComponent::from(c, var_mapper))
+                    .collect_vec();
+                let have_negative = components.iter().any(|c| c.is_negative);
+                InterpreterAction::BitDecompose(value, components, have_negative)
+            }
+            Effect::RangeConstraint(..) => {
+                unreachable!("Final code should not contain pure range constraints.")
+            }
+            Effect::Assertion(Assertion {
+                lhs,
+                rhs,
+                expected_equal,
+            }) => InterpreterAction::Assertion(
+                var_mapper.map_expr_to_rpn(lhs),
+                var_mapper.map_expr_to_rpn(rhs),
+                *expected_equal,
+            ),
+            Effect::MachineCall(id, known_inputs, arguments) => {
+                let arguments = known_inputs
+                    .iter()
+                    .zip(arguments)
+                    .map(|(is_input, var)| {
+                        if is_input {
+                            MachineCallArgumentIdx::Known(var_mapper.map_var(var))
+                        } else {
+                            MachineCallArgumentIdx::Unknown(var_mapper.map_var(var))
+                        }
+                    })
+                    .collect();
+                InterpreterAction::MachineCall(*id, arguments)
+            }
+            Effect::ProverFunctionCall(ProverFunctionCall {
+                targets,
+                function_index,
+                row_offset,
+                inputs,
+            }) => {
+                let targets = targets.iter().map(|v| var_mapper.map_var(v)).collect();
+                let inputs = inputs.iter().map(|v| var_mapper.map_var(v)).collect();
+                InterpreterAction::ProverFunctionCall(IndexedProverFunctionCall {
+                    targets,
+                    function_index: *function_index,
+                    row_offset: *row_offset,
+                    inputs,
+                })
+            }
+            Effect::Branch(condition, if_branch, else_branch) => {
+                let if_actions = Self::process_effects(var_mapper, if_branch).collect();
+                let else_actions = Self::process_effects(var_mapper, else_branch).collect();
+                let test = BranchTest::new(var_mapper, condition);
+                InterpreterAction::Branch(test, if_actions, else_actions)
             }
         })
     }
 
     /// Returns an iterator of actions to write all written variables to the data.
-    fn write_data<'a>(
-        var_mapper: &'a mut VariableMapper,
-        effects: &'a [Effect<T, Variable>],
-    ) -> impl Iterator<Item = InterpreterAction<T>> + 'a {
+    fn write_data<'b>(
+        var_mapper: &'b mut VariableMapper,
+        effects: &'b [Effect<T, Variable>],
+    ) -> impl Iterator<Item = InterpreterAction<T>> + 'b {
         effects
             .iter()
             .flat_map(Effect::written_vars)
-            .filter_map(|(var, _mutable)| {
+            .filter_map(|var| {
                 match var {
                     Variable::WitnessCell(cell) => {
                         let idx = var_mapper.get_var(var).unwrap();
@@ -254,6 +334,10 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                         let val = e.evaluate(&mut eval_stack, &vars[..]);
                         vars[*idx] = val;
                     }
+                    InterpreterAction::BitDecompose(value, components, have_negative) => {
+                        let value = value.evaluate(&mut eval_stack, &vars[..]);
+                        perform_bit_decomposition(&mut vars, components, *have_negative, value);
+                    }
                     InterpreterAction::ReadCell(idx, c) => {
                         vars[*idx] = data
                             .data
@@ -298,6 +382,14 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                             .collect::<Vec<_>>();
                         mutable_state.call_direct(*id, &mut args[..]).unwrap();
                     }
+                    InterpreterAction::ProverFunctionCall(call) => {
+                        let inputs = call.inputs.iter().map(|i| vars[*i]).collect::<Vec<_>>();
+                        let result =
+                            self.evaluate_prover_function(call, row_offset, inputs, fixed_data);
+                        for (idx, val) in call.targets.iter().zip_eq(result) {
+                            vars[*idx] = val;
+                        }
+                    }
                     InterpreterAction::Assertion(e1, e2, expected_equal) => {
                         let lhs_value = e1.evaluate(&mut eval_stack, &vars);
                         let rhs_value = e2.evaluate(&mut eval_stack, &vars);
@@ -324,6 +416,77 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         }
         assert!(eval_stack.is_empty());
     }
+
+    fn evaluate_prover_function(
+        &self,
+        call: &IndexedProverFunctionCall,
+        row_offset: i64,
+        inputs: Vec<T>,
+        fixed_data: &FixedData<'_, T>,
+    ) -> Vec<T> {
+        let mut symbols = Definitions {
+            definitions: &fixed_data.analyzed.definitions,
+            solved_impls: &fixed_data.analyzed.solved_impls,
+        };
+        let function = &self.prover_functions[call.function_index];
+
+        match &function.computation {
+            ProverFunctionComputation::ComputeFrom(code) => {
+                // TODO use a cache for the symbols?
+                let f = evaluator::evaluate::<T>(code, &mut symbols).unwrap();
+                let f = inject_row_offset(f, call.row_offset as i64 + row_offset);
+                let result = evaluator::evaluate_function_call(
+                    f,
+                    vec![Arc::new(Value::Array(
+                        inputs
+                            .into_iter()
+                            .map(|v| Arc::new(Value::FieldElement(v)))
+                            .collect(),
+                    ))],
+                    &mut symbols,
+                )
+                .unwrap();
+                match result.as_ref() {
+                    Value::Array(v) if function.compute_multi => v
+                        .iter()
+                        .map(|v| match v.as_ref() {
+                            Value::FieldElement(v) => *v,
+                            _ => unreachable!(),
+                        })
+                        .collect(),
+                    Value::FieldElement(v) if !function.compute_multi => vec![*v],
+                    _ => panic!("Type error"),
+                }
+            }
+            ProverFunctionComputation::ProvideIfUnknown(code) => {
+                assert!(!function.compute_multi);
+                assert!(inputs.is_empty());
+                // TODO use a cache for the symbols?
+                let f = evaluator::evaluate::<T>(code, &mut symbols).unwrap();
+                let f = inject_row_offset(f, call.row_offset as i64 + row_offset);
+                let value = evaluator::evaluate_function_call(f, vec![], &mut symbols).unwrap();
+                match *value {
+                    Value::FieldElement(v) => vec![v],
+                    _ => unreachable!(),
+                }
+            }
+            ProverFunctionComputation::HandleQueryInputOutput(_branches) => todo!(),
+        }
+    }
+}
+
+/// Inject the row offset as an environment variable into the closure.
+fn inject_row_offset<T: FieldElement>(f: Arc<Value<'_, T>>, row_offset: i64) -> Arc<Value<'_, T>> {
+    let Value::Closure(closure) = f.as_ref() else {
+        panic!("Expected closure.");
+    };
+    let mut environment = closure.environment.clone();
+    environment.push(Arc::new(Value::Integer(row_offset.into())));
+    Arc::new(Value::Closure(evaluator::Closure {
+        lambda: closure.lambda,
+        environment,
+        type_args: closure.type_args.clone(),
+    }))
 }
 
 /// Check if an action is valid: it doesn't overwrite a variable and doesn't read it before it's been written to
@@ -353,6 +516,40 @@ fn actions_are_valid<T: FieldElement>(
     true
 }
 
+fn perform_bit_decomposition<T: FieldElement>(
+    variables: &mut [T],
+    components: &[IndexedBitDecompositionComponent<T>],
+    have_negative: bool,
+    mut value: T,
+) {
+    if have_negative {
+        for c in components {
+            let mut component = if c.is_negative { -value } else { value }.to_integer();
+            if component > (T::modulus() - 1.into()) >> 1 {
+                // Convert a signed finite field element into two's complement.
+                // a regular subtraction would underflow, so we do this.
+                // We add the difference between negative numbers in the field
+                // and negative numbers in two's complement.
+                component += T::Integer::MAX - T::modulus() + 1.into();
+            };
+            component &= c.bit_mask;
+            variables[c.variable] = T::from(component >> (c.exponent as usize));
+            if c.is_negative {
+                value += T::from(component);
+            } else {
+                value -= T::from(component);
+            }
+        }
+    } else {
+        for c in components {
+            let component = value.to_integer() & c.bit_mask;
+            variables[c.variable] = T::from(component >> (c.exponent as usize));
+            value -= T::from(component);
+        }
+    }
+    assert_eq!(value, 0.into());
+}
+
 impl<T: FieldElement> InterpreterAction<T> {
     /// variable indexes written by the action
     fn writes(&self) -> BTreeSet<usize> {
@@ -363,11 +560,17 @@ impl<T: FieldElement> InterpreterAction<T> {
             | InterpreterAction::AssignExpression(idx, _) => {
                 set.insert(*idx);
             }
+            InterpreterAction::BitDecompose(_, components, _) => {
+                set.extend(components.iter().map(|c| c.variable));
+            }
             InterpreterAction::MachineCall(_, params) => params.iter().for_each(|p| {
                 if let MachineCallArgumentIdx::Unknown(v) = p {
                     set.insert(*v);
                 }
             }),
+            InterpreterAction::ProverFunctionCall(call) => {
+                set.extend(call.targets.iter().copied());
+            }
             InterpreterAction::Branch(_branch_test, if_actions, else_actions) => {
                 set.extend(
                     if_actions
@@ -391,7 +594,8 @@ impl<T: FieldElement> InterpreterAction<T> {
             InterpreterAction::WriteCell(idx, _) | InterpreterAction::WriteParam(idx, _) => {
                 set.insert(*idx);
             }
-            InterpreterAction::AssignExpression(_, expr) => expr.elems.iter().for_each(|e| {
+            InterpreterAction::AssignExpression(_, expr)
+            | InterpreterAction::BitDecompose(expr, _, _) => expr.elems.iter().for_each(|e| {
                 if let RPNExpressionElem::Symbol(idx) = e {
                     set.insert(*idx);
                 }
@@ -401,6 +605,9 @@ impl<T: FieldElement> InterpreterAction<T> {
                     set.insert(*v);
                 }
             }),
+            InterpreterAction::ProverFunctionCall(call) => {
+                set.extend(call.inputs.iter().copied());
+            }
             InterpreterAction::Assertion(lhs, rhs, _) => {
                 lhs.elems.iter().for_each(|e| {
                     if let RPNExpressionElem::Symbol(idx) = e {
@@ -484,7 +691,6 @@ enum RPNExpressionElem<T: FieldElement, S> {
     Symbol(S),
     BinaryOperation(BinaryOperator),
     UnaryOperation(UnaryOperator),
-    BitOperation(BitOperator, T::Integer),
 }
 
 impl<T: FieldElement> RPNExpression<T, usize> {
@@ -511,10 +717,6 @@ impl<T: FieldElement> RPNExpression<T, usize> {
                     inner(expr, elems, var_mapper);
                     elems.push(RPNExpressionElem::UnaryOperation(op.clone()));
                 }
-                SymbolicExpression::BitOperation(expr, op, n, _) => {
-                    inner(expr, elems, var_mapper);
-                    elems.push(RPNExpressionElem::BitOperation(op.clone(), *n));
-                }
             }
         }
         let mut elems = Vec::new();
@@ -537,9 +739,6 @@ impl<T: FieldElement> RPNExpression<T, usize> {
                     BinaryOperator::Sub => left - right,
                     BinaryOperator::Mul => left * right,
                     BinaryOperator::Div => left / right,
-                    BinaryOperator::IntegerDiv => {
-                        T::from(left.to_arbitrary_integer() / right.to_arbitrary_integer())
-                    }
                 };
                 stack.push(result);
             }
@@ -547,13 +746,6 @@ impl<T: FieldElement> RPNExpression<T, usize> {
                 let inner = stack.pop().unwrap();
                 let result = match op {
                     UnaryOperator::Neg => -inner,
-                };
-                stack.push(result);
-            }
-            RPNExpressionElem::BitOperation(op, right) => {
-                let left = stack.pop().unwrap();
-                let result = match op {
-                    BitOperator::And => T::from(left.to_integer() & *right),
                 };
                 stack.push(result);
             }
@@ -582,28 +774,23 @@ mod test {
     use std::fs::read_to_string;
 
     use super::*;
-    use crate::witgen::data_structures::{
-        finalizable_data::{CompactData, CompactDataRef},
-        mutable_state::MutableState,
+    use crate::witgen::{
+        data_structures::{
+            finalizable_data::{CompactData, CompactDataRef},
+            mutable_state::MutableState,
+        },
+        global_constraints,
+        jit::{block_machine_processor::BlockMachineProcessor, test_util::read_pil},
+        machines::{machine_extractor::MachineExtractor, KnownMachine, Machine},
     };
-    use crate::witgen::global_constraints;
-    use crate::witgen::jit::block_machine_processor::BlockMachineProcessor;
-    use crate::witgen::jit::effect::Effect;
-    use crate::witgen::jit::test_util::read_pil;
-    use crate::witgen::jit::variable::Variable;
-    use crate::witgen::machines::{
-        machine_extractor::MachineExtractor, KnownMachine, LookupCell, Machine,
-    };
-    use crate::witgen::FixedData;
 
     use powdr_ast::analyzed::Analyzed;
-
-    use pretty_assertions::assert_eq;
-    use test_log::test;
+    use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 
     use bit_vec::BitVec;
     use itertools::Itertools;
-    use powdr_number::{FieldElement, GoldilocksField};
+    use pretty_assertions::assert_eq;
+    use test_log::test;
 
     struct TestInterpreter<'a, T: FieldElement, Q: QueryCallback<T>> {
         analyzed: &'a Analyzed<T>,
@@ -612,7 +799,7 @@ mod test {
         fixed_data: &'a FixedData<'a, T>,
         mutable_state: MutableState<'a, T, Q>,
         block_size: usize,
-        interpreter: EffectsInterpreter<T>,
+        interpreter: EffectsInterpreter<'a, T>,
         code: Vec<Effect<T, Variable>>,
     }
 
@@ -657,12 +844,13 @@ mod test {
             );
             let known_inputs = (0..num_inputs).map(Variable::Param).collect::<Vec<_>>();
 
-            let (result, _prover_functions) = processor
+            let (result, prover_functions) = processor
                 .generate_code(&mutable_state, bus_id, &known_values, None)
                 .unwrap();
 
             // generate and call the interpreter
-            let interpreter = EffectsInterpreter::new(&known_inputs, &result.code);
+            let interpreter =
+                EffectsInterpreter::new(&known_inputs, &result.code, prover_functions);
 
             Self {
                 analyzed,
@@ -681,6 +869,10 @@ mod test {
         }
 
         pub fn test(&self, params: &[u64], expected_out: &[u64]) {
+            self.test_on_row(0, params, expected_out);
+        }
+
+        pub fn test_on_row(&self, row: usize, params: &[u64], expected_out: &[u64]) {
             assert_eq!(params.len(), self.num_inputs + self.num_outputs);
             assert_eq!(expected_out.len(), self.num_inputs + self.num_outputs);
             let mut params = params.iter().map(|v| T::from(*v)).collect::<Vec<_>>();
@@ -691,9 +883,11 @@ mod test {
                 .flat_map(|p| p.0.array_elements().map(|e| e.1))
                 .collect_vec();
             let mut data = CompactData::new(poly_ids.iter());
-            data.append_new_rows(self.block_size);
+            while data.len() < row + self.block_size {
+                data.append_new_rows(self.block_size);
+            }
 
-            let data_ref = CompactDataRef::new(&mut data, 0);
+            let data_ref = CompactDataRef::new(&mut data, row);
             let mut param_lookups = params
                 .iter_mut()
                 .enumerate()
@@ -791,6 +985,80 @@ namespace arith(8);
                 8742572140681234676u64,
                 14345658006221440202u64,
             ],
+        );
+    }
+
+    #[test]
+    fn prover_functions() {
+        let pil = r"
+namespace std::convert;
+    let fe = [];
+namespace std::prover;
+    let provide_if_unknown: expr, int, (-> fe) -> () = query |column, row, f| ();
+    let compute_from: expr, int, expr[], (fe[] -> fe) -> () = query |dest_col, row, input_cols, f| ();
+    let compute_from_multi: expr[], int, expr[], (fe[] -> fe[]) -> () = query |dest_cols, row, input_cols, f| ();
+
+namespace main(128);
+    col witness a, b, add, mul, sub, res;
+    [a, b, add, mul, sub, res] is [arith::a, arith::b, arith::c, arith::d, arith::e, arith::f];
+
+namespace arith(8);
+    let a;
+    let b;
+    let c;
+    let d;
+    let e;
+    let f;
+
+    query |i| std::prover::provide_if_unknown(a, i, || std::convert::fe(i));
+    query |i| std::prover::provide_if_unknown(b, i, || 7);
+    query |i| std::prover::compute_from(c, i, [a, b], |values| values[0] + values[1] + std::convert::fe(i));
+    query |i| std::prover::compute_from_multi([d, e, f], i, [a, b], |values| [values[0] * values[1], values[0] - values[1], 17]);
+    ";
+        let (analyzed, fixed_col_vals) = read_pil::<GoldilocksField>(pil);
+        let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
+        let fixed_data = global_constraints::set_global_constraints(fixed_data);
+        let interpreter = TestInterpreter::new(&analyzed, &fixed_data, "arith", 0, 6, &|_| {
+            Err("Query not implemented".to_string())
+        });
+
+        let modulus = GoldilocksField::modulus().try_into_u64().unwrap();
+        interpreter.test_on_row(0, &[0, 0, 0, 0, 0, 0], &[0, 7, 7, 0, modulus - 7, 17]);
+        interpreter.test_on_row(1, &[0, 0, 0, 0, 0, 0], &[1, 7, 9, 7, modulus - 7 + 1, 17]);
+        interpreter.test_on_row(8, &[0, 0, 0, 0, 0, 0], &[8, 7, 23, 56, 1, 17]);
+    }
+
+    #[test]
+    fn bit_decomposition_goldilocks() {
+        let mut variables = [GoldilocksField::default(); 2];
+        let components = vec![
+            IndexedBitDecompositionComponent {
+                variable: 0,
+                is_negative: true,
+                exponent: 0,
+                bit_mask: From::from(0xffu32),
+            },
+            IndexedBitDecompositionComponent {
+                variable: 1,
+                is_negative: false,
+                exponent: 8,
+                bit_mask: From::from(0xff00u32),
+            },
+        ];
+        perform_bit_decomposition(&mut variables, &components, true, 0x1ff.into());
+        assert_eq!(
+            &variables,
+            &[GoldilocksField::from(1), GoldilocksField::from(2)]
+        );
+        perform_bit_decomposition(
+            &mut variables,
+            &components,
+            true,
+            -(GoldilocksField::from(7)),
+        );
+        assert_eq!(
+            &variables,
+            &[GoldilocksField::from(7), GoldilocksField::from(0)]
         );
     }
 }

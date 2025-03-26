@@ -41,7 +41,7 @@ impl<'a, F: FieldElement> Machine<'a, F> {
 
         for stage in 1..pil.stage_count() {
             log::debug!("Generating stage-{stage} witness for machine {machine_name}");
-            witness =
+            (witness, _) =
                 witgen_callback.next_stage_witness(pil, &witness, challenges.clone(), stage as u8);
         }
 
