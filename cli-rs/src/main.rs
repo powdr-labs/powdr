@@ -344,7 +344,7 @@ fn run_command(command: Commands) {
     };
     if let Err(errors) = result {
         for error in errors {
-            eprintln!("{}", error);
+            eprintln!("{error}");
         }
         std::process::exit(1);
     }

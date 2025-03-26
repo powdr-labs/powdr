@@ -449,7 +449,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         log::trace!("Left values of lookup:");
         if log::log_enabled!(log::Level::Trace) {
             for l in arguments {
-                log::trace!("  {}", l);
+                log::trace!("  {l}");
             }
         }
 

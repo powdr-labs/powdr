@@ -3,7 +3,7 @@ use core::convert::TryInto;
 use core::mem::MaybeUninit;
 
 use crate::goldilocks::{Goldilocks, OpaqueGoldilocks};
-use powdr_riscv_syscalls::Syscall;
+use powdr_syscalls::Syscall;
 
 pub fn native_hash(data: &mut [u64; 12]) -> &[u64; 4] {
     unsafe {

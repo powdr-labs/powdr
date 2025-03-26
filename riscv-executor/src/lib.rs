@@ -1166,7 +1166,7 @@ mod builder {
                 .iter()
                 .filter(|col| !cols.contains_key(*col));
 
-            log::debug!("RISCV executor missing columns: {:?}", missing_cols);
+            log::debug!("RISCV executor missing columns: {missing_cols:?}");
 
             Execution {
                 trace_len: self.trace.len,
