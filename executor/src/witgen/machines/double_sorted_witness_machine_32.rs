@@ -71,8 +71,8 @@ pub struct DoubleSortedWitnesses32<'a, T: FieldElement> {
     diff_columns_base: Option<u64>,
     /// Whether this machine has a `m_is_bootloader_write` column.
     has_bootloader_write_column: bool,
-    /// All selector IDs that are used on the right-hand side connecting identities.
-    selector_ids: BTreeMap<u64, PolyID>,
+    /// All selector IDs that are used on the right-hand side connecting identities, by bus ID.
+    selector_ids: BTreeMap<T, PolyID>,
     latest_step: BTreeMap<T, T>,
 }
 
@@ -109,18 +109,22 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
             return None;
         }
 
-        if parts.connections.is_empty() {
+        if parts.bus_receives.is_empty() {
             return None;
         }
 
-        if !parts.connections.values().all(|i| i.is_permutation()) {
+        if !parts
+            .bus_receives
+            .values()
+            .all(|r| !r.has_arbitrary_multiplicity())
+        {
             return None;
         }
 
         let selector_ids = parts
-            .connections
+            .bus_receives
             .iter()
-            .map(|(id, i)| try_to_simple_poly(&i.right.selector).map(|p| (*id, p.poly_id)))
+            .map(|(r, i)| try_to_simple_poly(&i.selected_payload.selector).map(|p| (*r, p.poly_id)))
             .collect::<Option<BTreeMap<_, _>>>()?;
 
         let namespace = namespaces.drain().next().unwrap().into();
@@ -195,11 +199,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
     fn can_process_call_fully(
         &mut self,
         _can_process: impl CanProcessCall<T>,
-        identity_id: u64,
+        bus_id: T,
         known_arguments: &BitVec,
         range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
-        assert!(self.parts.connections.contains_key(&identity_id));
+        assert!(self.parts.bus_receives.contains_key(&bus_id));
         assert_eq!(known_arguments.len(), 4);
         assert_eq!(range_constraints.len(), 4);
 
@@ -225,13 +229,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
-        self.process_plookup_internal(identity_id, values)
+        self.process_plookup_internal(bus_id, values)
     }
 
-    fn identity_ids(&self) -> Vec<u64> {
+    fn bus_ids(&self) -> Vec<T> {
         self.selector_ids.keys().cloned().collect()
     }
 
@@ -242,14 +246,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        let connection = self.parts.connections[&identity_id];
-        let outer_query = OuterQuery::new(arguments, range_constraints, connection);
+        let receives = self.parts.bus_receives[&bus_id];
+        let outer_query = OuterQuery::new(arguments, range_constraints, receives);
         let mut data = CallerData::from(&outer_query);
-        if self.process_lookup_direct(mutable_state, identity_id, &mut data.as_lookup_cells())? {
+        if self.process_lookup_direct(mutable_state, bus_id, &mut data.as_lookup_cells())? {
             Ok(EvalResult::from(data)?.report_side_effect())
         } else {
             // One of the required arguments was not set, find out which:
@@ -412,7 +416,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
 impl<T: FieldElement> DoubleSortedWitnesses32<'_, T> {
     fn process_plookup_internal(
         &mut self,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'_, T>],
     ) -> Result<bool, EvalError<T>> {
         // We blindly assume the lookup is of the form
@@ -436,7 +440,7 @@ impl<T: FieldElement> DoubleSortedWitnesses32<'_, T> {
         };
         let value_ptr = &mut values[3];
 
-        let selector_id = *self.selector_ids.get(&identity_id).unwrap();
+        let selector_id = *self.selector_ids.get(&bus_id).unwrap();
 
         let is_normal_write = operation_id == &T::from(OPERATION_ID_WRITE);
         let is_bootloader_write = operation_id == &T::from(OPERATION_ID_BOOTLOADER_WRITE);
@@ -457,11 +461,7 @@ impl<T: FieldElement> DoubleSortedWitnesses32<'_, T> {
                 LookupCell::Output(_) => return Ok(false),
             };
 
-            log::trace!(
-                "Memory write: addr={:x}, step={step}, value={:x}",
-                addr,
-                value
-            );
+            log::trace!("Memory write: addr={addr:x}, step={step}, value={value:x}");
             self.data.write(*addr, *value);
             self.trace
                 .insert(
@@ -476,11 +476,7 @@ impl<T: FieldElement> DoubleSortedWitnesses32<'_, T> {
                 .is_none()
         } else {
             let value = self.data.read(*addr);
-            log::trace!(
-                "Memory read: addr={:x}, step={step}, value={:x}",
-                addr,
-                value
-            );
+            log::trace!("Memory read: addr={addr:x}, step={step}, value={value:x}");
             match value_ptr {
                 LookupCell::Input(v) => {
                     if *v != &value {
@@ -509,8 +505,8 @@ impl<T: FieldElement> DoubleSortedWitnesses32<'_, T> {
 
         if step < latest_step {
             panic!(
-                "Expected the step for addr {addr} to be at least equal to the previous step, but {step} < {latest_step}!\nFrom identity: {}",
-                self.parts.connections[&identity_id]
+                "Expected the step for addr {addr} to be at least equal to the previous step, but {step} < {latest_step}!\nFrom receive: {}",
+                self.parts.bus_receives[&bus_id]
             );
         }
         self.latest_step.insert(*addr, *step);

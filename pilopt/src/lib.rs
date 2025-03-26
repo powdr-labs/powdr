@@ -71,10 +71,6 @@ fn hash_pil_state<T: Hash>(pil_file: &Analyzed<T>) -> u64 {
                     unreachable!("Missing definition for {:?}", d);
                 }
             }
-            StatementIdentifier::PublicDeclaration(pd) => {
-                pd.hash(&mut hasher);
-                pil_file.public_declarations[pd].hash(&mut hasher);
-            }
             StatementIdentifier::ProofItem(pi) => {
                 pi.hash(&mut hasher);
                 pil_file.identities[*pi].hash(&mut hasher);
@@ -209,9 +205,8 @@ fn collect_required_symbols<'a, T: FieldElement>(
     let mut required_names: HashSet<SymbolReference<'a>> = Default::default();
     required_names.extend(
         pil_file
-            .public_declarations
-            .values()
-            .map(|p| SymbolReference::from(&p.polynomial.name)),
+            .public_declarations_in_source_order()
+            .map(|(name, _)| SymbolReference::from(name)),
     );
     for fun in &pil_file.prover_functions {
         for e in fun.all_children() {
@@ -275,7 +270,8 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
         | FunctionValueDefinition::TypeDeclaration(_)
         | FunctionValueDefinition::TypeConstructor(_, _)
         | FunctionValueDefinition::TraitDeclaration(_)
-        | FunctionValueDefinition::TraitFunction(_, _) => None,
+        | FunctionValueDefinition::TraitFunction(_, _)
+        | FunctionValueDefinition::PublicDeclaration(_) => None,
     }
 }
 
@@ -585,9 +581,8 @@ fn replace_linear_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     // Also, we filter out columns that are boolean constrained.
 
     let in_publics: HashSet<_> = pil_file
-        .public_declarations
-        .values()
-        .map(|pubd| pubd.polynomial.name.clone())
+        .public_declarations_in_source_order()
+        .map(|(_, pubd)| pubd.referenced_poly().name.clone())
         .collect();
 
     // pattern match identities looking for `w * (1 - w) = 0` and `(1 - w) * w = 0` constraints
@@ -708,9 +703,8 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .collect::<Vec<((String, PolyID), _)>>();
 
     let in_publics: HashSet<_> = pil_file
-        .public_declarations
-        .values()
-        .map(|pubd| pubd.polynomial.name.clone())
+        .public_declarations_in_source_order()
+        .map(|(_, pubd)| pubd.referenced_poly().name.clone())
         .collect();
     // We cannot remove arrays or array elements, so filter them out.
     // Also, we filter out columns that are used in public declarations.

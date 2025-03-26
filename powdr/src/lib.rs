@@ -160,7 +160,11 @@ impl Session {
         let pil_file = pil_file_path(&asm_name);
 
         let generate_artifacts = if let Ok(existing_pil) = fs::read_to_string(&pil_file) {
-            let computed_pil = self.pipeline.compute_optimized_pil().unwrap().to_string();
+            let computed_pil = self
+                .pipeline
+                .compute_backend_tuned_pil()
+                .unwrap()
+                .to_string();
             if existing_pil != computed_pil {
                 log::info!("Compiled PIL changed, invalidating artifacts...");
                 true
@@ -228,7 +232,6 @@ impl Session {
         let pubs: Vec<u32> = self
             .pipeline
             .publics()
-            .unwrap()
             .iter()
             .map(|(_, v)| v.unwrap().to_integer().try_into_u32().unwrap())
             .collect();
@@ -334,7 +337,7 @@ pub fn prove(pipeline: &mut Pipeline<GoldilocksField>) {
         riscv::continuations::rust_continuations_dry_run(&mut pipeline.clone(), None);
 
     let duration = start.elapsed();
-    log::info!("Trace executor took: {:?}", duration);
+    log::info!("Trace executor took: {duration:?}");
 
     // TODO how do we skip PIL compilation and fixed column generation if not needed?
     // We can check whether they exist and not generate it, but what if the asm changed?
@@ -366,5 +369,5 @@ pub fn prove(pipeline: &mut Pipeline<GoldilocksField>) {
     let start = Instant::now();
     riscv::continuations::rust_continuations(pipeline, generate_proof, bootloader_inputs).unwrap();
     let duration = start.elapsed();
-    log::info!("Proof generation for all chunks took: {:?}", duration);
+    log::info!("Proof generation for all chunks took: {duration:?}");
 }

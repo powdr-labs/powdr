@@ -18,107 +18,115 @@ use crate::witgen::{
 /// This struct uses interior mutability for accessing the machines.
 pub struct MutableState<'a, T: FieldElement, Q: QueryCallback<T>> {
     machines: Vec<RefCell<KnownMachine<'a, T>>>,
-    identity_to_machine_index: BTreeMap<u64, usize>,
+    bus_to_machine_index: BTreeMap<T, usize>,
     query_callback: &'a Q,
 }
 
 impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
     pub fn new(machines: impl Iterator<Item = KnownMachine<'a, T>>, query_callback: &'a Q) -> Self {
         let machines: Vec<_> = machines.map(RefCell::new).collect();
-        let identity_to_machine_index = machines
+        let bus_to_machine_index = machines
             .iter()
             .enumerate()
-            .flat_map(|(index, m)| {
-                m.borrow()
-                    .identity_ids()
-                    .into_iter()
-                    .map(move |id| (id, index))
-            })
+            .flat_map(|(index, m)| m.borrow().bus_ids().into_iter().map(move |id| (id, index)))
             .collect();
         Self {
             machines,
-            identity_to_machine_index,
+            bus_to_machine_index,
             query_callback,
         }
     }
 
     /// Runs the first machine (unless there are no machines) end returns the generated columns.
     /// The first machine might call other machines, which is handled automatically.
-    pub fn run(self) -> HashMap<String, Vec<T>> {
+    pub fn run(self) -> (HashMap<String, Vec<T>>, BTreeMap<String, T>) {
         if let Some(first_machine) = self.machines.first() {
             first_machine.try_borrow_mut().unwrap().run_timed(&self);
         }
-        self.take_witness_col_values()
+        self.take_witness_col_and_public_values()
     }
 
     pub fn can_process_call_fully(
         &self,
-        identity_id: u64,
+        bus_id: T,
         known_inputs: &BitVec,
         range_constraints: Vec<RangeConstraint<T>>,
     ) -> (bool, Vec<RangeConstraint<T>>) {
-        let mut machine = self.responsible_machine(identity_id).ok().unwrap();
-        machine.can_process_call_fully(self, identity_id, known_inputs, range_constraints)
+        let mut machine = self.responsible_machine(bus_id).ok().unwrap();
+        machine.can_process_call_fully(self, bus_id, known_inputs, range_constraints)
     }
 
     /// Call the machine responsible for the right-hand-side of an identity given its ID,
     /// the evaluated arguments and the caller's range constraints.
     pub fn call(
         &self,
-        identity_id: u64,
+        bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        self.responsible_machine(identity_id)?
-            .process_plookup_timed(self, identity_id, arguments, range_constraints)
+        self.responsible_machine(bus_id)?.process_plookup_timed(
+            self,
+            bus_id,
+            arguments,
+            range_constraints,
+        )
     }
 
     /// Call the machine responsible for the right-hand-side of an identity given its ID,
     /// use the direct interface.
     pub fn call_direct(
         &self,
-        identity_id: u64,
+        bus_id: T,
         values: &mut [LookupCell<'_, T>],
     ) -> Result<bool, EvalError<T>> {
-        self.responsible_machine(identity_id)?
-            .process_lookup_direct_timed(self, identity_id, values)
+        self.responsible_machine(bus_id)?
+            .process_lookup_direct_timed(self, bus_id, values)
     }
 
-    fn responsible_machine(
-        &self,
-        identity_id: u64,
-    ) -> Result<RefMut<KnownMachine<'a, T>>, EvalError<T>> {
+    fn responsible_machine(&self, bus_id: T) -> Result<RefMut<KnownMachine<'a, T>>, EvalError<T>> {
         let machine_index = *self
-            .identity_to_machine_index
-            .get(&identity_id)
-            .unwrap_or_else(|| panic!("No executor machine matched identity ID: {identity_id}"));
+            .bus_to_machine_index
+            .get(&bus_id)
+            .unwrap_or_else(|| panic!("No executor machine matched identity ID: {bus_id}"));
         self.machines[machine_index].try_borrow_mut().map_err(|_| {
             EvalError::RecursiveMachineCalls(format!(
-                "Detected when processing identity with ID {identity_id}"
+                "Detected when processing machine call with bus ID {bus_id}"
             ))
         })
     }
 
     /// Extracts the witness column values from the machines.
-    fn take_witness_col_values(self) -> HashMap<String, Vec<T>> {
-        // We keep the already processed machines mutably borrowed so that
-        // "later" machines do not try to create new rows in already processed
-        // machines.
-        let mut processed = vec![];
-        self.machines
+    fn take_witness_col_and_public_values(self) -> (HashMap<String, Vec<T>>, BTreeMap<String, T>) {
+        let witness_columns = {
+            // We keep the already processed machines mutably borrowed so that
+            // "later" machines do not try to create new rows in already processed
+            // machines.
+            let mut processed = vec![];
+            self.machines
+                .iter()
+                .flat_map(|machine| {
+                    let mut machine = machine.try_borrow_mut().unwrap_or_else(|_| {
+                        panic!("Recursive machine dependencies while finishing machines.");
+                    });
+                    let columns = machine.take_witness_col_values(&self).into_iter();
+                    processed.push(machine);
+                    columns
+                })
+                .collect()
+        };
+
+        let public_values = self
+            .machines
             .iter()
             .flat_map(|machine| {
-                let mut machine = machine
-                    .try_borrow_mut()
-                    .map_err(|_| {
-                        panic!("Recursive machine dependencies while finishing machines.");
-                    })
-                    .unwrap();
-                let columns = machine.take_witness_col_values(&self).into_iter();
-                processed.push(machine);
-                columns
+                let mut machine = machine.try_borrow_mut().unwrap_or_else(|_| {
+                    panic!("Recursive machine dependencies while finishing machines.");
+                });
+                machine.take_public_values().into_iter()
             })
-            .collect()
+            .collect();
+
+        (witness_columns, public_values)
     }
 
     pub fn query_callback(&self) -> &Q {

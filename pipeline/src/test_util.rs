@@ -12,16 +12,11 @@ use std::sync::Arc;
 
 use crate::pipeline::Pipeline;
 
-#[cfg(feature = "estark-starky")]
-use crate::verify::verify;
-#[cfg(feature = "estark-starky")]
-use std::fs;
-
 pub fn resolve_test_file(file_name: &str) -> PathBuf {
     PathBuf::from(format!("../test_data/{file_name}"))
 }
 
-/// Makes a new pipeline for the given file. All steps until witness generation are
+/// Makes a new pipeline for the given file. All steps until optimized pil are
 /// already computed, so that the test can branch off from there, without having to re-compute
 /// these steps.
 pub fn make_simple_prepared_pipeline<T: FieldElement>(
@@ -36,11 +31,11 @@ pub fn make_simple_prepared_pipeline<T: FieldElement>(
         .with_tmp_output()
         .with_linker_params(linker_params)
         .from_file(resolve_test_file(file_name));
-    pipeline.compute_witness().unwrap();
+    pipeline.compute_optimized_pil().unwrap();
     pipeline
 }
 
-/// Makes a new pipeline for the given file and inputs. All steps until witness generation are
+/// Makes a new pipeline for the given file and inputs. All steps until optimized pil are
 /// already computed, so that the test can branch off from there, without having to re-compute
 /// these steps.
 pub fn make_prepared_pipeline<T: FieldElement>(
@@ -59,11 +54,11 @@ pub fn make_prepared_pipeline<T: FieldElement>(
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs)
         .add_external_witness_values(external_witness_values);
-    pipeline.compute_witness().unwrap();
+    pipeline.compute_optimized_pil().unwrap();
     pipeline
 }
 
-/// Tests witness generation, mock prover, pilcom and plonky3 with
+/// Tests witness generation, mock prover, and plonky3 with
 /// Goldilocks, BabyBear and KoalaBear.
 pub fn regular_test_all_fields(file_name: &str, inputs: &[i32]) {
     regular_test_gl(file_name, inputs);
@@ -75,7 +70,7 @@ pub fn regular_test_small_field(file_name: &str, inputs: &[i32]) {
     regular_test_kb(file_name, inputs);
 }
 
-/// Tests witness generation, mock prover, pilcom and plonky3 with BabyBear.
+/// Tests witness generation, mock prover, and plonky3 with BabyBear.
 pub fn regular_test_bb(file_name: &str, inputs: &[i32]) {
     let inputs_bb = inputs.iter().map(|x| BabyBearField::from(*x)).collect();
     // LinkerMode::Native because the bus is not implemented for small fields
@@ -84,7 +79,7 @@ pub fn regular_test_bb(file_name: &str, inputs: &[i32]) {
     test_plonky3_pipeline(pipeline_bb);
 }
 
-/// Tests witness generation, mock prover, pilcom and plonky3 with BabyBear and KoalaBear.
+/// Tests witness generation, mock prover, and plonky3 with BabyBear and KoalaBear.
 pub fn regular_test_kb(file_name: &str, inputs: &[i32]) {
     let inputs_kb = inputs.iter().map(|x| KoalaBearField::from(*x)).collect();
     // LinkerMode::Native because the bus is not implemented for small fields
@@ -93,7 +88,7 @@ pub fn regular_test_kb(file_name: &str, inputs: &[i32]) {
     test_plonky3_pipeline(pipeline_kb);
 }
 
-/// Tests witness generation, mock prover, pilcom and plonky3 with Goldilocks.
+/// Tests witness generation, mock prover, and plonky3 with Goldilocks.
 pub fn regular_test_gl(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs
         .iter()
@@ -103,7 +98,6 @@ pub fn regular_test_gl(file_name: &str, inputs: &[i32]) {
     let pipeline_gl_native =
         make_prepared_pipeline(file_name, inputs_gl.clone(), vec![], LinkerMode::Native);
     test_mock_backend(pipeline_gl_native.clone());
-    run_pilcom_with_backend_variant(pipeline_gl_native, BackendVariant::Composite).unwrap();
 
     let pipeline_gl_bus =
         make_prepared_pipeline(file_name, inputs_gl.clone(), vec![], LinkerMode::Bus);
@@ -111,62 +105,12 @@ pub fn regular_test_gl(file_name: &str, inputs: &[i32]) {
     test_plonky3_pipeline(pipeline_gl_bus);
 }
 
-pub fn test_pilcom(pipeline: Pipeline<GoldilocksField>) {
-    run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic).unwrap();
-    run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
-}
-
-pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Arc<Analyzed<T>> {
+pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Analyzed<T> {
     Pipeline::default()
         .from_asm_string(contents.to_string(), None)
         .compute_optimized_pil()
         .unwrap()
-}
-
-#[cfg(not(feature = "estark-starky"))]
-pub fn run_pilcom_with_backend_variant(
-    _pipeline: Pipeline<GoldilocksField>,
-    _backend_variant: BackendVariant,
-) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(feature = "estark-starky")]
-pub fn run_pilcom_with_backend_variant(
-    pipeline: Pipeline<GoldilocksField>,
-    backend_variant: BackendVariant,
-) -> Result<(), String> {
-    use powdr_backend::BackendType;
-
-    let backend = match backend_variant {
-        BackendVariant::Monolithic => BackendType::EStarkDump,
-        BackendVariant::Composite => BackendType::EStarkDumpComposite,
-    };
-    let mut pipeline = pipeline.with_backend(backend, None);
-
-    if pipeline.output_dir().is_none() {
-        pipeline = pipeline.with_tmp_output();
-    }
-
-    pipeline.compute_proof().unwrap();
-
-    let out_dir = pipeline.output_dir().as_ref().unwrap();
-    match backend_variant {
-        BackendVariant::Composite => {
-            // traverse all subdirs of the given output dir and verify each subproof
-            for entry in fs::read_dir(out_dir).unwrap() {
-                let entry = entry.unwrap();
-                let path = entry.path();
-                // In the composite backend, the prover can choose to skip some machines,
-                // which happens if they are empty.
-                if path.is_dir() && fs::read_dir(&path).unwrap().count() > 0 {
-                    verify(&path)?;
-                }
-            }
-            Ok(())
-        }
-        BackendVariant::Monolithic => verify(out_dir),
-    }
+        .clone()
 }
 
 fn should_generate_proofs() -> bool {
@@ -225,7 +169,6 @@ pub fn gen_estark_proof_with_backend_variant(
 
     let publics: Vec<GoldilocksField> = pipeline
         .publics()
-        .unwrap()
         .iter()
         .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
@@ -295,14 +238,14 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
     let pil = pipeline.compute_optimized_pil().unwrap();
 
     // Setup
-    let output_dir = pipeline.output_dir().clone().unwrap();
-    let setup_file_path = output_dir.join("params.bin");
     let max_degree = pil
         .degree_ranges()
         .into_iter()
         .map(|range| range.max)
         .max()
         .unwrap();
+    let output_dir = pipeline.output_dir().clone().unwrap();
+    let setup_file_path = output_dir.join("params.bin");
     buffered_write_file(&setup_file_path, |writer| {
         powdr_backend::BackendType::Halo2
             .factory::<Bn254Field>()
@@ -327,7 +270,6 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
 
     let publics: Vec<Bn254Field> = pipeline
         .publics()
-        .unwrap()
         .iter()
         .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
@@ -362,15 +304,13 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
 
     let publics: Vec<T> = pipeline
         .publics()
-        .clone()
-        .unwrap()
         .iter()
         .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
 
-    if pipeline.optimized_pil().unwrap().constant_count() > 0 {
+    if pipeline.backend_tuned_pil().unwrap().constant_count() > 0 {
         // Export verification Key
         let output_dir = pipeline.output_dir().as_ref().unwrap();
         let vkey_file_path = output_dir.join("verification_key.bin");
@@ -411,15 +351,13 @@ pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
 
     let publics: Vec<T> = pipeline
         .publics()
-        .clone()
-        .unwrap()
         .iter()
         .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
 
-    if pipeline.optimized_pil().unwrap().constant_count() > 0 {
+    if pipeline.backend_tuned_pil().unwrap().constant_count() > 0 {
         // Export verification Key
         let output_dir = pipeline.output_dir().as_ref().unwrap();
         let vkey_file_path = output_dir.join("verification_key.bin");
@@ -498,34 +436,12 @@ pub fn assert_proofs_fail_for_invalid_witnesses_mock(
     assert!(Pipeline::<GoldilocksField>::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
-        .set_witness(convert_witness(witness))
         .with_backend(powdr_backend::BackendType::Mock, None)
+        .set_witness(convert_witness(witness))
         .compute_proof()
         .is_err());
 }
 
-#[cfg(feature = "estark-starky")]
-pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
-    file_name: &str,
-    witness: &[(String, Vec<u64>)],
-) {
-    let mut pipeline = Pipeline::<GoldilocksField>::default()
-        .with_tmp_output()
-        .from_file(resolve_test_file(file_name))
-        .set_witness(convert_witness(witness));
-    pipeline.compute_witness().unwrap();
-
-    assert!(run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic).is_err());
-    assert!(run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).is_err());
-}
-
-#[cfg(not(feature = "estark-starky"))]
-pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
-    _file_name: &str,
-    _witness: &[(String, Vec<u64>)],
-) {
-}
-
 #[cfg(not(feature = "estark-starky"))]
 pub fn assert_proofs_fail_for_invalid_witnesses_estark(
     _file_name: &str,
@@ -538,13 +454,11 @@ pub fn assert_proofs_fail_for_invalid_witnesses_estark(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
 ) {
-    let pipeline = Pipeline::<GoldilocksField>::default()
-        .from_file(resolve_test_file(file_name))
-        .set_witness(convert_witness(witness));
+    let pipeline = Pipeline::<GoldilocksField>::default().from_file(resolve_test_file(file_name));
 
     assert!(pipeline
-        .clone()
         .with_backend(powdr_backend::BackendType::EStarkStarky, None)
+        .set_witness(convert_witness(witness))
         .compute_proof()
         .is_err());
 }
@@ -580,7 +494,6 @@ pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
 
 pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(String, Vec<u64>)]) {
     assert_proofs_fail_for_invalid_witnesses_mock(file_name, witness);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(file_name, witness);
     assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness);
     #[cfg(feature = "halo2")]
     assert_proofs_fail_for_invalid_witnesses_halo2(file_name, witness);
@@ -630,9 +543,8 @@ pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
     let publics: Vec<Mersenne31Field> = pipeline
         .publics()
         .clone()
-        .unwrap()
-        .iter()
-        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
+        .values()
+        .map(|v| v.expect("all publics should be known since we created a proof"))
         .collect();
     pipeline.verify(&proof, &[publics]).unwrap();
 }
@@ -660,9 +572,8 @@ pub fn test_stwo_pipeline(pipeline: Pipeline<Mersenne31Field>) {
     let publics: Vec<Mersenne31Field> = pipeline
         .publics()
         .clone()
-        .unwrap()
-        .iter()
-        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
+        .values()
+        .map(|v| v.expect("all publics should be known since we created a proof"))
         .collect();
     pipeline.verify(&proof, &[publics]).unwrap();
 }

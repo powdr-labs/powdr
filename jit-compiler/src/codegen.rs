@@ -691,7 +691,7 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
             (
                 "std::field::modulus",
                 format!(
-                    "() -> ibig::IBig {{ {} }}",
+                    "(_: ()) -> ibig::IBig {{ {} }}",
                     format_unsigned_integer(&T::modulus().to_arbitrary_integer())
                 ),
             ),

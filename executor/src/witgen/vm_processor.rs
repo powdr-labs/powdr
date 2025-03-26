@@ -364,9 +364,12 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'c, T, Q> {
             .filter_map(|(index, (ident, _))| match ident {
                 Identity::BusSend(send) => send
                     .try_match_static(&self.fixed_data.bus_receives)
-                    .unwrap()
-                    .has_arbitrary_multiplicity()
-                    .then_some((index, &send.selected_payload)),
+                    // We assume that the PC lookup is static.
+                    .and_then(|receive| {
+                        receive
+                            .has_arbitrary_multiplicity()
+                            .then_some((index, &send.selected_payload))
+                    }),
                 _ => None,
             })
             .max_by_key(|(_, left)| left.expressions.len())

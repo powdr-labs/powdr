@@ -569,6 +569,8 @@ impl<'a> Definitions<'a> {
                 }))
                 .into()
             }
+        } else if matches!(symbol.kind, SymbolKind::Public()) {
+            Value::from(AlgebraicExpression::PublicReference(name)).into()
         } else {
             match value {
                 Some(FunctionValueDefinition::Expression(TypedExpression {
@@ -873,9 +875,6 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 let v = self.evaluate_reference(reference)?;
                 self.value_stack.push(v)
             }
-            Expression::PublicReference(_, name) => self
-                .value_stack
-                .push(self.symbols.lookup_public_reference(name)?),
             Expression::Number(
                 _,
                 Number {

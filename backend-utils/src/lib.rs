@@ -153,7 +153,7 @@ pub fn referenced_namespaces_algebraic_expression<F: FieldElement>(
         .all_children()
         .filter_map(|expr| match expr {
             AlgebraicExpression::Reference(reference) => Some(extract_namespace(&reference.name)),
-            AlgebraicExpression::PublicReference(_) => unimplemented!(),
+            AlgebraicExpression::PublicReference(name) => Some(extract_namespace(name)),
             AlgebraicExpression::Challenge(_)
             | AlgebraicExpression::Number(_)
             | AlgebraicExpression::BinaryOperation(_)
@@ -188,11 +188,10 @@ fn split_by_namespace<F: FieldElement>(
 
     // Publics end up in the empty namespace, but we can find the correct namespace by looking
     // at the referenced polynomial.
-    let public_to_namespace = pil
-        .public_declarations
-        .iter()
+    let _public_to_namespace = pil
+        .public_declarations_in_source_order()
         .map(|(public_name, public)| {
-            let ns = extract_namespace(&public.polynomial.name);
+            let ns = extract_namespace(&public.referenced_poly().name);
             (public_name.clone(), ns)
         })
         .collect::<BTreeMap<_, _>>();
@@ -206,9 +205,6 @@ fn split_by_namespace<F: FieldElement>(
                 current_namespace = namespace.clone();
                 // add `statement` to `namespace`
                 Some((namespace, statement))
-            }
-            StatementIdentifier::PublicDeclaration(name) => {
-                Some((public_to_namespace[name].clone(), statement))
             }
             StatementIdentifier::ProofItem(i) => {
                 let identity = &pil.identities[*i];
