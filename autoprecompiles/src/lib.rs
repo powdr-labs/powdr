@@ -374,6 +374,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
         assert_eq!(c.len(), i.len());
         assert_eq!(machine.columns().len(), machine.column_ids().len());
         //let machine = optimize_precompile(machine);
+        let machine = optimize_pc_lookup(machine);
 
         let mut bus: BTreeMap<u64, Vec<&SymbolicBusInteraction<T>>> = BTreeMap::new();
         for b in &machine.bus_interactions {
@@ -651,6 +652,46 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
     machine
 }
 
+pub fn optimize_pc_lookup<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+    println!(
+        "Before autoprecompile pc lookup optimizations, columns: {}, constraints: {}, bus_interactions: {}",
+        machine.columns().len(),
+        machine.constraints.len(),
+        machine.bus_interactions.len()
+    );
+
+    let mut first_pc = None;
+    machine.bus_interactions.retain(|bus_int| {
+        if bus_int.id == PC_LOOKUP_BUS_ID {
+            if first_pc.is_none() {
+                first_pc = Some(bus_int.clone());
+            }
+            return false;
+        }
+        true
+    });
+    let mut first_pc = first_pc.unwrap();
+    assert_eq!(first_pc.args.len(), 9);
+    first_pc.args[1] = AlgebraicExpression::Number(T::from(4351u32));
+    first_pc.args[2] = AlgebraicExpression::Number(T::from(0u32));
+    first_pc.args[3] = AlgebraicExpression::Number(T::from(0u32));
+    first_pc.args[4] = AlgebraicExpression::Number(T::from(0u32));
+    first_pc.args[5] = AlgebraicExpression::Number(T::from(0u32));
+    first_pc.args[6] = AlgebraicExpression::Number(T::from(0u32));
+    first_pc.args[7] = AlgebraicExpression::Number(T::from(0u32));
+    first_pc.args[8] = AlgebraicExpression::Number(T::from(0u32));
+
+    machine.bus_interactions.push(first_pc);
+
+    println!(
+        "After autoprecompile pc lookup optimizations, columns: {}, constraints: {}, bus_interactions: {}",
+        machine.columns().len(),
+        machine.constraints.len(),
+        machine.bus_interactions.len()
+    );
+
+    machine
+}
 pub fn generate_precompile<T: FieldElement>(
     statements: &Vec<SymbolicInstructionStatement<T>>,
     instruction_kinds: &BTreeMap<String, InstructionKind>,
