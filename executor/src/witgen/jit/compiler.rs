@@ -262,11 +262,7 @@ fn witgen_code<T: FieldElement>(
         .format("\n");
 
     let main_code = format_effects(effects);
-    let vars_known = effects
-        .iter()
-        .flat_map(Effect::written_vars)
-        .map(|(var, _)| var)
-        .collect_vec();
+    let vars_known = effects.iter().flat_map(Effect::written_vars).collect_vec();
     let store_values = vars_known
         .iter()
         .filter_map(|var| {
@@ -436,7 +432,7 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
                     .flat_map(|e| e.written_vars())
                     .sorted()
                     .dedup()
-                    .map(|(v, _)| {
+                    .map(|v| {
                         let v = variable_to_string(v);
                         format!("let mut {v} = FieldElement::default();\n")
                     })

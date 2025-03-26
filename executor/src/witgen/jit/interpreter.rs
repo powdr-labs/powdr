@@ -252,7 +252,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
         effects
             .iter()
             .flat_map(Effect::written_vars)
-            .filter_map(|(var, _mutable)| {
+            .filter_map(|var| {
                 match var {
                     Variable::WitnessCell(cell) => {
                         let idx = var_mapper.get_var(var).unwrap();

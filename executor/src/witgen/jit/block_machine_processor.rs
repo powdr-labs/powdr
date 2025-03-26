@@ -299,7 +299,7 @@ fn written_rows_per_column<T: FieldElement>(
 ) -> BTreeMap<u64, BTreeSet<i32>> {
     code.iter()
         .flat_map(|e| e.written_vars())
-        .filter_map(|(v, _)| match v {
+        .filter_map(|v| match v {
             Variable::WitnessCell(cell) => Some((cell.id, cell.row_offset)),
             _ => None,
         })
