@@ -65,6 +65,12 @@ pub enum BackendType {
     StwoComposite,
 }
 
+impl Default for BackendType {
+    fn default() -> Self {
+        BackendType::Mock
+    }
+}
+
 pub type BackendOptions = String;
 pub const DEFAULT_HALO2_OPTIONS: &str = "poseidon";
 pub const DEFAULT_HALO2_MOCK_OPTIONS: &str = "";
