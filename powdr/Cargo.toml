@@ -19,7 +19,7 @@ powdr-pipeline.workspace = true
 powdr-riscv.workspace = true
 powdr-riscv-executor.workspace = true
 
-log = "0.4.17"
+log = "0.4.27"
 
 serde = { version = "1.0", default-features = false, features = [
   "derive",

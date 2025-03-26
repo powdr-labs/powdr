@@ -115,7 +115,7 @@ pub fn reset_and_print_profile_summary() {
             );
         }
         log::debug!("  ---------------------------");
-        log::debug!("    ==> Total: {:?}", total_time);
+        log::debug!("    ==> Total: {total_time:?}");
         log::debug!("\n");
     });
 }

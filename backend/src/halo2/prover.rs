@@ -147,7 +147,7 @@ impl Halo2Prover {
         let proof = gen_proof::<_, _, TW>(&self.params, &pk, circuit, &publics)?;
 
         let duration = start.elapsed();
-        log::info!("Time taken: {:?}", duration);
+        log::info!("Time taken: {duration:?}");
 
         match self.verify_inner::<_, TR>(&vk, &self.params, &proof, &publics) {
             Ok(_) => {}
@@ -290,7 +290,7 @@ impl Halo2Prover {
             &agg_instances,
         )?;
         let duration = start.elapsed();
-        log::info!("Time taken: {:?}", duration);
+        log::info!("Time taken: {duration:?}");
 
         match self.verify_inner::<_, EvmTranscript<G1Affine, _, _, _>>(
             &vk_aggr,

@@ -105,8 +105,8 @@ struct Arguments<T: FieldElement> {
     external_witness_values: Vec<(String, Vec<T>)>,
     /// Callback for queries for witness generation.
     query_callback: Option<Arc<dyn QueryCallback<T>>>,
-    /// Backend to use for proving. If None, proving will fail.
-    backend: Option<BackendType>,
+    /// Backend to use for proving. Defaults to Mock Backend.
+    backend: BackendType,
     /// Backend options
     backend_options: BackendOptions,
     /// Linker options
@@ -231,7 +231,7 @@ where
 ///
 /// # Example
 /// ```rust
-/// use powdr_pipeline::{Pipeline, verify, BackendType, test_util::resolve_test_file};
+/// use powdr_pipeline::{Pipeline, BackendType, test_util::resolve_test_file};
 /// use std::path::PathBuf;
 /// use powdr_number::GoldilocksField;
 ///
@@ -365,19 +365,17 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
-    pub fn with_backend(mut self, backend: BackendType, options: Option<BackendOptions>) -> Self {
-        self.arguments.backend = Some(backend);
-        self.arguments.backend_options = options.unwrap_or_default();
+    pub fn with_backend_factory(mut self, backend: BackendType) -> Self {
+        self.arguments.backend = backend;
         self.artifact.backend = None;
         self
     }
 
-    pub fn with_backend_if_none(&mut self, backend: BackendType, options: Option<BackendOptions>) {
-        if self.arguments.backend.is_none() {
-            self.arguments.backend = Some(backend);
-            self.arguments.backend_options = options.unwrap_or_default();
-            self.artifact.backend = None;
-        }
+    pub fn with_backend(mut self, backend: BackendType, options: Option<BackendOptions>) -> Self {
+        self.arguments.backend = backend;
+        self.arguments.backend_options = options.unwrap_or_default();
+        self.artifact.backend = None;
+        self
     }
 
     pub fn with_setup_file(mut self, setup_file: Option<PathBuf>) -> Self {
@@ -545,7 +543,7 @@ impl<T: FieldElement> Pipeline<T> {
     /// Sets the witness to the provided value.
     pub fn set_witness(mut self, witness: Vec<(String, Vec<T>)>) -> Self {
         if self.output_dir.is_some() {
-            // Some future steps (e.g. Pilcom verification) require the witness to be persisted.
+            // Some future steps require the witness to be persisted.
             let fixed_cols = self.compute_fixed_cols().unwrap();
             self.maybe_write_witness(&fixed_cols, &witness).unwrap();
         }
@@ -574,7 +572,7 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     fn log(&self, msg: &str) {
-        log::log!(self.log_level, "{}", msg);
+        log::log!(self.log_level, "{msg}");
     }
 
     /// Returns the path to the output file if the output directory is set.
@@ -1002,7 +1000,7 @@ impl<T: FieldElement> Pipeline<T> {
 
         self.compute_optimized_pil()?;
 
-        let backend_type = self.arguments.backend.expect("no backend selected!");
+        let backend_type = self.arguments.backend;
 
         // If backend option is set, compute and cache the backend-tuned pil in artifacts and return backend-tuned pil.
         let optimized_pil = self.artifact.optimized_pil.clone().unwrap();
@@ -1146,7 +1144,7 @@ impl<T: FieldElement> Pipeline<T> {
         let pil = self.compute_backend_tuned_pil()?; // will panic if backend type is not set yet
         let fixed_cols = self.compute_fixed_cols()?;
 
-        let backend = self.arguments.backend.expect("no backend selected!");
+        let backend = self.arguments.backend;
         let factory = backend.factory::<T>();
 
         // Opens the setup file, if set.

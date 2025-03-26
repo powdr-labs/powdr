@@ -174,7 +174,7 @@ impl EStark {
 
         let duration = start.elapsed();
 
-        log::info!("Proof done in: {:?}", duration);
+        log::info!("Proof done in: {duration:?}");
 
         match self.verify_stark_gl(&starkproof) {
             Ok(_) => Ok(serde_json::to_string(&starkproof).unwrap().into_bytes()),

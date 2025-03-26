@@ -69,7 +69,7 @@ fn poseidon_bb_consts() {
     }
     println!(
         "    let C = [{}];",
-        (0..WIDTH).map(|i| format!("C_{}", i)).format(", ")
+        (0..WIDTH).map(|i| format!("C_{i}")).format(", ")
     );
 
     println!("    let M = [");
@@ -93,7 +93,7 @@ fn poseidon_bb_consts() {
     let test_vectors = test_vectors::<BabyBear, WIDTH>();
 
     for (test_num, mut test_vector) in test_vectors.into_iter().enumerate() {
-        println!("\n        // Test vector {}:\n", test_num);
+        println!("\n        // Test vector {test_num}:\n");
         for (i, val) in test_vector.iter().enumerate() {
             let val = val.as_canonical_u32();
             println!(
@@ -131,7 +131,7 @@ fn poseidon2_bb_consts() {
     println!("INTERNAL_CONSTANTS = [");
     let ic = poseidon2::internal_constants::<BabyBear>(*ROUNDS_P);
     for &elem in ic.iter() {
-        println!("    {},", elem);
+        println!("    {elem},");
     }
     println!("];");
 
@@ -174,7 +174,7 @@ fn poseidon2_bb_consts() {
     let test_vectors = test_vectors::<BabyBear, WIDTH>();
 
     for (test_num, mut test_vector) in test_vectors.into_iter().enumerate() {
-        println!("\n        // Test vector {}:\n", test_num);
+        println!("\n        // Test vector {test_num}:\n");
         for (i, val) in test_vector.iter().enumerate() {
             let val = val.as_canonical_u32();
             println!(
@@ -213,7 +213,7 @@ fn poseidon2_gl_consts() {
     println!("INTERNAL_CONSTANTS = [");
     let ic = poseidon2::internal_constants::<Goldilocks>(*ROUNDS_P);
     for &elem in ic.iter() {
-        println!("    {},", elem);
+        println!("    {elem},");
     }
     println!("];");
 
@@ -235,7 +235,7 @@ fn poseidon2_gl_consts() {
     let mut first_test_vector = test_vectors[0];
 
     for (test_num, mut test_vector) in test_vectors.into_iter().enumerate() {
-        println!("\n        // Test vector {}:\n", test_num);
+        println!("\n        // Test vector {test_num}:\n");
         for (i, val) in test_vector.iter().enumerate() {
             let val = val.as_canonical_u64();
             println!(

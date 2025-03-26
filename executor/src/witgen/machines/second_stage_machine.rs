@@ -51,7 +51,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SecondStageMachine<'a, T> {
     fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
         assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self.process(first_row, mutable_state);
+        (self.data, self.publics) = self.process(first_row, mutable_state);
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -76,6 +76,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for SecondStageMachine<'a, T> {
             .take_transposed()
             .map(|(id, (values, _))| (id, values))
             .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
+            .collect()
+    }
+
+    fn take_public_values(&mut self) -> BTreeMap<String, T> {
+        std::mem::take(&mut self.publics)
+            .into_iter()
+            .map(|(key, value)| (key.to_string(), value))
             .collect()
     }
 }
@@ -169,7 +176,7 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
         &mut self,
         first_row: Row<T>,
         mutable_state: &MutableState<'a, T, Q>,
-    ) -> FinalizableData<'a, T> {
+    ) -> (FinalizableData<'a, T>, BTreeMap<&'a str, T>) {
         log::trace!(
             "Running Second-Stage Machine with the following initial values in the first row:\n{}",
             first_row.render_values(false, &self.parts)
@@ -196,7 +203,7 @@ impl<'a, T: FieldElement> SecondStageMachine<'a, T> {
         // The processor might have detected a loop, in which case the degree has changed
         self.degree = degree;
 
-        updated_data.block
+        (updated_data.block, updated_data.publics)
     }
 
     /// At the end of the solving algorithm, we'll have computed the first row twice

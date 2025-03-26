@@ -59,8 +59,6 @@ pub fn rust_continuations<F: FieldElement, PipelineCallback, E>(
 where
     PipelineCallback: Fn(&mut Pipeline<F>) -> Result<(), E>,
 {
-    pipeline.with_backend_if_none(powdr_pipeline::BackendType::Mock, None);
-
     let bootloader_inputs = dry_run_result.bootloader_inputs;
     let num_chunks = bootloader_inputs.len();
 
@@ -151,8 +149,7 @@ fn sanity_check(main_machine: &Machine, field: KnownField) {
             .any(|i| i.name == expected_instruction)
         {
             log::error!(
-                "Main machine is missing bootloader-specific instruction: {}. Did you set `with_bootloader` to true?",
-                expected_instruction
+                "Main machine is missing bootloader-specific instruction: {expected_instruction}. Did you set `with_bootloader` to true?"
             );
             panic!();
         }
@@ -340,8 +337,6 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: &mut Pipeline<F>,
     profiler_opt: Option<ProfilerOptions>,
 ) -> DryRunResult<F> {
-    pipeline.with_backend_if_none(powdr_pipeline::BackendType::Mock, None);
-
     let field = F::known_field().unwrap();
 
     // All inputs for all chunks.
@@ -387,7 +382,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     );
 
     let full_trace_length = full_exec.trace_len;
-    log::info!("Total trace length: {}", full_trace_length);
+    log::info!("Total trace length: {full_trace_length}");
 
     let (first_real_execution_row, _) = full_exec.trace["main::pc"]
         .iter()
@@ -413,9 +408,9 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     };
 
     loop {
-        log::info!("\nRunning chunk {} for {} steps...", chunk_index, length);
+        log::info!("\nRunning chunk {chunk_index} for {length} steps...");
 
-        log::info!("Building bootloader inputs for chunk {}...", chunk_index);
+        log::info!("Building bootloader inputs for chunk {chunk_index}...");
 
         let start_idx = find_chunk_first_memory_access(&full_exec, proven_trace);
 
@@ -495,7 +490,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
         // if we find the PC, we know there was actual computation in the chunk
         let bootloader_pc = bootloader_inputs[PC_INDEX];
-        log::info!("Looking for pc = {}...", bootloader_pc);
+        log::info!("Looking for pc = {bootloader_pc}...");
         let (start, _) = chunk_exec.trace["main::pc"]
             .iter()
             .enumerate()
@@ -508,7 +503,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             "estimation of number of rows used by the bootloader was incorrect"
         );
 
-        log::info!("Bootloader used {} rows.", start);
+        log::info!("Bootloader used {start} rows.");
         log::info!(
             "  => {} / {} ({}%) of rows are used for the actual computation!",
             length - start,
@@ -630,14 +625,14 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
         log::info!("Chunk trace length: {}", chunk_exec.trace_len);
         log::info!("Validating chunk...");
-        log::info!("Bootloader used {} rows.", start);
+        log::info!("Bootloader used {start} rows.");
         log::info!(
             "  => {} / {} ({}%) of rows are used for the actual computation!",
             length - start,
             length,
             (length - start) * 100 / length
         );
-        log::info!("  => Average computation ratio: {}%", avg_computation_ratio);
+        log::info!("  => Average computation ratio: {avg_computation_ratio}%");
         for i in 0..(chunk_exec.trace_len - start) {
             for &reg in ["main::pc", "main::query_arg_1", "main::query_arg_2"].iter() {
                 let chunk_i = i + start;
@@ -672,14 +667,11 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         // Minus one, because the last row will have to be repeated in the next chunk.
         let new_rows = length - start - 1;
         proven_trace += new_rows;
-        log::info!("Proved {} rows.", new_rows);
+        log::info!("Proved {new_rows} rows.");
 
         let remaining_rows = full_trace_length - proven_trace;
         let remaining_chunks = (remaining_rows as f32 / avg_rows_per_chunk as f32).ceil() as usize;
-        log::info!(
-            "  => Estimating {} more chunks at the current ratio",
-            remaining_chunks
-        );
+        log::info!("  => Estimating {remaining_chunks} more chunks at the current ratio");
 
         chunk_index += 1;
     }
