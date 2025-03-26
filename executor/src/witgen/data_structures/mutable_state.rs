@@ -122,9 +122,7 @@ impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
                 let mut machine = machine.try_borrow_mut().unwrap_or_else(|_| {
                     panic!("Recursive machine dependencies while finishing machines.");
                 });
-                let publics = machine.take_public_values().into_iter();
-                println!("take_witness_col_and_public_values publics: {:?}", publics);
-                publics
+                machine.take_public_values().into_iter()
             })
             .collect();
 

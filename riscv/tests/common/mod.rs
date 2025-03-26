@@ -21,7 +21,6 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
     data: Option<&[(u32, S)]>,
     executor_witgen: bool,
 ) {
-    println!("verify_riscv_asm_string 0");
     let temp_dir = mktemp::Temp::new_dir().unwrap();
 
     let mut pipeline = Pipeline::default()
@@ -33,8 +32,6 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
     if let Some(data) = data {
         pipeline = pipeline.add_data_vec(data);
     }
-
-    println!("verify_riscv_asm_string 1");
 
     // Test with the fast RISCV executor.
     // TODO remove the guard once the executor is implemented for BB
@@ -48,7 +45,6 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
             None,
         );
     }
-    println!("verify_riscv_asm_string 2");
 
     // verify with PILCOM
     if T::known_field().unwrap() == KnownField::GoldilocksField {
@@ -56,28 +52,17 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
             unsafe { std::mem::transmute(pipeline.clone()) };
         run_pilcom_with_backend_variant(pipeline_gl, BackendVariant::Composite).unwrap();
     }
-    println!("verify_riscv_asm_string 3");
 
     test_plonky3_pipeline::<T>(pipeline.clone());
-
-    println!("verify_riscv_asm_string 4");
 
     // test mock backend
     pipeline.compute_proof().unwrap();
 
-    println!("verify_riscv_asm_string 5");
-
-    println!("pipeline publics 0: {:?}", pipeline.publics());
-
     // verify executor generated witness
     if executor_witgen {
-        println!("pipeline publics 0.1: {:?}", pipeline.publics());
         let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
-        println!("pipeline publics 0.2: {:?}", pipeline.publics());
         let pil = pipeline.compute_backend_tuned_pil().unwrap().clone();
-        println!("pipeline publics 0.3: {:?}", pipeline.publics());
         let fixed = pipeline.compute_fixed_cols().unwrap().clone();
-        println!("pipeline publics 0.4: {:?}", pipeline.publics());
         let execution = powdr_riscv_executor::execute_with_witness(
             &analyzed,
             &pil,
@@ -88,13 +73,9 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
             None,
             None,
         );
-        println!("pipeline publics 1: {:?}", pipeline.publics());
         pipeline.rollback_from_witness();
-        println!("pipeline publics 2: {:?}", pipeline.publics());
         let executor_trace: Vec<_> = execution.trace.into_iter().collect();
-        println!("executor_trace length 0: {:?}", executor_trace.len());
         let pipeline = pipeline.add_external_witness_values(executor_trace);
-        println!("pipeline publics 3: {:?}", pipeline.publics());
         test_mock_backend(pipeline);
     }
 }

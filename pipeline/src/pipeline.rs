@@ -1225,7 +1225,6 @@ impl<T: FieldElement> Pipeline<T> {
         let witness_and_publics = self.compute_witness()?;
         let witness = &witness_and_publics.0;
         let publics = &witness_and_publics.1;
-        println!("witness length 2: {:?}", witness.len());
         let witgen_callback = self.witgen_callback()?;
 
         // Reads the existing proof file, if set.

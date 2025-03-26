@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use itertools::{Either, Itertools};
 
 use num_traits::One;
-use powdr_ast::analyzed::{Identity, PolyID, PolynomialType};
+use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::data_structures::identity::BusReceive;
@@ -51,13 +51,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        // if !parts.identities.is_empty() {
-        //     println!("identity is not empty");
-        //     return None;
-        // }
-
         if parts.bus_receives.is_empty() {
-            println!("bus_receives is empty");
             return None;
         }
 
@@ -66,7 +60,6 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             .values()
             .all(|r| r.has_arbitrary_multiplicity())
         {
-            println!("bus_receives has no arbitrary multiplicity");
             return None;
         }
 
@@ -76,7 +69,6 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             .values()
             .any(|r| !r.selected_payload.selector.is_one())
         {
-            println!("bus_receives has no selector of 1");
             return None;
         }
 
@@ -87,7 +79,6 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             .map(|r| &r.selected_payload.expressions)
             .collect_vec();
         if !rhs_exprs.iter().all_equal() {
-            println!("rhs_exprs are not equal");
             return None;
         }
 
@@ -121,7 +112,6 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
                 .collect::<Vec<_>>();
             if key_to_index.insert(key, row).is_some() {
                 // Duplicate keys, can't be a write-once memory
-                println!("duplicate keys");
                 return None;
             }
         }
@@ -300,44 +290,38 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
             })
             .map(|(poly_id, column)| (self.fixed_data.column_name(&poly_id).to_string(), column))
             .collect();
-        println!("write once take_witness_col_values: {:?}", witness);
         witness
     }
 
     fn take_public_values(&mut self) -> BTreeMap<String, T> {
         if self.publics.is_empty() {
-            return BTreeMap::new();
+            BTreeMap::new()
         } else {
-            let public_values: Vec<T> = self
-                .value_polys
-                .iter()
-                .enumerate()
-                .flat_map(|(value_index, poly)| {
-                    let column = self.fixed_data.witness_cols[poly]
-                        .external_values
-                        .cloned()
-                        .map(|mut external_values| {
-                            // External witness values might only be provided partially.
-                            external_values.resize(self.degree as usize, T::zero());
-                            external_values
-                        })
-                        .unwrap_or_else(|| {
-                            let mut column = vec![T::zero(); self.degree as usize];
-                            for (row, values) in self.data.iter() {
-                                column[*row as usize] = values[value_index].unwrap_or_default();
-                            }
-                            column
-                        });
-                    column
-                })
-                .collect();
-            assert!(self.publics.len() == public_values.len());
-            println!("take_public_values publics: {:?}", self.publics);
-            println!("take_public_values public_values: {:?}", public_values);
+            let public_values =
+                self.value_polys
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(value_index, poly)| {
+                        self.fixed_data.witness_cols[poly]
+                            .external_values
+                            .cloned()
+                            .map(|mut external_values| {
+                                // External witness values might only be provided partially.
+                                external_values.resize(self.degree as usize, T::zero());
+                                external_values
+                            })
+                            .unwrap_or_else(|| {
+                                let mut column = vec![T::zero(); self.degree as usize];
+                                for (row, values) in self.data.iter() {
+                                    column[*row as usize] = values[value_index].unwrap_or_default();
+                                }
+                                column
+                            })
+                    });
             self.publics
                 .clone()
                 .into_iter()
-                .zip_eq(public_values.into_iter())
+                .zip_eq(public_values)
                 .collect()
         }
     }

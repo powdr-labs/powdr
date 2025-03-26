@@ -27,7 +27,6 @@ impl<'a, F: FieldElement> Machine<'a, F> {
         witgen_callback: &WitgenCallback<F>,
         challenges: &BTreeMap<u64, F>,
     ) -> Option<Self> {
-        println!("witness length: {:?}", witness.len());
         let mut witness = machine_witness_columns(witness, pil, &machine_name);
         let size = witness
             .iter()

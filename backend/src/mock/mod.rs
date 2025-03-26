@@ -80,8 +80,6 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error> {
-        println!("mockbackend prove publics: {:?}", publics);
-        println!("witness length 0: {:?}", witness.len());
         if prev_proof.is_some() {
             unimplemented!();
         }
@@ -110,7 +108,6 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             // Machine::try_new generates any second-stage witnesses, so better to do it in parallel.
             .par_iter()
             .filter_map(|(machine_name, pil)| {
-                println!("witness length 0.5: {:?}", witness.len());
                 Machine::try_new(
                     machine_name.clone(),
                     witness,
