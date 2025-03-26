@@ -713,7 +713,12 @@ impl<T: FieldElement> Pipeline<T> {
     // but give it different witnesses and generate different proofs.
     // The previous alternative to this was cloning the entire pipeline.
     pub fn rollback_from_witness(&mut self) {
-        self.artifact.witness_and_publics = None;
+        if let Some(old_arc) = &self.artifact.witness_and_publics {
+            // Clone the public part
+            let public = old_arc.1.clone();
+            // Replace with an empty witness and the preserved public
+            self.artifact.witness_and_publics = Some(Arc::new((Vec::new(), public)));
+        }
         self.artifact.proof = None;
         self.arguments.external_witness_values.clear();
     }
@@ -1052,7 +1057,10 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn compute_witness(&mut self) -> WitgenResult<T> {
         if let Some(arc) = &self.artifact.witness_and_publics {
-            return Ok(arc.clone());
+            // If exists, witness will always be non-empty, but not necessarily publics
+            if !arc.0.is_empty() {
+                return Ok(arc.clone());
+            }
         }
 
         self.host_context.clear();
@@ -1084,8 +1092,16 @@ impl<T: FieldElement> Pipeline<T> {
             .all(|name| external_witness_values.iter().any(|(e, _)| e == name))
         {
             self.log("All witness columns externally provided, skipping witness generation.");
-            self.artifact.witness_and_publics =
-                Some(Arc::new((external_witness_values, BTreeMap::new())));
+            if let Some(old_arc) = &self.artifact.witness_and_publics {
+                // Clone the public part
+                let public = old_arc.1.clone();
+                // Replace with an empty witness and the preserved public
+                self.artifact.witness_and_publics =
+                    Some(Arc::new((external_witness_values, public)));
+            } else {
+                self.artifact.witness_and_publics =
+                    Some(Arc::new((external_witness_values, BTreeMap::new())));
+            }
         } else {
             self.log("Deducing witness columns...");
             let start = Instant::now();
@@ -1209,6 +1225,7 @@ impl<T: FieldElement> Pipeline<T> {
         let witness_and_publics = self.compute_witness()?;
         let witness = &witness_and_publics.0;
         let publics = &witness_and_publics.1;
+        println!("witness length 2: {:?}", witness.len());
         let witgen_callback = self.witgen_callback()?;
 
         // Reads the existing proof file, if set.

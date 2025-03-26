@@ -31,6 +31,8 @@ impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
             .filter(|identity| matches!(identity, Identity::Polynomial(_)))
             .collect::<Vec<_>>();
 
+        println!("check publics: {:?}", self.machine.values.public_values);
+
         let errors = (0..self.machine.size)
             .into_par_iter()
             .flat_map(|row| self.check_row(row, &polynomial_identities))
@@ -60,6 +62,11 @@ impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
                     Identity::Polynomial(polynomial_identity) => polynomial_identity,
                     _ => unreachable!("Unexpected identity: {}", identity),
                 };
+                println!("check_row identity: {:?}", identity);
+                println!(
+                    "check_row publics: {:?}",
+                    evaluator.terminal_access.values.public_values
+                );
                 let result = evaluator.evaluate(&identity.expression);
 
                 if result != F::zero() {

@@ -709,6 +709,7 @@ fn verify_riscv_crate_impl<T: FieldElement, S: serde::Serialize + Send + Sync + 
 
     log::info!("Verifying {case}");
     let from_elf = powdr_riscv::elf::translate(&executable, options);
+    println!("{}", from_elf);
     verify_riscv_asm_string(
         &format!("{case}_from_elf.asm"),
         &from_elf,

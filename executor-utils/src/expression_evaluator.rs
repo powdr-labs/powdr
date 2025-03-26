@@ -33,7 +33,7 @@ pub struct OwnedTerminalValues<F> {
 
 /// A view into the trace values for a single row.
 pub struct RowValues<'a, F> {
-    values: &'a OwnedTerminalValues<F>,
+    pub values: &'a OwnedTerminalValues<F>,
     row: usize,
 }
 
@@ -130,7 +130,7 @@ impl<F: FieldElement, T: From<F>> TerminalAccess<T> for RowValues<'_, F> {
 
 /// Evaluates an algebraic expression to a value.
 pub struct ExpressionEvaluator<'a, T, Expr, TA> {
-    terminal_access: TA,
+    pub terminal_access: TA,
     intermediate_definitions: &'a BTreeMap<AlgebraicReferenceThin, Expression<T>>,
     /// Maps intermediate reference to their evaluation. Updated throughout the lifetime of the
     /// ExpressionEvaluator.

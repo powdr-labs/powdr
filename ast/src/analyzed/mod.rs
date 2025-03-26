@@ -63,7 +63,13 @@ impl<T> Analyzed<T> {
     pub fn degree(&self) -> DegreeType {
         self.definitions
             .values()
-            .filter_map(|(symbol, _)| symbol.degree)
+            .filter_map(|(symbol, _)| {
+                println!(
+                    "symbol name {:?} | degree {:?}",
+                    symbol.absolute_name, symbol.degree
+                );
+                symbol.degree
+            })
             .unique()
             .exactly_one()
             .unwrap()
