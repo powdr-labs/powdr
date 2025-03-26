@@ -17,9 +17,10 @@ use powdr_number::{DegreeType, FieldElement};
 use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc};
 use strum::{Display, EnumString, EnumVariantNames};
 
-#[derive(Clone, EnumString, EnumVariantNames, Display, Copy)]
+#[derive(Clone, Default, EnumString, EnumVariantNames, Display, Copy)]
 pub enum BackendType {
     #[strum(serialize = "mock")]
+    #[default]
     Mock,
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2")]
@@ -63,12 +64,6 @@ pub enum BackendType {
     #[cfg(feature = "stwo")]
     #[strum(serialize = "stwo-composite")]
     StwoComposite,
-}
-
-impl Default for BackendType {
-    fn default() -> Self {
-        BackendType::Mock
-    }
 }
 
 pub type BackendOptions = String;
