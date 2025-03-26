@@ -31,9 +31,12 @@ enum InterpreterAction<T: FieldElement> {
     ReadFixedColumn(usize, Cell),
     AssignExpression(usize, RPNExpression<T, usize>),
     BitDecompose(
+        /// Evaluates to the value to be decomposed.
         RPNExpression<T, usize>,
+        /// The components, sorted by their exponent.
         Vec<IndexedBitDecompositionComponent<T>>,
         /// If true, there is at least one negative component.
+        /// Pre-computed for performance reasons.
         bool,
     ),
     WriteCell(usize, Cell),
@@ -88,7 +91,7 @@ impl<T: FieldElement> BranchTest<T> {
     }
 }
 
-/// Version of `effect::BitDecompositionComponents` using indexes instead of variables.
+/// Version of `effect::BitDecompositionComponent` using indices instead of variables.
 #[derive(Debug)]
 pub struct IndexedBitDecompositionComponent<T: FieldElement> {
     pub variable: usize,
@@ -197,7 +200,7 @@ impl<T: FieldElement> EffectsInterpreter<T> {
                     let value = var_mapper.map_expr_to_rpn(value);
                     let components = components
                         .iter()
-                        // Sorting ascending by exponentis important for correctness.
+                        // Sorting ascending by exponents important for correctness.
                         .sorted_by_key(|c| c.exponent)
                         .map(|c| IndexedBitDecompositionComponent::from(c, var_mapper))
                         .collect_vec();

@@ -327,11 +327,6 @@ fn bitand_unsigned(a: GoldilocksField, mask: u64) -> GoldilocksField {
     GoldilocksField(a.0 & mask)
 }
 
-#[inline]
-fn negate_in_mask(a: GoldilocksField, mask: u64) -> GoldilocksField {
-    GoldilocksField(mask.wrapping_sub(a.0))
-}
-
 /// Treat `a` as a signed number and perform the and-operation in two's complement.
 #[inline]
 fn bitand_signed(a: GoldilocksField, mask: u64) -> GoldilocksField {
