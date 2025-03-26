@@ -36,23 +36,23 @@ impl<T: FieldElement> Effect<T, Variable> {
     /// Returns an iterator over all variables written to in the effect.
     /// The flag indicates if the variable is the return value of a machine call and thus needs
     /// to be declared mutable.
-    pub fn written_vars(&self) -> Box<dyn Iterator<Item = (&Variable, bool)> + '_> {
+    pub fn written_vars(&self) -> Box<dyn Iterator<Item = &Variable> + '_> {
         match self {
-            Effect::Assignment(var, _) => Box::new(iter::once((var, false))),
+            Effect::Assignment(var, _) => Box::new(iter::once(var)),
             Effect::RangeConstraint(..) => unreachable!(),
             Effect::BitDecomposition(BitDecomposition { components, .. }) => Box::new(
                 components
                     .iter()
-                    .map(|BitDecompositionComponent { variable, .. }| (variable, false)),
+                    .map(|BitDecompositionComponent { variable, .. }| variable),
             ),
             Effect::Assertion(..) => Box::new(iter::empty()),
             Effect::MachineCall(_, known, vars) => Box::new(
                 vars.iter()
                     .zip_eq(known)
-                    .flat_map(|(v, known)| (!known).then_some((v, true))),
+                    .flat_map(|(v, known)| (!known).then_some(v)),
             ),
             Effect::ProverFunctionCall(ProverFunctionCall { targets, .. }) => {
-                Box::new(targets.iter().map(|v| (v, false)))
+                Box::new(targets.iter())
             }
             Effect::Branch(_, first, second) => {
                 Box::new(first.iter().chain(second).flat_map(|e| e.written_vars()))

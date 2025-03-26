@@ -344,7 +344,7 @@ fn run_command(command: Commands) {
     };
     if let Err(errors) = result {
         for error in errors {
-            eprintln!("{}", error);
+            eprintln!("{error}");
         }
         std::process::exit(1);
     }
@@ -426,7 +426,7 @@ fn execute<F: FieldElement>(
 ) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<F>::default()
         .from_asm_file(file_name.to_path_buf())
-        .with_backend(backend, None)
+        .with_backend_factory(backend)
         .with_prover_inputs(inputs)
         .with_output(output_dir.into(), true);
 

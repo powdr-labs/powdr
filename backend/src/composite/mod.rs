@@ -192,14 +192,14 @@ fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
         .into_iter()
         .collect::<BTreeMap<_, _>>();
 
-    log::info!("* {}:", machine_name);
-    log::info!("  * Number of witness columns: {}", num_witness_columns);
-    log::info!("  * Number of fixed columns: {}", num_fixed_columns);
-    log::info!("  * Maximum identity degree: {}", max_identity_degree);
-    log::info!("  * Number of rotations: {}", number_of_rotations);
+    log::info!("* {machine_name}:");
+    log::info!("  * Number of witness columns: {num_witness_columns}");
+    log::info!("  * Number of fixed columns: {num_fixed_columns}");
+    log::info!("  * Maximum identity degree: {max_identity_degree}");
+    log::info!("  * Number of rotations: {number_of_rotations}");
     log::info!("  * Number of identities:");
     for (kind, count) in num_identities_by_kind {
-        log::info!("    * {:?}: {}", kind, count);
+        log::info!("    * {kind:?}: {count}");
     }
 }
 
@@ -383,7 +383,7 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
                     .map(|(machine_name, machine_data)| {
                         let (machine_witness, size) = witness_by_machine.get(machine_name).unwrap();
                         let machine_data = machine_data.get(size).unwrap();
-                        let new_witness = witgen_callback.next_stage_witness(
+                        let (new_witness, _) = witgen_callback.next_stage_witness(
                             &machine_data.pil,
                             machine_witness,
                             challenges.clone(),
@@ -414,7 +414,7 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
                 .map(|(machine_name, (proof, size))| match proof {
                     Ok(proof) => Ok((machine_name.clone(), MachineProof { size, proof })),
                     Err(e) => {
-                        log::error!("==> Machine proof failed: {:?}", e);
+                        log::error!("==> Machine proof failed: {e:?}");
                         Err(e)
                     }
                 })

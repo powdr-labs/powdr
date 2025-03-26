@@ -4,7 +4,6 @@ use powdr_pipeline::{
     test_util::{
         assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
         assert_proofs_fail_for_invalid_witnesses_mock,
-        assert_proofs_fail_for_invalid_witnesses_pilcom,
         assert_proofs_fail_for_invalid_witnesses_stwo, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test_all_fields, regular_test_gl,
         test_halo2_with_backend_variant, test_mock_backend, test_stwo, test_stwo_stage1_public,
@@ -44,7 +43,6 @@ fn lookup_with_selector() {
     // Invalid witness: 0 is not in the set {2, 4}
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
 }
 
 #[test]
@@ -84,7 +82,6 @@ fn permutation_with_selector() {
     // Invalid witness: 0 is not in the set {2, 4}
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
 }
 
 #[test]
@@ -113,12 +110,9 @@ fn fibonacci() {
 fn fibonacci_with_public() {
     // Public references are not supported by the backends yet, but we can test witness generation.
     let f = "pil/fibonacci_with_public.pil";
-    let pipeline: Pipeline<GoldilocksField> =
+    let mut pipeline: Pipeline<GoldilocksField> =
         make_prepared_pipeline(f, vec![], vec![], LinkerMode::Bus);
-    pipeline
-        .with_backend(powdr_backend::BackendType::Mock, None)
-        .compute_witness()
-        .unwrap();
+    pipeline.compute_witness().unwrap();
 }
 
 #[test]
@@ -133,7 +127,6 @@ fn fibonacci_invalid_witness() {
         ("Fibonacci::y".to_string(), vec![1, 2, 3, 13]),
     ];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
     assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness);
 
     // All constraints are valid, except the initial row.
@@ -144,7 +137,6 @@ fn fibonacci_invalid_witness() {
         ("Fibonacci::y".to_string(), vec![2, 3, 5, 8]),
     ];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
     assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness);
 }
 

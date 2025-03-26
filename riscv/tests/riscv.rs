@@ -3,10 +3,7 @@ mod common;
 use common::{compile_riscv_asm_file, verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
 use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField};
-use powdr_pipeline::{
-    test_util::{run_pilcom_with_backend_variant, BackendVariant},
-    Pipeline,
-};
+use powdr_pipeline::{test_util::test_mock_backend, Pipeline};
 use powdr_riscv_executor::ProfilerOptions;
 use std::path::{Path, PathBuf};
 use test_log::test;
@@ -17,7 +14,7 @@ use powdr_riscv::{
 };
 
 /// Compiles and runs a rust program with continuations, runs the full
-/// witness generation & verifies it using Pilcom.
+/// witness generation & verifies it using the mock prover.
 pub fn test_continuations(case: &str, prover_data: Vec<Vec<u8>>) {
     let temp_dir = Temp::new_dir().unwrap();
 
@@ -47,7 +44,7 @@ fn run_continuations_test(case: &str, powdr_asm: String, prover_data: Vec<Vec<u8
     }
 
     let pipeline_callback = |pipeline: &mut Pipeline<GoldilocksField>| -> Result<(), ()> {
-        run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Composite).unwrap();
+        test_mock_backend(pipeline.clone());
 
         Ok(())
     };
@@ -94,7 +91,7 @@ fn bn254_sanity_check() {
         &[],
         Default::default(),
     );
-    run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
+    test_mock_backend(pipeline);
 }
 */
 
@@ -430,7 +427,6 @@ fn read_slice_with_options<T: FieldElement>(options: CompilerOptions) {
 
     let mut pipeline = Pipeline::<T>::default()
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
-        .with_backend(powdr_backend::BackendType::Mock, None)
         .with_prover_inputs(vec![answer.into()])
         .with_prover_dict_inputs(d);
 
@@ -615,7 +611,6 @@ fn output_syscall_with_options<T: FieldElement>(options: CompilerOptions) {
 
     let inputs = vec![1u32, 2, 3].into_iter().map(T::from).collect();
     let mut pipeline = Pipeline::<T>::default()
-        .with_backend(powdr_backend::BackendType::Mock, None)
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
         .with_prover_inputs(inputs);
 
