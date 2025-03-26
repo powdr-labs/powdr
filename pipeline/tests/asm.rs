@@ -8,7 +8,7 @@ use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, make_prepared_pipeline, make_simple_prepared_pipeline,
         regular_test_all_fields, regular_test_gl, resolve_test_file, test_mock_backend,
-        test_pilcom, test_plonky3_pipeline, test_stwo_pipeline,
+        test_plonky3_pipeline, test_stwo_pipeline,
     },
     Pipeline,
 };
@@ -99,7 +99,6 @@ fn mem_write_once_external_write() {
             degree_mode: powdr_linker::DegreeMode::Monolithic,
             ..Default::default()
         });
-    test_pilcom(pipeline.clone());
     test_mock_backend(pipeline);
 }
 
@@ -174,8 +173,9 @@ fn block_to_block_empty_submachine() {
         .for_each(|backend| {
             let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
                 .with_backend(*backend, None);
-            let witness = pipeline.compute_witness().unwrap();
-            let arith_size = witness
+            let witness_and_publics = pipeline.compute_witness().unwrap();
+            let arith_size = witness_and_publics
+                .0
                 .iter()
                 .find(|(k, _)| k == "main_arith::x")
                 .unwrap()
@@ -314,7 +314,7 @@ fn dynamic_vadcop() {
     for backend in [BackendType::Mock, BackendType::Plonky3].iter() {
         let mut pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Bus)
             .with_backend(*backend, None);
-        let witness = pipeline.compute_witness().unwrap();
+        let witness = &pipeline.compute_witness().unwrap().0;
         let witness_by_name = witness
             .iter()
             .map(|(k, v)| (k.as_str(), v))
@@ -818,11 +818,11 @@ fn keccak() {
 }
 
 #[test]
+#[should_panic = "Connection constraints are not supported"]
 fn connect_no_witgen() {
     let f = "asm/connect_no_witgen.asm";
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f, LinkerMode::Native);
-    // TODO Mock prover doesn't support this test yet.
-    test_pilcom(pipeline);
+    test_mock_backend(pipeline);
 }
 
 #[test]

@@ -232,7 +232,6 @@ impl Session {
         let pubs: Vec<u32> = self
             .pipeline
             .publics()
-            .unwrap()
             .iter()
             .map(|(_, v)| v.unwrap().to_integer().try_into_u32().unwrap())
             .collect();
@@ -338,7 +337,7 @@ pub fn prove(pipeline: &mut Pipeline<GoldilocksField>) {
         riscv::continuations::rust_continuations_dry_run(&mut pipeline.clone(), None);
 
     let duration = start.elapsed();
-    log::info!("Trace executor took: {:?}", duration);
+    log::info!("Trace executor took: {duration:?}");
 
     // TODO how do we skip PIL compilation and fixed column generation if not needed?
     // We can check whether they exist and not generate it, but what if the asm changed?
@@ -370,5 +369,5 @@ pub fn prove(pipeline: &mut Pipeline<GoldilocksField>) {
     let start = Instant::now();
     riscv::continuations::rust_continuations(pipeline, generate_proof, bootloader_inputs).unwrap();
     let duration = start.elapsed();
-    log::info!("Proof generation for all chunks took: {:?}", duration);
+    log::info!("Proof generation for all chunks took: {duration:?}");
 }

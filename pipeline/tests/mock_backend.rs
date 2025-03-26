@@ -41,11 +41,9 @@ fn block_to_block_wrong_connection() {
 
     pipeline.compute_witness().unwrap();
 
-    // Get the correct witness
-    let witness = pipeline.witness().unwrap();
-
     // Multiply all values in main_arith with 42
-    let witness = witness
+    let witness = pipeline
+        .witness()
         .iter()
         .map(|(name, values)| {
             if name.starts_with("main_arith") {
