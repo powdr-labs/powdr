@@ -159,7 +159,7 @@ fn main() -> wasmparser::Result<()> {
             Payload::End(_) => todo!(),
             unsupported_section => {
                 unsupported_feature_found = true;
-                log::error!("Unsupported section found: {:?}", unsupported_section);
+                log::error!("Unsupported section found: {unsupported_section:?}");
             }
         }
     }
