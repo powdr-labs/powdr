@@ -18,14 +18,18 @@ powdr-jit-compiler.workspace = true
 auto_enums = "0.8.5"
 itertools = "0.13"
 libloading = "0.8"
-log = { version = "0.4.17" }
+log = "0.4.27"
 rayon = "1.7.0"
 bit-vec = "0.6.3"
 num-traits = "0.2.15"
 derive_more = "0.99.17"
 lazy_static = "1.4.0"
 indicatif = "0.17.7"
-serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
+serde = { version = "1.0", default-features = false, features = [
+    "alloc",
+    "derive",
+    "rc",
+] }
 
 [dev-dependencies]
 test-log = "0.2.12"

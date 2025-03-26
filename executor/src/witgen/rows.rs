@@ -157,7 +157,7 @@ impl<T: FieldElement> CellValue<T> {
             (CellValue::RangeConstraint(current), Constraint::RangeConstraint(c)) => {
                 let new = c.conjunction(current);
                 assert!(new != *current, "Range constraint was already set");
-                log::trace!("         (the conjunction is {})", new);
+                log::trace!("         (the conjunction is {new})");
                 *self = CellValue::RangeConstraint(new)
             }
             (CellValue::Unknown, Constraint::RangeConstraint(c)) => {

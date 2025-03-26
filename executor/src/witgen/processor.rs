@@ -168,7 +168,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
         {
             if let Some(right_poly) = try_to_simple_poly(r).map(|p| p.poly_id) {
                 if let Some(l) = l.constant_value() {
-                    log::trace!("    {} = {}", r, l);
+                    log::trace!("    {r} = {l}");
                     inputs.push((right_poly, l));
                 }
             }
@@ -361,7 +361,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                     .zip(receive_payload.expressions.iter())
                 {
                     if let Ok(r) = row_pair.evaluate(r) {
-                        log::warn!("  => {} = {}", l, r);
+                        log::warn!("  => {l} = {r}");
                     }
                 }
                 e
@@ -463,7 +463,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 AlgebraicVariable::Public(name) => {
                     if let Constraint::Assignment(v) = c {
                         // There should be only few publics, so this can be logged with info.
-                        log::info!("      => {} (public) = {}", name, v);
+                        log::info!("      => {name} (public) = {v}");
                         assert!(
                             self.publics.insert(name, *v).is_none(),
                             "value was already set!"
@@ -480,7 +480,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                         self.propagate_along_copy_constraints(row_index, poly, c);
                     } else if let Constraint::Assignment(v) = c {
                         let left = &mut self.outer_query.as_mut().unwrap().arguments;
-                        log::trace!("      => {} (outer) = {}", poly, v);
+                        log::trace!("      => {poly} (outer) = {v}");
                         for l in left.iter_mut() {
                             l.assign(*var, *v);
                         }
@@ -633,7 +633,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 "Proposed {:?}",
                 proposed_row.render_values(true, self.parts)
             );
-            log::trace!("Failed on identity: {}", identity);
+            log::trace!("Failed on identity: {identity}");
 
             return false;
         }

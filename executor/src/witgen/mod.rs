@@ -147,6 +147,7 @@ impl<T: FieldElement> WitgenCallbackContext<T> {
                 .with_external_witness_values(current_witness)
                 .with_challenges(stage, challenges)
                 .generate()
+                .0
         }
     }
 }
