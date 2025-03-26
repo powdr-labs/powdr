@@ -528,7 +528,9 @@ fn perform_bit_decomposition<T: FieldElement>(
             if component > (T::modulus() - 1.into()) >> 1 {
                 // Convert a signed finite field element into two's complement.
                 // a regular subtraction would underflow, so we do this.
-                component = (T::Integer::MAX - T::modulus() + 1.into()) + component;
+                // We add the difference between negative numbers in the field
+                // and negative numbers in two's complement.
+                component += T::Integer::MAX - T::modulus() + 1.into();
             };
             component &= c.bit_mask;
             variables[c.variable] = T::from(component >> (c.exponent as usize));
