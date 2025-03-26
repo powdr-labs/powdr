@@ -187,7 +187,7 @@ impl<'a, F: FieldElement> BusChecker<'a, F> {
                     receives: receives.into_iter().map(|(k, v)| (k.clone(), v)).collect(),
                 };
 
-                log::error!("{}", error);
+                log::error!("{error}");
 
                 errors.push(error);
             }

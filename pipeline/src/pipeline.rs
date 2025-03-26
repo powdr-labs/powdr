@@ -574,7 +574,7 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     fn log(&self, msg: &str) {
-        log::log!(self.log_level, "{}", msg);
+        log::log!(self.log_level, "{msg}");
     }
 
     /// Returns the path to the output file if the output directory is set.

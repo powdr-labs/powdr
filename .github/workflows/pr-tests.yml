@@ -50,14 +50,14 @@ jobs:
         run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu
       - name: Set cargo to perform shallow clones
         run: echo "CARGO_NET_GIT_FETCH_WITH_CLI=true" >> $GITHUB_ENV
+      - name: Format
+        run: cargo fmt --all --check --verbose
       - name: Cargo check with Rust 1.81 (default features)
         run: cargo +1.81-x86_64-unknown-linux-gnu check --all-targets
       - name: Lint no default features
         run: cargo clippy --all --all-targets --no-default-features --profile pr-tests --verbose -- -D warnings
       - name: Lint all features
         run: cargo clippy --all --all-targets --all-features --profile pr-tests --verbose -- -D warnings
-      - name: Format
-        run: cargo fmt --all --check --verbose
       - name: Build
         run: cargo build --all-targets --all --all-features --profile pr-tests --verbose
       ###############################################################################

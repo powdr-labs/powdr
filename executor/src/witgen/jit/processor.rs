@@ -184,7 +184,10 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         };
         let (most_constrained_var, range) = most_constrained_var.unwrap();
 
-        log::debug!("Branching on variable {most_constrained_var} with range {range} at depth {branch_depth}");
+        log::debug!(
+            "{}Branching on variable {most_constrained_var} with range {range} at depth {branch_depth}",
+            "  ".repeat(branch_depth)
+        );
 
         let BranchResult {
             common_code,
@@ -203,6 +206,10 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             identity_queue.clone(),
             branch_depth + 1,
         );
+        log::debug!(
+            "{}else branch for {most_constrained_var}",
+            "  ".repeat(branch_depth)
+        );
         let second_branch_result = self.generate_code_for_branch(
             can_process,
             second_branch,
@@ -218,13 +225,19 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 // of the branching variable.
                 // Note that both branches might actually have a conflicting constraint,
                 // but then it is correct to return one.
-                log::trace!("Branching on {most_constrained_var} resulted in a conflict, we can reduce to a single branch.");
+                log::debug!(
+                    "{}Branching on {most_constrained_var} resulted in a conflict, we can reduce to a single branch.",
+                    "  ".repeat(branch_depth)
+                );
                 other?
             }
             // Any other error should be propagated.
             (Err(e), _) | (_, Err(e)) => Err(e)?,
             (Ok(first_result), Ok(second_result)) if first_result.code == second_result.code => {
-                log::trace!("Branching on {most_constrained_var} resulted in the same code, we can reduce to a single branch.");
+                log::debug!(
+                    "{}Branching on {most_constrained_var} resulted in the same code, we can reduce to a single branch.",
+                    "  ".repeat(branch_depth)
+                );
                 ProcessorResult {
                     code: first_result.code,
                     range_constraints: combine_range_constraints(

@@ -18,9 +18,9 @@ use crate::witgen::{
 use super::{
     block_machine_processor::BlockMachineProcessor,
     compiler::{compile_effects, CompiledFunction},
-    effect::Effect,
+    effect::{Effect, ProverFunctionCall},
     interpreter::EffectsInterpreter,
-    prover_function_heuristics::ProverFunction,
+    prover_function_heuristics::{ProverFunction, ProverFunctionComputation},
     variable::Variable,
     witgen_inference::CanProcessCall,
 };
@@ -28,7 +28,7 @@ use super::{
 /// Inferred witness generation routines that are larger than
 /// this number of "statements" will use the interpreter instead of the compiler
 /// due to the large compilation ressources required.
-const MAX_COMPILED_CODE_SIZE: usize = 500;
+const MAX_COMPILED_CODE_SIZE: usize = 1000;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 struct CacheKey<T: FieldElement> {
@@ -45,19 +45,19 @@ pub struct FunctionCache<'a, T: FieldElement> {
     processor: BlockMachineProcessor<'a, T>,
     /// The cache of JIT functions and the returned range constraints.
     /// If the entry is None, we attempted to generate the function but failed.
-    witgen_functions: HashMap<CacheKey<T>, Option<CacheEntry<T>>>,
+    witgen_functions: HashMap<CacheKey<T>, Option<CacheEntry<'a, T>>>,
     column_layout: ColumnLayout,
     block_size: usize,
     machine_name: String,
     parts: MachineParts<'a, T>,
 }
 
-enum WitgenFunction<T: FieldElement> {
+enum WitgenFunction<'a, T: FieldElement> {
     Compiled(CompiledFunction<T>),
-    Interpreted(EffectsInterpreter<T>),
+    Interpreted(EffectsInterpreter<'a, T>),
 }
 
-impl<T: FieldElement> WitgenFunction<T> {
+impl<T: FieldElement> WitgenFunction<'_, T> {
     /// Call the witgen function to fill the data and "known" tables
     /// given a slice of parameters.
     /// The `row_offset` is the index inside `data` of the row considered to be "row zero".
@@ -80,8 +80,8 @@ impl<T: FieldElement> WitgenFunction<T> {
     }
 }
 
-pub struct CacheEntry<T: FieldElement> {
-    function: WitgenFunction<T>,
+pub struct CacheEntry<'a, T: FieldElement> {
+    function: WitgenFunction<'a, T>,
     pub range_constraints: Vec<RangeConstraint<T>>,
 }
 
@@ -221,7 +221,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
         result: ProcessorResult<T>,
         prover_functions: Vec<ProverFunction<'a, T>>,
         cache_key: &CacheKey<T>,
-    ) -> Option<CacheEntry<T>> {
+    ) -> Option<CacheEntry<'a, T>> {
         let known_inputs = cache_key
             .known_args
             .iter()
@@ -229,26 +229,24 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             .filter_map(|(i, b)| if b { Some(Variable::Param(i)) } else { None })
             .collect::<Vec<_>>();
 
-        let has_prover_function_call = has_prover_function_call(&result.code);
-
-        // TODO This is the goal, but we need to implement prover unctions for the interpreter first.
-
         // Use the compiler for goldilocks with at most MAX_COMPILED_CODE_SIZE statements and
         // the interpreter otherwise.
-        #[allow(unused)]
         let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField))
             || code_size(&result.code) > MAX_COMPILED_CODE_SIZE;
 
-        let interpreted = !matches!(T::known_field(), Some(KnownField::GoldilocksField));
-
-        if interpreted && has_prover_function_call {
-            log::debug!("Interpreter does not yet implement prover functions.");
+        if interpreted && has_input_output_prover_function_call(&prover_functions, &result.code) {
+            // TODO we still need to implement this.
+            log::debug!("Interpreter does not yet implement input/output prover functions.");
             return None;
         }
 
         let function = if interpreted {
             log::trace!("Building effects interpreter...");
-            WitgenFunction::Interpreted(EffectsInterpreter::new(&known_inputs, &result.code))
+            WitgenFunction::Interpreted(EffectsInterpreter::new(
+                &known_inputs,
+                &result.code,
+                prover_functions,
+            ))
         } else {
             log::trace!("Compiling effects...");
             WitgenFunction::Compiled(
@@ -323,15 +321,23 @@ fn code_size<T: FieldElement>(code: &[Effect<T, Variable>]) -> usize {
         .sum()
 }
 
-/// Returns true if there is any prover function call in the code.
-fn has_prover_function_call<'a, T: FieldElement>(
+/// Returns true if there is any input/output prover function call in the code.
+fn has_input_output_prover_function_call<'a, T: FieldElement>(
+    prover_functions: &[ProverFunction<'a, T>],
     code: impl IntoIterator<Item = &'a Effect<T, Variable>> + 'a,
 ) -> bool {
     code.into_iter().any(|effect| match effect {
-        Effect::ProverFunctionCall(..) => true,
-        Effect::Branch(_, if_branch, else_branch) => {
-            has_prover_function_call(if_branch) || has_prover_function_call(else_branch)
+        Effect::ProverFunctionCall(ProverFunctionCall { function_index, .. }) => {
+            match prover_functions[*function_index].computation {
+                ProverFunctionComputation::ProvideIfUnknown(..)
+                | ProverFunctionComputation::ComputeFrom(..) => false,
+                ProverFunctionComputation::HandleQueryInputOutput(..) => true,
+            }
         }
+        Effect::Branch(_, if_branch, else_branch) => has_input_output_prover_function_call(
+            prover_functions,
+            if_branch.iter().chain(else_branch),
+        ),
         Effect::Assignment(..)
         | Effect::BitDecomposition(..)
         | Effect::RangeConstraint(..)

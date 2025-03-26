@@ -119,7 +119,7 @@ fn translate_program_impl(
 
     let bootloader_and_shutdown_routine_lines = if continuations {
         let bootloader_and_shutdown_routine = bootloader_and_shutdown_routine(field);
-        log::debug!("Adding Bootloader:\n{}", bootloader_and_shutdown_routine);
+        log::debug!("Adding Bootloader:\n{bootloader_and_shutdown_routine}");
         bootloader_and_shutdown_routine
             .split('\n')
             .map(|l| l.to_string())

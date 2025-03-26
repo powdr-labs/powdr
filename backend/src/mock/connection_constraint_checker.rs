@@ -165,7 +165,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                     connection_count: self.connections.len(),
                     errors,
                 };
-                log::error!("{}", error);
+                log::error!("{error}");
                 Err(error)
             })
             .unwrap_or(Ok(()))
