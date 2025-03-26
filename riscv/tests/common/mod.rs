@@ -1,5 +1,4 @@
 use mktemp::Temp;
-use powdr_backend::BackendType;
 use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField, KoalaBearField};
 use powdr_pipeline::{
     test_util::{test_mock_backend, test_plonky3_pipeline},
@@ -24,8 +23,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
     let mut pipeline = Pipeline::default()
         .with_prover_inputs(inputs.to_vec())
         .with_output(temp_dir.to_path_buf(), true)
-        .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)))
-        .with_backend(BackendType::Mock, None);
+        .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)));
 
     if let Some(data) = data {
         pipeline = pipeline.add_data_vec(data);

@@ -59,8 +59,6 @@ pub fn rust_continuations<F: FieldElement, PipelineCallback, E>(
 where
     PipelineCallback: Fn(&mut Pipeline<F>) -> Result<(), E>,
 {
-    pipeline.with_backend_if_none(powdr_pipeline::BackendType::Mock, None);
-
     let bootloader_inputs = dry_run_result.bootloader_inputs;
     let num_chunks = bootloader_inputs.len();
 
@@ -339,8 +337,6 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: &mut Pipeline<F>,
     profiler_opt: Option<ProfilerOptions>,
 ) -> DryRunResult<F> {
-    pipeline.with_backend_if_none(powdr_pipeline::BackendType::Mock, None);
-
     let field = F::known_field().unwrap();
 
     // All inputs for all chunks.

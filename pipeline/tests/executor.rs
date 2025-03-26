@@ -5,7 +5,6 @@ use test_log::test;
 
 fn run_witgen_pil<T: FieldElement>(pil: &str) -> Columns<T> {
     Pipeline::default()
-        .with_backend(powdr_pipeline::BackendType::Mock, None)
         .from_pil_string(pil.to_string())
         .compute_witness()
         .unwrap()

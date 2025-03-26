@@ -105,8 +105,8 @@ struct Arguments<T: FieldElement> {
     external_witness_values: Vec<(String, Vec<T>)>,
     /// Callback for queries for witness generation.
     query_callback: Option<Arc<dyn QueryCallback<T>>>,
-    /// Backend to use for proving. If None, proving will fail.
-    backend: Option<BackendType>,
+    /// Backend to use for proving. Defaults to Mock Backend.
+    backend: BackendType,
     /// Backend options
     backend_options: BackendOptions,
     /// Linker options
@@ -365,19 +365,17 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
-    pub fn with_backend(mut self, backend: BackendType, options: Option<BackendOptions>) -> Self {
-        self.arguments.backend = Some(backend);
-        self.arguments.backend_options = options.unwrap_or_default();
+    pub fn with_backend_factory(mut self, backend: BackendType) -> Self {
+        self.arguments.backend = backend;
         self.artifact.backend = None;
         self
     }
 
-    pub fn with_backend_if_none(&mut self, backend: BackendType, options: Option<BackendOptions>) {
-        if self.arguments.backend.is_none() {
-            self.arguments.backend = Some(backend);
-            self.arguments.backend_options = options.unwrap_or_default();
-            self.artifact.backend = None;
-        }
+    pub fn with_backend(mut self, backend: BackendType, options: Option<BackendOptions>) -> Self {
+        self.arguments.backend = backend;
+        self.arguments.backend_options = options.unwrap_or_default();
+        self.artifact.backend = None;
+        self
     }
 
     pub fn with_setup_file(mut self, setup_file: Option<PathBuf>) -> Self {
@@ -1002,7 +1000,7 @@ impl<T: FieldElement> Pipeline<T> {
 
         self.compute_optimized_pil()?;
 
-        let backend_type = self.arguments.backend.expect("no backend selected!");
+        let backend_type = self.arguments.backend;
 
         // If backend option is set, compute and cache the backend-tuned pil in artifacts and return backend-tuned pil.
         let optimized_pil = self.artifact.optimized_pil.clone().unwrap();
@@ -1146,7 +1144,7 @@ impl<T: FieldElement> Pipeline<T> {
         let pil = self.compute_backend_tuned_pil()?; // will panic if backend type is not set yet
         let fixed_cols = self.compute_fixed_cols()?;
 
-        let backend = self.arguments.backend.expect("no backend selected!");
+        let backend = self.arguments.backend;
         let factory = backend.factory::<T>();
 
         // Opens the setup file, if set.
