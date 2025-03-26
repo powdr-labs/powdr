@@ -297,31 +297,33 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
         if self.publics.is_empty() {
             BTreeMap::new()
         } else {
-            let public_values =
-                self.value_polys
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(value_index, poly)| {
-                        self.fixed_data.witness_cols[poly]
-                            .external_values
-                            .cloned()
-                            .map(|mut external_values| {
-                                // External witness values might only be provided partially.
-                                external_values.resize(self.degree as usize, T::zero());
-                                external_values
-                            })
-                            .unwrap_or_else(|| {
-                                let mut column = vec![T::zero(); self.degree as usize];
-                                for (row, values) in self.data.iter() {
-                                    column[*row as usize] = values[value_index].unwrap_or_default();
-                                }
-                                column
-                            })
-                    });
+            let public_values: Vec<_> = self
+                .value_polys
+                .iter()
+                .enumerate()
+                .flat_map(|(value_index, poly)| {
+                    self.fixed_data.witness_cols[poly]
+                        .external_values
+                        .cloned()
+                        .map(|mut external_values| {
+                            // External witness values might only be provided partially.
+                            external_values.resize(self.degree as usize, T::zero());
+                            external_values
+                        })
+                        .unwrap_or_else(|| {
+                            let mut column = vec![T::zero(); 8]; // 8 public values
+                            for (row, values) in self.data.iter() {
+                                column[*row as usize] = values[value_index].unwrap_or_default();
+                            }
+                            column
+                        })
+                })
+                .collect();
+
             self.publics
                 .clone()
                 .into_iter()
-                .zip_eq(public_values)
+                .zip(public_values)
                 .collect()
         }
     }
