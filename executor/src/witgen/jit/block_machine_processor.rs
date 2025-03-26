@@ -299,7 +299,7 @@ fn written_rows_per_column<T: FieldElement>(
 ) -> BTreeMap<u64, BTreeSet<i32>> {
     code.iter()
         .flat_map(|e| e.written_vars())
-        .filter_map(|(v, _)| match v {
+        .filter_map(|v| match v {
             Variable::WitnessCell(cell) => Some((cell.id, cell.row_offset)),
             _ => None,
         })
@@ -521,31 +521,19 @@ main_binary::operation_id_next[0] = main_binary::operation_id[1];
 call_var(9, 0, 0) = main_binary::operation_id_next[0];
 main_binary::operation_id_next[1] = main_binary::operation_id[2];
 call_var(9, 1, 0) = main_binary::operation_id_next[1];
-main_binary::A_byte[2] = ((main_binary::A[3] & 0xff000000) // 16777216);
-main_binary::A[2] = (main_binary::A[3] & 0xffffff);
-assert (main_binary::A[3] & 0xffffffff00000000) == 0;
+2**24 * main_binary::A_byte[2] + 2**0 * main_binary::A[2] := main_binary::A[3];
 call_var(9, 2, 1) = main_binary::A_byte[2];
-main_binary::A_byte[1] = ((main_binary::A[2] & 0xff0000) // 65536);
-main_binary::A[1] = (main_binary::A[2] & 0xffff);
-assert (main_binary::A[2] & 0xffffffffff000000) == 0;
+2**16 * main_binary::A_byte[1] + 2**0 * main_binary::A[1] := main_binary::A[2];
 call_var(9, 1, 1) = main_binary::A_byte[1];
-main_binary::A_byte[0] = ((main_binary::A[1] & 0xff00) // 256);
-main_binary::A[0] = (main_binary::A[1] & 0xff);
-assert (main_binary::A[1] & 0xffffffffffff0000) == 0;
+2**8 * main_binary::A_byte[0] + 2**0 * main_binary::A[0] := main_binary::A[1];
 call_var(9, 0, 1) = main_binary::A_byte[0];
 main_binary::A_byte[-1] = main_binary::A[0];
 call_var(9, -1, 1) = main_binary::A_byte[-1];
-main_binary::B_byte[2] = ((main_binary::B[3] & 0xff000000) // 16777216);
-main_binary::B[2] = (main_binary::B[3] & 0xffffff);
-assert (main_binary::B[3] & 0xffffffff00000000) == 0;
+2**24 * main_binary::B_byte[2] + 2**0 * main_binary::B[2] := main_binary::B[3];
 call_var(9, 2, 2) = main_binary::B_byte[2];
-main_binary::B_byte[1] = ((main_binary::B[2] & 0xff0000) // 65536);
-main_binary::B[1] = (main_binary::B[2] & 0xffff);
-assert (main_binary::B[2] & 0xffffffffff000000) == 0;
+2**16 * main_binary::B_byte[1] + 2**0 * main_binary::B[1] := main_binary::B[2];
 call_var(9, 1, 2) = main_binary::B_byte[1];
-main_binary::B_byte[0] = ((main_binary::B[1] & 0xff00) // 256);
-main_binary::B[0] = (main_binary::B[1] & 0xff);
-assert (main_binary::B[1] & 0xffffffffffff0000) == 0;
+2**8 * main_binary::B_byte[0] + 2**0 * main_binary::B[0] := main_binary::B[1];
 call_var(9, 0, 2) = main_binary::B_byte[0];
 main_binary::B_byte[-1] = main_binary::B[0];
 call_var(9, -1, 2) = main_binary::B_byte[-1];
@@ -620,9 +608,7 @@ params[1] = Sub::b[0];"
         assert_eq!(
             format_code(&code),
             "SubM::a[0] = params[0];
-SubM::b[0] = ((SubM::a[0] & 0xff00) // 256);
-SubM::c[0] = (SubM::a[0] & 0xff);
-assert (SubM::a[0] & 0xffffffffffff0000) == 0;
+2**8 * SubM::b[0] + 2**0 * SubM::c[0] := SubM::a[0];
 params[1] = SubM::b[0];
 params[2] = SubM::c[0];
 call_var(1, 0, 0) = SubM::c[0];
@@ -800,6 +786,35 @@ S::Zi[2][0] = (S::Y[0] * S::Y[0]);
 S::Zi[1][0] = (2 * S::X[0]);
 S::Z[0] = ((S::Zi[0][0] + S::Zi[1][0]) + S::Zi[2][0]);
 params[2] = S::Z[0];"
+        );
+    }
+
+    #[test]
+    fn bit_decomp_negative() {
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is [S.Y, S.Z,  S.carry];
+        namespace S(256);
+            let BYTE: col = |i| i & 0xff;
+            let X;
+            let Y;
+            let Z;
+            let carry;
+            carry * (1 - carry) = 0;
+            [ X ] in [ BYTE ];
+            [ Y ] in [ BYTE ];
+            [ Z ] in [ BYTE ];
+            X + Y = Z + 256 * carry;
+        ";
+        let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        assert_eq!(
+            code,
+            "\
+S::Y[0] = params[0];
+S::Z[0] = params[1];
+-2**0 * S::X[0] + 2**8 * S::carry[0] := (S::Y[0] + -S::Z[0]);
+params[2] = S::carry[0];"
         );
     }
 }
