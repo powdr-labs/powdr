@@ -13,6 +13,9 @@ use stwo_prover::core::lookups::mle::Mle;
 use stwo_prover::core::poly::circle::PolyOps;
 use stwo_prover::examples::xor::gkr_lookups::mle_eval::build_trace;
 use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleEvalProverComponent;
+use stwo_prover::core::lookups::gkr_verifier::GkrArtifact;
+use stwo_prover::core::lookups::gkr_verifier::partially_verify_batch;
+use stwo_prover::core::lookups::gkr_verifier::Gate;
 
 use powdr_number::{FieldElement, LargeInt, Mersenne31Field as M31};
 
@@ -55,8 +58,7 @@ const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 const LOG_LAST_LAYER_DEGREE_BOUND: usize = 0;
 
-// for now, using this flag to enable logup-GKR
-pub const LOGUP_GKR: bool = true;
+
 
 pub enum KeyExportError {
     NoProvingKey,
@@ -491,6 +493,8 @@ where
         let gkr_result = self.gkr_prove(&witness, machine_log_sizes.clone(), prover_channel);
 
         if let Some(ref gkr_proof_artifacts) = gkr_result {
+
+            println!("committing to MLE traces");
             let mut tree_builder = commitment_scheme.tree_builder();
             tree_builder.extend_evals(build_trace(
                 &gkr_proof_artifacts.mle_numerators[0],
@@ -501,15 +505,15 @@ where
             ));
             tree_builder.commit(prover_channel);
 
-            let mut tree_builder = commitment_scheme.tree_builder();
-            tree_builder.extend_evals(build_trace(
-                &gkr_proof_artifacts.mle_denominators[0],
-                &gkr_proof_artifacts.gkr_artifacts.ood_point,
-                gkr_proof_artifacts
-                    .gkr_artifacts
-                    .claims_to_verify_by_instance[0][1],
-            ));
-            tree_builder.commit(prover_channel);
+            // let mut tree_builder = commitment_scheme.tree_builder();
+            // tree_builder.extend_evals(build_trace(
+            //     &gkr_proof_artifacts.mle_denominators[0],
+            //     &gkr_proof_artifacts.gkr_artifacts.ood_point,
+            //     gkr_proof_artifacts
+            //         .gkr_artifacts
+            //         .claims_to_verify_by_instance[0][1],
+            // ));
+            // tree_builder.commit(prover_channel);
         } else {
         };
 
@@ -526,6 +530,8 @@ where
             .map(
                 |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
                     assert_eq!(machine_name, proof_machine_name);
+
+                    println!("building powdr component for {}", machine_name);
 
                     let component = PowdrComponent::new(
                         tree_span_provider,
@@ -548,11 +554,18 @@ where
 
         println!("powdr component for built");
 
+        let mut components_slice: Vec<&dyn ComponentProver<SimdBackend>> = components
+            .iter()
+            .map(|component| component as &dyn ComponentProver<SimdBackend>)
+            .collect();
+
         if let Some(gkr_proof_artifacts) = gkr_result {
+            let last_component = components.last().unwrap(); // &FrameworkComponent
+            let wrapped_component = PowdrComponentWrapper(last_component);
             // create component for MLE
             let mle_eval_component = MleEvalProverComponent::generate(
                 tree_span_provider,
-                &PowdrComponentWrapper(components.last().unwrap()), // the machine contains all the
+                &wrapped_component, // the machine contains all the
                 &gkr_proof_artifacts.gkr_artifacts.ood_point,
                 gkr_proof_artifacts.mle_numerators[0].clone(),
                 gkr_proof_artifacts
@@ -561,30 +574,55 @@ where
                 &twiddles_max_degree,
                 MLE_TRACE_IDX,
             );
+
+            components_slice.push(&mle_eval_component);
+
+            println!("added gkr component");
+
+            let proof_result = stwo_prover::core::prover::prove::<SimdBackend, MC>(
+                &components_slice,
+                prover_channel,
+                commitment_scheme,
+            );
+            
+            println!("proving done");
+            let GkrArtifact {
+                ood_point,
+                claims_to_verify_by_instance,
+                n_variables_by_instance: _,
+            } = partially_verify_batch(vec![Gate::LogUp], &gkr_proof_artifacts.gkr_proof, prover_channel).unwrap();
+
+            let stark_proof = match proof_result {
+                Ok(value) => value,
+                Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
+            };
+
+
+            let proof: Proof<MC> = Proof {
+                stark_proof,
+                machine_log_sizes,
+            };
+            prove_span.exit();
+            Ok(bincode::serialize(&proof).unwrap())
+        } else {
+            let proof_result = stwo_prover::core::prover::prove::<SimdBackend, MC>(
+                &components_slice,
+                prover_channel,
+                commitment_scheme,
+            );
+
+            let stark_proof = match proof_result {
+                Ok(value) => value,
+                Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
+            };
+
+            let proof: Proof<MC> = Proof {
+                stark_proof,
+                machine_log_sizes,
+            };
+            prove_span.exit();
+            Ok(bincode::serialize(&proof).unwrap())
         }
-
-        let components_slice: Vec<&dyn ComponentProver<SimdBackend>> = components
-            .iter()
-            .map(|component| component as &dyn ComponentProver<SimdBackend>)
-            .collect();
-
-        let proof_result = stwo_prover::core::prover::prove::<SimdBackend, MC>(
-            &components_slice,
-            prover_channel,
-            commitment_scheme,
-        );
-
-        let stark_proof = match proof_result {
-            Ok(value) => value,
-            Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
-        };
-
-        let proof: Proof<MC> = Proof {
-            stark_proof,
-            machine_log_sizes,
-        };
-        prove_span.exit();
-        Ok(bincode::serialize(&proof).unwrap())
     }
 
     pub fn verify(&self, proof: &[u8], instances: &[M31]) -> Result<(), String> {

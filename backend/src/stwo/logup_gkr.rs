@@ -47,6 +47,9 @@ use crate::stwo::StwoProver;
 
 use super::circuit_builder::PowdrEval;
 
+// for now, using this flag to enable logup-GKR
+pub const LOGUP_GKR: bool = true;
+
 pub struct PowdrComponentWrapper<'a>(pub &'a FrameworkComponent<PowdrEval>);
 
 impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
@@ -57,6 +60,7 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
     ) -> SecureField {
         // Create dummy point evaluator just to extract the value we need from the mask
         let mut accumulator = PointEvaluationAccumulator::new(SecureField::one());
+        println!("building point evaluator");
         let mut eval = PointEvaluator::new(
             mask.sub_tree(self.0.trace_locations()),
             &mut accumulator,
@@ -64,14 +68,16 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
             self.0.log_size(),
             SecureField::zero(),
         );
+        println!("evaluating point built");
 
-        eval_mle_coeff_col(1, &mut eval)
+        eval_mle_coeff_col( 1, &mut eval)
     }
 }
 
 fn eval_mle_coeff_col<E: EvalAtRow>(interaction: usize, eval: &mut E) -> E::EF {
-    let [mle_coeff_col_eval] = eval.next_interaction_mask(interaction, [0]);
-    E::EF::from(mle_coeff_col_eval)
+    //let [mle_coeff_col_eval] = eval.next_interaction_mask(interaction, [0]);
+   // E::EF::from(mle_coeff_col_eval)
+   E::EF::zero()
 }
 
 impl<'a> Deref for PowdrComponentWrapper<'a> {
@@ -220,6 +226,17 @@ where
             gkr_artifacts.claims_to_verify_by_instance
         );
 
-        None
+        if LOGUP_GKR {
+            let gkr_proof_artifacts = gkr_proof_artifacts {
+                gkr_proof,
+                gkr_artifacts,
+                mle_numerators,
+                mle_denominators,
+            };
+
+            return Some(gkr_proof_artifacts);
+        } else {
+            return None;
+        }
     }
 }
