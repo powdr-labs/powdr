@@ -2,9 +2,7 @@ use mktemp::Temp;
 use powdr_backend::BackendType;
 use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField, KoalaBearField};
 use powdr_pipeline::{
-    test_util::{
-        run_pilcom_with_backend_variant, test_mock_backend, test_plonky3_pipeline, BackendVariant,
-    },
+    test_util::{test_mock_backend, test_plonky3_pipeline},
     Pipeline,
 };
 use powdr_riscv::CompilerOptions;
@@ -13,7 +11,7 @@ use std::{
     process::Command,
 };
 
-/// Like compiler::test_util::run_pilcom_asm_string, but also runs RISCV executor.
+/// Like compiler::test_util::run_mock_asm_string, but also runs RISCV executor.
 pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Sync + 'static>(
     file_name: &str,
     contents: &str,
@@ -44,13 +42,6 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
             &[],
             None,
         );
-    }
-
-    // verify with PILCOM
-    if T::known_field().unwrap() == KnownField::GoldilocksField {
-        let pipeline_gl: Pipeline<GoldilocksField> =
-            unsafe { std::mem::transmute(pipeline.clone()) };
-        run_pilcom_with_backend_variant(pipeline_gl, BackendVariant::Composite).unwrap();
     }
 
     test_plonky3_pipeline::<T>(pipeline.clone());
@@ -105,7 +96,7 @@ pub fn compile_riscv_asm_file(asm_file: &Path, options: CompilerOptions, use_pie
 
     // Assemble with GNU
     let assembler = find_assembler();
-    log::info!("Using assembler: {}", assembler);
+    log::info!("Using assembler: {assembler}");
     Command::new(assembler)
         .arg("-march=rv32imac")
         .arg("-mabi=ilp32")

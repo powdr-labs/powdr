@@ -1,7 +1,7 @@
 use core::arch::asm;
 use core::fmt;
 
-use powdr_riscv_syscalls::Syscall;
+use powdr_syscalls::Syscall;
 
 #[macro_export]
 macro_rules! print {

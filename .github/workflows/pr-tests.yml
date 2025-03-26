@@ -92,12 +92,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tests_archive
-      - name: ⚡ Cache nodejs
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/pilcom/node_modules
-          key: ${{ runner.os }}-pilcom-node-modules
       - name: Install Rust toolchain nightly-2024-12-17 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
       - name: Install nightly-2024-08-01
@@ -108,13 +102,10 @@ jobs:
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
       - name: Install test dependencies
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
-      - name: Install pilcom
-        run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
       - uses: taiki-e/install-action@nextest
       - name: Run default tests
         run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/2
         env:
-          PILCOM: ${{ github.workspace }}/pilcom/
           POWDR_STD: ${{ github.workspace }}/std/
 
   run_examples:
@@ -165,12 +156,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tests_archive
-      - name: ⚡ Cache nodejs
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/pilcom/node_modules
-          key: ${{ runner.os }}-pilcom-node-modules
       - name: Install Rust toolchain nightly-2024-12-17(with clippy and rustfmt)
         run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
       - name: Install nightly-2024-08-01
@@ -179,8 +164,6 @@ jobs:
         run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
       - name: Install riscv target
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
-      - name: Install pilcom
-        run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
       - name: Install EStarkPolygon prover system dependency
         run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev
       - uses: taiki-e/install-action@nextest
@@ -189,7 +172,6 @@ jobs:
       - name: Run EStark Polygon test
         run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only --no-capture -E "test(=vec_median_estark_polygon)"
         env:
-          PILCOM: ${{ github.workspace }}/pilcom/
           POWDR_STD: ${{ github.workspace }}/std/
 
   test_slow:
@@ -215,12 +197,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tests_archive
-      - name: ⚡ Cache nodejs
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/pilcom/node_modules
-          key: ${{ runner.os }}-pilcom-node-modules
       - name: Install Rust toolchain nightly-2024-12-17 (with clippy and rustfmt)
         run: rustup toolchain install nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-12-17-x86_64-unknown-linux-gnu
       - name: Install test dependencies
@@ -231,17 +207,13 @@ jobs:
         run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
       - name: Install riscv target
         run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
-      - name: Install pilcom
-        run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
       - uses: taiki-e/install-action@nextest
       - name: Run slow tests
-        # Number threads is set to 2 because the runner does not have enough memory for more.
         run: |
           NIGHTLY_TESTS=$(cat .github/workflows/nightly_tests_list.txt)
-          cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 2 --partition hash:"${{ matrix.test }}"/8
+          cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --partition hash:"${{ matrix.test }}"/8
         shell: bash
         env:
-          PILCOM: ${{ github.workspace }}/pilcom/
           POWDR_STD: ${{ github.workspace }}/std/
 
   bench:
@@ -280,8 +252,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - name: Install EStarkPolygon prover dependencies
         run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc uuid-dev build-essential cmake pkg-config git
-      - name: Install pilcom
-        run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
       - name: Run benchmarks
         # we add `|| exit 1` to make sure the step fails if `cargo bench` fails
         run: cargo bench --workspace --all-features -- --output-format bencher | tee output.txt || exit 1

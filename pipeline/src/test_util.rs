@@ -13,11 +13,6 @@ use std::sync::Arc;
 
 use crate::pipeline::Pipeline;
 
-#[cfg(feature = "estark-starky")]
-use crate::verify::verify;
-#[cfg(feature = "estark-starky")]
-use std::fs;
-
 pub fn resolve_test_file(file_name: &str) -> PathBuf {
     PathBuf::from(format!("../test_data/{file_name}"))
 }
@@ -64,7 +59,7 @@ pub fn make_prepared_pipeline<T: FieldElement>(
     pipeline
 }
 
-/// Tests witness generation, mock prover, pilcom and plonky3 with
+/// Tests witness generation, mock prover, and plonky3 with
 /// Goldilocks, BabyBear and KoalaBear.
 pub fn regular_test_all_fields(file_name: &str, inputs: &[i32]) {
     regular_test_gl(file_name, inputs);
@@ -76,7 +71,7 @@ pub fn regular_test_small_field(file_name: &str, inputs: &[i32]) {
     regular_test_kb(file_name, inputs);
 }
 
-/// Tests witness generation, mock prover, pilcom and plonky3 with BabyBear.
+/// Tests witness generation, mock prover, and plonky3 with BabyBear.
 pub fn regular_test_bb(file_name: &str, inputs: &[i32]) {
     let inputs_bb = inputs.iter().map(|x| BabyBearField::from(*x)).collect();
     // LinkerMode::Native because the bus is not implemented for small fields
@@ -85,7 +80,7 @@ pub fn regular_test_bb(file_name: &str, inputs: &[i32]) {
     test_plonky3_pipeline(pipeline_bb);
 }
 
-/// Tests witness generation, mock prover, pilcom and plonky3 with BabyBear and KoalaBear.
+/// Tests witness generation, mock prover, and plonky3 with BabyBear and KoalaBear.
 pub fn regular_test_kb(file_name: &str, inputs: &[i32]) {
     let inputs_kb = inputs.iter().map(|x| KoalaBearField::from(*x)).collect();
     // LinkerMode::Native because the bus is not implemented for small fields
@@ -94,7 +89,7 @@ pub fn regular_test_kb(file_name: &str, inputs: &[i32]) {
     test_plonky3_pipeline(pipeline_kb);
 }
 
-/// Tests witness generation, mock prover, pilcom and plonky3 with Goldilocks.
+/// Tests witness generation, mock prover, and plonky3 with Goldilocks.
 pub fn regular_test_gl(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs
         .iter()
@@ -104,17 +99,11 @@ pub fn regular_test_gl(file_name: &str, inputs: &[i32]) {
     let pipeline_gl_native =
         make_prepared_pipeline(file_name, inputs_gl.clone(), vec![], LinkerMode::Native);
     test_mock_backend(pipeline_gl_native.clone());
-    run_pilcom_with_backend_variant(pipeline_gl_native, BackendVariant::Composite).unwrap();
 
     let pipeline_gl_bus =
         make_prepared_pipeline(file_name, inputs_gl.clone(), vec![], LinkerMode::Bus);
     test_mock_backend(pipeline_gl_bus.clone());
     test_plonky3_pipeline(pipeline_gl_bus);
-}
-
-pub fn test_pilcom(pipeline: Pipeline<GoldilocksField>) {
-    run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic).unwrap();
-    run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
 }
 
 pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Analyzed<T> {
@@ -123,52 +112,6 @@ pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Analyzed<T> {
         .compute_optimized_pil()
         .unwrap()
         .clone()
-}
-
-#[cfg(not(feature = "estark-starky"))]
-pub fn run_pilcom_with_backend_variant(
-    _pipeline: Pipeline<GoldilocksField>,
-    _backend_variant: BackendVariant,
-) -> Result<(), String> {
-    Ok(())
-}
-
-#[cfg(feature = "estark-starky")]
-pub fn run_pilcom_with_backend_variant(
-    pipeline: Pipeline<GoldilocksField>,
-    backend_variant: BackendVariant,
-) -> Result<(), String> {
-    use powdr_backend::BackendType;
-
-    let backend = match backend_variant {
-        BackendVariant::Monolithic => BackendType::EStarkDump,
-        BackendVariant::Composite => BackendType::EStarkDumpComposite,
-    };
-    let mut pipeline = pipeline.with_backend(backend, None);
-
-    if pipeline.output_dir().is_none() {
-        pipeline = pipeline.with_tmp_output();
-    }
-
-    pipeline.compute_proof().unwrap();
-
-    let out_dir = pipeline.output_dir().as_ref().unwrap();
-    match backend_variant {
-        BackendVariant::Composite => {
-            // traverse all subdirs of the given output dir and verify each subproof
-            for entry in fs::read_dir(out_dir).unwrap() {
-                let entry = entry.unwrap();
-                let path = entry.path();
-                // In the composite backend, the prover can choose to skip some machines,
-                // which happens if they are empty.
-                if path.is_dir() && fs::read_dir(&path).unwrap().count() > 0 {
-                    verify(&path)?;
-                }
-            }
-            Ok(())
-        }
-        BackendVariant::Monolithic => verify(out_dir),
-    }
 }
 
 fn should_generate_proofs() -> bool {
@@ -510,41 +453,6 @@ pub fn assert_proofs_fail_for_invalid_witnesses_mock(
         .is_err());
 }
 
-#[cfg(feature = "estark-starky")]
-pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
-    file_name: &str,
-    witness: &[(String, Vec<u64>)],
-    publics: &BTreeMap<String, u64>,
-) {
-    let pipeline = Pipeline::<GoldilocksField>::default()
-        .with_tmp_output()
-        .from_file(resolve_test_file(file_name));
-
-    assert!(run_pilcom_with_backend_variant(
-        pipeline
-            .clone()
-            .with_backend(powdr_backend::BackendType::EStarkDump, None)
-            .set_witness_and_publics(convert_witness(witness), convert_publics(publics)),
-        BackendVariant::Monolithic
-    )
-    .is_err());
-    assert!(run_pilcom_with_backend_variant(
-        pipeline
-            .with_backend(powdr_backend::BackendType::EStarkDumpComposite, None)
-            .set_witness_and_publics(convert_witness(witness), convert_publics(publics)),
-        BackendVariant::Composite
-    )
-    .is_err());
-}
-
-#[cfg(not(feature = "estark-starky"))]
-pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
-    _file_name: &str,
-    _witness: &[(String, Vec<u64>)],
-    _publics: &BTreeMap<String, u64>,
-) {
-}
-
 #[cfg(not(feature = "estark-starky"))]
 pub fn assert_proofs_fail_for_invalid_witnesses_estark(
     _file_name: &str,
@@ -598,14 +506,9 @@ pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
 ) {
 }
 
-pub fn assert_proofs_fail_for_invalid_witnesses(
-    file_name: &str,
-    witness: &[(String, Vec<u64>)],
-    publics: &BTreeMap<String, u64>,
-) {
-    assert_proofs_fail_for_invalid_witnesses_mock(file_name, witness, publics);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(file_name, witness, publics);
-    assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness, publics);
+pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(String, Vec<u64>)]) {
+    assert_proofs_fail_for_invalid_witnesses_mock(file_name, witness);
+    assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness);
     #[cfg(feature = "halo2")]
     assert_proofs_fail_for_invalid_witnesses_halo2(file_name, witness, publics);
     #[cfg(feature = "stwo")]

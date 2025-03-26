@@ -59,12 +59,6 @@ jobs:
           ~/.cargo/git
           target
         key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
-    - name: ⚡ Cache nodejs
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/pilcom/node_modules
-        key: ${{ runner.os }}-pilcom-node-modules
     - name: Install Rust toolchain 1.81
       run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu
     - name: Install nightly
@@ -77,12 +71,9 @@ jobs:
       run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
     - name: Install EStarkPolygon prover dependencies
       run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm libgrpc++-dev libprotobuf-dev protobuf-compiler-grpc uuid-dev build-essential cmake pkg-config git
-    - name: Install pilcom
-      run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Check without Halo2
       run: cargo check --all --no-default-features
     - name: Build
       run: cargo build --all --release --all-features
     - name: Run tests
-      # Number threads is set to 1 because the runner does not have enough memory for more.
-      run: PILCOM=$(pwd)/pilcom/ cargo test --all --release --verbose --all-features -- --include-ignored --nocapture --test-threads=1
+      run: cargo test --all --release --verbose --all-features -- --include-ignored --nocapture

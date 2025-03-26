@@ -50,7 +50,6 @@ fn lookup_with_selector() {
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     let publics = BTreeMap::new();
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness, &publics);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness, &publics);
 }
 
 #[test]
@@ -94,7 +93,6 @@ fn permutation_with_selector() {
     // Invalid witness: 0 is not in the set {2, 4}
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness, &publics);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness, &publics);
 }
 
 #[test]
@@ -144,7 +142,6 @@ fn fibonacci_invalid_witness() {
     ];
     let publics = BTreeMap::from([("Fibonacci::out".to_string(), 13)]);
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness, &publics);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness, &publics);
     assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness, &publics);
 
     // All constraints are valid, except the initial row.
@@ -156,7 +153,6 @@ fn fibonacci_invalid_witness() {
     ];
     let publics = BTreeMap::from([("Fibonacci::out".to_string(), 8)]);
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness, &publics);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness, &publics);
     assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness, &publics);
 }
 

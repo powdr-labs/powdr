@@ -1,7 +1,7 @@
 use core::arch::asm;
 
 use crate::arith::{bes_to_u32, u32x16_to_be};
-use powdr_riscv_syscalls::Syscall;
+use powdr_syscalls::Syscall;
 
 /// Add two k256 ec points. Coordinates are big-endian u8 arrays.
 pub fn add_u8_be(ax: [u8; 32], ay: [u8; 32], bx: [u8; 32], by: [u8; 32]) -> [u8; 64] {

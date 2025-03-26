@@ -231,7 +231,7 @@ where
 ///
 /// # Example
 /// ```rust
-/// use powdr_pipeline::{Pipeline, verify, BackendType, test_util::resolve_test_file};
+/// use powdr_pipeline::{Pipeline, BackendType, test_util::resolve_test_file};
 /// use std::path::PathBuf;
 /// use powdr_number::GoldilocksField;
 ///
@@ -549,7 +549,7 @@ impl<T: FieldElement> Pipeline<T> {
         publics: BTreeMap<String, Option<T>>,
     ) -> Self {
         if self.output_dir.is_some() {
-            // Some future steps (e.g. Pilcom verification) require the witness to be persisted.
+            // Some future steps require the witness to be persisted.
             let fixed_cols = self.compute_fixed_cols().unwrap();
             self.maybe_write_witness(&fixed_cols, &witness).unwrap();
         }
@@ -577,7 +577,7 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     fn log(&self, msg: &str) {
-        log::log!(self.log_level, "{}", msg);
+        log::log!(self.log_level, "{msg}");
     }
 
     /// Returns the path to the output file if the output directory is set.
