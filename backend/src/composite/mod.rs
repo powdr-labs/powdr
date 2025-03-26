@@ -383,7 +383,7 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
                     .map(|(machine_name, machine_data)| {
                         let (machine_witness, size) = witness_by_machine.get(machine_name).unwrap();
                         let machine_data = machine_data.get(size).unwrap();
-                        let new_witness = witgen_callback.next_stage_witness(
+                        let (new_witness, _) = witgen_callback.next_stage_witness(
                             &machine_data.pil,
                             machine_witness,
                             challenges.clone(),
