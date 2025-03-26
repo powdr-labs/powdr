@@ -118,8 +118,6 @@ impl<F: FieldElement, T: From<F>> TerminalAccess<T> for RowValues<'_, F> {
     }
 
     fn get_public(&self, public: &str) -> T {
-        println!("get_public key: {}", public);
-        println!("get_public map: {:?}", self.values.public_values);
         self.values.public_values[public].into()
     }
 

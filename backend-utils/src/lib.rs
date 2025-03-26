@@ -46,10 +46,6 @@ pub fn machine_witness_columns<F: FieldElement>(
     machine_pil: &Analyzed<F>,
     machine_name: &str,
 ) -> Vec<(String, Vec<F>)> {
-    println!(
-        "all_witness_columns length: {:?}",
-        all_witness_columns.len()
-    );
     let machine_columns = select_machine_columns(
         all_witness_columns,
         machine_pil.committed_polys_in_source_order(),
@@ -64,14 +60,9 @@ pub fn machine_witness_columns<F: FieldElement>(
         return machine_columns.into_iter().cloned().collect();
     }
 
-    println!("machine_columns length: {:?}", machine_columns.len());
-
     let size = machine_columns
         .iter()
-        .map(|(name, column)| {
-            println!("colname {:?} | len {:?}", name, column.len());
-            column.len()
-        })
+        .map(|(_, column)| column.len())
         .unique()
         .exactly_one()
         .unwrap_or_else(|err| {
