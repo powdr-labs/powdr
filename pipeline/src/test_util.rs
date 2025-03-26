@@ -506,9 +506,13 @@ pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
 ) {
 }
 
-pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(String, Vec<u64>)]) {
-    assert_proofs_fail_for_invalid_witnesses_mock(file_name, witness);
-    assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness);
+pub fn assert_proofs_fail_for_invalid_witnesses(
+    file_name: &str,
+    witness: &[(String, Vec<u64>)],
+    publics: &BTreeMap<String, u64>,
+) {
+    assert_proofs_fail_for_invalid_witnesses_mock(file_name, witness, publics);
+    assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness, publics);
     #[cfg(feature = "halo2")]
     assert_proofs_fail_for_invalid_witnesses_halo2(file_name, witness, publics);
     #[cfg(feature = "stwo")]
