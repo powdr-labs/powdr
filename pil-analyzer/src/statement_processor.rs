@@ -520,12 +520,7 @@ where
         array_index: Option<parsed::Expression>,
         row: parsed::Expression,
     ) -> Result<Vec<PILItem>, Error> {
-        let Symbol {
-            id,
-            source,
-            absolute_name,
-            ..
-        } = symbol.clone();
+        let Symbol { id, source, .. } = symbol.clone();
 
         let row: u32 = untyped_evaluator::evaluate_expression_to_int(
             self.driver,
@@ -594,7 +589,6 @@ where
                 PublicDeclaration {
                     id,
                     source: source.clone(),
-                    name: absolute_name,
                     value,
                 },
             )),
