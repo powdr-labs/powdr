@@ -56,7 +56,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        // All identities should have a public reference
+        // The only identities we'd expect would be to expose public values.
         if !parts.identities.iter().all(|id| {
             id.all_children()
                 .any(|c| matches!(c, AlgebraicExpression::PublicReference(_)))
