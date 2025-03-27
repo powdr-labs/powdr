@@ -74,6 +74,9 @@ pub struct SubProver<'s, F: FieldElement> {
 
 impl<'s, F: FieldElement> SubProver<'s, F> {
     pub fn resume(self, response: Vec<(String, Vec<F>)>) -> RunStatus<'s, F> {
+        // `response_sender` has to send `(witness, publics)` to match `response_receiver`.
+        // TODO: currently publics is set to empty, but we should update this once composite backend
+        // uses public reference values instead of witness values in the future.
         self.response_sender
             .send((response, BTreeMap::new()))
             .unwrap();
