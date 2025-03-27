@@ -382,10 +382,10 @@ mod tests {
             public out2 = y(3);
             public out3 = y(5);
             
-            pol fixed IS_6 = [0, 0, 0, 0, 0, 0, 1, 0]*;
-            pol fixed IS_7 = [0, 0, 0, 0, 0, 0, 0, 1]*;
-            pol fixed IS_3 = [0, 0, 0, 1, 0, 0, 0, 0]*;
-            pol fixed IS_5 = [0, 0, 0, 0, 0, 1, 0, 0]*;
+            pol fixed IS_6 = [0, 0, 0, 0, 0, 0, 1, 0];
+            pol fixed IS_7 = [0, 0, 0, 0, 0, 0, 0, 1];
+            pol fixed IS_3 = [0, 0, 0, 1, 0, 0, 0, 0];
+            pol fixed IS_5 = [0, 0, 0, 0, 0, 1, 0, 0];
 
             IS_6 * (x - out0) = 0;
             IS_7 * (x - out1) = 0;

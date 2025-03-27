@@ -56,7 +56,6 @@ impl<'a, F: FieldElement> Machine<'a, F> {
 
         let intermediate_definitions = pil.intermediate_definitions();
 
-        // TODO: Supports publics.
         let values = OwnedTerminalValues::new(pil, witness, publics.clone(), fixed)
             .with_challenges(challenges.clone());
 

@@ -271,7 +271,7 @@ impl Display for ConnectionKind {
 /// Also includes FixedData for convenience.
 #[derive(Clone)]
 pub struct MachineParts<'a, T: FieldElement> {
-    pub fixed_data: &'a FixedData<'a, T>,
+    fixed_data: &'a FixedData<'a, T>,
     /// Bus receives, indexed by their bus ID.
     /// These represent the machine listening on a specific bus to receive calls.
     pub bus_receives: BTreeMap<T, &'a BusReceive<T>>,

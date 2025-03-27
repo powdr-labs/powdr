@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, HashMap};
 use itertools::{Either, Itertools};
 
 use num_traits::One;
-use powdr_ast::analyzed::{PolyID, PolynomialType};
+use powdr_ast::analyzed::{AlgebraicExpression, PolyID, PolynomialType};
+use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::data_structures::identity::BusReceive;
@@ -42,7 +43,7 @@ pub struct WriteOnceMemory<'a, T: FieldElement> {
     /// The memory content
     data: BTreeMap<DegreeType, Vec<Option<T>>>,
     name: String,
-    publics: Vec<String>,
+    public_names: Vec<String>,
 }
 
 impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
@@ -51,6 +52,16 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
+        // All identities should have a public reference
+        if !parts.identities.iter().all(|id| {
+            (*id).children().any(|c| {
+                c.all_children()
+                    .any(|c| matches!(c, AlgebraicExpression::PublicReference(_)))
+            })
+        }) {
+            return None;
+        }
+
         if parts.bus_receives.is_empty() {
             return None;
         }
@@ -132,7 +143,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             value_polys,
             key_to_index,
             data: BTreeMap::new(),
-            publics: parts
+            public_names: parts
                 .fixed_data
                 .analyzed
                 .public_declarations_in_source_order()
@@ -294,7 +305,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
     }
 
     fn take_public_values(&mut self) -> BTreeMap<String, T> {
-        if self.publics.is_empty() {
+        if self.public_names.is_empty() {
             BTreeMap::new()
         } else {
             let public_values: Vec<_> = self
@@ -320,7 +331,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
                 })
                 .collect();
 
-            self.publics
+            self.public_names
                 .clone()
                 .into_iter()
                 .zip(public_values)

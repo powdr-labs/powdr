@@ -33,7 +33,7 @@ pub struct OwnedTerminalValues<F> {
 
 /// A view into the trace values for a single row.
 pub struct RowValues<'a, F> {
-    pub values: &'a OwnedTerminalValues<F>,
+    values: &'a OwnedTerminalValues<F>,
     row: usize,
 }
 
