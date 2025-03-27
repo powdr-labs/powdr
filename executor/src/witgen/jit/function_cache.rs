@@ -184,10 +184,7 @@ impl<'a, T: FieldElement> FunctionCache<'a, T> {
             )
             .map_err(|e| {
                 // These errors can be pretty verbose and are quite common currently.
-                log::debug!(
-                    "=> Error generating JIT code: {}\n...",
-                    e.to_string().lines().take(5).join("\n")
-                );
+                log::debug!("=> Error generating JIT code:\n{e}",);
             })
             .ok()?;
 
