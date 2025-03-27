@@ -418,6 +418,15 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         }
     }
 
+    // TODO we need to change this to:
+    // not just return the first failure, but return
+    // identity-row pairs that are not solved.
+    // we extract the relevant unknown variables (multiplied by zero is filtered out!
+    // note that we have to do this on Expression since it might be non-linear)
+    // then we try to set them one-by-one to the first value that is in their range.
+    // if this fails for one of them (conflict), we revert to the previous witgen and skip it.
+    // we try this until there is no progress any more or we are finished.
+
     /// Returns true if all polynomial identities are solved for at least `self.block_size` rows
     /// in the middle of the rows. A polynomial identities is solved if it evaluates to
     /// a known value.
