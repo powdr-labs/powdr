@@ -76,6 +76,7 @@ jobs:
             pil-stark-prover-deps.tar.zst
 
   test_quick:
+    name: test_quick
     needs: build
     runs-on: ubuntu-24.04
     strategy:
@@ -175,6 +176,7 @@ jobs:
           POWDR_STD: ${{ github.workspace }}/std/
 
   test_slow:
+    name: test_slow
     strategy:
       matrix:
         test:
