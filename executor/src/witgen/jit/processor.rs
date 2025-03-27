@@ -121,37 +121,21 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             return Err(Error::conflicting_constraints(witgen));
         }
 
-        // Check that we could derive all requested variables.
-        let missing_variables = self
-            .requested_known_vars
-            .iter()
-            .filter(|var| !witgen.is_known(var))
-            // Sort to get deterministic code.
-            .sorted()
-            .cloned()
-            .collect_vec();
-
-        let incomplete_machine_calls = self.incomplete_machine_calls(&witgen);
-        if missing_variables.is_empty()
-            && self.try_fix_simple_sends(
-                &incomplete_machine_calls,
-                can_process.clone(),
-                &mut witgen,
-                identity_queue.clone(),
-            )
-            && self.all_polynomial_identities_solved_in_block(&witgen)
-        {
-            let range_constraints = self
-                .requested_range_constraints
-                .iter()
-                .map(|var| witgen.range_constraint(var))
-                .collect();
-            let code = witgen.finish();
-            return Ok(ProcessorResult {
-                code,
-                range_constraints,
-            });
-        }
+        let missing_variables =
+            match self.try_to_finish(can_process.clone(), &mut witgen, identity_queue.clone()) {
+                Ok(()) => {
+                    let range_constraints = self
+                        .requested_range_constraints
+                        .iter()
+                        .map(|var| witgen.range_constraint(var))
+                        .collect();
+                    return Ok(ProcessorResult {
+                        code: witgen.finish(),
+                        range_constraints,
+                    });
+                }
+                Err(missing_variables) => missing_variables,
+            };
 
         // We need to do some work, try to branch.
         let most_constrained_var = witgen
@@ -310,6 +294,46 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         Ok(())
     }
 
+    /// Checks if we can finish witgen derivation, i.e. all requested variables are known,
+    /// all machine calls are complete and all polynomial identities are solved.
+    /// This function tries to guess some values for unknown variables if it does
+    /// not create a conflict.
+    /// If it is not able to finish, returns the list of missing requested variables.
+    fn try_to_finish<FixedEval: FixedEvaluator<T>>(
+        &self,
+        can_process: impl CanProcessCall<T>,
+        mut witgen: &mut WitgenInference<'a, T, FixedEval>,
+        identity_queue: IdentityQueue<'a, T>,
+    ) -> Result<(), Vec<Variable>> {
+        // Check that we could derive all requested variables.
+        let missing_variables = self
+            .requested_known_vars
+            .iter()
+            .filter(|var| !witgen.is_known(var))
+            // Sort to get deterministic code.
+            .sorted()
+            .cloned()
+            .collect_vec();
+
+        let incomplete_machine_calls = self.incomplete_machine_calls(&witgen);
+        if missing_variables.is_empty()
+            && self.try_fix_simple_sends(
+                &incomplete_machine_calls,
+                can_process.clone(),
+                &mut witgen,
+                identity_queue.clone(),
+            )
+            && self
+                .unsolved_polynomial_identities_in_block(&witgen)
+                .next()
+                .is_none()
+        {
+            Ok(())
+        } else {
+            Err(missing_variables)
+        }
+    }
+
     /// If any machine call could not be completed, that's bad because machine calls typically have side effects.
     /// So, the underlying lookup / permutation / bus argument likely does not hold.
     /// This function checks that all machine calls are complete, at least for a window of <block_size> rows.
@@ -427,46 +451,55 @@ impl<'a, T: FieldElement> Processor<'a, T> {
     // if this fails for one of them (conflict), we revert to the previous witgen and skip it.
     // we try this until there is no progress any more or we are finished.
 
-    /// Returns true if all polynomial identities are solved for at least `self.block_size` rows
-    /// in the middle of the rows. A polynomial identities is solved if it evaluates to
-    /// a known value.
-    fn all_polynomial_identities_solved_in_block<FixedEval: FixedEvaluator<T>>(
-        &self,
-        witgen: &WitgenInference<'a, T, FixedEval>,
-    ) -> bool {
+    /// Returns all pairs of polynomial identity and row where the identity is not solved
+    /// in `self.block_size` contiguous rows. A polynomial identities is considered solved if
+    /// it evaluates to a known value.
+    /// If a polynomial identity is solved for `self.block_size` contiguous rows, it is not
+    /// returned, not even on the rows where it is not solved.
+    fn unsolved_polynomial_identities_in_block<'b, FixedEval: FixedEvaluator<T>>(
+        &'b self,
+        witgen: &'b WitgenInference<'a, T, FixedEval>,
+    ) -> impl Iterator<Item = (&'a Identity<T>, i32)> + 'b {
         // Group all identity-row-pairs by their identities.
         self.identities
             .iter()
             .filter_map(|(id, row_offset)| {
                 if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
-                    Some((id.id(), (expression, *row_offset)))
+                    Some(((id.id(), id), (expression, *row_offset)))
                 } else {
                     None
                 }
             })
             .into_group_map()
-            .into_values()
-            .all(|identities| {
+            .into_iter()
+            .flat_map(move |((_, &identity), pairs)| {
                 // For each identity, check if it is fully solved
                 // for at least "self.blocks_size" rows.
-                let solved = identities
-                    .into_iter()
-                    .map(
-                        |(expression, row_offset)| match witgen.evaluate(expression, row_offset) {
+                let is_solved = pairs
+                    .iter()
+                    .map(move |(expression, row_offset)| {
+                        match witgen.evaluate(expression, *row_offset) {
                             None => false,
                             Some(value) => value.try_to_known().is_some(),
-                        },
-                    )
+                        }
+                    })
                     .collect_vec();
 
-                let solved_count = solved.iter().filter(|v| **v).count();
-                let unsolved_prefix = solved.iter().take_while(|v| !**v).count();
-                let unsolved_suffix = solved.iter().rev().take_while(|v| !**v).count();
+                let solved_count = is_solved.iter().filter(|v| **v).count();
+                let unsolved_prefix = is_solved.iter().take_while(|v| !**v).count();
+                let unsolved_suffix = is_solved.iter().rev().take_while(|v| !**v).count();
                 // There need to be at least `self.block_size` solved identities
                 // and there can be unsolved rows at the start or at the end, but not
                 // in the middle.
-                solved_count >= self.block_size
-                    && solved_count + unsolved_prefix + unsolved_suffix == solved.len()
+                if solved_count >= self.block_size
+                    && solved_count + unsolved_prefix + unsolved_suffix == is_solved.len()
+                {
+                    vec![]
+                } else {
+                    pairs
+                }
+                .into_iter()
+                .map(move |(_, row_offset)| (identity, row_offset))
             })
     }
 }
