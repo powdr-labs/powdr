@@ -1,7 +1,13 @@
-use std::fmt::{self, Display, Formatter, Write};
+use std::{
+    collections::HashSet,
+    fmt::{self, Display, Formatter, Write},
+};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::PolynomialIdentity;
+use powdr_ast::analyzed::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
+    AlgebraicUnaryOperation, PolynomialIdentity,
+};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -302,7 +308,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
     fn try_to_finish<FixedEval: FixedEvaluator<T>>(
         &self,
         can_process: impl CanProcessCall<T>,
-        mut witgen: &mut WitgenInference<'a, T, FixedEval>,
+        witgen: &mut WitgenInference<'a, T, FixedEval>,
         identity_queue: IdentityQueue<'a, T>,
     ) -> Result<(), Vec<Variable>> {
         // Check that we could derive all requested variables.
@@ -315,19 +321,39 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             .cloned()
             .collect_vec();
 
-        let incomplete_machine_calls = self.incomplete_machine_calls(&witgen);
-        if missing_variables.is_empty()
-            && self.try_fix_simple_sends(
+        let incomplete_machine_calls = self.incomplete_machine_calls(witgen);
+
+        // TODO we could first try to guess unknown variables and then re-check
+        // if all missing variables are known.
+
+        if !missing_variables.is_empty()
+            || !self.try_fix_simple_sends(
                 &incomplete_machine_calls,
                 can_process.clone(),
-                &mut witgen,
+                witgen,
                 identity_queue.clone(),
             )
-            && self
-                .unsolved_polynomial_identities_in_block(&witgen)
-                .next()
-                .is_none()
         {
+            return Err(missing_variables);
+        }
+
+        // Now there are only missing identities left. The hope is that the identities
+        // are only about essentially unconstrained variables.
+
+        // Collect the relevant (e.g. not multiplied by a known zero value) unknown variables.
+        let unknown_variables = self
+            .unsolved_polynomial_identities_in_block(witgen)
+            .flat_map(|(id, row_offset)| {
+                let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id else {
+                    unreachable!()
+                };
+                unknown_relevant_variables(expression, witgen, row_offset).into_iter()
+            })
+            .unique()
+            .sorted()
+            .collect_vec();
+
+        if self.guess_unknown_variables(&unknown_variables, can_process, witgen, identity_queue) {
             Ok(())
         } else {
             Err(missing_variables)
@@ -420,12 +446,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 unreachable!()
             };
             assert!(!witgen.is_known(param));
-            match modified_witgen.process_equation_on_row(
-                &T::from(0).into(),
-                Some(param.clone()),
-                0.into(),
-                row,
-            ) {
+            match modified_witgen.set_variable(param.clone(), 0.into()) {
                 Err(_) => return false,
                 Ok(updated_vars) => identity_queue.variables_updated(updated_vars),
             };
@@ -441,15 +462,6 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             false
         }
     }
-
-    // TODO we need to change this to:
-    // not just return the first failure, but return
-    // identity-row pairs that are not solved.
-    // we extract the relevant unknown variables (multiplied by zero is filtered out!
-    // note that we have to do this on Expression since it might be non-linear)
-    // then we try to set them one-by-one to the first value that is in their range.
-    // if this fails for one of them (conflict), we revert to the previous witgen and skip it.
-    // we try this until there is no progress any more or we are finished.
 
     /// Returns all pairs of polynomial identity and row where the identity is not solved
     /// in `self.block_size` contiguous rows. A polynomial identities is considered solved if
@@ -502,6 +514,43 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 .map(move |(_, row_offset)| (identity, row_offset))
             })
     }
+
+    /// Try to set the given variables to the first value in their allowed range,
+    /// as long as this does not create a conflict.
+    fn guess_unknown_variables<FixedEval: FixedEvaluator<T>>(
+        &self,
+        unknown_variables: &[Variable],
+        can_process: impl CanProcessCall<T>,
+        witgen: &mut WitgenInference<'a, T, FixedEval>,
+        mut identity_queue: IdentityQueue<'a, T>,
+    ) -> bool {
+        let mut tentative_witgen = witgen.clone();
+        // TODO: We could also call `process_until_no_progress` after each variable
+        // and revert if this caused an error and skip those variables.
+        // It might be that the variables will be determined by other variables.
+        // An example is `XIsZero` and `XInv`.
+        for var in unknown_variables {
+            let value = tentative_witgen.range_constraint(var).range().0;
+            match tentative_witgen.set_variable(var.clone(), value) {
+                Err(_) => return false,
+                Ok(updated_vars) => identity_queue.variables_updated(updated_vars),
+            };
+        }
+
+        if self
+            .process_until_no_progress(
+                can_process.clone(),
+                &mut tentative_witgen,
+                identity_queue.clone(),
+            )
+            .is_ok()
+        {
+            *witgen = tentative_witgen;
+            true
+        } else {
+            false
+        }
+    }
 }
 
 fn is_machine_call<T>(identity: &Identity<T>) -> bool {
@@ -530,6 +579,59 @@ fn machine_call_params<T: FieldElement>(
             index,
         })
     })
+}
+
+/// Returns all unknown but relevant (e.g. not multiplied by a value known to be zero)
+/// variables in the expression evaluated on the given row offset.
+fn unknown_relevant_variables<T: FieldElement, FixedEval: FixedEvaluator<T>>(
+    expr: &AlgebraicExpression<T>,
+    witgen: &WitgenInference<'_, T, FixedEval>,
+    row_offset: i32,
+) -> HashSet<Variable> {
+    match expr {
+        AlgebraicExpression::Reference(algebraic_reference) => {
+            let var = Variable::from_reference(algebraic_reference, row_offset);
+            (!witgen.is_known(&var))
+                .then_some(var)
+                .into_iter()
+                .collect()
+        }
+        // TODO once we support them, we should turn them into the proper variables here.
+        AlgebraicExpression::PublicReference(_) | AlgebraicExpression::Challenge(_) => {
+            Default::default()
+        }
+        AlgebraicExpression::Number(_) => Default::default(),
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            if *op == AlgebraicBinaryOperator::Mul {
+                let left_val = try_to_evaluate_to_known_number(left.as_ref(), witgen, row_offset);
+                let right_val = try_to_evaluate_to_known_number(right.as_ref(), witgen, row_offset);
+                if left_val == Some(T::from(0)) || right_val == Some(T::from(0)) {
+                    return Default::default();
+                }
+            }
+            let mut vars = unknown_relevant_variables(left.as_ref(), witgen, row_offset);
+            vars.extend(unknown_relevant_variables(
+                right.as_ref(),
+                witgen,
+                row_offset,
+            ));
+            vars
+        }
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { expr, .. }) => {
+            unknown_relevant_variables(expr.as_ref(), witgen, row_offset)
+        }
+    }
+}
+
+fn try_to_evaluate_to_known_number<T: FieldElement, FixedEval: FixedEvaluator<T>>(
+    expr: &AlgebraicExpression<T>,
+    witgen: &WitgenInference<'_, T, FixedEval>,
+    row_offset: i32,
+) -> Option<T> {
+    witgen
+        .evaluate(expr, row_offset)?
+        .try_to_known()?
+        .try_to_number()
 }
 
 pub struct Error<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
