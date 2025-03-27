@@ -1,10 +1,10 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use itertools::{Either, Itertools};
 
 use num_traits::One;
 use powdr_ast::analyzed::{AlgebraicExpression, PolyID, PolynomialType};
-use powdr_ast::parsed::visitor::{AllChildren, Children};
+use powdr_ast::parsed::visitor::AllChildren;
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::data_structures::identity::BusReceive;
@@ -43,7 +43,9 @@ pub struct WriteOnceMemory<'a, T: FieldElement> {
     /// The memory content
     data: BTreeMap<DegreeType, Vec<Option<T>>>,
     name: String,
-    public_names: Vec<String>,
+    /// If true, exposes the first 8 public values as `hash_0`, `hash_1`, ..., `hash_7`.
+    /// This is a special case for the `WriteOnceMemoryWith8Publics` machine.
+    exposes_8_publics: bool,
 }
 
 impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
@@ -54,10 +56,8 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
     ) -> Option<Self> {
         // All identities should have a public reference
         if !parts.identities.iter().all(|id| {
-            (*id).children().any(|c| {
-                c.all_children()
-                    .any(|c| matches!(c, AlgebraicExpression::PublicReference(_)))
-            })
+            id.all_children()
+                .any(|c| matches!(c, AlgebraicExpression::PublicReference(_)))
         }) {
             return None;
         }
@@ -135,6 +135,16 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             );
         }
 
+        let public_names = parts
+            .fixed_data
+            .analyzed
+            .public_declarations_in_source_order()
+            .map(|(name, _)| name.split("::").last().unwrap())
+            .collect::<BTreeSet<_>>();
+        let exposes_8_publics = (0..8)
+            .map(|i| format!("hash_{i}"))
+            .all(|name| public_names.contains(&name.as_str()));
+
         Some(Self {
             degree,
             bus_receives: parts.bus_receives.clone(),
@@ -143,13 +153,36 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             value_polys,
             key_to_index,
             data: BTreeMap::new(),
-            public_names: parts
-                .fixed_data
-                .analyzed
-                .public_declarations_in_source_order()
-                .map(|(name, _)| name.clone())
-                .collect(),
+            exposes_8_publics,
         })
+    }
+
+    /// Returns the witness values of the machine, merging the externally provided values
+    /// with the current state stored in `self.data`.
+    fn get_witness_values(&self) -> HashMap<String, Vec<T>> {
+        self.value_polys
+            .iter()
+            .enumerate()
+            .map(|(value_index, poly)| {
+                let column = self.fixed_data.witness_cols[poly]
+                    .external_values
+                    .cloned()
+                    .map(|mut external_values| {
+                        // External witness values might only be provided partially.
+                        external_values.resize(self.degree as usize, T::zero());
+                        external_values
+                    })
+                    .unwrap_or_else(|| {
+                        let mut column = vec![T::zero(); self.degree as usize];
+                        for (row, values) in self.data.iter() {
+                            column[*row as usize] = values[value_index].unwrap_or_default();
+                        }
+                        column
+                    });
+                (*poly, column)
+            })
+            .map(|(poly_id, column)| (self.fixed_data.column_name(&poly_id).to_string(), column))
+            .collect()
     }
 
     fn process_plookup_internal(
@@ -277,65 +310,25 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
         &mut self,
         _mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
-        let witness = self
-            .value_polys
-            .iter()
-            .enumerate()
-            .map(|(value_index, poly)| {
-                let column = self.fixed_data.witness_cols[poly]
-                    .external_values
-                    .cloned()
-                    .map(|mut external_values| {
-                        // External witness values might only be provided partially.
-                        external_values.resize(self.degree as usize, T::zero());
-                        external_values
-                    })
-                    .unwrap_or_else(|| {
-                        let mut column = vec![T::zero(); self.degree as usize];
-                        for (row, values) in self.data.iter() {
-                            column[*row as usize] = values[value_index].unwrap_or_default();
-                        }
-                        column
-                    });
-                (*poly, column)
-            })
-            .map(|(poly_id, column)| (self.fixed_data.column_name(&poly_id).to_string(), column))
-            .collect();
-        witness
+        self.get_witness_values()
     }
 
     fn take_public_values(&mut self) -> BTreeMap<String, T> {
-        if self.public_names.is_empty() {
-            BTreeMap::new()
-        } else {
-            let public_values: Vec<_> = self
-                .value_polys
-                .iter()
-                .enumerate()
-                .flat_map(|(value_index, poly)| {
-                    self.fixed_data.witness_cols[poly]
-                        .external_values
-                        .cloned()
-                        .map(|mut external_values| {
-                            // External witness values might only be provided partially.
-                            external_values.resize(self.degree as usize, T::zero());
-                            external_values
-                        })
-                        .unwrap_or_else(|| {
-                            let mut column = vec![T::zero(); 8]; // 8 public values
-                            for (row, values) in self.data.iter() {
-                                column[*row as usize] = values[value_index].unwrap_or_default();
-                            }
-                            column
-                        })
-                })
-                .collect();
+        if self.exposes_8_publics {
+            // This code works specifically for the WriteOnceMemoryWith8Publics machine.
+            // TODO: This could be generalized.
+            let witness = self.get_witness_values();
+            assert_eq!(witness.len(), 1, "Expected only one column of values.");
+            let values = witness.into_values().next().unwrap();
+            assert_eq!(values.len(), 8, "Expected exactly 8 cells.");
 
-            self.public_names
-                .clone()
+            values
                 .into_iter()
-                .zip(public_values)
+                .enumerate()
+                .map(|(i, v)| (format!("hash_{i}"), v))
                 .collect()
+        } else {
+            BTreeMap::new()
         }
     }
 }
