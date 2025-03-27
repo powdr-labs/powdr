@@ -3,7 +3,7 @@ use std::str::FromStr;
 use powdr_syscalls::Syscall;
 use wasmparser::{
     BlockType, CompositeInnerType, FrameKind, FuncType, FunctionBody, LocalsReader, Operator,
-    OperatorsIterator, Parser, Payload, RefType, SubType, TableType, TypeRef, ValType,
+    OperatorsIterator, Parser, Payload, RefType, SubType, TableInit, TableType, TypeRef, ValType,
 };
 
 const MEM_ALLOCATION_START: u32 = 0x800;
@@ -46,6 +46,8 @@ fn main() -> wasmparser::Result<()> {
     let mut imported_functions = Vec::new();
     let mut defined_functions = Vec::new();
 
+    let mut start_function = None;
+
     // TODO: validate while parsing
 
     // The payloads are processed in the order they appear in the file, so each variable written
@@ -57,7 +59,10 @@ fn main() -> wasmparser::Result<()> {
                 num,
                 encoding,
                 range,
-            } => todo!(),
+            } => {
+                // This is the encoding version, we don't care about it.
+                log::debug!("WebAssembly version: {num}");
+            }
             Payload::TypeSection(section) => {
                 for rec_group in section {
                     let mut iter = rec_group?.into_types();
@@ -101,6 +106,7 @@ fn main() -> wasmparser::Result<()> {
                                 );
                             }
 
+                            log::debug!("Imported syscall: {}", import.name);
                             imported_functions.push(syscall);
 
                             continue;
@@ -119,9 +125,13 @@ fn main() -> wasmparser::Result<()> {
             }
             Payload::TableSection(section) => {
                 for table in section {
-                    ctx.tables.push(table?.ty);
+                    let table = table?;
+                    ctx.tables.push(table.ty);
 
-                    // TODO: initialize the tables with their values
+                    if !matches!(table.init, TableInit::RefNull) {
+                        unsupported_feature_found = true;
+                        log::error!("Table initialization is not supported");
+                    }
                 }
             }
             Payload::MemorySection(section_limited) => todo!(),
@@ -143,8 +153,17 @@ fn main() -> wasmparser::Result<()> {
             Payload::ExportSection(section_limited) => {
                 // TODO: support modules loading and cross module dependencies.
                 // While we don't support that, export does nothing and can be ignored.
+                for export in section_limited {
+                    let export = export?;
+                    log::debug!(
+                        "Exported entity: {}, kind {:?}, index: {}",
+                        export.name,
+                        export.kind,
+                        export.index
+                    );
+                }
             }
-            Payload::StartSection { func, range } => todo!(),
+            Payload::StartSection { func, range } => start_function = Some(func),
             Payload::ElementSection(section_limited) => todo!(),
             Payload::DataCountSection { count, range } => todo!(),
             Payload::CodeSectionEntry(function) => {
@@ -156,7 +175,9 @@ fn main() -> wasmparser::Result<()> {
                 defined_functions.push(definition);
             }
             Payload::DataSection(section_limited) => todo!(),
-            Payload::End(_) => todo!(),
+            Payload::End(_) => {
+                log::debug!("End of the module");
+            }
             unsupported_section => {
                 unsupported_feature_found = true;
                 log::error!("Unsupported section found: {unsupported_section:?}");
