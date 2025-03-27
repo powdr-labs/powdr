@@ -1,8 +1,8 @@
-use std::{result, str::FromStr};
+use std::str::FromStr;
 
 use powdr_syscalls::Syscall;
 use wasmparser::{
-    BlockType, CompositeInnerType, FrameKind, FuncType, FunctionBody, LocalsReader, Operator,
+    BlockType, CompositeInnerType, FuncType, FunctionBody, LocalsReader, Operator,
     OperatorsIterator, Parser, Payload, RefType, SubType, TableInit, TableType, TypeRef, ValType,
 };
 
@@ -57,6 +57,7 @@ fn main() -> wasmparser::Result<()> {
     let mut defined_functions = Vec::new();
 
     let mut start_function = None;
+    let mut mem_size = None;
 
     // TODO: validate while parsing
 
@@ -144,7 +145,33 @@ fn main() -> wasmparser::Result<()> {
                     }
                 }
             }
-            Payload::MemorySection(section_limited) => todo!(),
+            Payload::MemorySection(section) => {
+                for mem in section {
+                    let mem = mem?;
+
+                    if mem_size.is_some() {
+                        unsupported_feature_found = true;
+                        log::error!("Multiple memories are not supported");
+                        break;
+                    }
+
+                    match (
+                        u32::try_from(mem.initial),
+                        mem.maximum.map(|v| u32::try_from(v)),
+                    ) {
+                        (Ok(initial), Some(Ok(maximum))) => {
+                            mem_size = Some((initial, Some(maximum)));
+                        }
+                        (Ok(initial), None) => {
+                            mem_size = Some((initial, None));
+                        }
+                        _ => {
+                            unsupported_feature_found = true;
+                            log::error!("64-bit memory sizes are not supported");
+                        }
+                    }
+                }
+            }
             Payload::GlobalSection(section) => {
                 let mut globals_addr = MEM_ALLOCATION_START;
                 for global in section {
@@ -522,6 +549,14 @@ fn many_sz(val_types: &[ValType]) -> u32 {
     val_types.iter().map(|&ty| sz(ty)).sum()
 }
 
+enum FrameKind {
+    Function,
+    Block,
+    Loop,
+    If,
+    Else,
+}
+
 struct Frame {
     blockty: BlockType,
     frame_kind: FrameKind,
@@ -613,7 +648,6 @@ struct StackTracker<'a> {
     /// of the previous frame, which must be restored by the "return" instruction.
     return_info: AllocatedVar,
     stack: Stack,
-    ///
     control_stack: Vec<Frame>,
 }
 
