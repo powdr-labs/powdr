@@ -238,6 +238,17 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         )
     }
 
+    /// Set a variable to a fixed value.
+    pub fn set_variable(&mut self, variable: Variable, value: T) -> Result<Vec<Variable>, Error> {
+        self.process_equation_on_row(
+            &Expression::Number(0.into()),
+            Some(variable),
+            value,
+            // The row does not matter because the algebraic expression is empty
+            0,
+        )
+    }
+
     /// Processes the equality constraint `lhs = variable + offset` with row offset `row_offset`.
     /// If `variable` is `None`, it is treated as zero.
     /// If this returns an error, it means we have conflicting constraints.
