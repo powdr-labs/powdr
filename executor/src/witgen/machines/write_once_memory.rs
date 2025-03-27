@@ -46,6 +46,8 @@ pub struct WriteOnceMemory<'a, T: FieldElement> {
     /// If true, exposes the first 8 public values as `hash_0`, `hash_1`, ..., `hash_7`.
     /// This is a special case for the `WriteOnceMemoryWith8Publics` machine.
     exposes_8_publics: bool,
+    /// The PIL namespace of this machine instance
+    namespace: String,
 }
 
 impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
@@ -135,15 +137,31 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             );
         }
 
-        let public_names = parts
+        let namespace = parts
+            .witnesses
+            .iter()
+            .map(|poly_id| {
+                fixed_data
+                    .column_name(poly_id)
+                    .split("::")
+                    .next()
+                    .unwrap()
+                    .to_string()
+            })
+            .unique()
+            .exactly_one()
+            .expect("Expected all columns to be in the same namespace");
+
+        // Detect WriteOnceMemoryWith8Publics machine by checking for the <namespace>::hash_* publics
+        let public_names_to_namespace = parts
             .fixed_data
             .analyzed
             .public_declarations_in_source_order()
-            .map(|(name, _)| name.split("::").last().unwrap())
+            .map(|(name, _)| name)
             .collect::<BTreeSet<_>>();
         let exposes_8_publics = (0..8)
-            .map(|i| format!("hash_{i}"))
-            .all(|name| public_names.contains(&name.as_str()));
+            .map(|i| format!("{namespace}::hash_{i}"))
+            .all(|name| public_names_to_namespace.contains(&name));
 
         Some(Self {
             degree,
@@ -154,6 +172,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             key_to_index,
             data: BTreeMap::new(),
             exposes_8_publics,
+            namespace,
         })
     }
 
@@ -325,7 +344,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
             values
                 .into_iter()
                 .enumerate()
-                .map(|(i, v)| (format!("hash_{i}"), v))
+                .map(|(i, v)| (format!("{}::hash_{i}", self.namespace), v))
                 .collect()
         } else {
             BTreeMap::new()
