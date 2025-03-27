@@ -1,0 +1,53 @@
+namespace main(32);
+    col fixed x = [
+    1_fe, 2_fe, 3_fe, 4_fe, 5_fe, 6_fe, 7_fe, 8_fe,
+    9_fe, 10_fe, 11_fe, 12_fe, 13_fe, 14_fe, 15_fe, 16_fe,
+    1_fe, 2_fe, 3_fe, 4_fe, 5_fe, 6_fe, 7_fe, 8_fe,
+    9_fe, 10_fe, 11_fe, 12_fe, 13_fe, 14_fe, 15_fe, 16_fe,
+];
+    col witness y;
+    col fixed INC_Y = [
+    1_fe, 2_fe, 3_fe, 4_fe, 5_fe, 6_fe, 7_fe, 8_fe,
+    9_fe, 10_fe, 11_fe, 12_fe, 13_fe, 14_fe, 15_fe, 16_fe,
+    1_fe, 2_fe, 3_fe, 4_fe, 5_fe, 6_fe, 7_fe, 8_fe,
+    9_fe, 10_fe, 11_fe, 12_fe, 13_fe, 14_fe, 15_fe, 16_fe,
+];
+    main::y = main::x;
+    col witness stage(1) folded;
+    col witness stage(1) folded_1;
+    col witness stage(1) folded_2;
+    col witness stage(1) folded_3;
+    col intermediate_fingerprint_0 = main::y;
+    col witness stage(1) acc;
+    col witness stage(1) acc_1;
+    col witness stage(1) acc_2;
+    col witness stage(1) acc_3;
+    col fixed is_first(i) { if i == 0_int { 1_int } else { 0_int } };
+    main::folded = std::prelude::challenge(0, 5) - (42 + std::prelude::challenge(0, 1) * main::intermediate_fingerprint_0);
+    main::folded_1 = std::prelude::challenge(0, 6) - std::prelude::challenge(0, 2) * main::intermediate_fingerprint_0;
+    main::folded_2 = std::prelude::challenge(0, 7) - std::prelude::challenge(0, 3) * main::intermediate_fingerprint_0;
+    main::folded_3 = std::prelude::challenge(0, 8) - std::prelude::challenge(0, 4) * main::intermediate_fingerprint_0;
+    (main::acc * (1 - main::is_first') - main::acc') * main::folded' + 11 * ((main::acc_1 * (1 - main::is_first') - main::acc_1') * main::folded_3' + (main::acc_2 * (1 - main::is_first') - main::acc_2') * main::folded_2' + (main::acc_3 * (1 - main::is_first') - main::acc_3') * main::folded_1') + 1 = 0;
+    (main::acc * (1 - main::is_first') - main::acc') * main::folded_1' + (main::acc_1 * (1 - main::is_first') - main::acc_1') * main::folded' + 11 * ((main::acc_2 * (1 - main::is_first') - main::acc_2') * main::folded_3' + (main::acc_3 * (1 - main::is_first') - main::acc_3') * main::folded_2') = 0;
+    (main::acc * (1 - main::is_first') - main::acc') * main::folded_2' + (main::acc_1 * (1 - main::is_first') - main::acc_1') * main::folded_1' + (main::acc_2 * (1 - main::is_first') - main::acc_2') * main::folded' + 11 * ((main::acc_3 * (1 - main::is_first') - main::acc_3') * main::folded_3') = 0;
+    (main::acc * (1 - main::is_first') - main::acc') * main::folded_3' + (main::acc_1 * (1 - main::is_first') - main::acc_1') * main::folded_2' + (main::acc_2 * (1 - main::is_first') - main::acc_2') * main::folded_1' + (main::acc_3 * (1 - main::is_first') - main::acc_3') * main::folded' = 0;
+    Constr::PhantomBusInteraction(1, 42, [main::y], 1, [main::folded, main::folded_1, main::folded_2, main::folded_3], [main::acc, main::acc_1, main::acc_2, main::acc_3], Option::None);
+    col witness multiplicities;
+    col witness stage(1) folded_4;
+    col witness stage(1) folded_5;
+    col witness stage(1) folded_6;
+    col witness stage(1) folded_7;
+    col intermediate_fingerprint_0_1 = main::INC_Y;
+    col witness stage(1) acc_4;
+    col witness stage(1) acc_5;
+    col witness stage(1) acc_6;
+    col witness stage(1) acc_7;
+    main::folded_4 = std::prelude::challenge(0, 5) - (42 + std::prelude::challenge(0, 1) * main::intermediate_fingerprint_0_1);
+    main::folded_5 = std::prelude::challenge(0, 6) - std::prelude::challenge(0, 2) * main::intermediate_fingerprint_0_1;
+    main::folded_6 = std::prelude::challenge(0, 7) - std::prelude::challenge(0, 3) * main::intermediate_fingerprint_0_1;
+    main::folded_7 = std::prelude::challenge(0, 8) - std::prelude::challenge(0, 4) * main::intermediate_fingerprint_0_1;
+    (main::acc_4 * (1 - main::is_first') - main::acc_4') * main::folded_4' + 11 * ((main::acc_5 * (1 - main::is_first') - main::acc_5') * main::folded_7' + (main::acc_6 * (1 - main::is_first') - main::acc_6') * main::folded_6' + (main::acc_7 * (1 - main::is_first') - main::acc_7') * main::folded_5') + -main::multiplicities' = 0;
+    (main::acc_4 * (1 - main::is_first') - main::acc_4') * main::folded_5' + (main::acc_5 * (1 - main::is_first') - main::acc_5') * main::folded_4' + 11 * ((main::acc_6 * (1 - main::is_first') - main::acc_6') * main::folded_7' + (main::acc_7 * (1 - main::is_first') - main::acc_7') * main::folded_6') = 0;
+    (main::acc_4 * (1 - main::is_first') - main::acc_4') * main::folded_6' + (main::acc_5 * (1 - main::is_first') - main::acc_5') * main::folded_5' + (main::acc_6 * (1 - main::is_first') - main::acc_6') * main::folded_4' + 11 * ((main::acc_7 * (1 - main::is_first') - main::acc_7') * main::folded_7') = 0;
+    (main::acc_4 * (1 - main::is_first') - main::acc_4') * main::folded_7' + (main::acc_5 * (1 - main::is_first') - main::acc_5') * main::folded_6' + (main::acc_6 * (1 - main::is_first') - main::acc_6') * main::folded_5' + (main::acc_7 * (1 - main::is_first') - main::acc_7') * main::folded_4' = 0;
+    Constr::PhantomBusInteraction(-main::multiplicities, 42, [main::INC_Y], 1, [main::folded_4, main::folded_5, main::folded_6, main::folded_7], [main::acc_4, main::acc_5, main::acc_6, main::acc_7], Option::None);

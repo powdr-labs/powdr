@@ -9,13 +9,14 @@ use powdr_executor::witgen::WitgenCallback;
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::lookups::gkr_prover::prove_batch;
 use stwo_prover::core::lookups::gkr_prover::Layer;
+use stwo_prover::core::lookups::gkr_verifier::partially_verify_batch;
+use stwo_prover::core::lookups::gkr_verifier::Gate;
+use stwo_prover::core::lookups::gkr_verifier::GkrArtifact;
 use stwo_prover::core::lookups::mle::Mle;
 use stwo_prover::core::poly::circle::PolyOps;
 use stwo_prover::examples::xor::gkr_lookups::mle_eval::build_trace;
 use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleEvalProverComponent;
-use stwo_prover::core::lookups::gkr_verifier::GkrArtifact;
-use stwo_prover::core::lookups::gkr_verifier::partially_verify_batch;
-use stwo_prover::core::lookups::gkr_verifier::Gate;
+//use stwo_prover::constraint_framework::assert_constraints_on_polys;
 
 use powdr_number::{FieldElement, LargeInt, Mersenne31Field as M31};
 
@@ -57,8 +58,6 @@ const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 const LOG_LAST_LAYER_DEGREE_BOUND: usize = 0;
-
-
 
 pub enum KeyExportError {
     NoProvingKey,
@@ -407,6 +406,7 @@ where
 
         // commit to witness columns of stage 0
         let mut tree_builder = commitment_scheme.tree_builder();
+
         tree_builder.extend_evals(stage0_witness_cols_circle_domain_eval);
 
         tree_builder.commit(prover_channel);
@@ -492,28 +492,19 @@ where
 
         let gkr_result = self.gkr_prove(&witness, machine_log_sizes.clone(), prover_channel);
 
-        if let Some(ref gkr_proof_artifacts) = gkr_result {
+        println!("get gkr result");
 
-            println!("committing to MLE traces");
+        if let Some(ref gkr_proof_artifacts) = gkr_result {
+           // let claim_a=gkr_proof_artifacts.mle_denominators[0].eval_at_point(&gkr_proof_artifacts.gkr_artifacts.ood_point);
+           
             let mut tree_builder = commitment_scheme.tree_builder();
             tree_builder.extend_evals(build_trace(
-                &gkr_proof_artifacts.mle_numerators[0],
+                &gkr_proof_artifacts.mle_denominators[0],
                 &gkr_proof_artifacts.gkr_artifacts.ood_point,
-                gkr_proof_artifacts
-                    .gkr_artifacts
-                    .claims_to_verify_by_instance[0][0],
+                gkr_proof_artifacts.gkr_artifacts.claims_to_verify_by_instance[0][1],
             ));
             tree_builder.commit(prover_channel);
 
-            // let mut tree_builder = commitment_scheme.tree_builder();
-            // tree_builder.extend_evals(build_trace(
-            //     &gkr_proof_artifacts.mle_denominators[0],
-            //     &gkr_proof_artifacts.gkr_artifacts.ood_point,
-            //     gkr_proof_artifacts
-            //         .gkr_artifacts
-            //         .claims_to_verify_by_instance[0][1],
-            // ));
-            // tree_builder.commit(prover_channel);
         } else {
         };
 
@@ -560,23 +551,27 @@ where
             .collect();
 
         if let Some(gkr_proof_artifacts) = gkr_result {
+        
             let last_component = components.last().unwrap(); // &FrameworkComponent
             let wrapped_component = PowdrComponentWrapper(last_component);
+
+            //let claim_a=gkr_proof_artifacts.mle_denominators[0].eval_at_point(&gkr_proof_artifacts.gkr_artifacts.ood_point);
+            
             // create component for MLE
             let mle_eval_component = MleEvalProverComponent::generate(
                 tree_span_provider,
                 &wrapped_component, // the machine contains all the
                 &gkr_proof_artifacts.gkr_artifacts.ood_point,
-                gkr_proof_artifacts.mle_numerators[0].clone(),
-                gkr_proof_artifacts
-                    .gkr_artifacts
-                    .claims_to_verify_by_instance[0][0],
+                gkr_proof_artifacts.mle_denominators[0].clone(),
+                gkr_proof_artifacts.gkr_artifacts.claims_to_verify_by_instance[0][1],
                 &twiddles_max_degree,
                 MLE_TRACE_IDX,
             );
 
             components_slice.push(&mle_eval_component);
 
+
+            
             println!("added gkr component");
 
             let proof_result = stwo_prover::core::prover::prove::<SimdBackend, MC>(
@@ -584,19 +579,18 @@ where
                 prover_channel,
                 commitment_scheme,
             );
-            
+
             println!("proving done");
-            let GkrArtifact {
-                ood_point,
-                claims_to_verify_by_instance,
-                n_variables_by_instance: _,
-            } = partially_verify_batch(vec![Gate::LogUp], &gkr_proof_artifacts.gkr_proof, prover_channel).unwrap();
+            // let GkrArtifact {
+            //     ood_point,
+            //     claims_to_verify_by_instance,
+            //     n_variables_by_instance: _,
+            // } = partially_verify_batch(vec![Gate::LogUp], &gkr_proof_artifacts.gkr_proof, prover_channel).unwrap();
 
             let stark_proof = match proof_result {
                 Ok(value) => value,
                 Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
             };
-
 
             let proof: Proof<MC> = Proof {
                 stark_proof,

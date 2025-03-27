@@ -1,5 +1,7 @@
+use halo2_solidity_verifier::revm::primitives::bitvec::index;
 use itertools::Itertools;
 use num_traits::{One, Pow, Zero};
+use itertools::chain;
 
 use powdr_ast::analyzed::AlgebraicBinaryOperation;
 use powdr_ast::analyzed::AlgebraicBinaryOperator;
@@ -16,6 +18,7 @@ use stwo_prover::constraint_framework::PointEvaluator;
 use stwo_prover::constraint_framework::{FrameworkComponent, FrameworkEval};
 use stwo_prover::core::air::accumulation::PointEvaluationAccumulator;
 use stwo_prover::core::air::ComponentProver;
+use stwo_prover::core::backend::cpu::lookups::gkr;
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::backend::BackendForChannel;
 use stwo_prover::core::channel::Channel;
@@ -28,11 +31,18 @@ use stwo_prover::core::lookups::gkr_verifier::GkrBatchProof;
 use stwo_prover::core::pcs::TreeVec;
 use stwo_prover::core::prover;
 use stwo_prover::core::ColumnVec;
+//use stwo_prover::constraint_framework::assert_constraints_on_polys;
+use stwo_prover::constraint_framework::preprocessed_columns::IsFirst;
+use stwo_prover::core::poly::circle::CanonicCoset;
+
 
 use stwo_prover::core::lookups::gkr_prover::prove_batch;
 use stwo_prover::core::lookups::gkr_prover::Layer;
 use stwo_prover::core::lookups::mle::Mle;
 use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleCoeffColumnOracle;
+use stwo_prover::examples::xor::gkr_lookups::mle_eval::{build_trace};//,gen_carry_quotient_col,eval_eq_constraints};
+use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleEvalPoint;
+
 
 use crate::stwo::prover::into_stwo_field;
 use powdr_ast::analyzed::Identity;
@@ -44,6 +54,7 @@ use std::ops::Deref;
 
 use crate::stwo::circuit_builder::PowdrComponent;
 use crate::stwo::StwoProver;
+use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 
 use super::circuit_builder::PowdrEval;
 
@@ -58,6 +69,7 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
         _point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
     ) -> SecureField {
+        println!("evaluating point in mle, mask is {:?}", mask);
         // Create dummy point evaluator just to extract the value we need from the mask
         let mut accumulator = PointEvaluationAccumulator::new(SecureField::one());
         println!("building point evaluator");
@@ -70,14 +82,22 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
         );
         println!("evaluating point built");
 
-        eval_mle_coeff_col( 1, &mut eval)
+        eval_mle_coeff_col(1, &mut eval)[0]
     }
 }
 
-fn eval_mle_coeff_col<E: EvalAtRow>(interaction: usize, eval: &mut E) -> E::EF {
-    //let [mle_coeff_col_eval] = eval.next_interaction_mask(interaction, [0]);
-   // E::EF::from(mle_coeff_col_eval)
-   E::EF::zero()
+fn eval_mle_coeff_col<E: EvalAtRow>(interaction: usize, eval: &mut E) -> [E::EF; 2] {
+    let [mle_coeff_col_eval_0, mle_coeff_col_eval_next] =
+        eval.next_interaction_mask(interaction, [0, 1]);
+    let [mle_coeff_col_eval_0, mle_coeff_col_eval_next] =
+        eval.next_interaction_mask(interaction, [0, 1]);
+
+    println!("mle_coeff_col_eval_0 is {:?}", mle_coeff_col_eval_0);
+    println!("mle_coeff_col_eval_next is {:?}", mle_coeff_col_eval_next);
+    [
+        E::EF::from(mle_coeff_col_eval_0),
+        E::EF::from(mle_coeff_col_eval_next),
+    ]
 }
 
 impl<'a> Deref for PowdrComponentWrapper<'a> {
@@ -109,6 +129,9 @@ where
         machine_log_sizes: BTreeMap<String, u32>,
         prover_channel: &mut <MC as MerkleChannel>::C,
     ) -> Option<gkr_proof_artifacts> {
+        if LOGUP_GKR == false {
+            return None;
+        }
         // get all the fix columns
         let all_fixed_columns: Vec<(String, Vec<_>)> = self
             .split
@@ -130,7 +153,7 @@ where
         // find senders and receivers to build denominator traces
 
         // logup challenge alpha
-        let alpha = prover_channel.draw_felt();
+       // let alpha = prover_channel.draw_felt();
 
         // GKR toplayer is the input layer of the circuit, it consists of numerator MLE poly and denominator MLE poly
         // these MLE polys are from the trace polys in bus payload, multiplicity and selecotr
@@ -172,20 +195,39 @@ where
                         // take 1 for now
                         // TODO: include multiplicity
                         let numerator_values: Vec<_> = (0..self.analyzed.degree())
-                            .map(|_| SecureField::from_m31(1.into(), 0.into(), 0.into(), 0.into()))
-                            .collect();
-
-                        let denominator_values: Vec<_> = (0..self.analyzed.degree())
                             .map(|index| {
-                                let a_secure_field = SecureField::from_m31(
+                                SecureField::from_m31(
                                     into_stwo_field(&lookup_trace.1[index as usize]).into(),
                                     0.into(),
                                     0.into(),
                                     0.into(),
-                                );
-                                a_secure_field - alpha
+                                )
                             })
                             .collect();
+
+                        let mut denominator_values =
+                            vec![SecureField::zero(); self.analyzed.degree() as usize];
+
+                        lookup_trace
+                            .1
+                            .iter()
+                            .enumerate()
+                            .for_each(|(index, value)| {
+                                denominator_values[bit_reverse_index(
+                                    coset_index_to_circle_domain_index(
+                                        index,
+                                        self.analyzed.degree().ilog2(),
+                                    ),
+                                    self.analyzed.degree().ilog2(),
+                                )] = SecureField::from_m31(
+                                    into_stwo_field(value).into(),
+                                    0.into(),
+                                    0.into(),
+                                    0.into(),
+                                );
+                            });
+
+                            println!("denominator_values is {:?}", denominator_values);
 
                         let numerator_secure_column = numerator_values.iter().map(|&i| i).collect();
                         let denominator_secure_column =
@@ -214,29 +256,57 @@ where
 
         let (gkr_proof, gkr_artifacts) = prove_batch(prover_channel, gkr_top_layers);
 
-        println!("gkr_artifacts ood are {:?}", gkr_artifacts.ood_point);
 
-        println!(
-            "gkr_artifacts number of ood points are {:?}",
-            gkr_artifacts.ood_point.len()
+
+        // build extra traces for gkr 
+
+        let trace=build_trace(
+            &mle_numerators[0],
+            &gkr_artifacts.ood_point.clone(),
+            gkr_artifacts
+                .claims_to_verify_by_instance[0][1],
         );
 
-        println!(
-            "gkr_artifacts claims are {:?}",
-            gkr_artifacts.claims_to_verify_by_instance
-        );
+        // pre-check
+        // const N_VARIABLES: usize = 5;
+        // const EQ_EVAL_TRACE: usize = 0;
+        // const AUX_TRACE: usize = 1;
 
-        if LOGUP_GKR {
-            let gkr_proof_artifacts = gkr_proof_artifacts {
-                gkr_proof,
-                gkr_artifacts,
-                mle_numerators,
-                mle_denominators,
-            };
+        // let carry_quotients_col = gen_carry_quotient_col(&gkr_artifacts.ood_point).into_coordinate_evals();
+        // let is_first_col = [IsFirst::new(N_VARIABLES as u32).gen_column_simd()];
+        // let aux_trace = chain![carry_quotients_col, is_first_col].collect();
+        // let traces = TreeVec::new(vec![trace, aux_trace]);
+        // let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
 
-            return Some(gkr_proof_artifacts);
-        } else {
-            return None;
-        }
+        // assert_constraints_on_polys(
+        //     &trace_polys,
+        //     CanonicCoset::new(5),
+        //     |mut eval| {
+        //         let [carry_quotients_col_eval] =
+        //             eval.next_extension_interaction_mask(AUX_TRACE, [0]);
+        //         let [is_first, is_second] = eval.next_interaction_mask(AUX_TRACE, [0, -1]);
+        //         eval_eq_constraints(
+        //             EQ_EVAL_TRACE,
+        //             &mut eval,
+        //             &MleEvalPoint::new(&gkr_artifacts.ood_point),
+        //             carry_quotients_col_eval,
+        //             is_first,
+        //             is_second,
+        //         );
+        //     },
+        //     SecureField::zero(),
+        // );
+
+        println!("pass pre-check");
+
+
+        let gkr_proof_artifacts= gkr_proof_artifacts {
+            gkr_proof,
+            gkr_artifacts,
+            mle_numerators,
+            mle_denominators,
+        };
+
+        Some(gkr_proof_artifacts)
     }
 }
