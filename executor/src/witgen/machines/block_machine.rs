@@ -474,7 +474,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             return Ok(updates);
         }
 
-        panic!("Block machine '{}' is not JIT-able", self.name());
+        return Ok(EvalValue::incomplete(IncompleteCause::SolvingFailed));
 
         let outer_query = OuterQuery::new(
             arguments,
