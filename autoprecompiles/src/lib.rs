@@ -325,6 +325,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
             &blocks[0].statements,
             &self.instruction_kind,
             &self.instruction_machines,
+            false,
         );
 
         let machine = optimize_precompile(machine);
@@ -332,11 +333,12 @@ impl<T: FieldElement> Autoprecompiles<T> {
         (new_program, vec![(new_instr_name, machine)], col_subs)
     }
 
-    pub fn build(&self) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
+    pub fn build(&self, optimize: bool) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
         let (machine, subs) = generate_precompile(
             &self.program,
             &self.instruction_kind,
             &self.instruction_machines,
+            optimize,
         );
         println!("\nMachine after autoprecompile");
         for c in &machine.constraints {
@@ -373,8 +375,11 @@ impl<T: FieldElement> Autoprecompiles<T> {
         // }
         assert_eq!(c.len(), i.len());
         assert_eq!(machine.columns().len(), machine.column_ids().len());
-        //let machine = optimize_precompile(machine);
-        let machine = optimize_pc_lookup(machine);
+        let mut machine = optimize_pc_lookup(machine);
+
+        if optimize {
+            machine = optimize_precompile(machine);
+        }
 
         let mut bus: BTreeMap<u64, Vec<&SymbolicBusInteraction<T>>> = BTreeMap::new();
         for b in &machine.bus_interactions {
@@ -404,8 +409,10 @@ impl<T: FieldElement> Autoprecompiles<T> {
         //     }
         //     println!("\n");
         // }
-        //
-        //let machine = powdr_optimize(machine);
+
+        if optimize {
+            machine = powdr_optimize(machine);
+        }
 
         //let machine = remove_range_checks(machine);
 
@@ -692,10 +699,12 @@ pub fn optimize_pc_lookup<T: FieldElement>(mut machine: SymbolicMachine<T>) -> S
 
     machine
 }
+
 pub fn generate_precompile<T: FieldElement>(
     statements: &Vec<SymbolicInstructionStatement<T>>,
     instruction_kinds: &BTreeMap<String, InstructionKind>,
     instruction_machines: &BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
+    optimize: bool,
 ) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
     println!("Generating autoprecompile inside powdr");
     let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
@@ -746,29 +755,50 @@ pub fn generate_precompile<T: FieldElement>(
                     sub_map.extend(loadstore_chip_info(&machine, instr.opcode));
                 }
 
-                //println!("Inlining pc args");
                 assert_eq!(instr.args.len(), pc_lookup.args.len());
-                instr
-                    .args
-                    .iter()
-                    .zip(pc_lookup.args.iter())
-                    .for_each(|(instr_arg, pc_arg)| {
-                        let arg = AlgebraicExpression::Number(instr_arg.clone());
-                        //println!("\nInstruction arg: {instr_arg}");
-                        //println!("\nPc arg: {pc_arg}\n");
-                        match pc_arg {
-                            AlgebraicExpression::Reference(ref arg_ref) => {
-                                //sub_map.insert(arg_ref.name.clone(), arg);
+                if optimize {
+                    instr
+                        .args
+                        .iter()
+                        .zip(pc_lookup.args.iter())
+                        .for_each(|(instr_arg, pc_arg)| {
+                            let arg = AlgebraicExpression::Number(instr_arg.clone());
+                            match pc_arg {
+                                AlgebraicExpression::Reference(ref arg_ref) => {
+                                    sub_map.insert(arg_ref.name.clone(), arg);
+                                }
+                                AlgebraicExpression::BinaryOperation(_expr) => {
+                                    local_constraints.push((arg - pc_arg.clone()).into());
+                                }
+                                AlgebraicExpression::UnaryOperation(_expr) => {
+                                    local_constraints.push((arg - pc_arg.clone()).into());
+                                }
+                                _ => {}
                             }
-                            AlgebraicExpression::BinaryOperation(_expr) => {
-                                //local_constraints.push((arg - pc_arg.clone()).into());
+                        });
+                } else {
+                    instr
+                        .args
+                        .iter()
+                        .zip(pc_lookup.args.iter())
+                        .for_each(|(instr_arg, pc_arg)| {
+                            let arg = AlgebraicExpression::Number(instr_arg.clone());
+                            //println!("\nInstruction arg: {instr_arg}");
+                            //println!("\nPc arg: {pc_arg}\n");
+                            match pc_arg {
+                                AlgebraicExpression::Reference(ref arg_ref) => {
+                                    //sub_map.insert(arg_ref.name.clone(), arg);
+                                }
+                                AlgebraicExpression::BinaryOperation(_expr) => {
+                                    //local_constraints.push((arg - pc_arg.clone()).into());
+                                }
+                                AlgebraicExpression::UnaryOperation(_expr) => {
+                                    //local_constraints.push((arg - pc_arg.clone()).into());
+                                }
+                                _ => {}
                             }
-                            AlgebraicExpression::UnaryOperation(_expr) => {
-                                //local_constraints.push((arg - pc_arg.clone()).into());
-                            }
-                            _ => {}
-                        }
-                    });
+                        });
+                }
 
                 /*
                    for l in &local_constraints {
@@ -846,39 +876,43 @@ pub fn generate_precompile<T: FieldElement>(
 
                 col_subs.push(local_subs);
 
-                //println!("Simplifying local bus interactions");
-                // after the first round of simplifying,
-                // we need to look for register memory bus interactions
-                // and replace the addr by the first argument of the instruction
-                // for bus_int in &mut bus_interactions {
-                //     if bus_int.id != MEMORY_BUS_ID {
-                //         continue;
-                //     }
-                //
-                //     let addr_space = match bus_int.args[0] {
-                //         AlgebraicExpression::Number(n) => n.to_integer().try_into_u32().unwrap(),
-                //         _ => panic!(
-                //             "Address space must be a constant but got {}",
-                //             bus_int.args[0]
-                //         ),
-                //     };
-                //
-                //     if addr_space != 1 {
-                //         continue;
-                //     }
-                //
-                //     match bus_int.args[1] {
-                //         AlgebraicExpression::Number(_) => {}
-                //         _ => {
-                //             if let Some(arg) = bus_int.args.get_mut(1) {
-                //                 //println!("Replacing runtime reg addr by constant");
-                //                 *arg = instr.args[0].clone().into();
-                //             } else {
-                //                 panic!("Expected address argument");
-                //             }
-                //         }
-                //     };
-                // }
+                if optimize {
+                    println!("Simplifying local bus interactions");
+                    // after the first round of simplifying,
+                    // we need to look for register memory bus interactions
+                    // and replace the addr by the first argument of the instruction
+                    for bus_int in &mut bus_interactions {
+                        if bus_int.id != MEMORY_BUS_ID {
+                            continue;
+                        }
+
+                        let addr_space = match bus_int.args[0] {
+                            AlgebraicExpression::Number(n) => {
+                                n.to_integer().try_into_u32().unwrap()
+                            }
+                            _ => panic!(
+                                "Address space must be a constant but got {}",
+                                bus_int.args[0]
+                            ),
+                        };
+
+                        if addr_space != 1 {
+                            continue;
+                        }
+
+                        match bus_int.args[1] {
+                            AlgebraicExpression::Number(_) => {}
+                            _ => {
+                                if let Some(arg) = bus_int.args.get_mut(1) {
+                                    //println!("Replacing runtime reg addr by constant");
+                                    *arg = instr.args[0].clone().into();
+                                } else {
+                                    panic!("Expected address argument");
+                                }
+                            }
+                        };
+                    }
+                }
             }
             _ => {}
         }
