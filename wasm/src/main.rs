@@ -1,4 +1,4 @@
-use std::str::FromStr;
+use std::{result, str::FromStr};
 
 use powdr_syscalls::Syscall;
 use wasmparser::{
@@ -26,6 +26,16 @@ impl ModuleContext {
 
     fn get_func_type(&self, func_idx: u32) -> &FuncType {
         self.get_type(self.func_types[func_idx as usize])
+    }
+
+    fn blockty_inputs(&self, blockty: BlockType) -> &[ValType] {
+        match blockty {
+            BlockType::Empty | BlockType::Type(_) => &[],
+            BlockType::FuncType(idx) => {
+                let func_type = self.get_type(idx);
+                func_type.params()
+            }
+        }
     }
 }
 
@@ -262,7 +272,7 @@ fn infinite_registers_allocation<'a>(
         StackTracker::new(module, func_idx, body.get_locals_reader()?)?;
 
     // The fist directives are zeroing the explicit locals.
-    let mut directives: Vec<Directive> = (first_explicit_local..tracker.stack_base)
+    let mut directives: Vec<Directive> = (first_explicit_local..tracker.stack.base_bytes())
         .step_by(4)
         .map(|address| Directive::WasmOp {
             op: Operator::I32Const { value: 0 },
@@ -281,6 +291,7 @@ fn infinite_registers_allocation<'a>(
         // Match first the control operators, which require special handling.
         match operator? {
             Operator::Block { blockty } => {
+                tracker.assert_block_args(blockty);
                 tracker.control_stack.push(Frame {
                     stack_height: tracker.frame_height(blockty),
                     blockty,
@@ -290,6 +301,7 @@ fn infinite_registers_allocation<'a>(
                 });
             }
             Operator::Loop { blockty } => {
+                tracker.assert_block_args(blockty);
                 let target_label = labels.next().unwrap();
                 tracker.control_stack.push(Frame {
                     stack_height: tracker.frame_height(blockty),
@@ -301,7 +313,8 @@ fn infinite_registers_allocation<'a>(
                 directives.push(Directive::Label(target_label));
             }
             Operator::If { blockty } => {
-                let condition = tracker.stack.pop().unwrap();
+                tracker.assert_block_args(blockty);
+                let condition = tracker.stack.pop();
                 assert!(condition.val_type == ValType::I32);
 
                 // If condition is zero, it means false, so jump to the else block.
@@ -328,6 +341,35 @@ fn infinite_registers_allocation<'a>(
 
                 let else_label = last_frame.else_label.unwrap();
                 directives.push(Directive::Label(else_label));
+
+                // Since we just parsed "If", the stack contains the outputs of the "If".
+                // For the "Else", we must reset the stack to how it was before the "If",
+                // so that the same arguments are available for the "Else" block.
+                match last_frame.blockty {
+                    BlockType::Empty => {
+                        // There is nothing to do, input and output are equaly empty.
+                    }
+                    BlockType::Type(val_type) => {
+                        // One output to drop, no inputs to include:
+                        let if_output = tracker.stack.pop();
+                        assert_eq!(if_output.val_type, val_type);
+                    }
+                    BlockType::FuncType(idx) => {
+                        // Has both outputs to drop and inputs to include.
+                        let ty = module.get_type(idx);
+                        let results = ty.results();
+
+                        // Assert the if output is what was expected and drop it.
+                        tracker.assert_types_on_stack(results);
+                        tracker.stack.drop_n_from_top(results.len());
+
+                        // Push the inputs expected by the else.
+                        let inputs = ty.params();
+                        for &ty in inputs {
+                            tracker.stack.push(ty);
+                        }
+                    }
+                }
             }
             Operator::End => {
                 let last_frame = tracker.control_stack.pop().unwrap();
@@ -353,7 +395,7 @@ fn infinite_registers_allocation<'a>(
             Operator::BrIf { relative_depth } => {
                 let br_not_taken = labels.next().unwrap();
 
-                let condition = tracker.stack.pop().unwrap();
+                let condition = tracker.stack.pop();
                 assert!(condition.val_type == ValType::I32);
 
                 // Jump to after the br code if the condition is zero (false).
@@ -372,7 +414,7 @@ fn infinite_registers_allocation<'a>(
 
                 // Ensure the table selector is within range, defaulting to the
                 // last one if out of range.
-                let selector = tracker.stack.pop().unwrap();
+                let selector = tracker.stack.pop();
                 assert_eq!(selector.val_type, ValType::I32);
                 directives.push(Directive::ImmMin {
                     immediate: targets.len() as u32 - 1,
@@ -428,7 +470,7 @@ fn infinite_registers_allocation<'a>(
                 // other 32 bits are the return address.
                 let return_info = AllocatedVar {
                     val_type: ValType::I64,
-                    address: tracker.stack_top,
+                    address: tracker.stack.top_bytes(),
                 };
 
                 // Consume the function arguments and place the outputs on the stack.
@@ -489,6 +531,79 @@ struct Frame {
     stack_height: u32,
 }
 
+struct Stack {
+    /// The stack is a vector of variables, each one with its type and address.
+    /// The address is relative to the stack base.
+    stack: Vec<AllocatedVar>,
+    stack_base_bytes: u32,
+    stack_top_bytes: u32,
+}
+
+impl Stack {
+    fn new(stack_base_bytes: u32) -> Self {
+        Stack {
+            stack: Vec::new(),
+            stack_base_bytes,
+            stack_top_bytes: stack_base_bytes,
+        }
+    }
+
+    fn push(&mut self, val_type: ValType) {
+        self.stack.push(AllocatedVar {
+            val_type,
+            address: self.stack_top_bytes,
+        });
+        self.stack_top_bytes += sz(val_type);
+    }
+
+    fn pop(&mut self) -> AllocatedVar {
+        let var = self.stack.pop().unwrap();
+        self.stack_top_bytes -= sz(var.val_type);
+        assert_eq!(self.stack_top_bytes, var.address);
+        assert!(self.stack_top_bytes >= self.stack_base_bytes);
+        var
+    }
+
+    fn last(&self) -> Option<&AllocatedVar> {
+        self.stack.last()
+    }
+
+    fn split_n_from_top(&mut self, count: usize) -> Vec<AllocatedVar> {
+        let at = self.stack.len() - count;
+        let vars = self.stack.split_off(at);
+        if let Some(&var) = vars.first() {
+            self.stack_top_bytes = var.address;
+            assert!(self.stack_top_bytes >= self.stack_base_bytes);
+        }
+        vars
+    }
+
+    fn drop_n_from_top(&mut self, count: usize) {
+        let new_len = self.stack.len() - count;
+        if let Some(&var) = self.stack.get(new_len) {
+            self.stack_top_bytes = var.address;
+            assert!(self.stack_top_bytes >= self.stack_base_bytes);
+            self.stack.truncate(new_len);
+        }
+    }
+
+    fn base_bytes(&self) -> u32 {
+        self.stack_base_bytes
+    }
+
+    fn top_bytes(&self) -> u32 {
+        self.stack_top_bytes
+    }
+
+    fn slice(&self) -> &[AllocatedVar] {
+        &self.stack
+    }
+
+    fn len(&self) -> usize {
+        self.stack.len()
+    }
+}
+
 struct StackTracker<'a> {
     module: &'a ModuleContext,
     func_type: &'a FuncType,
@@ -497,11 +612,8 @@ struct StackTracker<'a> {
     /// "call" will be able to write, we have the return address and the frame pointer
     /// of the previous frame, which must be restored by the "return" instruction.
     return_info: AllocatedVar,
-    stack: Vec<AllocatedVar>,
-    /// We can't pop beyond the stack base.
-    /// Before that the locals are allocated.
-    stack_base: u32,
-    stack_top: u32,
+    stack: Stack,
+    ///
     control_stack: Vec<Frame>,
 }
 
@@ -534,7 +646,7 @@ impl<'a> StackTracker<'a> {
             val_type: ValType::I64,
             address: stack_top,
         };
-        stack_top += 4;
+        stack_top += sz(return_info.val_type);
 
         let first_explicit_local = stack_top;
 
@@ -557,12 +669,25 @@ impl<'a> StackTracker<'a> {
                 control_stack: Vec::new(),
                 locals,
                 return_info,
-                stack: Vec::new(),
-                stack_base: stack_top,
-                stack_top,
+                stack: Stack::new(stack_top),
             },
             first_explicit_local,
         ))
+    }
+
+    /// Asserts the arguments of a block are at the top of the stack.
+    fn assert_block_args(&self, blockty: BlockType) {
+        let args = self.module.blockty_inputs(blockty);
+        self.assert_types_on_stack(args);
+    }
+
+    fn assert_types_on_stack(&self, types: &[ValType]) {
+        let stack = self.stack.slice();
+        assert!(stack.len() >= types.len());
+        assert!(stack[stack.len() - types.len()..]
+            .iter()
+            .zip(types)
+            .all(|(stack_var, ty)| stack_var.val_type == *ty));
     }
 
     /// Return the height of the stack where the frame inputs and outputs sits on top of.
@@ -578,7 +703,7 @@ impl<'a> StackTracker<'a> {
             }
         };
 
-        self.stack_top - input_size
+        self.stack.top_bytes() - input_size
     }
 
     /// Generate the code of a break ("br"), ensuring the outputs are at the expected height.
@@ -599,7 +724,7 @@ impl<'a> StackTracker<'a> {
                 Directive::Return {
                     return_info: self.return_info,
                 },
-                self.stack_base,
+                self.stack.base_bytes(),
             )
         } else {
             let target_frame = &self.control_stack[cs_len - relative_depth as usize - 1];
@@ -607,13 +732,7 @@ impl<'a> StackTracker<'a> {
             let args = if target_frame.frame_kind == FrameKind::Loop {
                 // Loop is special because br sends the execution to
                 // the top of the loop, so the arguments are the inputs.
-                match target_frame.blockty {
-                    BlockType::Empty | BlockType::Type(_) => &[],
-                    BlockType::FuncType(idx) => {
-                        let func_type = self.module.get_type(idx);
-                        func_type.params()
-                    }
-                }
+                self.module.blockty_inputs(target_frame.blockty)
             } else {
                 match target_frame.blockty {
                     BlockType::Empty => &[][..],
@@ -637,15 +756,11 @@ impl<'a> StackTracker<'a> {
             )
         };
 
-        let stack = &self.stack;
-        assert!(stack.len() >= args.len());
-        assert!(stack[stack.len() - args.len()..]
-            .iter()
-            .zip(args)
-            .all(|(stack_var, ty)| stack_var.val_type == *ty));
+        self.assert_types_on_stack(args);
 
-        // Copy the outputs to the expected height, if needed
+        // Copy the outputs to the expected height, if needed.
         let mut directives = Vec::new();
+        let stack = self.stack.slice();
         if stack[stack.len() - args.len()].address != target_height {
             let src_args = &stack[(stack.len() - args.len())..];
 
@@ -654,7 +769,7 @@ impl<'a> StackTracker<'a> {
             let mut dest_stack_top = stack
                 .get(dest_pos - 1)
                 .map(|v| v.address + sz(v.val_type))
-                .unwrap_or(self.stack_base);
+                .unwrap_or(self.stack.base_bytes());
             assert_eq!(dest_stack_top, target_height);
 
             for src in src_args {
@@ -688,32 +803,23 @@ impl<'a> StackTracker<'a> {
         inputs: &[ValType],
         outputs: &[ValType],
     ) -> (u32, Vec<AllocatedVar>) {
-        assert!(self.stack.len() >= inputs.len());
-        let input_vars = self.stack.split_off(self.stack.len() - inputs.len());
-        if let Some(var) = input_vars.last() {
-            self.stack_top = var.address;
-        }
+        // Check we have the correct number and types of inputs on the stack
+        self.assert_types_on_stack(inputs);
 
-        // Sanit check the input types
-        for (var, input) in input_vars.iter().zip(inputs.iter()) {
-            assert_eq!(var.val_type, *input);
-        }
+        // Pop the inputs
+        let input_vars = self.stack.split_n_from_top(inputs.len());
 
-        let bottom_addr = self.stack_top;
+        let bottom_addr = self.stack.top_bytes();
 
         // Sanit check the stack
         let bottom_limit = self
             .control_stack
             .last()
-            .map_or(self.stack_base, |frame| frame.stack_height);
+            .map_or(self.stack.base_bytes(), |frame| frame.stack_height);
         assert!(bottom_addr >= bottom_limit);
 
         for &ty in outputs {
-            self.stack.push(AllocatedVar {
-                val_type: ty,
-                address: self.stack_top,
-            });
-            self.stack_top += sz(ty);
+            self.stack.push(ty);
         }
 
         (bottom_addr, input_vars)
@@ -759,30 +865,22 @@ impl<'a> StackTracker<'a> {
             .last()
             .is_some_and(|var| var.address >= last_frame.stack_height)
         {
-            self.stack_top = self.stack.pop().unwrap().address;
+            self.stack.pop();
         }
-        assert!(self.stack_top == last_frame.stack_height);
+        assert!(self.stack.top_bytes() == last_frame.stack_height);
 
         // Create the expected outputs:
-        let single_output;
-        let types = match last_frame.blockty {
-            BlockType::Empty => &[],
+        match last_frame.blockty {
+            BlockType::Empty => {}
             BlockType::Type(val_type) => {
-                single_output = [val_type];
-                &single_output[..]
+                self.stack.push(val_type);
             }
             BlockType::FuncType(idx) => {
                 let func_type = self.module.get_type(idx);
-                func_type.results()
+                for &ty in func_type.results() {
+                    self.stack.push(ty);
+                }
             }
-        };
-
-        for &ty in types {
-            self.stack.push(AllocatedVar {
-                val_type: ty,
-                address: self.stack_top,
-            });
-            self.stack_top += sz(ty);
         }
 
         Ok(())
@@ -958,7 +1056,7 @@ impl<'a> StackTracker<'a> {
             Operator::Drop => (vec![self.stack.last().unwrap().val_type], vec![]),
             Operator::Select => {
                 let len = self.stack.len();
-                let choices = &self.stack[(len - 3)..(len - 1)];
+                let choices = &self.stack.slice()[(len - 3)..(len - 1)];
                 let ty = choices[0].val_type;
                 assert_eq!(ty, choices[1].val_type);
                 (vec![ty, ty, ValType::I32], vec![ty])
