@@ -590,6 +590,9 @@ impl<'a> StackTracker<'a> {
 
         let single_arg;
         let (args, jump_directive, target_height) = if relative_depth == cs_len as u32 {
+            // TODO: this code is all wrong! Return values are not placed on stack, but overlapping the inputs.
+            todo!();
+
             // The target is the function itself, this is a return.
             (
                 self.func_type.results(),
