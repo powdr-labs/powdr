@@ -1,7 +1,7 @@
 use halo2_solidity_verifier::revm::primitives::bitvec::index;
+use itertools::chain;
 use itertools::Itertools;
 use num_traits::{One, Pow, Zero};
-use itertools::chain;
 
 use powdr_ast::analyzed::AlgebraicBinaryOperation;
 use powdr_ast::analyzed::AlgebraicBinaryOperator;
@@ -26,6 +26,7 @@ use stwo_prover::core::channel::MerkleChannel;
 use stwo_prover::core::circle::CirclePoint;
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::fields::qm31::SecureField;
+use stwo_prover::core::fields::qm31::QM31;
 use stwo_prover::core::lookups::gkr_verifier::GkrArtifact;
 use stwo_prover::core::lookups::gkr_verifier::GkrBatchProof;
 use stwo_prover::core::pcs::TreeVec;
@@ -34,15 +35,15 @@ use stwo_prover::core::ColumnVec;
 //use stwo_prover::constraint_framework::assert_constraints_on_polys;
 use stwo_prover::constraint_framework::preprocessed_columns::IsFirst;
 use stwo_prover::core::poly::circle::CanonicCoset;
-
+use stwo_prover::core::poly::circle::CircleEvaluation;
+use stwo_prover::core::poly::BitReversedOrder;
 
 use stwo_prover::core::lookups::gkr_prover::prove_batch;
 use stwo_prover::core::lookups::gkr_prover::Layer;
 use stwo_prover::core::lookups::mle::Mle;
+use stwo_prover::examples::xor::gkr_lookups::mle_eval::build_trace; //,gen_carry_quotient_col,eval_eq_constraints};
 use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleCoeffColumnOracle;
-use stwo_prover::examples::xor::gkr_lookups::mle_eval::{build_trace};//,gen_carry_quotient_col,eval_eq_constraints};
 use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleEvalPoint;
-
 
 use crate::stwo::prover::into_stwo_field;
 use powdr_ast::analyzed::Identity;
@@ -61,7 +62,10 @@ use super::circuit_builder::PowdrEval;
 // for now, using this flag to enable logup-GKR
 pub const LOGUP_GKR: bool = true;
 
-pub struct PowdrComponentWrapper<'a>(pub &'a FrameworkComponent<PowdrEval>);
+pub struct PowdrComponentWrapper<'a> {
+    pub powdr_component: &'a FrameworkComponent<PowdrEval>,
+    pub logup_challenge: QM31,
+}
 
 impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
     fn evaluate_at_point(
@@ -74,29 +78,29 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
         let mut accumulator = PointEvaluationAccumulator::new(SecureField::one());
         println!("building point evaluator");
         let mut eval = PointEvaluator::new(
-            mask.sub_tree(self.0.trace_locations()),
+            mask.sub_tree(self.powdr_component.trace_locations()),
             &mut accumulator,
             SecureField::one(),
-            self.0.log_size(),
+            self.powdr_component.log_size(),
             SecureField::zero(),
         );
         println!("evaluating point built");
 
-        eval_mle_coeff_col(1, &mut eval)[0]
+        eval_mle_coeff_col(1, &mut eval,self.logup_challenge)[0]
     }
 }
 
-fn eval_mle_coeff_col<E: EvalAtRow>(interaction: usize, eval: &mut E) -> [E::EF; 2] {
-    let [mle_coeff_col_eval_0, mle_coeff_col_eval_next] =
+fn eval_mle_coeff_col<E: EvalAtRow>(interaction: usize, eval: &mut E, logup_challenge: QM31) -> [E::EF; 2] {
+    // This EF elements come from the column of the MLE polynomial in stage 0 interaction 1,
+    // stage 0 interaction begins with a 0 trace, then is the witness trace, the unused trace below is
+    // for the 0 trace.
+    let [_mle_coeff_col_eval_0, _mle_coeff_col_eval_next] =
         eval.next_interaction_mask(interaction, [0, 1]);
     let [mle_coeff_col_eval_0, mle_coeff_col_eval_next] =
         eval.next_interaction_mask(interaction, [0, 1]);
-
-    println!("mle_coeff_col_eval_0 is {:?}", mle_coeff_col_eval_0);
-    println!("mle_coeff_col_eval_next is {:?}", mle_coeff_col_eval_next);
     [
-        E::EF::from(mle_coeff_col_eval_0),
-        E::EF::from(mle_coeff_col_eval_next),
+        E::EF::from(mle_coeff_col_eval_0) + logup_challenge,
+        E::EF::from(mle_coeff_col_eval_next) + logup_challenge,
     ]
 }
 
@@ -104,7 +108,7 @@ impl<'a> Deref for PowdrComponentWrapper<'a> {
     type Target = PowdrComponent;
 
     fn deref(&self) -> &Self::Target {
-        &self.0
+        &self.powdr_component
     }
 }
 
@@ -127,12 +131,16 @@ where
         &self,
         witness: &[(String, Vec<Mersenne31Field>)],
         machine_log_sizes: BTreeMap<String, u32>,
+        logup_challenge: QM31,
         prover_channel: &mut <MC as MerkleChannel>::C,
     ) -> Option<gkr_proof_artifacts> {
         if LOGUP_GKR == false {
             return None;
         }
+        // The payload of the bus can come from all the expressions, therefore inorder to rebuild the payload trace, constant columns,witness columns
+        // and intermidiate columns are needed.
         // get all the fix columns
+        // TODO: if GKR applies only on main machine, then only the fixed columns of the main machine are needed
         let all_fixed_columns: Vec<(String, Vec<_>)> = self
             .split
             .iter()
@@ -140,8 +148,8 @@ where
                 let machine_fixed_col = machine_fixed_columns(&self.fixed, pil);
                 machine_fixed_col
                     .iter()
-                    .filter(|(size, vec)| size.ilog2() == machine_log_sizes[machine_name])
-                    .flat_map(|(size, vec)| {
+                    .filter(|(size, _)| size.ilog2() == machine_log_sizes[machine_name])
+                    .flat_map(|(_, vec)| {
                         vec.iter()
                             .map(|(s, w)| (s.clone(), w.to_vec()))
                             .collect_vec()
@@ -151,9 +159,6 @@ where
             .collect();
 
         // find senders and receivers to build denominator traces
-
-        // logup challenge alpha
-       // let alpha = prover_channel.draw_felt();
 
         // GKR toplayer is the input layer of the circuit, it consists of numerator MLE poly and denominator MLE poly
         // these MLE polys are from the trace polys in bus payload, multiplicity and selecotr
@@ -174,41 +179,36 @@ where
                     for e in &identity.payload.0 {
                         println!("payload is {:?}", e);
 
-                        if let AlgebraicExpression::Reference(r) = e {
+                        // For now, only consider payload with polynomial identity
+                        if let AlgebraicExpression::Reference(_) = e {
                         } else {
                             break;
                         };
-                        let lookup_trace = witness
+
+                        let denominator_trace = witness
                             .iter()
                             .chain(all_fixed_columns.iter())
                             .find(|(name, _)| {
                                 if let AlgebraicExpression::Reference(r) = e {
                                     name == &r.name
                                 } else {
-                                    false
+                                    panic!("cannot find lookup trace for {:?}", e);
                                 }
                             })
                             .unwrap();
 
                         // create fractions that are to be added by GKR circuit
-                        // numerator is 1 for bus send, is from multiplicity for bus receive
-                        // take 1 for now
-                        // TODO: include multiplicity
+                        // numerator is 1 for bus send, is multiplicity for bus receive
+                        // all take 1 for now
+                        // TODO: include multiplicity for bus receive, latch/1 for bus send, 1 needs to be a fixed column as well
                         let numerator_values: Vec<_> = (0..self.analyzed.degree())
-                            .map(|index| {
-                                SecureField::from_m31(
-                                    into_stwo_field(&lookup_trace.1[index as usize]).into(),
-                                    0.into(),
-                                    0.into(),
-                                    0.into(),
-                                )
-                            })
+                            .map(|_| SecureField::from_m31(1.into(), 0.into(), 0.into(), 0.into()))
                             .collect();
 
+                        // traces need to be bit-reverse order
                         let mut denominator_values =
                             vec![SecureField::zero(); self.analyzed.degree() as usize];
-
-                        lookup_trace
+                        denominator_trace
                             .1
                             .iter()
                             .enumerate()
@@ -219,16 +219,16 @@ where
                                         self.analyzed.degree().ilog2(),
                                     ),
                                     self.analyzed.degree().ilog2(),
-                                )] = SecureField::from_m31(
-                                    into_stwo_field(value).into(),
-                                    0.into(),
-                                    0.into(),
-                                    0.into(),
-                                );
+                                )] = logup_challenge
+                                    + SecureField::from_m31(
+                                        into_stwo_field(value).into(),
+                                        0.into(),
+                                        0.into(),
+                                        0.into(),
+                                    );
                             });
 
-                            println!("denominator_values is {:?}", denominator_values);
-
+                        // covert to SecureColumn, which is used to crate MLE in secure field
                         let numerator_secure_column = numerator_values.iter().map(|&i| i).collect();
                         let denominator_secure_column =
                             denominator_values.iter().map(|&i| i).collect();
@@ -256,57 +256,13 @@ where
 
         let (gkr_proof, gkr_artifacts) = prove_batch(prover_channel, gkr_top_layers);
 
+        // Linear comboination of GKR instances
 
-
-        // build extra traces for gkr 
-
-        let trace=build_trace(
-            &mle_numerators[0],
-            &gkr_artifacts.ood_point.clone(),
-            gkr_artifacts
-                .claims_to_verify_by_instance[0][1],
-        );
-
-        // pre-check
-        // const N_VARIABLES: usize = 5;
-        // const EQ_EVAL_TRACE: usize = 0;
-        // const AUX_TRACE: usize = 1;
-
-        // let carry_quotients_col = gen_carry_quotient_col(&gkr_artifacts.ood_point).into_coordinate_evals();
-        // let is_first_col = [IsFirst::new(N_VARIABLES as u32).gen_column_simd()];
-        // let aux_trace = chain![carry_quotients_col, is_first_col].collect();
-        // let traces = TreeVec::new(vec![trace, aux_trace]);
-        // let trace_polys = traces.map(|trace| trace.into_iter().map(|c| c.interpolate()).collect());
-
-        // assert_constraints_on_polys(
-        //     &trace_polys,
-        //     CanonicCoset::new(5),
-        //     |mut eval| {
-        //         let [carry_quotients_col_eval] =
-        //             eval.next_extension_interaction_mask(AUX_TRACE, [0]);
-        //         let [is_first, is_second] = eval.next_interaction_mask(AUX_TRACE, [0, -1]);
-        //         eval_eq_constraints(
-        //             EQ_EVAL_TRACE,
-        //             &mut eval,
-        //             &MleEvalPoint::new(&gkr_artifacts.ood_point),
-        //             carry_quotients_col_eval,
-        //             is_first,
-        //             is_second,
-        //         );
-        //     },
-        //     SecureField::zero(),
-        // );
-
-        println!("pass pre-check");
-
-
-        let gkr_proof_artifacts= gkr_proof_artifacts {
+        Some(gkr_proof_artifacts {
             gkr_proof,
             gkr_artifacts,
             mle_numerators,
             mle_denominators,
-        };
-
-        Some(gkr_proof_artifacts)
+        })
     }
 }

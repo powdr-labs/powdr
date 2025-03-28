@@ -490,21 +490,25 @@ where
             span.exit();
         }
 
-        let gkr_result = self.gkr_prove(&witness, machine_log_sizes.clone(), prover_channel);
+        // Generate GKR proof, get None if LOGUP_GKR is false
+        // logup challenge alpha, take dummy challenge for now
+        let alpha = SecureField::from_u32_unchecked(42, 42, 42, 42);
+        let gkr_result = self.gkr_prove(&witness, machine_log_sizes.clone(), alpha, prover_channel);
 
         println!("get gkr result");
 
         if let Some(ref gkr_proof_artifacts) = gkr_result {
-           // let claim_a=gkr_proof_artifacts.mle_denominators[0].eval_at_point(&gkr_proof_artifacts.gkr_artifacts.ood_point);
-           
+            // let claim_a=gkr_proof_artifacts.mle_denominators[0].eval_at_point(&gkr_proof_artifacts.gkr_artifacts.ood_point);
+
             let mut tree_builder = commitment_scheme.tree_builder();
             tree_builder.extend_evals(build_trace(
                 &gkr_proof_artifacts.mle_denominators[0],
                 &gkr_proof_artifacts.gkr_artifacts.ood_point,
-                gkr_proof_artifacts.gkr_artifacts.claims_to_verify_by_instance[0][1],
+                gkr_proof_artifacts
+                    .gkr_artifacts
+                    .claims_to_verify_by_instance[0][1],
             ));
             tree_builder.commit(prover_channel);
-
         } else {
         };
 
@@ -551,27 +555,29 @@ where
             .collect();
 
         if let Some(gkr_proof_artifacts) = gkr_result {
-        
             let last_component = components.last().unwrap(); // &FrameworkComponent
-            let wrapped_component = PowdrComponentWrapper(last_component);
+            let wrapped_component = PowdrComponentWrapper {
+                powdr_component: last_component,
+                logup_challenge: alpha,
+            };
 
             //let claim_a=gkr_proof_artifacts.mle_denominators[0].eval_at_point(&gkr_proof_artifacts.gkr_artifacts.ood_point);
-            
+
             // create component for MLE
             let mle_eval_component = MleEvalProverComponent::generate(
                 tree_span_provider,
-                &wrapped_component, // the machine contains all the
+                &wrapped_component,
                 &gkr_proof_artifacts.gkr_artifacts.ood_point,
                 gkr_proof_artifacts.mle_denominators[0].clone(),
-                gkr_proof_artifacts.gkr_artifacts.claims_to_verify_by_instance[0][1],
+                gkr_proof_artifacts
+                    .gkr_artifacts
+                    .claims_to_verify_by_instance[0][1],
                 &twiddles_max_degree,
                 MLE_TRACE_IDX,
             );
 
             components_slice.push(&mle_eval_component);
 
-
-            
             println!("added gkr component");
 
             let proof_result = stwo_prover::core::prover::prove::<SimdBackend, MC>(
