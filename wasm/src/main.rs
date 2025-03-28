@@ -11,6 +11,7 @@ const MEM_ALLOCATION_START: u32 = 0x800;
 struct ModuleContext {
     types: Vec<SubType>,
     func_types: Vec<u32>,
+    imported_functions: Vec<Syscall>,
     tables: Vec<TableType>,
     globals: Vec<AllocatedVar>,
 }
@@ -49,11 +50,11 @@ fn main() -> wasmparser::Result<()> {
     let mut ctx = ModuleContext {
         types: Vec::new(),
         func_types: Vec::new(),
+        imported_functions: Vec::new(),
         tables: Vec::new(),
         globals: Vec::new(),
     };
 
-    let mut imported_functions = Vec::new();
     let mut defined_functions = Vec::new();
 
     let mut start_function = None;
@@ -99,7 +100,7 @@ fn main() -> wasmparser::Result<()> {
                 // For now, the imports only deal with powdr provided functions.
                 for import in section {
                     let import = import?;
-                    if import.module != "powdr" {
+                    if import.module == "powdr" {
                         panic!("Only \"powdr\" module is available for imports");
                     }
                     if let TypeRef::Func(type_idx) = import.ty {
@@ -107,7 +108,10 @@ fn main() -> wasmparser::Result<()> {
                         if let Ok(syscall) = Syscall::from_str(import.name) {
                             // Lets see if the type matches the expectations.
                             let ty = ctx.get_type(type_idx);
-                            let given_arity = (many_sz(ty.params()) / 4, many_sz(ty.results()) / 4);
+                            assert!(ty.params().iter().all(|&ty| sz(ty) == 4), "Syscall parameters must be 32-bit, but was imported with a type of {ty:?}");
+                            assert!(ty.results().iter().all(|&ty| sz(ty) == 4), "Syscall results must be 32-bit, but was imported with a type of {ty:?}");
+
+                            let given_arity = (ty.params().len() as u32, ty.results().len() as u32);
 
                             let expected_arity = syscall.arity();
                             if given_arity != expected_arity {
@@ -118,7 +122,10 @@ fn main() -> wasmparser::Result<()> {
                             }
 
                             log::debug!("Imported syscall: {}", import.name);
-                            imported_functions.push(syscall);
+                            ctx.func_types.push(type_idx);
+                            ctx.imported_functions.push(syscall);
+
+                            // TODO: create a "proxy" function to call the syscall, to be used in case of indirect calls.
 
                             continue;
                         }
@@ -242,6 +249,12 @@ enum Directive<'a> {
     WasmOp {
         op: Operator<'a>,
         inputs: Vec<AllocatedVar>,
+        output: Option<AllocatedVar>,
+    },
+    Syscall {
+        syscall: Syscall,
+        inputs: Vec<AllocatedVar>,
+        outputs: Vec<AllocatedVar>,
     },
     Label(u32),
     Call {
@@ -303,10 +316,11 @@ fn infinite_registers_allocation<'a>(
         .step_by(4)
         .map(|address| Directive::WasmOp {
             op: Operator::I32Const { value: 0 },
-            inputs: vec![AllocatedVar {
+            inputs: Vec::new(),
+            output: Some(AllocatedVar {
                 val_type: ValType::I32,
                 address,
-            }],
+            }),
         })
         .collect();
 
@@ -481,6 +495,7 @@ fn infinite_registers_allocation<'a>(
                     br_code.resize_with(max_size, || Directive::WasmOp {
                         op: Operator::Nop,
                         inputs: vec![],
+                        output: None,
                     });
                 }
 
@@ -502,45 +517,66 @@ fn infinite_registers_allocation<'a>(
                 directives.push(Directive::WasmOp {
                     op: Operator::Unreachable,
                     inputs: vec![],
+                    output: None,
                 });
                 tracker.discard_unreachable_and_fix_the_stack(&mut op_reader)?;
             }
             Operator::Call { function_index } => {
                 // Consume the function arguments and place the outputs on the stack.
                 let func_type = module.get_func_type(function_index);
-                let (bottom_addr, _) =
+                let (bottom_addr, inputs, outputs) =
                     tracker.apply_operation_to_stack(func_type.params(), func_type.results());
 
-                // Return info is written on the stack, after ther function inputs or outputs,
-                // whichever is bigger.
-                let address = tracker
-                    .stack
-                    .top_bytes()
-                    .max(bottom_addr + many_sz(func_type.results()));
+                // This can either be a normal function call or a system call.
+                if (function_index as usize) < module.imported_functions.len() {
+                    // This is a system call, we can inline it.
+                    let syscall = module.imported_functions[function_index as usize];
+                    directives.push(Directive::Syscall {
+                        syscall,
+                        inputs,
+                        outputs: outputs.to_vec(),
+                    });
+                } else {
+                    // This is a normal function call, we emit the call
 
-                let return_info = AllocatedVar {
-                    // For the lack of a better type, the return info is a i64, where
-                    // the first 32 bits (address-wise) are the saved frame pointer, and the
-                    // other 32 bits are the return address.
-                    val_type: ValType::I64,
-                    address,
-                };
+                    // Return info is written on the stack, after ther function inputs or outputs,
+                    // whichever is bigger.
+                    let address = tracker
+                        .stack
+                        .top_bytes()
+                        .max(bottom_addr + many_sz(func_type.results()));
 
-                directives.push(Directive::Call {
-                    function_index,
-                    new_fp_delta: bottom_addr,
-                    save_return_info_to: return_info,
-                });
+                    let return_info = AllocatedVar {
+                        // For the lack of a better type, the return info is a i64, where
+                        // the first 32 bits (address-wise) are the saved frame pointer, and the
+                        // other 32 bits are the return address.
+                        val_type: ValType::I64,
+                        address,
+                    };
+
+                    directives.push(Directive::Call {
+                        function_index,
+                        new_fp_delta: bottom_addr,
+                        save_return_info_to: return_info,
+                    });
+                }
             }
             Operator::CallIndirect {
                 type_index,
                 table_index,
             } => todo!(),
             op => {
-                let (inputs, outputs) = tracker.get_operator_type(&op).unwrap();
+                let (inputs, output) = tracker.get_operator_type(&op).unwrap();
 
-                let (_, inputs) = tracker.apply_operation_to_stack(&inputs, &outputs);
-                directives.push(Directive::WasmOp { op, inputs });
+                let (_, inputs, output) =
+                    tracker.apply_operation_to_stack(&inputs, output.as_slice());
+
+                assert!(output.len() <= 1);
+                directives.push(Directive::WasmOp {
+                    op,
+                    inputs,
+                    output: output.get(0).copied(),
+                });
             }
         }
     }
@@ -856,7 +892,7 @@ impl<'a> StackTracker<'a> {
         &mut self,
         inputs: &[ValType],
         outputs: &[ValType],
-    ) -> (u32, Vec<AllocatedVar>) {
+    ) -> (u32, Vec<AllocatedVar>, &[AllocatedVar]) {
         // Check we have the correct number and types of inputs on the stack
         self.assert_types_on_stack(inputs);
 
@@ -872,11 +908,14 @@ impl<'a> StackTracker<'a> {
             .map_or(self.stack.base_bytes(), |frame| frame.stack_height);
         assert!(bottom_addr >= bottom_limit);
 
+        let outputs_start = self.stack.len();
         for &ty in outputs {
             self.stack.push(ty);
         }
 
-        (bottom_addr, input_vars)
+        let output_vars = &self.stack.slice()[outputs_start..];
+
+        (bottom_addr, input_vars, output_vars)
     }
 
     /// Some instructions unconditionally divert the control flow, leaving everithing between
@@ -941,40 +980,40 @@ impl<'a> StackTracker<'a> {
     }
 
     /// Returns the list of input types and output types of an operator.
-    fn get_operator_type(&self, op: &Operator) -> Option<(Vec<ValType>, Vec<ValType>)> {
+    fn get_operator_type(&self, op: &Operator) -> Option<(Vec<ValType>, Option<ValType>)> {
         let ty = match op {
-            // # Numeric instructios
+            // # Numeric instructions
             // ## const
-            Operator::I32Const { .. } => (vec![], vec![ValType::I32]),
-            Operator::I64Const { .. } => (vec![], vec![ValType::I64]),
-            Operator::F32Const { .. } => (vec![], vec![ValType::F32]),
-            Operator::F64Const { .. } => (vec![], vec![ValType::F64]),
+            Operator::I32Const { .. } => (vec![], Some(ValType::I32)),
+            Operator::I64Const { .. } => (vec![], Some(ValType::I64)),
+            Operator::F32Const { .. } => (vec![], Some(ValType::F32)),
+            Operator::F64Const { .. } => (vec![], Some(ValType::F64)),
             // ## unop
             Operator::I32Clz
             | Operator::I32Ctz
             | Operator::I32Popcnt
             | Operator::I32Extend8S
-            | Operator::I32Extend16S => (vec![ValType::I32], vec![ValType::I32]),
+            | Operator::I32Extend16S => (vec![ValType::I32], Some(ValType::I32)),
             Operator::I64Clz
             | Operator::I64Ctz
             | Operator::I64Popcnt
             | Operator::I64Extend8S
             | Operator::I64Extend16S
-            | Operator::I64Extend32S => (vec![ValType::I64], vec![ValType::I64]),
+            | Operator::I64Extend32S => (vec![ValType::I64], Some(ValType::I64)),
             Operator::F32Abs
             | Operator::F32Neg
             | Operator::F32Sqrt
             | Operator::F32Ceil
             | Operator::F32Floor
             | Operator::F32Trunc
-            | Operator::F32Nearest => (vec![ValType::F32], vec![ValType::F32]),
+            | Operator::F32Nearest => (vec![ValType::F32], Some(ValType::F32)),
             Operator::F64Abs
             | Operator::F64Neg
             | Operator::F64Sqrt
             | Operator::F64Ceil
             | Operator::F64Floor
             | Operator::F64Trunc
-            | Operator::F64Nearest => (vec![ValType::F64], vec![ValType::F64]),
+            | Operator::F64Nearest => (vec![ValType::F64], Some(ValType::F64)),
             // ## binop
             Operator::I32Add
             | Operator::I32Sub
@@ -990,7 +1029,7 @@ impl<'a> StackTracker<'a> {
             | Operator::I32ShrU
             | Operator::I32ShrS
             | Operator::I32Rotl
-            | Operator::I32Rotr => (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+            | Operator::I32Rotr => (vec![ValType::I32, ValType::I32], Some(ValType::I32)),
             Operator::I64Add
             | Operator::I64Sub
             | Operator::I64Mul
@@ -1005,24 +1044,24 @@ impl<'a> StackTracker<'a> {
             | Operator::I64ShrU
             | Operator::I64ShrS
             | Operator::I64Rotl
-            | Operator::I64Rotr => (vec![ValType::I64, ValType::I64], vec![ValType::I64]),
+            | Operator::I64Rotr => (vec![ValType::I64, ValType::I64], Some(ValType::I64)),
             Operator::F32Add
             | Operator::F32Sub
             | Operator::F32Mul
             | Operator::F32Div
             | Operator::F32Min
             | Operator::F32Max
-            | Operator::F32Copysign => (vec![ValType::F32, ValType::F32], vec![ValType::F32]),
+            | Operator::F32Copysign => (vec![ValType::F32, ValType::F32], Some(ValType::F32)),
             Operator::F64Add
             | Operator::F64Sub
             | Operator::F64Mul
             | Operator::F64Div
             | Operator::F64Min
             | Operator::F64Max
-            | Operator::F64Copysign => (vec![ValType::F64, ValType::F64], vec![ValType::F64]),
+            | Operator::F64Copysign => (vec![ValType::F64, ValType::F64], Some(ValType::F64)),
             // ## testop
-            Operator::I32Eqz => (vec![ValType::I32], vec![ValType::I32]),
-            Operator::I64Eqz => (vec![ValType::I64], vec![ValType::I32]),
+            Operator::I32Eqz => (vec![ValType::I32], Some(ValType::I32)),
+            Operator::I64Eqz => (vec![ValType::I64], Some(ValType::I32)),
             // ## relop
             Operator::I32Eq
             | Operator::I32Ne
@@ -1033,7 +1072,7 @@ impl<'a> StackTracker<'a> {
             | Operator::I32LeU
             | Operator::I32LeS
             | Operator::I32GeU
-            | Operator::I32GeS => (vec![ValType::I32, ValType::I32], vec![ValType::I32]),
+            | Operator::I32GeS => (vec![ValType::I32, ValType::I32], Some(ValType::I32)),
             Operator::I64Eq
             | Operator::I64Ne
             | Operator::I64LtU
@@ -1043,129 +1082,127 @@ impl<'a> StackTracker<'a> {
             | Operator::I64LeU
             | Operator::I64LeS
             | Operator::I64GeU
-            | Operator::I64GeS => (vec![ValType::I64, ValType::I64], vec![ValType::I32]),
+            | Operator::I64GeS => (vec![ValType::I64, ValType::I64], Some(ValType::I32)),
             Operator::F32Eq
             | Operator::F32Ne
             | Operator::F32Lt
             | Operator::F32Gt
             | Operator::F32Le
-            | Operator::F32Ge => (vec![ValType::F32, ValType::F32], vec![ValType::I32]),
+            | Operator::F32Ge => (vec![ValType::F32, ValType::F32], Some(ValType::I32)),
             // ## cvtop
-            Operator::I32WrapI64 => (vec![ValType::I64], vec![ValType::I32]),
+            Operator::I32WrapI64 => (vec![ValType::I64], Some(ValType::I32)),
             Operator::I64ExtendI32U | Operator::I64ExtendI32S => {
-                (vec![ValType::I32], vec![ValType::I64])
+                (vec![ValType::I32], Some(ValType::I64))
             }
             Operator::I32TruncF32U
             | Operator::I32TruncF32S
             | Operator::I32TruncSatF32U
             | Operator::I32TruncSatF32S
-            | Operator::I32ReinterpretF32 => (vec![ValType::F32], vec![ValType::I32]),
+            | Operator::I32ReinterpretF32 => (vec![ValType::F32], Some(ValType::I32)),
             Operator::I64TruncF32U
             | Operator::I64TruncF32S
             | Operator::I64TruncSatF32U
-            | Operator::I64TruncSatF32S => (vec![ValType::F32], vec![ValType::I64]),
+            | Operator::I64TruncSatF32S => (vec![ValType::F32], Some(ValType::I64)),
             Operator::I32TruncF64U
             | Operator::I32TruncF64S
             | Operator::I32TruncSatF64U
-            | Operator::I32TruncSatF64S => (vec![ValType::F64], vec![ValType::I32]),
+            | Operator::I32TruncSatF64S => (vec![ValType::F64], Some(ValType::I32)),
             Operator::I64TruncF64U
             | Operator::I64TruncF64S
             | Operator::I64TruncSatF64U
             | Operator::I64TruncSatF64S
-            | Operator::I64ReinterpretF64 => (vec![ValType::F64], vec![ValType::I64]),
-            Operator::F32DemoteF64 => (vec![ValType::F64], vec![ValType::F32]),
-            Operator::F64PromoteF32 => (vec![ValType::F32], vec![ValType::F64]),
+            | Operator::I64ReinterpretF64 => (vec![ValType::F64], Some(ValType::I64)),
+            Operator::F32DemoteF64 => (vec![ValType::F64], Some(ValType::F32)),
+            Operator::F64PromoteF32 => (vec![ValType::F32], Some(ValType::F64)),
             Operator::F32ConvertI32U | Operator::F32ConvertI32S | Operator::F32ReinterpretI32 => {
-                (vec![ValType::I32], vec![ValType::F32])
+                (vec![ValType::I32], Some(ValType::F32))
             }
             Operator::F64ConvertI32U | Operator::F64ConvertI32S => {
-                (vec![ValType::I32], vec![ValType::F64])
+                (vec![ValType::I32], Some(ValType::F64))
             }
             Operator::F32ConvertI64U | Operator::F32ConvertI64S => {
-                (vec![ValType::I64], vec![ValType::F32])
+                (vec![ValType::I64], Some(ValType::F32))
             }
             Operator::F64ConvertI64U | Operator::F64ConvertI64S | Operator::F64ReinterpretI64 => {
-                (vec![ValType::I64], vec![ValType::F64])
+                (vec![ValType::I64], Some(ValType::F64))
             }
 
             // # Reference instructions
             Operator::RefNull { hty } => (
                 vec![],
-                vec![ValType::Ref(RefType::new(true, *hty).unwrap())],
+                Some(ValType::Ref(RefType::new(true, *hty).unwrap())),
             ),
             Operator::RefIsNull => {
-                // This type is dependant on the input type, so we must look at the stack.
                 let ValType::Ref(ref_type) = self.stack.last().unwrap().val_type else {
                     panic!("ref.is_null expects a reference type")
                 };
                 assert!(ref_type.is_func_ref() || ref_type.is_extern_ref());
-                (vec![ValType::Ref(ref_type)], vec![ValType::I32])
+                (vec![ValType::Ref(ref_type)], Some(ValType::I32))
             }
-            Operator::RefFunc { .. } => (vec![], vec![ValType::Ref(RefType::FUNCREF)]),
+            Operator::RefFunc { .. } => (vec![], Some(ValType::Ref(RefType::FUNCREF))),
 
             // TODO: # Vector instructions
-            // lets skip vector instructions for now, as we can switch it off at LLVM...
 
             // # Parametric instructions
-            Operator::Drop => (vec![self.stack.last().unwrap().val_type], vec![]),
+            Operator::Drop => (vec![self.stack.last().unwrap().val_type], None),
             Operator::Select => {
                 let len = self.stack.len();
                 let choices = &self.stack.slice()[(len - 3)..(len - 1)];
                 let ty = choices[0].val_type;
                 assert_eq!(ty, choices[1].val_type);
-                (vec![ty, ty, ValType::I32], vec![ty])
+                (vec![ty, ty, ValType::I32], Some(ty))
             }
 
             // # Variable instructions
             Operator::LocalGet { local_index } => {
                 let local = &self.locals[*local_index as usize];
-                (vec![], vec![local.val_type])
+                (vec![], Some(local.val_type))
             }
             Operator::LocalSet { local_index } => {
                 let local = &self.locals[*local_index as usize];
-                (vec![local.val_type], vec![])
+                (vec![local.val_type], None)
             }
             Operator::LocalTee { local_index } => {
                 let local = &self.locals[*local_index as usize];
-                (vec![local.val_type], vec![local.val_type])
+                (vec![local.val_type], Some(local.val_type))
             }
             Operator::GlobalGet { global_index } => {
                 let global = &self.module.globals[*global_index as usize];
-                (vec![], vec![global.val_type])
+                (vec![], Some(global.val_type))
             }
             Operator::GlobalSet { global_index } => {
                 let global = &self.module.globals[*global_index as usize];
-                (vec![global.val_type], vec![])
+                (vec![global.val_type], None)
             }
 
             // # Table instructions
             Operator::TableGet { table } => {
                 let table = &self.module.tables[*table as usize];
-                (vec![ValType::I32], vec![ValType::Ref(table.element_type)])
+                (vec![ValType::I32], Some(ValType::Ref(table.element_type)))
             }
             Operator::TableSet { table } => {
                 let table = &self.module.tables[*table as usize];
-                (vec![ValType::I32, ValType::Ref(table.element_type)], vec![])
+                (vec![ValType::I32, ValType::Ref(table.element_type)], None)
             }
-            Operator::TableSize { .. } => (vec![], vec![ValType::I32]),
+            Operator::TableSize { .. } => (vec![], Some(ValType::I32)),
             Operator::TableGrow { table } => {
                 let table = &self.module.tables[*table as usize];
                 (
                     vec![ValType::Ref(table.element_type), ValType::I32],
-                    vec![ValType::I32],
+                    Some(ValType::I32),
                 )
             }
             Operator::TableFill { table } => {
                 let table = &self.module.tables[*table as usize];
                 (
                     vec![ValType::I32, ValType::Ref(table.element_type), ValType::I32],
-                    vec![],
+                    None,
                 )
             }
             Operator::TableCopy { .. } | Operator::TableInit { .. } => {
-                (vec![ValType::I32, ValType::I32, ValType::I32], vec![])
+                (vec![ValType::I32, ValType::I32, ValType::I32], None)
             }
-            Operator::ElemDrop { .. } => (vec![], vec![]),
+            Operator::ElemDrop { .. } => (vec![], None),
 
             // # Memory instructions
             // TODO: implement the vector instructions
@@ -1174,35 +1211,33 @@ impl<'a> StackTracker<'a> {
             | Operator::I32Load8S { .. }
             | Operator::I32Load16U { .. }
             | Operator::I32Load16S { .. }
-            | Operator::MemoryGrow { .. } => (vec![ValType::I32], vec![ValType::I32]),
+            | Operator::MemoryGrow { .. } => (vec![ValType::I32], Some(ValType::I32)),
             Operator::I64Load { .. }
             | Operator::I64Load8U { .. }
             | Operator::I64Load8S { .. }
             | Operator::I64Load16U { .. }
             | Operator::I64Load16S { .. }
             | Operator::I64Load32U { .. }
-            | Operator::I64Load32S { .. } => (vec![ValType::I32], vec![ValType::I64]),
-            Operator::F32Load { .. } => (vec![ValType::I32], vec![ValType::F32]),
-            Operator::F64Load { .. } => (vec![ValType::I32], vec![ValType::F64]),
+            | Operator::I64Load32S { .. } => (vec![ValType::I32], Some(ValType::I64)),
+            Operator::F32Load { .. } => (vec![ValType::I32], Some(ValType::F32)),
+            Operator::F64Load { .. } => (vec![ValType::I32], Some(ValType::F64)),
             Operator::I32Store { .. }
             | Operator::I32Store8 { .. }
-            | Operator::I32Store16 { .. } => (vec![ValType::I32, ValType::I32], vec![]),
+            | Operator::I32Store16 { .. } => (vec![ValType::I32, ValType::I32], None),
             Operator::I64Store { .. }
             | Operator::I64Store8 { .. }
             | Operator::I64Store16 { .. }
-            | Operator::I64Store32 { .. } => (vec![ValType::I32, ValType::I64], vec![]),
-            Operator::F32Store { .. } => (vec![ValType::I32, ValType::F32], vec![]),
-            Operator::F64Store { .. } => (vec![ValType::I32, ValType::F64], vec![]),
-            Operator::MemorySize { .. } => (vec![], vec![ValType::I32]),
+            | Operator::I64Store32 { .. } => (vec![ValType::I32, ValType::I64], None),
+            Operator::F32Store { .. } => (vec![ValType::I32, ValType::F32], None),
+            Operator::F64Store { .. } => (vec![ValType::I32, ValType::F64], None),
+            Operator::MemorySize { .. } => (vec![], Some(ValType::I32)),
             Operator::MemoryFill { .. }
             | Operator::MemoryCopy { .. }
-            | Operator::MemoryInit { .. } => {
-                (vec![ValType::I32, ValType::I32, ValType::I32], vec![])
-            }
-            Operator::DataDrop { .. } => (vec![], vec![]),
+            | Operator::MemoryInit { .. } => (vec![ValType::I32, ValType::I32, ValType::I32], None),
+            Operator::DataDrop { .. } => (vec![], None),
 
             // # Control instructions
-            Operator::Nop => (vec![], vec![]),
+            Operator::Nop => (vec![], None),
             // Most control instructions must be handled separately.
             // We return None for them:
             Operator::Unreachable
