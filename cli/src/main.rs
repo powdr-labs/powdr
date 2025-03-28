@@ -726,7 +726,7 @@ fn run<F: FieldElement>(
             .compute_proof()
             .unwrap();
     } else {
-        // If no backend is specified, we run witgen via Mock backend
+        // If no --prove-with is specified, we run witgen via Mock backend
         pipeline
             .with_backend(BackendType::Mock, None)
             .compute_witness()
