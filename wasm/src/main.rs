@@ -315,6 +315,10 @@ fn infinite_registers_allocation<'a>(
     // The rest of the directives are taken from the function body definition.
     let mut op_reader = body.get_operators_reader()?.into_iter();
     while let Some(operator) = op_reader.next() {
+        // There shouldn't be any more operators after the outmost
+        // block (the function itself) has ended.
+        assert!(!tracker.control_stack.is_empty());
+
         // Match first the control operators, which require special handling.
         match operator? {
             Operator::Block { blockty } => {
@@ -322,9 +326,9 @@ fn infinite_registers_allocation<'a>(
                 tracker.control_stack.push(Frame {
                     stack_height: tracker.frame_height(blockty),
                     blockty,
-                    frame_kind: FrameKind::Block,
-                    else_label: None,
-                    target_label: labels.next().unwrap(),
+                    frame_kind: FrameKind::Block {
+                        target_label: labels.next().unwrap(),
+                    },
                 });
             }
             Operator::Loop { blockty } => {
@@ -333,9 +337,7 @@ fn infinite_registers_allocation<'a>(
                 tracker.control_stack.push(Frame {
                     stack_height: tracker.frame_height(blockty),
                     blockty,
-                    frame_kind: FrameKind::Loop,
-                    else_label: None,
-                    target_label,
+                    frame_kind: FrameKind::Loop { target_label },
                 });
                 directives.push(Directive::Label(target_label));
             }
@@ -354,19 +356,25 @@ fn infinite_registers_allocation<'a>(
                 tracker.control_stack.push(Frame {
                     stack_height: tracker.frame_height(blockty),
                     blockty,
-                    frame_kind: FrameKind::If,
-                    else_label: Some(else_label),
-                    target_label: labels.next().unwrap(),
+                    frame_kind: FrameKind::If {
+                        target_label: labels.next().unwrap(),
+                        else_label,
+                    },
                 });
             }
             Operator::Else => {
                 // Else happens at the same level as the corresponding if.
                 let last_frame = tracker.control_stack.last_mut().unwrap();
 
-                assert!(last_frame.frame_kind == FrameKind::If);
-                last_frame.frame_kind = FrameKind::Else;
+                let FrameKind::If {
+                    target_label,
+                    else_label,
+                } = last_frame.frame_kind
+                else {
+                    panic!("Else without If");
+                };
+                last_frame.frame_kind = FrameKind::Else { target_label };
 
-                let else_label = last_frame.else_label.unwrap();
                 directives.push(Directive::Label(else_label));
 
                 // Since we just parsed "If", the stack contains the outputs of the "If".
@@ -401,18 +409,24 @@ fn infinite_registers_allocation<'a>(
             Operator::End => {
                 let last_frame = tracker.control_stack.pop().unwrap();
                 match last_frame.frame_kind {
-                    FrameKind::If => {
+                    FrameKind::If {
+                        target_label,
+                        else_label,
+                    } => {
                         // The else is missing, so the else_label matches the target_label.
-                        directives.push(Directive::Label(last_frame.else_label.unwrap()));
-                        directives.push(Directive::Label(last_frame.target_label));
+                        directives.push(Directive::Label(else_label));
+                        directives.push(Directive::Label(target_label));
                     }
-                    FrameKind::Block | FrameKind::Else => {
-                        directives.push(Directive::Label(last_frame.target_label));
+                    FrameKind::Block { target_label } | FrameKind::Else { target_label } => {
+                        directives.push(Directive::Label(target_label));
                     }
-                    FrameKind::Loop => {
+                    FrameKind::Loop { .. } => {
                         // Do nothing, as the loop label was already emited.
                     }
-                    _ => panic!("unsupported webassembly feature"),
+                    FrameKind::Function => {
+                        // The function has ended, we need to insert an explicit return.
+                        directives.extend(tracker.return_code());
+                    }
                 }
             }
             Operator::Br { relative_depth } => {
@@ -481,7 +495,7 @@ fn infinite_registers_allocation<'a>(
                 tracker.discard_unreachable_and_fix_the_stack(&mut op_reader)?;
             }
             Operator::Return => {
-                directives.extend(tracker.br_code(tracker.control_stack.len() as u32));
+                directives.extend(tracker.return_code());
                 tracker.discard_unreachable_and_fix_the_stack(&mut op_reader)?;
             }
             Operator::Unreachable => {
@@ -524,11 +538,6 @@ fn infinite_registers_allocation<'a>(
         }
     }
 
-    // The function has ended, insert a return instruction.
-    directives.push(Directive::Return {
-        return_info: tracker.return_info,
-    });
-
     Ok(directives)
 }
 
@@ -549,19 +558,18 @@ fn many_sz(val_types: &[ValType]) -> u32 {
     val_types.iter().map(|&ty| sz(ty)).sum()
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum FrameKind {
     Function,
-    Block,
-    Loop,
-    If,
-    Else,
+    Block { target_label: u32 },
+    Loop { target_label: u32 },
+    If { target_label: u32, else_label: u32 },
+    Else { target_label: u32 },
 }
 
 struct Frame {
     blockty: BlockType,
     frame_kind: FrameKind,
-    else_label: Option<u32>,
-    target_label: u32,
     /// The stack height of the block, in bytes, not counting the inputs or outputs.
     stack_height: u32,
 }
@@ -700,7 +708,11 @@ impl<'a> StackTracker<'a> {
             StackTracker {
                 module,
                 func_type,
-                control_stack: Vec::new(),
+                control_stack: vec![Frame {
+                    stack_height: 0,
+                    blockty: BlockType::FuncType(func_idx),
+                    frame_kind: FrameKind::Function,
+                }],
                 locals,
                 return_info,
                 stack: Stack::new(stack_top),
@@ -740,62 +752,73 @@ impl<'a> StackTracker<'a> {
         self.stack.top_bytes() - input_size
     }
 
+    /// Generate the code of a return, ensuring the outputs are at the expected height.
+    fn return_code<'b>(&self) -> Vec<Directive<'b>> {
+        self.br_code(self.control_stack.len() as u32 - 1)
+    }
+
     /// Generate the code of a break ("br"), ensuring the outputs are at the expected height.
     fn br_code<'b>(&self, relative_depth: u32) -> Vec<Directive<'b>> {
         // When breaking, the stack might be bigger than the required height for the target label.
         // If so, we must copy the outputs to the expected height.
         let cs_len = self.control_stack.len();
-        assert!(relative_depth <= cs_len as u32);
+        assert!(relative_depth < cs_len as u32);
 
         let single_arg;
-        let (args, jump_directive, target_height) = if relative_depth == cs_len as u32 {
-            // TODO: this code is all wrong! Return values are not placed on stack, but overlapping the inputs.
-            todo!();
 
-            // The target is the function itself, this is a return.
-            (
-                self.func_type.results(),
-                Directive::Return {
-                    return_info: self.return_info,
-                },
-                self.stack.base_bytes(),
-            )
+        let target_frame = &self.control_stack[cs_len - relative_depth as usize - 1];
+
+        let args = if let FrameKind::Loop { .. } = target_frame.frame_kind {
+            // Loop is special because br sends the execution to
+            // the top of the loop, so the arguments are the inputs.
+            self.module.blockty_inputs(target_frame.blockty)
         } else {
-            let target_frame = &self.control_stack[cs_len - relative_depth as usize - 1];
-
-            let args = if target_frame.frame_kind == FrameKind::Loop {
-                // Loop is special because br sends the execution to
-                // the top of the loop, so the arguments are the inputs.
-                self.module.blockty_inputs(target_frame.blockty)
-            } else {
-                match target_frame.blockty {
-                    BlockType::Empty => &[][..],
-                    BlockType::Type(val_type) => {
-                        single_arg = [val_type];
-                        &single_arg
-                    }
-                    BlockType::FuncType(idx) => {
-                        let func_type = self.module.get_type(idx);
-                        func_type.results()
-                    }
+            match target_frame.blockty {
+                BlockType::Empty => &[][..],
+                BlockType::Type(val_type) => {
+                    single_arg = [val_type];
+                    &single_arg
                 }
-            };
-
-            (
-                args,
-                Directive::Jump {
-                    target: target_frame.target_label,
-                },
-                target_frame.stack_height,
-            )
+                BlockType::FuncType(idx) => {
+                    let func_type = self.module.get_type(idx);
+                    func_type.results()
+                }
+            }
         };
 
         self.assert_types_on_stack(args);
 
         // Copy the outputs to the expected height, if needed.
         let mut directives = Vec::new();
+
+        let jump_directive = match target_frame.frame_kind {
+            FrameKind::Function => {
+                // The location of the return info is tricky. We must ensure it won't
+                // be overwritten by the outputs of the function. So, if needed,
+                // we must copy it to somewhere safe (like the top of the current stack).
+
+                todo!();
+
+                Directive::Return {
+                    return_info: self.return_info,
+                }
+            }
+            FrameKind::Block { target_label } => Directive::Jump {
+                target: target_label,
+            },
+            FrameKind::Loop { target_label } => Directive::Jump {
+                target: target_label,
+            },
+            FrameKind::If { target_label, .. } => Directive::Jump {
+                target: target_label,
+            },
+            FrameKind::Else { target_label } => Directive::Jump {
+                target: target_label,
+            },
+        };
+
         let stack = self.stack.slice();
-        if stack[stack.len() - args.len()].address != target_height {
+        if stack[stack.len() - args.len()].address != target_frame.target_height {
             let src_args = &stack[(stack.len() - args.len())..];
 
             let dest_pos = stack.partition_point(|v| v.address < target_height);
