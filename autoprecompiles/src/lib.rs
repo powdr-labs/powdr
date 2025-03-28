@@ -514,9 +514,10 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
     let mut local_reg_mem: BTreeMap<u32, Vec<AlgebraicExpression<T>>> = BTreeMap::new();
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     machine.bus_interactions.retain(|bus_int| {
-        // if bus_int.id == PC_LOOKUP_BUS_ID || bus_int.id == EXECUTION_BUS_ID {
-        //     return false;
-        // }
+        //if bus_int.id == PC_LOOKUP_BUS_ID || bus_int.id == EXECUTION_BUS_ID {
+        if bus_int.id == EXECUTION_BUS_ID {
+            return false;
+        }
 
         if bus_int.id != MEMORY_BUS_ID {
             return true;
@@ -751,8 +752,10 @@ pub fn generate_precompile<T: FieldElement>(
                 let mut sub_map: BTreeMap<String, AlgebraicExpression<T>> = Default::default();
                 let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
 
+                let mut sub_map_loadstore: BTreeMap<String, AlgebraicExpression<T>> =
+                    Default::default();
                 if is_loadstore(instr.opcode) {
-                    sub_map.extend(loadstore_chip_info(&machine, instr.opcode));
+                    sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
                 }
 
                 assert_eq!(instr.args.len(), pc_lookup.args.len());
@@ -860,6 +863,7 @@ pub fn generate_precompile<T: FieldElement>(
                         .for_each(|e| {
                             //println!("\nHandling arg {e}");
                             powdr::substitute_algebraic(e, &sub_map);
+                            powdr::substitute_algebraic(e, &sub_map_loadstore);
                             *e = simplify_expression(e.clone());
                             let subs = powdr::append_suffix_algebraic(e, &format!("{i}"));
                             global_idx = powdr::reassign_ids_algebraic(
