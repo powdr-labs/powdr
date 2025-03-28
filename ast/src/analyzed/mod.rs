@@ -848,7 +848,6 @@ impl Children<Expression> for NamedType {
 pub struct PublicDeclaration {
     pub id: u64,
     pub source: SourceRef,
-    pub name: String,
     /// The declaration value, in two possible forms: polynomial[array_index](row) OR polynomial(row)
     /// where "row" is the evaluation point of the polynomial.
     pub value: Expression,
