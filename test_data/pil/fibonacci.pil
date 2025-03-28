@@ -13,3 +13,5 @@ namespace Fibonacci(N);
     (1-ISLAST) * (y' - (x + y)) = 0;
 
     public out = y(N-1);
+
+    ISLAST * (y - out) = 0;

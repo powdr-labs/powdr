@@ -20,3 +20,6 @@ namespace Quad(N);
     [wdouble, quadruple] in [id, double];
 
     public out = quadruple(N-1);
+
+    pol fixed ISLAST(i) { if i == N - 1 { 1 } else { 0 } };
+    ISLAST * (out - quadruple) = 0;

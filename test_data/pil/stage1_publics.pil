@@ -11,3 +11,7 @@ namespace Global(N);
 
     public out = y(N - 1);
     public out_sec= x(N - 1);
+
+    col fixed ISLAST(i) { if i == N - 1 { 1 } else { 0 } };
+    // TODO: add public reference constraints and make it work with Stwo
+    // This example is only used in Stwo for now

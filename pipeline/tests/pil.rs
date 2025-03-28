@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use powdr_linker::LinkerMode;
 use powdr_number::{GoldilocksField, Mersenne31Field};
 use powdr_pipeline::{
@@ -18,7 +20,7 @@ use test_log::test;
 fn invalid_witness() {
     let f = "pil/trivial.pil";
     let witness = vec![("main::w".to_string(), vec![0; 4])];
-    assert_proofs_fail_for_invalid_witnesses(f, &witness);
+    assert_proofs_fail_for_invalid_witnesses(f, &witness, &BTreeMap::new());
 }
 
 #[test]
@@ -32,17 +34,21 @@ fn lookup_with_selector() {
     let witness = [2, 42, 4, 17];
     Pipeline::default()
         .from_file(resolve_test_file(f))
-        .set_witness(vec![(
-            "main::w".to_string(),
-            witness.iter().cloned().map(GoldilocksField::from).collect(),
-        )])
+        .set_witness_and_publics(
+            vec![(
+                "main::w".to_string(),
+                witness.iter().cloned().map(GoldilocksField::from).collect(),
+            )],
+            BTreeMap::new(),
+        )
         .with_backend(powdr_backend::BackendType::Mock, None)
         .compute_proof()
         .unwrap();
 
     // Invalid witness: 0 is not in the set {2, 4}
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
-    assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
+    let publics = BTreeMap::new();
+    assert_proofs_fail_for_invalid_witnesses_mock(f, &witness, &publics);
 }
 
 #[test]
@@ -57,7 +63,7 @@ fn lookup_with_selector_starky() {
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     // Unfortunately, eStark panics in this case. That's why the test is marked
     // as should_panic, with the error message that would be coming from eStark...
-    assert_proofs_fail_for_invalid_witnesses_estark(f, &witness);
+    assert_proofs_fail_for_invalid_witnesses_estark(f, &witness, &BTreeMap::new());
 }
 
 #[test]
@@ -69,19 +75,23 @@ fn permutation_with_selector() {
     use powdr_pipeline::test_util::resolve_test_file;
     use powdr_pipeline::Pipeline;
     let witness = [2, 42, 4, 17];
+    let publics = BTreeMap::new();
     Pipeline::default()
         .from_file(resolve_test_file(f))
-        .set_witness(vec![(
-            "main::w".to_string(),
-            witness.iter().cloned().map(GoldilocksField::from).collect(),
-        )])
+        .set_witness_and_publics(
+            vec![(
+                "main::w".to_string(),
+                witness.iter().cloned().map(GoldilocksField::from).collect(),
+            )],
+            BTreeMap::new(),
+        )
         .with_backend(powdr_backend::BackendType::Mock, None)
         .compute_proof()
         .unwrap();
 
     // Invalid witness: 0 is not in the set {2, 4}
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
-    assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
+    assert_proofs_fail_for_invalid_witnesses_mock(f, &witness, &publics);
 }
 
 #[test]
@@ -96,7 +106,7 @@ fn permutation_with_selector_starky() {
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     // Unfortunately, eStark panics in this case. That's why the test is marked
     // as should_panic, with the error message that would be coming from eStark...
-    assert_proofs_fail_for_invalid_witnesses_estark(f, &witness);
+    assert_proofs_fail_for_invalid_witnesses_estark(f, &witness, &BTreeMap::new());
 }
 
 #[test]
@@ -126,8 +136,9 @@ fn fibonacci_invalid_witness() {
         ("Fibonacci::x".to_string(), vec![1, 1, 10, 3]),
         ("Fibonacci::y".to_string(), vec![1, 2, 3, 13]),
     ];
-    assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
-    assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness);
+    let publics = BTreeMap::from([("Fibonacci::out".to_string(), 13)]);
+    assert_proofs_fail_for_invalid_witnesses_mock(f, &witness, &publics);
+    assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness, &publics);
 
     // All constraints are valid, except the initial row.
     // The following constraint should fail in row 3:
@@ -136,8 +147,9 @@ fn fibonacci_invalid_witness() {
         ("Fibonacci::x".to_string(), vec![1, 2, 3, 5]),
         ("Fibonacci::y".to_string(), vec![2, 3, 5, 8]),
     ];
-    assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
-    assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness);
+    let publics = BTreeMap::from([("Fibonacci::out".to_string(), 8)]);
+    assert_proofs_fail_for_invalid_witnesses_mock(f, &witness, &publics);
+    assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness, &publics);
 }
 
 #[test]
