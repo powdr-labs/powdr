@@ -286,7 +286,6 @@ fn vm_to_vm() {
 }
 
 #[test]
-#[ignore = "Too slow"]
 fn vm_to_vm_dynamic_trace_length() {
     let f = "asm/vm_to_vm_dynamic_trace_length.asm";
     regular_test_gl(f, &[]);
@@ -547,7 +546,6 @@ fn call_selectors_with_no_permutation() {
 }
 
 #[test]
-#[ignore = "Too slow"]
 fn vm_args() {
     let f = "asm/vm_args.asm";
     regular_test_gl(f, Default::default());

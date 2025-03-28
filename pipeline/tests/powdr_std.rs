@@ -100,7 +100,6 @@ fn split_gl_vec_test() {
 }
 
 #[test]
-#[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
     // Native linker mode, because bus constraints are exponential in Halo2
@@ -109,14 +108,12 @@ fn split_bn254_test() {
 }
 
 #[test]
-#[ignore = "Too slow"]
 fn split_gl_test() {
     let f = "std/split_gl_test.asm";
     regular_test_gl(f, &[]);
 }
 
 #[test]
-#[ignore = "Too slow"]
 fn split_bb_test() {
     let f = "std/split_bb_test.asm";
     regular_test_bb(f, &[]);
@@ -183,14 +180,12 @@ fn memory_large_test() {
 }
 
 #[test]
-#[ignore = "Too slow"]
 fn memory_large_with_bootloader_write_test() {
     let f = "std/memory_large_with_bootloader_write_test.asm";
     regular_test_gl(f, &[]);
 }
 
 #[test]
-#[ignore = "Too slow"]
 fn memory_large_test_parallel_accesses() {
     let f = "std/memory_large_test_parallel_accesses.asm";
     regular_test_gl(f, &[]);
@@ -301,7 +296,6 @@ fn binary_small_test() {
 }
 
 #[test]
-#[ignore = "Too slow"]
 fn shift_large_test() {
     let f = "std/shift_large_test.asm";
     regular_test_gl(f, &[]);
