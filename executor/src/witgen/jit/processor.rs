@@ -340,14 +340,23 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         // Now there are only missing identities left. The hope is that the identities
         // are only about essentially unconstrained variables.
 
-        // Collect the relevant (e.g. not multiplied by a known zero value) unknown variables.
+        // Collect the relevant (e.g. not multiplied by a known zero value) unknown variables
+        // that are inside the block.
         let unknown_variables = self
             .unsolved_polynomial_identities_in_block(witgen)
             .flat_map(|(id, row_offset)| {
                 let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id else {
                     unreachable!()
                 };
-                unknown_relevant_variables(expression, witgen, row_offset).into_iter()
+                unknown_relevant_variables(expression, witgen, row_offset)
+                    .into_iter()
+                    .filter(|var| match var {
+                        Variable::WitnessCell(cell) | Variable::IntermediateCell(cell) => {
+                            cell.row_offset >= 0 && cell.row_offset < self.block_size as i32
+                        }
+                        Variable::FixedCell(_) => unreachable!(),
+                        Variable::Param(_) | Variable::MachineCallParam(_) => true,
+                    })
             })
             .unique()
             .sorted()
