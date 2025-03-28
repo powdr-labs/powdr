@@ -506,18 +506,25 @@ fn infinite_registers_allocation<'a>(
                 tracker.discard_unreachable_and_fix_the_stack(&mut op_reader)?;
             }
             Operator::Call { function_index } => {
-                // For the lack of a better type, the return info is a i64, where
-                // the first 32 bits (address-wise) are the saved frame pointer, and the
-                // other 32 bits are the return address.
-                let return_info = AllocatedVar {
-                    val_type: ValType::I64,
-                    address: tracker.stack.top_bytes(),
-                };
-
                 // Consume the function arguments and place the outputs on the stack.
                 let func_type = module.get_func_type(function_index);
                 let (bottom_addr, _) =
                     tracker.apply_operation_to_stack(func_type.params(), func_type.results());
+
+                // Return info is written on the stack, after ther function inputs or outputs,
+                // whichever is bigger.
+                let address = tracker
+                    .stack
+                    .top_bytes()
+                    .max(bottom_addr + many_sz(func_type.results()));
+
+                let return_info = AllocatedVar {
+                    // For the lack of a better type, the return info is a i64, where
+                    // the first 32 bits (address-wise) are the saved frame pointer, and the
+                    // other 32 bits are the return address.
+                    val_type: ValType::I64,
+                    address,
+                };
 
                 directives.push(Directive::Call {
                     function_index,
@@ -683,7 +690,11 @@ impl<'a> StackTracker<'a> {
         }
 
         // Right before adjusting the frame pointer and jumping, "call" writes the
-        // frame pointer of the previous frame on the top of its stack, which ends up here.
+        // return address and the frame pointer of the previous frame on the top of
+        // its stack, giving room for the function outputs, if it happens to be bigger
+        // than the inputs. We must also skip this space to find the return info.
+        stack_top = stack_top.max(many_sz(func_type.results()));
+
         let return_info = AllocatedVar {
             val_type: ValType::I64,
             address: stack_top,
@@ -792,42 +803,28 @@ impl<'a> StackTracker<'a> {
         let mut directives = Vec::new();
 
         let jump_directive = match target_frame.frame_kind {
-            FrameKind::Function => {
-                // The location of the return info is tricky. We must ensure it won't
-                // be overwritten by the outputs of the function. So, if needed,
-                // we must copy it to somewhere safe (like the top of the current stack).
-
-                todo!();
-
-                Directive::Return {
-                    return_info: self.return_info,
-                }
-            }
-            FrameKind::Block { target_label } => Directive::Jump {
-                target: target_label,
+            FrameKind::Function => Directive::Return {
+                return_info: self.return_info,
             },
-            FrameKind::Loop { target_label } => Directive::Jump {
-                target: target_label,
-            },
-            FrameKind::If { target_label, .. } => Directive::Jump {
-                target: target_label,
-            },
-            FrameKind::Else { target_label } => Directive::Jump {
+            FrameKind::Block { target_label }
+            | FrameKind::Loop { target_label }
+            | FrameKind::If { target_label, .. }
+            | FrameKind::Else { target_label } => Directive::Jump {
                 target: target_label,
             },
         };
 
         let stack = self.stack.slice();
-        if stack[stack.len() - args.len()].address != target_frame.target_height {
+        if stack[stack.len() - args.len()].address != target_frame.stack_height {
             let src_args = &stack[(stack.len() - args.len())..];
 
-            let dest_pos = stack.partition_point(|v| v.address < target_height);
+            let dest_pos = stack.partition_point(|v| v.address < target_frame.stack_height);
 
             let mut dest_stack_top = stack
-                .get(dest_pos - 1)
-                .map(|v| v.address + sz(v.val_type))
-                .unwrap_or(self.stack.base_bytes());
-            assert_eq!(dest_stack_top, target_height);
+                .get(dest_pos)
+                .map(|v| v.address)
+                .unwrap_or(self.stack.top_bytes());
+            assert_eq!(dest_stack_top, target_frame.stack_height);
 
             for src in src_args {
                 let var_size = sz(src.val_type);
