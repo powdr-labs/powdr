@@ -136,6 +136,19 @@ impl<T> Analyzed<T> {
             .collect()
     }
 
+    /// Tries to resolve a symbol by name. Does not support individual array elements,
+    /// just plain symbols. Also supports intermediate columns.
+    pub fn try_symbol_by_name(&self, name: &str) -> Option<&Symbol> {
+        self.definitions
+            .get(name)
+            .map(|(symbol, _)| symbol)
+            .or_else(|| {
+                self.intermediate_columns
+                    .get(name)
+                    .map(|(symbol, _)| symbol)
+            })
+    }
+
     pub fn constant_polys_in_source_order(
         &self,
     ) -> impl Iterator<Item = &(Symbol, Option<FunctionValueDefinition>)> {
