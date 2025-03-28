@@ -21,9 +21,12 @@ machine SplitBN254(byte_compare: ByteCompare) with
     // understand step 3 to figure out that the byte decomposition is unique.
     let select_byte: fe, int -> fe = |input, byte| std::convert::fe((std::convert::int(input) >> (byte * 8)) & 0xff);
     col witness bytes;
-    query |i| {
-        std::prover::provide_value(bytes, i, select_byte(std::prover::eval(in_acc'), (i + 1) % 32));
-    };
+    query |i| std::prover::compute_from(
+        bytes,
+        i,
+        [in_acc'],
+        |in_acc_next| select_byte(in_acc_next[0], (i + 1) % 32)
+    );
     // Puts the bytes together to form the input
     col witness in_acc;
     // Factors to multiply the bytes by
