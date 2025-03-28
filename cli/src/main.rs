@@ -719,8 +719,6 @@ fn run<F: FieldElement>(
 ) -> Result<(), Vec<String>> {
     pipeline = pipeline.with_setup_file(params.map(PathBuf::from));
 
-    pipeline.compute_optimized_pil().unwrap();
-
     pipeline
         .with_backend(prove_with.unwrap_or_default(), backend_options.clone())
         .compute_proof()
