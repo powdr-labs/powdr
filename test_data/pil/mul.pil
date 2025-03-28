@@ -1,5 +1,5 @@
-namespace Add(8);
+namespace Mul(8);
     let a;
     let b;
     let c;
-    a + b = c;
+    a * b = c;
