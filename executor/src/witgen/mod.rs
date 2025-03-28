@@ -322,6 +322,7 @@ pub struct FixedData<'a, T: FieldElement> {
     bus_receives: BTreeMap<T, BusReceive<T>>,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
     witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
+    /// A map from column name to PolyID, supports array elements.
     column_by_name: HashMap<String, PolyID>,
     challenges: BTreeMap<u64, T>,
     global_range_constraints: GlobalConstraints<T>,
@@ -408,12 +409,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             bus_receives,
             fixed_cols,
             witness_cols,
-            column_by_name: analyzed
-                .definitions
-                .iter()
-                .filter(|(_, (symbol, _))| matches!(symbol.kind, SymbolKind::Poly(_)))
-                .flat_map(|(_, (symbol, _))| symbol.array_elements())
-                .collect(),
+            column_by_name: analyzed.name_to_poly_id().into_iter().collect(),
             challenges,
             global_range_constraints,
             intermediate_definitions,
@@ -533,15 +529,10 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         }
     }
 
+    /// Returns a PolyID given the name of it. Supports array elements
+    /// in that for `"X[7]"` it returns the PolyID of element 7 of the array `X`.
     pub fn try_column_by_name(&self, name: &str) -> Option<PolyID> {
         self.column_by_name.get(name).cloned()
-    }
-
-    pub fn try_symbol_by_name(&self, name: &str) -> Option<&Symbol> {
-        self.analyzed
-            .definitions
-            .get(name)
-            .map(|(symbol, _)| symbol)
     }
 
     fn external_witness(&self, row: DegreeType, column: &PolyID) -> Option<T> {
