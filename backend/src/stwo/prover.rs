@@ -1,10 +1,22 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
+use powdr_ast::analyzed::Identity;
 use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, DegreeRange};
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
+use stwo_prover::core::backend::simd::SimdBackend;
+use stwo_prover::core::lookups::gkr_prover::prove_batch;
+use stwo_prover::core::lookups::gkr_prover::Layer;
+use stwo_prover::core::lookups::gkr_verifier::partially_verify_batch;
+use stwo_prover::core::lookups::gkr_verifier::Gate;
+use stwo_prover::core::lookups::gkr_verifier::GkrArtifact;
+use stwo_prover::core::lookups::mle::Mle;
+use stwo_prover::core::poly::circle::PolyOps;
+use stwo_prover::examples::xor::gkr_lookups::mle_eval::build_trace;
+use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleEvalProverComponent;
+//use stwo_prover::constraint_framework::assert_constraints_on_polys;
 
 use powdr_number::{FieldElement, LargeInt, Mersenne31Field as M31};
 
@@ -20,9 +32,10 @@ use std::sync::Arc;
 use std::{fmt, io};
 
 use crate::stwo::circuit_builder::{
-    gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
+    gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval, MLE_TRACE_IDX,
     PREPROCESSED_TRACE_IDX, STAGE0_TRACE_IDX, STAGE1_TRACE_IDX,
 };
+use crate::stwo::logup_gkr::{gkr_proof_artifacts, PowdrComponentWrapper};
 use crate::stwo::proof::{
     Proof, SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
 };
@@ -60,28 +73,28 @@ impl fmt::Display for KeyExportError {
     }
 }
 
-pub struct StwoProver<B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Channel> {
+pub struct StwoProver<MC: MerkleChannel, C: Channel> {
     pub analyzed: Arc<Analyzed<M31>>,
     /// The split analyzed PIL
-    split: BTreeMap<String, Analyzed<M31>>,
+    pub split: BTreeMap<String, Analyzed<M31>>,
     /// The value of the fixed columns
     pub fixed: Arc<Vec<(String, VariablySizedColumn<M31>)>>,
 
     /// Proving key
-    proving_key: StarkProvingKey<B>,
+    proving_key: StarkProvingKey<SimdBackend>,
     /// TODO: Add verification key.
     _verifying_key: Option<()>,
     _channel_marker: PhantomData<C>,
     _merkle_channel_marker: PhantomData<MC>,
 }
 
-impl<B, MC, C> StwoProver<B, MC, C>
+impl<MC, C> StwoProver<MC, C>
 where
-    B: Backend + Send + BackendForChannel<MC>,
     MC: MerkleChannel + Send,
     C: Channel + Send,
     MC::H: DeserializeOwned + Serialize,
-    PowdrComponent: ComponentProver<B>,
+    PowdrComponent: ComponentProver<SimdBackend>,
+    SimdBackend: BackendForChannel<MC>,
 {
     pub fn new(
         analyzed: Arc<Analyzed<M31>>,
@@ -148,7 +161,7 @@ where
             })
             .collect();
 
-        let preprocessed: BTreeMap<String, TableProvingKeyCollection<B>> = self
+        let preprocessed: BTreeMap<String, TableProvingKeyCollection<SimdBackend>> = self
             .split
             .iter()
             .filter_map(|(namespace, pil)| {
@@ -169,7 +182,7 @@ where
                                 let fixed_columns = &fixed_columns[&size];
                                 let log_size = size.ilog2();
                                 let mut constant_trace: ColumnVec<
-                                    CircleEvaluation<B, BaseField, BitReversedOrder>,
+                                    CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
                                 > = fixed_columns
                                     .iter()
                                     .map(|(_, vec)| {
@@ -183,7 +196,7 @@ where
                                 let constant_with_next_list = get_constant_with_next_list(pil);
 
                                 let constant_shifted_trace: ColumnVec<
-                                    CircleEvaluation<B, BaseField, BitReversedOrder>,
+                                    CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
                                 > = fixed_columns
                                     .iter()
                                     .filter(|(name, _)| constant_with_next_list.contains(name))
@@ -201,13 +214,14 @@ where
 
                                 // get selector columns for the public inputs
                                 let publics_selectors: ColumnVec<
-                                    CircleEvaluation<B, BaseField, BitReversedOrder>,
+                                    CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
                                 > = pil
                                     .get_publics()
                                     .into_iter()
                                     .map(|(_, _, _, row_id, _)| {
                                         // Create a column with a single 1 at the row_id-th (in circle domain bitreverse order) position
-                                        let mut col = Col::<B, BaseField>::zeros(1 << log_size);
+                                        let mut col =
+                                            Col::<SimdBackend, BaseField>::zeros(1 << log_size);
                                         col.set(
                                             bit_reverse_index(
                                                 coset_index_to_circle_domain_index(
@@ -217,10 +231,14 @@ where
                                             ),
                                             BaseField::one(),
                                         );
-                                        CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
-                                            *domain_map.get(&(log_size as usize)).unwrap(),
-                                            col,
-                                        )
+                                        CircleEvaluation::<
+                                                SimdBackend,
+                                                BaseField,
+                                                BitReversedOrder,
+                                            >::new(
+                                                *domain_map.get(&(log_size as usize)).unwrap(),
+                                                col,
+                                            )
                                     })
                                     .collect();
 
@@ -249,6 +267,7 @@ where
         witness: &[(String, Vec<M31>)],
         witgen_callback: WitgenCallback<M31>,
     ) -> Result<Vec<u8>, String> {
+        println!("witness is {:?}", witness);
         let prove_span = span!(Level::INFO, "stwo backend prover").entered();
         let config = get_config();
 
@@ -352,7 +371,7 @@ where
 
         // Get witness columns in circle domain for stage 0
         let stage0_witness_cols_circle_domain_eval: ColumnVec<
-            CircleEvaluation<B, BaseField, BitReversedOrder>,
+            CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
         > = witness_by_machine
             .values()
             .flat_map(|witness_cols| {
@@ -370,7 +389,7 @@ where
             })
             .collect_vec();
 
-        let twiddles_max_degree = B::precompute_twiddles(
+        let twiddles_max_degree = SimdBackend::precompute_twiddles(
             CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
                 .circle_domain()
                 .half_coset,
@@ -378,7 +397,7 @@ where
 
         let prover_channel = &mut <MC as MerkleChannel>::C::default();
         let mut commitment_scheme =
-            CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles_max_degree);
+            CommitmentSchemeProver::<'_, SimdBackend, MC>::new(config, &twiddles_max_degree);
 
         // commit to constant columns
         let mut tree_builder = commitment_scheme.tree_builder();
@@ -387,6 +406,7 @@ where
 
         // commit to witness columns of stage 0
         let mut tree_builder = commitment_scheme.tree_builder();
+
         tree_builder.extend_evals(stage0_witness_cols_circle_domain_eval);
 
         tree_builder.commit(prover_channel);
@@ -472,7 +492,31 @@ where
             span.exit();
         }
 
+        // Generate GKR proof, get None if LOGUP_GKR is false
+        // logup challenge alpha, take dummy challenge for now
+        let alpha = SecureField::from_u32_unchecked(42, 42, 42, 42);
+        let gkr_result = self.gkr_prove(&witness, machine_log_sizes.clone(), alpha, prover_channel);
+
+        println!("get gkr result");
+
+        if let Some(ref gkr_proof_artifacts) = gkr_result {
+            // let claim_a=gkr_proof_artifacts.mle_denominators[0].eval_at_point(&gkr_proof_artifacts.gkr_artifacts.ood_point);
+
+            let mut tree_builder = commitment_scheme.tree_builder();
+            tree_builder.extend_evals(build_trace(
+                &gkr_proof_artifacts.mle_denominators[0],
+                &gkr_proof_artifacts.gkr_artifacts.ood_point,
+                gkr_proof_artifacts
+                    .gkr_artifacts
+                    .claims_to_verify_by_instance[0][1],
+            ));
+            tree_builder.commit(prover_channel);
+        } else {
+        };
+
         let tree_span_provider = &mut TraceLocationAllocator::default();
+
+        println!("building components");
 
         // Build the circuit. The circuit includes constraints of all the machines in both stage 0 and stage 1
         let mut constant_cols_offset_acc = 0;
@@ -483,6 +527,8 @@ where
             .map(
                 |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
                     assert_eq!(machine_name, proof_machine_name);
+
+                    println!("building powdr component for {}", machine_name);
 
                     let component = PowdrComponent::new(
                         tree_span_provider,
@@ -503,28 +549,82 @@ where
             )
             .collect_vec();
 
-        let components_slice: Vec<&dyn ComponentProver<B>> = components
+        println!("powdr component for built");
+
+        let mut components_slice: Vec<&dyn ComponentProver<SimdBackend>> = components
             .iter()
-            .map(|component| component as &dyn ComponentProver<B>)
+            .map(|component| component as &dyn ComponentProver<SimdBackend>)
             .collect();
 
-        let proof_result = stwo_prover::core::prover::prove::<B, MC>(
-            &components_slice,
-            prover_channel,
-            commitment_scheme,
-        );
+        if let Some(gkr_proof_artifacts) = gkr_result {
+            let last_component = components.last().unwrap(); // &FrameworkComponent
+            let wrapped_component = PowdrComponentWrapper {
+                powdr_component: last_component,
+                logup_challenge: alpha,
+            };
 
-        let stark_proof = match proof_result {
-            Ok(value) => value,
-            Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
-        };
+            //let claim_a=gkr_proof_artifacts.mle_denominators[0].eval_at_point(&gkr_proof_artifacts.gkr_artifacts.ood_point);
 
-        let proof: Proof<MC> = Proof {
-            stark_proof,
-            machine_log_sizes,
-        };
-        prove_span.exit();
-        Ok(bincode::serialize(&proof).unwrap())
+            // create component for MLE
+            let mle_eval_component = MleEvalProverComponent::generate(
+                tree_span_provider,
+                &wrapped_component,
+                &gkr_proof_artifacts.gkr_artifacts.ood_point,
+                gkr_proof_artifacts.mle_denominators[0].clone(),
+                gkr_proof_artifacts
+                    .gkr_artifacts
+                    .claims_to_verify_by_instance[0][1],
+                &twiddles_max_degree,
+                MLE_TRACE_IDX,
+            );
+
+            components_slice.push(&mle_eval_component);
+
+            println!("added gkr component");
+
+            let proof_result = stwo_prover::core::prover::prove::<SimdBackend, MC>(
+                &components_slice,
+                prover_channel,
+                commitment_scheme,
+            );
+
+            println!("proving done");
+            // let GkrArtifact {
+            //     ood_point,
+            //     claims_to_verify_by_instance,
+            //     n_variables_by_instance: _,
+            // } = partially_verify_batch(vec![Gate::LogUp], &gkr_proof_artifacts.gkr_proof, prover_channel).unwrap();
+
+            let stark_proof = match proof_result {
+                Ok(value) => value,
+                Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
+            };
+
+            let proof: Proof<MC> = Proof {
+                stark_proof,
+                machine_log_sizes,
+            };
+            prove_span.exit();
+            Ok(bincode::serialize(&proof).unwrap())
+        } else {
+            let proof_result = stwo_prover::core::prover::prove::<SimdBackend, MC>(
+                &components_slice,
+                prover_channel,
+                commitment_scheme,
+            );
+
+            let stark_proof = match proof_result {
+                Ok(value) => value,
+                Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
+            };
+
+            let proof: Proof<MC> = Proof {
+                stark_proof,
+                machine_log_sizes,
+            };
+            prove_span.exit();
+            Ok(bincode::serialize(&proof).unwrap())
+        }
     }
 
     pub fn verify(&self, proof: &[u8], instances: &[M31]) -> Result<(), String> {
