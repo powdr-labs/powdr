@@ -105,6 +105,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Runs compilation and witness generation for .pil and .asm files.
+    /// Also runs backend if `--prove-with` is set.
     /// First converts .asm files to .pil, if needed.
     /// Then converts the .pil file to json and generates fixed and witness column data files.
     Pil {
@@ -711,21 +712,17 @@ fn run_pil<F: FieldElement>(
 }
 
 fn run<F: FieldElement>(
-    mut pipeline: Pipeline<F>,
+    pipeline: Pipeline<F>,
     prove_with: Option<BackendType>,
     params: Option<String>,
     backend_options: Option<String>,
 ) -> Result<(), Vec<String>> {
-    pipeline = pipeline.with_setup_file(params.map(PathBuf::from));
+    pipeline
+        .with_setup_file(params.map(PathBuf::from))
+        .with_backend(prove_with.unwrap_or_default(), backend_options.clone())
+        .compute_proof()
+        .unwrap();
 
-    pipeline.compute_optimized_pil().unwrap();
-
-    if let Some(backend) = prove_with {
-        pipeline
-            .with_backend(backend, backend_options.clone())
-            .compute_proof()
-            .unwrap();
-    }
     Ok(())
 }
 
