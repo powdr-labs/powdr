@@ -167,7 +167,6 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .filter_map(|(i, is_input)| (!is_input).then_some(Variable::Param(i)))
             .collect_vec();
         let mut result = Processor::new(
-            self.fixed_data,
             identities,
             queue_items,
             requested_known.iter().cloned(),
