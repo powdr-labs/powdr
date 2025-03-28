@@ -76,4 +76,4 @@ jobs:
     - name: Build
       run: cargo build --all --release --all-features
     - name: Run tests
-      run: cargo test --all --release --verbose --all-features -- --include-ignored --nocapture
+      run: cargo test --all --release --verbose --all-features -- --include-ignored --nocapture --test-threads=2
