@@ -725,6 +725,12 @@ fn run<F: FieldElement>(
             .with_backend(backend, backend_options.clone())
             .compute_proof()
             .unwrap();
+    } else {
+        // If no backend is specified, we run witgen via Mock backend
+        pipeline
+            .with_backend(BackendType::Mock, None)
+            .compute_witness()
+            .unwrap();
     }
     Ok(())
 }
