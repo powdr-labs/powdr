@@ -148,7 +148,6 @@ pub struct ConstantAssignment<'a, T: FieldElement> {
 }
 
 /// Utility to compute the variables that occur in a queue item.
-/// Follows intermediate column references and employs caches.
 #[derive(Default)]
 struct ReferencesComputer<'a> {
     /// A cache to store algebraic references in a polynomial identity, so that it
