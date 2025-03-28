@@ -55,7 +55,7 @@ fn main() -> wasmparser::Result<()> {
         globals: Vec::new(),
     };
 
-    let mut defined_functions = Vec::new();
+    let mut functions = Vec::new();
 
     let mut start_function = None;
     let mut mem_size = None;
@@ -122,10 +122,12 @@ fn main() -> wasmparser::Result<()> {
                             }
 
                             log::debug!("Imported syscall: {}", import.name);
+
+                            // Adds a proxy function that just calls the system call
+                            functions.push(proxy_syscall(syscall, ty));
+
                             ctx.func_types.push(type_idx);
                             ctx.imported_functions.push(syscall);
-
-                            // TODO: create a "proxy" function to call the syscall, to be used in case of indirect calls.
 
                             continue;
                         }
@@ -215,8 +217,8 @@ fn main() -> wasmparser::Result<()> {
                 // because all previous sections have been processed.
 
                 let definition =
-                    infinite_registers_allocation(&ctx, defined_functions.len() as u32, function)?;
-                defined_functions.push(definition);
+                    infinite_registers_allocation(&ctx, functions.len() as u32, function)?;
+                functions.push(definition);
             }
             Payload::DataSection(section_limited) => todo!(),
             Payload::End(_) => {
@@ -298,6 +300,44 @@ enum Directive<'a> {
         src: u32,
         dest: u32,
     },
+}
+
+/// A function definition that just calls the syscall. This is useful
+/// in case there is an indirect call to a system call.
+fn proxy_syscall(syscall: Syscall, ty: &FuncType) -> Vec<Directive<'static>> {
+    fn alloc_vars(types: &[ValType]) -> (Vec<AllocatedVar>, u32) {
+        let mut address = 0;
+        let mut vars = Vec::new();
+        for ty in types {
+            let var = AllocatedVar {
+                val_type: *ty,
+                address,
+            };
+            address += sz(*ty);
+            vars.push(var);
+        }
+
+        (vars, address)
+    }
+
+    let (inputs, inputs_len) = alloc_vars(ty.params());
+    let (outputs, outputs_len) = alloc_vars(ty.results());
+
+    let mut directives = Vec::new();
+    directives.push(Directive::Syscall {
+        syscall,
+        inputs,
+        outputs,
+    });
+
+    let return_info = AllocatedVar {
+        val_type: ValType::I64,
+        address: inputs_len.max(outputs_len),
+    };
+
+    directives.push(Directive::Return { return_info });
+
+    directives
 }
 
 /// Allocates the locals and the stack at addresses starting
