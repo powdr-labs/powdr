@@ -1,18 +1,63 @@
-use std::str::FromStr;
+use std::{collections::BTreeMap, ops::RangeFrom, str::FromStr};
 
 use powdr_syscalls::Syscall;
 use wasmparser::{
     BlockType, CompositeInnerType, FuncType, FunctionBody, LocalsReader, Operator,
-    OperatorsIterator, Parser, Payload, RefType, SubType, TableInit, TableType, TypeRef, ValType,
+    OperatorsIterator, OperatorsReader, Parser, Payload, RefType, SubType, TableInit, TypeRef,
+    ValType,
 };
 
-const MEM_ALLOCATION_START: u32 = 0x800;
+/// If the table has no specified maximum size, we assign it a large default, in number of entries.
+const DEFAULT_MAX_TABLE_SIZE: u32 = 4096;
+
+/// Segment is not a WASM concept, but it is used to mean a region of memory
+/// that is allocated for a WASM table or memory.
+struct Segment {
+    /// The start address of the segment, in bytes.
+    start: u32,
+    /// The size of the segment, in bytes.
+    size: u32,
+}
+
+/// Helper struct to track unallocated memory.
+/// This is used to allocate the memory for the tables and the globals.
+struct MemoryAllocator {
+    /// The address of the next free memory, in bytes.
+    next_free: u32,
+}
+
+impl MemoryAllocator {
+    fn new() -> Self {
+        MemoryAllocator { next_free: 0 }
+    }
+
+    fn allocate_var(&mut self, val_type: ValType) -> AllocatedVar {
+        let var = AllocatedVar {
+            val_type,
+            address: self.next_free,
+        };
+        self.next_free += sz(val_type);
+        var
+    }
+
+    fn allocate_segment(&mut self, size: u32) -> Segment {
+        assert!(size % 4 == 0);
+        let segment = Segment {
+            start: self.next_free,
+            size,
+        };
+        self.next_free += size;
+        segment
+    }
+}
 
 struct ModuleContext {
     types: Vec<SubType>,
     func_types: Vec<u32>,
     imported_functions: Vec<Syscall>,
-    tables: Vec<TableType>,
+    tables: Vec<Segment>,
+    table_types: Vec<RefType>,
+    memory: Option<Segment>,
     globals: Vec<AllocatedVar>,
 }
 
@@ -38,6 +83,46 @@ impl ModuleContext {
             }
         }
     }
+
+    fn eval_const_expr(
+        &self,
+        val_type: ValType,
+        expr: OperatorsReader,
+    ) -> wasmparser::Result<Vec<MemoryEntry>> {
+        let mut words = Vec::new();
+        for op in expr {
+            match op? {
+                Operator::I32Const { value } => {
+                    assert_eq!(val_type, ValType::I32);
+                    words.push(MemoryEntry::Value(value as u32))
+                }
+                Operator::I64Const { value } => {
+                    assert_eq!(val_type, ValType::I64);
+                    words.push(MemoryEntry::Value(value as u32));
+                    words.push(MemoryEntry::Value((value >> 32) as u32));
+                }
+                Operator::F32Const { value } => {
+                    assert_eq!(val_type, ValType::F32);
+                    words.push(MemoryEntry::Value(value.bits()));
+                }
+                Operator::RefFunc { function_index } => {
+                    assert_eq!(val_type, ValType::Ref(RefType::FUNCREF));
+                    // The first 32 bits are the function type index
+                    words.push(MemoryEntry::Value(self.func_types[function_index as usize]));
+                    // The second 32 bits are the function address in code space
+                    words.push(MemoryEntry::Label(function_index));
+                }
+                Operator::RefNull { .. } => {
+                    assert!(matches!(val_type, ValType::Ref(_)));
+                    // Since (0, 0) is a valid function reference, lets use u32::MAX to represent null.
+                    words.push(MemoryEntry::Value(u32::MAX));
+                    words.push(MemoryEntry::Value(u32::MAX));
+                }
+                _ => panic!("Unsupported operator in const expr"),
+            }
+        }
+        Ok(words)
+    }
 }
 
 fn main() -> wasmparser::Result<()> {
@@ -52,13 +137,32 @@ fn main() -> wasmparser::Result<()> {
         func_types: Vec::new(),
         imported_functions: Vec::new(),
         tables: Vec::new(),
+        table_types: Vec::new(),
+        memory: None,
         globals: Vec::new(),
     };
 
     let mut functions = Vec::new();
 
     let mut start_function = None;
-    let mut mem_size = None;
+
+    // This is the memory layout of the program after all the elements have been allocated:
+    // - all tables, in sequence, where each table contains:
+    //   - the first word is the table size, in number of elements
+    //   - the second word is the maximum size, in number of elements
+    //   - then a sequence of entries of 2 words (references).
+    // - all globals, in sequence
+    // - the WASM memory instance, where:
+    //   - the first word is the size of the memory, in pages of 64 KiB
+    //   - the second word is the maximum size of the memory, in pages of 64 KiB
+    //   - then the memory byte array
+    // - the WASM stack, that can grow to the maximum size of the memory
+    let mut mem_type = None;
+    let mut mem_allocator = MemoryAllocator::new();
+
+    let mut initial_memory = BTreeMap::new();
+
+    let mut internal_labels = None;
 
     // TODO: validate while parsing
 
@@ -123,8 +227,11 @@ fn main() -> wasmparser::Result<()> {
 
                             log::debug!("Imported syscall: {}", import.name);
 
+                            // Each function uses as label its own index.
+                            let label = ctx.func_types.len() as u32;
+
                             // Adds a proxy function that just calls the system call
-                            functions.push(proxy_syscall(syscall, ty));
+                            functions.push(proxy_syscall(label, syscall, ty));
 
                             ctx.func_types.push(type_idx);
                             ctx.imported_functions.push(syscall);
@@ -146,54 +253,71 @@ fn main() -> wasmparser::Result<()> {
             Payload::TableSection(section) => {
                 for table in section {
                     let table = table?;
-                    ctx.tables.push(table.ty);
+                    if (!table.ty.element_type.is_extern_ref()
+                        && !table.ty.element_type.is_func_ref())
+                        || table.ty.table64
+                        || table.ty.shared
+                    {
+                        unsupported_feature_found = true;
+                        log::error!("Found table with unsupported properties",);
+                        continue;
+                    }
 
                     if !matches!(table.init, TableInit::RefNull) {
                         unsupported_feature_found = true;
                         log::error!("Table initialization is not supported");
+                        continue;
                     }
+
+                    let max_entries = table
+                        .ty
+                        .maximum
+                        .map(|v| v as u32)
+                        .unwrap_or(DEFAULT_MAX_TABLE_SIZE);
+
+                    // We include two extra words for the table size and maximum size
+                    let segment = mem_allocator.allocate_segment(max_entries * 8 + 8);
+
+                    // Store the table size and maximum size in the initial memory
+                    initial_memory
+                        .insert(segment.start, MemoryEntry::Value(table.ty.initial as u32));
+                    initial_memory.insert(segment.start + 4, MemoryEntry::Value(max_entries));
+
+                    ctx.tables.push(segment);
+                    ctx.table_types.push(table.ty.element_type);
                 }
             }
             Payload::MemorySection(section) => {
                 for mem in section {
                     let mem = mem?;
 
-                    if mem_size.is_some() {
+                    if ctx.memory.is_some() {
                         unsupported_feature_found = true;
                         log::error!("Multiple memories are not supported");
                         break;
                     }
 
-                    match (
-                        u32::try_from(mem.initial),
-                        mem.maximum.map(|v| u32::try_from(v)),
-                    ) {
-                        (Ok(initial), Some(Ok(maximum))) => {
-                            mem_size = Some((initial, Some(maximum)));
-                        }
-                        (Ok(initial), None) => {
-                            mem_size = Some((initial, None));
-                        }
-                        _ => {
-                            unsupported_feature_found = true;
-                            log::error!("64-bit memory sizes are not supported");
-                        }
+                    if mem.memory64 || mem.shared || mem.page_size_log2.is_some() {
+                        unsupported_feature_found = true;
+                        log::error!("Found memory with unsupported properties");
+                        continue;
                     }
+
+                    // Lets delay the actual memory allocation to after the globals are allocated.
+                    mem_type = Some(mem);
                 }
             }
             Payload::GlobalSection(section) => {
-                let mut globals_addr = MEM_ALLOCATION_START;
                 for global in section {
-                    // Allocate the globals sequentially
-                    let val_type = global?.ty.content_type;
-                    let size = sz(val_type);
-                    ctx.globals.push(AllocatedVar {
-                        val_type,
-                        address: globals_addr,
-                    });
-                    globals_addr += size;
+                    let global = global?;
+                    let ty = global.ty.content_type;
+                    let var = mem_allocator.allocate_var(ty);
 
+                    let words = ctx.eval_const_expr(ty, global.init_expr.get_operators_reader())?;
                     // TODO: initialize the globals with the init_expr
+                    todo!();
+
+                    ctx.globals.push(var);
                 }
             }
             Payload::ExportSection(section_limited) => {
@@ -212,12 +336,24 @@ fn main() -> wasmparser::Result<()> {
             Payload::StartSection { func, range } => start_function = Some(func),
             Payload::ElementSection(section_limited) => todo!(),
             Payload::DataCountSection { count, range } => todo!(),
+            Payload::CodeSectionStart { count, .. } => {
+                assert_eq!(functions.len() + count as usize, ctx.func_types.len());
+
+                // The labels used internally in the functions must be globally unique.
+                // This is the label generator, starting from label available after the
+                // function labels.
+                internal_labels = Some((ctx.func_types.len() as u32)..);
+            }
             Payload::CodeSectionEntry(function) => {
                 // By the time we get here, the ctx will be complete,
                 // because all previous sections have been processed.
 
-                let definition =
-                    infinite_registers_allocation(&ctx, functions.len() as u32, function)?;
+                let definition = infinite_registers_allocation(
+                    &ctx,
+                    functions.len() as u32,
+                    internal_labels.as_mut().unwrap(),
+                    function,
+                )?;
                 functions.push(definition);
             }
             Payload::DataSection(section_limited) => todo!(),
@@ -231,12 +367,22 @@ fn main() -> wasmparser::Result<()> {
         }
     }
 
+    // TODO: allocate the memory
+    todo!();
+
     assert!(
         !unsupported_feature_found,
         "Only WebAssembly Release 2.0 is supported"
     );
 
     Ok(())
+}
+
+enum MemoryEntry {
+    /// Actual value stored in memory word.
+    Value(u32),
+    /// Refers to a code label.
+    Label(u32),
 }
 
 #[derive(Clone, Copy)]
@@ -304,7 +450,7 @@ enum Directive<'a> {
 
 /// A function definition that just calls the syscall. This is useful
 /// in case there is an indirect call to a system call.
-fn proxy_syscall(syscall: Syscall, ty: &FuncType) -> Vec<Directive<'static>> {
+fn proxy_syscall(label: u32, syscall: Syscall, ty: &FuncType) -> Vec<Directive<'static>> {
     fn alloc_vars(types: &[ValType]) -> (Vec<AllocatedVar>, u32) {
         let mut address = 0;
         let mut vars = Vec::new();
@@ -324,6 +470,8 @@ fn proxy_syscall(syscall: Syscall, ty: &FuncType) -> Vec<Directive<'static>> {
     let (outputs, outputs_len) = alloc_vars(ty.results());
 
     let mut directives = Vec::new();
+    directives.push(Directive::Label(label));
+
     directives.push(Directive::Syscall {
         syscall,
         inputs,
@@ -345,26 +493,29 @@ fn proxy_syscall(syscall: Syscall, ty: &FuncType) -> Vec<Directive<'static>> {
 fn infinite_registers_allocation<'a>(
     module: &ModuleContext,
     func_idx: u32,
+    labels: &mut RangeFrom<u32>,
     body: FunctionBody<'a>,
 ) -> wasmparser::Result<Vec<Directive<'a>>> {
     // Tracks the frame stack. Used to calculate arity.
     let (mut tracker, first_explicit_local) =
         StackTracker::new(module, func_idx, body.get_locals_reader()?)?;
 
-    // The fist directives are zeroing the explicit locals.
-    let mut directives: Vec<Directive> = (first_explicit_local..tracker.stack.base_bytes())
-        .step_by(4)
-        .map(|address| Directive::WasmOp {
-            op: Operator::I32Const { value: 0 },
-            inputs: Vec::new(),
-            output: Some(AllocatedVar {
-                val_type: ValType::I32,
-                address,
-            }),
-        })
-        .collect();
+    // The first directive is the entry point label of the function.
+    let mut directives = vec![Directive::Label(func_idx)];
 
-    let mut labels = 0..;
+    // Zeroing of the explicit locals.
+    directives.extend(
+        (first_explicit_local..tracker.stack.base_bytes())
+            .step_by(4)
+            .map(|address| Directive::WasmOp {
+                op: Operator::I32Const { value: 0 },
+                inputs: Vec::new(),
+                output: Some(AllocatedVar {
+                    val_type: ValType::I32,
+                    address,
+                }),
+            }),
+    );
 
     // The rest of the directives are taken from the function body definition.
     let mut op_reader = body.get_operators_reader()?.into_iter();
@@ -615,7 +766,7 @@ fn infinite_registers_allocation<'a>(
                 directives.push(Directive::WasmOp {
                     op,
                     inputs,
-                    output: output.get(0).copied(),
+                    output: output.first().copied(),
                 });
             }
         }
@@ -625,14 +776,22 @@ fn infinite_registers_allocation<'a>(
 }
 
 /// Type size, in bytes
-fn sz(val_type: ValType) -> u32 {
+const fn sz(val_type: ValType) -> u32 {
     match val_type {
         ValType::I32 => 4,
         ValType::I64 => 8,
         ValType::F32 => 4,
         ValType::F64 => 8,
         ValType::V128 => 16,
-        ValType::Ref(_) => 4,
+        // Function references are 64 bits because the first 32 bits are
+        // the function type index, and the other 32 bits are the function
+        // address in code space.
+        //
+        // For extern references (that we don't provide any means to instantiate),
+        // I am very tempted to use 0 bytes, but in the spirit that it might be
+        // useful in the future, I will use 8 bytes, so that it has the same size
+        // as a function reference.
+        ValType::Ref(_) => 8,
     }
 }
 
@@ -1217,27 +1376,21 @@ impl<'a> StackTracker<'a> {
 
             // # Table instructions
             Operator::TableGet { table } => {
-                let table = &self.module.tables[*table as usize];
-                (vec![ValType::I32], Some(ValType::Ref(table.element_type)))
+                let ty = &self.module.table_types[*table as usize];
+                (vec![ValType::I32], Some(ValType::Ref(*ty)))
             }
             Operator::TableSet { table } => {
-                let table = &self.module.tables[*table as usize];
-                (vec![ValType::I32, ValType::Ref(table.element_type)], None)
+                let ty = &self.module.table_types[*table as usize];
+                (vec![ValType::I32, ValType::Ref(*ty)], None)
             }
             Operator::TableSize { .. } => (vec![], Some(ValType::I32)),
             Operator::TableGrow { table } => {
-                let table = &self.module.tables[*table as usize];
-                (
-                    vec![ValType::Ref(table.element_type), ValType::I32],
-                    Some(ValType::I32),
-                )
+                let ty = &self.module.table_types[*table as usize];
+                (vec![ValType::Ref(*ty), ValType::I32], Some(ValType::I32))
             }
             Operator::TableFill { table } => {
-                let table = &self.module.tables[*table as usize];
-                (
-                    vec![ValType::I32, ValType::Ref(table.element_type), ValType::I32],
-                    None,
-                )
+                let ty = &self.module.table_types[*table as usize];
+                (vec![ValType::I32, ValType::Ref(*ty), ValType::I32], None)
             }
             Operator::TableCopy { .. } | Operator::TableInit { .. } => {
                 (vec![ValType::I32, ValType::I32, ValType::I32], None)
