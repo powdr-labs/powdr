@@ -601,6 +601,7 @@ where
             let proof: Proof<MC> = Proof {
                 stark_proof,
                 machine_log_sizes,
+                gkr_proof_artifacts: Some(gkr_proof_artifacts.gkr_proof),
             };
             prove_span.exit();
             Ok(bincode::serialize(&proof).unwrap())
@@ -619,6 +620,7 @@ where
             let proof: Proof<MC> = Proof {
                 stark_proof,
                 machine_log_sizes,
+                gkr_proof_artifacts: None,
             };
             prove_span.exit();
             Ok(bincode::serialize(&proof).unwrap())

@@ -1,4 +1,4 @@
-use halo2_solidity_verifier::revm::primitives::bitvec::index;
+use serde::{Deserialize, Serialize};
 use itertools::chain;
 use itertools::Itertools;
 use num_traits::{One, Pow, Zero};
@@ -49,7 +49,6 @@ use crate::stwo::prover::into_stwo_field;
 use powdr_ast::analyzed::Identity;
 
 use serde::de::DeserializeOwned;
-use serde::Serialize;
 use std::collections::BTreeMap;
 use std::ops::Deref;
 
@@ -111,6 +110,7 @@ impl<'a> Deref for PowdrComponentWrapper<'a> {
         &self.powdr_component
     }
 }
+
 
 pub struct gkr_proof_artifacts {
     pub gkr_proof: GkrBatchProof,
