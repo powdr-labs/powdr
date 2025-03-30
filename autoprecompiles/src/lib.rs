@@ -376,6 +376,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
         assert_eq!(c.len(), i.len());
         assert_eq!(machine.columns().len(), machine.column_ids().len());
         let mut machine = optimize_pc_lookup(machine);
+        let mut machine = optimize_exec_bus(machine);
 
         if optimize {
             machine = optimize_precompile(machine);
@@ -396,22 +397,38 @@ impl<T: FieldElement> Autoprecompiles<T> {
             println!("Bus id {b} has {} interactions", v.len());
         }
 
-        // for c in &machine.constraints {
-        //     println!("Constraint: {}", c.expr);
-        // }
-        // for i in &machine.bus_interactions {
-        //     println!(
-        //         "\nBus interaction id = {}, kind = {:?}, mult = {}",
-        //         i.id, i.kind, i.mult
-        //     );
-        //     for a in &i.args {
-        //         println!("arg = {a}");
-        //     }
-        //     println!("\n");
-        // }
+        println!("\nMachine after autoprecompile optimization");
+        for c in &machine.constraints {
+            println!("Constraint: {}", c.expr);
+        }
+        for b in &machine.bus_interactions {
+            println!(
+                "\nBus interaction id = {}, kind = {:?}, mult = {}",
+                b.id, b.kind, b.mult
+            );
+            for a in &b.args {
+                println!("arg = {a}");
+            }
+            println!("\n");
+        }
 
         if optimize {
             machine = powdr_optimize(machine);
+        }
+
+        println!("\nMachine after powdr optimization");
+        for c in &machine.constraints {
+            println!("Constraint: {}", c.expr);
+        }
+        for b in &machine.bus_interactions {
+            println!(
+                "\nBus interaction id = {}, kind = {:?}, mult = {}",
+                b.id, b.kind, b.mult
+            );
+            for a in &b.args {
+                println!("arg = {a}");
+            }
+            println!("\n");
         }
 
         //let machine = remove_range_checks(machine);
@@ -515,9 +532,9 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     machine.bus_interactions.retain(|bus_int| {
         //if bus_int.id == PC_LOOKUP_BUS_ID || bus_int.id == EXECUTION_BUS_ID {
-        if bus_int.id == EXECUTION_BUS_ID {
-            return false;
-        }
+        // if bus_int.id == EXECUTION_BUS_ID {
+        //     return false;
+        // }
 
         if bus_int.id != MEMORY_BUS_ID {
             return true;
@@ -558,6 +575,7 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
                                 AlgebraicBinaryOperator::Sub,
                                 old_data.clone(),
                             );
+                            let eq_expr = bus_int.mult.clone() * eq_expr;
                             //println!("New constraint: {eq_expr}");
                             new_constraints.push(eq_expr.into());
                         });
@@ -701,6 +719,68 @@ pub fn optimize_pc_lookup<T: FieldElement>(mut machine: SymbolicMachine<T>) -> S
     machine
 }
 
+pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+    println!(
+        "Before autoprecompile exec optimizations, columns: {}, constraints: {}, bus_interactions: {}",
+        machine.columns().len(),
+        machine.constraints.len(),
+        machine.bus_interactions.len()
+    );
+
+    let mut first_seen = false;
+    let mut new_constraints = Vec::new();
+    let mut latest_send = None;
+    machine.bus_interactions.retain(|bus_int| {
+        if bus_int.id != EXECUTION_BUS_ID {
+            return true;
+        }
+
+        // Keep the first receive
+        if !first_seen {
+            assert_eq!(bus_int.kind, BusInteractionKind::Receive);
+            first_seen = true;
+            true
+        } else if bus_int.kind == BusInteractionKind::Send {
+            // Save the latest send and remove the bus interaction
+            latest_send = Some(bus_int.clone());
+            false
+        } else {
+            // Equate the latest send to the new receive and remove the bus interaction
+            let send = latest_send.clone().unwrap();
+            let pc_eq = AlgebraicExpression::new_binary(
+                bus_int.args[0].clone(),
+                AlgebraicBinaryOperator::Sub,
+                send.args[0].clone(),
+            );
+            let pc_eq = send.mult.clone() * pc_eq;
+            let ts_eq = AlgebraicExpression::new_binary(
+                bus_int.args[1].clone(),
+                AlgebraicBinaryOperator::Sub,
+                send.args[1].clone(),
+            );
+            let ts_eq = send.mult.clone() * ts_eq;
+            new_constraints.push(pc_eq.into());
+            new_constraints.push(ts_eq.into());
+            false
+        }
+    });
+
+    // Re-add the last send
+    machine.bus_interactions.push(latest_send.unwrap());
+
+    // Add the new constraints
+    machine.constraints.extend(new_constraints);
+
+    println!(
+        "After autoprecompile exec optimizations, columns: {}, constraints: {}, bus_interactions: {}",
+        machine.columns().len(),
+        machine.constraints.len(),
+        machine.bus_interactions.len()
+    );
+
+    machine
+}
+
 pub fn generate_precompile<T: FieldElement>(
     statements: &Vec<SymbolicInstructionStatement<T>>,
     instruction_kinds: &BTreeMap<String, InstructionKind>,
@@ -725,7 +805,10 @@ pub fn generate_precompile<T: FieldElement>(
                 let (instr_def, mut machine) =
                     instruction_machines.get(&instr.name).unwrap().clone();
 
-                println!("Machine before autoprecompile");
+                println!(
+                    "Machine before autoprecompile for instruction {} at index {i}",
+                    instr.name
+                );
                 for c in &machine.constraints {
                     println!("Constraint: {}", c.expr);
                 }
@@ -748,6 +831,18 @@ pub fn generate_precompile<T: FieldElement>(
                     })
                     .exactly_one()
                     .expect("Expected single pc lookup");
+
+                let is_valid: AlgebraicExpression<T> = machine
+                    .bus_interactions
+                    .iter()
+                    .filter_map(|bus_int| match (bus_int.id, &bus_int.kind) {
+                        (EXECUTION_BUS_ID, BusInteractionKind::Receive) => {
+                            Some(bus_int.mult.clone())
+                        }
+                        _ => None,
+                    })
+                    .exactly_one()
+                    .expect("Expected single execution receive");
 
                 let mut sub_map: BTreeMap<String, AlgebraicExpression<T>> = Default::default();
                 let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
@@ -779,36 +874,12 @@ pub fn generate_precompile<T: FieldElement>(
                                 _ => {}
                             }
                         });
-                } else {
-                    instr
-                        .args
-                        .iter()
-                        .zip(pc_lookup.args.iter())
-                        .for_each(|(instr_arg, pc_arg)| {
-                            let arg = AlgebraicExpression::Number(instr_arg.clone());
-                            //println!("\nInstruction arg: {instr_arg}");
-                            //println!("\nPc arg: {pc_arg}\n");
-                            match pc_arg {
-                                AlgebraicExpression::Reference(ref arg_ref) => {
-                                    //sub_map.insert(arg_ref.name.clone(), arg);
-                                }
-                                AlgebraicExpression::BinaryOperation(_expr) => {
-                                    //local_constraints.push((arg - pc_arg.clone()).into());
-                                }
-                                AlgebraicExpression::UnaryOperation(_expr) => {
-                                    //local_constraints.push((arg - pc_arg.clone()).into());
-                                }
-                                _ => {}
-                            }
-                        });
                 }
 
-                /*
-                   for l in &local_constraints {
-                       println!("Local constraint: {}", l.expr);
-                   }
-                   println!("\nSubmap = {sub_map:?}\n");
-                */
+                for l in &local_constraints {
+                    println!("Local constraint: {}", l.expr);
+                }
+                println!("\nSubmap = {sub_map:?}\n");
 
                 let mut local_subs = BTreeMap::new();
 
@@ -834,18 +905,28 @@ pub fn generate_precompile<T: FieldElement>(
                     .iter()
                     .chain(local_constraints.iter())
                     .map(|expr| {
-                        //println!("handling local identity {}", expr.expr);
+                        println!("handling local identity {}", expr.expr);
                         let mut expr = expr.expr.clone();
+                        let old_expr = expr.clone();
                         powdr::substitute_algebraic(&mut expr, &sub_map);
+                        println!("after sub became identity {expr}");
+                        let is_new = expr != old_expr;
                         let subs = powdr::append_suffix_algebraic(&mut expr, &format!("{i}"));
+                        println!("after suffix became identity {expr}");
                         expr = simplify_expression(expr);
+                        println!("after simplify became identity {expr}");
+                        if is_new {
+                            println!("Substutition was made, applying is_valid multiplication");
+                            expr = is_valid.clone() * expr;
+                            println!("after is_valid mult became identity {expr}");
+                        }
                         global_idx = powdr::reassign_ids_algebraic(
                             &mut expr,
                             global_idx,
                             &mut global_idx_subs,
                             &mut global_idx_subs_rev,
                         );
-                        //println!("became identity {expr}");
+                        println!("became identity {expr}");
                         local_subs.extend(subs);
                         SymbolicConstraint { expr }
                     })
