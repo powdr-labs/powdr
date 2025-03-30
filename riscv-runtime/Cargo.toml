@@ -8,9 +8,15 @@ homepage = "https://powdr.org"
 repository = "https://github.com/powdr-labs/powdr"
 
 [dependencies]
-serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
-serde_cbor = { version = "0.11.2", default-features = false, features = ["alloc"] }
-powdr-riscv-syscalls = { path = "../riscv-syscalls", version = "0.1.4" }
+serde = { version = "1.0", default-features = false, features = [
+    "alloc",
+    "derive",
+    "rc",
+] }
+serde_cbor = { version = "0.11.2", default-features = false, features = [
+    "alloc",
+] }
+powdr-syscalls = { path = "../syscalls", version = "0.1.4" }
 getrandom = { version = "0.2", features = ["custom"], optional = true }
 spin = "0.9"
 

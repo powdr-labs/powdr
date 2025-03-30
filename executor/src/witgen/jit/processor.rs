@@ -8,7 +8,6 @@ use crate::witgen::{
     data_structures::identity::{BusSend, Identity},
     jit::debug_formatter::format_polynomial_identities,
     range_constraints::RangeConstraint,
-    FixedData,
 };
 
 use super::{
@@ -22,7 +21,6 @@ use super::{
 
 /// A generic processor for generating JIT code.
 pub struct Processor<'a, T: FieldElement> {
-    fixed_data: &'a FixedData<'a, T>,
     /// List of identities and row offsets to process them on.
     identities: Vec<(&'a Identity<T>, i32)>,
     /// List of assignments (or other queue items) provided from outside.
@@ -48,7 +46,6 @@ pub struct ProcessorResult<T: FieldElement> {
 
 impl<'a, T: FieldElement> Processor<'a, T> {
     pub fn new(
-        fixed_data: &'a FixedData<'a, T>,
         identities: impl IntoIterator<Item = (&'a Identity<T>, i32)>,
         initial_queue: Vec<QueueItem<'a, T>>,
         requested_known_vars: impl IntoIterator<Item = Variable>,
@@ -56,7 +53,6 @@ impl<'a, T: FieldElement> Processor<'a, T> {
     ) -> Self {
         let identities = identities.into_iter().collect_vec();
         Self {
-            fixed_data,
             identities,
             initial_queue,
             block_size: 1,
@@ -103,7 +99,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             }
         }));
         let branch_depth = 0;
-        let identity_queue = IdentityQueue::new(self.fixed_data, queue_items);
+        let identity_queue = IdentityQueue::new(queue_items);
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
     }
 
@@ -139,6 +135,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 &mut witgen,
                 identity_queue.clone(),
             )
+            && self.all_polynomial_identities_solved_in_block(&witgen)
         {
             let range_constraints = self
                 .requested_range_constraints
@@ -183,7 +180,10 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         };
         let (most_constrained_var, range) = most_constrained_var.unwrap();
 
-        log::debug!("Branching on variable {most_constrained_var} with range {range} at depth {branch_depth}");
+        log::debug!(
+            "{}Branching on variable {most_constrained_var} with range {range} at depth {branch_depth}",
+            "  ".repeat(branch_depth)
+        );
 
         let BranchResult {
             common_code,
@@ -202,6 +202,10 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             identity_queue.clone(),
             branch_depth + 1,
         );
+        log::debug!(
+            "{}else branch for {most_constrained_var}",
+            "  ".repeat(branch_depth)
+        );
         let second_branch_result = self.generate_code_for_branch(
             can_process,
             second_branch,
@@ -217,13 +221,19 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 // of the branching variable.
                 // Note that both branches might actually have a conflicting constraint,
                 // but then it is correct to return one.
-                log::trace!("Branching on {most_constrained_var} resulted in a conflict, we can reduce to a single branch.");
+                log::debug!(
+                    "{}Branching on {most_constrained_var} resulted in a conflict, we can reduce to a single branch.",
+                    "  ".repeat(branch_depth)
+                );
                 other?
             }
             // Any other error should be propagated.
             (Err(e), _) | (_, Err(e)) => Err(e)?,
             (Ok(first_result), Ok(second_result)) if first_result.code == second_result.code => {
-                log::trace!("Branching on {most_constrained_var} resulted in the same code, we can reduce to a single branch.");
+                log::debug!(
+                    "{}Branching on {most_constrained_var} resulted in the same code, we can reduce to a single branch.",
+                    "  ".repeat(branch_depth)
+                );
                 ProcessorResult {
                     code: first_result.code,
                     range_constraints: combine_range_constraints(
@@ -265,14 +275,9 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                         witgen.process_equation_on_row(expression, None, 0.into(), row_offset)
                     }
-                    Identity::BusSend(bus_send) => witgen.process_call(
-                        can_process.clone(),
-                        bus_send.identity_id,
-                        bus_send.bus_id().unwrap(),
-                        &bus_send.selected_payload.selector,
-                        bus_send.selected_payload.expressions.len(),
-                        row_offset,
-                    ),
+                    Identity::BusSend(bus_send) => {
+                        witgen.process_call(can_process.clone(), bus_send, row_offset)
+                    }
                     Identity::Connect(..) => Ok(vec![]),
                 },
                 QueueItem::VariableAssignment(assignment) => witgen.process_equation_on_row(
@@ -402,6 +407,49 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         } else {
             false
         }
+    }
+
+    /// Returns true if all polynomial identities are solved for at least `self.block_size` rows
+    /// in the middle of the rows. A polynomial identities is solved if it evaluates to
+    /// a known value.
+    fn all_polynomial_identities_solved_in_block<FixedEval: FixedEvaluator<T>>(
+        &self,
+        witgen: &WitgenInference<'a, T, FixedEval>,
+    ) -> bool {
+        // Group all identity-row-pairs by their identities.
+        self.identities
+            .iter()
+            .filter_map(|(id, row_offset)| {
+                if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
+                    Some((id.id(), (expression, *row_offset)))
+                } else {
+                    None
+                }
+            })
+            .into_group_map()
+            .into_values()
+            .all(|identities| {
+                // For each identity, check if it is fully solved
+                // for at least "self.blocks_size" rows.
+                let solved = identities
+                    .into_iter()
+                    .map(
+                        |(expression, row_offset)| match witgen.evaluate(expression, row_offset) {
+                            None => false,
+                            Some(value) => value.try_to_known().is_some(),
+                        },
+                    )
+                    .collect_vec();
+
+                let solved_count = solved.iter().filter(|v| **v).count();
+                let unsolved_prefix = solved.iter().take_while(|v| !**v).count();
+                let unsolved_suffix = solved.iter().rev().take_while(|v| !**v).count();
+                // There need to be at least `self.block_size` solved identities
+                // and there can be unsolved rows at the start or at the end, but not
+                // in the middle.
+                solved_count >= self.block_size
+                    && solved_count + unsolved_prefix + unsolved_suffix == solved.len()
+            })
     }
 }
 

@@ -55,7 +55,7 @@ impl<F: FieldElement> Connection<F> {
     ) -> Result<Self, ()> {
         let (left, right, kind, multiplicity) = match identity {
             Identity::Polynomial(_) => Err(()),
-            Identity::Connect(_) => unimplemented!(),
+            Identity::Connect(_) => unimplemented!("Connection constraints are not supported"),
             Identity::Lookup(LookupIdentity { left, right, .. }) => {
                 Ok((left.clone(), right.clone(), ConnectionKind::Lookup, None))
             }
@@ -165,7 +165,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                     connection_count: self.connections.len(),
                     errors,
                 };
-                log::error!("{}", error);
+                log::error!("{error}");
                 Err(error)
             })
             .unwrap_or(Ok(()))

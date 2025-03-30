@@ -1,5 +1,6 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::collections::BTreeMap;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -80,6 +81,7 @@ where
     fn prove(
         &self,
         witness: &[(String, Vec<M31>)],
+        _publics: &BTreeMap<String, Option<M31>>,
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<M31>,
     ) -> Result<Proof, Error> {

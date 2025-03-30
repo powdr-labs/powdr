@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{Backend, Error};
-use powdr_executor::witgen::WitgenCallback;
+use powdr_executor::witgen::{Publics, WitgenCallback, Witness};
 use powdr_number::FieldElement;
 
 /// Runs a prover until it either completes or challenges the caller, in
@@ -17,6 +17,7 @@ pub fn run<'s, 'env, F: FieldElement>(
     scope: &'s Scope<'s, 'env>,
     prover: &'env Mutex<Box<dyn Backend<F>>>,
     witness: Vec<(String, Vec<F>)>,
+    publics: BTreeMap<String, Option<F>>,
 ) -> RunStatus<'s, F>
 where
 {
@@ -44,7 +45,10 @@ where
         // proof, even if it's not needed anymore. We should probably change
         // this API so the Vec is moved into the prover, and returned in the
         // callback and result.
-        prover.lock().unwrap().prove(&witness, None, callback)
+        prover
+            .lock()
+            .unwrap()
+            .prove(&witness, &publics, None, callback)
     });
 
     SubProver {
@@ -65,12 +69,14 @@ pub enum RunStatus<'s, F: FieldElement> {
 pub struct SubProver<'s, F: FieldElement> {
     pub thread: ScopedJoinHandle<'s, Result<Vec<u8>, Error>>,
     pub challenge_receiver: Receiver<BTreeMap<u64, F>>,
-    pub response_sender: SyncSender<Vec<(String, Vec<F>)>>,
+    pub response_sender: SyncSender<(Witness<F>, Publics<F>)>,
 }
 
 impl<'s, F: FieldElement> SubProver<'s, F> {
     pub fn resume(self, response: Vec<(String, Vec<F>)>) -> RunStatus<'s, F> {
-        self.response_sender.send(response).unwrap();
+        self.response_sender
+            .send((response, BTreeMap::new()))
+            .unwrap();
         self.wait()
     }
 

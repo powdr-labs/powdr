@@ -12,7 +12,7 @@ powdr-ast.workspace = true
 powdr-number.workspace = true
 powdr-parser.workspace = true
 
-log = "0.4.18"
+log = "0.4.27"
 mktemp = "0.5.0"
 itertools = "0.13"
 libloading = "0.8"
