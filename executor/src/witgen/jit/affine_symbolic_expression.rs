@@ -6,7 +6,7 @@ use std::{
 
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_number::{log2_exact, FieldElement};
+use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 use crate::witgen::jit::effect::Assertion;
 
@@ -243,26 +243,36 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             .coefficients
             .iter()
             .map(|(var, coeff)| {
-                let c = coeff.try_to_number()?;
+                let coeff = coeff.try_to_number()?;
                 let rc = self.range_constraints.get(var)?;
-                Some((var.clone(), c, rc))
+                let is_negative = !coeff.is_in_lower_half();
+                let coeff_abs = if is_negative { -coeff } else { coeff };
+                // We could work with non-powers of two, but it would require
+                // division instead of shifts.
+                let exponent = log2_exact(coeff_abs.to_arbitrary_integer())?;
+                // We negate here because we are solving
+                // c_1 * x_1 + c_2 * x_2 + ... + offset = 0,
+                // instead of
+                // c_1 * x_1 + c_2 * x_2 + ... = offset.
+                Some((var.clone(), rc, !is_negative, coeff_abs, exponent))
             })
             .collect::<Option<Vec<_>>>();
         let Some(constrained_coefficients) = constrained_coefficients else {
             return Ok(ProcessResult::empty());
         };
 
+        // If the offset is a known number, we gradually remove the
+        // components from this number.
+        let mut offset = self.offset.try_to_number();
+        let mut concrete_assignments = vec![];
+
         // Check if they are mutually exclusive and compute assignments.
         let mut covered_bits: <T as FieldElement>::Integer = 0.into();
         let mut components = vec![];
-        for (variable, coeff, constraint) in constrained_coefficients {
-            let is_negative = !coeff.is_in_lower_half();
-            let coeff_abs = if is_negative { -coeff } else { coeff };
-            let Some(exponent) = log2_exact(coeff_abs.to_arbitrary_integer()) else {
-                // We could work with non-powers of two, but it would require
-                // division instead of shifts.
-                return Ok(ProcessResult::empty());
-            };
+        for (variable, constraint, is_negative, coeff_abs, exponent) in constrained_coefficients
+            .into_iter()
+            .sorted_by_key(|(_, _, _, _, exponent)| *exponent)
+        {
             let bit_mask = *constraint.multiple(coeff_abs).mask();
             if !(bit_mask & covered_bits).is_zero() {
                 // Overlapping range constraints.
@@ -270,39 +280,56 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             } else {
                 covered_bits |= bit_mask;
             }
-            components.push(BitDecompositionComponent {
-                variable,
-                // We negate here because we are solving
-                // c_1 * x_1 + c_2 * x_2 + ... + offset = 0,
-                // instead of
-                // c_1 * x_1 + c_2 * x_2 + ... = offset.
-                is_negative: !is_negative,
-                exponent: exponent as u64,
-                bit_mask,
-            });
+
+            // If the offset is a known number, we create concrete assignments and modify the offset.
+            // if it is not known, we return a BitDecomposition effect.
+            if let Some(offset) = &mut offset {
+                let mut component = if is_negative { -*offset } else { *offset }.to_integer();
+                if component > (T::modulus() - 1.into()) >> 1 {
+                    // Convert a signed finite field element into two's complement.
+                    // a regular subtraction would underflow, so we do this.
+                    // We add the difference between negative numbers in the field
+                    // and negative numbers in two's complement.
+                    component += T::Integer::MAX - T::modulus() + 1.into();
+                };
+                component &= bit_mask;
+                concrete_assignments.push(Effect::Assignment(
+                    variable.clone(),
+                    T::from(component >> exponent).into(),
+                ));
+                if is_negative {
+                    *offset += T::from(component);
+                } else {
+                    *offset -= T::from(component);
+                }
+            } else {
+                components.push(BitDecompositionComponent {
+                    variable,
+                    is_negative,
+                    exponent: exponent as u64,
+                    bit_mask,
+                });
+            }
         }
 
         if covered_bits >= T::modulus() {
             return Ok(ProcessResult::empty());
         }
 
-        if !components.iter().any(|c| c.is_negative) {
-            // If all coefficients are positive and the offset is known, we can check
-            // that all bits are covered. If not, then there is no way to extract
-            // the components and thus we have a conflict.
-            if let Some(offset) = self.offset.try_to_number() {
-                if offset.to_integer() & !covered_bits != 0.into() {
-                    return Err(Error::ConflictingRangeConstraints);
-                }
+        if let Some(offset) = offset {
+            if offset != 0.into() {
+                return Err(Error::ConstraintUnsatisfiable);
             }
+            assert_eq!(concrete_assignments.len(), self.coefficients.len());
+            Ok(ProcessResult::complete(concrete_assignments))
+        } else {
+            Ok(ProcessResult::complete(vec![Effect::BitDecomposition(
+                BitDecomposition {
+                    value: self.offset.clone(),
+                    components,
+                },
+            )]))
         }
-
-        Ok(ProcessResult::complete(vec![Effect::BitDecomposition(
-            BitDecomposition {
-                value: self.offset.clone(),
-                components,
-            },
-        )]))
     }
 
     fn transfer_constraints(&self) -> Option<Effect<T, V>> {
