@@ -1,4 +1,5 @@
 pub(crate) mod affine_symbolic_expression;
+pub(crate) mod affine_symbolic_expression_product;
 mod block_machine_processor;
 pub(crate) mod code_cleaner;
 mod compiler;

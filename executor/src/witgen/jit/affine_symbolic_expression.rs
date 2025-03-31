@@ -111,7 +111,7 @@ impl<T: FieldElement, V> From<T> for AffineSymbolicExpression<T, V> {
     }
 }
 
-impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Display> AffineSymbolicExpression<T, V> {
     pub fn from_known_symbol(symbol: V, rc: RangeConstraint<T>) -> Self {
         SymbolicExpression::from_symbol(symbol, rc).into()
     }
