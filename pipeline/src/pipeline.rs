@@ -911,15 +911,16 @@ impl<T: FieldElement> Pipeline<T> {
         let linked = self.artifact.parsed_pil_file.take().unwrap();
 
         self.log("Analyzing PIL and computing constraints...");
-        let analyzed =
+        let analyzed: Analyzed<T> =
             powdr_pil_analyzer::analyze_ast(linked).map_err(output_pil_analysis_errors)?;
         self.maybe_write_pil(&analyzed, "_analyzed")?;
-        let re_analyzed: Analyzed<T> = powdr_pil_analyzer::analyze_string(&analyzed.to_string())
+
+        let re_analyzed: Analyzed<T> = powdr_pil_analyzer::analyze_string(&powdr_pilopt::optimize(analyzed).to_string())
             .map_err(output_pil_analysis_errors)?;
-        self.maybe_write_pil(&analyzed, "_reanalyzed")?;
+        self.maybe_write_pil(&re_analyzed, "_reanalyzed")?;
         self.log("done.");
 
-        Ok(analyzed)
+        Ok(re_analyzed)
     }
 
     fn compute_analyzed_pil_from_pil_file_path(&self) -> Result<Analyzed<T>, Vec<String>> {
