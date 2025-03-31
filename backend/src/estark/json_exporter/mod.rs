@@ -7,7 +7,7 @@ use std::{cmp, path::PathBuf};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, FunctionValueDefinition, Identity,
-    PolyID, PolynomialType, PublicDeclaration, StatementIdentifier, SymbolKind,
+    PolyID, PolynomialType, StatementIdentifier, SymbolKind,
 };
 use powdr_parser_util::SourceRef;
 use starky::types::{
@@ -63,12 +63,8 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                             exporter.intermediate_poly_expression_ids[&id.id] as usize
                         );
                     }
-                } else if let Some((
-                    poly,
-                    Some(FunctionValueDefinition::PublicDeclaration(
-                        pubd @ PublicDeclaration { name, .. },
-                    )),
-                )) = analyzed.definitions.get(name)
+                } else if let Some((poly, Some(FunctionValueDefinition::PublicDeclaration(pubd)))) =
+                    analyzed.definitions.get(name)
                 {
                     assert_eq!(poly.kind, SymbolKind::Public());
                     let symbol = &analyzed.definitions[&pubd.referenced_poly().name].0;

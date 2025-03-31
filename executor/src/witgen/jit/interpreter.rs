@@ -785,7 +785,7 @@ mod test {
     };
 
     use powdr_ast::analyzed::Analyzed;
-    use powdr_number::{FieldElement, GoldilocksField, LargeInt};
+    use powdr_number::{BabyBearField, FieldElement, GoldilocksField, LargeInt};
 
     use bit_vec::BitVec;
     use itertools::Itertools;
@@ -1060,5 +1060,37 @@ namespace arith(8);
             &variables,
             &[GoldilocksField::from(7), GoldilocksField::from(0)]
         );
+    }
+
+    #[test]
+    fn add_sub_bb() {
+        let pil = read_to_string("../test_data/pil/add_sub_bb.pil").unwrap();
+        let (analyzed, fixed_col_vals) = read_pil::<BabyBearField>(&pil);
+        let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
+        let fixed_data = global_constraints::set_global_constraints(fixed_data);
+
+        // First try to compute the "gt" flag.
+        let interpreter_gt =
+            TestInterpreter::new(&analyzed, &fixed_data, "main_add_sub", 4, 1, &|_| {
+                Err("Query not implemented".to_string())
+            });
+        interpreter_gt.test(&[1, 2, 3, 4, 0], &[1, 2, 3, 4, 1]);
+        interpreter_gt.test(&[3, 0, 2, 4, 0], &[3, 0, 2, 4, 0]);
+        interpreter_gt.test(&[5, 2, 0, 4, 0], &[5, 2, 0, 4, 0]);
+
+        // Then check that it also works if the result is already provided.
+        let interpreter_gt =
+            TestInterpreter::new(&analyzed, &fixed_data, "main_add_sub", 5, 0, &|_| {
+                Err("Query not implemented".to_string())
+            });
+        interpreter_gt.test(&[1, 2, 3, 4, 1], &[1, 2, 3, 4, 1]);
+        interpreter_gt.test(&[3, 0, 2, 4, 0], &[3, 0, 2, 4, 0]);
+        interpreter_gt.test(&[5, 2, 0, 4, 0], &[5, 2, 0, 4, 0]);
+
+        // This should actually panic, but it does not, because
+        // A_h is assigned a value outside of the two-byte range.
+        // We do not detect this because lookups that only result
+        // in range constraints are removed.
+        interpreter_gt.test(&[1, 2, 3, 4, 0], &[1, 2, 3, 4, 0]);
     }
 }

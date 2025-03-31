@@ -102,7 +102,6 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
         }
 
         Processor::new(
-            self.fixed_data,
             identities,
             queue_items,
             requested_known,

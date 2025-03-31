@@ -6,16 +6,13 @@ use std::{
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression as Expression, AlgebraicReferenceThin, PolynomialIdentity,
-        PolynomialType,
+        AlgebraicExpression as Expression, AlgebraicReference, PolynomialIdentity, PolynomialType,
     },
     parsed::visitor::{AllChildren, Children},
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::{
-    data_structures::identity::Identity, jit::variable::MachineCallVariable, FixedData,
-};
+use crate::witgen::{data_structures::identity::Identity, jit::variable::MachineCallVariable};
 
 use super::{prover_function_heuristics::ProverFunction, variable::Variable};
 
@@ -33,11 +30,8 @@ pub struct IdentityQueue<'ast, 'queue, T: FieldElement> {
 }
 
 impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
-    pub fn new(
-        fixed_data: &'ast FixedData<'ast, T>,
-        items: &'queue Vec<QueueItem<'ast, T>>,
-    ) -> Self {
-        let mut references = ReferencesComputer::new(fixed_data);
+    pub fn new(items: &'queue Vec<QueueItem<'ast, T>>) -> Self {
+        let mut references = ReferencesComputer::default();
         let occurrences = Rc::new(
             items
                 .iter()
@@ -216,33 +210,24 @@ pub struct ConstantAssignment<'a, T: FieldElement> {
 }
 
 /// Utility to compute the variables that occur in a queue item.
-/// Follows intermediate column references and employs caches.
-struct ReferencesComputer<'a, T: FieldElement> {
-    fixed_data: &'a FixedData<'a, T>,
-    intermediate_cache: HashMap<AlgebraicReferenceThin, Vec<AlgebraicReferenceThin>>,
+#[derive(Default)]
+struct ReferencesComputer<'a> {
     /// A cache to store algebraic references in a polynomial identity, so that it
     /// can be re-used on all rows.
-    references_per_identity: HashMap<u64, Vec<AlgebraicReferenceThin>>,
+    references_per_identity: HashMap<u64, Vec<&'a AlgebraicReference>>,
 }
 
-impl<'a, T: FieldElement> ReferencesComputer<'a, T> {
-    pub fn new(fixed_data: &'a FixedData<'a, T>) -> Self {
-        Self {
-            fixed_data,
-            intermediate_cache: HashMap::new(),
-            references_per_identity: HashMap::new(),
-        }
-    }
-    pub fn references(&mut self, item: &QueueItem<'a, T>) -> Vec<Variable> {
+impl<'a> ReferencesComputer<'a> {
+    pub fn references<T: FieldElement>(&mut self, item: &QueueItem<'a, T>) -> Vec<Variable> {
         let vars: Box<dyn Iterator<Item = _>> = match item {
             QueueItem::Identity(id, row) => match id {
                 Identity::Polynomial(poly_id) => Box::new(
                     self.references_in_polynomial_identity(poly_id)
                         .into_iter()
-                        .map(|r| self.reference_to_variable(&r, *row)),
+                        .map(|r| Variable::from_reference(r, *row)),
                 ),
                 Identity::BusSend(bus_send) => Box::new(
-                    self.variables_in_expression(&bus_send.selected_payload.selector, *row)
+                    variables_in_expression(&bus_send.selected_payload.selector, *row)
                         .into_iter()
                         .chain(
                             (0..bus_send.selected_payload.expressions.len()).map(|index| {
@@ -256,18 +241,16 @@ impl<'a, T: FieldElement> ReferencesComputer<'a, T> {
                 ),
                 Identity::Connect(..) => Box::new(std::iter::empty()),
             },
-            QueueItem::ConstantAssignment(a) => Box::new(
-                self.variables_in_expression(a.lhs, a.row_offset)
-                    .into_iter(),
-            ),
+            QueueItem::ConstantAssignment(a) => {
+                Box::new(variables_in_expression(a.lhs, a.row_offset).into_iter())
+            }
             QueueItem::VariableAssignment(a) => Box::new(
-                std::iter::once(a.rhs.clone())
-                    .chain(self.variables_in_expression(a.lhs, a.row_offset)),
+                std::iter::once(a.rhs.clone()).chain(variables_in_expression(a.lhs, a.row_offset)),
             ),
             QueueItem::ProverFunction(p, row) => Box::new(
                 p.condition
                     .iter()
-                    .flat_map(|c| self.variables_in_expression(c, *row))
+                    .flat_map(|c| variables_in_expression(c, *row))
                     .chain(
                         p.input_columns
                             .iter()
@@ -278,26 +261,10 @@ impl<'a, T: FieldElement> ReferencesComputer<'a, T> {
         vars.unique().collect_vec()
     }
 
-    fn variables_in_expression(&mut self, expression: &Expression<T>, row: i32) -> Vec<Variable> {
-        self.references_in_expression(expression)
-            .iter()
-            .map(|r| {
-                let name = self.fixed_data.column_name(&r.poly_id).to_string();
-                Variable::from_reference(&r.with_name(name), row)
-            })
-            .collect()
-    }
-
-    /// Turns AlgebraicReferenceThin to Variable, by including the row offset.
-    fn reference_to_variable(&self, reference: &AlgebraicReferenceThin, row: i32) -> Variable {
-        let name = self.fixed_data.column_name(&reference.poly_id).to_string();
-        Variable::from_reference(&reference.with_name(name), row)
-    }
-
-    fn references_in_polynomial_identity(
+    fn references_in_polynomial_identity<T: FieldElement>(
         &mut self,
-        identity: &PolynomialIdentity<T>,
-    ) -> Vec<AlgebraicReferenceThin> {
+        identity: &'a PolynomialIdentity<T>,
+    ) -> Vec<&'a AlgebraicReference> {
         // Clippy suggests to use `entry()...or_insert_with()`,
         // but the code does not work, since we need `&mut self` in
         // self.references_in_expression.
@@ -305,52 +272,43 @@ impl<'a, T: FieldElement> ReferencesComputer<'a, T> {
         if !self.references_per_identity.contains_key(&identity.id) {
             let mut result = BTreeSet::new();
             for e in identity.children() {
-                result.extend(self.references_in_expression(e));
+                result.extend(references_in_expression(e));
             }
             self.references_per_identity
                 .insert(identity.id, result.into_iter().collect_vec());
         }
         self.references_per_identity[&identity.id].clone()
     }
+}
 
-    /// Returns all references to witness column in the expression, including indirect
-    /// references through intermediate columns.
-    fn references_in_expression(
-        &mut self,
-        expression: &Expression<T>,
-    ) -> Vec<AlgebraicReferenceThin> {
-        let mut references = BTreeSet::new();
-        for e in expression.all_children() {
-            match e {
-                Expression::Reference(r) => match r.poly_id.ptype {
-                    PolynomialType::Constant => {}
-                    PolynomialType::Committed => {
-                        references.insert(r.into());
-                    }
-                    PolynomialType::Intermediate => references
-                        .extend(self.references_in_intermediate(&r.into()).iter().cloned()),
-                },
-                Expression::PublicReference(_) | Expression::Challenge(_) => {
-                    // TODO we need to introduce a variable type for those.
+fn variables_in_expression<T: FieldElement>(expression: &Expression<T>, row: i32) -> Vec<Variable> {
+    references_in_expression(expression)
+        .iter()
+        .map(|r| Variable::from_reference(r, row))
+        .collect()
+}
+
+/// Returns all references to witness column in the expression, including indirect
+/// references through intermediate columns.
+fn references_in_expression<T: FieldElement>(
+    expression: &Expression<T>,
+) -> Vec<&AlgebraicReference> {
+    let mut references = BTreeSet::new();
+    for e in expression.all_children() {
+        match e {
+            Expression::Reference(r) => match r.poly_id.ptype {
+                PolynomialType::Constant => {}
+                PolynomialType::Committed | PolynomialType::Intermediate => {
+                    references.insert(r);
                 }
-                Expression::Number(_)
-                | Expression::BinaryOperation(..)
-                | Expression::UnaryOperation(..) => {}
+            },
+            Expression::PublicReference(_) | Expression::Challenge(_) => {
+                // TODO we need to introduce a variable type for those.
             }
+            Expression::Number(_)
+            | Expression::BinaryOperation(..)
+            | Expression::UnaryOperation(..) => {}
         }
-        references.into_iter().collect()
     }
-
-    fn references_in_intermediate(
-        &mut self,
-        intermediate: &AlgebraicReferenceThin,
-    ) -> &Vec<AlgebraicReferenceThin> {
-        if !self.intermediate_cache.contains_key(intermediate) {
-            let definition = &self.fixed_data.intermediate_definitions[intermediate];
-            let references = self.references_in_expression(definition);
-            self.intermediate_cache
-                .insert(intermediate.clone(), references.clone());
-        }
-        &self.intermediate_cache[intermediate]
-    }
+    references.into_iter().collect()
 }
