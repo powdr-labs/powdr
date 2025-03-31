@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
 use itertools::chain;
 use itertools::Itertools;
 use num_traits::{One, Pow, Zero};
+use serde::{Deserialize, Serialize};
 
 use powdr_ast::analyzed::AlgebraicBinaryOperation;
 use powdr_ast::analyzed::AlgebraicBinaryOperator;
@@ -60,6 +60,10 @@ use super::circuit_builder::PowdrEval;
 
 // for now, using this flag to enable logup-GKR
 pub const LOGUP_GKR: bool = true;
+// preprocess column has commitment tree index 0
+// stage 0 witness columns has commitment tree index 1
+// index 2 is for the MLE coeff column or stage 1 witness
+pub const MLE_TRACE_IDX: usize = 2;
 
 pub struct PowdrComponentWrapper<'a> {
     pub powdr_component: &'a FrameworkComponent<PowdrEval>,
@@ -85,11 +89,15 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
         );
         println!("evaluating point built");
 
-        eval_mle_coeff_col(1, &mut eval,self.logup_challenge)[0]
+        eval_mle_coeff_col(1, &mut eval, self.logup_challenge)[0]
     }
 }
 
-fn eval_mle_coeff_col<E: EvalAtRow>(interaction: usize, eval: &mut E, logup_challenge: QM31) -> [E::EF; 2] {
+fn eval_mle_coeff_col<E: EvalAtRow>(
+    interaction: usize,
+    eval: &mut E,
+    logup_challenge: QM31,
+) -> [E::EF; 2] {
     // This EF elements come from the column of the MLE polynomial in stage 0 interaction 1,
     // stage 0 interaction begins with a 0 trace, then is the witness trace, the unused trace below is
     // for the 0 trace.
@@ -110,7 +118,6 @@ impl<'a> Deref for PowdrComponentWrapper<'a> {
         &self.powdr_component
     }
 }
-
 
 pub struct gkr_proof_artifacts {
     pub gkr_proof: GkrBatchProof,
@@ -175,7 +182,7 @@ where
 
         for id in &self.analyzed.identities {
             match id {
-                Identity::PhantomBusInteraction(identity) => {
+                Identity::BusInteraction(identity) => {
                     for e in &identity.payload.0 {
                         println!("payload is {:?}", e);
 

@@ -6,11 +6,11 @@ use stwo_prover::core::backend::Column;
 use stwo_prover::core::backend::ColumnOps;
 use stwo_prover::core::channel::MerkleChannel;
 use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::lookups::gkr_verifier::GkrBatchProof;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::prover::StarkProof;
 use stwo_prover::core::ColumnVec;
-use stwo_prover::core::lookups::gkr_verifier::GkrBatchProof;
 
 use super::logup_gkr::gkr_proof_artifacts;
 
@@ -136,5 +136,5 @@ where
 {
     pub stark_proof: StarkProof<MC::H>,
     pub machine_log_sizes: BTreeMap<String, u32>,
-    pub gkr_proof_artifacts: Option<GkrBatchProof>,
+    pub gkr_proof: Option<GkrBatchProof>,
 }

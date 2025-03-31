@@ -16,6 +16,7 @@ use stwo_prover::core::lookups::mle::Mle;
 use stwo_prover::core::poly::circle::PolyOps;
 use stwo_prover::examples::xor::gkr_lookups::mle_eval::build_trace;
 use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleEvalProverComponent;
+use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleEvalVerifierComponent;
 //use stwo_prover::constraint_framework::assert_constraints_on_polys;
 
 use powdr_number::{FieldElement, LargeInt, Mersenne31Field as M31};
@@ -32,10 +33,10 @@ use std::sync::Arc;
 use std::{fmt, io};
 
 use crate::stwo::circuit_builder::{
-    gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval, MLE_TRACE_IDX,
+    gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
     PREPROCESSED_TRACE_IDX, STAGE0_TRACE_IDX, STAGE1_TRACE_IDX,
 };
-use crate::stwo::logup_gkr::{gkr_proof_artifacts, PowdrComponentWrapper};
+use crate::stwo::logup_gkr::{gkr_proof_artifacts, PowdrComponentWrapper, MLE_TRACE_IDX};
 use crate::stwo::proof::{
     Proof, SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
 };
@@ -493,9 +494,15 @@ where
         }
 
         // Generate GKR proof, get None if LOGUP_GKR is false
-        // logup challenge alpha, take dummy challenge for now
+        // logup challenge alpha, take dummy challenge and dummy gkr_prover_channel for now
         let alpha = SecureField::from_u32_unchecked(42, 42, 42, 42);
-        let gkr_result = self.gkr_prove(&witness, machine_log_sizes.clone(), alpha, prover_channel);
+        let gkr_prover_channel = &mut <MC as MerkleChannel>::C::default();
+        let gkr_result = self.gkr_prove(
+            &witness,
+            machine_log_sizes.clone(),
+            alpha,
+            gkr_prover_channel,
+        );
 
         println!("get gkr result");
 
@@ -589,11 +596,6 @@ where
             );
 
             println!("proving done");
-            // let GkrArtifact {
-            //     ood_point,
-            //     claims_to_verify_by_instance,
-            //     n_variables_by_instance: _,
-            // } = partially_verify_batch(vec![Gate::LogUp], &gkr_proof_artifacts.gkr_proof, prover_channel).unwrap();
 
             let stark_proof = match proof_result {
                 Ok(value) => value,
@@ -603,7 +605,7 @@ where
             let proof: Proof<MC> = Proof {
                 stark_proof,
                 machine_log_sizes,
-                gkr_proof_artifacts: Some(gkr_proof_artifacts.gkr_proof),
+                gkr_proof: Some(gkr_proof_artifacts.gkr_proof),
             };
             prove_span.exit();
             Ok(bincode::serialize(&proof).unwrap())
@@ -622,7 +624,7 @@ where
             let proof: Proof<MC> = Proof {
                 stark_proof,
                 machine_log_sizes,
-                gkr_proof_artifacts: None,
+                gkr_proof: None,
             };
             prove_span.exit();
             Ok(bincode::serialize(&proof).unwrap())
@@ -734,26 +736,59 @@ where
             })
             .collect_vec();
 
-        let components_slice: Vec<&dyn Component> = components
+        let mut components_slice: Vec<&dyn Component> = components
             .iter()
             .map(|component| component as &dyn Component)
             .collect();
 
-        if self.analyzed.stage_count() > 1 {
-            commitment_scheme.commit(
-                proof.stark_proof.commitments[STAGE1_TRACE_IDX],
-                &stage1_witness_col_log_sizes,
-                verifier_channel,
-            );
-        }
+        let gkr_verifier_channel = &mut <MC as MerkleChannel>::C::default();
+        if let Some(gkr_proof) = &proof.gkr_proof {
+            let GkrArtifact {
+                ood_point,
+                claims_to_verify_by_instance,
+                n_variables_by_instance: _,
+            } = partially_verify_batch(vec![Gate::LogUp], gkr_proof, gkr_verifier_channel).unwrap();
 
-        stwo_prover::core::prover::verify(
-            &components_slice,
-            verifier_channel,
-            commitment_scheme,
-            proof.stark_proof,
-        )
-        .map_err(|e| e.to_string())
+            let alpha = SecureField::from_u32_unchecked(42, 42, 42, 42);
+            let last_component = components.last().unwrap(); // &FrameworkComponent
+            let wrapped_component = PowdrComponentWrapper {
+                powdr_component: last_component,
+                logup_challenge: alpha,
+            };
+            let mle_eval_component = MleEvalVerifierComponent::new(
+                tree_span_provider,
+                &wrapped_component,
+                &ood_point,
+                claims_to_verify_by_instance[0][1],
+                MLE_TRACE_IDX,
+            );
+
+            components_slice.push(&mle_eval_component);
+
+            stwo_prover::core::prover::verify(
+                &components_slice,
+                verifier_channel,
+                commitment_scheme,
+                proof.stark_proof,
+            )
+            .map_err(|e| e.to_string())
+        } else {
+            if self.analyzed.stage_count() > 1 {
+                commitment_scheme.commit(
+                    proof.stark_proof.commitments[STAGE1_TRACE_IDX],
+                    &stage1_witness_col_log_sizes,
+                    verifier_channel,
+                );
+            }
+
+            stwo_prover::core::prover::verify(
+                &components_slice,
+                verifier_channel,
+                commitment_scheme,
+                proof.stark_proof,
+            )
+            .map_err(|e| e.to_string())
+        }
     }
 }
 
