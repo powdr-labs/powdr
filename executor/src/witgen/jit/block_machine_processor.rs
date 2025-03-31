@@ -512,29 +512,29 @@ main_binary::operation_id[3] = params[0];
 main_binary::A[3] = params[1];
 main_binary::B[3] = params[2];
 main_binary::operation_id[2] = main_binary::operation_id[3];
-2**24 * main_binary::A_byte[2] + 2**0 * main_binary::A[2] := main_binary::A[3];
-2**24 * main_binary::B_byte[2] + 2**0 * main_binary::B[2] := main_binary::B[3];
+2**0 * main_binary::A[2] + 2**24 * main_binary::A_byte[2] := main_binary::A[3];
+2**0 * main_binary::B[2] + 2**24 * main_binary::B_byte[2] := main_binary::B[3];
 main_binary::operation_id_next[2] = main_binary::operation_id[3];
 call_var(9, 2, 1) = main_binary::A_byte[2];
 call_var(9, 2, 2) = main_binary::B_byte[2];
 call_var(9, 2, 0) = main_binary::operation_id_next[2];
 main_binary::operation_id[1] = main_binary::operation_id[2];
-2**16 * main_binary::A_byte[1] + 2**0 * main_binary::A[1] := main_binary::A[2];
-2**16 * main_binary::B_byte[1] + 2**0 * main_binary::B[1] := main_binary::B[2];
+2**0 * main_binary::A[1] + 2**16 * main_binary::A_byte[1] := main_binary::A[2];
+2**0 * main_binary::B[1] + 2**16 * main_binary::B_byte[1] := main_binary::B[2];
 main_binary::operation_id_next[1] = main_binary::operation_id[2];
 main_binary::operation_id[0] = main_binary::operation_id[1];
 main_binary::operation_id_next[0] = main_binary::operation_id[1];
+2**0 * main_binary::A[0] + 2**8 * main_binary::A_byte[0] := main_binary::A[1];
 call_var(9, 1, 1) = main_binary::A_byte[1];
-2**8 * main_binary::A_byte[0] + 2**0 * main_binary::A[0] := main_binary::A[1];
+2**0 * main_binary::B[0] + 2**8 * main_binary::B_byte[0] := main_binary::B[1];
 call_var(9, 1, 2) = main_binary::B_byte[1];
-2**8 * main_binary::B_byte[0] + 2**0 * main_binary::B[0] := main_binary::B[1];
 call_var(9, 1, 0) = main_binary::operation_id_next[1];
 main_binary::operation_id_next[-1] = main_binary::operation_id[0];
 call_var(9, 0, 0) = main_binary::operation_id_next[0];
-call_var(9, 0, 1) = main_binary::A_byte[0];
 main_binary::A_byte[-1] = main_binary::A[0];
-call_var(9, 0, 2) = main_binary::B_byte[0];
+call_var(9, 0, 1) = main_binary::A_byte[0];
 main_binary::B_byte[-1] = main_binary::B[0];
+call_var(9, 0, 2) = main_binary::B_byte[0];
 call_var(9, -1, 0) = main_binary::operation_id_next[-1];
 call_var(9, -1, 1) = main_binary::A_byte[-1];
 call_var(9, -1, 2) = main_binary::B_byte[-1];
@@ -607,12 +607,12 @@ params[1] = Sub::b[0];"
         assert_eq!(
             format_code(&code),
             "SubM::a[0] = params[0];
-2**8 * SubM::b[0] + 2**0 * SubM::c[0] := SubM::a[0];
+2**0 * SubM::c[0] + 2**8 * SubM::b[0] := SubM::a[0];
 params[1] = SubM::b[0];
-call_var(1, 0, 0) = SubM::c[0];
-SubM::b[1] = SubM::b[0];
 params[2] = SubM::c[0];
+call_var(1, 0, 0) = SubM::c[0];
 SubM::c[1] = SubM::c[0];
+SubM::b[1] = SubM::b[0];
 call_var(1, 1, 0) = SubM::b[1];
 SubM::a[1] = ((SubM::b[1] * 256) + SubM::c[1]);
 machine_call(2, [Known(call_var(1, 0, 0))]);
@@ -814,6 +814,70 @@ S::Y[0] = params[0];
 S::Z[0] = params[1];
 -2**0 * S::X[0] + 2**8 * S::carry[0] := (S::Y[0] + -S::Z[0]);
 params[2] = S::carry[0];"
+        );
+    }
+
+    #[test]
+    fn bit_decomp_negative_concrete() {
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is [S.Y, S.Z,  S.carry];
+        namespace S(256);
+            let BYTE: col = |i| i & 0xff;
+            let X;
+            let Y;
+            let Z;
+            Y = 19;
+            Z = 16;
+            let carry;
+            carry * (1 - carry) = 0;
+            [ X ] in [ BYTE ];
+            [ Y ] in [ BYTE ];
+            [ Z ] in [ BYTE ];
+            X + Y = Z + 256 * carry;
+        ";
+        let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        assert_eq!(
+            code,
+            "\
+S::Y[0] = params[0];
+S::Z[0] = params[1];
+S::X[0] = 253;
+S::carry[0] = 1;
+params[2] = 1;"
+        );
+    }
+
+    #[test]
+    fn bit_decomp_negative_concrete_2() {
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is [S.Y, S.Z,  S.carry];
+        namespace S(256);
+            let BYTE: col = |i| i & 0xff;
+            let X;
+            let Y;
+            let Z;
+            Y = 1;
+            Z = 16;
+            let carry;
+            carry * (1 - carry) = 0;
+            [ X ] in [ BYTE ];
+            [ Y ] in [ BYTE ];
+            [ Z ] in [ BYTE ];
+            X + Y = Z + 256 * carry;
+        ";
+        let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        assert_eq!(
+            code,
+            "\
+S::Y[0] = params[0];
+S::Z[0] = params[1];
+S::X[0] = 15;
+S::carry[0] = 0;
+params[2] = 0;"
         );
     }
 }
