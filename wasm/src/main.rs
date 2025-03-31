@@ -1,17 +1,28 @@
-use std::{collections::BTreeMap, ops::RangeFrom, str::FromStr};
+use std::{
+    collections::{btree_map::Entry, BTreeMap},
+    ops::RangeFrom,
+    str::FromStr,
+};
 
 use powdr_syscalls::Syscall;
 use wasmparser::{
-    BlockType, CompositeInnerType, ElementItems, FuncType, FunctionBody, LocalsReader, Operator,
-    OperatorsIterator, OperatorsReader, Parser, Payload, RefType, SubType, TableInit, TypeRef,
-    ValType,
+    BlockType, CompositeInnerType, ElementItems, FuncType, FunctionBody, LocalsReader, MemoryType,
+    Operator, OperatorsIterator, OperatorsReader, Parser, Payload, RefType, SubType, TableInit,
+    TypeRef, ValType,
 };
+
+/// WASM defined page size is 64 KiB.
+const PAGE_SIZE: u32 = 65536;
+
+/// What size we reserve for the stack.
+const STACK_SIZE: u32 = 1024 * 1024 * 1024; // 1 GiB
 
 /// If the table has no specified maximum size, we assign it a large default, in number of entries.
 const DEFAULT_MAX_TABLE_SIZE: u32 = 4096;
 
 /// Segment is not a WASM concept, but it is used to mean a region of memory
 /// that is allocated for a WASM table or memory.
+#[derive(Clone, Copy)]
 struct Segment {
     /// The start address of the segment, in bytes.
     start: u32,
@@ -36,7 +47,7 @@ impl MemoryAllocator {
             val_type,
             address: self.next_free,
         };
-        self.next_free += sz(val_type);
+        self.next_free = self.next_free.checked_add(sz(val_type)).unwrap();
         var
     }
 
@@ -46,8 +57,13 @@ impl MemoryAllocator {
             start: self.next_free,
             size,
         };
-        self.next_free += size;
+        self.next_free = self.next_free.checked_add(size).unwrap();
         segment
+    }
+
+    fn remaining_space(&self) -> u32 {
+        // The maximum size of the memory is 4 GiB, so we can use 32 bits to represent it.
+        u32::MAX - self.next_free
     }
 }
 
@@ -60,6 +76,7 @@ struct ModuleContext {
     memory: Option<Segment>,
     globals: Vec<AllocatedVar>,
     elem_segments: Vec<Segment>,
+    data_segments: Vec<Segment>,
 }
 
 impl ModuleContext {
@@ -124,6 +141,40 @@ impl ModuleContext {
         }
         Ok(words)
     }
+
+    /// Returns the memory segment information, allocating if needed.
+    fn get_memory(
+        &mut self,
+        mem_allocator: &mut MemoryAllocator,
+        initial_memory: &mut BTreeMap<u32, MemoryEntry>,
+        mem_type: &Option<MemoryType>,
+    ) -> Option<Segment> {
+        let Some(mem_type) = mem_type else {
+            self.memory?;
+            unreachable!();
+        };
+
+        if self.memory.is_none() {
+            let maximum_size = mem_allocator.remaining_space().saturating_sub(STACK_SIZE);
+
+            if maximum_size < mem_type.initial as u32 {
+                panic!("Not enough address space available to allocate the initial memory plus the stack");
+            }
+
+            let maximum_size =
+                maximum_size.min(mem_type.maximum.map(|v| v as u32).unwrap_or(u32::MAX));
+
+            let maximum_size_aligned = (maximum_size + 3) & !3;
+
+            let segment = mem_allocator.allocate_segment(maximum_size_aligned);
+            initial_memory.insert(segment.start, MemoryEntry::Value(mem_type.initial as u32));
+            initial_memory.insert(segment.start + 4, MemoryEntry::Value(maximum_size));
+
+            self.memory = Some(segment);
+        }
+
+        self.memory
+    }
 }
 
 fn main() -> wasmparser::Result<()> {
@@ -142,6 +193,7 @@ fn main() -> wasmparser::Result<()> {
         memory: None,
         globals: Vec::new(),
         elem_segments: Vec::new(),
+        data_segments: Vec::new(),
     };
 
     let mut functions = Vec::new();
@@ -154,9 +206,12 @@ fn main() -> wasmparser::Result<()> {
     //   - the second word is the maximum size, in number of elements
     //   - then a sequence of entries of 2 words (references).
     // - all globals, in sequence
-    // - all passive element segments, in sequence, where each segment contains:
+    // - all passive element segments, in sequence, where each segment is:
     //   - the first word is the segment size, in number of elements (this size is fixed)
     //   - a sequence of entries of 2 words (references).
+    // - all passive data segments, in sequence, where each segment is:
+    //   - the first word is the segment size, in bytes (this size is mostly fixed, but can be set to 0 on data.drop)
+    //   - a sequence N words, where N is the minimum number of words to fit all bytes. Last word may be 0-padded.
     // - the WASM memory instance, where:
     //   - the first word is the size of the memory, in pages of 64 KiB
     //   - the second word is the maximum size of the memory, in pages of 64 KiB
@@ -339,7 +394,7 @@ fn main() -> wasmparser::Result<()> {
                     );
                 }
             }
-            Payload::StartSection { func, range } => start_function = Some(func),
+            Payload::StartSection { func, .. } => start_function = Some(func),
             Payload::ElementSection(section) => {
                 for elem_segment in section {
                     let elem_segment = elem_segment?;
@@ -381,6 +436,9 @@ fn main() -> wasmparser::Result<()> {
                             for (idx, word) in values.into_iter().enumerate() {
                                 initial_memory.insert(segment.start + 4 * (idx as u32 + 1), word);
                             }
+
+                            // Store the segment in the context
+                            ctx.elem_segments.push(segment);
                         }
                         wasmparser::ElementKind::Active {
                             table_index,
@@ -419,7 +477,9 @@ fn main() -> wasmparser::Result<()> {
                     }
                 }
             }
-            Payload::DataCountSection { count, range } => todo!(),
+            Payload::DataCountSection { count, .. } => {
+                // This is used only by the static validator.
+            }
             Payload::CodeSectionStart { count, .. } => {
                 assert_eq!(functions.len() + count as usize, ctx.func_types.len());
 
@@ -440,7 +500,119 @@ fn main() -> wasmparser::Result<()> {
                 )?;
                 functions.push(definition);
             }
-            Payload::DataSection(section_limited) => todo!(),
+            Payload::DataSection(section) => {
+                for data_segment in section {
+                    let data_segment = data_segment?;
+
+                    match data_segment.kind {
+                        wasmparser::DataKind::Passive => {
+                            // This is stored as a memory segment to be used by memory.init instruction
+
+                            // We include one extra word for the segment size
+                            let byte_count = data_segment.data.len() as u32;
+                            let segment = mem_allocator.allocate_segment(byte_count + 4);
+
+                            // Store the segment size in the initial memory
+                            initial_memory.insert(segment.start, MemoryEntry::Value(byte_count));
+
+                            // Store the values in the initial memory
+                            let values = pack_bytes_into_words(data_segment.data, 0);
+                            for (idx, word) in values.into_iter().enumerate() {
+                                initial_memory.insert(segment.start + 4 * (idx as u32 + 1), word);
+                            }
+
+                            // Store the segment in the context
+                            ctx.data_segments.push(segment);
+                        }
+                        wasmparser::DataKind::Active {
+                            memory_index,
+                            offset_expr,
+                        } => {
+                            // This is used to statically initialize the memory. We can set the values on the memory directly.
+
+                            if memory_index != 0 {
+                                unsupported_feature_found = true;
+                                log::error!("Found data segment with memory index other than 0");
+                                continue;
+                            }
+
+                            let Some(memory) =
+                                ctx.get_memory(&mut mem_allocator, &mut initial_memory, &mem_type)
+                            else {
+                                if !data_segment.data.is_empty() {
+                                    unreachable!("Data segment but no memory defined");
+                                }
+                                continue;
+                            };
+
+                            let &[MemoryEntry::Value(offset)] = ctx
+                                .eval_const_expr(ValType::I32, offset_expr.get_operators_reader())?
+                                .as_slice()
+                            else {
+                                panic!("Offset is not a u32 value");
+                            };
+
+                            let Some(&MemoryEntry::Label(mem_size)) =
+                                initial_memory.get(&memory.start)
+                            else {
+                                panic!("Memory size not found");
+                            };
+                            assert!(offset + data_segment.data.len() as u32 <= mem_size);
+
+                            let byte_offset = memory.start + 8 + offset;
+
+                            let alignment = byte_offset % 4;
+                            let mut aligned_byte_offset = byte_offset - alignment;
+
+                            let mut values =
+                                pack_bytes_into_words(data_segment.data, alignment).into_iter();
+
+                            // Handle first element, that might need to be merged with the existing
+                            // value in memory.
+                            if alignment != 0 {
+                                let Some(first_word) = values.next() else {
+                                    continue;
+                                };
+                                match initial_memory.entry(aligned_byte_offset) {
+                                    Entry::Vacant(entry) => {
+                                        entry.insert(first_word);
+                                    }
+                                    Entry::Occupied(mut entry) => {
+                                        let (
+                                            MemoryEntry::Value(old_value),
+                                            MemoryEntry::Value(new_value),
+                                        ) = (entry.get(), first_word)
+                                        else {
+                                            panic!("Memory entry is not a value");
+                                        };
+
+                                        assert!(old_value >> (alignment * 8) == 0);
+                                        entry.insert(MemoryEntry::Value(old_value | new_value));
+                                    }
+                                }
+                                if data_segment.data.len() + alignment as usize <= 4 {
+                                    // The data fits in the first word, so we are done.
+                                    continue;
+                                }
+                            }
+                            aligned_byte_offset += 4;
+
+                            // Take the last element to be handled separately.
+                            let last_elem = values.next_back();
+
+                            // Proceed to copy the full words in the middle.
+                            for word in values {
+                                initial_memory.insert(aligned_byte_offset, word);
+                                aligned_byte_offset += 4;
+                            }
+
+                            if let Some(last_elem) = last_elem {
+                                todo!()
+                            }
+                        }
+                    }
+                }
+            }
             Payload::End(_) => {
                 log::debug!("End of the module");
             }
@@ -451,8 +623,7 @@ fn main() -> wasmparser::Result<()> {
         }
     }
 
-    // TODO: allocate the memory
-    todo!();
+    let _ = ctx.get_memory(&mut mem_allocator, &mut initial_memory, &mem_type);
 
     assert!(
         !unsupported_feature_found,
@@ -460,6 +631,29 @@ fn main() -> wasmparser::Result<()> {
     );
 
     Ok(())
+}
+
+/// Arranges the bytes in little-endian words.
+///
+/// Alignment mod 4 is the byte offset of the first word.
+fn pack_bytes_into_words(bytes: &[u8], mut alignment: u32) -> Vec<MemoryEntry> {
+    let mut words = Vec::new();
+    let mut value = 0;
+    alignment %= 4;
+    for byte in bytes.iter() {
+        value |= (*byte as u32) << (alignment * 8);
+        if alignment == 3 {
+            words.push(MemoryEntry::Value(value));
+            value = 0;
+            alignment = 0;
+        } else {
+            alignment += 1;
+        }
+    }
+    if bytes.len() % 4 != 0 {
+        words.push(MemoryEntry::Value(value));
+    }
+    words
 }
 
 enum MemoryEntry {
