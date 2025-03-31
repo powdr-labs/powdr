@@ -914,6 +914,9 @@ impl<T: FieldElement> Pipeline<T> {
         let analyzed =
             powdr_pil_analyzer::analyze_ast(linked).map_err(output_pil_analysis_errors)?;
         self.maybe_write_pil(&analyzed, "_analyzed")?;
+        let re_analyzed: Analyzed<T> = powdr_pil_analyzer::analyze_string(&analyzed.to_string())
+            .map_err(output_pil_analysis_errors)?;
+        self.maybe_write_pil(&analyzed, "_reanalyzed")?;
         self.log("done.");
 
         Ok(analyzed)
