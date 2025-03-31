@@ -747,7 +747,7 @@ where
                 ood_point,
                 claims_to_verify_by_instance,
                 n_variables_by_instance: _,
-            } = partially_verify_batch(vec![Gate::LogUp], gkr_proof, gkr_verifier_channel).unwrap();
+            } = partially_verify_batch(vec![Gate::LogUp;2], gkr_proof, gkr_verifier_channel).unwrap();
 
             let alpha = SecureField::from_u32_unchecked(42, 42, 42, 42);
             let last_component = components.last().unwrap(); // &FrameworkComponent
