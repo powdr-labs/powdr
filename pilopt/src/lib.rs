@@ -595,8 +595,7 @@ fn replace_linear_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let keep = pil_file
         .committed_polys_in_source_order()
         .filter(|&(s, _)| {
-            s.absolute_name.contains("operation_id")
-                || s.is_array()
+            s.is_array()
                 || in_publics.contains(&s.absolute_name)
                 || boolean_constrained_witnesses
                     .intersection(&s.array_elements().map(|(_, poly_id)| poly_id).collect())
