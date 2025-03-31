@@ -105,6 +105,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             }
         }));
         let branch_depth = 0;
+        // Sort the queue so that we have proper source order.
         queue_items.sort();
         let identity_queue = IdentityQueue::new(&queue_items);
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
@@ -254,11 +255,11 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         Ok(result)
     }
 
-    fn process_until_no_progress<'queue, FixedEval: FixedEvaluator<T>>(
+    fn process_until_no_progress<FixedEval: FixedEvaluator<T>>(
         &self,
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        mut identity_queue: IdentityQueue<'a, 'queue, T>,
+        mut identity_queue: IdentityQueue<'a, '_, T>,
     ) -> Result<(), affine_symbolic_expression::Error> {
         while let Some(item) = identity_queue.next() {
             let updated_vars = match item {

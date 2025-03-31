@@ -24,12 +24,20 @@ pub struct IdentityQueue<'ast, 'queue, T: FieldElement> {
     items: &'queue Vec<QueueItem<'ast, T>>,
     in_queue: Vec<bool>,
     identity_queue: VecDeque<usize>,
-    machine_call_queue: BTreeSet<(&'queue QueueItem<'ast, T>, usize)>,
+    /// This is a priority queue because we always want to process
+    /// the "first" machine call that received a variable update
+    /// in the hope that this results in the machine calls to be
+    /// in source order, where possible.
+    machine_call_queue: BTreeSet<usize>,
     prover_function_queue: VecDeque<usize>,
+    /// Maps a variable to a list of indices in `items`, pointing to the items where they are referenced.
     occurrences: Rc<HashMap<Variable, Vec<usize>>>,
 }
 
 impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
+    /// Creates a new queue based on the given identities.
+    /// The order of identities in this queue matters for the
+    /// order in which they are processed.
     pub fn new(items: &'queue Vec<QueueItem<'ast, T>>) -> Self {
         let mut references = ReferencesComputer::default();
         let occurrences = Rc::new(
@@ -48,15 +56,9 @@ impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
         Self {
             items,
             in_queue: vec![true; items.len()],
-            identity_queue: (0..items.len())
-                .filter(|id| is_polynomial_identity_or_assignment(&items[*id]))
-                .collect(),
-            machine_call_queue: (0..items.len())
-                .filter_map(|id| is_submachine_call(&items[id]).then_some((&items[id], id)))
-                .collect(),
-            prover_function_queue: (0..items.len())
-                .filter(|id| is_prover_function(&items[*id]))
-                .collect(),
+            identity_queue: filter_by_collect_indices(items, &is_polynomial_identity_or_assignment),
+            machine_call_queue: filter_by_collect_indices(items, &is_submachine_call),
+            prover_function_queue: filter_by_collect_indices(items, &is_prover_function),
             occurrences,
         }
     }
@@ -66,21 +68,11 @@ impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
     pub fn next(&mut self) -> Option<&'queue QueueItem<'ast, T>> {
         self.identity_queue
             .pop_front()
+            .or_else(|| self.machine_call_queue.pop_first())
+            .or_else(|| self.prover_function_queue.pop_front())
             .map(|id| {
                 self.in_queue[id] = false;
                 &self.items[id]
-            })
-            .or_else(|| {
-                self.machine_call_queue.pop_first().map(|(identity, id)| {
-                    self.in_queue[id] = false;
-                    identity
-                })
-            })
-            .or_else(|| {
-                self.prover_function_queue.pop_front().map(|id| {
-                    self.in_queue[id] = false;
-                    &self.items[id]
-                })
             })
     }
 
@@ -98,7 +90,7 @@ impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
                 if is_polynomial_identity_or_assignment(&self.items[*id]) {
                     self.identity_queue.push_back(*id);
                 } else if is_submachine_call(&self.items[*id]) {
-                    self.machine_call_queue.insert((&self.items[*id], *id));
+                    self.machine_call_queue.insert(*id);
                 } else {
                     assert!(is_prover_function(&self.items[*id]));
                     self.prover_function_queue.push_back(*id);
@@ -124,6 +116,18 @@ fn is_submachine_call<T: FieldElement>(item: &QueueItem<'_, T>) -> bool {
 
 fn is_prover_function<T: FieldElement>(item: &QueueItem<'_, T>) -> bool {
     matches!(item, QueueItem::ProverFunction(..))
+}
+
+/// Filters a slice by a boolean selector and returns a collection of the matching indices.
+fn filter_by_collect_indices<D, F, C: FromIterator<usize>>(items: &[D], mut filter: F) -> C
+where
+    F: FnMut(&D) -> bool,
+{
+    items
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| if filter(item) { Some(index) } else { None })
+        .collect()
 }
 
 #[derive(Clone)]
