@@ -76,7 +76,7 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
-        _publics: &BTreeMap<String, Option<F>>,
+        publics: &BTreeMap<String, Option<F>>,
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error> {
@@ -111,6 +111,7 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
                 Machine::try_new(
                     machine_name.clone(),
                     witness,
+                    publics,
                     &self.fixed,
                     pil,
                     &witgen_callback,

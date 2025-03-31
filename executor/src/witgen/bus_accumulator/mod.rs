@@ -108,6 +108,7 @@ impl<'a, T: FieldElement, Ext: ExtensionField<T> + Sync> BusAccumulatorGenerator
         let values = OwnedTerminalValues::new(
             pil,
             witness_columns.to_vec(),
+            BTreeMap::new(),
             fixed_columns
                 .map(|(name, values)| (name, values.to_vec()))
                 .collect(),

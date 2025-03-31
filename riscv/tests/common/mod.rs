@@ -42,20 +42,10 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
         );
     }
 
-    // Compute the witness once for all tests that follow.
-    // we will have to include a backend type here or compute_witness will panic
-    pipeline.compute_witness().unwrap();
-
-    test_mock_backend(pipeline.clone());
-
-    // verify with the mock prover
-    if T::known_field().unwrap() == KnownField::GoldilocksField {
-        let pipeline_gl: Pipeline<GoldilocksField> =
-            unsafe { std::mem::transmute(pipeline.clone()) };
-        test_mock_backend(pipeline_gl);
-    }
-
     test_plonky3_pipeline::<T>(pipeline.clone());
+
+    // test mock backend
+    pipeline.compute_proof().unwrap();
 
     // verify executor generated witness
     if executor_witgen {
