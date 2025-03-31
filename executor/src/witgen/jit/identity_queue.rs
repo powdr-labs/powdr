@@ -26,6 +26,7 @@ pub struct IdentityQueue<'ast, 'queue, T: FieldElement> {
     identity_queue: VecDeque<usize>,
     machine_call_queue: BTreeSet<(&'queue QueueItem<'ast, T>, usize)>,
     prover_function_queue: VecDeque<usize>,
+    /// Maps a variable to a list of indices in `items`, pointing to the items where they are referenced.
     occurrences: Rc<HashMap<Variable, Vec<usize>>>,
 }
 
