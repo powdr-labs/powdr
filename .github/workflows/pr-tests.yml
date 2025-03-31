@@ -104,7 +104,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y binutils-riscv64-unknown-elf lld
       - uses: taiki-e/install-action@nextest
       - name: Run default tests
-        run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/2
+        run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/2 --no-tests=warn
         env:
           POWDR_STD: ${{ github.workspace }}/std/
 
@@ -186,6 +186,15 @@ jobs:
           - "6"
           - "7"
           - "8"
+          - "9"
+          - "10"
+          - "11"
+          - "12"
+          - "13"
+          - "14"
+          - "15"
+          - "16"
+          - "17"
     needs: build
     runs-on: ubuntu-24.04
 
@@ -211,7 +220,7 @@ jobs:
       - name: Run slow tests
         run: |
           NIGHTLY_TESTS=$(cat .github/workflows/nightly_tests_list.txt)
-          cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --partition hash:"${{ matrix.test }}"/8
+          cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --partition hash:"${{ matrix.test }}"/17 --no-tests=warn
         shell: bash
         env:
           POWDR_STD: ${{ github.workspace }}/std/

@@ -15,6 +15,7 @@ use powdr_number::FieldElement;
 use crate::witgen::{machines::MachineParts, FixedData};
 
 pub trait TrySymbolByName: Copy {
+    /// Tries to resolve a symbol by name.
     fn try_symbol_by_name<'a>(&'a self, name: &str) -> Option<&'a Symbol>;
 }
 
@@ -540,13 +541,13 @@ fn unpack(mut e: &Expression) -> &Expression {
 
 impl<T: FieldElement> TrySymbolByName for &FixedData<'_, T> {
     fn try_symbol_by_name<'a>(&'a self, name: &str) -> Option<&'a Symbol> {
-        FixedData::try_symbol_by_name(self, name)
+        self.analyzed.try_symbol_by_name(name)
     }
 }
 
 impl<T> TrySymbolByName for &Analyzed<T> {
     fn try_symbol_by_name<'a>(&'a self, name: &str) -> Option<&'a Symbol> {
-        self.definitions.get(name).map(|(s, _)| s)
+        Analyzed::try_symbol_by_name(self, name)
     }
 }
 

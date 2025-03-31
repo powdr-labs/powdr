@@ -50,8 +50,8 @@ fn optional_vars_in_effect<T: FieldElement>(
     required: &mut HashSet<Variable>,
 ) -> HashSet<Variable> {
     let needed = match &effect {
-        Effect::Assignment(..) | Effect::ProverFunctionCall(..) => {
-            effect.written_vars().any(|(v, _)| required.contains(v))
+        Effect::Assignment(..) | Effect::ProverFunctionCall(..) | Effect::BitDecomposition(_) => {
+            effect.written_vars().any(|v| required.contains(v))
         }
         Effect::Assertion(_) => false,
         Effect::MachineCall(..) => {
@@ -76,7 +76,7 @@ fn optional_vars_in_effect<T: FieldElement>(
         required.extend(effect.referenced_variables().cloned());
         HashSet::new()
     } else {
-        effect.written_vars().map(|(v, _)| v).cloned().collect()
+        effect.written_vars().cloned().collect()
     }
 }
 
@@ -108,7 +108,7 @@ fn remove_variables_from_effect<T: FieldElement>(
         to_remove.extend(remove_left);
         Some(Effect::Branch(condition, left, right))
     } else if effect.referenced_variables().any(|v| to_remove.contains(v)) {
-        to_remove.extend(effect.written_vars().map(|(v, _)| v).cloned());
+        to_remove.extend(effect.written_vars().cloned());
         None
     } else {
         Some(effect)

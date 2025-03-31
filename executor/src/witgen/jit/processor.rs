@@ -8,7 +8,6 @@ use crate::witgen::{
     data_structures::identity::{BusSend, Identity},
     jit::debug_formatter::format_polynomial_identities,
     range_constraints::RangeConstraint,
-    FixedData,
 };
 
 use super::{
@@ -22,7 +21,6 @@ use super::{
 
 /// A generic processor for generating JIT code.
 pub struct Processor<'a, T: FieldElement> {
-    fixed_data: &'a FixedData<'a, T>,
     /// List of identities and row offsets to process them on.
     identities: Vec<(&'a Identity<T>, i32)>,
     /// List of assignments (or other queue items) provided from outside.
@@ -48,7 +46,6 @@ pub struct ProcessorResult<T: FieldElement> {
 
 impl<'a, T: FieldElement> Processor<'a, T> {
     pub fn new(
-        fixed_data: &'a FixedData<'a, T>,
         identities: impl IntoIterator<Item = (&'a Identity<T>, i32)>,
         initial_queue: Vec<QueueItem<'a, T>>,
         requested_known_vars: impl IntoIterator<Item = Variable>,
@@ -56,7 +53,6 @@ impl<'a, T: FieldElement> Processor<'a, T> {
     ) -> Self {
         let identities = identities.into_iter().collect_vec();
         Self {
-            fixed_data,
             identities,
             initial_queue,
             block_size: 1,
@@ -103,7 +99,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             }
         }));
         let branch_depth = 0;
-        let identity_queue = IdentityQueue::new(self.fixed_data, queue_items);
+        let identity_queue = IdentityQueue::new(queue_items);
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
     }
 
@@ -279,14 +275,9 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                         witgen.process_equation_on_row(expression, None, 0.into(), row_offset)
                     }
-                    Identity::BusSend(bus_send) => witgen.process_call(
-                        can_process.clone(),
-                        bus_send.identity_id,
-                        bus_send.bus_id().unwrap(),
-                        &bus_send.selected_payload.selector,
-                        bus_send.selected_payload.expressions.len(),
-                        row_offset,
-                    ),
+                    Identity::BusSend(bus_send) => {
+                        witgen.process_call(can_process.clone(), bus_send, row_offset)
+                    }
                     Identity::Connect(..) => Ok(vec![]),
                 },
                 QueueItem::VariableAssignment(assignment) => witgen.process_equation_on_row(

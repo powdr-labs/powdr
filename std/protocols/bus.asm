@@ -202,6 +202,17 @@ let bus_multi_interaction: expr[], expr[][], expr[], expr[] -> () = constr |ids,
             )
         }
     );
+
+    // Add array of native bus interactions
+    array::new(
+        input_len,
+        |i| Constr::BusInteraction(
+            multiplicities[i], 
+            ids[i], 
+            payloads[i], 
+            latches[i]
+        )
+    );
 };
 
 /// Compute acc' = acc * (1 - is_first') + multiplicity' / fingerprint(id, payload...),
