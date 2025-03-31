@@ -891,7 +891,11 @@ params[2] = S::carry[0];"
             [ Z ] in [ BYTE ];
             X + Y = Z + 256 * carry;
         ";
-        let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        let code = format_code(
+            &generate_for_block_machine::<GoldilocksField>(input, "S", None, 2, 1)
+                .unwrap()
+                .code,
+        );
         assert_eq!(
             code,
             "\
@@ -923,7 +927,11 @@ params[2] = 1;"
             [ Z ] in [ BYTE ];
             X + Y = Z + 256 * carry;
         ";
-        let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        let code = format_code(
+            &generate_for_block_machine::<GoldilocksField>(input, "S", None, 2, 1)
+                .unwrap()
+                .code,
+        );
         assert_eq!(
             code,
             "\
