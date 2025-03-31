@@ -270,6 +270,12 @@ fn stwo_fixed_columns() {
 }
 
 #[test]
+fn stwo_gkr_lookup() {
+    let f = "pil/gkr_lookup.pil";
+    test_stwo(f, Default::default());
+}
+
+#[test]
 fn stwo_stage1_publics() {
     let f = "pil/stage1_publics.pil";
     test_stwo_stage1_public(
