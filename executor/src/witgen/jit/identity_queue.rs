@@ -56,9 +56,9 @@ impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
         Self {
             items,
             in_queue: vec![true; items.len()],
-            identity_queue: filter_by_collect_indices(items, &is_polynomial_identity_or_assignment),
-            machine_call_queue: filter_by_collect_indices(items, &is_submachine_call),
-            prover_function_queue: filter_by_collect_indices(items, &is_prover_function),
+            identity_queue: collect_filtered_indices(items, &is_polynomial_identity_or_assignment),
+            machine_call_queue: collect_filtered_indices(items, &is_submachine_call),
+            prover_function_queue: collect_filtered_indices(items, &is_prover_function),
             occurrences,
         }
     }
@@ -119,7 +119,7 @@ fn is_prover_function<T: FieldElement>(item: &QueueItem<'_, T>) -> bool {
 }
 
 /// Filters a slice by a boolean selector and returns a collection of the matching indices.
-fn filter_by_collect_indices<D, F, C: FromIterator<usize>>(items: &[D], mut filter: F) -> C
+fn collect_filtered_indices<D, F, C: FromIterator<usize>>(items: &[D], mut filter: F) -> C
 where
     F: FnMut(&D) -> bool,
 {
