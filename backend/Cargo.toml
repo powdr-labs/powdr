@@ -38,6 +38,8 @@ powdr-executor.workspace = true
 powdr-executor-utils.workspace = true
 powdr-parser-util.workspace = true
 powdr-backend-utils.workspace = true
+powdr-linker.workspace = true
+powdr-pilopt.workspace = true
 
 powdr-plonky3 = { path = "../plonky3", optional = true }
 

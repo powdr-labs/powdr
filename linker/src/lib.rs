@@ -3,7 +3,10 @@ use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::MachineDegree,
     object::{Link, Location, MachineInstanceGraph, Object},
-    parsed::{asm::AbsoluteSymbolPath, NamespaceDegree, PILFile, PilStatement},
+    parsed::{
+        asm::AbsoluteSymbolPath, Expression, NamespaceDegree, NamespacedPolynomialReference,
+        PILFile, PilStatement,
+    },
 };
 use powdr_parser_util::SourceRef;
 use std::{collections::BTreeMap, iter::once};
@@ -14,11 +17,16 @@ pub mod bus;
 /// A linker implementation using native lookups and permutations
 pub mod native;
 
+pub type BusLinkerArgs = BTreeMap<Location, Vec<Expression<NamespacedPolynomialReference>>>;
+
 const MAIN_OPERATION_NAME: &str = "main";
 const LINKER_FIRST_STEP: &str = "_linker_first_step";
 
 /// Link the objects into a single PIL file, using the specified parameters.
-pub fn link(graph: MachineInstanceGraph, params: LinkerParams) -> Result<PILFile, Vec<String>> {
+pub fn link(
+    graph: MachineInstanceGraph,
+    params: LinkerParams,
+) -> Result<(PILFile, Option<BusLinkerArgs>), Vec<String>> {
     match params.mode {
         LinkerMode::Native => native::NativeLinker::link(graph, params.degree_mode),
         LinkerMode::Bus => bus::BusLinker::link(graph, params.degree_mode),
@@ -32,7 +40,10 @@ trait LinkerBackend: Sized {
     fn try_new(graph: &MachineInstanceGraph, degree_mode: DegreeMode) -> Result<Self, Vec<String>>;
 
     /// Link the objects into a single PIL file.
-    fn link(graph: MachineInstanceGraph, degree_mode: DegreeMode) -> Result<PILFile, Vec<String>> {
+    fn link(
+        graph: MachineInstanceGraph,
+        degree_mode: DegreeMode,
+    ) -> Result<(PILFile, Option<BusLinkerArgs>), Vec<String>> {
         let mut linker = Self::try_new(&graph, degree_mode)?;
 
         let common_definitions = process_definitions(graph.statements);
@@ -41,11 +52,16 @@ trait LinkerBackend: Sized {
             linker.process_object(location, &graph.objects);
         }
 
-        Ok(PILFile(
-            common_definitions
-                .into_iter()
-                .chain(linker.into_pil())
-                .collect(),
+        let bus_linker_args = linker.bus_linker_args();
+
+        Ok((
+            PILFile(
+                common_definitions
+                    .into_iter()
+                    .chain(linker.into_pil())
+                    .collect(),
+            ),
+            bus_linker_args,
         ))
     }
 
@@ -57,6 +73,11 @@ trait LinkerBackend: Sized {
 
     /// Convert the linker's internal state into PIL statements.
     fn into_pil(self) -> Vec<PilStatement>;
+
+    /// Output linker's bus arguments for later use in the backend-specific specialization phase.
+    fn bus_linker_args(&self) -> Option<BusLinkerArgs> {
+        None // default to None and only implemented for bus linker
+    }
 }
 
 fn call(operation_id_name: &str, operation_id_value: &UBig) -> Vec<PilStatement> {
@@ -104,7 +125,7 @@ enum InteractionType {
 }
 
 // Extract the utilities and sort them into namespaces where possible.
-fn process_definitions(
+pub fn process_definitions(
     mut definitions: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
 ) -> Vec<PilStatement> {
     // definitions at the root do not require a namespace statement, so we put them first

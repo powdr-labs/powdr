@@ -11,9 +11,14 @@ mod composite;
 mod field_filter;
 mod mock;
 
-use powdr_ast::analyzed::Analyzed;
+use powdr_ast::{
+    analyzed::Analyzed,
+    parsed::{asm::SymbolPath, ArrayLiteral, Expression, FunctionCall, PILFile, PilStatement},
+};
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
+use powdr_parser_util::SourceRef;
+use std::str::FromStr;
 use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc};
 use strum::{Display, EnumString, EnumVariantNames};
 
@@ -180,10 +185,101 @@ pub trait BackendFactory<F: FieldElement> {
         Err(Error::NoSetupAvailable)
     }
 
-    fn specialize_pil(&self, pil: Analyzed<F>) -> Analyzed<F> {
-        // TODO: currently defaults to the identity function
-        // Move `bus_multi_linker` calls here in the future
-        pil
+    fn specialize_pil(
+        &self,
+        pil: Analyzed<F>,
+        bus_linker_args: Option<powdr_linker::BusLinkerArgs>,
+        // common_definitions: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
+    ) -> Analyzed<F> {
+        // Non bus mode current defaults to the identity function
+        if bus_linker_args.is_none() {
+            return pil;
+        }
+
+        // The following is bus mode
+        let pil_string = pil.to_string();
+        powdr_pilopt::maybe_write_pil(&pil_string, "specialize_pre_reparse").unwrap();
+
+        let parsed_pil = powdr_parser::parse(None, &pil_string).unwrap_or_else(|err| {
+            eprintln!("Error parsing .pil file:");
+            err.output_to_stderr();
+            panic!();
+        });
+        powdr_pilopt::maybe_write_pil(&PILFile(parsed_pil.0.clone()), "specialize_post_reparse")
+            .unwrap();
+
+        // powdr_pil_analyzer::analyze_ast::<F>(parsed_pil.clone()).unwrap();
+
+        // println!("bus_linker_args: \n{:#?}", bus_linker_args);
+
+        // TODO: make the following non-Stwo backends only.
+        let (mut pil_file_by_namespace, _) = parsed_pil.0.iter().fold(
+            (BTreeMap::new(), String::new()),
+            |(mut acc, mut namespace), pil_statement| {
+                if let PilStatement::Namespace(_, symbol_path, _) = pil_statement {
+                    namespace = symbol_path.to_string();
+                }
+                acc.entry(namespace.clone())
+                    .or_insert_with(Vec::new)
+                    .push(pil_statement.clone());
+
+                (acc, namespace)
+            },
+        );
+
+        let pil_file_by_namespace_collapsed: Vec<PilStatement> = pil_file_by_namespace
+            .iter()
+            .flat_map(|(_, statements)| statements)
+            .cloned()
+            .collect();
+        powdr_pilopt::maybe_write_pil(
+            &PILFile(pil_file_by_namespace_collapsed),
+            "specialized_post_reparse_split",
+        )
+        .unwrap();
+
+        bus_linker_args
+            .unwrap()
+            .iter()
+            .for_each(|(namespace, bus_linker_args)| {
+                pil_file_by_namespace
+                    .get_mut(&namespace.to_string())
+                    .expect("Namespace not found in pil_file_by_namespace")
+                    .push(PilStatement::Expression(
+                        SourceRef::unknown(),
+                        Expression::FunctionCall(
+                            SourceRef::unknown(),
+                            FunctionCall {
+                                function: Box::new(Expression::Reference(
+                                    SourceRef::unknown(),
+                                    SymbolPath::from_str("std::protocols::bus::bus_multi_linker")
+                                        .unwrap()
+                                        .into(),
+                                )),
+                                arguments: vec![ArrayLiteral {
+                                    items: bus_linker_args.clone(),
+                                }
+                                .into()],
+                            },
+                        ),
+                    ));
+            });
+
+        let all_statements = pil_file_by_namespace
+            .into_iter()
+            .flat_map(|(_, statements)| statements)
+            .collect::<Vec<_>>();
+
+        powdr_pilopt::maybe_write_pil(&PILFile(all_statements.clone()), "specialized_pre_analyze")
+            .unwrap();
+
+        log::debug!("SPECIALIZE: Analyzing PIL and computing constraints...");
+        let analyzed = powdr_pil_analyzer::analyze_ast(PILFile(all_statements)).unwrap();
+        log::debug!("SPECIALIZE: Analysis done.");
+
+        powdr_pilopt::maybe_write_pil(&analyzed, "specialized_post_analyze").unwrap();
+
+        analyzed
     }
 }
 

@@ -926,6 +926,11 @@ impl TypeChecker {
                     format_type_scheme_around_name(&name, &Some(inferred)),
                     format_type_scheme_around_name(&name, &Some(declared_type),
                 ))));
+                // println!(
+                //     "Inferred type scheme for symbol {name} does not match the declared type.\nInferred: let{}\nDeclared: let{}",
+                //     format_type_scheme_around_name(&name, &Some(inferred.clone())),
+                //     format_type_scheme_around_name(&name, &Some(declared_type.clone())),
+                // );
             }
             let declared_type_vars = declared_type.ty.contained_type_vars();
             let inferred_type_vars = inferred_type.contained_type_vars();

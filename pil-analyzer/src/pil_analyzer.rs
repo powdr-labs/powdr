@@ -58,6 +58,18 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Erro
     analyzer.condense(solved_impls)
 }
 
+pub fn analyze_without_type_check<T: FieldElement>(
+    files: Vec<PILFile>,
+) -> Result<Analyzed<T>, Vec<Error>> {
+    let mut analyzer = PILAnalyzer::new();
+    analyzer.process(files)?;
+    analyzer.side_effect_check()?;
+    analyzer.validate_structs()?;
+    analyzer.type_check()?;
+    let solved_impls = analyzer.resolve_trait_impls()?;
+    analyzer.condense(solved_impls)
+}
+
 #[derive(Default)]
 struct PILAnalyzer {
     /// Known symbols by name and category, determined in the first step.
@@ -439,6 +451,7 @@ impl PILAnalyzer {
 
     /// A step to collect all defined names in the statement.
     fn collect_names(&mut self, statement: &PilStatement) -> Vec<(String, SymbolCategory)> {
+        // println!("collect_names: {statement}");
         match statement {
             PilStatement::Namespace(_, name, _) => {
                 self.current_namespace = AbsoluteSymbolPath::default().join(name.clone());

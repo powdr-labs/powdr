@@ -268,13 +268,17 @@ mod test {
 
     use pretty_assertions::assert_eq;
 
-    use crate::LinkerBackend;
+    use crate::{BusLinkerArgs, LinkerBackend};
 
-    fn link_vadcop(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
+    fn link_vadcop(
+        graph: MachineInstanceGraph,
+    ) -> Result<(PILFile, Option<BusLinkerArgs>), Vec<String>> {
         super::NativeLinker::link(graph, super::DegreeMode::Vadcop)
     }
 
-    fn link_monolithic(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
+    fn link_monolithic(
+        graph: MachineInstanceGraph,
+    ) -> Result<(PILFile, Option<BusLinkerArgs>), Vec<String>> {
         super::NativeLinker::link(graph, super::DegreeMode::Monolithic)
     }
 
@@ -335,7 +339,7 @@ namespace main__rom(8);
 "#;
         let file_name = "../test_data/asm/empty_vm.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link_monolithic(graph.clone()).unwrap();
+        let pil = link_monolithic(graph.clone()).unwrap().0;
         assert_eq!(extract_main(&format!("{pil}")), native_expectation);
     }
 
@@ -343,7 +347,7 @@ namespace main__rom(8);
     fn compile_really_empty_vm() {
         let expectation = "namespace main(0);\n";
         let graph = parse_analyze_and_compile::<GoldilocksField>("");
-        let pil = link_vadcop(graph).unwrap();
+        let pil = link_vadcop(graph).unwrap().0;
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
@@ -351,7 +355,7 @@ namespace main__rom(8);
     fn compile_pil_without_machine() {
         let input = "    let even = std::array::new(5, |i| 2 * i);";
         let graph = parse_analyze_and_compile::<GoldilocksField>(input);
-        let pil = link_vadcop(graph).unwrap().to_string();
+        let pil = link_vadcop(graph).unwrap().0.to_string();
         assert_eq!(&pil[0..input.len()], input);
     }
 
@@ -453,7 +457,7 @@ namespace main_sub__rom(16);
 "#;
         let file_name = "../test_data/asm/different_signatures.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link_monolithic(graph).unwrap();
+        let pil = link_monolithic(graph).unwrap().0;
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
@@ -528,7 +532,7 @@ namespace main__rom(8);
 "#;
         let file_name = "../test_data/asm/simple_sum.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link_vadcop(graph).unwrap();
+        let pil = link_vadcop(graph).unwrap().0;
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
@@ -593,7 +597,7 @@ namespace main__rom(8);
     pol constant latch = [1]*;
 "#;
         let graph = parse_analyze_and_compile::<GoldilocksField>(source);
-        let pil = link_vadcop(graph).unwrap();
+        let pil = link_vadcop(graph).unwrap().0;
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
@@ -688,7 +692,7 @@ namespace main_vm(64..128);
     y = x + 5;
 "#;
         let graph = parse_analyze_and_compile::<GoldilocksField>(asm);
-        let pil = link_vadcop(graph).unwrap();
+        let pil = link_vadcop(graph).unwrap().0;
         assert_eq!(extract_main(&(pil.to_string())), expected);
     }
 
@@ -802,7 +806,7 @@ namespace main_bin_o(256);
 "#;
         let file_name = "../test_data/asm/permutations/vm_to_block.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link_monolithic(graph).unwrap();
+        let pil = link_monolithic(graph).unwrap().0;
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }
 
@@ -954,7 +958,7 @@ namespace main_submachine(32);
 "#;
         let file_name = "../test_data/asm/permutations/link_merging.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link_monolithic(graph).unwrap();
+        let pil = link_monolithic(graph).unwrap().0;
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }
 }
