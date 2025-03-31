@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, ops::RangeFrom, str::FromStr};
 
 use powdr_syscalls::Syscall;
 use wasmparser::{
-    BlockType, CompositeInnerType, FuncType, FunctionBody, LocalsReader, Operator,
+    BlockType, CompositeInnerType, ElementItems, FuncType, FunctionBody, LocalsReader, Operator,
     OperatorsIterator, OperatorsReader, Parser, Payload, RefType, SubType, TableInit, TypeRef,
     ValType,
 };
@@ -59,6 +59,7 @@ struct ModuleContext {
     table_types: Vec<RefType>,
     memory: Option<Segment>,
     globals: Vec<AllocatedVar>,
+    elem_segments: Vec<Segment>,
 }
 
 impl ModuleContext {
@@ -140,6 +141,7 @@ fn main() -> wasmparser::Result<()> {
         table_types: Vec::new(),
         memory: None,
         globals: Vec::new(),
+        elem_segments: Vec::new(),
     };
 
     let mut functions = Vec::new();
@@ -152,6 +154,9 @@ fn main() -> wasmparser::Result<()> {
     //   - the second word is the maximum size, in number of elements
     //   - then a sequence of entries of 2 words (references).
     // - all globals, in sequence
+    // - all passive element segments, in sequence, where each segment contains:
+    //   - the first word is the segment size, in number of elements (this size is fixed)
+    //   - a sequence of entries of 2 words (references).
     // - the WASM memory instance, where:
     //   - the first word is the size of the memory, in pages of 64 KiB
     //   - the second word is the maximum size of the memory, in pages of 64 KiB
@@ -313,16 +318,17 @@ fn main() -> wasmparser::Result<()> {
                     let ty = global.ty.content_type;
                     let var = mem_allocator.allocate_var(ty);
 
+                    // Initialize the global variables
                     let words = ctx.eval_const_expr(ty, global.init_expr.get_operators_reader())?;
-                    // TODO: initialize the globals with the init_expr
-                    todo!();
+                    for (idx, word) in words.into_iter().enumerate() {
+                        initial_memory.insert(var.address + 4 * idx as u32, word);
+                    }
 
                     ctx.globals.push(var);
                 }
             }
             Payload::ExportSection(section_limited) => {
-                // TODO: support modules loading and cross module dependencies.
-                // While we don't support that, export does nothing and can be ignored.
+                // TODO: find out the entry point exported by Rust target wasm32-unknown-unknown.
                 for export in section_limited {
                     let export = export?;
                     log::debug!(
@@ -334,7 +340,85 @@ fn main() -> wasmparser::Result<()> {
                 }
             }
             Payload::StartSection { func, range } => start_function = Some(func),
-            Payload::ElementSection(section_limited) => todo!(),
+            Payload::ElementSection(section) => {
+                for elem_segment in section {
+                    let elem_segment = elem_segment?;
+
+                    // Get all the values in the segment
+                    let mut values = Vec::new();
+                    match elem_segment.items {
+                        ElementItems::Functions(section) => {
+                            for idx in section {
+                                let idx = idx?;
+                                values.push(MemoryEntry::Value(ctx.func_types[idx as usize]));
+                                values.push(MemoryEntry::Label(idx));
+                            }
+                        }
+                        ElementItems::Expressions(ref_type, section) => {
+                            for elem in section {
+                                let val = ctx.eval_const_expr(
+                                    ValType::Ref(ref_type),
+                                    elem?.get_operators_reader(),
+                                )?;
+                                values.extend(val);
+                            }
+                        }
+                    };
+
+                    // Decide what to do with the values
+                    match elem_segment.kind {
+                        wasmparser::ElementKind::Passive => {
+                            // This is stored as a memory segment to be used by table.init instruction
+
+                            // We include one extra word for the segment size
+                            let num_elems = values.len() as u32;
+                            let segment = mem_allocator.allocate_segment(num_elems * 8 + 4);
+
+                            // Store the segment size in the initial memory
+                            initial_memory.insert(segment.start, MemoryEntry::Value(num_elems));
+
+                            // Store the values in the initial memory
+                            for (idx, word) in values.into_iter().enumerate() {
+                                initial_memory.insert(segment.start + 4 * (idx as u32 + 1), word);
+                            }
+                        }
+                        wasmparser::ElementKind::Active {
+                            table_index,
+                            offset_expr,
+                        } => {
+                            // This is used to statically initialize the table. We can set the values on the table directly.
+
+                            // I am assuming the table index of 0 if not provided, as hinted by the WASM binary spec.
+                            let idx = table_index.unwrap_or(0);
+                            let table = &ctx.tables[idx as usize];
+
+                            let &[MemoryEntry::Value(offset)] = ctx
+                                .eval_const_expr(ValType::I32, offset_expr.get_operators_reader())?
+                                .as_slice()
+                            else {
+                                panic!("Offset is not a u32 value");
+                            };
+
+                            let Some(&MemoryEntry::Label(table_size)) =
+                                initial_memory.get(&table.start)
+                            else {
+                                panic!("Table size not found");
+                            };
+                            assert!(offset + values.len() as u32 <= table_size);
+
+                            let mut byte_offset = table.start + offset * 8 + 8;
+                            for value in values {
+                                initial_memory.insert(byte_offset, value);
+                                byte_offset += 4;
+                            }
+                            assert!(byte_offset <= table.start + table.size);
+                        }
+                        wasmparser::ElementKind::Declared => {
+                            // Declarative elements are informational, we don't need to do anything
+                        }
+                    }
+                }
+            }
             Payload::DataCountSection { count, range } => todo!(),
             Payload::CodeSectionStart { count, .. } => {
                 assert_eq!(functions.len() + count as usize, ctx.func_types.len());
