@@ -515,14 +515,18 @@ fn main() -> wasmparser::Result<()> {
                             }
                         }
                     };
+                    let num_elems = values.len() as u32 / 2;
 
                     // Decide what to do with the values
                     match elem_segment.kind {
                         wasmparser::ElementKind::Passive => {
                             // This is stored as a memory segment to be used by table.init instruction
 
+                            log::debug!(
+                                "Passive table segment found. Number of elements: {num_elems}"
+                            );
+
                             // We include one extra word for the segment size
-                            let num_elems = values.len() as u32;
                             let segment = mem_allocator.allocate_segment(num_elems * 8 + 4);
 
                             // Store the segment size in the initial memory
@@ -553,11 +557,13 @@ fn main() -> wasmparser::Result<()> {
                                 panic!("Offset is not a u32 value");
                             };
 
+                            log::debug!("Active table segment found. Table index: {idx}, offset: {offset}, number of elements: {num_elems}");
+
                             let MemoryEntry::Value(table_size) = initial_memory.get(table.start)
                             else {
                                 panic!("Table size is a label");
                             };
-                            assert!(offset + values.len() as u32 <= table_size);
+                            assert!(offset + num_elems <= table_size);
 
                             let mut byte_offset = table.start + offset * 8 + 8;
                             for value in values {
