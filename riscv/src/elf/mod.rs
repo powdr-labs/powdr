@@ -859,7 +859,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
 
                         HighLevelInsn { op, args, loc }
                     }
-                    // l{b|h|w} rd, symbol
+                    // l{b|h|w}[u] rd, symbol
                     Ins {
                         opc: l_op,
                         rd: Some(rd_l),
@@ -867,7 +867,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         rs2: None,
                         imm: Some(lo),
                         ..
-                    } if matches!(l_op, Op::LB | Op::LH | Op::LW)
+                    } if matches!(l_op, Op::LB | Op::LH | Op::LW | Op::LBU | Op::LHU | Op::LWU)
                         && rd_auipc == rd_l
                         && rd_l == rs1_l =>
                     {
