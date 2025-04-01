@@ -68,7 +68,7 @@ impl MemoryAllocator {
 }
 
 struct ModuleContext {
-    types: Vec<SubType>,
+    types: Vec<FuncType>,
     func_types: Vec<u32>,
     imported_functions: Vec<Syscall>,
     tables: Vec<Segment>,
@@ -81,11 +81,7 @@ struct ModuleContext {
 
 impl ModuleContext {
     fn get_type(&self, type_idx: u32) -> &FuncType {
-        let subtype = &self.types[type_idx as usize];
-        match &subtype.composite_type.inner {
-            CompositeInnerType::Func(f) => f,
-            _ => panic!("gc proposal not supported"),
-        }
+        &self.types[type_idx as usize]
     }
 
     fn get_func_type(&self, func_idx: u32) -> &FuncType {
@@ -108,37 +104,43 @@ impl ModuleContext {
         expr: OperatorsReader,
     ) -> wasmparser::Result<Vec<MemoryEntry>> {
         let mut words = Vec::new();
-        for op in expr {
-            match op? {
-                Operator::I32Const { value } => {
-                    assert_eq!(val_type, ValType::I32);
-                    words.push(MemoryEntry::Value(value as u32))
-                }
-                Operator::I64Const { value } => {
-                    assert_eq!(val_type, ValType::I64);
-                    words.push(MemoryEntry::Value(value as u32));
-                    words.push(MemoryEntry::Value((value >> 32) as u32));
-                }
-                Operator::F32Const { value } => {
-                    assert_eq!(val_type, ValType::F32);
-                    words.push(MemoryEntry::Value(value.bits()));
-                }
-                Operator::RefFunc { function_index } => {
-                    assert_eq!(val_type, ValType::Ref(RefType::FUNCREF));
-                    // The first 32 bits are the function type index
-                    words.push(MemoryEntry::Value(self.func_types[function_index as usize]));
-                    // The second 32 bits are the function address in code space
-                    words.push(MemoryEntry::Label(function_index));
-                }
-                Operator::RefNull { .. } => {
-                    assert!(matches!(val_type, ValType::Ref(_)));
-                    // Since (0, 0) is a valid function reference, lets use u32::MAX to represent null.
-                    words.push(MemoryEntry::Value(u32::MAX));
-                    words.push(MemoryEntry::Value(u32::MAX));
-                }
-                _ => panic!("Unsupported operator in const expr"),
+        let mut iter = expr.into_iter();
+
+        let op = iter.next().unwrap()?;
+        match op {
+            Operator::I32Const { value } => {
+                assert_eq!(val_type, ValType::I32);
+                words.push(MemoryEntry::Value(value as u32))
             }
+            Operator::I64Const { value } => {
+                assert_eq!(val_type, ValType::I64);
+                words.push(MemoryEntry::Value(value as u32));
+                words.push(MemoryEntry::Value((value >> 32) as u32));
+            }
+            Operator::F32Const { value } => {
+                assert_eq!(val_type, ValType::F32);
+                words.push(MemoryEntry::Value(value.bits()));
+            }
+            Operator::RefFunc { function_index } => {
+                assert_eq!(val_type, ValType::Ref(RefType::FUNCREF));
+                // The first 32 bits are the function type index
+                words.push(MemoryEntry::Value(self.func_types[function_index as usize]));
+                // The second 32 bits are the function address in code space
+                words.push(MemoryEntry::Label(function_index));
+            }
+            Operator::RefNull { .. } => {
+                assert!(matches!(val_type, ValType::Ref(_)));
+                // Since (0, 0) is a valid function reference, lets use u32::MAX to represent null.
+                words.push(MemoryEntry::Value(u32::MAX));
+                words.push(MemoryEntry::Value(u32::MAX));
+            }
+            op => panic!("Unsupported operator in const expr: {op:?}"),
         }
+
+        let end_op = iter.next().unwrap()?;
+        assert_eq!(end_op, Operator::End);
+        assert!(iter.next().is_none());
+
         Ok(words)
     }
 
@@ -192,8 +194,8 @@ impl InitialMemory {
         self.0.insert(address, entry);
     }
 
-    fn get(&self, address: u32) -> Option<&MemoryEntry> {
-        self.0.get(&address)
+    fn get(&self, address: u32) -> MemoryEntry {
+        *self.0.get(&address).unwrap_or(&MemoryEntry::Value(0))
     }
 
     /// Insert up to 4 bytes of data at the given address.
@@ -235,6 +237,8 @@ impl InitialMemory {
 }
 
 fn main() -> wasmparser::Result<()> {
+    env_logger::init();
+
     // TODO: do proper command line argument parsing
     let args: Vec<String> = std::env::args().collect();
     let wasm_file = std::fs::read(&args[1]).unwrap();
@@ -288,19 +292,23 @@ fn main() -> wasmparser::Result<()> {
     let mut unsupported_feature_found = false;
     for payload in parser.parse_all(&wasm_file) {
         match payload? {
-            Payload::Version {
-                num,
-                encoding,
-                range,
-            } => {
+            Payload::Version { num, .. } => {
                 // This is the encoding version, we don't care about it.
-                log::debug!("WebAssembly version: {num}");
+                log::debug!("Binary encoding version: {num}");
             }
             Payload::TypeSection(section) => {
+                log::debug!("Type Section found");
                 for rec_group in section {
                     let mut iter = rec_group?.into_types();
                     let ty = match (iter.next(), iter.next()) {
-                        (Some(ty), None) => ty,
+                        (Some(subtype), None) => match &subtype.composite_type.inner {
+                            CompositeInnerType::Func(f) => f.clone(),
+                            _ => {
+                                unsupported_feature_found = true;
+                                log::error!("unsupported types from GC proposal found");
+                                continue;
+                            }
+                        },
                         _ => {
                             // Apparently WebAssembly 3.0 is much more complicated, and has complex
                             // type definitions, and garbage collector, and exceptions. We should probably
@@ -310,10 +318,12 @@ fn main() -> wasmparser::Result<()> {
                             continue;
                         }
                     };
+                    log::debug!("Type read: {ty:?}");
                     ctx.types.push(ty);
                 }
             }
             Payload::ImportSection(section) => {
+                log::debug!("Import Section found");
                 // TODO: we could implement module load and cross module dependencies,
                 // but this is not a very used feature in WASM and modules are usually
                 // self-contained.
@@ -363,11 +373,19 @@ fn main() -> wasmparser::Result<()> {
                 }
             }
             Payload::FunctionSection(section) => {
-                for ty in section {
-                    ctx.func_types.push(ty?);
+                log::debug!("Function Section found");
+                for type_idx in section {
+                    let type_idx = type_idx?;
+                    log::debug!(
+                        "Type of function {}: {type_idx} ({:?})",
+                        ctx.func_types.len(),
+                        ctx.types[type_idx as usize]
+                    );
+                    ctx.func_types.push(type_idx);
                 }
             }
             Payload::TableSection(section) => {
+                log::debug!("Table Section found");
                 for table in section {
                     let table = table?;
                     if (!table.ty.element_type.is_extern_ref()
@@ -385,6 +403,12 @@ fn main() -> wasmparser::Result<()> {
                         log::error!("Table initialization is not supported");
                         continue;
                     }
+
+                    log::debug!(
+                        "Table defined. Initial size: {}, maximum size: {:?}",
+                        table.ty.initial,
+                        table.ty.maximum
+                    );
 
                     let max_entries = table
                         .ty
@@ -405,6 +429,7 @@ fn main() -> wasmparser::Result<()> {
                 }
             }
             Payload::MemorySection(section) => {
+                log::debug!("Memory Section found");
                 for mem in section {
                     let mem = mem?;
 
@@ -420,15 +445,24 @@ fn main() -> wasmparser::Result<()> {
                         continue;
                     }
 
+                    log::debug!(
+                        "Memory defined. Initial size: {}, maximum size: {:?}",
+                        mem.initial,
+                        mem.maximum
+                    );
+
                     // Lets delay the actual memory allocation to after the globals are allocated.
                     mem_type = Some(mem);
                 }
             }
             Payload::GlobalSection(section) => {
+                log::debug!("Global Section found");
                 for global in section {
                     let global = global?;
                     let ty = global.ty.content_type;
                     let var = mem_allocator.allocate_var(ty);
+
+                    log::debug!("Global variable {} has type {:?}", ctx.globals.len(), ty);
 
                     // Initialize the global variables
                     let words = ctx.eval_const_expr(ty, global.init_expr.get_operators_reader())?;
@@ -440,6 +474,7 @@ fn main() -> wasmparser::Result<()> {
                 }
             }
             Payload::ExportSection(section_limited) => {
+                log::debug!("Export Section found");
                 // TODO: find out the entry point exported by Rust target wasm32-unknown-unknown.
                 for export in section_limited {
                     let export = export?;
@@ -451,8 +486,12 @@ fn main() -> wasmparser::Result<()> {
                     );
                 }
             }
-            Payload::StartSection { func, .. } => start_function = Some(func),
+            Payload::StartSection { func, .. } => {
+                log::debug!("Start Section found. Start function: {func}");
+                start_function = Some(func);
+            }
             Payload::ElementSection(section) => {
+                log::debug!("Element Section found");
                 for elem_segment in section {
                     let elem_segment = elem_segment?;
 
@@ -514,10 +553,9 @@ fn main() -> wasmparser::Result<()> {
                                 panic!("Offset is not a u32 value");
                             };
 
-                            let Some(&MemoryEntry::Label(table_size)) =
-                                initial_memory.get(table.start)
+                            let MemoryEntry::Value(table_size) = initial_memory.get(table.start)
                             else {
-                                panic!("Table size not found");
+                                panic!("Table size is a label");
                             };
                             assert!(offset + values.len() as u32 <= table_size);
 
@@ -535,9 +573,11 @@ fn main() -> wasmparser::Result<()> {
                 }
             }
             Payload::DataCountSection { count, .. } => {
+                log::debug!("Data Count Section found. Count: {count}");
                 // This is used only by the static validator.
             }
             Payload::CodeSectionStart { count, .. } => {
+                log::debug!("Code Section Start found. Count: {count}");
                 assert_eq!(functions.len() + count as usize, ctx.func_types.len());
 
                 // The labels used internally in the functions must be globally unique.
@@ -546,6 +586,7 @@ fn main() -> wasmparser::Result<()> {
                 internal_labels = Some((ctx.func_types.len() as u32)..);
             }
             Payload::CodeSectionEntry(function) => {
+                log::debug!("Code Section Entry found");
                 // By the time we get here, the ctx will be complete,
                 // because all previous sections have been processed.
 
@@ -558,6 +599,7 @@ fn main() -> wasmparser::Result<()> {
                 functions.push(definition);
             }
             Payload::DataSection(section) => {
+                log::debug!("Data Section found");
                 for data_segment in section {
                     let data_segment = data_segment?;
 
@@ -609,10 +651,9 @@ fn main() -> wasmparser::Result<()> {
                                 panic!("Offset is not a u32 value");
                             };
 
-                            let Some(&MemoryEntry::Label(mem_size)) =
-                                initial_memory.get(memory.start)
+                            let MemoryEntry::Value(mem_size) = initial_memory.get(memory.start)
                             else {
-                                panic!("Memory size not found");
+                                panic!("Memory size is a label");
                             };
                             assert!(offset + data_segment.data.len() as u32 <= mem_size);
 
@@ -691,6 +732,7 @@ fn pack_bytes_into_words(bytes: &[u8], mut alignment: u32) -> Vec<MemoryEntry> {
     words
 }
 
+#[derive(Clone, Copy)]
 enum MemoryEntry {
     /// Actual value stored in memory word.
     Value(u32),

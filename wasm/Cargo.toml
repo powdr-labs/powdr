@@ -12,6 +12,7 @@ powdr-syscalls.workspace = true
 
 wasmparser = "0.227"
 log = "0.4.17"
+env_logger = "0.10.0"
 
 [lints]
 workspace = true
