@@ -146,7 +146,7 @@ impl ModuleContext {
     fn get_memory(
         &mut self,
         mem_allocator: &mut MemoryAllocator,
-        initial_memory: &mut BTreeMap<u32, MemoryEntry>,
+        initial_memory: &mut InitialMemory,
         mem_type: &Option<MemoryType>,
     ) -> Option<Segment> {
         let Some(mem_type) = mem_type else {
@@ -174,6 +174,63 @@ impl ModuleContext {
         }
 
         self.memory
+    }
+}
+
+struct InitialMemory(BTreeMap<u32, MemoryEntry>);
+
+impl InitialMemory {
+    fn new() -> Self {
+        InitialMemory(BTreeMap::new())
+    }
+
+    fn insert(&mut self, address: u32, entry: MemoryEntry) {
+        if matches!(entry, MemoryEntry::Value(0)) {
+            // We don't need to store 0 values, as they are the default.
+            return;
+        }
+        self.0.insert(address, entry);
+    }
+
+    fn get(&self, address: u32) -> Option<&MemoryEntry> {
+        self.0.get(&address)
+    }
+
+    /// Insert up to 4 bytes of data at the given address.
+    ///
+    /// If there is an existing value at the address, the replaced bytes must be 0.
+    fn insert_bytes(&mut self, address: u32, start_byte: u32, value: &[u8]) {
+        let mut word = 0;
+        let mut mask = 0;
+        for (i, byte) in value.iter().take(4).enumerate() {
+            let bit_offset = (start_byte + i as u32) * 8;
+            word |= (*byte as u32) << bit_offset;
+            mask |= 0xFF << bit_offset;
+        }
+
+        word <<= start_byte * 8;
+        mask <<= start_byte * 8;
+
+        match self.0.entry(address) {
+            Entry::Vacant(entry) => {
+                if word != 0 {
+                    // We don't need to store 0 values, as they are the default.
+                    entry.insert(MemoryEntry::Value(word));
+                }
+            }
+            Entry::Occupied(mut entry) => {
+                let MemoryEntry::Value(old_value) = entry.get() else {
+                    panic!("Memory entry is not a value");
+                };
+                assert!(old_value & mask == 0);
+                let new_value = old_value | word;
+                if new_value == 0 {
+                    entry.remove();
+                } else {
+                    entry.insert(MemoryEntry::Value(new_value));
+                }
+            }
+        }
     }
 }
 
@@ -220,7 +277,7 @@ fn main() -> wasmparser::Result<()> {
     let mut mem_type = None;
     let mut mem_allocator = MemoryAllocator::new();
 
-    let mut initial_memory = BTreeMap::new();
+    let mut initial_memory = InitialMemory::new();
 
     let mut internal_labels = None;
 
@@ -458,7 +515,7 @@ fn main() -> wasmparser::Result<()> {
                             };
 
                             let Some(&MemoryEntry::Label(table_size)) =
-                                initial_memory.get(&table.start)
+                                initial_memory.get(table.start)
                             else {
                                 panic!("Table size not found");
                             };
@@ -553,62 +610,40 @@ fn main() -> wasmparser::Result<()> {
                             };
 
                             let Some(&MemoryEntry::Label(mem_size)) =
-                                initial_memory.get(&memory.start)
+                                initial_memory.get(memory.start)
                             else {
                                 panic!("Memory size not found");
                             };
                             assert!(offset + data_segment.data.len() as u32 <= mem_size);
 
-                            let byte_offset = memory.start + 8 + offset;
+                            let mut byte_offset = memory.start + 8 + offset;
+                            let mut data = data_segment.data;
 
+                            // If misaligned, handle the first word separately.
                             let alignment = byte_offset % 4;
-                            let mut aligned_byte_offset = byte_offset - alignment;
-
-                            let mut values =
-                                pack_bytes_into_words(data_segment.data, alignment).into_iter();
-
-                            // Handle first element, that might need to be merged with the existing
-                            // value in memory.
                             if alignment != 0 {
-                                let Some(first_word) = values.next() else {
-                                    continue;
-                                };
-                                match initial_memory.entry(aligned_byte_offset) {
-                                    Entry::Vacant(entry) => {
-                                        entry.insert(first_word);
-                                    }
-                                    Entry::Occupied(mut entry) => {
-                                        let (
-                                            MemoryEntry::Value(old_value),
-                                            MemoryEntry::Value(new_value),
-                                        ) = (entry.get(), first_word)
-                                        else {
-                                            panic!("Memory entry is not a value");
-                                        };
+                                byte_offset -= alignment;
 
-                                        assert!(old_value >> (alignment * 8) == 0);
-                                        entry.insert(MemoryEntry::Value(old_value | new_value));
-                                    }
-                                }
-                                if data_segment.data.len() + alignment as usize <= 4 {
-                                    // The data fits in the first word, so we are done.
-                                    continue;
-                                }
+                                let first_word;
+                                (first_word, data) = data.split_at(4 - alignment as usize);
+                                initial_memory.insert_bytes(byte_offset, alignment, first_word);
+                                byte_offset += 4;
                             }
-                            aligned_byte_offset += 4;
 
-                            // Take the last element to be handled separately.
-                            let last_elem = values.next_back();
+                            // Split the last word to be handled separately, if not a full word.
+                            let last_word_len = data.len() % 4;
+                            let last_word;
+                            (data, last_word) = data.split_at(data.len() - last_word_len);
 
-                            // Proceed to copy the full words in the middle.
+                            // General case, for the word aligned middle:
+                            let values = pack_bytes_into_words(data, 0).into_iter();
                             for word in values {
-                                initial_memory.insert(aligned_byte_offset, word);
-                                aligned_byte_offset += 4;
+                                initial_memory.insert(byte_offset, word);
+                                byte_offset += 4;
                             }
 
-                            if let Some(last_elem) = last_elem {
-                                todo!()
-                            }
+                            // Insert the misaligned last word, if any.
+                            initial_memory.insert_bytes(byte_offset, 0, last_word);
                         }
                     }
                 }
