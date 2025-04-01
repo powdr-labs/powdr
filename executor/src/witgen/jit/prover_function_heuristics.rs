@@ -15,6 +15,7 @@ use powdr_number::FieldElement;
 use crate::witgen::{machines::MachineParts, FixedData};
 
 pub trait TrySymbolByName: Copy {
+    /// Tries to resolve a symbol by name.
     fn try_symbol_by_name<'a>(&'a self, name: &str) -> Option<&'a Symbol>;
 }
 
@@ -86,7 +87,7 @@ fn decode_prover_function<T: FieldElement>(
         results.into_iter().nth(index).unwrap()
     } else {
         Err(format!(
-        "Prover function not recognized.\nTried decoding 'provide_if_unknown': {}\nTried decoding 'handle_query': {}\nTried decoding 'compute_from': {}",
+        "Prover function not recognized:\n{function}\nTried decoding 'provide_if_unknown': {}\nTried decoding 'handle_query': {}\nTried decoding 'compute_from': {}",
         results[0].as_ref().err().unwrap(),
         results[1].as_ref().err().unwrap(),
         results[2].as_ref().err().unwrap(),
@@ -122,12 +123,13 @@ fn try_decode_provide_if_unknown<T>(
 }
 
 /// Decodes functions of the form
-/// ```pil
-/// query |<i>| std::prover::handle_query(<Y>, <i>, match std::prover::eval(<pc>) {
+/// ```compile_fail
+/// query |<i>| std::prover::handle_query(<Y>, <i>, match std::prover::eval(<pc>)) {
 ///   <value1> => std::prelude::Query::Output(std::convert::int::<fe>(std::prover::eval(<arg1>)), std::prover::eval(<arg2>)),
 ///   <value2> => std::prelude::Query::Input(std::convert::int::<fe>(std::prover::eval(<arg1>)), std::convert::int::<fe>(std::prover::eval(<arg2>))),
 ///   ...
 ///   _ => std::prelude::Query::None,
+/// }
 /// ```
 fn try_decode_handle_query<T>(
     index: usize,
@@ -539,13 +541,13 @@ fn unpack(mut e: &Expression) -> &Expression {
 
 impl<T: FieldElement> TrySymbolByName for &FixedData<'_, T> {
     fn try_symbol_by_name<'a>(&'a self, name: &str) -> Option<&'a Symbol> {
-        FixedData::try_symbol_by_name(self, name)
+        self.analyzed.try_symbol_by_name(name)
     }
 }
 
 impl<T> TrySymbolByName for &Analyzed<T> {
     fn try_symbol_by_name<'a>(&'a self, name: &str) -> Option<&'a Symbol> {
-        self.definitions.get(name).map(|(s, _)| s)
+        Analyzed::try_symbol_by_name(self, name)
     }
 }
 

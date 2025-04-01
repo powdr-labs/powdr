@@ -341,6 +341,7 @@ macro_rules! powdr_field_plonky3 {
         pub struct BBLargeInt(u32);
 
         impl LargeInt for BBLargeInt {
+            const MAX: Self = Self(u32::MAX);
             const NUM_BITS: usize = 32;
 
             fn to_arbitrary_integer(self) -> ibig::UBig {

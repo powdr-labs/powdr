@@ -1,7 +1,11 @@
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    iter::once,
+};
 
+use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{AlgebraicExpression, PolynomialType, SelectedExpressions},
+    analyzed::{AlgebraicExpression, PolyID, PolynomialType, SelectedExpressions},
     parsed::visitor::AllChildren,
 };
 use powdr_executor_utils::expression_evaluator::{ExpressionEvaluator, OwnedTerminalValues};
@@ -9,14 +13,11 @@ use powdr_number::FieldElement;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::witgen::{
-    data_structures::identity::convert_identities,
-    machines::{
-        profiling::{record_end, record_start},
-        Connection,
-    },
+    data_structures::identity::{convert_identities, Identity},
+    machines::profiling::{record_end, record_start},
 };
 
-use super::FixedData;
+use super::{util::try_to_simple_poly, FixedData};
 
 static MULTIPLICITY_WITGEN_NAME: &str = "multiplicity witgen";
 
@@ -30,7 +31,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
     }
 
     /// Takes a map of witness columns and extends it with the multiplicity columns
-    /// reference in the phantom lookups.
+    /// referenced by bus sends with a non-binary multiplicity.
     pub fn generate(
         &self,
         witness_columns: HashMap<String, Vec<T>>,
@@ -38,20 +39,7 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
     ) -> HashMap<String, Vec<T>> {
         record_start(MULTIPLICITY_WITGEN_NAME);
 
-        log::trace!("Starting multiplicity witness generation.");
-        let start = std::time::Instant::now();
-
-        // Several range constraints might point to the same target
-        let mut multiplicity_columns = BTreeMap::new();
-
         let (identities, _) = convert_identities(self.fixed.analyzed);
-        let phantom_lookups = identities
-            .iter()
-            .filter_map(|identity| {
-                Connection::try_new(identity, &self.fixed.bus_receives)
-                    .and_then(|connection| connection.multiplicity_column.map(|_| connection))
-            })
-            .collect::<Vec<_>>();
 
         let all_columns = witness_columns
             .into_iter()
@@ -78,64 +66,99 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             challenge_values: self.fixed.challenges.clone(),
         };
 
-        log::trace!(
-            "  Done building trace values, took: {}s",
-            start.elapsed().as_secs_f64()
-        );
+        // Index all bus receives with arbitrary multiplicity.
+        let receive_infos = self
+            .fixed
+            .bus_receives
+            .iter()
+            .filter(|(_, bus_receive)| {
+                bus_receive.has_arbitrary_multiplicity() && bus_receive.multiplicity.is_some()
+            })
+            .map(|(bus_id, bus_receive)| {
+                let SelectedExpressions {
+                    selector,
+                    expressions,
+                } = &bus_receive.selected_payload;
+                let (size, rhs_tuples) = self.get_tuples(
+                    &terminal_values,
+                    selector,
+                    &expressions.iter().collect::<Vec<_>>(),
+                );
 
-        for lookup in phantom_lookups {
-            log::trace!("  Updating multiplicity for phantom lookup: {lookup}");
-            let start = std::time::Instant::now();
+                let values_to_index = rhs_tuples
+                    .into_iter()
+                    .map(|(i, tuple)| {
+                        // There might be multiple identical rows, but it's fine, we can pick any.
+                        (tuple, i)
+                    })
+                    .collect::<HashMap<_, _>>();
 
-            let (rhs_machine_size, rhs_tuples) = self.get_tuples(&terminal_values, lookup.right);
+                let multiplicity = bus_receive.multiplicity.as_ref().unwrap();
+                (
+                    *bus_id,
+                    ReceiveInfo {
+                        multiplicity_column: try_to_simple_poly(multiplicity)
+                            .unwrap_or_else(|| {
+                                panic!("Expected simple reference, got: {multiplicity}")
+                            })
+                            .poly_id,
+                        size,
+                        values_to_index,
+                    },
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
 
-            log::trace!(
-                "    Done collecting RHS tuples, took {}s",
-                start.elapsed().as_secs_f64()
-            );
-            let start = std::time::Instant::now();
+        // A map from multiplicity column ID to the vector of multiplicities.
+        let mut multiplicity_columns = receive_infos
+            .values()
+            .map(|info| (info.multiplicity_column, vec![0; info.size]))
+            .collect::<BTreeMap<_, _>>();
 
-            let index = rhs_tuples
-                .iter()
-                .map(|(i, tuple)| {
-                    // There might be multiple identical rows, but it's fine, we can pick any.
-                    (tuple, *i)
-                })
-                .collect::<HashMap<_, _>>();
+        // Increment multiplicities for all bus sends.
+        let bus_sends = identities.iter().filter_map(|i| match i {
+            Identity::BusSend(bus_send) => match bus_send.try_to_static_bus_id() {
+                // As a performance optimization, already filter out sends with a static
+                // bus ID for which we know we don't need to track multiplicities.
+                Some(bus_id) => receive_infos.get(&bus_id).map(|_| bus_send),
+                // For dynamic sends, this optimization is not possible.
+                None => Some(bus_send),
+            },
+            _ => None,
+        });
 
-            log::trace!(
-                "    Done building index, took {}s",
-                start.elapsed().as_secs_f64()
-            );
-            let start = std::time::Instant::now();
+        for bus_send in bus_sends {
+            let SelectedExpressions {
+                selector,
+                expressions,
+            } = &bus_send.selected_payload;
 
-            let (_, lhs_tuples) = self.get_tuples(&terminal_values, lookup.left);
-
-            log::trace!(
-                "    Done collecting LHS tuples, took: {}s",
-                start.elapsed().as_secs_f64()
-            );
-            let start = std::time::Instant::now();
-
-            let multiplicity_column_id = lookup.multiplicity_column.unwrap();
-            let multiplicities = multiplicity_columns
-                .entry(multiplicity_column_id)
-                .or_insert_with(|| vec![0; rhs_machine_size]);
-            assert_eq!(multiplicities.len(), rhs_machine_size);
-
-            // Looking up the index is slow, so we do it in parallel.
-            let indices = lhs_tuples
-                .into_par_iter()
-                .map(|(_, tuple)| index[&tuple])
+            // We need to evaluate both the bus_id (to know the run-time receive) and the expressions
+            let bus_id_and_expressions = once(&bus_send.bus_id)
+                .chain(expressions.iter())
                 .collect::<Vec<_>>();
 
-            for index in indices {
-                multiplicities[index] += 1;
+            let (_, bus_id_and_expressions) =
+                self.get_tuples(&terminal_values, selector, &bus_id_and_expressions);
+
+            // Looking up the index is slow, so we do it in parallel.
+            let columns_and_indices = bus_id_and_expressions
+                .into_par_iter()
+                .filter_map(|(_, bus_id_and_expressions)| {
+                    receive_infos
+                        .get(&bus_id_and_expressions[0])
+                        .map(|receive_info| {
+                            (
+                                receive_info.multiplicity_column,
+                                receive_info.values_to_index[&bus_id_and_expressions[1..]],
+                            )
+                        })
+                })
+                .collect::<Vec<_>>();
+
+            for (multiplicity_column, index) in columns_and_indices {
+                multiplicity_columns.get_mut(&multiplicity_column).unwrap()[index] += 1;
             }
-            log::trace!(
-                "    Done updating multiplicities, took: {}s",
-                start.elapsed().as_secs_f64()
-            );
         }
 
         let columns = terminal_values
@@ -159,12 +182,13 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
     fn get_tuples(
         &self,
         terminal_values: &OwnedTerminalValues<T>,
-        selected_expressions: &SelectedExpressions<T>,
+        selector: &AlgebraicExpression<T>,
+        expressions: &[&AlgebraicExpression<T>],
     ) -> (usize, Vec<(usize, Vec<T>)>) {
-        let machine_size = selected_expressions
-            .expressions
+        let machine_size = expressions
             .iter()
-            .flat_map(|expr| expr.all_children())
+            .flat_map(|e| e.all_children())
+            .chain(selector.all_children())
             .filter_map(|expr| match expr {
                 AlgebraicExpression::Reference(ref r) => match r.poly_id.ptype {
                     PolynomialType::Committed | PolynomialType::Constant => {
@@ -178,7 +202,12 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
             // But in practice, either the machine has a (smaller) witness column, or
             // it's a fixed lookup, so there is only one size.
             .min()
-            .unwrap_or_else(|| panic!("No column references found: {selected_expressions}"));
+            .unwrap_or_else(|| {
+                panic!(
+                    "No column references found: {selector} $ [{}]",
+                    expressions.iter().map(ToString::to_string).join(", ")
+                )
+            });
 
         let tuples = (0..machine_size)
             .into_par_iter()
@@ -187,14 +216,16 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
                     terminal_values.row(row),
                     &self.fixed.intermediate_definitions,
                 );
-                let result = evaluator.evaluate(&selected_expressions.selector);
+                let selector = evaluator.evaluate(selector);
 
-                assert!(result.is_zero() || result.is_one(), "Non-binary selector");
-                result.is_one().then(|| {
+                assert!(
+                    selector.is_zero() || selector.is_one(),
+                    "Non-binary selector"
+                );
+                selector.is_one().then(|| {
                     (
                         row,
-                        selected_expressions
-                            .expressions
+                        expressions
                             .iter()
                             .map(|expression| evaluator.evaluate(expression))
                             .collect::<Vec<_>>(),
@@ -205,4 +236,11 @@ impl<'a, T: FieldElement> MultiplicityColumnGenerator<'a, T> {
 
         (machine_size, tuples)
     }
+}
+
+struct ReceiveInfo<T> {
+    multiplicity_column: PolyID,
+    size: usize,
+    /// Maps a tuple of values to its index in the trace.
+    values_to_index: HashMap<Vec<T>, usize>,
 }

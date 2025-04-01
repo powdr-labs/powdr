@@ -589,7 +589,6 @@ TermCommon<StructOption>: Box<Expression> = {
     <start:@L> <f:FunctionCall<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(f, start, end),
     <start:@L> <i:ConstantIdentifier> <end:@R> => ctx.to_expr_with_source_ref(NamespacedPolynomialReference::from_identifier(i), start, end),
     <start:@L> <g:GenericReference> <end:@R> => ctx.to_expr_with_source_ref(g, start, end),
-    <start:@L> <p:PublicIdentifier> <end:@R> => Box::new(Expression::PublicReference(ctx.source_ref(start, end), p)),
     <start:@L> <value:Number> <end:@R> => ctx.to_expr_with_source_ref(Number {value: value.into(), type_: None}, start, end),
     <start:@L> <number:TypedNumber> <end:@R> => { let (value, ty) = number; ctx.to_expr_with_source_ref(Number {value, type_: Some(ty)}, start, end) },
     <start:@L> <s:StringLiteral> <end:@R> => Box::new(Expression::String(ctx.source_ref(start, end), s)),
@@ -882,10 +881,6 @@ SpecialIdentifier: &'input str = {
 
 ConstantIdentifier: String = {
     r"%[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.to_string(),
-}
-
-PublicIdentifier: String = {
-    r":[a-zA-Z_][a-zA-Z$_0-9@]*" => <>.strip_prefix(":").unwrap().to_string()
 }
 
 Number: BigUint = {

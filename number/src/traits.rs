@@ -28,6 +28,8 @@ pub trait LargeInt:
     + BitAndAssign
     + AddAssign
     + Add<Output = Self>
+    + SubAssign
+    + Sub<Output = Self>
     + fmt::Display
     + fmt::Debug
     + Copy
@@ -39,6 +41,8 @@ pub trait LargeInt:
     + ConstZero
     + fmt::LowerHex
 {
+    /// The largest value of this type, i.e. 2**NUM_BITS - 1
+    const MAX: Self;
     /// Number of bits of this base type. Not to be confused with the number of bits
     /// of the field elements!
     const NUM_BITS: usize;

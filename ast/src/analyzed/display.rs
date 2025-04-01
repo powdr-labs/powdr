@@ -95,6 +95,15 @@ impl<T: Display> Display for Analyzed<T> {
                                 format_witness_column(&name, symbol, definition),
                             )?,
                             SymbolKind::Poly(PolynomialType::Intermediate) => unreachable!(),
+                            SymbolKind::Public() => {
+                                if let Some(FunctionValueDefinition::PublicDeclaration(decl)) =
+                                    definition
+                                {
+                                    writeln_indented(f, format_public_declaration(&name, decl))?;
+                                } else {
+                                    unreachable!() // For now, public symbol should always have a public declaration
+                                }
+                            }
                             SymbolKind::Other() => {
                                 assert!(symbol.stage.is_none());
                                 match definition {
@@ -158,11 +167,6 @@ impl<T: Display> Display for Analyzed<T> {
                     } else {
                         panic!()
                     }
-                }
-                StatementIdentifier::PublicDeclaration(name) => {
-                    let decl = &self.public_declarations[name];
-                    let name = update_namespace(&decl.name, f)?;
-                    writeln_indented(f, format_public_declaration(&name, decl))?;
                 }
                 StatementIdentifier::ProofItem(i) => {
                     writeln_indented(f, &self.identities[*i])?;
@@ -243,14 +247,7 @@ fn format_witness_column(
 }
 
 fn format_public_declaration(name: &str, decl: &PublicDeclaration) -> String {
-    format!(
-        "public {name} = {}{}({});",
-        decl.polynomial,
-        decl.array_index
-            .map(|i| format!("[{i}]"))
-            .unwrap_or_default(),
-        decl.index
-    )
+    format!("public {name} = {};", decl.value)
 }
 
 impl Display for FunctionValueDefinition {
@@ -277,7 +274,8 @@ impl Display for FunctionValueDefinition {
             FunctionValueDefinition::TypeDeclaration(_)
             | FunctionValueDefinition::TypeConstructor(_, _)
             | FunctionValueDefinition::TraitDeclaration(_)
-            | FunctionValueDefinition::TraitFunction(_, _) => {
+            | FunctionValueDefinition::TraitFunction(_, _)
+            | FunctionValueDefinition::PublicDeclaration(_) => {
                 panic!("Should not use this formatting function.")
             }
         }
@@ -484,7 +482,7 @@ impl<T: Display> Display for AlgebraicExpression<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             AlgebraicExpression::Reference(reference) => write!(f, "{reference}"),
-            AlgebraicExpression::PublicReference(name) => write!(f, ":{name}"),
+            AlgebraicExpression::PublicReference(name) => write!(f, "{name}"),
             AlgebraicExpression::Challenge(challenge) => {
                 write!(
                     f,

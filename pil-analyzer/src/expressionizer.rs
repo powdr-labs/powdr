@@ -295,9 +295,13 @@ impl Expressionizer<'_> {
             }
             .into(),
 
-            AlgebraicExpression::PublicReference(s) => {
-                Expression::PublicReference(SourceRef::unknown(), s.clone())
-            }
+            AlgebraicExpression::PublicReference(s) => Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: s.clone(),
+                    type_args: None,
+                }),
+            ),
         })
     }
 

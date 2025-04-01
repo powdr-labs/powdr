@@ -19,7 +19,7 @@ fn executor_benchmark(c: &mut Criterion) {
     let options = CompilerOptions::new_gl();
     let contents = elf::translate(&executable, options);
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
-    pipeline.compute_optimized_pil().unwrap();
+    pipeline.compute_backend_tuned_pil().unwrap();
     pipeline.compute_fixed_cols().unwrap();
 
     group.bench_function("keccak", |b| {

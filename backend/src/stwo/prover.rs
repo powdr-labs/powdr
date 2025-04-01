@@ -410,12 +410,14 @@ where
             let stage1_witness_cols = witness_by_machine
                 .iter()
                 .map(|(machine_name, machine_witness)| {
-                    witgen_callback.next_stage_witness(
-                        &self.split[&machine_name.clone()],
-                        machine_witness,
-                        stage0_challenges.clone(),
-                        1,
-                    )
+                    witgen_callback
+                        .next_stage_witness(
+                            &self.split[&machine_name.clone()],
+                            machine_witness,
+                            stage0_challenges.clone(),
+                            1,
+                        )
+                        .0
                 })
                 .collect_vec();
 

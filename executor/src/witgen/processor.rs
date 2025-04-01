@@ -11,9 +11,9 @@ use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 
-use super::data_structures::identity::Identity;
+use super::data_structures::identity::{BusReceive, Identity};
 use super::global_constraints::RangeConstraintSet;
-use super::machines::{Connection, MachineParts};
+use super::machines::MachineParts;
 use super::FixedData;
 use super::{
     affine_expression::AffineExpression,
@@ -55,7 +55,7 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
     /// Range constraints of the caller.
     pub range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     /// Connection.
-    pub connection: Connection<'a, T>,
+    pub bus_receive: &'a BusReceive<T>,
     /// The payload of the calling bus send, evaluated.
     pub arguments: Arguments<'a, T>,
 }
@@ -64,11 +64,11 @@ impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
     pub fn new(
         arguments: &'b [AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &'b dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
-        connection: Connection<'a, T>,
+        bus_receive: &'a BusReceive<T>,
     ) -> Self {
         Self {
             range_constraints,
-            connection,
+            bus_receive,
             arguments: arguments.to_vec(),
         }
     }
@@ -164,11 +164,11 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
         for (l, r) in outer_query
             .arguments
             .iter()
-            .zip(&outer_query.connection.right.expressions)
+            .zip(&outer_query.bus_receive.selected_payload.expressions)
         {
             if let Some(right_poly) = try_to_simple_poly(r).map(|p| p.poly_id) {
                 if let Some(l) = l.constant_value() {
-                    log::trace!("    {} = {}", r, l);
+                    log::trace!("    {r} = {l}");
                     inputs.push((right_poly, l));
                 }
             }
@@ -212,7 +212,7 @@ impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
             .as_ref()
             .and_then(|outer_query| {
                 row_pair
-                    .evaluate(&outer_query.connection.right.selector)
+                    .evaluate(&outer_query.bus_receive.selected_payload.selector)
                     .ok()
             })
             .and_then(|l| l.constant_value())
@@ -322,9 +322,14 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         row_index: usize,
     ) -> Result<(bool, Constraints<AlgebraicVariable<'a>, T>), EvalError<T>> {
         let mut progress = false;
-        let right = self.outer_query.as_ref().unwrap().connection.right;
+        let receive_payload = &self
+            .outer_query
+            .as_ref()
+            .unwrap()
+            .bus_receive
+            .selected_payload;
         progress |= self
-            .set_value(row_index, &right.selector, T::one(), || {
+            .set_value(row_index, &receive_payload.selector, T::one(), || {
                 "Set selector to 1".to_string()
             })
             .unwrap_or(false);
@@ -350,9 +355,13 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             .map_err(|e| {
                 log::warn!("Error in outer query: {e}");
                 log::warn!("Some of the following entries could not be matched:");
-                for (l, r) in outer_query.arguments.iter().zip(right.expressions.iter()) {
+                for (l, r) in outer_query
+                    .arguments
+                    .iter()
+                    .zip(receive_payload.expressions.iter())
+                {
                     if let Ok(r) = row_pair.evaluate(r) {
-                        log::warn!("  => {} = {}", l, r);
+                        log::warn!("  => {l} = {r}");
                     }
                 }
                 e
@@ -454,7 +463,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 AlgebraicVariable::Public(name) => {
                     if let Constraint::Assignment(v) = c {
                         // There should be only few publics, so this can be logged with info.
-                        log::info!("      => {} (public) = {}", name, v);
+                        log::info!("      => {name} (public) = {v}");
                         assert!(
                             self.publics.insert(name, *v).is_none(),
                             "value was already set!"
@@ -471,7 +480,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                         self.propagate_along_copy_constraints(row_index, poly, c);
                     } else if let Constraint::Assignment(v) = c {
                         let left = &mut self.outer_query.as_mut().unwrap().arguments;
-                        log::trace!("      => {} (outer) = {}", poly, v);
+                        log::trace!("      => {poly} (outer) = {v}");
                         for l in left.iter_mut() {
                             l.assign(*var, *v);
                         }
@@ -624,7 +633,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 "Proposed {:?}",
                 proposed_row.render_values(true, self.parts)
             );
-            log::trace!("Failed on identity: {}", identity);
+            log::trace!("Failed on identity: {identity}");
 
             return false;
         }
