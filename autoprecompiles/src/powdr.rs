@@ -685,6 +685,21 @@ pub fn substitute_algebraic<T: Clone>(
     );
 }
 
+pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
+    expr: &mut AlgebraicExpression<T>,
+    sub: &BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>>,
+) {
+    expr.visit_expressions_mut(
+        &mut |expr| {
+            if let Some(sub_expr) = sub.get(expr) {
+                *expr = sub_expr.clone();
+            }
+            ControlFlow::Continue::<()>(())
+        },
+        VisitOrder::Pre,
+    );
+}
+
 pub fn append_suffix_algebraic<T: Clone>(
     expr: &mut AlgebraicExpression<T>,
     suffix: &str,

@@ -575,7 +575,7 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
                                 AlgebraicBinaryOperator::Sub,
                                 old_data.clone(),
                             );
-                            let eq_expr = bus_int.mult.clone() * eq_expr;
+                            //let eq_expr = bus_int.mult.clone() * eq_expr;
                             //println!("New constraint: {eq_expr}");
                             new_constraints.push(eq_expr.into());
                         });
@@ -728,8 +728,9 @@ pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sy
     );
 
     let mut first_seen = false;
-    let mut new_constraints = Vec::new();
     let mut latest_send = None;
+    let mut subs_pc: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
+    let mut subs_ts: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
     machine.bus_interactions.retain(|bus_int| {
         if bus_int.id != EXECUTION_BUS_ID {
             return true;
@@ -742,34 +743,36 @@ pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sy
             true
         } else if bus_int.kind == BusInteractionKind::Send {
             // Save the latest send and remove the bus interaction
-            latest_send = Some(bus_int.clone());
+            let mut pc_expr = bus_int.args[0].clone();
+            powdr::substitute_algebraic_algebraic(&mut pc_expr, &subs_pc);
+            pc_expr = simplify_expression(pc_expr);
+
+            let mut ts_expr = bus_int.args[1].clone();
+            powdr::substitute_algebraic_algebraic(&mut ts_expr, &subs_ts);
+            ts_expr = simplify_expression(ts_expr);
+
+            let mut send = bus_int.clone();
+            send.args[0] = pc_expr;
+            send.args[1] = ts_expr;
+
+            latest_send = Some(send);
             false
         } else {
             // Equate the latest send to the new receive and remove the bus interaction
-            let send = latest_send.clone().unwrap();
-            let pc_eq = AlgebraicExpression::new_binary(
+            subs_pc.insert(
                 bus_int.args[0].clone(),
-                AlgebraicBinaryOperator::Sub,
-                send.args[0].clone(),
+                latest_send.clone().unwrap().args[0].clone(),
             );
-            let pc_eq = send.mult.clone() * pc_eq;
-            let ts_eq = AlgebraicExpression::new_binary(
+            subs_ts.insert(
                 bus_int.args[1].clone(),
-                AlgebraicBinaryOperator::Sub,
-                send.args[1].clone(),
+                latest_send.clone().unwrap().args[1].clone(),
             );
-            let ts_eq = send.mult.clone() * ts_eq;
-            new_constraints.push(pc_eq.into());
-            new_constraints.push(ts_eq.into());
             false
         }
     });
 
     // Re-add the last send
     machine.bus_interactions.push(latest_send.unwrap());
-
-    // Add the new constraints
-    machine.constraints.extend(new_constraints);
 
     println!(
         "After autoprecompile exec optimizations, columns: {}, constraints: {}, bus_interactions: {}",
@@ -876,10 +879,10 @@ pub fn generate_precompile<T: FieldElement>(
                         });
                 }
 
-                for l in &local_constraints {
-                    println!("Local constraint: {}", l.expr);
-                }
-                println!("\nSubmap = {sub_map:?}\n");
+                // for l in &local_constraints {
+                //     println!("Local constraint: {}", l.expr);
+                // }
+                // println!("\nSubmap = {sub_map:?}\n");
 
                 let mut local_subs = BTreeMap::new();
 
@@ -905,20 +908,20 @@ pub fn generate_precompile<T: FieldElement>(
                     .iter()
                     .chain(local_constraints.iter())
                     .map(|expr| {
-                        println!("handling local identity {}", expr.expr);
+                        // println!("handling local identity {}", expr.expr);
                         let mut expr = expr.expr.clone();
                         let old_expr = expr.clone();
                         powdr::substitute_algebraic(&mut expr, &sub_map);
-                        println!("after sub became identity {expr}");
+                        // println!("after sub became identity {expr}");
                         let is_new = expr != old_expr;
                         let subs = powdr::append_suffix_algebraic(&mut expr, &format!("{i}"));
-                        println!("after suffix became identity {expr}");
+                        // println!("after suffix became identity {expr}");
                         expr = simplify_expression(expr);
-                        println!("after simplify became identity {expr}");
+                        // println!("after simplify became identity {expr}");
                         if is_new {
-                            println!("Substutition was made, applying is_valid multiplication");
+                            // println!("Substutition was made, applying is_valid multiplication");
                             expr = is_valid.clone() * expr;
-                            println!("after is_valid mult became identity {expr}");
+                            // println!("after is_valid mult became identity {expr}");
                         }
                         global_idx = powdr::reassign_ids_algebraic(
                             &mut expr,
@@ -926,7 +929,7 @@ pub fn generate_precompile<T: FieldElement>(
                             &mut global_idx_subs,
                             &mut global_idx_subs_rev,
                         );
-                        println!("became identity {expr}");
+                        // println!("became identity {expr}");
                         local_subs.extend(subs);
                         SymbolicConstraint { expr }
                     })
@@ -962,7 +965,7 @@ pub fn generate_precompile<T: FieldElement>(
                 col_subs.push(local_subs);
 
                 if optimize {
-                    println!("Simplifying local bus interactions");
+                    // println!("Simplifying local bus interactions");
                     // after the first round of simplifying,
                     // we need to look for register memory bus interactions
                     // and replace the addr by the first argument of the instruction
