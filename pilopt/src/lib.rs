@@ -891,22 +891,6 @@ fn try_to_linearly_constrained<T: FieldElement>(
             return None;
         }
 
-        // we require `right` not to be a single, non-shifted, witness column, because this case is already covered and does not require an intermediate column
-        // TODO: maybe we should avoid this edge case by removing the other optimizer
-        if matches!(
-            right,
-            AlgebraicExpression::Reference(AlgebraicReference {
-                poly_id: PolyID {
-                    ptype: PolynomialType::Committed,
-                    ..
-                },
-                next: false,
-                ..
-            })
-        ) {
-            return None;
-        }
-
         Some(((w.name.clone(), w.poly_id), right.clone()))
     };
 
