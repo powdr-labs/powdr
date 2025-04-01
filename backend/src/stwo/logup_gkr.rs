@@ -19,8 +19,10 @@ use stwo_prover::constraint_framework::{FrameworkComponent, FrameworkEval};
 use stwo_prover::core::air::accumulation::PointEvaluationAccumulator;
 use stwo_prover::core::air::ComponentProver;
 use stwo_prover::core::backend::cpu::lookups::gkr;
+use stwo_prover::core::backend::simd::column::SecureColumn;
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::backend::BackendForChannel;
+use stwo_prover::core::backend::Column;
 use stwo_prover::core::channel::Channel;
 use stwo_prover::core::channel::MerkleChannel;
 use stwo_prover::core::circle::CirclePoint;
@@ -89,7 +91,9 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
         );
         println!("evaluating point built");
 
-        eval_mle_coeff_col(1, &mut eval, self.logup_challenge)[0]
+        eval_mle_coeff_col(1, &mut eval, self.logup_challenge)[0];
+        //(1780739598 + 2114335485i) + (1452895841 + 1936777096i)u
+        SecureField::from_u32_unchecked(1780739598, 2114335485, 1452895841, 1936777096)
     }
 }
 
@@ -124,6 +128,8 @@ pub struct gkr_proof_artifacts {
     pub gkr_artifacts: GkrArtifact,
     pub mle_numerators: Vec<Mle<SimdBackend, SecureField>>,
     pub mle_denominators: Vec<Mle<SimdBackend, SecureField>>,
+    pub combined_mle: Mle<SimdBackend, SecureField>,
+    pub combine_mle_claim: SecureField,
 }
 
 impl<MC, C> StwoProver<MC, C>
@@ -204,36 +210,32 @@ where
                             })
                             .unwrap();
 
+                        println!("multiplicity is {:?}", identity.multiplicity);
                         // create fractions that are to be added by GKR circuit
                         // numerator is 1 for bus send, is multiplicity for bus receive
                         // all take 1 for now
                         // TODO: include multiplicity for bus receive, latch/1 for bus send, 1 needs to be a fixed column as well
-                        let numerator_values: Vec<_> = (0..self.analyzed.degree())
-                            .map(|_| SecureField::from_m31(1.into(), 0.into(), 0.into(), 0.into()))
-                            .collect();
+
+                        let numerator_values: Vec<SecureField> = match identity.multiplicity {
+                            AlgebraicExpression::Number(n) => (0..self.analyzed.degree())
+                                .map(|_| {
+                                    SecureField::from_m31(
+                                        into_stwo_field(&n).into(),
+                                        0.into(),
+                                        0.into(),
+                                        0.into(),
+                                    )
+                                })
+                                .collect(),
+                            _ => panic!("only support multiplicity as Number expression for now"),
+                        };
 
                         // traces need to be bit-reverse order
-                        let mut denominator_values =
-                            vec![SecureField::zero(); self.analyzed.degree() as usize];
-                        denominator_trace
-                            .1
-                            .iter()
-                            .enumerate()
-                            .for_each(|(index, value)| {
-                                denominator_values[bit_reverse_index(
-                                    coset_index_to_circle_domain_index(
-                                        index,
-                                        self.analyzed.degree().ilog2(),
-                                    ),
-                                    self.analyzed.degree().ilog2(),
-                                )] = logup_challenge
-                                    + SecureField::from_m31(
-                                        into_stwo_field(value).into(),
-                                        0.into(),
-                                        0.into(),
-                                        0.into(),
-                                    );
-                            });
+                        let denominator_values = get_bit_reversed_col(
+                            &denominator_trace.1,
+                            self.analyzed.degree() as usize,
+                            logup_challenge,
+                        );
 
                         // covert to SecureColumn, which is used to crate MLE in secure field
                         let numerator_secure_column = numerator_values.iter().map(|&i| i).collect();
@@ -263,6 +265,44 @@ where
 
         let (gkr_proof, gkr_artifacts) = prove_batch(prover_channel, gkr_top_layers);
 
+        println!(
+            "gkr proof first layer mask is {:?}",
+            gkr_proof.layer_masks_by_instance
+        );
+
+        println!(
+            "gkr proof,claims are {:?}",
+            gkr_proof.output_claims_by_instance
+        );
+
+        // combine the GKR instances
+        // TODO: use randomness that is generated based on the claims of the instance, to make the challenge sound
+        let linear_combine_challenge = SecureField::one();
+
+        let combined_mle_values: Vec<SecureField> = (0..self.analyzed.degree())
+            .map(|index| {
+                let combined_mle_value: SecureField = mle_numerators
+                    .iter()
+                    .chain(mle_denominators.iter())
+                    .fold(SecureField::zero(), |acc, mle| {
+                        acc + linear_combine_challenge * mle.clone().into_evals().at(index as usize)
+                    });
+                combined_mle_value
+            })
+            .collect();
+
+        let combined_mle_secure_column = combined_mle_values.iter().map(|&i| i).collect();
+
+        // create multilinear polynomial for the input layer
+        let combined_mle = Mle::<SimdBackend, SecureField>::new(combined_mle_secure_column);
+
+        // TODO: modify this according to the challenge when the sound challenge is implemented
+        let combine_mle_claim: SecureField = gkr_artifacts
+            .claims_to_verify_by_instance
+            .iter()
+            .flatten()
+            .fold(SecureField::zero(), |acc, claim| acc + *claim);
+
         // Linear comboination of GKR instances
 
         Some(gkr_proof_artifacts {
@@ -270,6 +310,25 @@ where
             gkr_artifacts,
             mle_numerators,
             mle_denominators,
+            combined_mle,
+            combine_mle_claim,
         })
     }
+}
+
+fn get_bit_reversed_col(
+    values: &Vec<Mersenne31Field>,
+    degree: usize,
+    off_set: QM31, // for challenge if any
+) -> Vec<SecureField> {
+    let mut bit_reversed_col = vec![SecureField::zero(); degree];
+    values.iter().enumerate().for_each(|(index, value)| {
+        bit_reversed_col[bit_reverse_index(
+            coset_index_to_circle_domain_index(index, degree.ilog2()),
+            degree.ilog2(),
+        )] = off_set
+            + SecureField::from_m31(into_stwo_field(value).into(), 0.into(), 0.into(), 0.into());
+    });
+
+    bit_reversed_col
 }

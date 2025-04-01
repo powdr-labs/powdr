@@ -511,13 +511,12 @@ where
 
             let mut tree_builder = commitment_scheme.tree_builder();
             tree_builder.extend_evals(build_trace(
-                &gkr_proof_artifacts.mle_denominators[0],
+                &gkr_proof_artifacts.combined_mle,
                 &gkr_proof_artifacts.gkr_artifacts.ood_point,
-                gkr_proof_artifacts
-                    .gkr_artifacts
-                    .claims_to_verify_by_instance[0][1],
+                gkr_proof_artifacts.combine_mle_claim,
             ));
             tree_builder.commit(prover_channel);
+            // machine_log_sizes.insert("mle".to_string(), gkr_proof_artifacts.mle_denominators[0].n_variables() as u32);
         } else {
         };
 
@@ -577,10 +576,8 @@ where
                 tree_span_provider,
                 &wrapped_component,
                 &gkr_proof_artifacts.gkr_artifacts.ood_point,
-                gkr_proof_artifacts.mle_denominators[0].clone(),
-                gkr_proof_artifacts
-                    .gkr_artifacts
-                    .claims_to_verify_by_instance[0][1],
+                gkr_proof_artifacts.combined_mle.clone(),
+                gkr_proof_artifacts.combine_mle_claim,
                 &twiddles_max_degree,
                 MLE_TRACE_IDX,
             );
@@ -743,11 +740,27 @@ where
 
         let gkr_verifier_channel = &mut <MC as MerkleChannel>::C::default();
         if let Some(gkr_proof) = &proof.gkr_proof {
+            //let gkr_trace_size=proof.machine_log_sizes.get("mle").unwrap();
+
             let GkrArtifact {
                 ood_point,
                 claims_to_verify_by_instance,
-                n_variables_by_instance: _,
-            } = partially_verify_batch(vec![Gate::LogUp;2], gkr_proof, gkr_verifier_channel).unwrap();
+                n_variables_by_instance,
+            } = partially_verify_batch(vec![Gate::LogUp; 2], gkr_proof, gkr_verifier_channel)
+                .unwrap();
+
+            // TODO: modify this according to the challenge when the sound challenge is implemented
+            let combine_mle_claim: SecureField = claims_to_verify_by_instance
+                .iter()
+                .flatten()
+                .fold(SecureField::zero(), |acc, claim| acc + *claim);
+
+            commitment_scheme.commit(
+                proof.stark_proof.commitments[MLE_TRACE_IDX],
+                // 8 is number of the extra columns for GKR
+                &vec![n_variables_by_instance[0] as u32; 8],
+                verifier_channel,
+            );
 
             let alpha = SecureField::from_u32_unchecked(42, 42, 42, 42);
             let last_component = components.last().unwrap(); // &FrameworkComponent
@@ -759,7 +772,7 @@ where
                 tree_span_provider,
                 &wrapped_component,
                 &ood_point,
-                claims_to_verify_by_instance[0][1],
+                combine_mle_claim,
                 MLE_TRACE_IDX,
             );
 
