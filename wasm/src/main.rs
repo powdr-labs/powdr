@@ -6,9 +6,9 @@ use std::{
 
 use powdr_syscalls::Syscall;
 use wasmparser::{
-    BlockType, CompositeInnerType, ElementItems, FuncType, FunctionBody, LocalsReader, MemoryType,
-    Operator, OperatorsIterator, OperatorsReader, Parser, Payload, RefType, SubType, TableInit,
-    TypeRef, ValType,
+    BlockType, CompositeInnerType, ContType, ElementItems, FuncType, FunctionBody, LocalsReader,
+    MemoryType, ModuleArity, Operator, OperatorsIterator, OperatorsReader, Parser, Payload,
+    RefType, SubType, TableInit, TypeRef, ValType,
 };
 
 /// WASM defined page size is 64 KiB.
@@ -68,7 +68,7 @@ impl MemoryAllocator {
 }
 
 struct ModuleContext {
-    types: Vec<FuncType>,
+    types: Vec<SubType>,
     func_types: Vec<u32>,
     imported_functions: Vec<Syscall>,
     tables: Vec<Segment>,
@@ -81,7 +81,11 @@ struct ModuleContext {
 
 impl ModuleContext {
     fn get_type(&self, type_idx: u32) -> &FuncType {
-        &self.types[type_idx as usize]
+        let subtype = &self.types[type_idx as usize];
+        match &subtype.composite_type.inner {
+            CompositeInnerType::Func(f) => f,
+            _ => panic!("gc proposal not supported"),
+        }
     }
 
     fn get_func_type(&self, func_idx: u32) -> &FuncType {
@@ -302,7 +306,7 @@ fn main() -> wasmparser::Result<()> {
                     let mut iter = rec_group?.into_types();
                     let ty = match (iter.next(), iter.next()) {
                         (Some(subtype), None) => match &subtype.composite_type.inner {
-                            CompositeInnerType::Func(f) => f.clone(),
+                            CompositeInnerType::Func(_) => subtype,
                             _ => {
                                 unsupported_feature_found = true;
                                 log::error!("unsupported types from GC proposal found");
@@ -318,8 +322,9 @@ fn main() -> wasmparser::Result<()> {
                             continue;
                         }
                     };
-                    log::debug!("Type read: {ty:?}");
+                    let type_idx = ctx.types.len() as u32;
                     ctx.types.push(ty);
+                    log::debug!("Type read: {:?}", ctx.get_type(type_idx));
                 }
             }
             Payload::ImportSection(section) => {
@@ -376,12 +381,12 @@ fn main() -> wasmparser::Result<()> {
                 log::debug!("Function Section found");
                 for type_idx in section {
                     let type_idx = type_idx?;
-                    log::debug!(
-                        "Type of function {}: {type_idx} ({:?})",
-                        ctx.func_types.len(),
-                        ctx.types[type_idx as usize]
-                    );
+                    let func_idx = ctx.func_types.len() as u32;
                     ctx.func_types.push(type_idx);
+                    log::debug!(
+                        "Type of function {func_idx}: {type_idx} ({:?})",
+                        ctx.get_type(type_idx)
+                    );
                 }
             }
             Payload::TableSection(section) => {
@@ -973,7 +978,7 @@ fn infinite_registers_allocation<'a>(
                 }
             }
             Operator::End => {
-                let last_frame = tracker.control_stack.pop().unwrap();
+                let last_frame = tracker.control_stack.last().unwrap();
                 match last_frame.frame_kind {
                     FrameKind::If {
                         target_label,
@@ -994,6 +999,7 @@ fn infinite_registers_allocation<'a>(
                         directives.extend(tracker.return_code());
                     }
                 }
+                tracker.control_stack.pop().unwrap();
             }
             Operator::Br { relative_depth } => {
                 directives.extend(tracker.br_code(relative_depth));
@@ -1119,6 +1125,13 @@ fn infinite_registers_allocation<'a>(
             } => todo!(),
             op => {
                 let (inputs, output) = tracker.get_operator_type(&op).unwrap();
+
+                // Sanity check with wasmparser that we agree on the number of inputs and outputs.
+                let Some((input_count, output_count)) = op.operator_arity(&tracker) else {
+                    panic!("wasmparser could not determine the arity of {op:?}");
+                };
+                assert_eq!(inputs.len(), input_count as usize);
+                assert_eq!(output.map_or(0, |_| 1), output_count);
 
                 let (_, inputs, output) =
                     tracker.apply_operation_to_stack(&inputs, output.as_slice());
@@ -1395,7 +1408,6 @@ impl<'a> StackTracker<'a> {
 
         self.assert_types_on_stack(args);
 
-        // Copy the outputs to the expected height, if needed.
         let mut directives = Vec::new();
 
         let jump_directive = match target_frame.frame_kind {
@@ -1410,11 +1422,16 @@ impl<'a> StackTracker<'a> {
             },
         };
 
+        // Copy the outputs to the expected height, if needed.
         let stack = self.stack.slice();
-        if stack[stack.len() - args.len()].address != target_frame.stack_height {
+        if stack.len() > args.len() {
             let src_args = &stack[(stack.len() - args.len())..];
 
             let dest_pos = stack.partition_point(|v| v.address < target_frame.stack_height);
+
+            for v in stack.iter() {
+                log::debug!("### {}: {:?}", v.address, v.val_type);
+            }
 
             let mut dest_stack_top = stack
                 .get(dest_pos)
@@ -1810,5 +1827,46 @@ impl<'a> StackTracker<'a> {
         };
 
         Some(ty)
+    }
+}
+
+impl ModuleArity for StackTracker<'_> {
+    fn sub_type_at(&self, type_idx: u32) -> Option<&SubType> {
+        self.module.types.get(type_idx as usize)
+    }
+
+    fn tag_type_arity(&self, _at: u32) -> Option<(u32, u32)> {
+        panic!("exception handling proposal not supported")
+    }
+
+    fn type_index_of_function(&self, function_idx: u32) -> Option<u32> {
+        self.module.func_types.get(function_idx as usize).copied()
+    }
+
+    fn func_type_of_cont_type(&self, _c: &ContType) -> Option<&FuncType> {
+        panic!("continuations proposal not supported")
+    }
+
+    fn sub_type_of_ref_type(&self, _rt: &RefType) -> Option<&SubType> {
+        panic!("gc proposal not supported")
+    }
+
+    fn control_stack_height(&self) -> u32 {
+        self.control_stack.len() as u32
+    }
+
+    fn label_block(&self, depth: u32) -> Option<(wasmparser::BlockType, wasmparser::FrameKind)> {
+        self.control_stack.get(depth as usize + 1).map(|frame| {
+            (
+                frame.blockty,
+                match frame.frame_kind {
+                    FrameKind::Block { .. } => wasmparser::FrameKind::Block,
+                    FrameKind::Loop { .. } => wasmparser::FrameKind::Loop,
+                    FrameKind::If { .. } => wasmparser::FrameKind::If,
+                    FrameKind::Else { .. } => wasmparser::FrameKind::Else,
+                    _ => unreachable!(),
+                },
+            )
+        })
     }
 }
