@@ -238,6 +238,16 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         offset: T,
         row_offset: i32,
     ) -> Result<Vec<Variable>, Error> {
+        println!("Only concrete.");
+        // Try to propagate range constraints.
+        let result_concrete = self.process_equation_on_row_using_evaluator(
+            lhs,
+            variable.clone(),
+            offset,
+            row_offset,
+            true,
+        )?;
+        println!("Generic.");
         // Try to find a new assignment to a variable in the equality.
         let mut result = self.process_equation_on_row_using_evaluator(
             lhs,
@@ -246,9 +256,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             row_offset,
             false,
         )?;
-        // Try to propagate range constraints.
-        let result_concrete =
-            self.process_equation_on_row_using_evaluator(lhs, variable, offset, row_offset, true)?;
 
         // We only use the effects of the second evaluation,
         // its `complete` flag is ignored.
@@ -872,5 +879,43 @@ Xor::B[5] = (Xor::B[4] + (Xor::B_byte[4] * 256));
 Xor::B[6] = (Xor::B[5] + (Xor::B_byte[5] * 65536));
 Xor::B[7] = (Xor::B[6] + (Xor::B_byte[6] * 16777216));"
         );
+    }
+
+    #[test]
+    fn solve_quadratic_constraints() {
+        let input = "
+namespace main_auipc(4096);
+    pol commit from_pc;
+    pol commit var_0;
+    pol commit var_1;
+    pol commit var_2;
+    pol commit var_3;
+    pol commit var_4;
+    pol commit var_5;
+    pol commit var_6;
+    pol commit var_7;
+    pol commit var_8;
+    pol commit var_9;
+    pol commit var_10;
+
+    var_0 * (var_0 - 1) = 0;
+    var_0 * (var_7 - (from_pc - (0 + var_4 * 256 + var_5 * 65536 + var_6 * 16777216))) = 0;
+    var_0 * (2005401601 * (var_4 + var_1 - var_8 + 0) * (2005401601 * (var_4 + var_1 - var_8 + 0) - 1)) = 0;
+
+    let BYTE: col = |i| i & 0xff;
+    let FIVEBITS: col = |i| i & 0x1f;
+    [ var_1 ] in [ BYTE ];
+    [ var_2 ] in [ BYTE ];
+    [ var_3 ] in [ BYTE ];
+    [ var_4 ] in [ BYTE ];
+    [ var_5 ] in [ BYTE ];
+    [ var_6 ] in [ FIVEBITS ];
+    [ var_7 ] in [ BYTE ];
+    [ var_8 ] in [ BYTE ];
+    [ var_9 ] in [ BYTE ];
+    [ var_10 ] in [ BYTE ];
+        ";
+        let code = solve_on_rows(input, &[0], vec![]);
+        assert_eq!(code, "main_auipc::var_1[0] = 0;");
     }
 }
