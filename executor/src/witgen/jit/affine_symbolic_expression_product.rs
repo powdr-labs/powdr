@@ -6,8 +6,11 @@ use std::{
 use itertools::Itertools;
 use powdr_number::FieldElement;
 
+use crate::witgen::jit::effect::format_code;
+
 use super::{
     affine_symbolic_expression::{AffineSymbolicExpression, Error, ProcessResult},
+    effect::Effect,
     symbolic_expression::SymbolicExpression,
 };
 
@@ -40,17 +43,6 @@ impl<T: FieldElement, V: Ord + Clone + Display, K: Into<AffineSymbolicExpression
 }
 
 impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpressionProduct<T, V> {
-    //     pub fn from_known_symbol(symbol: V, rc: RangeConstraint<T>) -> Self {
-    //         SymbolicExpression::from_symbol(symbol, rc).into()
-    //     }
-    //     pub fn from_unknown_variable(var: V, rc: RangeConstraint<T>) -> Self {
-    //         AffineSymbolicExpression {
-    //             coefficients: [(var.clone(), T::from(1).into())].into_iter().collect(),
-    //             offset: SymbolicExpression::from(T::from(0)),
-    //             range_constraints: [(var.clone(), rc)].into_iter().collect(),
-    //         }
-    //     }
-
     /// If this expression does not contain unknown variables, returns the symbolic expression.
     pub fn try_to_known(&self) -> Option<&SymbolicExpression<T, V>> {
         if let Self::Affine(affine) = self {
@@ -60,48 +52,6 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpressionProduct<
         }
     }
 
-    //     /// Returns the range constraint of the whole expression.
-    //     /// This only works for simple expressions since all coefficients
-    //     /// must be known numbers.
-    //     pub fn range_constraint(&self) -> RangeConstraint<T> {
-    //         self.coefficients
-    //             .iter()
-    //             .map(|(var, coeff)| {
-    //                 let coeff = coeff.try_to_number()?;
-    //                 let rc = self.range_constraints.get(var)?;
-    //                 Some(rc.multiple(coeff))
-    //             })
-    //             .collect::<Option<Vec<_>>>()
-    //             .and_then(|summands| {
-    //                 summands
-    //                     .into_iter()
-    //                     .chain(std::iter::once(self.offset.range_constraint()))
-    //                     .reduce(|c1, c2| c1.combine_sum(&c2))
-    //             })
-    //             .unwrap_or_default()
-    //     }
-
-    //     /// If this expression contains a single unknown variable, returns it.
-    //     pub fn single_unknown_variable(&self) -> Option<&V> {
-    //         if self.coefficients.len() == 1 {
-    //             self.coefficients.keys().next()
-    //         } else {
-    //             None
-    //         }
-    //     }
-
-    //     /// Tries to multiply this expression with another one.
-    //     /// Returns `None` if the result would be quadratic, i.e.
-    //     /// if both expressions contain unknown variables.
-    //     pub fn try_mul(&self, other: &Self) -> Option<Self> {
-    //         if let Some(multiplier) = other.try_to_known() {
-    //             Some(self.clone() * multiplier)
-    //         } else {
-    //             self.try_to_known()
-    //                 .map(|multiplier| other.clone() * multiplier)
-    //         }
-    //     }
-
     /// Solves the equation `self = 0` and returns how to compute the solution.
     /// The solution can contain assignments to multiple variables.
     /// If no way to solve the equation (and no way to derive new range
@@ -110,10 +60,54 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpressionProduct<
     /// If the equation is known to be unsolvable, returns an error.
     pub fn solve(&self) -> Result<ProcessResult<T, V>, Error> {
         if let AffineSymbolicExpressionProduct::Affine(expr) = self {
-            expr.solve()
-        } else {
-            todo!()
+            return expr.solve();
         }
+        let AffineSymbolicExpressionProduct::Product(factors) = self else {
+            return Ok(ProcessResult::empty());
+        };
+        let [first, second] = factors.as_slice() else {
+            return Ok(ProcessResult::empty());
+        };
+        let (var, first_assignment, second_assignment) = match (first.solve(), second.solve()) {
+            // If both are conflicting, the product is conflicting as well.
+            (e @ Err(_), Err(_)) => {
+                return e;
+            }
+            (Ok(result_left), Ok(result_right))
+                if result_left.complete && result_right.complete =>
+            {
+                if let (
+                    [Effect::Assignment(first_var, first_assignment)],
+                    [Effect::Assignment(second_var, second_assignment)],
+                ) = (
+                    &result_left.effects.as_slice(),
+                    &result_right.effects.as_slice(),
+                ) {
+                    if first_var == second_var {
+                        (
+                            first_var.clone(),
+                            first_assignment.clone(),
+                            second_assignment.clone(),
+                        )
+                    } else {
+                        return Ok(ProcessResult::empty());
+                    }
+                } else {
+                    return Ok(ProcessResult::empty());
+                }
+            }
+            _ => return Ok(ProcessResult::empty()),
+        };
+        // At this point, the constraint is equivalent to "`var = first_assignment or `var = second_assignment`".
+        let difference = first_assignment.clone() + -second_assignment.clone();
+        println!(
+            "Difference: {difference}\nrc:{}",
+            difference.range_constraint()
+        );
+
+        // TODO
+
+        Ok(ProcessResult::empty())
     }
 
     pub fn try_add(self, rhs: Self) -> Option<Self> {
@@ -128,30 +122,6 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpressionProduct<
         }
     }
 }
-
-// impl<T: FieldElement, V: Clone + Ord> Add for AffineSymbolicExpressionProduct<T, V> {
-//     type Output = AffineSymbolicExpression<T, V>;
-
-//     fn add(self, rhs: Self) -> Self::Output {
-//         &self + &rhs
-//     }
-// }
-
-// impl<T: FieldElement, V: Clone + Ord> Sub for &AffineSymbolicExpressionProduct<T, V> {
-//     type Output = AffineSymbolicExpression<T, V>;
-
-//     fn sub(self, rhs: Self) -> Self::Output {
-//         self + &-rhs
-//     }
-// }
-
-// impl<T: FieldElement, V: Clone + Ord> Sub for AffineSymbolicExpressionProduct<T, V> {
-//     type Output = AffineSymbolicExpression<T, V>;
-
-//     fn sub(self, rhs: Self) -> Self::Output {
-//         &self - &rhs
-//     }
-// }
 
 impl<T: FieldElement, V: Clone + Ord> Neg for &AffineSymbolicExpressionProduct<T, V> {
     type Output = AffineSymbolicExpressionProduct<T, V>;

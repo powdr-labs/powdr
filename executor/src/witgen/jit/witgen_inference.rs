@@ -23,6 +23,7 @@ use crate::witgen::{
 
 use super::{
     affine_symbolic_expression::{AffineSymbolicExpression, Error, ProcessResult},
+    affine_symbolic_expression_product::AffineSymbolicExpressionProduct,
     effect::{BranchCondition, Effect, ProverFunctionCall},
     prover_function_heuristics::ProverFunction,
     symbolic_expression::SymbolicExpression,
@@ -281,7 +282,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .map(|v| evaluator.evaluate_variable(v.clone()))
             .unwrap_or_default();
 
-        (lhs_evaluated - variable - offset.into()).solve()
+        match lhs_evaluated.try_add((-variable - offset.into()).into()) {
+            Some(result) => result.solve(),
+            None => Ok(ProcessResult::empty()),
+        }
     }
 
     fn process_call_inner(
@@ -495,7 +499,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         &self,
         expr: &Expression<T>,
         offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable>> {
+    ) -> Option<AffineSymbolicExpressionProduct<T, Variable>> {
         Evaluator::new(self).evaluate(expr, offset)
     }
 
@@ -534,9 +538,11 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
         &self,
         expr: &Expression<T>,
         offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable>> {
+    ) -> Option<AffineSymbolicExpressionProduct<T, Variable>> {
         Some(match expr {
-            Expression::Reference(r) => self.evaluate_variable(Variable::from_reference(r, offset)),
+            Expression::Reference(r) => self
+                .evaluate_variable(Variable::from_reference(r, offset))
+                .into(),
             Expression::PublicReference(_) | Expression::Challenge(_) => {
                 // TODO we need to introduce a variable type for those.
                 return None;
@@ -568,17 +574,17 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
         &self,
         op: &AlgebraicBinaryOperation<T>,
         offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable>> {
+    ) -> Option<AffineSymbolicExpressionProduct<T, Variable>> {
         let left = self.evaluate(&op.left, offset);
         let right = self.evaluate(&op.right, offset);
         match op.op {
-            AlgebraicBinaryOperator::Add => Some(&left? + &right?),
-            AlgebraicBinaryOperator::Sub => Some(&left? - &right?),
+            AlgebraicBinaryOperator::Add => left?.try_add(right?),
+            AlgebraicBinaryOperator::Sub => left?.try_add(-right?),
             AlgebraicBinaryOperator::Mul => {
                 if is_known_zero(&left) || is_known_zero(&right) {
                     Some(SymbolicExpression::from(T::from(0)).into())
                 } else {
-                    left?.try_mul(&right?)
+                    Some(left? * right?)
                 }
             }
             AlgebraicBinaryOperator::Pow => {
@@ -586,7 +592,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
                     .try_to_known()?
                     .try_to_number()?
                     .pow(right?.try_to_known()?.try_to_number()?.to_integer());
-                Some(AffineSymbolicExpression::from(result))
+                Some(AffineSymbolicExpression::from(result).into())
             }
         }
     }
@@ -595,15 +601,17 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
         &self,
         op: &AlgebraicUnaryOperation<T>,
         offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable>> {
+    ) -> Option<AffineSymbolicExpressionProduct<T, Variable>> {
         let expr = self.evaluate(&op.expr, offset)?;
         match op.op {
-            AlgebraicUnaryOperator::Minus => Some(-&expr),
+            AlgebraicUnaryOperator::Minus => Some(-expr),
         }
     }
 }
 
-fn is_known_zero<T: FieldElement>(x: &Option<AffineSymbolicExpression<T, Variable>>) -> bool {
+fn is_known_zero<T: FieldElement>(
+    x: &Option<AffineSymbolicExpressionProduct<T, Variable>>,
+) -> bool {
     x.as_ref()
         .and_then(|x| x.try_to_known().map(|x| x.is_known_zero()))
         .unwrap_or(false)
