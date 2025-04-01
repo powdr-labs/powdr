@@ -52,13 +52,35 @@ impl SessionBuilder {
             Some(asm_file) => Pipeline::<GoldilocksField>::default()
                 .from_asm_file(asm_file.into())
                 .with_output(Path::new(&self.out_path).to_path_buf(), true),
-            None => pipeline_from_guest(
-                &self.guest_path,
-                Path::new(&self.out_path),
-                DEFAULT_MIN_DEGREE_LOG,
-                self.chunk_size_log2.unwrap_or(DEFAULT_MAX_DEGREE_LOG),
-                self.precompiles,
-            ),
+            // If some guest path is given, check if it's a directory or a file.
+            //  - If it's a directory, assume it's a rust repository that needs
+            //    to be compiled.
+            //  - If it's a file, assume it's an ELF riscv executable that can
+            //    be used directly.
+            None => match fs::metadata(Path::new(&self.guest_path)) {
+                Ok(metadata) => {
+                    if metadata.is_file() {
+                        pipeline_from_elf(
+                            &self.guest_path,
+                            Path::new(&self.out_path),
+                            DEFAULT_MIN_DEGREE_LOG,
+                            self.chunk_size_log2.unwrap_or(DEFAULT_MAX_DEGREE_LOG),
+                            self.precompiles,
+                        )
+                    } else if metadata.is_dir() {
+                        pipeline_from_guest(
+                            &self.guest_path,
+                            Path::new(&self.out_path),
+                            DEFAULT_MIN_DEGREE_LOG,
+                            self.chunk_size_log2.unwrap_or(DEFAULT_MAX_DEGREE_LOG),
+                            self.precompiles,
+                        )
+                    } else {
+                        panic!("The path exists, but the file is neither a file nor a directory");
+                    }
+                }
+                Err(e) => panic!("Could not access file info: {e}"),
+            },
         };
         Session {
             pipeline,
@@ -249,6 +271,45 @@ fn pil_file_path(asm_name: &Path) -> PathBuf {
     let file_stem = asm_name.file_stem().unwrap().to_str().unwrap();
     let opt_file_stem = format!("{file_stem}_opt");
     asm_name.with_file_name(opt_file_stem).with_extension("pil")
+}
+
+pub fn build_elf(
+    elf_path: &str,
+    out_path: &Path,
+    min_degree_log: u8,
+    max_degree_log: u8,
+    precompiles: RuntimeLibs,
+) -> (PathBuf, String) {
+    let options = CompilerOptions::new_gl()
+        .with_runtime_libs(precompiles)
+        .with_continuations()
+        .with_min_degree_log(min_degree_log)
+        .with_max_degree_log(max_degree_log);
+
+    riscv::compile_riscv_elf(elf_path, Path::new(elf_path), options, out_path, true)
+        .ok_or_else(|| vec!["could not compile ELF file".to_string()])
+        .unwrap()
+}
+
+pub fn pipeline_from_elf(
+    elf_path: &str,
+    out_path: &Path,
+    min_degree_log: u8,
+    max_degree_log: u8,
+    precompiles: RuntimeLibs,
+) -> Pipeline<GoldilocksField> {
+    let (asm_file_path, asm_contents) = build_elf(
+        elf_path,
+        out_path,
+        min_degree_log,
+        max_degree_log,
+        precompiles,
+    );
+
+    // Create a pipeline from the asm program
+    Pipeline::<GoldilocksField>::default()
+        .from_asm_string(asm_contents.clone(), Some(asm_file_path.clone()))
+        .with_output(out_path.into(), true)
 }
 
 pub fn build_guest(
