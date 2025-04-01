@@ -514,6 +514,18 @@ pub fn remove_range_checks<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
     machine
 }
 
+pub fn exec_receive<T: FieldElement>(machine: &SymbolicMachine<T>) -> SymbolicBusInteraction<T> {
+    machine
+        .bus_interactions
+        .iter()
+        .filter_map(|bus_int| match (bus_int.id, &bus_int.kind) {
+            (EXECUTION_BUS_ID, BusInteractionKind::Receive) => Some(bus_int.clone()),
+            _ => None,
+        })
+        .exactly_one()
+        .expect("Expected single execution receive")
+}
+
 pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     println!(
         "Before autoprecompile optimizations, columns: {}, constraints: {}, bus_interactions: {}",
@@ -530,12 +542,8 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
 
     let mut local_reg_mem: BTreeMap<u32, Vec<AlgebraicExpression<T>>> = BTreeMap::new();
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
+    let mut prev_tss: Vec<AlgebraicExpression<T>> = Vec::new();
     machine.bus_interactions.retain(|bus_int| {
-        //if bus_int.id == PC_LOOKUP_BUS_ID || bus_int.id == EXECUTION_BUS_ID {
-        // if bus_int.id == EXECUTION_BUS_ID {
-        //     return false;
-        // }
-
         if bus_int.id != MEMORY_BUS_ID {
             return true;
         }
@@ -579,6 +587,14 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
                             //println!("New constraint: {eq_expr}");
                             new_constraints.push(eq_expr.into());
                         });
+
+                    // If this receive's ts is a prev_ts, we can remove the constraint that
+                    // decomposes this prev_ts and range checks on the limbs.
+                    let prev_ts = mem_int.bus_interaction.args[6].clone();
+                    assert!(powdr::is_ref(&prev_ts));
+                    //println!("Adding {prev_ts} to prev_tss");
+                    prev_tss.push(prev_ts);
+
                     false
                 }
                 None => {
@@ -665,6 +681,41 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
             }
         })
         .collect();
+
+    let mut to_remove: BTreeSet<AlgebraicExpression<T>> = Default::default();
+    machine.constraints.retain(|c| {
+        for prev_ts in &prev_tss {
+            if powdr::has_ref(&c.expr, prev_ts) {
+                // println!(
+                //     "Removing constraint: {} because of prev_ts {prev_ts}",
+                //     c.expr
+                // );
+                let (col1, col2) = powdr::find_byte_decomp(&c.expr);
+                //println!("Decomp cols are {col1} and {col2}");
+                to_remove.insert(col1);
+                to_remove.insert(col2);
+                return false;
+            }
+        }
+
+        true
+    });
+
+    machine.bus_interactions.retain(|bus_int| {
+        if bus_int.id != RANGE_CHECK_BUS_ID {
+            return true;
+        }
+
+        assert_eq!(bus_int.args.len(), 2);
+
+        let col = bus_int.args[0].clone();
+        if to_remove.contains(&col) {
+            //println!("Removing range check bus interaction for col {col}");
+            return false;
+        }
+
+        true
+    });
 
     machine.constraints.extend(new_constraints);
 
@@ -835,17 +886,7 @@ pub fn generate_precompile<T: FieldElement>(
                     .exactly_one()
                     .expect("Expected single pc lookup");
 
-                let is_valid: AlgebraicExpression<T> = machine
-                    .bus_interactions
-                    .iter()
-                    .filter_map(|bus_int| match (bus_int.id, &bus_int.kind) {
-                        (EXECUTION_BUS_ID, BusInteractionKind::Receive) => {
-                            Some(bus_int.mult.clone())
-                        }
-                        _ => None,
-                    })
-                    .exactly_one()
-                    .expect("Expected single execution receive");
+                let is_valid: AlgebraicExpression<T> = exec_receive(&machine).mult.clone();
 
                 let mut sub_map: BTreeMap<String, AlgebraicExpression<T>> = Default::default();
                 let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();

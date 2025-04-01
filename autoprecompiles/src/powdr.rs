@@ -2,7 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::ops::ControlFlow;
 
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, BusInteractionIdentity, PolyID, PolynomialType,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+    BusInteractionIdentity, PolyID, PolynomialType,
 };
 use powdr_ast::asm_analysis::AnalysisASMFile;
 use powdr_ast::asm_analysis::InstructionDefinitionStatement;
@@ -683,6 +684,68 @@ pub fn substitute_algebraic<T: Clone>(
         },
         VisitOrder::Pre,
     );
+}
+
+pub fn find_byte_decomp<T: FieldElement>(
+    expr: &AlgebraicExpression<T>,
+) -> (AlgebraicExpression<T>, AlgebraicExpression<T>) {
+    let mut e1 = None;
+    let mut e2 = None;
+    expr.visit_expressions(
+        &mut |expr| {
+            if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left,
+                op: AlgebraicBinaryOperator::Add,
+                right,
+            }) = expr
+            {
+                if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                    left: inner_left,
+                    op: AlgebraicBinaryOperator::Mul,
+                    right: inner_right,
+                }) = &**right
+                {
+                    let is_mul_by_2_17 = matches!(&**inner_right, AlgebraicExpression::Number(n) if *n == 131072u32.into());
+                    if is_ref(&**left) && is_ref(&**inner_left) && is_mul_by_2_17 {
+                        assert!(e1.is_none());
+                        assert!(e2.is_none());
+                        e1 = Some((**left).clone());
+                        e2 = Some((**inner_left).clone());
+                        return ControlFlow::Break(());
+                    }
+                }
+            }
+            ControlFlow::Continue::<()>(())
+        },
+        VisitOrder::Pre,
+    );
+    (e1.unwrap(), e2.unwrap())
+}
+
+pub fn has_ref<T: Clone + std::cmp::PartialEq>(
+    expr: &AlgebraicExpression<T>,
+    r: &AlgebraicExpression<T>,
+) -> bool {
+    let mut seen = false;
+    expr.visit_expressions(
+        &mut |expr| {
+            if expr == r {
+                seen = true;
+                ControlFlow::Break::<()>(())
+            } else {
+                ControlFlow::Continue::<()>(())
+            }
+        },
+        VisitOrder::Pre,
+    );
+    seen
+}
+
+pub fn is_ref<T: Clone>(expr: &AlgebraicExpression<T>) -> bool {
+    match expr {
+        AlgebraicExpression::Reference(_) => true,
+        _ => false,
+    }
 }
 
 pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
