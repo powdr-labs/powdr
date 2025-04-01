@@ -8,7 +8,6 @@ use crate::witgen::{
     data_structures::identity::{BusSend, Identity},
     jit::debug_formatter::format_polynomial_identities,
     range_constraints::RangeConstraint,
-    FixedData,
 };
 
 use super::{
@@ -22,7 +21,6 @@ use super::{
 
 /// A generic processor for generating JIT code.
 pub struct Processor<'a, T: FieldElement> {
-    fixed_data: &'a FixedData<'a, T>,
     /// List of identities and row offsets to process them on.
     identities: Vec<(&'a Identity<T>, i32)>,
     /// List of assignments (or other queue items) provided from outside.
@@ -48,7 +46,6 @@ pub struct ProcessorResult<T: FieldElement> {
 
 impl<'a, T: FieldElement> Processor<'a, T> {
     pub fn new(
-        fixed_data: &'a FixedData<'a, T>,
         identities: impl IntoIterator<Item = (&'a Identity<T>, i32)>,
         initial_queue: Vec<QueueItem<'a, T>>,
         requested_known_vars: impl IntoIterator<Item = Variable>,
@@ -56,7 +53,6 @@ impl<'a, T: FieldElement> Processor<'a, T> {
     ) -> Self {
         let identities = identities.into_iter().collect_vec();
         Self {
-            fixed_data,
             identities,
             initial_queue,
             block_size: 1,
@@ -103,7 +99,9 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             }
         }));
         let branch_depth = 0;
-        let identity_queue = IdentityQueue::new(self.fixed_data, queue_items);
+        // Sort the queue so that we have proper source order.
+        queue_items.sort();
+        let identity_queue = IdentityQueue::new(&queue_items);
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
     }
 
@@ -111,7 +109,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         &self,
         can_process: impl CanProcessCall<T>,
         mut witgen: WitgenInference<'a, T, FixedEval>,
-        mut identity_queue: IdentityQueue<'a, T>,
+        mut identity_queue: IdentityQueue<'a, '_, T>,
         branch_depth: usize,
     ) -> Result<ProcessorResult<T>, Error<'a, T, FixedEval>> {
         if self
@@ -271,16 +269,16 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         &self,
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        mut identity_queue: IdentityQueue<'a, T>,
+        mut identity_queue: IdentityQueue<'a, '_, T>,
     ) -> Result<(), affine_symbolic_expression::Error> {
         while let Some(item) = identity_queue.next() {
             let updated_vars = match item {
                 QueueItem::Identity(identity, row_offset) => match identity {
                     Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                        witgen.process_equation_on_row(expression, None, 0.into(), row_offset)
+                        witgen.process_equation_on_row(expression, None, 0.into(), *row_offset)
                     }
                     Identity::BusSend(bus_send) => {
-                        witgen.process_call(can_process.clone(), bus_send, row_offset)
+                        witgen.process_call(can_process.clone(), bus_send, *row_offset)
                     }
                     Identity::Connect(..) => Ok(vec![]),
                 },
@@ -297,7 +295,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     assignment.row_offset,
                 ),
                 QueueItem::ProverFunction(prover_function, row_offset) => {
-                    witgen.process_prover_function(&prover_function, row_offset)
+                    witgen.process_prover_function(prover_function, *row_offset)
                 }
             }?;
             identity_queue.variables_updated(updated_vars);
@@ -362,7 +360,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         incomplete_machine_calls: &[(&Identity<T>, i32)],
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        mut identity_queue: IdentityQueue<'a, T>,
+        mut identity_queue: IdentityQueue<'a, '_, T>,
     ) -> bool {
         let missing_sends_in_block = incomplete_machine_calls
             .iter()
