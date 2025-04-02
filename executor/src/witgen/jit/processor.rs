@@ -337,12 +337,13 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         // that are inside the block.
         let unknown_variables = self
             .unsolved_polynomial_identities_in_block(witgen)
-            .flat_map(|(id, row_offset)| {
-                let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id else {
-                    unreachable!()
-                };
+            .flat_map(|(expression, row_offset)| {
                 unknown_relevant_variables(expression, witgen, row_offset).filter(|var| match var {
                     Variable::WitnessCell(cell) | Variable::IntermediateCell(cell) => {
+                        // We only want to guess cells in the block. This does not work
+                        // for irregularly-shaped blocks. If we knew the extent of each column,
+                        // we could use the respective check here, but that is currently only
+                        // determined after witgen solving.
                         cell.row_offset >= 0 && cell.row_offset < self.block_size as i32
                     }
                     Variable::FixedCell(_) => unreachable!(),
@@ -463,29 +464,29 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         }
     }
 
-    /// Returns all pairs of polynomial identity and row where the identity is not solved
-    /// in `self.block_size` contiguous rows. A polynomial identity is considered solved if
-    /// it evaluates to a known value.
+    /// Returns all pairs of polynomial identity (represented by its algebraic expression)
+    /// and row where the identity is not solved in `self.block_size` contiguous rows.
+    /// A polynomial identity is considered solved if it evaluates to a known value.
     /// If a polynomial identity is solved for `self.block_size` contiguous rows, it is not
     /// returned, not even on the rows where it is not solved.
     fn unsolved_polynomial_identities_in_block<'b, FixedEval: FixedEvaluator<T>>(
         &'b self,
         witgen: &'b WitgenInference<'a, T, FixedEval>,
-    ) -> impl Iterator<Item = (&'a Identity<T>, i32)> + 'b {
+    ) -> impl Iterator<Item = (&'a AlgebraicExpression<T>, i32)> + 'b {
         // Group all identity-row-pairs by their identities.
         self.identities
             .iter()
             .filter_map(|(id, row_offset)| {
                 if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
                     // Group by identity id.
-                    Some(((id.id(), id), (expression, *row_offset)))
+                    Some((id.id(), (expression, *row_offset)))
                 } else {
                     None
                 }
             })
             .into_group_map()
-            .into_iter()
-            .flat_map(move |((_, &identity), pairs)| {
+            .into_values()
+            .flat_map(move |pairs| {
                 // For each identity, check if it is fully solved
                 // for at least "self.blocks_size" rows.
                 let is_solved = pairs
@@ -512,7 +513,6 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     pairs
                 }
                 .into_iter()
-                .map(move |(_, row_offset)| (identity, row_offset))
             })
     }
 
