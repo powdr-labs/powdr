@@ -2,8 +2,7 @@ use powdr_linker::LinkerMode;
 use powdr_number::{GoldilocksField, Mersenne31Field};
 use powdr_pipeline::{
     test_util::{
-        assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
-        assert_proofs_fail_for_invalid_witnesses_mock,
+        assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_mock,
         assert_proofs_fail_for_invalid_witnesses_stwo, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test_all_fields, regular_test_gl,
         test_halo2_with_backend_variant, test_mock_backend, test_stwo, test_stwo_stage1_public,

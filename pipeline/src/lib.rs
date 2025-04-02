@@ -2,6 +2,7 @@
 
 pub mod pipeline;
 pub mod test_runner;
+#[cfg(test)]
 pub mod test_util;
 pub mod util;
 

@@ -1,6 +1,3 @@
-use std::collections::BTreeMap;
-
-use powdr_backend::BackendType;
 use powdr_executor::constant_evaluator;
 use powdr_linker::{LinkerMode, LinkerParams};
 use powdr_number::{BabyBearField, FieldElement, GoldilocksField, Mersenne31Field};
