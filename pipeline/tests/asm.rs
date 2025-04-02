@@ -163,6 +163,7 @@ fn block_to_block() {
 #[test]
 #[cfg(feature = "plonky3")]
 fn block_to_block_empty_submachine() {
+    use powdr_backend::BackendType;
     let f = "asm/block_to_block_empty_submachine.asm";
 
     [BackendType::Mock, BackendType::Plonky3]
@@ -304,6 +305,8 @@ fn vm_to_block_array() {
 #[ignore = "Too slow"]
 #[cfg(feature = "plonky3")]
 fn dynamic_vadcop() {
+    use powdr_backend::BackendType;
+
     let f = "asm/dynamic_vadcop.asm";
 
     // Witness generation require backend to be known
