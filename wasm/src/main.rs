@@ -1,5 +1,6 @@
 use std::{
     collections::{btree_map::Entry, BTreeMap},
+    mem,
     ops::RangeFrom,
     str::FromStr,
 };
@@ -14,7 +15,7 @@ use wasmparser::{
 /// WASM defined page size is 64 KiB.
 const PAGE_SIZE: u32 = 65536;
 
-/// What size we reserve for the stack.
+/// What size we reserve for the stack, in bytes.
 const STACK_SIZE: u32 = 1024 * 1024 * 1024; // 1 GiB
 
 /// If the table has no specified maximum size, we assign it a large default, in number of entries.
@@ -161,18 +162,22 @@ impl ModuleContext {
         };
 
         if self.memory.is_none() {
-            let maximum_size = mem_allocator.remaining_space().saturating_sub(STACK_SIZE);
+            let maximum_size = mem_allocator
+                .remaining_space()
+                // From all the memory available, we reserve the space for the stack, and the 8 bytes needed
+                // to store the size of the memory and its maximum size:
+                .saturating_sub(STACK_SIZE + 8)
+                / PAGE_SIZE;
 
             if maximum_size < mem_type.initial as u32 {
                 panic!("Not enough address space available to allocate the initial memory plus the stack");
             }
 
-            let maximum_size =
-                maximum_size.min(mem_type.maximum.map(|v| v as u32).unwrap_or(u32::MAX));
+            let maximum_size = mem_type
+                .maximum
+                .map_or(maximum_size, |v| maximum_size.min(v as u32 * PAGE_SIZE));
 
-            let maximum_size_aligned = (maximum_size + 3) & !3;
-
-            let segment = mem_allocator.allocate_segment(maximum_size_aligned);
+            let segment = mem_allocator.allocate_segment(maximum_size * PAGE_SIZE + 8);
             initial_memory.insert(segment.start, MemoryEntry::Value(mem_type.initial as u32));
             initial_memory.insert(segment.start + 4, MemoryEntry::Value(maximum_size));
 
@@ -451,7 +456,7 @@ fn main() -> wasmparser::Result<()> {
                     }
 
                     log::debug!(
-                        "Memory defined. Initial size: {}, maximum size: {:?}",
+                        "Memory defined. Initial size: {} pages, maximum size: {:?} pages",
                         mem.initial,
                         mem.maximum
                     );
@@ -666,6 +671,7 @@ fn main() -> wasmparser::Result<()> {
                             else {
                                 panic!("Memory size is a label");
                             };
+                            let mem_size = mem_size * PAGE_SIZE;
                             assert!(offset + data_segment.data.len() as u32 <= mem_size);
 
                             let mut byte_offset = memory.start + 8 + offset;
@@ -695,7 +701,9 @@ fn main() -> wasmparser::Result<()> {
                             }
 
                             // Insert the misaligned last word, if any.
-                            initial_memory.insert_bytes(byte_offset, 0, last_word);
+                            if !last_word.is_empty() {
+                                initial_memory.insert_bytes(byte_offset, 0, last_word);
+                            }
                         }
                     }
                 }
