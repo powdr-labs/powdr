@@ -466,7 +466,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
     }
 
     /// Returns all pairs of polynomial identity and row where the identity is not solved
-    /// in `self.block_size` contiguous rows. A polynomial identities is considered solved if
+    /// in `self.block_size` contiguous rows. A polynomial identity is considered solved if
     /// it evaluates to a known value.
     /// If a polynomial identity is solved for `self.block_size` contiguous rows, it is not
     /// returned, not even on the rows where it is not solved.
@@ -479,6 +479,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             .iter()
             .filter_map(|(id, row_offset)| {
                 if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
+                    // Group by identity id.
                     Some(((id.id(), id), (expression, *row_offset)))
                 } else {
                     None
@@ -605,8 +606,8 @@ fn unknown_relevant_variables<T: FieldElement, FixedEval: FixedEvaluator<T>>(
         AlgebraicExpression::Number(_) => Default::default(),
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
             if *op == AlgebraicBinaryOperator::Mul {
-                let left_val = try_to_evaluate_to_known_number(left.as_ref(), witgen, row_offset);
-                let right_val = try_to_evaluate_to_known_number(right.as_ref(), witgen, row_offset);
+                let left_val = witgen.try_evaluate_to_known_number(left.as_ref(), row_offset);
+                let right_val = witgen.try_evaluate_to_known_number(right.as_ref(), row_offset);
                 if left_val == Some(T::from(0)) || right_val == Some(T::from(0)) {
                     return Default::default();
                 }
@@ -623,17 +624,6 @@ fn unknown_relevant_variables<T: FieldElement, FixedEval: FixedEvaluator<T>>(
             unknown_relevant_variables(expr.as_ref(), witgen, row_offset)
         }
     }
-}
-
-fn try_to_evaluate_to_known_number<T: FieldElement, FixedEval: FixedEvaluator<T>>(
-    expr: &AlgebraicExpression<T>,
-    witgen: &WitgenInference<'_, T, FixedEval>,
-    row_offset: i32,
-) -> Option<T> {
-    witgen
-        .evaluate(expr, row_offset)?
-        .try_to_known()?
-        .try_to_number()
 }
 
 pub struct Error<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {

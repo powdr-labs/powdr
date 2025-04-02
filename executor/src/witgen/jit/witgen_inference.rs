@@ -232,7 +232,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.process_equation_on_row(
             &Expression::Number(0.into()),
             Some(variable),
-            value,
+            -value,
             // The row does not matter because the algebraic expression is empty
             0,
         )
@@ -511,9 +511,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 
     pub fn try_evaluate_to_known_number(&self, expr: &Expression<T>, offset: i32) -> Option<T> {
-        self.evaluate(expr, offset)
-            .and_then(|s| s.try_to_known().map(|k| k.try_to_number()))
-            .flatten()
+        self.evaluate(expr, offset)?.try_to_known()?.try_to_number()
     }
 }
 
