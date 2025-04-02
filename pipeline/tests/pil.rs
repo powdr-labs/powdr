@@ -48,6 +48,7 @@ fn lookup_with_selector() {
 #[cfg(feature = "estark-starky")]
 #[should_panic = "Number not included: F3G { cube: [Fr(0x0000000000000000), Fr(0x0000000000000000), Fr(0x0000000000000000)], dim: 3 }"]
 fn lookup_with_selector_starky() {
+    use powdr_pipeline::test_util::assert_proofs_fail_for_invalid_witnesses_estark;
     // witness[0] and witness[2] have to be in {2, 4}
 
     let f = "pil/lookup_with_selector.pil";
@@ -87,6 +88,7 @@ fn permutation_with_selector() {
 #[cfg(feature = "estark-starky")]
 #[should_panic = "assertion failed: check_val._eq(&F::one())"]
 fn permutation_with_selector_starky() {
+    use powdr_pipeline::test_util::assert_proofs_fail_for_invalid_witnesses_estark;
     // witness[0] and witness[2] have to be in {2, 4}
 
     let f = "pil/permutation_with_selector.pil";

@@ -305,6 +305,8 @@ fn vm_to_block_array() {
 #[ignore = "Too slow"]
 #[cfg(feature = "plonky3")]
 fn dynamic_vadcop() {
+    use std::collections::BTreeMap;
+
     use powdr_backend::BackendType;
 
     let f = "asm/dynamic_vadcop.asm";
