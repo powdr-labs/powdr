@@ -1,0 +1,252 @@
+use std::{
+    collections::BTreeMap,
+    fmt::Display,
+    ops::{Add, Mul, MulAssign, Neg, Sub},
+};
+
+use itertools::Itertools;
+use powdr_number::FieldElement;
+
+use crate::witgen::range_constraints::RangeConstraint;
+
+use super::symbolic_expression::SymbolicExpression;
+
+/// A symbolic expression in unknown variables of type `V` and (symbolically)
+/// known terms, representing a sum of (super-)quadratic, linear and constant parts.
+/// The quadratic terms are of the form `X * Y`, where `X` and `Y` are
+/// `QuadraticSymbolicExpression`s that have at least one unknown.
+/// The linear terms are of the form `a * X`, where `a` is a (symbolically) known
+/// value and `X` is an unknown variable.
+/// The constant term is a (symbolically) known value.
+///
+/// It also provides ways to quickly update the expression when the value of
+/// an unknown variable gets known and provides functions to solve
+/// (some kinds of) equations.
+#[derive(Debug, Clone)]
+pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
+    /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
+    /// known value and `X` and `Y` are quadratic symbolic expressions that
+    /// have at least one unknown.
+    quadratic: Vec<(Self, Self)>,
+    /// Linear terms of the form `a * X`, where `a` is a (symbolically) known
+    /// value and `X` is an unknown variable.
+    linear: BTreeMap<V, SymbolicExpression<T, V>>,
+    /// Constant term, a (symbolically) known value.
+    constant: SymbolicExpression<T, V>,
+}
+// TODO We need occurrence lists for all variables, both in their unknon
+// version and in their known version (in the symbolic expressions),
+// because range constraints therein can also change.
+// they could also change to simpler expressions if one sub-expression turns to one or zero.
+// So we also need update functions for the symbolic expressions.
+
+impl<T: FieldElement, V> From<SymbolicExpression<T, V>> for QuadraticSymbolicExpression<T, V> {
+    fn from(k: SymbolicExpression<T, V>) -> Self {
+        Self {
+            quadratic: Default::default(),
+            linear: Default::default(),
+            constant: k,
+        }
+    }
+}
+
+impl<T: FieldElement, V> From<T> for QuadraticSymbolicExpression<T, V> {
+    fn from(k: T) -> Self {
+        SymbolicExpression::from(k).into()
+    }
+}
+
+impl<T: FieldElement, V: Ord + Clone> QuadraticSymbolicExpression<T, V> {
+    pub fn from_known_symbol(symbol: V, rc: RangeConstraint<T>) -> Self {
+        SymbolicExpression::from_symbol(symbol, rc).into()
+    }
+    pub fn from_unknown_variable(var: V) -> Self {
+        Self {
+            quadratic: Default::default(),
+            linear: [(var.clone(), T::from(1).into())].into_iter().collect(),
+            constant: T::from(0).into(),
+        }
+    }
+
+    /// If this expression does not contain unknown variables, returns the symbolic expression.
+    pub fn try_to_known(&self) -> Option<&SymbolicExpression<T, V>> {
+        if self.quadratic.is_empty() && self.linear.is_empty() {
+            Some(&self.constant)
+        } else {
+            None
+        }
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> Add for QuadraticSymbolicExpression<T, V> {
+    type Output = QuadraticSymbolicExpression<T, V>;
+
+    fn add(mut self, rhs: Self) -> Self {
+        self.quadratic.extend(rhs.quadratic);
+        for (var, coeff) in rhs.linear {
+            self.linear
+                .entry(var)
+                .and_modify(|f| *f += coeff.clone())
+                .or_insert_with(|| coeff);
+        }
+        self.linear.retain(|_, f| !f.is_known_zero());
+        self.constant += rhs.constant;
+        self
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> Add for &QuadraticSymbolicExpression<T, V> {
+    type Output = QuadraticSymbolicExpression<T, V>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        self.clone() + rhs.clone()
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> Sub for &QuadraticSymbolicExpression<T, V> {
+    type Output = QuadraticSymbolicExpression<T, V>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        self + &-rhs
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> Sub for QuadraticSymbolicExpression<T, V> {
+    type Output = QuadraticSymbolicExpression<T, V>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        &self - &rhs
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> QuadraticSymbolicExpression<T, V> {
+    fn negate(&mut self) {
+        for (first, _) in &mut self.quadratic {
+            first.negate()
+        }
+        for coeff in self.linear.values_mut() {
+            *coeff = -coeff.clone();
+        }
+        self.constant = -self.constant.clone();
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> Neg for QuadraticSymbolicExpression<T, V> {
+    type Output = QuadraticSymbolicExpression<T, V>;
+
+    fn neg(mut self) -> Self {
+        self.negate();
+        self
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> Neg for &QuadraticSymbolicExpression<T, V> {
+    type Output = QuadraticSymbolicExpression<T, V>;
+
+    fn neg(self) -> Self::Output {
+        -((*self).clone())
+    }
+}
+
+/// Multiply by known symbolic expression.
+impl<T: FieldElement, V: Clone + Ord> Mul<&SymbolicExpression<T, V>>
+    for QuadraticSymbolicExpression<T, V>
+{
+    type Output = QuadraticSymbolicExpression<T, V>;
+
+    fn mul(mut self, rhs: &SymbolicExpression<T, V>) -> Self {
+        self *= rhs;
+        self
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> Mul<SymbolicExpression<T, V>>
+    for QuadraticSymbolicExpression<T, V>
+{
+    type Output = QuadraticSymbolicExpression<T, V>;
+
+    fn mul(self, rhs: SymbolicExpression<T, V>) -> Self {
+        self * &rhs
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> MulAssign<&SymbolicExpression<T, V>>
+    for QuadraticSymbolicExpression<T, V>
+{
+    fn mul_assign(&mut self, rhs: &SymbolicExpression<T, V>) {
+        if rhs.is_known_zero() {
+            *self = T::zero().into();
+        } else {
+            for (first, _) in &mut self.quadratic {
+                *first *= rhs;
+            }
+            for coeff in self.linear.values_mut() {
+                *coeff *= rhs.clone();
+            }
+            self.constant *= rhs.clone();
+        }
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord> Mul for QuadraticSymbolicExpression<T, V> {
+    type Output = QuadraticSymbolicExpression<T, V>;
+
+    fn mul(self, rhs: QuadraticSymbolicExpression<T, V>) -> Self {
+        if let Some(k) = rhs.try_to_known() {
+            self * k
+        } else if let Some(k) = self.try_to_known() {
+            rhs * k
+        } else {
+            Self {
+                quadratic: vec![(self, rhs)],
+                linear: Default::default(),
+                constant: T::from(0).into(),
+            }
+        }
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExpression<T, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            self.quadratic
+                .iter()
+                .map(|(a, b)| format!("({a}) * ({b})"))
+                .chain(
+                    self.linear
+                        .iter()
+                        .map(|(var, coeff)| match coeff.try_to_number() {
+                            Some(k) if k == 1.into() => format!("{var}"),
+                            Some(k) if k == (-1).into() => format!("-{var}"),
+                            _ => format!("{coeff} * {var}"),
+                        })
+                )
+                .chain(match self.constant.try_to_number() {
+                    Some(k) if k == T::zero() => None,
+                    _ => Some(format!("{}", self.constant)),
+                })
+                .format(" + ")
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::witgen::range_constraints::RangeConstraint;
+    use powdr_number::GoldilocksField;
+
+    use pretty_assertions::assert_eq;
+
+    #[test]
+    fn test_mul_zero() {
+        type Qse = QuadraticSymbolicExpression<GoldilocksField, String>;
+        let x = Qse::from_unknown_variable("X".to_string());
+        let y = Qse::from_unknown_variable("Y".to_string());
+        let a = Qse::from_known_symbol("A".to_string(), RangeConstraint::default());
+        let t = x * y + a;
+        assert_eq!(t.to_string(), "(X) * (Y) + A");
+    }
+}

@@ -3,6 +3,7 @@ use itertools::Itertools;
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_number::FieldElement;
 use std::hash::Hash;
+use std::ops::{AddAssign, MulAssign};
 use std::{
     fmt::{self, Display, Formatter},
     iter,
@@ -191,6 +192,12 @@ impl<T: FieldElement, V: Clone> Add for SymbolicExpression<T, V> {
     }
 }
 
+impl<T: FieldElement, V: Clone> AddAssign for SymbolicExpression<T, V> {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = self.clone() + rhs;
+    }
+}
+
 impl<T: FieldElement, V: Clone> Neg for &SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
 
@@ -248,6 +255,12 @@ impl<T: FieldElement, V: Clone> Mul for SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
     fn mul(self, rhs: Self) -> Self {
         &self * &rhs
+    }
+}
+
+impl<T: FieldElement, V: Clone> MulAssign for SymbolicExpression<T, V> {
+    fn mul_assign(&mut self, rhs: Self) {
+        *self = self.clone() * rhs;
     }
 }
 
