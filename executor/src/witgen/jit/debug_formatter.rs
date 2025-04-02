@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicUnaryOperation, PolynomialIdentity, PolynomialType, SelectedExpressions,
+    AlgebraicUnaryOperation, PolynomialIdentity, SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
