@@ -12,8 +12,6 @@ use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::prover::StarkProof;
 use stwo_prover::core::ColumnVec;
 
-use super::logup_gkr::gkr_proof_artifacts;
-
 /// For each possible size, the commitment and prover data
 pub type TableProvingKeyCollection<B> = BTreeMap<usize, TableProvingKey<B>>;
 

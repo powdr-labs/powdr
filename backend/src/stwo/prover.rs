@@ -1,23 +1,18 @@
 use itertools::Itertools;
 use num_traits::{One, Zero};
-use powdr_ast::analyzed::Identity;
 use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, DegreeRange};
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
 use stwo_prover::core::backend::simd::SimdBackend;
-use stwo_prover::core::lookups::gkr_prover::prove_batch;
-use stwo_prover::core::lookups::gkr_prover::Layer;
 use stwo_prover::core::lookups::gkr_verifier::partially_verify_batch;
 use stwo_prover::core::lookups::gkr_verifier::Gate;
 use stwo_prover::core::lookups::gkr_verifier::GkrArtifact;
-use stwo_prover::core::lookups::mle::Mle;
 use stwo_prover::core::poly::circle::PolyOps;
-use stwo_prover::examples::xor::gkr_lookups::mle_eval::build_trace;
-use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleEvalProverComponent;
-use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleEvalVerifierComponent;
-//use stwo_prover::constraint_framework::assert_constraints_on_polys;
+use stwo_prover::examples::xor::gkr_lookups::mle_eval::{
+    build_trace, MleEvalProverComponent, MleEvalVerifierComponent,
+};
 
 use powdr_number::{FieldElement, LargeInt, Mersenne31Field as M31};
 
@@ -36,7 +31,7 @@ use crate::stwo::circuit_builder::{
     gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
     PREPROCESSED_TRACE_IDX, STAGE0_TRACE_IDX, STAGE1_TRACE_IDX,
 };
-use crate::stwo::logup_gkr::{gkr_proof_artifacts, PowdrComponentWrapper, MLE_TRACE_IDX};
+use crate::stwo::logup_gkr::{PowdrComponentWrapper, MLE_TRACE_IDX};
 use crate::stwo::proof::{
     Proof, SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
 };
@@ -44,7 +39,7 @@ use crate::stwo::proof::{
 use stwo_prover::constraint_framework::TraceLocationAllocator;
 
 use stwo_prover::core::air::{Component, ComponentProver};
-use stwo_prover::core::backend::{Backend, BackendForChannel, Col, Column};
+use stwo_prover::core::backend::{BackendForChannel, Col, Column};
 use stwo_prover::core::channel::{Channel, MerkleChannel};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
@@ -268,7 +263,6 @@ where
         witness: &[(String, Vec<M31>)],
         witgen_callback: WitgenCallback<M31>,
     ) -> Result<Vec<u8>, String> {
-        println!("witness is {:?}", witness);
         let prove_span = span!(Level::INFO, "stwo backend prover").entered();
         let config = get_config();
 
@@ -495,20 +489,17 @@ where
 
         // Generate GKR proof, get None if LOGUP_GKR is false
         // logup challenge alpha, take dummy challenge and dummy gkr_prover_channel for now
+        // TODO: implement sound challenge
         let alpha = SecureField::from_u32_unchecked(42, 42, 42, 42);
         let gkr_prover_channel = &mut <MC as MerkleChannel>::C::default();
         let gkr_result = self.gkr_prove(
-            &witness,
+            witness,
             machine_log_sizes.clone(),
             alpha,
             gkr_prover_channel,
         );
 
-        println!("get gkr result");
-
         if let Some(ref gkr_proof_artifacts) = gkr_result {
-            // let claim_a=gkr_proof_artifacts.mle_denominators[0].eval_at_point(&gkr_proof_artifacts.gkr_artifacts.ood_point);
-
             let mut tree_builder = commitment_scheme.tree_builder();
             tree_builder.extend_evals(build_trace(
                 &gkr_proof_artifacts.combined_mle,
@@ -516,13 +507,9 @@ where
                 gkr_proof_artifacts.combine_mle_claim,
             ));
             tree_builder.commit(prover_channel);
-            // machine_log_sizes.insert("mle".to_string(), gkr_proof_artifacts.mle_denominators[0].n_variables() as u32);
-        } else {
-        };
+        }
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
-
-        println!("building components");
 
         let mut main_machine_powdr_eval = PowdrEval::default();
 
@@ -536,7 +523,6 @@ where
                 |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
                     assert_eq!(machine_name, proof_machine_name);
 
-                    println!("building powdr component for {}", machine_name);
                     let powdr_eval = PowdrEval::new(
                         (*pil).clone(),
                         constant_cols_offset_acc,
@@ -558,8 +544,6 @@ where
             )
             .collect_vec();
 
-        println!("powdr component for built");
-
         let mut components_slice: Vec<&dyn ComponentProver<SimdBackend>> = components
             .iter()
             .map(|component| component as &dyn ComponentProver<SimdBackend>)
@@ -572,8 +556,6 @@ where
                 logup_challenge: alpha,
                 main_machine_powdr_eval,
             };
-
-            //let claim_a=gkr_proof_artifacts.mle_denominators[0].eval_at_point(&gkr_proof_artifacts.gkr_artifacts.ood_point);
 
             // create component for MLE
             let mle_eval_component = MleEvalProverComponent::generate(
@@ -588,15 +570,11 @@ where
 
             components_slice.push(&mle_eval_component);
 
-            println!("added gkr component");
-
             let proof_result = stwo_prover::core::prover::prove::<SimdBackend, MC>(
                 &components_slice,
                 prover_channel,
                 commitment_scheme,
             );
-
-            println!("proving done");
 
             let stark_proof = match proof_result {
                 Ok(value) => value,
@@ -776,7 +754,7 @@ where
             commitment_scheme.commit(
                 proof.stark_proof.commitments[MLE_TRACE_IDX],
                 // 8 is number of the extra columns for GKR
-                &vec![n_variables_by_instance[0] as u32; 8],
+                &[n_variables_by_instance[0] as u32; 8],
                 verifier_channel,
             );
 

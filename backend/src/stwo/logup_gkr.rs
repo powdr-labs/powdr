@@ -1,10 +1,9 @@
-use itertools::chain;
 use itertools::Itertools;
-use num_traits::{One, Pow, Zero};
-use serde::{Deserialize, Serialize};
+use num_traits::{One, Zero};
+use serde::Serialize;
 
 use powdr_ast::analyzed::AlgebraicExpression;
-use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
+use powdr_backend_utils::machine_fixed_columns;
 use powdr_executor_utils::expression_evaluator::ExpressionEvaluator;
 use powdr_number::Mersenne31Field;
 use stwo_prover::constraint_framework::EvalAtRow;
@@ -26,16 +25,12 @@ use stwo_prover::core::lookups::gkr_verifier::GkrArtifact;
 use stwo_prover::core::lookups::gkr_verifier::GkrBatchProof;
 use stwo_prover::core::pcs::TreeVec;
 
-use stwo_prover::core::ColumnVec;
-//use stwo_prover::constraint_framework::assert_constraints_on_polys;
-use crate::stwo::circuit_builder::get_constant_with_next_list;
 use crate::stwo::circuit_builder::STAGE0_TRACE_IDX;
-use crate::stwo::circuit_builder::STAGE1_TRACE_IDX;
+use stwo_prover::core::ColumnVec;
 
 use powdr_ast::analyzed::PolyID;
 
-use stwo_prover::core::lookups::gkr_prover::prove_batch;
-use stwo_prover::core::lookups::gkr_prover::Layer;
+use stwo_prover::core::lookups::gkr_prover::{prove_batch, Layer};
 use stwo_prover::core::lookups::mle::Mle;
 use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleCoeffColumnOracle;
 
@@ -53,26 +48,28 @@ use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_i
 
 use super::circuit_builder::PowdrEval;
 
-// for now, using this flag to enable logup-GKR
+// using this flag to enable logup-GKR for now
 pub const LOGUP_GKR: bool = true;
 // preprocess column has commitment tree index 0
 // stage 0 witness columns has commitment tree index 1
-// index 2 is for the MLE coeff column or stage 1 witness
+// index 2 is for GKR auxiliary traces or stage 1 witness
 pub const MLE_TRACE_IDX: usize = 2;
 
+// Wrapper for PowdrComponent to implement MleCoeffColumnOracle
 pub struct PowdrComponentWrapper<'a> {
     pub powdr_component: &'a FrameworkComponent<PowdrEval>,
     pub logup_challenge: QM31,
     pub main_machine_powdr_eval: PowdrEval,
 }
 
-impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
+// MleCoeffColumnOracle returns the ood point evaluation of the bus payload
+impl MleCoeffColumnOracle for PowdrComponentWrapper<'_> {
     fn evaluate_at_point(
         &self,
         _point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
     ) -> SecureField {
-        // Create dummy point evaluator just to extract the value we need from the mask
+        // Create dummy point evaluator just to extract the ood point evaluation value we need from the mask
         let mut accumulator = PointEvaluationAccumulator::new(SecureField::one());
 
         // TODO: evaluator cannot get constant columns, need to fix this
@@ -118,18 +115,14 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
         let mut accumulator = SecureField::zero();
 
         for id in &self.main_machine_powdr_eval.analyzed.identities {
-            match id {
-                Identity::BusInteraction(id) => {
-                    let payload: Vec<<PointEvaluator as EvalAtRow>::F> =
-                        id.payload.0.iter().map(|e| evaluator.evaluate(e)).collect();
+            if let Identity::BusInteraction(id) = id {
+                let payload: Vec<<PointEvaluator as EvalAtRow>::F> =
+                    id.payload.0.iter().map(|e| evaluator.evaluate(e)).collect();
 
-                    let multiplicity = <PointEvaluator as EvalAtRow>::EF::from(
-                        evaluator.evaluate(&id.multiplicity),
-                    );
-
-                    accumulator += payload[0] + self.logup_challenge + multiplicity;
-                }
-                _ => {}
+                let multiplicity =
+                    <PointEvaluator as EvalAtRow>::EF::from(evaluator.evaluate(&id.multiplicity));
+                // TODO: update this accumulator when the sound challenge is implemented
+                accumulator += payload[0] + self.logup_challenge + multiplicity;
             }
         }
 
@@ -137,15 +130,15 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
     }
 }
 
-impl<'a> Deref for PowdrComponentWrapper<'a> {
+impl Deref for PowdrComponentWrapper<'_> {
     type Target = PowdrComponent;
 
     fn deref(&self) -> &Self::Target {
-        &self.powdr_component
+        self.powdr_component
     }
 }
 
-pub struct gkr_proof_artifacts {
+pub struct GkrProofArtifacts {
     pub gkr_proof: GkrBatchProof,
     pub gkr_artifacts: GkrArtifact,
     pub combined_mle: Mle<SimdBackend, SecureField>,
@@ -166,8 +159,8 @@ where
         machine_log_sizes: BTreeMap<String, u32>,
         logup_challenge: QM31,
         prover_channel: &mut <MC as MerkleChannel>::C,
-    ) -> Option<gkr_proof_artifacts> {
-        if LOGUP_GKR == false {
+    ) -> Option<GkrProofArtifacts> {
+        if !LOGUP_GKR {
             return None;
         }
         // The payload of the bus can come from all the expressions, therefore inorder to rebuild the payload trace, constant columns,witness columns
@@ -207,90 +200,86 @@ where
         let mut mle_denominators = Vec::new();
 
         for id in &self.analyzed.identities {
-            match id {
-                Identity::BusInteraction(identity) => {
-                    for e in &identity.payload.0 {
-                        // For now, only consider payload with polynomial identity
-                        if let AlgebraicExpression::Reference(_) = e {
-                        } else {
-                            break;
-                        };
+            if let Identity::BusInteraction(identity) = id {
+                for e in &identity.payload.0 {
+                    // For now, only consider payload with polynomial identity
+                    if let AlgebraicExpression::Reference(_) = e {
+                    } else {
+                        break;
+                    };
 
-                        let denominator_trace = witness
-                            .iter()
-                            .chain(all_fixed_columns.iter())
-                            .find(|(name, _)| {
-                                if let AlgebraicExpression::Reference(r) = e {
-                                    name == &r.name
-                                } else {
-                                    panic!("cannot find lookup trace for {:?}", e);
-                                }
+                    let denominator_trace = witness
+                        .iter()
+                        .chain(all_fixed_columns.iter())
+                        .find(|(name, _)| {
+                            if let AlgebraicExpression::Reference(r) = e {
+                                name == &r.name
+                            } else {
+                                panic!("cannot find bus payload trace {e:?}");
+                            }
+                        })
+                        .unwrap();
+
+                    // create fractions that are to be added by GKR circuit
+                    // numerator is 1 for bus send, is multiplicity for bus receive
+                    // all take 1 for now
+                    // TODO: include multiplicity for bus receive, latch/1 for bus send, 1 needs to be committed as well
+
+                    let numerator_values: Vec<SecureField> = match identity.multiplicity {
+                        AlgebraicExpression::Number(n) => (0..self.analyzed.degree())
+                            .map(|_| {
+                                SecureField::from_m31(
+                                    into_stwo_field(&n),
+                                    0.into(),
+                                    0.into(),
+                                    0.into(),
+                                )
                             })
-                            .unwrap();
+                            .collect(),
+                        _ => panic!("only support multiplicity as Number expression for now"),
+                    };
 
-                        // create fractions that are to be added by GKR circuit
-                        // numerator is 1 for bus send, is multiplicity for bus receive
-                        // all take 1 for now
-                        // TODO: include multiplicity for bus receive, latch/1 for bus send, 1 needs to be a fixed column as well
+                    // traces need to be bit-reverse order
+                    let denominator_values = get_bit_reversed_col(
+                        &denominator_trace.1,
+                        self.analyzed.degree() as usize,
+                        logup_challenge,
+                    );
 
-                        let numerator_values: Vec<SecureField> = match identity.multiplicity {
-                            AlgebraicExpression::Number(n) => (0..self.analyzed.degree())
-                                .map(|_| {
-                                    SecureField::from_m31(
-                                        into_stwo_field(&n).into(),
-                                        0.into(),
-                                        0.into(),
-                                        0.into(),
-                                    )
-                                })
-                                .collect(),
-                            _ => panic!("only support multiplicity as Number expression for now"),
-                        };
+                    // covert to SecureColumn, which is used to crate MLE in secure field
+                    let numerator_secure_column = numerator_values.iter().copied().collect();
+                    let denominator_secure_column = denominator_values.iter().copied().collect();
 
-                        // traces need to be bit-reverse order
-                        let denominator_values = get_bit_reversed_col(
-                            &denominator_trace.1,
-                            self.analyzed.degree() as usize,
-                            logup_challenge,
-                        );
+                    // create multilinear polynomial for the input layer
+                    let mle_numerator =
+                        Mle::<SimdBackend, SecureField>::new(numerator_secure_column);
+                    let mle_denominator =
+                        Mle::<SimdBackend, SecureField>::new(denominator_secure_column);
 
-                        // covert to SecureColumn, which is used to crate MLE in secure field
-                        let numerator_secure_column = numerator_values.iter().map(|&i| i).collect();
-                        let denominator_secure_column =
-                            denominator_values.iter().map(|&i| i).collect();
+                    mle_numerators.push(mle_numerator.clone());
+                    mle_denominators.push(mle_denominator.clone());
 
-                        // create multilinear polynomial for the input layer
-                        let mle_numerator =
-                            Mle::<SimdBackend, SecureField>::new(numerator_secure_column);
-                        let mle_denominator =
-                            Mle::<SimdBackend, SecureField>::new(denominator_secure_column);
+                    let top_layer = Layer::LogUpGeneric {
+                        numerators: mle_numerator,
+                        denominators: mle_denominator,
+                    };
 
-                        mle_numerators.push(mle_numerator.clone());
-                        mle_denominators.push(mle_denominator.clone());
-
-                        let top_layer = Layer::LogUpGeneric {
-                            numerators: mle_numerator,
-                            denominators: mle_denominator,
-                        };
-
-                        gkr_top_layers.push(top_layer);
-                    }
+                    gkr_top_layers.push(top_layer);
                 }
-                _ => {}
             }
         }
 
         let (gkr_proof, gkr_artifacts) = prove_batch(prover_channel, gkr_top_layers);
 
-        println!(
-            "gkr proof first layer mask is {:?}",
-            gkr_proof.layer_masks_by_instance
-        );
-
-        println!(
-            "gkr proof,claims are {:?}",
-            gkr_proof.output_claims_by_instance
-        );
+        // check the logop accumulation is zero
+        if gkr_proof
+            .output_claims_by_instance
+            .iter()
+            .fold(SecureField::zero(), |acc, vec| acc + vec[0] / vec[1])
+            != SecureField::zero()
+        {
+            panic!("logup accumulation is not zero, prove failed");
+        }
 
         // combine the GKR instances
         // TODO: use randomness that is generated based on the claims of the instance, to make the challenge sound
@@ -308,7 +297,7 @@ where
             })
             .collect();
 
-        let combined_mle_secure_column = combined_mle_values.iter().map(|&i| i).collect();
+        let combined_mle_secure_column = combined_mle_values.iter().copied().collect();
 
         // create multilinear polynomial for the input layer
         let combined_mle = Mle::<SimdBackend, SecureField>::new(combined_mle_secure_column);
@@ -320,7 +309,7 @@ where
             .flatten()
             .fold(SecureField::zero(), |acc, claim| acc + *claim);
 
-        Some(gkr_proof_artifacts {
+        Some(GkrProofArtifacts {
             gkr_proof,
             gkr_artifacts,
             combined_mle,
@@ -330,7 +319,7 @@ where
 }
 
 fn get_bit_reversed_col(
-    values: &Vec<Mersenne31Field>,
+    values: &[Mersenne31Field],
     degree: usize,
     off_set: QM31, // for challenge if any
 ) -> Vec<SecureField> {
@@ -339,8 +328,7 @@ fn get_bit_reversed_col(
         bit_reversed_col[bit_reverse_index(
             coset_index_to_circle_domain_index(index, degree.ilog2()),
             degree.ilog2(),
-        )] = off_set
-            + SecureField::from_m31(into_stwo_field(value).into(), 0.into(), 0.into(), 0.into());
+        )] = off_set + SecureField::from_m31(into_stwo_field(value), 0.into(), 0.into(), 0.into());
     });
 
     bit_reversed_col
