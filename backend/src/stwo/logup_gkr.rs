@@ -12,6 +12,7 @@ use powdr_ast::analyzed::AlgebraicUnaryOperator;
 use powdr_ast::analyzed::Analyzed;
 use powdr_ast::analyzed::PolynomialType;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
+use powdr_executor_utils::expression_evaluator::ExpressionEvaluator;
 use powdr_number::Mersenne31Field;
 use stwo_prover::constraint_framework::EvalAtRow;
 use stwo_prover::constraint_framework::PointEvaluator;
@@ -35,7 +36,13 @@ use stwo_prover::core::pcs::TreeVec;
 use stwo_prover::core::prover;
 use stwo_prover::core::ColumnVec;
 //use stwo_prover::constraint_framework::assert_constraints_on_polys;
+use crate::stwo::circuit_builder::get_constant_with_next_list;
+use crate::stwo::circuit_builder::STAGE0_TRACE_IDX;
+use crate::stwo::circuit_builder::STAGE1_TRACE_IDX;
+
+use powdr_ast::analyzed::PolyID;
 use stwo_prover::constraint_framework::preprocessed_columns::IsFirst;
+use stwo_prover::constraint_framework::preprocessed_columns::PreProcessedColumnId;
 use stwo_prover::core::poly::circle::CanonicCoset;
 use stwo_prover::core::poly::circle::CircleEvaluation;
 use stwo_prover::core::poly::BitReversedOrder;
@@ -47,6 +54,7 @@ use stwo_prover::examples::xor::gkr_lookups::mle_eval::build_trace; //,gen_carry
 use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleCoeffColumnOracle;
 use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleEvalPoint;
 
+use crate::stwo::circuit_builder::Data;
 use crate::stwo::prover::into_stwo_field;
 use powdr_ast::analyzed::Identity;
 
@@ -70,6 +78,7 @@ pub const MLE_TRACE_IDX: usize = 2;
 pub struct PowdrComponentWrapper<'a> {
     pub powdr_component: &'a FrameworkComponent<PowdrEval>,
     pub logup_challenge: QM31,
+    pub main_machine_powdr_eval: PowdrEval,
 }
 
 impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
@@ -79,11 +88,18 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
     ) -> SecureField {
         println!("evaluating point in mle, mask is {:?}", mask);
+        println!("input to point eval mask is {:?}", mask.sub_tree(self.powdr_component.trace_locations()));
         // Create dummy point evaluator just to extract the value we need from the mask
         let mut accumulator = PointEvaluationAccumulator::new(SecureField::one());
         println!("building point evaluator");
+
+        // TODO: evaluator cannot get constant columns, need to fix this
+        let eval_mask=mask.sub_tree(self.powdr_component.trace_locations());
+     
+
+
         let mut eval = PointEvaluator::new(
-            mask.sub_tree(self.powdr_component.trace_locations()),
+            eval_mask,
             &mut accumulator,
             SecureField::one(),
             self.powdr_component.log_size(),
@@ -91,28 +107,115 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
         );
         println!("evaluating point built");
 
-        eval_mle_coeff_col(1, &mut eval, self.logup_challenge)[0];
-        //(1780739598 + 2114335485i) + (1452895841 + 1936777096i)u
-        SecureField::from_u32_unchecked(1780739598, 2114335485, 1452895841, 1936777096)
-    }
-}
+        let stage0_witness_eval: BTreeMap<PolyID, [<PointEvaluator as EvalAtRow>::F; 2]> = self
+            .main_machine_powdr_eval
+            .stage0_witness_columns
+            .keys()
+            .map(|poly_id| {
+                (
+                    *poly_id,
+                    eval.next_interaction_mask(STAGE0_TRACE_IDX, [0, 1]),
+                )
+            })
+            .collect();
 
-fn eval_mle_coeff_col<E: EvalAtRow>(
-    interaction: usize,
-    eval: &mut E,
-    logup_challenge: QM31,
-) -> [E::EF; 2] {
-    // This EF elements come from the column of the MLE polynomial in stage 0 interaction 1,
-    // stage 0 interaction begins with a 0 trace, then is the witness trace, the unused trace below is
-    // for the 0 trace.
-    let [_mle_coeff_col_eval_0, _mle_coeff_col_eval_next] =
-        eval.next_interaction_mask(interaction, [0, 1]);
-    let [mle_coeff_col_eval_0, mle_coeff_col_eval_next] =
-        eval.next_interaction_mask(interaction, [0, 1]);
-    [
-        E::EF::from(mle_coeff_col_eval_0) + logup_challenge,
-        E::EF::from(mle_coeff_col_eval_next) + logup_challenge,
-    ]
+        println!("stage0 witness eval built");
+
+        
+
+        
+        println!("stage1 witness eval built");
+        // println!("constant columns are {:?}", self.constant_columns);
+        // let constant_eval: BTreeMap<_, _> = self
+        //     .constant_columns
+        //     .keys()
+        //     .enumerate()
+        //     .map(|(i, poly_id)| {
+        //         (
+        //             *poly_id,
+        //             eval.get_preprocessed_column(PreProcessedColumnId {
+        //                 id: (i + self.main_machine_powdr_eval.preprocess_col_offset).to_string(),
+        //             }),
+        //         )
+        //     })
+        //     .collect();
+
+        // println!("constant eval built");
+        // let constant_shifted_eval: BTreeMap<_, _> = self
+        //     .constant_shifted
+        //     .keys()
+        //     .enumerate()
+        //     .map(|(i, poly_id)| {
+        //         (
+        //             *poly_id,
+        //             eval.get_preprocessed_column(PreProcessedColumnId {
+        //                 id: (i + constant_eval.len() + self.preprocess_col_offset).to_string(),
+        //             }),
+        //         )
+        //     })
+        //     .collect();
+        // let challenges = self
+        //     .challenges
+        //     .iter()
+        //     .map(|(k, v)| {
+        //         (
+        //             *k,
+        //             <PointEvaluator as EvalAtRow>::F::from(into_stwo_field(v)),
+        //         )
+        //     })
+        //     .collect();
+        // println!("challenges built");
+
+         let intermediate_definitions = self.analyzed.intermediate_definitions();
+        // let public_values_terminal = self
+        //     .publics_values
+        //     .iter()
+        //     .map(|(name, _, value)| {
+        //         (
+        //             name.clone(),
+        //             <PointEvaluator as EvalAtRow>::F::from(into_stwo_field(value)),
+        //         )
+        //     })
+        //     .collect();
+        let data = Data {
+            stage0_witness_eval: &stage0_witness_eval,
+            stage1_witness_eval: &BTreeMap::new(),
+            publics_values: &BTreeMap::new(),
+            constant_shifted_eval: &BTreeMap::new(),
+            constant_eval: &BTreeMap::new(),
+            challenges: &BTreeMap::new(),
+            poly_stage_map: &self.main_machine_powdr_eval.poly_stage_map,
+        };
+
+        let mut evaluator =
+            ExpressionEvaluator::new_with_custom_expr(&data, &intermediate_definitions, |v| {
+                <PointEvaluator as EvalAtRow>::F::from(into_stwo_field(v))
+            });
+
+        let mut accumulator = SecureField::zero();
+
+        for id in &self.main_machine_powdr_eval.analyzed.identities {
+            match id {
+                Identity::BusInteraction(id) => {
+
+                    println!("payload is {:?}", id.payload.0);
+                    let payload: Vec<<PointEvaluator as EvalAtRow>::F> =
+                        id.payload.0.iter().map(|e| evaluator.evaluate(e)).collect();
+                    
+                    println!("multiplicity is {:?}", id.multiplicity);
+                    let multiplicity = <PointEvaluator as EvalAtRow>::EF::from(
+                        evaluator.evaluate(&id.multiplicity),
+                    );
+
+                    accumulator += payload[0] + self.logup_challenge + multiplicity;
+                    println!("accumulator is {:?}", accumulator);
+                }
+                _ => {}
+            }
+        }
+
+        accumulator
+    }
 }
 
 impl<'a> Deref for PowdrComponentWrapper<'a> {
@@ -126,8 +229,6 @@ impl<'a> Deref for PowdrComponentWrapper<'a> {
 pub struct gkr_proof_artifacts {
     pub gkr_proof: GkrBatchProof,
     pub gkr_artifacts: GkrArtifact,
-    pub mle_numerators: Vec<Mle<SimdBackend, SecureField>>,
-    pub mle_denominators: Vec<Mle<SimdBackend, SecureField>>,
     pub combined_mle: Mle<SimdBackend, SecureField>,
     pub combine_mle_claim: SecureField,
 }
@@ -308,8 +409,6 @@ where
         Some(gkr_proof_artifacts {
             gkr_proof,
             gkr_artifacts,
-            mle_numerators,
-            mle_denominators,
             combined_mle,
             combine_mle_claim,
         })

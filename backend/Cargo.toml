@@ -63,7 +63,7 @@ p3-commit = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf2
 ], optional = true }
 p3-matrix = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", optional = true }
 p3-uni-stark = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", optional = true }
-stwo-prover = { git = "https://github.com/starkware-libs/stwo.git", optional = true, rev = "81d1fe349b490089f65723ad49ef72b9d09495ba", features = [
+stwo-prover = { git = "https://github.com/ShuangWu121/stwo-GKR-serialized-proof.git", optional = true, features = [
   "parallel",
 ] }
 

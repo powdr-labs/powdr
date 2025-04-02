@@ -524,6 +524,8 @@ where
 
         println!("building components");
 
+        let mut main_machine_powdr_eval = PowdrEval::default();
+
         // Build the circuit. The circuit includes constraints of all the machines in both stage 0 and stage 1
         let mut constant_cols_offset_acc = 0;
         let components = self
@@ -535,18 +537,19 @@ where
                     assert_eq!(machine_name, proof_machine_name);
 
                     println!("building powdr component for {}", machine_name);
-
-                    let component = PowdrComponent::new(
-                        tree_span_provider,
-                        PowdrEval::new(
-                            (*pil).clone(),
-                            constant_cols_offset_acc,
-                            machine_log_size,
-                            stage0_challenges.clone(),
-                            public_values.clone(),
-                        ),
-                        SecureField::zero(),
+                    let powdr_eval = PowdrEval::new(
+                        (*pil).clone(),
+                        constant_cols_offset_acc,
+                        machine_log_size,
+                        stage0_challenges.clone(),
+                        public_values.clone(),
                     );
+                    if machine_name == "main" {
+                        main_machine_powdr_eval = powdr_eval.clone();
+                    };
+
+                    let component =
+                        PowdrComponent::new(tree_span_provider, powdr_eval, SecureField::zero());
 
                     constant_cols_offset_acc +=
                         pil.constant_count() + get_constant_with_next_list(pil).len();
@@ -567,6 +570,7 @@ where
             let wrapped_component = PowdrComponentWrapper {
                 powdr_component: last_component,
                 logup_challenge: alpha,
+                main_machine_powdr_eval,
             };
 
             //let claim_a=gkr_proof_artifacts.mle_denominators[0].eval_at_point(&gkr_proof_artifacts.gkr_artifacts.ood_point);
@@ -657,6 +661,7 @@ where
         // Constraints that are to be proved
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
+        let mut main_machine_powdr_eval = PowdrEval::default();
 
         let mut constant_cols_offset_acc = 0;
         let iter = self
@@ -666,13 +671,13 @@ where
             .map(
                 |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
                     assert_eq!(machine_name, proof_machine_name);
-                    (pil, machine_log_size) // Keep only relevant values
+                    (pil, machine_name, machine_log_size) // Keep only relevant values
                 },
             );
 
         let constant_col_log_sizes = iter
             .clone()
-            .flat_map(|(pil, machine_log_size)| {
+            .flat_map(|(pil, _machine_name, machine_log_size)| {
                 repeat(machine_log_size).take(
                     pil.constant_count()
                         + get_constant_with_next_list(pil).len()
@@ -683,14 +688,14 @@ where
 
         let stage0_witness_col_log_sizes = iter
             .clone()
-            .flat_map(|(pil, machine_log_size)| {
+            .flat_map(|(pil, _machine_name, machine_log_size)| {
                 repeat(machine_log_size).take(pil.stage_commitment_count(0))
             })
             .collect_vec();
 
         let stage1_witness_col_log_sizes = iter
             .clone()
-            .flat_map(|(pil, machine_log_size)| {
+            .flat_map(|(pil, _machine_name, machine_log_size)| {
                 repeat(machine_log_size).take(pil.stage_commitment_count(1))
             })
             .collect_vec();
@@ -713,18 +718,19 @@ where
 
         let components = iter
             .clone()
-            .map(|(pil, machine_log_size)| {
-                let machine_component = PowdrComponent::new(
-                    tree_span_provider,
-                    PowdrEval::new(
-                        (*pil).clone(),
-                        constant_cols_offset_acc,
-                        machine_log_size,
-                        stage0_challenges.clone(),
-                        public_values.clone(),
-                    ),
-                    SecureField::zero(),
+            .map(|(pil, machine_name, machine_log_size)| {
+                let powdr_eval = PowdrEval::new(
+                    (*pil).clone(),
+                    constant_cols_offset_acc,
+                    machine_log_size,
+                    stage0_challenges.clone(),
+                    public_values.clone(),
                 );
+                if machine_name == "main" {
+                    main_machine_powdr_eval = powdr_eval.clone();
+                };
+                let machine_component =
+                    PowdrComponent::new(tree_span_provider, powdr_eval, SecureField::zero());
 
                 constant_cols_offset_acc += pil.constant_count();
 
@@ -767,6 +773,7 @@ where
             let wrapped_component = PowdrComponentWrapper {
                 powdr_component: last_component,
                 logup_challenge: alpha,
+                main_machine_powdr_eval,
             };
             let mle_eval_component = MleEvalVerifierComponent::new(
                 tree_span_provider,

@@ -48,22 +48,22 @@ where
 
     CircleEvaluation::new(domain, column)
 }
-
+#[derive(Default, Clone)]
 pub struct PowdrEval {
     log_degree: u32,
-    analyzed: Analyzed<M31>,
+    pub analyzed: Analyzed<M31>,
     // the pre-processed are indexed in the whole proof, instead of in each component.
     // this offset represents the index of the first pre-processed column in this component
-    preprocess_col_offset: usize,
+    pub preprocess_col_offset: usize,
     // The name of the public, the poly-id of the witness poly that this public is related to, the public value
     pub(crate) publics_values: Vec<(String, PolyID, M31)>,
-    stage0_witness_columns: BTreeMap<PolyID, usize>,
-    stage1_witness_columns: BTreeMap<PolyID, usize>,
-    constant_shifted: BTreeMap<PolyID, usize>,
-    constant_columns: BTreeMap<PolyID, usize>,
+    pub stage0_witness_columns: BTreeMap<PolyID, usize>,
+    pub stage1_witness_columns: BTreeMap<PolyID, usize>,
+    pub constant_shifted: BTreeMap<PolyID, usize>,
+    pub constant_columns: BTreeMap<PolyID, usize>,
     // stwo supports maximum 2 stages, challenges are only created after stage 0
     pub challenges: BTreeMap<u64, M31>,
-    poly_stage_map: BTreeMap<PolyID, usize>,
+    pub poly_stage_map: BTreeMap<PolyID, usize>,
 }
 
 impl PowdrEval {
@@ -134,15 +134,15 @@ impl PowdrEval {
     }
 }
 
-struct Data<'a, F> {
-    stage0_witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
-    stage1_witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
-    constant_shifted_eval: &'a BTreeMap<PolyID, F>,
-    constant_eval: &'a BTreeMap<PolyID, F>,
-    publics_values: &'a BTreeMap<String, F>,
+pub struct Data<'a, F> {
+    pub stage0_witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
+    pub stage1_witness_eval: &'a BTreeMap<PolyID, [F; 2]>,
+    pub constant_shifted_eval: &'a BTreeMap<PolyID, F>,
+    pub constant_eval: &'a BTreeMap<PolyID, F>,
+    pub publics_values: &'a BTreeMap<String, F>,
     // challenges for stage 1
-    challenges: &'a BTreeMap<u64, F>,
-    poly_stage_map: &'a BTreeMap<PolyID, usize>,
+    pub challenges: &'a BTreeMap<u64, F>,
+    pub poly_stage_map: &'a BTreeMap<PolyID, usize>,
 }
 
 impl<F: Clone> TerminalAccess<F> for &Data<'_, F> {
