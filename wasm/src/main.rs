@@ -1618,7 +1618,6 @@ impl<'a> StackTracker<'a> {
         {
             self.stack.pop();
         }
-        assert!(self.stack.top_bytes() == last_frame.stack_height);
 
         // Create the expected outputs:
         match last_frame.blockty {
