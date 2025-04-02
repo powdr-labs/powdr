@@ -341,15 +341,13 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id else {
                     unreachable!()
                 };
-                unknown_relevant_variables(expression, witgen, row_offset)
-                    .into_iter()
-                    .filter(|var| match var {
-                        Variable::WitnessCell(cell) | Variable::IntermediateCell(cell) => {
-                            cell.row_offset >= 0 && cell.row_offset < self.block_size as i32
-                        }
-                        Variable::FixedCell(_) => unreachable!(),
-                        Variable::Param(_) | Variable::MachineCallParam(_) => true,
-                    })
+                unknown_relevant_variables(expression, witgen, row_offset).filter(|var| match var {
+                    Variable::WitnessCell(cell) | Variable::IntermediateCell(cell) => {
+                        cell.row_offset >= 0 && cell.row_offset < self.block_size as i32
+                    }
+                    Variable::FixedCell(_) => unreachable!(),
+                    Variable::Param(_) | Variable::MachineCallParam(_) => true,
+                })
             })
             .unique()
             .sorted()
@@ -590,35 +588,30 @@ fn unknown_relevant_variables<T: FieldElement, FixedEval: FixedEvaluator<T>>(
     expr: &AlgebraicExpression<T>,
     witgen: &WitgenInference<'_, T, FixedEval>,
     row_offset: i32,
-) -> HashSet<Variable> {
+) -> Box<dyn Iterator<Item = Variable>> {
     match expr {
         AlgebraicExpression::Reference(algebraic_reference) => {
             let var = Variable::from_reference(algebraic_reference, row_offset);
-            (!witgen.is_known(&var))
-                .then_some(var)
-                .into_iter()
-                .collect()
+            Box::new((!witgen.is_known(&var)).then_some(var).into_iter())
         }
         // TODO once we support them, we should turn them into the proper variables here.
         AlgebraicExpression::PublicReference(_) | AlgebraicExpression::Challenge(_) => {
-            Default::default()
+            Box::new(std::iter::empty())
         }
-        AlgebraicExpression::Number(_) => Default::default(),
+        AlgebraicExpression::Number(_) => Box::new(std::iter::empty()),
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
             if *op == AlgebraicBinaryOperator::Mul {
                 let left_val = witgen.try_evaluate_to_known_number(left.as_ref(), row_offset);
                 let right_val = witgen.try_evaluate_to_known_number(right.as_ref(), row_offset);
                 if left_val == Some(T::from(0)) || right_val == Some(T::from(0)) {
-                    return Default::default();
+                    return Box::new(std::iter::empty());
                 }
             }
-            let mut vars = unknown_relevant_variables(left.as_ref(), witgen, row_offset);
-            vars.extend(unknown_relevant_variables(
-                right.as_ref(),
-                witgen,
-                row_offset,
-            ));
-            vars
+            Box::new(
+                unknown_relevant_variables(left.as_ref(), witgen, row_offset).chain(
+                    unknown_relevant_variables(right.as_ref(), witgen, row_offset),
+                ),
+            )
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { expr, .. }) => {
             unknown_relevant_variables(expr.as_ref(), witgen, row_offset)
