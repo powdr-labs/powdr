@@ -1,10 +1,11 @@
 use std::{
     collections::{btree_map::Entry, BTreeMap},
-    mem,
+    env::var,
     ops::RangeFrom,
     str::FromStr,
 };
 
+use itertools::Itertools;
 use powdr_syscalls::Syscall;
 use wasmparser::{
     BlockType, CompositeInnerType, ContType, ElementItems, FuncType, FunctionBody, LocalsReader,
@@ -787,6 +788,19 @@ enum Directive<'a> {
         /// so that "return" can restore it.
         save_return_info_to: AllocatedVar,
     },
+    IndirectCall {
+        /// How much to increase the frame pointer for the called function.
+        new_fp_delta: u32,
+        /// The index of the expected function type.
+        func_type_index: u32,
+        /// The table to look for the function reference.
+        table_index: u32,
+        /// The index of the function to be called in the table.
+        function_index: AllocatedVar,
+        /// Where to save the current frame pointer and return address,
+        /// so that "return" can restore it.
+        save_return_info_to: AllocatedVar,
+    },
     Return {
         return_info: AllocatedVar,
     },
@@ -898,8 +912,11 @@ fn infinite_registers_allocation<'a>(
         // block (the function itself) has ended.
         assert!(!tracker.control_stack.is_empty());
 
+        let operator = operator?;
+        log::debug!("# {operator:?}");
+
         // Match first the control operators, which require special handling.
-        match operator? {
+        match operator {
             Operator::Block { blockty } => {
                 tracker.assert_block_args(blockty);
                 tracker.control_stack.push(Frame {
@@ -1104,33 +1121,37 @@ fn infinite_registers_allocation<'a>(
                     });
                 } else {
                     // This is a normal function call, we emit the call
-
-                    // Return info is written on the stack, after ther function inputs or outputs,
-                    // whichever is bigger.
-                    let address = tracker
-                        .stack
-                        .top_bytes()
-                        .max(bottom_addr + many_sz(func_type.results()));
-
-                    let return_info = AllocatedVar {
-                        // For the lack of a better type, the return info is a i64, where
-                        // the first 32 bits (address-wise) are the saved frame pointer, and the
-                        // other 32 bits are the return address.
-                        val_type: ValType::I64,
-                        address,
-                    };
-
                     directives.push(Directive::Call {
                         function_index,
                         new_fp_delta: bottom_addr,
-                        save_return_info_to: return_info,
+                        save_return_info_to: tracker
+                            .next_return_info_address(bottom_addr, func_type),
                     });
                 }
             }
             Operator::CallIndirect {
                 type_index,
                 table_index,
-            } => todo!(),
+            } => {
+                // Consume the function index from the stack. It comes before the actual
+                // function arguments.
+                let function_index = tracker.stack.pop();
+                assert_eq!(function_index.val_type, ValType::I32);
+
+                // Consume the function arguments and place the outputs on the stack.
+                let func_type = module.get_type(type_index);
+                let (bottom_addr, _, _) =
+                    tracker.apply_operation_to_stack(func_type.params(), func_type.results());
+
+                // Emit the call
+                directives.push(Directive::IndirectCall {
+                    new_fp_delta: bottom_addr,
+                    func_type_index: type_index,
+                    table_index,
+                    function_index,
+                    save_return_info_to: tracker.next_return_info_address(bottom_addr, func_type),
+                });
+            }
             op => {
                 let (inputs, output) = tracker.get_operator_type(&op).unwrap();
 
@@ -1208,6 +1229,8 @@ struct Stack {
 
 impl Stack {
     fn new(stack_base_bytes: u32) -> Self {
+        log::trace!("New stack");
+        log::trace!("## {stack_base_bytes} |  | {stack_base_bytes}");
         Stack {
             stack: Vec::new(),
             stack_base_bytes,
@@ -1216,11 +1239,19 @@ impl Stack {
     }
 
     fn push(&mut self, val_type: ValType) {
-        self.stack.push(AllocatedVar {
-            val_type,
-            address: self.stack_top_bytes,
-        });
+        let old_len = self.stack.len();
+        let address = self.stack_top_bytes;
+        self.stack.push(AllocatedVar { val_type, address });
         self.stack_top_bytes += sz(val_type);
+        log::trace!(
+            "## {} | {} <= {address} | {}",
+            self.stack_base_bytes,
+            self.stack[..old_len]
+                .iter()
+                .map(|var| var.address)
+                .format(", "),
+            self.stack_top_bytes
+        );
     }
 
     fn pop(&mut self) -> AllocatedVar {
@@ -1228,6 +1259,18 @@ impl Stack {
         self.stack_top_bytes -= sz(var.val_type);
         assert_eq!(self.stack_top_bytes, var.address);
         assert!(self.stack_top_bytes >= self.stack_base_bytes);
+
+        log::trace!(
+            "## {} | {} | {} => {}",
+            self.stack_base_bytes,
+            self.stack[..self.stack.len()]
+                .iter()
+                .map(|var| var.address)
+                .format(", "),
+            self.stack_top_bytes,
+            var.address,
+        );
+
         var
     }
 
@@ -1241,6 +1284,14 @@ impl Stack {
         if let Some(&var) = vars.first() {
             self.stack_top_bytes = var.address;
             assert!(self.stack_top_bytes >= self.stack_base_bytes);
+
+            log::trace!(
+                "## {} | {} | {} => {}",
+                self.stack_base_bytes,
+                self.stack.iter().map(|var| var.address).format(", "),
+                self.stack_top_bytes,
+                vars.iter().map(|var| var.address).format(", "),
+            );
         }
         vars
     }
@@ -1250,6 +1301,21 @@ impl Stack {
         if let Some(&var) = self.stack.get(new_len) {
             self.stack_top_bytes = var.address;
             assert!(self.stack_top_bytes >= self.stack_base_bytes);
+
+            log::trace!(
+                "## {} | {} | {} => {}",
+                self.stack_base_bytes,
+                self.stack[..new_len]
+                    .iter()
+                    .map(|var| var.address)
+                    .format(", "),
+                self.stack_top_bytes,
+                self.stack[new_len..]
+                    .iter()
+                    .map(|var| var.address)
+                    .format(", "),
+            );
+
             self.stack.truncate(new_len);
         }
     }
@@ -1338,7 +1404,7 @@ impl<'a> StackTracker<'a> {
                 func_type,
                 control_stack: vec![Frame {
                     stack_height: 0,
-                    blockty: BlockType::FuncType(func_idx),
+                    blockty: BlockType::FuncType(module.func_types[func_idx as usize]),
                     frame_kind: FrameKind::Function,
                 }],
                 locals,
@@ -1347,6 +1413,24 @@ impl<'a> StackTracker<'a> {
             },
             first_explicit_local,
         ))
+    }
+
+    /// Where to save the return info right before calling a function.
+    fn next_return_info_address(&self, bottom_addr: u32, func_type: &FuncType) -> AllocatedVar {
+        // Return info is written on the stack, after ther function inputs or outputs,
+        // whichever is bigger.
+        let address = self
+            .stack
+            .top_bytes()
+            .max(bottom_addr + many_sz(func_type.results()));
+
+        AllocatedVar {
+            // For the lack of a better type, the return info is a i64, where
+            // the first 32 bits (address-wise) are the saved frame pointer, and the
+            // other 32 bits are the return address.
+            val_type: ValType::I64,
+            address,
+        }
     }
 
     /// Asserts the arguments of a block are at the top of the stack.
@@ -1435,18 +1519,7 @@ impl<'a> StackTracker<'a> {
         if stack.len() > args.len() {
             let src_args = &stack[(stack.len() - args.len())..];
 
-            let dest_pos = stack.partition_point(|v| v.address < target_frame.stack_height);
-
-            for v in stack.iter() {
-                log::debug!("### {}: {:?}", v.address, v.val_type);
-            }
-
-            let mut dest_stack_top = stack
-                .get(dest_pos)
-                .map(|v| v.address)
-                .unwrap_or(self.stack.top_bytes());
-            assert_eq!(dest_stack_top, target_frame.stack_height);
-
+            let mut dest_stack_top = target_frame.stack_height;
             for src in src_args {
                 let var_size = sz(src.val_type);
 

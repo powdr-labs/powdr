@@ -10,9 +10,10 @@ repository.workspace = true
 [dependencies]
 powdr-syscalls.workspace = true
 
-wasmparser = "0.227"
-log = "0.4.17"
 env_logger = "0.10.0"
+itertools = "0.13"
+log = "0.4.17"
+wasmparser = "0.227"
 
 [lints]
 workspace = true
