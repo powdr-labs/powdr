@@ -474,7 +474,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             return Ok(updates);
         }
 
-        return Ok(EvalValue::incomplete(IncompleteCause::SolvingFailed));
+        if T::known_field() == Some(powdr_number::KnownField::GoldilocksField) {
+            return Ok(EvalValue::incomplete(IncompleteCause::SolvingFailed));
+        }
 
         let outer_query = OuterQuery::new(
             arguments,
