@@ -14,7 +14,6 @@ use stwo_prover::core::air::ComponentProver;
 
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::backend::BackendForChannel;
-use stwo_prover::core::backend::Column;
 use stwo_prover::core::channel::Channel;
 use stwo_prover::core::channel::MerkleChannel;
 use stwo_prover::core::circle::CirclePoint;
@@ -199,6 +198,8 @@ where
         // Collect all the MLEs for the denominators of the GKR instances
         let mut mle_denominators = Vec::new();
 
+        let mut all_mle_values = Vec::new();
+
         for id in &self.analyzed.identities {
             if let Identity::BusInteraction(identity) = id {
                 for e in &identity.payload.0 {
@@ -265,6 +266,8 @@ where
                     };
 
                     gkr_top_layers.push(top_layer);
+                    all_mle_values.push(numerator_values);
+                    all_mle_values.push(denominator_values);
                 }
             }
         }
@@ -287,11 +290,10 @@ where
 
         let combined_mle_values: Vec<SecureField> = (0..self.analyzed.degree())
             .map(|index| {
-                let combined_mle_value: SecureField = mle_numerators
+                let combined_mle_value: SecureField = all_mle_values
                     .iter()
-                    .chain(mle_denominators.iter())
-                    .fold(SecureField::zero(), |acc, mle| {
-                        acc + linear_combine_challenge * mle.clone().into_evals().at(index as usize)
+                    .fold(SecureField::zero(), |acc, mle_values| {
+                        acc + linear_combine_challenge * mle_values[index as usize]
                     });
                 combined_mle_value
             })
