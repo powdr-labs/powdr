@@ -1,7 +1,4 @@
-use std::{
-    collections::HashSet,
-    fmt::{self, Display, Formatter, Write},
-};
+use std::fmt::{self, Display, Formatter, Write};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
