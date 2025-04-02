@@ -756,17 +756,15 @@ where
                 .unwrap();
 
             // check the logop accumulation is zero
-           if gkr_proof.output_claims_by_instance.iter().fold( SecureField::zero(),|acc,vec| {
-            acc+vec[0]/vec[1]})!=SecureField::zero() {
+            if gkr_proof
+                .output_claims_by_instance
+                .iter()
+                .fold(SecureField::zero(), |acc, vec| acc + vec[0] / vec[1])
+                != SecureField::zero()
+            {
                 return Err("logup accumulation is not zero".to_string());
             }
 
-           
-                
-            
-            
-            
-                    
             gkr_proof.output_claims_by_instance.len();
 
             // TODO: modify this according to the challenge when the sound challenge is implemented

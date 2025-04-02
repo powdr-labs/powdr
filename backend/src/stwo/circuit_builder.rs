@@ -54,15 +54,15 @@ pub struct PowdrEval {
     pub analyzed: Analyzed<M31>,
     // the pre-processed are indexed in the whole proof, instead of in each component.
     // this offset represents the index of the first pre-processed column in this component
-    pub preprocess_col_offset: usize,
+    preprocess_col_offset: usize,
     // The name of the public, the poly-id of the witness poly that this public is related to, the public value
     pub(crate) publics_values: Vec<(String, PolyID, M31)>,
     pub stage0_witness_columns: BTreeMap<PolyID, usize>,
-    pub stage1_witness_columns: BTreeMap<PolyID, usize>,
-    pub constant_shifted: BTreeMap<PolyID, usize>,
-    pub constant_columns: BTreeMap<PolyID, usize>,
+    stage1_witness_columns: BTreeMap<PolyID, usize>,
+    constant_shifted: BTreeMap<PolyID, usize>,
+    constant_columns: BTreeMap<PolyID, usize>,
     // stwo supports maximum 2 stages, challenges are only created after stage 0
-    pub challenges: BTreeMap<u64, M31>,
+    challenges: BTreeMap<u64, M31>,
     pub poly_stage_map: BTreeMap<PolyID, usize>,
 }
 

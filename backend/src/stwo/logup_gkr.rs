@@ -3,14 +3,7 @@ use itertools::Itertools;
 use num_traits::{One, Pow, Zero};
 use serde::{Deserialize, Serialize};
 
-use powdr_ast::analyzed::AlgebraicBinaryOperation;
-use powdr_ast::analyzed::AlgebraicBinaryOperator;
 use powdr_ast::analyzed::AlgebraicExpression;
-use powdr_ast::analyzed::AlgebraicReferenceThin;
-use powdr_ast::analyzed::AlgebraicUnaryOperation;
-use powdr_ast::analyzed::AlgebraicUnaryOperator;
-use powdr_ast::analyzed::Analyzed;
-use powdr_ast::analyzed::PolynomialType;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor_utils::expression_evaluator::ExpressionEvaluator;
 use powdr_number::Mersenne31Field;
@@ -19,21 +12,20 @@ use stwo_prover::constraint_framework::PointEvaluator;
 use stwo_prover::constraint_framework::{FrameworkComponent, FrameworkEval};
 use stwo_prover::core::air::accumulation::PointEvaluationAccumulator;
 use stwo_prover::core::air::ComponentProver;
-use stwo_prover::core::backend::cpu::lookups::gkr;
-use stwo_prover::core::backend::simd::column::SecureColumn;
+
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::backend::BackendForChannel;
 use stwo_prover::core::backend::Column;
 use stwo_prover::core::channel::Channel;
 use stwo_prover::core::channel::MerkleChannel;
 use stwo_prover::core::circle::CirclePoint;
-use stwo_prover::core::fields::m31::M31;
+
 use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::fields::qm31::QM31;
 use stwo_prover::core::lookups::gkr_verifier::GkrArtifact;
 use stwo_prover::core::lookups::gkr_verifier::GkrBatchProof;
 use stwo_prover::core::pcs::TreeVec;
-use stwo_prover::core::prover;
+
 use stwo_prover::core::ColumnVec;
 //use stwo_prover::constraint_framework::assert_constraints_on_polys;
 use crate::stwo::circuit_builder::get_constant_with_next_list;
@@ -41,18 +33,11 @@ use crate::stwo::circuit_builder::STAGE0_TRACE_IDX;
 use crate::stwo::circuit_builder::STAGE1_TRACE_IDX;
 
 use powdr_ast::analyzed::PolyID;
-use stwo_prover::constraint_framework::preprocessed_columns::IsFirst;
-use stwo_prover::constraint_framework::preprocessed_columns::PreProcessedColumnId;
-use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::poly::circle::CircleEvaluation;
-use stwo_prover::core::poly::BitReversedOrder;
 
 use stwo_prover::core::lookups::gkr_prover::prove_batch;
 use stwo_prover::core::lookups::gkr_prover::Layer;
 use stwo_prover::core::lookups::mle::Mle;
-use stwo_prover::examples::xor::gkr_lookups::mle_eval::build_trace; //,gen_carry_quotient_col,eval_eq_constraints};
 use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleCoeffColumnOracle;
-use stwo_prover::examples::xor::gkr_lookups::mle_eval::MleEvalPoint;
 
 use crate::stwo::circuit_builder::Data;
 use crate::stwo::prover::into_stwo_field;
@@ -87,14 +72,8 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
         _point: CirclePoint<SecureField>,
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
     ) -> SecureField {
-        println!("evaluating point in mle, mask is {:?}", mask);
-        println!(
-            "input to point eval mask is {:?}",
-            mask.sub_tree(self.powdr_component.trace_locations())
-        );
         // Create dummy point evaluator just to extract the value we need from the mask
         let mut accumulator = PointEvaluationAccumulator::new(SecureField::one());
-        println!("building point evaluator");
 
         // TODO: evaluator cannot get constant columns, need to fix this
         let eval_mask = mask.sub_tree(self.powdr_component.trace_locations());
@@ -106,7 +85,6 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
             self.powdr_component.log_size(),
             SecureField::zero(),
         );
-        println!("evaluating point built");
 
         let stage0_witness_eval: BTreeMap<PolyID, [<PointEvaluator as EvalAtRow>::F; 2]> = self
             .main_machine_powdr_eval
@@ -120,61 +98,8 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
             })
             .collect();
 
-        println!("stage0 witness eval built");
-
-        println!("stage1 witness eval built");
-        // println!("constant columns are {:?}", self.constant_columns);
-        // let constant_eval: BTreeMap<_, _> = self
-        //     .constant_columns
-        //     .keys()
-        //     .enumerate()
-        //     .map(|(i, poly_id)| {
-        //         (
-        //             *poly_id,
-        //             eval.get_preprocessed_column(PreProcessedColumnId {
-        //                 id: (i + self.main_machine_powdr_eval.preprocess_col_offset).to_string(),
-        //             }),
-        //         )
-        //     })
-        //     .collect();
-
-        // println!("constant eval built");
-        // let constant_shifted_eval: BTreeMap<_, _> = self
-        //     .constant_shifted
-        //     .keys()
-        //     .enumerate()
-        //     .map(|(i, poly_id)| {
-        //         (
-        //             *poly_id,
-        //             eval.get_preprocessed_column(PreProcessedColumnId {
-        //                 id: (i + constant_eval.len() + self.preprocess_col_offset).to_string(),
-        //             }),
-        //         )
-        //     })
-        //     .collect();
-        // let challenges = self
-        //     .challenges
-        //     .iter()
-        //     .map(|(k, v)| {
-        //         (
-        //             *k,
-        //             <PointEvaluator as EvalAtRow>::F::from(into_stwo_field(v)),
-        //         )
-        //     })
-        //     .collect();
-        // println!("challenges built");
-
         let intermediate_definitions = self.analyzed.intermediate_definitions();
-        // let public_values_terminal = self
-        //     .publics_values
-        //     .iter()
-        //     .map(|(name, _, value)| {
-        //         (
-        //             name.clone(),
-        //             <PointEvaluator as EvalAtRow>::F::from(into_stwo_field(value)),
-        //         )
-        //     })
-        //     .collect();
+
         let data = Data {
             stage0_witness_eval: &stage0_witness_eval,
             stage1_witness_eval: &BTreeMap::new(),
@@ -195,17 +120,14 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
         for id in &self.main_machine_powdr_eval.analyzed.identities {
             match id {
                 Identity::BusInteraction(id) => {
-                    println!("payload is {:?}", id.payload.0);
                     let payload: Vec<<PointEvaluator as EvalAtRow>::F> =
                         id.payload.0.iter().map(|e| evaluator.evaluate(e)).collect();
 
-                    println!("multiplicity is {:?}", id.multiplicity);
                     let multiplicity = <PointEvaluator as EvalAtRow>::EF::from(
                         evaluator.evaluate(&id.multiplicity),
                     );
 
                     accumulator += payload[0] + self.logup_challenge + multiplicity;
-                    println!("accumulator is {:?}", accumulator);
                 }
                 _ => {}
             }
@@ -288,8 +210,6 @@ where
             match id {
                 Identity::BusInteraction(identity) => {
                     for e in &identity.payload.0 {
-                        println!("payload is {:?}", e);
-
                         // For now, only consider payload with polynomial identity
                         if let AlgebraicExpression::Reference(_) = e {
                         } else {
@@ -308,7 +228,6 @@ where
                             })
                             .unwrap();
 
-                        println!("multiplicity is {:?}", identity.multiplicity);
                         // create fractions that are to be added by GKR circuit
                         // numerator is 1 for bus send, is multiplicity for bus receive
                         // all take 1 for now
@@ -400,32 +319,6 @@ where
             .iter()
             .flatten()
             .fold(SecureField::zero(), |acc, claim| acc + *claim);
-
-        println!("gkr sumcheck proofs are {:?}", gkr_proof.sumcheck_proofs);
-
-        println!(
-            "\n gkr round poly evaluations are {:?}",
-            gkr_proof.sumcheck_proofs[1].round_polys[0].eval_at_point(SecureField::zero())
-        );
-        println!(
-            "\n gkr round poly evaluations are {:?}",
-            gkr_proof.sumcheck_proofs[1].round_polys[0].eval_at_point(SecureField::one())
-        );
-        println!(
-            "\n gkr round poly evaluations sum are {:?}",
-            gkr_proof.output_claims_by_instance
-        );
-
-        println!(
-            "\n gkr claims are {:?}",
-            gkr_artifacts.claims_to_verify_by_instance
-        );
-
-        println!(
-            "gkr layer masks are {:?}",
-            gkr_proof.layer_masks_by_instance
-        );
-
 
         Some(gkr_proof_artifacts {
             gkr_proof,
