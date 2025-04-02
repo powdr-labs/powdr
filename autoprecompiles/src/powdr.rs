@@ -686,6 +686,13 @@ pub fn substitute_algebraic<T: Clone>(
     );
 }
 
+pub fn is_zero<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
+    match expr {
+        AlgebraicExpression::Number(n) => *n == T::zero(),
+        _ => false,
+    }
+}
+
 pub fn find_byte_decomp<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
 ) -> (AlgebraicExpression<T>, AlgebraicExpression<T>) {

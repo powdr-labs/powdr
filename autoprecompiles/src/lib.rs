@@ -334,7 +334,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
     }
 
     pub fn build(&self, optimize: bool) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
-        let (machine, subs) = generate_precompile(
+        let (mut machine, subs) = generate_precompile(
             &self.program,
             &self.instruction_kind,
             &self.instruction_machines,
@@ -375,10 +375,9 @@ impl<T: FieldElement> Autoprecompiles<T> {
         // }
         assert_eq!(c.len(), i.len());
         assert_eq!(machine.columns().len(), machine.column_ids().len());
-        let mut machine = optimize_pc_lookup(machine);
-        let mut machine = optimize_exec_bus(machine);
-
         if optimize {
+            machine = optimize_pc_lookup(machine);
+            machine = optimize_exec_bus(machine);
             machine = optimize_precompile(machine);
         }
 
@@ -414,6 +413,8 @@ impl<T: FieldElement> Autoprecompiles<T> {
 
         if optimize {
             machine = powdr_optimize(machine);
+            machine = remove_zero_mult(machine);
+            machine = remove_zero_constraint(machine);
         }
 
         println!("\nMachine after powdr optimization");
@@ -481,6 +482,50 @@ pub fn replace_autoprecompile_basic_blocks<T: Clone>(
         }
     }
     new_program
+}
+
+pub fn remove_zero_mult<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+    println!(
+        "Before zero mult optimizations, columns: {}, constraints: {}, bus_interactions: {}",
+        machine.columns().len(),
+        machine.constraints.len(),
+        machine.bus_interactions.len()
+    );
+
+    machine
+        .bus_interactions
+        .retain(|bus_int| !powdr::is_zero(&bus_int.mult));
+
+    println!(
+        "After zero mult optimizations, columns: {}, constraints: {}, bus_interactions: {}",
+        machine.columns().len(),
+        machine.constraints.len(),
+        machine.bus_interactions.len()
+    );
+
+    machine
+}
+
+pub fn remove_zero_constraint<T: FieldElement>(
+    mut machine: SymbolicMachine<T>,
+) -> SymbolicMachine<T> {
+    println!(
+        "Before zero constraint optimizations, columns: {}, constraints: {}, bus_interactions: {}",
+        machine.columns().len(),
+        machine.constraints.len(),
+        machine.bus_interactions.len()
+    );
+
+    machine.constraints.retain(|c| !powdr::is_zero(&c.expr));
+
+    println!(
+        "After zero constraint optimizations, columns: {}, constraints: {}, bus_interactions: {}",
+        machine.columns().len(),
+        machine.constraints.len(),
+        machine.bus_interactions.len()
+    );
+
+    machine
 }
 
 pub fn remove_range_checks<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
