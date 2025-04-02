@@ -88,15 +88,16 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
         mask: &TreeVec<ColumnVec<Vec<SecureField>>>,
     ) -> SecureField {
         println!("evaluating point in mle, mask is {:?}", mask);
-        println!("input to point eval mask is {:?}", mask.sub_tree(self.powdr_component.trace_locations()));
+        println!(
+            "input to point eval mask is {:?}",
+            mask.sub_tree(self.powdr_component.trace_locations())
+        );
         // Create dummy point evaluator just to extract the value we need from the mask
         let mut accumulator = PointEvaluationAccumulator::new(SecureField::one());
         println!("building point evaluator");
 
         // TODO: evaluator cannot get constant columns, need to fix this
-        let eval_mask=mask.sub_tree(self.powdr_component.trace_locations());
-     
-
+        let eval_mask = mask.sub_tree(self.powdr_component.trace_locations());
 
         let mut eval = PointEvaluator::new(
             eval_mask,
@@ -121,9 +122,6 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
 
         println!("stage0 witness eval built");
 
-        
-
-        
         println!("stage1 witness eval built");
         // println!("constant columns are {:?}", self.constant_columns);
         // let constant_eval: BTreeMap<_, _> = self
@@ -166,7 +164,7 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
         //     .collect();
         // println!("challenges built");
 
-         let intermediate_definitions = self.analyzed.intermediate_definitions();
+        let intermediate_definitions = self.analyzed.intermediate_definitions();
         // let public_values_terminal = self
         //     .publics_values
         //     .iter()
@@ -197,11 +195,10 @@ impl<'a> MleCoeffColumnOracle for PowdrComponentWrapper<'a> {
         for id in &self.main_machine_powdr_eval.analyzed.identities {
             match id {
                 Identity::BusInteraction(id) => {
-
                     println!("payload is {:?}", id.payload.0);
                     let payload: Vec<<PointEvaluator as EvalAtRow>::F> =
                         id.payload.0.iter().map(|e| evaluator.evaluate(e)).collect();
-                    
+
                     println!("multiplicity is {:?}", id.multiplicity);
                     let multiplicity = <PointEvaluator as EvalAtRow>::EF::from(
                         evaluator.evaluate(&id.multiplicity),
@@ -404,7 +401,31 @@ where
             .flatten()
             .fold(SecureField::zero(), |acc, claim| acc + *claim);
 
-        // Linear comboination of GKR instances
+        println!("gkr sumcheck proofs are {:?}", gkr_proof.sumcheck_proofs);
+
+        println!(
+            "\n gkr round poly evaluations are {:?}",
+            gkr_proof.sumcheck_proofs[1].round_polys[0].eval_at_point(SecureField::zero())
+        );
+        println!(
+            "\n gkr round poly evaluations are {:?}",
+            gkr_proof.sumcheck_proofs[1].round_polys[0].eval_at_point(SecureField::one())
+        );
+        println!(
+            "\n gkr round poly evaluations sum are {:?}",
+            gkr_proof.output_claims_by_instance
+        );
+
+        println!(
+            "\n gkr claims are {:?}",
+            gkr_artifacts.claims_to_verify_by_instance
+        );
+
+        println!(
+            "gkr layer masks are {:?}",
+            gkr_proof.layer_masks_by_instance
+        );
+
 
         Some(gkr_proof_artifacts {
             gkr_proof,
