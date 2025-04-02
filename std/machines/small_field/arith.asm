@@ -143,6 +143,6 @@ machine Arith(byte: Byte, byte2: Byte2) with
     carry * CLK8[0] = 0;
 
     // Putting everything together    
-    col eq0_sum = sum(8, |i| eq0(i) * CLK8[i]);
+    let eq0_sum = sum(8, |i| eq0(i) * CLK8[i]);
     eq0_sum + carry = carry' * 2**8;
 }
