@@ -112,7 +112,7 @@ pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Analyzed<T> {
         .clone()
 }
 
-#[cfg(feature = "estark-starky")]
+#[cfg(any(feature = "estark-starky", feature = "halo2", feature = "plonky3"))]
 fn should_generate_proofs() -> bool {
     match std::env::var("POWDR_GENERATE_PROOFS") {
         Ok(value) => match value.as_str() {
