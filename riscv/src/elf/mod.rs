@@ -867,7 +867,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         rs2: None,
                         imm: Some(lo),
                         ..
-                    } if matches!(l_op, Op::LB | Op::LH | Op::LW | Op::LBU | Op::LHU | Op::LWU)
+                    } if matches!(l_op, Op::LB | Op::LH | Op::LW | Op::LBU | Op::LHU)
                         && rd_auipc == rd_l
                         && rd_l == rs1_l =>
                     {
