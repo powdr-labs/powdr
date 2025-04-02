@@ -203,7 +203,7 @@ pub fn test_halo2_with_backend_variant(
 
     // `gen_halo2_proof` is rather slow, because it computes two Halo2 proofs.
     // Therefore, we only run it in the nightly tests.
-    let is_nightly_test = env::var("IS_NIGHTLY_TEST")
+    let is_nightly_test = std::env::var("IS_NIGHTLY_TEST")
         .map(|v| v == "true")
         .unwrap_or(false);
 
