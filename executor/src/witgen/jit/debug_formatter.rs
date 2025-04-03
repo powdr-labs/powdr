@@ -1,7 +1,7 @@
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicUnaryOperation, PolynomialIdentity, PolynomialType, SelectedExpressions,
+    AlgebraicUnaryOperation, PolynomialIdentity, SelectedExpressions,
 };
 use powdr_number::FieldElement;
 
@@ -206,26 +206,19 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
         }
         let [name, value, rc] = match e {
             Expression::Reference(r) => {
-                let (value, range_constraint) = match r.poly_id.ptype {
-                    PolynomialType::Committed | PolynomialType::Constant => {
-                        let variable = Variable::from_reference(r, row_offset);
-                        let value = self.witgen.value(&variable).to_string();
-                        let rc = self.witgen.range_constraint(&variable);
-                        let rc = if rc == RangeConstraint::default()
-                            || rc.try_to_single_value().is_some()
-                        {
+                let (value, range_constraint) = {
+                    let variable = Variable::from_reference(r, row_offset);
+                    let value = self.witgen.value(&variable).to_string();
+                    let rc = self.witgen.range_constraint(&variable);
+                    let rc =
+                        if rc == RangeConstraint::default() || rc.try_to_single_value().is_some() {
                             // Empty string also for single value, since it is already
                             // printed in the "value" line.
                             String::new()
                         } else {
                             rc.to_string()
                         };
-                        (value, rc)
-                    }
-                    PolynomialType::Intermediate => {
-                        // TODO we should format the contained intermediates separately.
-                        ("<intermediate>".to_string(), String::new())
-                    }
+                    (value, rc)
                 };
                 [r.to_string(), value, range_constraint]
             }
