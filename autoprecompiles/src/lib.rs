@@ -14,12 +14,14 @@ use powdr_ast::{
         UnaryOperation, UnaryOperator,
     },
 };
+use powdr_executor::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
+use powdr_executor::witgen::{AffineExpression, AlgebraicVariable, PartialExpressionEvaluator};
 use powdr_parser_util::SourceRef;
 use powdr_pil_analyzer::analyze_ast;
 use powdr_pilopt::optimize;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
-use std::convert::TryFrom;
+use std::convert::{Infallible, TryFrom};
 
 use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
@@ -960,8 +962,7 @@ pub fn generate_precompile<T: FieldElement>(
                     sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
                 }
 
-                let opcode_a = AlgebraicExpression::Number((instr.opcode as u64).into());
-                local_constraints.push((pc_lookup.op - opcode_a).into());
+                add_opcode_constraints(&mut local_constraints, instr.opcode, &pc_lookup.op);
 
                 assert_eq!(instr.args.len(), pc_lookup.args.len());
                 if optimize {
@@ -1147,6 +1148,95 @@ pub fn generate_precompile<T: FieldElement>(
         },
         col_subs,
     )
+}
+
+fn add_opcode_constraints<T: FieldElement>(
+    constraints: &mut Vec<SymbolicConstraint<T>>,
+    opcode: usize,
+    expected_opcode: &AlgebraicExpression<T>,
+) {
+    println!("GGG add_opcode_constraints({opcode}, {expected_opcode})");
+    let opcode_a = AlgebraicExpression::Number((opcode as u64).into());
+    match try_compute_opcode_map(expected_opcode) {
+        Ok(op_to_reference) => {
+            println!("GGG op_to_reference = {:?}", op_to_reference);
+
+            for flag_ref in op_to_reference.values() {
+                let is_active = flag_ref == op_to_reference.get(&(opcode as u64)).unwrap();
+                let expected_value = if is_active {
+                    AlgebraicExpression::Number(1u32.into())
+                } else {
+                    AlgebraicExpression::Number(0u32.into())
+                };
+                let flag_expr = AlgebraicExpression::Reference(flag_ref.clone());
+                let constraint = flag_expr - expected_value;
+                println!("GGG constraint = {constraint}");
+                constraints.push(constraint.into());
+            }
+        }
+        Err(_) => {
+            constraints.push((expected_opcode.clone() - opcode_a).into());
+        }
+    }
+}
+
+fn try_compute_opcode_map<T: FieldElement>(
+    expected_opcode: &AlgebraicExpression<T>,
+) -> Result<BTreeMap<u64, AlgebraicReference>, ()> {
+    // Parse the expected opcode as an algebraic expression:
+    // flag1 * c1 + flag2 * c2 + ... + offset
+    let imm = BTreeMap::new();
+    let affine_expression = PartialExpressionEvaluator::new(SymbolicEvaluator, &imm)
+        .evaluate(expected_opcode)
+        .map_err(|_| ())?;
+    println!("GGG affine_expression = {affine_expression}");
+
+    // The above would not include any entry for `flag * 0`.
+    // If it exists, we collect it here.
+    let zero = AlgebraicExpression::Number(0u32.into());
+    let zero_flag = expected_opcode
+        .all_children()
+        .find_map(|expr| match expr {
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                op: AlgebraicBinaryOperator::Mul,
+                left,
+                right,
+            }) => {
+                if **left == zero {
+                    return Some((**right).clone());
+                }
+                if **right == zero {
+                    return Some((**left).clone());
+                }
+                None
+            }
+            _ => None,
+        })
+        .map(|expr| match expr {
+            AlgebraicExpression::Reference(reference) => reference,
+            _ => unreachable!(),
+        });
+
+    let offset = affine_expression.offset();
+
+    if !offset.is_zero() && zero_flag.is_none() {
+        // We didn't find any flag with factor zero, and the offset is not zero.
+        // Probably something went wrong.
+        return Err(());
+    }
+
+    Ok(affine_expression
+        .nonzero_coefficients()
+        .map(|(k, factor)| {
+            let opcode = (offset + *factor).to_degree();
+            let flag = match k {
+                AlgebraicVariable::Column(column) => (*column).clone(),
+                AlgebraicVariable::Public(_) => unreachable!(),
+            };
+            (opcode, flag)
+        })
+        .chain(zero_flag.map(|flag| (offset.to_degree(), flag.clone())))
+        .collect())
 }
 
 /// Use a SymbolicMachine to create a PILFile and run powdr's optimizations on it.
