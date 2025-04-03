@@ -5,8 +5,7 @@ use powdr_ast::parsed::asm::Part;
 use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-        AlgebraicUnaryOperator, Analyzed, BusInteractionIdentity, Identity, PolyID,
-        PolynomialIdentity, PolynomialType,
+        AlgebraicUnaryOperator, Analyzed, BusInteractionIdentity, Identity, PolynomialIdentity,
     },
     parsed::{
         asm::SymbolPath, visitor::AllChildren, ArrayLiteral, BinaryOperation, BinaryOperator,
@@ -15,13 +14,12 @@ use powdr_ast::{
     },
 };
 use powdr_executor::witgen::evaluators::symbolic_evaluator::SymbolicEvaluator;
-use powdr_executor::witgen::{AffineExpression, AlgebraicVariable, PartialExpressionEvaluator};
+use powdr_executor::witgen::{AlgebraicVariable, PartialExpressionEvaluator};
 use powdr_parser_util::SourceRef;
 use powdr_pil_analyzer::analyze_ast;
 use powdr_pilopt::optimize;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
-use std::convert::{Infallible, TryFrom};
 
 use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
@@ -1155,26 +1153,24 @@ fn add_opcode_constraints<T: FieldElement>(
     opcode: usize,
     expected_opcode: &AlgebraicExpression<T>,
 ) {
-    println!("GGG add_opcode_constraints({opcode}, {expected_opcode})");
     let opcode_a = AlgebraicExpression::Number((opcode as u64).into());
     match try_compute_opcode_map(expected_opcode) {
-        Ok(op_to_reference) => {
-            println!("GGG op_to_reference = {:?}", op_to_reference);
-
-            for flag_ref in op_to_reference.values() {
-                let is_active = flag_ref == op_to_reference.get(&(opcode as u64)).unwrap();
-                let expected_value = if is_active {
+        Ok(opcode_to_flag) => {
+            let active_flag = opcode_to_flag.get(&(opcode as u64)).unwrap();
+            for flag_ref in opcode_to_flag.values() {
+                let expected_value = if flag_ref == active_flag {
                     AlgebraicExpression::Number(1u32.into())
                 } else {
                     AlgebraicExpression::Number(0u32.into())
                 };
                 let flag_expr = AlgebraicExpression::Reference(flag_ref.clone());
                 let constraint = flag_expr - expected_value;
-                println!("GGG constraint = {constraint}");
                 constraints.push(constraint.into());
             }
         }
         Err(_) => {
+            // We were not able to extract the flags, so we keep them as witness columns
+            // and add a constraint that the expected opcode needs to equal the compile-time opcode.
             constraints.push((expected_opcode.clone() - opcode_a).into());
         }
     }
@@ -1191,7 +1187,7 @@ fn try_compute_opcode_map<T: FieldElement>(
         .map_err(|_| ())?;
     println!("GGG affine_expression = {affine_expression}");
 
-    // The above would not include any entry for `flag * 0`.
+    // The above would not include any entry for `flag * 0` or `0 * flag`.
     // If it exists, we collect it here.
     let zero = AlgebraicExpression::Number(0u32.into());
     let zero_flag = expected_opcode
@@ -1203,18 +1199,18 @@ fn try_compute_opcode_map<T: FieldElement>(
                 right,
             }) => {
                 if **left == zero {
-                    return Some((**right).clone());
+                    Some((**right).clone())
+                } else if **right == zero {
+                    Some((**left).clone())
+                } else {
+                    None
                 }
-                if **right == zero {
-                    return Some((**left).clone());
-                }
-                None
             }
             _ => None,
         })
-        .map(|expr| match expr {
-            AlgebraicExpression::Reference(reference) => reference,
-            _ => unreachable!(),
+        .and_then(|expr| match expr {
+            AlgebraicExpression::Reference(reference) => Some(reference),
+            _ => None,
         });
 
     let offset = affine_expression.offset();
