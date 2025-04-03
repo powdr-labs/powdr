@@ -5,7 +5,6 @@ use powdr_number::{
     Mersenne31Field,
 };
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
-use std::env;
 use std::path::PathBuf;
 
 use std::sync::Arc;
@@ -113,8 +112,9 @@ pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Analyzed<T> {
         .clone()
 }
 
+#[cfg(any(feature = "estark-starky", feature = "halo2", feature = "plonky3"))]
 fn should_generate_proofs() -> bool {
-    match env::var("POWDR_GENERATE_PROOFS") {
+    match std::env::var("POWDR_GENERATE_PROOFS") {
         Ok(value) => match value.as_str() {
             "true" => true,
             "false" => false,
@@ -203,7 +203,7 @@ pub fn test_halo2_with_backend_variant(
 
     // `gen_halo2_proof` is rather slow, because it computes two Halo2 proofs.
     // Therefore, we only run it in the nightly tests.
-    let is_nightly_test = env::var("IS_NIGHTLY_TEST")
+    let is_nightly_test = std::env::var("IS_NIGHTLY_TEST")
         .map(|v| v == "true")
         .unwrap_or(false);
 
