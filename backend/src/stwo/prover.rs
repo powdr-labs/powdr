@@ -50,6 +50,8 @@ use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_index};
 use stwo_prover::core::ColumnVec;
 
+use super::circuit_builder::CONSTRAINT_DEGREE;
+
 const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
@@ -385,7 +387,7 @@ where
             .collect_vec();
 
         let twiddles_max_degree = SimdBackend::precompute_twiddles(
-            CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
+            CanonicCoset::new(domain_degree_range.max.ilog2() + CONSTRAINT_DEGREE + FRI_LOG_BLOWUP as u32)
                 .circle_domain()
                 .half_coset,
         );
@@ -490,7 +492,7 @@ where
         // Generate GKR proof, get None if LOGUP_GKR is false
         // logup challenge alpha, take dummy challenge and dummy gkr_prover_channel for now
         // TODO: implement sound challenge
-        let alpha = SecureField::from_u32_unchecked(42, 42, 42, 42);
+        let alpha = SecureField::from_u32_unchecked(42, 43, 44, 45);
         let gkr_prover_channel = &mut <MC as MerkleChannel>::C::default();
         let gkr_result = self.gkr_prove(
             witness,
@@ -758,7 +760,7 @@ where
                 verifier_channel,
             );
 
-            let alpha = SecureField::from_u32_unchecked(42, 42, 42, 42);
+            let alpha = SecureField::from_u32_unchecked(42, 43, 44, 45);
             let last_component = components.last().unwrap(); // &FrameworkComponent
             let wrapped_component = PowdrComponentWrapper {
                 powdr_component: last_component,
