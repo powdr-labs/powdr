@@ -709,6 +709,9 @@ fn main() -> wasmparser::Result<()> {
                     }
                 }
             }
+            Payload::CustomSection(_) => {
+                // TODO: read function names and debug information
+            }
             Payload::End(_) => {
                 log::debug!("End of the module");
             }
