@@ -5,6 +5,14 @@ use powdr_ast::parsed::visitor::AllChildren;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
+use stwo_prover::core::backend::simd::SimdBackend;
+use stwo_prover::core::lookups::gkr_verifier::partially_verify_batch;
+use stwo_prover::core::lookups::gkr_verifier::Gate;
+use stwo_prover::core::lookups::gkr_verifier::GkrArtifact;
+use stwo_prover::core::poly::circle::PolyOps;
+use stwo_prover::examples::xor::gkr_lookups::mle_eval::{
+    build_trace, MleEvalProverComponent, MleEvalVerifierComponent,
+};
 
 use powdr_number::{FieldElement, LargeInt, Mersenne31Field as M31};
 
@@ -23,6 +31,7 @@ use crate::stwo::circuit_builder::{
     gen_stwo_circle_column, get_constant_with_next_list, PowdrComponent, PowdrEval,
     PREPROCESSED_TRACE_IDX, STAGE0_TRACE_IDX, STAGE1_TRACE_IDX,
 };
+use crate::stwo::logup_gkr::{PowdrComponentWrapper, MLE_TRACE_IDX};
 use crate::stwo::proof::{
     Proof, SerializableStarkProvingKey, StarkProvingKey, TableProvingKey, TableProvingKeyCollection,
 };
@@ -30,7 +39,7 @@ use crate::stwo::proof::{
 use stwo_prover::constraint_framework::TraceLocationAllocator;
 
 use stwo_prover::core::air::{Component, ComponentProver};
-use stwo_prover::core::backend::{Backend, BackendForChannel, Col, Column};
+use stwo_prover::core::backend::{BackendForChannel, Col, Column};
 use stwo_prover::core::channel::{Channel, MerkleChannel};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::qm31::SecureField;
@@ -60,28 +69,28 @@ impl fmt::Display for KeyExportError {
     }
 }
 
-pub struct StwoProver<B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Channel> {
+pub struct StwoProver<MC: MerkleChannel, C: Channel> {
     pub analyzed: Arc<Analyzed<M31>>,
     /// The split analyzed PIL
-    split: BTreeMap<String, Analyzed<M31>>,
+    pub split: BTreeMap<String, Analyzed<M31>>,
     /// The value of the fixed columns
     pub fixed: Arc<Vec<(String, VariablySizedColumn<M31>)>>,
 
     /// Proving key
-    proving_key: StarkProvingKey<B>,
+    proving_key: StarkProvingKey<SimdBackend>,
     /// TODO: Add verification key.
     _verifying_key: Option<()>,
     _channel_marker: PhantomData<C>,
     _merkle_channel_marker: PhantomData<MC>,
 }
 
-impl<B, MC, C> StwoProver<B, MC, C>
+impl<MC, C> StwoProver<MC, C>
 where
-    B: Backend + Send + BackendForChannel<MC>,
     MC: MerkleChannel + Send,
     C: Channel + Send,
     MC::H: DeserializeOwned + Serialize,
-    PowdrComponent: ComponentProver<B>,
+    PowdrComponent: ComponentProver<SimdBackend>,
+    SimdBackend: BackendForChannel<MC>,
 {
     pub fn new(
         analyzed: Arc<Analyzed<M31>>,
@@ -148,7 +157,7 @@ where
             })
             .collect();
 
-        let preprocessed: BTreeMap<String, TableProvingKeyCollection<B>> = self
+        let preprocessed: BTreeMap<String, TableProvingKeyCollection<SimdBackend>> = self
             .split
             .iter()
             .filter_map(|(namespace, pil)| {
@@ -169,7 +178,7 @@ where
                                 let fixed_columns = &fixed_columns[&size];
                                 let log_size = size.ilog2();
                                 let mut constant_trace: ColumnVec<
-                                    CircleEvaluation<B, BaseField, BitReversedOrder>,
+                                    CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
                                 > = fixed_columns
                                     .iter()
                                     .map(|(_, vec)| {
@@ -183,7 +192,7 @@ where
                                 let constant_with_next_list = get_constant_with_next_list(pil);
 
                                 let constant_shifted_trace: ColumnVec<
-                                    CircleEvaluation<B, BaseField, BitReversedOrder>,
+                                    CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
                                 > = fixed_columns
                                     .iter()
                                     .filter(|(name, _)| constant_with_next_list.contains(name))
@@ -201,13 +210,14 @@ where
 
                                 // get selector columns for the public inputs
                                 let publics_selectors: ColumnVec<
-                                    CircleEvaluation<B, BaseField, BitReversedOrder>,
+                                    CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
                                 > = pil
                                     .get_publics()
                                     .into_iter()
                                     .map(|(_, _, _, row_id, _)| {
                                         // Create a column with a single 1 at the row_id-th (in circle domain bitreverse order) position
-                                        let mut col = Col::<B, BaseField>::zeros(1 << log_size);
+                                        let mut col =
+                                            Col::<SimdBackend, BaseField>::zeros(1 << log_size);
                                         col.set(
                                             bit_reverse_index(
                                                 coset_index_to_circle_domain_index(
@@ -217,10 +227,14 @@ where
                                             ),
                                             BaseField::one(),
                                         );
-                                        CircleEvaluation::<B, BaseField, BitReversedOrder>::new(
-                                            *domain_map.get(&(log_size as usize)).unwrap(),
-                                            col,
-                                        )
+                                        CircleEvaluation::<
+                                                SimdBackend,
+                                                BaseField,
+                                                BitReversedOrder,
+                                            >::new(
+                                                *domain_map.get(&(log_size as usize)).unwrap(),
+                                                col,
+                                            )
                                     })
                                     .collect();
 
@@ -352,7 +366,7 @@ where
 
         // Get witness columns in circle domain for stage 0
         let stage0_witness_cols_circle_domain_eval: ColumnVec<
-            CircleEvaluation<B, BaseField, BitReversedOrder>,
+            CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>,
         > = witness_by_machine
             .values()
             .flat_map(|witness_cols| {
@@ -370,7 +384,7 @@ where
             })
             .collect_vec();
 
-        let twiddles_max_degree = B::precompute_twiddles(
+        let twiddles_max_degree = SimdBackend::precompute_twiddles(
             CanonicCoset::new(domain_degree_range.max.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
                 .circle_domain()
                 .half_coset,
@@ -378,7 +392,7 @@ where
 
         let prover_channel = &mut <MC as MerkleChannel>::C::default();
         let mut commitment_scheme =
-            CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles_max_degree);
+            CommitmentSchemeProver::<'_, SimdBackend, MC>::new(config, &twiddles_max_degree);
 
         // commit to constant columns
         let mut tree_builder = commitment_scheme.tree_builder();
@@ -387,6 +401,7 @@ where
 
         // commit to witness columns of stage 0
         let mut tree_builder = commitment_scheme.tree_builder();
+
         tree_builder.extend_evals(stage0_witness_cols_circle_domain_eval);
 
         tree_builder.commit(prover_channel);
@@ -472,7 +487,31 @@ where
             span.exit();
         }
 
+        // Generate GKR proof, get None if LOGUP_GKR is false
+        // logup challenge alpha, take dummy challenge and dummy gkr_prover_channel for now
+        // TODO: implement sound challenge
+        let alpha = SecureField::from_u32_unchecked(42, 42, 42, 42);
+        let gkr_prover_channel = &mut <MC as MerkleChannel>::C::default();
+        let gkr_result = self.gkr_prove(
+            witness,
+            machine_log_sizes.clone(),
+            alpha,
+            gkr_prover_channel,
+        );
+
+        if let Some(ref gkr_proof_artifacts) = gkr_result {
+            let mut tree_builder = commitment_scheme.tree_builder();
+            tree_builder.extend_evals(build_trace(
+                &gkr_proof_artifacts.combined_mle,
+                &gkr_proof_artifacts.gkr_artifacts.ood_point,
+                gkr_proof_artifacts.combine_mle_claim,
+            ));
+            tree_builder.commit(prover_channel);
+        }
+
         let tree_span_provider = &mut TraceLocationAllocator::default();
+
+        let mut main_machine_powdr_eval = PowdrEval::default();
 
         // Build the circuit. The circuit includes constraints of all the machines in both stage 0 and stage 1
         let mut constant_cols_offset_acc = 0;
@@ -484,17 +523,19 @@ where
                 |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
                     assert_eq!(machine_name, proof_machine_name);
 
-                    let component = PowdrComponent::new(
-                        tree_span_provider,
-                        PowdrEval::new(
-                            (*pil).clone(),
-                            constant_cols_offset_acc,
-                            machine_log_size,
-                            stage0_challenges.clone(),
-                            public_values.clone(),
-                        ),
-                        SecureField::zero(),
+                    let powdr_eval = PowdrEval::new(
+                        (*pil).clone(),
+                        constant_cols_offset_acc,
+                        machine_log_size,
+                        stage0_challenges.clone(),
+                        public_values.clone(),
                     );
+                    if machine_name == "main" {
+                        main_machine_powdr_eval = powdr_eval.clone();
+                    };
+
+                    let component =
+                        PowdrComponent::new(tree_span_provider, powdr_eval, SecureField::zero());
 
                     constant_cols_offset_acc +=
                         pil.constant_count() + get_constant_with_next_list(pil).len();
@@ -503,28 +544,70 @@ where
             )
             .collect_vec();
 
-        let components_slice: Vec<&dyn ComponentProver<B>> = components
+        let mut components_slice: Vec<&dyn ComponentProver<SimdBackend>> = components
             .iter()
-            .map(|component| component as &dyn ComponentProver<B>)
+            .map(|component| component as &dyn ComponentProver<SimdBackend>)
             .collect();
 
-        let proof_result = stwo_prover::core::prover::prove::<B, MC>(
-            &components_slice,
-            prover_channel,
-            commitment_scheme,
-        );
+        if let Some(gkr_proof_artifacts) = gkr_result {
+            let last_component = components.last().unwrap(); // &FrameworkComponent
+            let wrapped_component = PowdrComponentWrapper {
+                powdr_component: last_component,
+                logup_challenge: alpha,
+                main_machine_powdr_eval,
+            };
 
-        let stark_proof = match proof_result {
-            Ok(value) => value,
-            Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
-        };
+            // create component for MLE
+            let mle_eval_component = MleEvalProverComponent::generate(
+                tree_span_provider,
+                &wrapped_component,
+                &gkr_proof_artifacts.gkr_artifacts.ood_point,
+                gkr_proof_artifacts.combined_mle.clone(),
+                gkr_proof_artifacts.combine_mle_claim,
+                &twiddles_max_degree,
+                MLE_TRACE_IDX,
+            );
 
-        let proof: Proof<MC> = Proof {
-            stark_proof,
-            machine_log_sizes,
-        };
-        prove_span.exit();
-        Ok(bincode::serialize(&proof).unwrap())
+            components_slice.push(&mle_eval_component);
+
+            let proof_result = stwo_prover::core::prover::prove::<SimdBackend, MC>(
+                &components_slice,
+                prover_channel,
+                commitment_scheme,
+            );
+
+            let stark_proof = match proof_result {
+                Ok(value) => value,
+                Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
+            };
+
+            let proof: Proof<MC> = Proof {
+                stark_proof,
+                machine_log_sizes,
+                gkr_proof: Some(gkr_proof_artifacts.gkr_proof),
+            };
+            prove_span.exit();
+            Ok(bincode::serialize(&proof).unwrap())
+        } else {
+            let proof_result = stwo_prover::core::prover::prove::<SimdBackend, MC>(
+                &components_slice,
+                prover_channel,
+                commitment_scheme,
+            );
+
+            let stark_proof = match proof_result {
+                Ok(value) => value,
+                Err(e) => return Err(e.to_string()), // Propagate the error instead of panicking
+            };
+
+            let proof: Proof<MC> = Proof {
+                stark_proof,
+                machine_log_sizes,
+                gkr_proof: None,
+            };
+            prove_span.exit();
+            Ok(bincode::serialize(&proof).unwrap())
+        }
     }
 
     pub fn verify(&self, proof: &[u8], instances: &[M31]) -> Result<(), String> {
@@ -556,6 +639,7 @@ where
         // Constraints that are to be proved
 
         let tree_span_provider = &mut TraceLocationAllocator::default();
+        let mut main_machine_powdr_eval = PowdrEval::default();
 
         let mut constant_cols_offset_acc = 0;
         let iter = self
@@ -565,13 +649,13 @@ where
             .map(
                 |((machine_name, pil), (proof_machine_name, &machine_log_size))| {
                     assert_eq!(machine_name, proof_machine_name);
-                    (pil, machine_log_size) // Keep only relevant values
+                    (pil, machine_name, machine_log_size) // Keep only relevant values
                 },
             );
 
         let constant_col_log_sizes = iter
             .clone()
-            .flat_map(|(pil, machine_log_size)| {
+            .flat_map(|(pil, _machine_name, machine_log_size)| {
                 repeat(machine_log_size).take(
                     pil.constant_count()
                         + get_constant_with_next_list(pil).len()
@@ -582,14 +666,14 @@ where
 
         let stage0_witness_col_log_sizes = iter
             .clone()
-            .flat_map(|(pil, machine_log_size)| {
+            .flat_map(|(pil, _machine_name, machine_log_size)| {
                 repeat(machine_log_size).take(pil.stage_commitment_count(0))
             })
             .collect_vec();
 
         let stage1_witness_col_log_sizes = iter
             .clone()
-            .flat_map(|(pil, machine_log_size)| {
+            .flat_map(|(pil, _machine_name, machine_log_size)| {
                 repeat(machine_log_size).take(pil.stage_commitment_count(1))
             })
             .collect_vec();
@@ -612,18 +696,19 @@ where
 
         let components = iter
             .clone()
-            .map(|(pil, machine_log_size)| {
-                let machine_component = PowdrComponent::new(
-                    tree_span_provider,
-                    PowdrEval::new(
-                        (*pil).clone(),
-                        constant_cols_offset_acc,
-                        machine_log_size,
-                        stage0_challenges.clone(),
-                        public_values.clone(),
-                    ),
-                    SecureField::zero(),
+            .map(|(pil, machine_name, machine_log_size)| {
+                let powdr_eval = PowdrEval::new(
+                    (*pil).clone(),
+                    constant_cols_offset_acc,
+                    machine_log_size,
+                    stage0_challenges.clone(),
+                    public_values.clone(),
                 );
+                if machine_name == "main" {
+                    main_machine_powdr_eval = powdr_eval.clone();
+                };
+                let machine_component =
+                    PowdrComponent::new(tree_span_provider, powdr_eval, SecureField::zero());
 
                 constant_cols_offset_acc += pil.constant_count();
 
@@ -632,26 +717,88 @@ where
             })
             .collect_vec();
 
-        let components_slice: Vec<&dyn Component> = components
+        let mut components_slice: Vec<&dyn Component> = components
             .iter()
             .map(|component| component as &dyn Component)
             .collect();
 
-        if self.analyzed.stage_count() > 1 {
+        let gkr_verifier_channel = &mut <MC as MerkleChannel>::C::default();
+        if let Some(gkr_proof) = &proof.gkr_proof {
+            //let gkr_trace_size=proof.machine_log_sizes.get("mle").unwrap();
+
+            let GkrArtifact {
+                ood_point,
+                claims_to_verify_by_instance,
+                n_variables_by_instance,
+            } = partially_verify_batch(vec![Gate::LogUp; 2], gkr_proof, gkr_verifier_channel)
+                .unwrap();
+
+            // check the logop accumulation is zero
+            if gkr_proof
+                .output_claims_by_instance
+                .iter()
+                .fold(SecureField::zero(), |acc, vec| acc + vec[0] / vec[1])
+                != SecureField::zero()
+            {
+                return Err("logup accumulation is not zero".to_string());
+            }
+
+            gkr_proof.output_claims_by_instance.len();
+
+            // TODO: modify this according to the challenge when the sound challenge is implemented
+            let combine_mle_claim: SecureField = claims_to_verify_by_instance
+                .iter()
+                .flatten()
+                .fold(SecureField::zero(), |acc, claim| acc + *claim);
+
             commitment_scheme.commit(
-                proof.stark_proof.commitments[STAGE1_TRACE_IDX],
-                &stage1_witness_col_log_sizes,
+                proof.stark_proof.commitments[MLE_TRACE_IDX],
+                // 8 is number of the extra columns for GKR
+                &[n_variables_by_instance[0] as u32; 8],
                 verifier_channel,
             );
-        }
 
-        stwo_prover::core::prover::verify(
-            &components_slice,
-            verifier_channel,
-            commitment_scheme,
-            proof.stark_proof,
-        )
-        .map_err(|e| e.to_string())
+            let alpha = SecureField::from_u32_unchecked(42, 42, 42, 42);
+            let last_component = components.last().unwrap(); // &FrameworkComponent
+            let wrapped_component = PowdrComponentWrapper {
+                powdr_component: last_component,
+                logup_challenge: alpha,
+                main_machine_powdr_eval,
+            };
+            let mle_eval_component = MleEvalVerifierComponent::new(
+                tree_span_provider,
+                &wrapped_component,
+                &ood_point,
+                combine_mle_claim,
+                MLE_TRACE_IDX,
+            );
+
+            components_slice.push(&mle_eval_component);
+
+            stwo_prover::core::prover::verify(
+                &components_slice,
+                verifier_channel,
+                commitment_scheme,
+                proof.stark_proof,
+            )
+            .map_err(|e| e.to_string())
+        } else {
+            if self.analyzed.stage_count() > 1 {
+                commitment_scheme.commit(
+                    proof.stark_proof.commitments[STAGE1_TRACE_IDX],
+                    &stage1_witness_col_log_sizes,
+                    verifier_channel,
+                );
+            }
+
+            stwo_prover::core::prover::verify(
+                &components_slice,
+                verifier_channel,
+                commitment_scheme,
+                proof.stark_proof,
+            )
+            .map_err(|e| e.to_string())
+        }
     }
 }
 
