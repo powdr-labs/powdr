@@ -931,16 +931,21 @@ pub fn generate_precompile<T: FieldElement>(
                     .exactly_one()
                     .expect("Expected single pc lookup");
 
-                let is_valid: AlgebraicExpression<T> = exec_receive(&machine).mult.clone();
-
                 let mut sub_map: BTreeMap<String, AlgebraicExpression<T>> = Default::default();
                 let mut local_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
+
+                let is_valid: AlgebraicExpression<T> = exec_receive(&machine).mult.clone();
+                let one = AlgebraicExpression::Number(1u64.into());
+                local_constraints.push((is_valid.clone() - one).into());
 
                 let mut sub_map_loadstore: BTreeMap<String, AlgebraicExpression<T>> =
                     Default::default();
                 if is_loadstore(instr.opcode) {
                     sub_map_loadstore.extend(loadstore_chip_info(&machine, instr.opcode));
                 }
+
+                let opcode_a = AlgebraicExpression::Number((instr.opcode as u64).into());
+                local_constraints.push((pc_lookup.op - opcode_a).into());
 
                 assert_eq!(instr.args.len(), pc_lookup.args.len());
                 if optimize {
@@ -989,6 +994,8 @@ pub fn generate_precompile<T: FieldElement>(
                 */
 
                 //println!("Computing local identities");
+                let mut is_valid_i = is_valid.clone();
+                let _ = powdr::append_suffix_algebraic(&mut is_valid_i, &format!("{i}"));
                 let local_identities = machine
                     .constraints
                     .iter()
@@ -1006,7 +1013,7 @@ pub fn generate_precompile<T: FieldElement>(
                         // println!("after simplify became identity {expr}");
                         if is_new {
                             // println!("Substutition was made, applying is_valid multiplication");
-                            expr = is_valid.clone() * expr;
+                            expr = is_valid_i.clone() * expr;
                             // println!("after is_valid mult became identity {expr}");
                         }
                         global_idx = powdr::reassign_ids_algebraic(
