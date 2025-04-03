@@ -1,6 +1,6 @@
 use std::{
     collections::{btree_map::Entry, BTreeMap},
-    env::var,
+    iter::Peekable,
     ops::RangeFrom,
     str::FromStr,
 };
@@ -906,7 +906,7 @@ fn infinite_registers_allocation<'a>(
     );
 
     // The rest of the directives are taken from the function body definition.
-    let mut op_reader = body.get_operators_reader()?.into_iter();
+    let mut op_reader = body.get_operators_reader()?.into_iter().peekable();
     while let Some(operator) = op_reader.next() {
         // There shouldn't be any more operators after the outmost
         // block (the function itself) has ended.
@@ -1174,6 +1174,7 @@ fn infinite_registers_allocation<'a>(
             }
         }
     }
+    assert!(tracker.control_stack.is_empty());
 
     Ok(directives)
 }
@@ -1584,28 +1585,37 @@ impl<'a> StackTracker<'a> {
     /// and fix the stack.
     fn discard_unreachable_and_fix_the_stack(
         &mut self,
-        op_reader: &mut OperatorsIterator<'_>,
+        op_reader: &mut Peekable<OperatorsIterator<'_>>,
     ) -> wasmparser::Result<()> {
         // Discard unreachable code
         let mut stack_count = 0;
-        for operator in op_reader {
-            match operator? {
-                Operator::Block { .. } | Operator::Loop { .. } | Operator::If { .. } => {
+
+        // We do a peek loop so we leave Else and End operators in the iterator,
+        // to be handled by the caller.
+        while let Some(operator) = op_reader.peek() {
+            match operator {
+                Ok(Operator::Block { .. })
+                | Ok(Operator::Loop { .. })
+                | Ok(Operator::If { .. }) => {
                     stack_count += 1;
                 }
-                Operator::Else => {
+                Ok(Operator::Else) => {
                     if stack_count == 0 {
                         break;
                     }
                 }
-                Operator::End => {
+                Ok(Operator::End) => {
                     if stack_count == 0 {
                         break;
                     }
                     stack_count -= 1;
                 }
-                _ => {}
+                Ok(_) => {}
+                Err(_) => {
+                    return Err(op_reader.next().unwrap().unwrap_err());
+                }
             }
+            op_reader.next();
         }
 
         // Fix the stack
