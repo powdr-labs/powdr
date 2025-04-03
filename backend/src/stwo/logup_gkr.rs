@@ -170,6 +170,16 @@ where
                 return None;
             }
         }
+
+        let has_bus_interaction = self
+            .analyzed
+            .identities
+            .iter()
+            .any(|id| matches!(id, Identity::BusInteraction(_)));
+
+        if !has_bus_interaction {
+            return None;
+        };
         // The payload of the bus can come from all the expressions, therefore inorder to rebuild the payload trace, constant columns,witness columns
         // and intermidiate columns are needed.
         // get all the fix columns
