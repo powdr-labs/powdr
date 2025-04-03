@@ -40,6 +40,54 @@ machine Arith(byte: Byte, byte2: Byte2) with
     // Constrain that y2 = 0 when operation is div.
     array::new(4, |i| is_division * y2[i] = 0);
 
+    // We need to provide hints for the quotient and remainder, because they are not unique under our current constraints.
+    // They are unique given additional main machine constraints, but it's still good to provide hints for the solver.
+    let quotient_hint = query |limb| match(eval(is_division)) {
+        1 => {
+            if x1_int() == 0 {
+                // Quotient is unconstrained, use zero.
+                Query::Hint(0)
+            } else {
+                let y3 = y3_int();
+                let x1 = x1_int();
+                let quotient = y3 / x1;
+                Query::Hint(fe(select_limb(quotient, limb)))
+            }
+        },
+        _ => Query::None
+    };
+
+    col witness y1_0(i) query quotient_hint(0);
+    col witness y1_1(i) query quotient_hint(1);
+    col witness y1_2(i) query quotient_hint(2);
+    col witness y1_3(i) query quotient_hint(3);
+    
+    let y1: expr[] = [y1_0, y1_1, y1_2, y1_3];
+
+    let remainder_hint = query |limb| match(eval(is_division)) {
+        1 => {
+            let y3 = y3_int();
+            let x1 = x1_int();
+            if x1 == 0 {
+                // To satisfy x1 * y1 + x2 = y3, we need to set x2 = y3.
+                Query::Hint(fe(select_limb(y3, limb)))
+            } else {
+                let remainder = y3 % x1;
+                Query::Hint(fe(select_limb(remainder, limb)))
+            }
+        },
+        _ => Query::None
+    };
+
+    col witness x2_0(i) query remainder_hint(0);
+    col witness x2_1(i) query remainder_hint(1);
+    col witness x2_2(i) query remainder_hint(2);
+    col witness x2_3(i) query remainder_hint(3);
+
+    let x2: expr[] = [x2_0, x2_1, x2_2, x2_3];
+
+    pol commit x1[4], y2[4], y3[4];
+
     // Selects the ith limb of x (little endian)
     // All limbs are 8 bits
     let select_limb = |x, i| if i >= 0 {
@@ -48,32 +96,13 @@ machine Arith(byte: Byte, byte2: Byte2) with
         0
     };
 
-    let limbs_to_int: fe[] -> int = |limbs| array::sum(array::map_enumerated(limbs, |i, limb| int(limb) << (i * 8)));
-    let int_to_limbs: int -> fe[] = |x| array::new(4, |i| fe(select_limb(x, i)));
+    let limbs_to_int: expr[] -> int = query |limbs| array::sum(array::map_enumerated(limbs, |i, limb| int(eval(limb)) << (i * 8)));
 
-    // We need to provide hints for the quotient and remainder, because they are not unique under our current constraints.
-    // They are unique given additional main machine constraints, but it's still good to provide hints for the solver.
-    query |i| std::prover::compute_from_multi_if(
-        is_division = 1,
-        y1 + x2,
-        i,
-        y3 + x1,
-        |values| {
-            let y3_value = limbs_to_int([values[0], values[1], values[2], values[3]]);
-            let x1_value = limbs_to_int([values[4], values[5], values[6], values[7]]);
-            if x1_value == 0 {
-                // Quotient is unconstrained, use zero for y1
-                // and set remainder x2 = y3.
-                [0, 0, 0, 0] + int_to_limbs(y3_value)
-            } else {
-                let quotient = y3_value / x1_value;
-                let remainder = y3_value % x1_value;
-                int_to_limbs(quotient) + int_to_limbs(remainder)
-            }
-        }
-    );
-
-    pol commit x1[4], x2[4], y1[4], y2[4], y3[4];
+    let x1_int = query || limbs_to_int(x1);
+    let y1_int = query || limbs_to_int(y1);
+    let x2_int = query || limbs_to_int(x2);
+    let y2_int = query || limbs_to_int(y2);
+    let y3_int = query || limbs_to_int(y3);
 
     let combine: expr[] -> expr[] = |x| array::new(array::len(x) / 2, |i| x[2 * i + 1] * 2**8 + x[2 * i]);
     // Intermediate polynomials, arrays of 16 columns, 16 bit per column.
@@ -143,6 +172,6 @@ machine Arith(byte: Byte, byte2: Byte2) with
     carry * CLK8[0] = 0;
 
     // Putting everything together    
-    let eq0_sum = sum(8, |i| eq0(i) * CLK8[i]);
+    col eq0_sum = sum(8, |i| eq0(i) * CLK8[i]);
     eq0_sum + carry = carry' * 2**8;
 }
