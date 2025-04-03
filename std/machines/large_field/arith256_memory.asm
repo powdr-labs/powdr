@@ -498,14 +498,11 @@ machine Arith256Memory(mem: Memory) with
     *
     *******/
 
-    // TODO: To reduce the degree of the constraints, these intermediate columns should be materialized.
-    // However, witgen doesn't work currently if we do, likely because for some operations, not all inputs are
-    // available.
-    col eq0_sum = sum(32, |i| eq0(i) * CLK32[i]);
-    col eq1_sum = sum(32, |i| eq1(i) * CLK32[i]);
-    col eq2_sum = sum(32, |i| eq2(i) * CLK32[i]);
-    col eq3_sum = sum(32, |i| eq3(i) * CLK32[i]);
-    col eq4_sum = sum(32, |i| eq4(i) * CLK32[i]);
+    let eq0_sum = sum(32, |i| eq0(i) * CLK32[i]);
+    let eq1_sum = sum(32, |i| eq1(i) * CLK32[i]);
+    let eq2_sum = sum(32, |i| eq2(i) * CLK32[i]);
+    let eq3_sum = sum(32, |i| eq3(i) * CLK32[i]);
+    let eq4_sum = sum(32, |i| eq4(i) * CLK32[i]);
 
     selEq[0] * (eq0_sum + carry[0]) = selEq[0] * carry[0]' * 2**16;
     selEq[1] * (eq1_sum + carry[0]) = selEq[1] * carry[0]' * 2**16;
