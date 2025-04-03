@@ -162,6 +162,14 @@ where
         if !LOGUP_GKR {
             return None;
         }
+
+        // PhantomBusInteraction exists, which means the pil file is not generated with BusInteraction only,
+        // then the GKR is not not supported for that pil file yet
+        for id in &self.analyzed.identities {
+            if let Identity::PhantomBusInteraction(_) = id {
+                return None;
+            }
+        }
         // The payload of the bus can come from all the expressions, therefore inorder to rebuild the payload trace, constant columns,witness columns
         // and intermidiate columns are needed.
         // get all the fix columns
@@ -227,16 +235,17 @@ where
                     // TODO: include multiplicity for bus receive, latch/1 for bus send, 1 needs to be committed as well
 
                     let numerator_values: Vec<SecureField> = match identity.multiplicity {
-                        AlgebraicExpression::Number(n) => (0..self.analyzed.degree())
-                            .map(|_| {
+                        AlgebraicExpression::Number(n) => {
+                            vec![
                                 SecureField::from_m31(
                                     into_stwo_field(&n),
                                     0.into(),
                                     0.into(),
-                                    0.into(),
-                                )
-                            })
-                            .collect(),
+                                    0.into()
+                                );
+                                self.analyzed.degree() as usize
+                            ]
+                        }
                         _ => panic!("only support multiplicity as Number expression for now"),
                     };
 
