@@ -87,7 +87,7 @@ impl FieldElementMap for GoldilocksField {
         Self::Config::new(pcs)
     }
 
-    fn get_fri_parameters() -> (usize,usize,usize) {
+    fn get_fri_parameters() -> (usize, usize, usize) {
         (FRI_LOG_BLOWUP, FRI_NUM_QUERIES, FRI_PROOF_OF_WORK_BITS)
     }
 

@@ -49,8 +49,8 @@ type ChallengeMmcs = ExtensionMmcs<BabyBear, FriChallenge, ValMmcs>;
 type Dft = Radix2DitParallel<BabyBear>;
 type MyPcs = TwoAdicFriPcs<BabyBear, Dft, ValMmcs, ChallengeMmcs>;
 
-const FRI_LOG_BLOWUP: usize = 1;
-const FRI_NUM_QUERIES: usize = 100;
+const FRI_LOG_BLOWUP: usize = 2;
+const FRI_NUM_QUERIES: usize = 50;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 
 lazy_static! {
@@ -106,7 +106,7 @@ impl FieldElementMap for BabyBearField {
         Self::Config::new(pcs)
     }
 
-    fn get_fri_parameters() -> (usize,usize,usize) {
+    fn get_fri_parameters() -> (usize, usize, usize) {
         (FRI_LOG_BLOWUP, FRI_NUM_QUERIES, FRI_PROOF_OF_WORK_BITS)
     }
 

@@ -34,7 +34,7 @@ where
     fn get_config() -> Self::Config;
 
     fn degree_bound() -> usize;
-    
+
     // get fri parameters: log_blowup, num_queries, proof_of_work_bits
-    fn get_fri_parameters() -> (usize,usize,usize);
+    fn get_fri_parameters() -> (usize, usize, usize);
 }

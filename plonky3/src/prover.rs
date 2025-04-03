@@ -408,7 +408,7 @@ where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
-    let mut table_max_degree=BTreeMap::new();
+    let mut table_max_degree = BTreeMap::new();
     let degree_bound = T::degree_bound();
     let (tables, stage_0): (BTreeMap<_, _>, BTreeMap<_, _>) = witness_by_machine
         .iter()
@@ -458,8 +458,6 @@ where
         })
         .unzip();
 
-       
-
     if tables.is_empty() {
         panic!("No tables to prove");
     }
@@ -467,11 +465,25 @@ where
     let multi_table = MultiTable { tables };
 
     let config = T::get_config();
-    info!("Proving with conjectured soundness level of: {:?} bits", T::get_fri_parameters());
+    let (log_blowup, num_queries, proof_of_work_bits) = T::get_fri_parameters();
+    let security_level = log_blowup * num_queries + proof_of_work_bits;
+
+    info!(
+        "FRI Parameters: log_blowup: {}, num_queries: {}, proof_of_work_bits: {}, security level: {} bits",
+        log_blowup, num_queries, proof_of_work_bits, security_level
+    );
+
+    
 
     let max_degree = *table_max_degree.values().max().unwrap();
-    if max_degree < degree_bound && max_degree >= (degree_bound-1)>>1 {
-        info!("FRI config parameter log_blowup can be optimized to (log_blowup - 1) for the current circuit");
+
+    info!(
+        "Constraint degree bound: {}, The highest constraint degree of the current circuit: {}",
+        degree_bound,max_degree
+    );
+
+    if max_degree < degree_bound && max_degree >= (degree_bound - 1) >> 1 && log_blowup -1 > 0 {
+        info!("Potential optimization of FRI parameters under same security level: log_blowup: {}, num_queries: {}", log_blowup - 1,(security_level-proof_of_work_bits)/(log_blowup - 1));
     }
 
     assert_eq!(stage_0.keys().collect_vec(), multi_table.table_names());
