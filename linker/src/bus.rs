@@ -144,10 +144,10 @@ impl LinkerBackend for BusLinker {
             .entry(location.clone())
             .or_default();
 
-        // println!(
-        //     "process_link: {:?}, {:?}, {:?}, {:?}",
-        //     interaction_id, selector, tuple, bus_linker_type
-        // );
+        println!(
+            "process_link: {:?}, {:?}, {:?}, {:?}",
+            interaction_id, selector, tuple, bus_linker_type
+        );
 
         entry.push(Expression::Tuple(
             SourceRef::unknown(),
@@ -298,7 +298,7 @@ impl BusLinker {
                 }
             };
 
-            // println!("process_operation: {:?}", arguments);
+            println!("process_operation: {:?}", arguments);
 
             let entry = self
                 .bus_multi_linker_args
@@ -363,7 +363,6 @@ mod test {
     pc' = (1 - first_step') * pc_update;
     pol commit call_selectors[0];
     std::array::map(call_selectors, std::utils::force_bool);
-    std::protocols::bus::bus_multi_linker([(0, 1, [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return], std::protocols::bus::BusLinkerType::Send)]);
 namespace main__rom(4);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
@@ -372,7 +371,6 @@ namespace main__rom(4);
     pol constant p_instr_return = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-    std::protocols::bus::bus_multi_linker([(0, main__rom::latch, [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return], std::protocols::bus::BusLinkerType::LookupReceive)]);
 "#;
 
         let file_name = "../test_data/asm/empty_vm.asm";

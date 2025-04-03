@@ -50,12 +50,46 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Result<Analyzed<T>, Ve
 
 fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Error>> {
     let mut analyzer = PILAnalyzer::new();
+    println!("proof items 0:");
+    analyzer.proof_items.iter().for_each(|i| println!("{:?}", i));
+    analyzer.definitions.keys().for_each(|i| {
+        println!("anad0: {i}");
+    });
     analyzer.process(files)?;
+
+    println!("proof items 1:");
+    analyzer.proof_items.iter().for_each(|i| println!("{:?}", i));
+    analyzer.definitions.keys().for_each(|i| {
+        println!("anad1: {i}");
+    });
     analyzer.side_effect_check()?;
+
+
+    println!("proof items 2:");
+    analyzer.proof_items.iter().for_each(|i| println!("{:?}", i));
+    analyzer.definitions.keys().for_each(|i| {
+        println!("anad2: {i}");
+    });
     analyzer.validate_structs()?;
+
+    println!("proof items 3:");
+    analyzer.proof_items.iter().for_each(|i| println!("{:?}", i));
+    analyzer.definitions.keys().for_each(|i| {
+        println!("anad3: {i}");
+    });
     analyzer.type_check()?;
+
+    println!("proof items 4:");
+    analyzer.proof_items.iter().for_each(|i| println!("{:?}", i));
     let solved_impls = analyzer.resolve_trait_impls()?;
-    analyzer.condense(solved_impls)
+    analyzer.definitions.keys().for_each(|i| {
+        println!("anad4: {i}");
+    });
+    let analyzed = analyzer.condense(solved_impls).unwrap();
+    analyzed.definitions.keys().for_each(|i| {
+        println!("anad5: {i}");
+    });
+    Ok(analyzed)
 }
 
 pub fn analyze_without_type_check<T: FieldElement>(

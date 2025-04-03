@@ -31,6 +31,9 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
     let mut pil_hash = hash_pil_state(&pil_file);
     loop {
+        pil_file.definitions.keys().for_each(|k| {
+            println!("optd0 {k}");
+        });
         maybe_write_pil(&pil_file, "before_opt").unwrap();
         // remove_unreferenced_definitions(&mut pil_file);
         // maybe_write_pil(&pil_file, "remove_unreferenced_definitions").unwrap();
@@ -54,6 +57,9 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         maybe_write_pil(&pil_file, "remove_trivial_identities").unwrap();
         remove_duplicate_identities(&mut pil_file);
         maybe_write_pil(&pil_file, "remove_duplicate_identities").unwrap();
+        pil_file.definitions.keys().for_each(|k| {
+            println!("optd8 {k}");
+        });
 
         let new_hash = hash_pil_state(&pil_file);
         if pil_hash == new_hash {

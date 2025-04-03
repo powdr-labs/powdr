@@ -918,21 +918,21 @@ impl TypeChecker {
         inferred_types
             .into_iter()
             .map(|(name, inferred_type)| {
-                let (_source_ref, declared_type) = self.declared_types[&name].clone();
+                let (source_ref, declared_type) = self.declared_types[&name].clone();
                 let inferred_type = self.type_into_substituted(inferred_type.clone());
-                let _inferred = self.to_type_scheme(inferred_type.clone());
-                let _declared = declared_type.clone().simplify_type_vars();
+                let inferred = self.to_type_scheme(inferred_type.clone());
+                let declared = declared_type.clone().simplify_type_vars();
                 // if inferred != declared {
                 // return Err(source_ref.with_error(format!(
                 //     "Inferred type scheme for symbol {name} does not match the declared type.\nInferred: let{}\nDeclared: let{}",
                 //     format_type_scheme_around_name(&name, &Some(inferred)),
                 //     format_type_scheme_around_name(&name, &Some(declared_type),
                 // ))));
-                // println!(
-                //     "Inferred type scheme for symbol {name} does not match the declared type.\nInferred: let{}\nDeclared: let{}",
-                //     format_type_scheme_around_name(&name, &Some(inferred.clone())),
-                //     format_type_scheme_around_name(&name, &Some(declared_type.clone())),
-                // );
+                // // println!(
+                // //     "Inferred type scheme for symbol {name} does not match the declared type.\nInferred: let{}\nDeclared: let{}",
+                // //     format_type_scheme_around_name(&name, &Some(inferred.clone())),
+                // //     format_type_scheme_around_name(&name, &Some(declared_type.clone())),
+                // // );
                 // }
                 let declared_type_vars = declared_type.ty.contained_type_vars();
                 let inferred_type_vars = inferred_type.contained_type_vars();
