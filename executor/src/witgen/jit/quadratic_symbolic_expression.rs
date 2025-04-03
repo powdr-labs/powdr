@@ -208,26 +208,33 @@ impl<T: FieldElement, V: Clone + Ord> Mul for QuadraticSymbolicExpression<T, V> 
 
 impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExpression<T, V> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let formatted = self
+            .quadratic
+            .iter()
+            .map(|(a, b)| format!("({a}) * ({b})"))
+            .chain(
+                self.linear
+                    .iter()
+                    .map(|(var, coeff)| match coeff.try_to_number() {
+                        Some(k) if k == 1.into() => format!("{var}"),
+                        Some(k) if k == (-1).into() => format!("-{var}"),
+                        _ => format!("{coeff} * {var}"),
+                    }),
+            )
+            .chain(match self.constant.try_to_number() {
+                Some(k) if k == T::zero() => None,
+                _ => Some(format!("{}", self.constant)),
+            })
+            .format(" + ")
+            .to_string();
         write!(
             f,
             "{}",
-            self.quadratic
-                .iter()
-                .map(|(a, b)| format!("({a}) * ({b})"))
-                .chain(
-                    self.linear
-                        .iter()
-                        .map(|(var, coeff)| match coeff.try_to_number() {
-                            Some(k) if k == 1.into() => format!("{var}"),
-                            Some(k) if k == (-1).into() => format!("-{var}"),
-                            _ => format!("{coeff} * {var}"),
-                        })
-                )
-                .chain(match self.constant.try_to_number() {
-                    Some(k) if k == T::zero() => None,
-                    _ => Some(format!("{}", self.constant)),
-                })
-                .format(" + ")
+            if formatted.is_empty() {
+                "0".to_string()
+            } else {
+                formatted
+            }
         )
     }
 }
@@ -240,13 +247,50 @@ mod tests {
 
     use pretty_assertions::assert_eq;
 
+    type Qse = QuadraticSymbolicExpression<GoldilocksField, String>;
+
     #[test]
-    fn test_mul_zero() {
+    fn test_mul() {
         type Qse = QuadraticSymbolicExpression<GoldilocksField, String>;
         let x = Qse::from_unknown_variable("X".to_string());
         let y = Qse::from_unknown_variable("Y".to_string());
         let a = Qse::from_known_symbol("A".to_string(), RangeConstraint::default());
         let t = x * y + a;
         assert_eq!(t.to_string(), "(X) * (Y) + A");
+    }
+
+    #[test]
+    fn test_add() {
+        let x = Qse::from_unknown_variable("X".to_string());
+        let y = Qse::from_unknown_variable("Y".to_string());
+        let a = Qse::from_unknown_variable("A".to_string());
+        let b = Qse::from_known_symbol("B".to_string(), RangeConstraint::default());
+        let t: Qse = x * y - a + b;
+        assert_eq!(t.to_string(), "(X) * (Y) + -A + B");
+        assert_eq!(
+            (t.clone() + t).to_string(),
+            "(X) * (Y) + (X) * (Y) + -2 * A + (B + B)"
+        );
+    }
+
+    #[test]
+    fn test_mul_by_known() {
+        let x = Qse::from_unknown_variable("X".to_string());
+        let y = Qse::from_unknown_variable("Y".to_string());
+        let a = Qse::from_known_symbol("A".to_string(), RangeConstraint::default());
+        let b = Qse::from_known_symbol("B".to_string(), RangeConstraint::default());
+        let t: Qse = (x * y + a) * b;
+        assert_eq!(t.to_string(), "B * (X) * (Y) + B * A");
+    }
+
+    #[test]
+    fn test_mul_by_zero() {
+        let x = Qse::from_unknown_variable("X".to_string());
+        let y = Qse::from_unknown_variable("Y".to_string());
+        let a = Qse::from_known_symbol("A".to_string(), RangeConstraint::default());
+        let zero = Qse::from(GoldilocksField::from(0));
+        let t: Qse = x * y + a;
+        assert_eq!(t.to_string(), "(X) * (Y) + A");
+        assert_eq!((t.clone() * zero).to_string(), "0");
     }
 }
