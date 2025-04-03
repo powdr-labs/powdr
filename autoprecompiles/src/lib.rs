@@ -870,6 +870,22 @@ pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sy
     // Re-add the last send
     machine.bus_interactions.push(latest_send.unwrap());
 
+    for c in &mut machine.constraints {
+        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs_pc);
+        powdr::substitute_algebraic_algebraic(&mut c.expr, &subs_ts);
+        c.expr = simplify_expression(c.expr.clone());
+    }
+    for b in &mut machine.bus_interactions {
+        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs_pc);
+        powdr::substitute_algebraic_algebraic(&mut b.mult, &subs_ts);
+        b.mult = simplify_expression(b.mult.clone());
+        for a in &mut b.args {
+            powdr::substitute_algebraic_algebraic(a, &subs_pc);
+            powdr::substitute_algebraic_algebraic(a, &subs_ts);
+            *a = simplify_expression(a.clone());
+        }
+    }
+
     println!(
         "After autoprecompile exec optimizations, columns: {}, constraints: {}, bus_interactions: {}",
         machine.columns().len(),
