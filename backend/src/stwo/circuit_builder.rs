@@ -20,6 +20,7 @@ use stwo_prover::core::utils::{bit_reverse_index, coset_index_to_circle_domain_i
 pub const PREPROCESSED_TRACE_IDX: usize = 0;
 pub const STAGE0_TRACE_IDX: usize = 1;
 pub const STAGE1_TRACE_IDX: usize = 2;
+pub const CONSTRAINT_DEGREE: u32 = 1;
 
 pub type PowdrComponent = FrameworkComponent<PowdrEval>;
 
@@ -182,7 +183,7 @@ impl FrameworkEval for PowdrEval {
         self.log_degree
     }
     fn max_constraint_log_degree_bound(&self) -> u32 {
-        self.log_degree + 1
+        self.log_degree + CONSTRAINT_DEGREE
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let stage0_witness_eval: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self

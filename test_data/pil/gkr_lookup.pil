@@ -1,9 +1,401 @@
-namespace main(32);
-    col fixed x = [1_fe, 2_fe, 3_fe, 4_fe, 5_fe, 6_fe, 7_fe, 8_fe, 9_fe, 10_fe, 11_fe, 12_fe, 13_fe, 14_fe, 15_fe, 16_fe, 17_fe, 18_fe, 19_fe, 20_fe, 21_fe, 22_fe, 23_fe, 24_fe, 25_fe, 26_fe, 27_fe, 28_fe, 29_fe, 30_fe, 31_fe, 32_fe];
+namespace main(32768);
+    col fixed x(i) {i+1};
+    col fixed a(i) {i+1};
     col witness y;
     col witness z;
+    col witness b;
+    col witness c;
     main::y = main::x;
     main::z = main::x;
-    col fixed is_first(i) { if i == 0_int { 1_int } else { 0_int } };
+    main::a = main::b;
+    main::a = main::c;
+    
     Constr::BusInteraction(1, 42, [main::y], 1);
     Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+    
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+    
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+    
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+    
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+    
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+    
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+    
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+    
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
+
+
+   
+
+   
+

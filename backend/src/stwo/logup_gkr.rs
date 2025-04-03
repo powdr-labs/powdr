@@ -111,7 +111,10 @@ impl MleCoeffColumnOracle for PowdrComponentWrapper<'_> {
                 <PointEvaluator as EvalAtRow>::F::from(into_stwo_field(v))
             });
 
-        let mut accumulator = SecureField::zero();
+        let mut numerator_send_accumulator = SecureField::zero();
+        let denominator_send = SecureField::one();
+        let mut numerator_receive_accumulator = SecureField::zero();
+        let denominator_receive = SecureField::one();
 
         for id in &self.main_machine_powdr_eval.analyzed.identities {
             if let Identity::BusInteraction(id) = id {
@@ -120,12 +123,24 @@ impl MleCoeffColumnOracle for PowdrComponentWrapper<'_> {
 
                 let multiplicity =
                     <PointEvaluator as EvalAtRow>::EF::from(evaluator.evaluate(&id.multiplicity));
+
+               
+
                 // TODO: update this accumulator when the sound challenge is implemented
-                accumulator += payload[0] + self.logup_challenge + multiplicity;
+                if multiplicity == SecureField::one() {
+                    numerator_send_accumulator = numerator_send_accumulator +multiplicity/(payload[0] + self.logup_challenge);
+
+                  
+
+                } else {
+                    numerator_receive_accumulator = numerator_receive_accumulator + multiplicity/(payload[0] + self.logup_challenge);
+                  
+                }
             }
         }
+        
 
-        accumulator
+        numerator_send_accumulator + denominator_send + numerator_receive_accumulator + denominator_receive
     }
 }
 
@@ -211,10 +226,10 @@ where
         let mut gkr_top_layers = Vec::new();
 
         // Collect all the MLEs for the numerators of the GKR instances
-        let mut mle_numerators = Vec::new();
-
-        // Collect all the MLEs for the denominators of the GKR instances
-        let mut mle_denominators = Vec::new();
+        let mut send_trace_fraction_accumulator =
+            vec![SecureField::zero(); self.analyzed.degree() as usize];
+        let mut receive_trace_fraction_accumulator =
+            vec![SecureField::zero(); self.analyzed.degree() as usize];
 
         let mut all_mle_values = Vec::new();
 
@@ -227,22 +242,23 @@ where
                         break;
                     };
 
-                    let denominator_trace = witness
-                        .iter()
-                        .chain(all_fixed_columns.iter())
-                        .find(|(name, _)| {
-                            if let AlgebraicExpression::Reference(r) = e {
-                                name == &r.name
-                            } else {
-                                panic!("cannot find bus payload trace {e:?}");
-                            }
-                        })
-                        .unwrap();
+                    println!("Bus interaction");
 
                     // create fractions that are to be added by GKR circuit
                     // numerator is 1 for bus send, is multiplicity for bus receive
                     // all take 1 for now
                     // TODO: include multiplicity for bus receive, latch/1 for bus send, 1 needs to be committed as well
+
+                    let bus_send = match identity.multiplicity {
+                        AlgebraicExpression::Number(n) => {
+                            if n == Mersenne31Field::one() {
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        _ => panic!("only support multiplicity as Number expression for now"),
+                    };
 
                     let numerator_values: Vec<SecureField> = match identity.multiplicity {
                         AlgebraicExpression::Number(n) => {
@@ -259,37 +275,95 @@ where
                         _ => panic!("only support multiplicity as Number expression for now"),
                     };
 
+                    let denominator_trace = witness
+                        .iter()
+                        .chain(all_fixed_columns.iter())
+                        .find(|(name, _)| {
+                            if let AlgebraicExpression::Reference(r) = e {
+                                name == &r.name
+                            } else {
+                                panic!("cannot find bus payload trace {e:?}");
+                            }
+                        })
+                        .unwrap();
+
                     // traces need to be bit-reverse order
                     let denominator_values = get_bit_reversed_col(
                         &denominator_trace.1,
                         self.analyzed.degree() as usize,
                         logup_challenge,
                     );
+                    
 
-                    // covert to SecureColumn, which is used to crate MLE in secure field
-                    let numerator_secure_column = numerator_values.iter().copied().collect();
-                    let denominator_secure_column = denominator_values.iter().copied().collect();
-
-                    // create multilinear polynomial for the input layer
-                    let mle_numerator =
-                        Mle::<SimdBackend, SecureField>::new(numerator_secure_column);
-                    let mle_denominator =
-                        Mle::<SimdBackend, SecureField>::new(denominator_secure_column);
-
-                    mle_numerators.push(mle_numerator.clone());
-                    mle_denominators.push(mle_denominator.clone());
-
-                    let top_layer = Layer::LogUpGeneric {
-                        numerators: mle_numerator,
-                        denominators: mle_denominator,
-                    };
-
-                    gkr_top_layers.push(top_layer);
-                    all_mle_values.push(numerator_values);
-                    all_mle_values.push(denominator_values);
+                    // TODO: bratch gkr instance, need to include sound challenge
+                    if bus_send {
+                        send_trace_fraction_accumulator = send_trace_fraction_accumulator
+                            .iter()
+                            .zip(numerator_values.iter())
+                            .zip(denominator_values.iter())
+                            .map(|((acc, numerator), denominator)| {
+                                *acc + (*numerator / *denominator)
+                            })
+                            .collect();
+                    } else {
+                        receive_trace_fraction_accumulator = receive_trace_fraction_accumulator
+                            .iter()
+                            .zip(numerator_values.iter())
+                            .zip(denominator_values.iter())
+                            .map(|((acc, numerator), denominator)| {
+                                *acc + (*numerator / *denominator)
+                            })
+                            .collect();
+                    }
                 }
             }
         }
+
+        let mut mle_denominators_receive_values =
+            vec![SecureField::one(); self.analyzed.degree() as usize];
+
+        let mut mle_denominators_send_values =
+            vec![SecureField::one(); self.analyzed.degree() as usize];
+
+        // covert to SecureColumn, which is used to crate MLE in secure field
+        let numerator_send_secure_column =
+            send_trace_fraction_accumulator.iter().copied().collect();
+        let denominator_send_secure_column = mle_denominators_send_values.iter().copied().collect();
+
+        // create multilinear polynomial for the input layer
+        let mle_numerator_send = Mle::<SimdBackend, SecureField>::new(numerator_send_secure_column);
+        let mle_denominator_send =
+            Mle::<SimdBackend, SecureField>::new(denominator_send_secure_column);
+
+        let top_layer = Layer::LogUpGeneric {
+            numerators: mle_numerator_send,
+            denominators: mle_denominator_send,
+        };
+
+        gkr_top_layers.push(top_layer);
+        all_mle_values.push(send_trace_fraction_accumulator);
+        all_mle_values.push(mle_denominators_send_values);
+
+        // covert to SecureColumn, which is used to crate MLE in secure field
+        let numerator_receive_secure_column =
+            receive_trace_fraction_accumulator.iter().copied().collect();
+        let denominator_receive_secure_column =
+            mle_denominators_receive_values.iter().copied().collect();
+
+        // create multilinear polynomial for the input layer
+        let mle_numerator_receive =
+            Mle::<SimdBackend, SecureField>::new(numerator_receive_secure_column);
+        let mle_denominator_receive =
+            Mle::<SimdBackend, SecureField>::new(denominator_receive_secure_column);
+
+        let top_layer = Layer::LogUpGeneric {
+            numerators: mle_numerator_receive,
+            denominators: mle_denominator_receive,
+        };
+
+        gkr_top_layers.push(top_layer);
+        all_mle_values.push(receive_trace_fraction_accumulator);
+        all_mle_values.push(mle_denominators_receive_values);
 
         let (gkr_proof, gkr_artifacts) = prove_batch(prover_channel, gkr_top_layers);
 
@@ -305,15 +379,16 @@ where
 
         // combine the GKR instances
         // TODO: use randomness that is generated based on the claims of the instance, to make the challenge sound
-        let linear_combine_challenge = SecureField::one();
+        //let linear_combine_challenge = SecureField::one();
 
         let combined_mle_values: Vec<SecureField> = (0..self.analyzed.degree())
             .map(|index| {
-                let combined_mle_value: SecureField = all_mle_values
-                    .iter()
-                    .fold(SecureField::zero(), |acc, mle_values| {
-                        acc + linear_combine_challenge * mle_values[index as usize]
-                    });
+                let combined_mle_value: SecureField =
+                    all_mle_values
+                        .iter()
+                        .fold(SecureField::zero(), |acc, mle_values| {
+                            acc + mle_values[index as usize] // linear_combine_challenge *
+                        });
                 combined_mle_value
             })
             .collect();
