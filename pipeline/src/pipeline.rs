@@ -17,7 +17,10 @@ use powdr_ast::{
     analyzed::Analyzed,
     asm_analysis::AnalysisASMFile,
     object::MachineInstanceGraph,
-    parsed::{asm::ASMProgram, PILFile},
+    parsed::{
+        asm::{ASMProgram, AbsoluteSymbolPath},
+        PILFile, PilStatement,
+    },
 };
 use powdr_backend::{Backend, BackendOptions, BackendType, Proof};
 use powdr_executor::{
@@ -27,6 +30,7 @@ use powdr_executor::{
         WitgenCallbackContext, WitnessGenerator,
     },
 };
+use powdr_linker::BusLinkerArgs;
 pub use powdr_linker::{DegreeMode, LinkerMode, LinkerParams};
 use powdr_number::{write_polys_csv_file, CsvRenderMode, FieldElement, ReadWrite};
 use powdr_schemas::SerializedAnalyzed;
@@ -66,6 +70,10 @@ pub struct Artifacts<T: FieldElement> {
     linked_machine_graph: Option<MachineInstanceGraph>,
     /// A single parsed pil file.
     parsed_pil_file: Option<PILFile>,
+    /// Bus linker args to be used in backend-specific tuning.
+    bus_linker_args: Option<BusLinkerArgs>,
+    /// Common definitions to be used in backend-specific tuning.
+    machine_graph_statements: Option<BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>>,
     /// The path to a single .pil file.
     pil_file_path: Option<PathBuf>,
     /// The contents of a single .pil file.
@@ -168,6 +176,8 @@ impl<T: FieldElement> Clone for Artifacts<T> {
             constrained_machine_collection: self.constrained_machine_collection.clone(),
             linked_machine_graph: self.linked_machine_graph.clone(),
             parsed_pil_file: self.parsed_pil_file.clone(),
+            bus_linker_args: self.bus_linker_args.clone(),
+            machine_graph_statements: self.machine_graph_statements.clone(),
             pil_file_path: self.pil_file_path.clone(),
             pil_string: self.pil_string.clone(),
             analyzed_pil: self.analyzed_pil.clone(),
@@ -890,8 +900,12 @@ impl<T: FieldElement> Pipeline<T> {
                 self.compute_linked_machine_graph()?;
                 let graph = self.artifact.linked_machine_graph.take().unwrap();
 
+                self.artifact.machine_graph_statements = Some(graph.statements.clone());
+
                 self.log("Run linker");
-                let linked = powdr_linker::link(graph, self.arguments.linker_params)?;
+                let (linked, bus_linker_args) =
+                    powdr_linker::link(graph, self.arguments.linker_params)?;
+                self.artifact.bus_linker_args = bus_linker_args;
                 log::trace!("{linked}");
                 self.maybe_write_pil(&linked, "")?;
 
@@ -910,9 +924,15 @@ impl<T: FieldElement> Pipeline<T> {
         self.compute_parsed_pil_file()?;
         let linked = self.artifact.parsed_pil_file.take().unwrap();
 
+        self.maybe_write_pil(&linked, "_linked").unwrap();
+
         self.log("Analyzing PIL and computing constraints...");
-        let analyzed =
+        let analyzed: Analyzed<T> =
             powdr_pil_analyzer::analyze_ast(linked).map_err(output_pil_analysis_errors)?;
+        // self.log("TEST BEFORE Analyzing PIL and computing constraints...");
+        // let analyzed =
+        //     powdr_pil_analyzer::analyze_without_type_check(vec![powdr_parser::parse(None, &analyzed.to_string()).unwrap()]).map_err(output_pil_analysis_errors)?;
+        // self.log("TEST AFTER Analyzing PIL and computing constraints...");
         self.maybe_write_pil(&analyzed, "_analyzed")?;
         self.log("done.");
 
@@ -1006,9 +1026,14 @@ impl<T: FieldElement> Pipeline<T> {
         let optimized_pil = self.artifact.optimized_pil.clone().unwrap();
         let factory = backend_type.factory::<T>();
         self.log("Apply backend-specific tuning to optimized pil...");
-        let backend_tuned_pil = factory.specialize_pil(optimized_pil);
+        // println!("bus_linker_args 0: {:?}", self.artifact.bus_linker_args);
+        let backend_tuned_pil = factory.specialize_pil(
+            optimized_pil,
+            std::mem::take(&mut self.artifact.bus_linker_args),
+            // std::mem::take(&mut self.artifact.machine_graph_statements).unwrap(),
+        );
         self.log("Optimizing pil (post backend-specific tuning)...");
-        let reoptimized_pil = powdr_pilopt::optimize(backend_tuned_pil);
+        let reoptimized_pil = powdr_pilopt::optimize_second_pass(backend_tuned_pil);
         self.maybe_write_pil(&reoptimized_pil, "_backend_tuned")?;
         self.maybe_write_pil_object(&reoptimized_pil, "_backend_tuned")?;
         self.artifact.backend_tuned_pil = Some(Arc::new(reoptimized_pil));
