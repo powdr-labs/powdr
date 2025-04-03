@@ -1,7 +1,4 @@
-use std::{
-    collections::HashSet,
-    fmt::{self, Display, Formatter, Write},
-};
+use std::fmt::{self, Display, Formatter, Write};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
@@ -337,19 +334,18 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         // that are inside the block.
         let unknown_variables = self
             .unsolved_polynomial_identities_in_block(witgen)
-            .flat_map(|(id, row_offset)| {
-                let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id else {
-                    unreachable!()
-                };
-                unknown_relevant_variables(expression, witgen, row_offset)
-                    .into_iter()
-                    .filter(|var| match var {
-                        Variable::WitnessCell(cell) | Variable::IntermediateCell(cell) => {
-                            cell.row_offset >= 0 && cell.row_offset < self.block_size as i32
-                        }
-                        Variable::FixedCell(_) => unreachable!(),
-                        Variable::Param(_) | Variable::MachineCallParam(_) => true,
-                    })
+            .flat_map(|(expression, row_offset)| {
+                unknown_relevant_variables(expression, witgen, row_offset).filter(|var| match var {
+                    Variable::WitnessCell(cell) | Variable::IntermediateCell(cell) => {
+                        // We only want to guess cells in the block. This does not work
+                        // for irregularly-shaped blocks. If we knew the extent of each column,
+                        // we could use the respective check here, but that is currently only
+                        // determined after witgen solving.
+                        cell.row_offset >= 0 && cell.row_offset < self.block_size as i32
+                    }
+                    Variable::FixedCell(_) => unreachable!(),
+                    Variable::Param(_) | Variable::MachineCallParam(_) => true,
+                })
             })
             .unique()
             .sorted()
@@ -465,28 +461,29 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         }
     }
 
-    /// Returns all pairs of polynomial identity and row where the identity is not solved
-    /// in `self.block_size` contiguous rows. A polynomial identities is considered solved if
-    /// it evaluates to a known value.
+    /// Returns all pairs of polynomial identity (represented by its algebraic expression)
+    /// and row where the identity is not solved in `self.block_size` contiguous rows.
+    /// A polynomial identity is considered solved if it evaluates to a known value.
     /// If a polynomial identity is solved for `self.block_size` contiguous rows, it is not
     /// returned, not even on the rows where it is not solved.
     fn unsolved_polynomial_identities_in_block<'b, FixedEval: FixedEvaluator<T>>(
         &'b self,
         witgen: &'b WitgenInference<'a, T, FixedEval>,
-    ) -> impl Iterator<Item = (&'a Identity<T>, i32)> + 'b {
+    ) -> impl Iterator<Item = (&'a AlgebraicExpression<T>, i32)> + 'b {
         // Group all identity-row-pairs by their identities.
         self.identities
             .iter()
             .filter_map(|(id, row_offset)| {
                 if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
-                    Some(((id.id(), id), (expression, *row_offset)))
+                    // Group by identity id.
+                    Some((id.id(), (expression, *row_offset)))
                 } else {
                     None
                 }
             })
             .into_group_map()
-            .into_iter()
-            .flat_map(move |((_, &identity), pairs)| {
+            .into_values()
+            .flat_map(move |pairs| {
                 // For each identity, check if it is fully solved
                 // for at least "self.blocks_size" rows.
                 let is_solved = pairs
@@ -513,7 +510,6 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     pairs
                 }
                 .into_iter()
-                .map(move |(_, row_offset)| (identity, row_offset))
             })
     }
 
@@ -589,51 +585,35 @@ fn unknown_relevant_variables<T: FieldElement, FixedEval: FixedEvaluator<T>>(
     expr: &AlgebraicExpression<T>,
     witgen: &WitgenInference<'_, T, FixedEval>,
     row_offset: i32,
-) -> HashSet<Variable> {
+) -> Box<dyn Iterator<Item = Variable>> {
     match expr {
         AlgebraicExpression::Reference(algebraic_reference) => {
             let var = Variable::from_reference(algebraic_reference, row_offset);
-            (!witgen.is_known(&var))
-                .then_some(var)
-                .into_iter()
-                .collect()
+            Box::new((!witgen.is_known(&var)).then_some(var).into_iter())
         }
         // TODO once we support them, we should turn them into the proper variables here.
         AlgebraicExpression::PublicReference(_) | AlgebraicExpression::Challenge(_) => {
-            Default::default()
+            Box::new(std::iter::empty())
         }
-        AlgebraicExpression::Number(_) => Default::default(),
+        AlgebraicExpression::Number(_) => Box::new(std::iter::empty()),
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
             if *op == AlgebraicBinaryOperator::Mul {
-                let left_val = try_to_evaluate_to_known_number(left.as_ref(), witgen, row_offset);
-                let right_val = try_to_evaluate_to_known_number(right.as_ref(), witgen, row_offset);
+                let left_val = witgen.try_evaluate_to_known_number(left.as_ref(), row_offset);
+                let right_val = witgen.try_evaluate_to_known_number(right.as_ref(), row_offset);
                 if left_val == Some(T::from(0)) || right_val == Some(T::from(0)) {
-                    return Default::default();
+                    return Box::new(std::iter::empty());
                 }
             }
-            let mut vars = unknown_relevant_variables(left.as_ref(), witgen, row_offset);
-            vars.extend(unknown_relevant_variables(
-                right.as_ref(),
-                witgen,
-                row_offset,
-            ));
-            vars
+            Box::new(
+                unknown_relevant_variables(left.as_ref(), witgen, row_offset).chain(
+                    unknown_relevant_variables(right.as_ref(), witgen, row_offset),
+                ),
+            )
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { expr, .. }) => {
             unknown_relevant_variables(expr.as_ref(), witgen, row_offset)
         }
     }
-}
-
-fn try_to_evaluate_to_known_number<T: FieldElement, FixedEval: FixedEvaluator<T>>(
-    expr: &AlgebraicExpression<T>,
-    witgen: &WitgenInference<'_, T, FixedEval>,
-    row_offset: i32,
-) -> Option<T> {
-    witgen
-        .evaluate(expr, row_offset)?
-        .try_to_known()?
-        .try_to_number()
 }
 
 pub struct Error<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
