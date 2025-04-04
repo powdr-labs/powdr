@@ -467,6 +467,25 @@ impl<T: Display> Display for PhantomBusInteractionIdentity<T> {
     }
 }
 
+impl<T: Display> Display for BusLinkIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "Constr::BusLink({}, {}, [{}], {});",
+            self.bus_id,
+            self.selector,
+            self.payload.0.iter().map(ToString::to_string).format(", "),
+            match &self.bus_linker_type {
+                BusLinkerType::Send => "std::protocols::bus::BusLinkerType::Send".to_string(),
+                BusLinkerType::LookupReceive =>
+                    "std::protocols::bus::BusLinkerType::LookupReceive".to_string(),
+                BusLinkerType::PermutationReceive =>
+                    "std::protocols::bus::BusLinkerType::PermutationReceive".to_string(),
+            }
+        )
+    }
+}
+
 impl Display for Reference {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

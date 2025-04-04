@@ -280,6 +280,10 @@ fn convert_identity<T: FieldElement>(
             multiplicity,
             ..
         }) => bus_interaction_pair(*id, bus_id_counter, left, right, Some(multiplicity.clone())),
+        // Bus links should have been all removed by this point.
+        AnalyzedIdentity::BusLink(_) => {
+            panic!("All BusLink should be removed by this point.")
+        }
     }
 }
 

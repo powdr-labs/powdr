@@ -4,13 +4,16 @@ use powdr_ast::{
     asm_analysis::combine_flags,
     object::{Link, LinkTo, Location, MachineInstanceGraph, Object, Operation},
     parsed::{
-        asm::SymbolPath,
+        asm::{Part, SymbolPath},
         build::{index_access, namespaced_reference},
-        ArrayLiteral, Expression, FunctionCall, NamespacedPolynomialReference, PilStatement,
+        ArrayLiteral, BinaryOperation, Expression, FunctionCall, NamespacedPolynomialReference,
+        Number, PilStatement, UnaryOperation,
     },
 };
 use powdr_parser_util::SourceRef;
+use pretty_assertions::StrComparison;
 use std::{
+    array,
     collections::{BTreeMap, HashSet},
     str::FromStr,
 };
@@ -28,6 +31,52 @@ pub struct BusLinker {
     bus_multi_linker_args: ArrayLiteral,
     /// interaction id map for each link.to
     interaction_id_map: BTreeMap<LinkTo, u32>,
+}
+
+pub fn add_namespace_to_expression(expression: Expression, location: &Location) -> Expression {
+    match expression {
+        Expression::Number(src, num) => {
+            Expression::Number(src, num)
+        }
+        Expression::Reference(src, poly_ref) => Expression::Reference(
+            src,
+            NamespacedPolynomialReference {
+                path: SymbolPath::from_identifier(
+                    location.to_string(),
+                )
+                .join(poly_ref.path),
+                type_args: poly_ref.type_args,
+            },
+        ),
+        Expression::ArrayLiteral(src, array) => Expression::ArrayLiteral(
+            src,
+            ArrayLiteral {
+                items: array
+                    .items
+                    .into_iter()
+                    .map(|item| add_namespace_to_expression(item, location))
+                    .collect(),
+            },
+        ),
+        Expression::UnaryOperation(src, unary) => Expression::UnaryOperation(
+            src,
+            UnaryOperation {
+                op: unary.op,
+                expr: Box::new(add_namespace_to_expression(*unary.expr, location)),
+            },
+        ),
+        Expression::BinaryOperation(src, binary) => Expression::BinaryOperation(
+            src,
+            BinaryOperation {
+                op: binary.op,
+                left: Box::new(add_namespace_to_expression(*binary.left, location)),
+                right: Box::new(add_namespace_to_expression(*binary.right, location)),
+            },
+        ),
+        _ => panic!(
+            "BusLink arguments should only contain numbers, references, arrays, or unary/binary operations"
+        ),
+    }
 }
 
 impl LinkerBackend for BusLinker {
@@ -108,7 +157,12 @@ impl LinkerBackend for BusLinker {
         })
     }
 
-    fn process_link(&mut self, link: &Link, _: &Location, objects: &BTreeMap<Location, Object>) {
+    fn process_link(
+        &mut self,
+        link: &Link,
+        location: &Location,
+        objects: &BTreeMap<Location, Object>,
+    ) {
         let from = &link.from;
         let to = &link.to;
 
@@ -136,7 +190,12 @@ impl LinkerBackend for BusLinker {
 
         self.bus_multi_linker_args.items.push(Expression::Tuple(
             SourceRef::unknown(),
-            vec![interaction_id.into(), selector, tuple, bus_linker_type],
+            vec![
+                interaction_id.into(),
+                add_namespace_to_expression(selector, location),
+                add_namespace_to_expression(tuple, location),
+                bus_linker_type,
+            ],
         ));
     }
 
@@ -181,24 +240,28 @@ impl LinkerBackend for BusLinker {
 
         // add pil for bus_multi_linker
         if !self.bus_multi_linker_args.items.is_empty() {
-            self.pil.push(PilStatement::Expression(
-                SourceRef::unknown(),
-                Expression::FunctionCall(
-                    SourceRef::unknown(),
-                    FunctionCall {
-                        function: Box::new(Expression::Reference(
+            self.bus_multi_linker_args.items.iter().for_each(|item| {
+                if let Expression::Tuple(_, args) = item {
+                    assert_eq!(args.len(), 4);
+                    self.pil.push(PilStatement::Expression(
+                        SourceRef::unknown(),
+                        Expression::FunctionCall(
                             SourceRef::unknown(),
-                            SymbolPath::from_str("std::protocols::bus::bus_multi_linker")
-                                .unwrap()
-                                .into(),
-                        )),
-                        arguments: vec![ArrayLiteral {
-                            items: std::mem::take(&mut self.bus_multi_linker_args.items),
-                        }
-                        .into()],
-                    },
-                ),
-            ));
+                            FunctionCall {
+                                function: Box::new(Expression::Reference(
+                                    SourceRef::unknown(),
+                                    SymbolPath::from_str("std::prelude::Constr::BusLink")
+                                        .unwrap()
+                                        .into(),
+                                )),
+                                arguments: args.clone(),
+                            },
+                        ),
+                    ));
+                } else {
+                    panic!("bus_multi_linker_args should be a tuple");
+                }
+            });
         }
 
         // if this is the main object, call the main operation

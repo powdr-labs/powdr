@@ -10,11 +10,12 @@ use std::{
 };
 
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Analyzed, BusInteractionIdentity, ConnectIdentity,
-    DegreeRange, Expression, ExpressionList, FunctionValueDefinition, Identity, LookupIdentity,
-    PermutationIdentity, PhantomBusInteractionIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialType, SelectedExpressions,
-    SolvedTraitImpls, StatementIdentifier, Symbol, SymbolKind,
+    AlgebraicExpression, AlgebraicReference, Analyzed, BusInteractionIdentity, BusLinkIdentity,
+    BusLinkerType, ConnectIdentity, DegreeRange, Expression, ExpressionList,
+    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity,
+    PhantomBusInteractionIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolyID,
+    PolynomialIdentity, PolynomialType, SelectedExpressions, SolvedTraitImpls, StatementIdentifier,
+    Symbol, SymbolKind,
 };
 use powdr_ast::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
@@ -839,6 +840,35 @@ fn to_constraint<T: FieldElement>(
                     }
                 }
                 _ => panic!("Expected Enum, got {:?}", fields[6]),
+            },
+        }
+        .into(),
+        "BusLink" => BusLinkIdentity {
+            id: counters.dispense_identity_id(),
+            source,
+            bus_id: to_expr(&fields[0]),
+            selector: to_expr(&fields[1]),
+            payload: ExpressionList(match fields[2].as_ref() {
+                Value::Array(fields) => fields.iter().map(|f| to_expr(f)).collect(),
+                _ => panic!("Expected array, got {:?}", fields[1]),
+            }),
+            bus_linker_type: match fields[3].as_ref() {
+                Value::Enum(enum_value) => {
+                    assert_eq!(
+                        enum_value.enum_decl.name,
+                        "std::protocols::bus::BusLinkerType"
+                    );
+                    match enum_value.variant {
+                        "Send" => BusLinkerType::Send,
+                        "LookupReceive" => BusLinkerType::LookupReceive,
+                        "PermutationReceive" => BusLinkerType::PermutationReceive,
+                        _ => panic!(
+                            "Expected Send, LookupReceive, or PermutationReceive, got {0}",
+                            enum_value.variant
+                        ),
+                    }
+                }
+                _ => panic!("Expected Enum, got {:?}", fields[3]),
             },
         }
         .into(),

@@ -339,6 +339,9 @@ impl<T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCircui
                 | Identity::PhantomBusInteraction(..) => {
                     // Phantom identities are only used in witness generation
                 }
+                Identity::BusLink(..) => {
+                    // Bus links should be all replaced by this point.
+                }
             }
         }
 

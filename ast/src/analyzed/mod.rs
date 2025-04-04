@@ -1162,6 +1162,45 @@ impl<T> Children<AlgebraicExpression<T>> for PhantomBusInteractionIdentity<T> {
 }
 
 #[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
+pub enum BusLinkerType {
+    Send,
+    PermutationReceive,
+    LookupReceive,
+}
+
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
+pub struct BusLinkIdentity<T> {
+    // The ID is globally unique among identities.
+    pub id: u64,
+    pub source: SourceRef,
+    pub bus_id: AlgebraicExpression<T>,
+    pub selector: AlgebraicExpression<T>,
+    pub payload: ExpressionList<T>,
+    pub bus_linker_type: BusLinkerType,
+}
+
+impl<T> Children<AlgebraicExpression<T>> for BusLinkIdentity<T> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(
+            once(&mut self.bus_id)
+                .chain(once(&mut self.selector))
+                .chain(self.payload.children_mut()),
+        )
+    }
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(
+            once(&self.bus_id)
+                .chain(once(&self.selector))
+                .chain(self.payload.children()),
+        )
+    }
+}
+
+#[derive(
     Debug,
     PartialEq,
     Eq,
@@ -1183,6 +1222,7 @@ pub enum Identity<T> {
     Connect(ConnectIdentity<T>),
     BusInteraction(BusInteractionIdentity<T>),
     PhantomBusInteraction(PhantomBusInteractionIdentity<T>),
+    BusLink(BusLinkIdentity<T>),
 }
 
 impl<T> Identity<T> {
@@ -1207,6 +1247,7 @@ impl<T> Identity<T> {
             Identity::Connect(i) => i.id,
             Identity::BusInteraction(i) => i.id,
             Identity::PhantomBusInteraction(i) => i.id,
+            Identity::BusLink(i) => i.id,
         }
     }
 
@@ -1220,6 +1261,7 @@ impl<T> Identity<T> {
             Identity::Connect(_) => IdentityKind::Connect,
             Identity::BusInteraction(_) => IdentityKind::BusInteraction,
             Identity::PhantomBusInteraction(_) => IdentityKind::PhantomBusInteraction,
+            Identity::BusLink(_) => IdentityKind::BusInteraction,
         }
     }
 }
@@ -1235,6 +1277,7 @@ impl<T> SourceReference for Identity<T> {
             Identity::Connect(i) => &i.source,
             Identity::BusInteraction(i) => &i.source,
             Identity::PhantomBusInteraction(i) => &i.source,
+            Identity::BusLink(i) => &i.source,
         }
     }
 
@@ -1248,6 +1291,7 @@ impl<T> SourceReference for Identity<T> {
             Identity::Connect(i) => &mut i.source,
             Identity::BusInteraction(i) => &mut i.source,
             Identity::PhantomBusInteraction(i) => &mut i.source,
+            Identity::BusLink(i) => &mut i.source,
         }
     }
 }
@@ -1263,6 +1307,7 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
             Identity::Connect(i) => i.children_mut(),
             Identity::BusInteraction(i) => i.children_mut(),
             Identity::PhantomBusInteraction(i) => i.children_mut(),
+            Identity::BusLink(i) => i.children_mut(),
         }
     }
 
@@ -1276,6 +1321,7 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
             Identity::Connect(i) => i.children(),
             Identity::BusInteraction(i) => i.children(),
             Identity::PhantomBusInteraction(i) => i.children(),
+            Identity::BusLink(i) => i.children(),
         }
     }
 }
