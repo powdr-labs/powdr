@@ -686,6 +686,19 @@ pub fn substitute_algebraic<T: Clone>(
     );
 }
 
+pub fn make_refs_zero<T: FieldElement>(expr: &mut AlgebraicExpression<T>) {
+    let zero = AlgebraicExpression::Number(T::zero());
+    expr.visit_expressions_mut(
+        &mut |expr| {
+            if let AlgebraicExpression::Reference(AlgebraicReference { .. }) = expr {
+                *expr = zero.clone();
+            }
+            ControlFlow::Continue::<()>(())
+        },
+        VisitOrder::Pre,
+    );
+}
+
 pub fn is_zero<T: FieldElement>(expr: &AlgebraicExpression<T>) -> bool {
     match expr {
         AlgebraicExpression::Number(n) => *n == T::zero(),

@@ -1,6 +1,8 @@
 use itertools::Itertools;
 use powdr::collect_cols_algebraic;
-use powdr_ast::analyzed::BusInteractionKind as AnalyzedBusInteractionKind;
+use powdr_ast::analyzed::{
+    BusInteractionKind as AnalyzedBusInteractionKind, PolyID, PolynomialType,
+};
 use powdr_ast::parsed::asm::Part;
 use powdr_ast::{
     analyzed::{
@@ -415,6 +417,9 @@ impl<T: FieldElement> Autoprecompiles<T> {
             machine = powdr_optimize(machine);
             machine = remove_zero_mult(machine);
             machine = remove_zero_constraint(machine);
+
+            // add guards to constraints that are not satisfied by zeroes
+            machine = add_guards(machine);
         }
 
         println!("\nMachine after powdr optimization");
@@ -502,6 +507,45 @@ pub fn remove_zero_mult<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sym
         machine.constraints.len(),
         machine.bus_interactions.len()
     );
+
+    machine
+}
+
+pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+    let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
+        name: "is_valid".to_string(),
+        poly_id: PolyID {
+            ptype: PolynomialType::Committed,
+            id: 6666666,
+        },
+        next: false,
+    });
+
+    for c in &mut machine.constraints {
+        let mut zeroed_expr = c.expr.clone();
+        powdr::make_refs_zero(&mut zeroed_expr);
+        let mut zeroed_expr = simplify_expression(zeroed_expr);
+        if !powdr::is_zero(&zeroed_expr) {
+            c.expr = is_valid.clone() * c.expr.clone();
+            // TODO this would not have to be cloned if we had *=
+            //c.expr *= guard.clone();
+        }
+    }
+
+    for b in &mut machine.bus_interactions {
+        if b.id == EXECUTION_BUS_ID || b.id == PC_LOOKUP_BUS_ID {
+            b.mult = is_valid.clone();
+        } else {
+            let mut zeroed_expr = b.mult.clone();
+            powdr::make_refs_zero(&mut zeroed_expr);
+            let mut zeroed_expr = simplify_expression(zeroed_expr);
+            if !powdr::is_zero(&zeroed_expr) {
+                b.mult = is_valid.clone() * b.mult.clone();
+                // TODO this would not have to be cloned if we had *=
+                //c.expr *= guard.clone();
+            }
+        }
+    }
 
     machine
 }
@@ -1009,8 +1053,6 @@ pub fn generate_precompile<T: FieldElement>(
                 */
 
                 //println!("Computing local identities");
-                let mut is_valid_i = is_valid.clone();
-                let _ = powdr::append_suffix_algebraic(&mut is_valid_i, &format!("{i}"));
                 let local_identities = machine
                     .constraints
                     .iter()
@@ -1018,19 +1060,13 @@ pub fn generate_precompile<T: FieldElement>(
                     .map(|expr| {
                         // println!("handling local identity {}", expr.expr);
                         let mut expr = expr.expr.clone();
-                        let old_expr = expr.clone();
                         powdr::substitute_algebraic(&mut expr, &sub_map);
+                        powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
                         // println!("after sub became identity {expr}");
-                        let is_new = expr != old_expr;
                         let subs = powdr::append_suffix_algebraic(&mut expr, &format!("{i}"));
                         // println!("after suffix became identity {expr}");
                         expr = simplify_expression(expr);
                         // println!("after simplify became identity {expr}");
-                        if is_new {
-                            // println!("Substutition was made, applying is_valid multiplication");
-                            expr = is_valid_i.clone() * expr;
-                            // println!("after is_valid mult became identity {expr}");
-                        }
                         global_idx = powdr::reassign_ids_algebraic(
                             &mut expr,
                             global_idx,
