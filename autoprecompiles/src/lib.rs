@@ -512,11 +512,13 @@ pub fn remove_zero_mult<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sym
 }
 
 pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+    let max_id = machine.column_ids().iter().max().unwrap() + 1;
+
     let is_valid = AlgebraicExpression::Reference(AlgebraicReference {
         name: "is_valid".to_string(),
         poly_id: PolyID {
             ptype: PolynomialType::Committed,
-            id: 6666666,
+            id: max_id,
         },
         next: false,
     });
