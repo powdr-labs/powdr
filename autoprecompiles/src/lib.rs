@@ -1178,12 +1178,17 @@ fn add_opcode_constraints<T: FieldElement>(
     }
 }
 
+// See: https://github.com/openvm-org/openvm/blob/51f07d50d20174b23091f48e25d9ea421b4e2787/extensions/rv32im/transpiler/src/instructions.rs#L100-L113
+const LOADW_OPCODE: usize = 0x210;
+const STOREW_OPCODE: usize = 0x210 + 3;
+
 fn try_set_loadstore_flags<T: FieldElement>(
     constraints: &mut Vec<SymbolicConstraint<T>>,
     opcode: usize,
     expected_opcode: &AlgebraicExpression<T>,
 ) -> Result<(), ()> {
-    if opcode < 528 || opcode >= 528 + 14 {
+    if opcode == LOADW_OPCODE || opcode == STOREW_OPCODE {
+        // For other instructions, the flags are not unique :/
         return Err(());
     }
     // Find the 4 flags, sorted by name.
@@ -1215,26 +1220,10 @@ fn try_set_loadstore_flags<T: FieldElement>(
         set_flag(flag_refs[3], f4);
     };
 
-    // See the how the `opcode_flags` array is built here:
-    // https://github.com/openvm-org/openvm/blob/51f07d50d20174b23091f48e25d9ea421b4e2787/extensions/rv32im/circuit/src/loadstore/core.rs#L123-L133
-    // E.g., the first expression is `flag1 * (flag1 - 1) / 2`. Given that the sum of flags needs
-    // to equal 1 or 2, the only possible assignment s.t. this expression evaluates to 1 is
-    // (2, 0, 0, 0).
+    // See: https://github.com/openvm-org/openvm/blob/51f07d50d20174b23091f48e25d9ea421b4e2787/extensions/rv32im/circuit/src/loadstore/core.rs#L311-L330
     match opcode {
-        528 => set_flags(2, 0, 0, 0),
-        529 => set_flags(0, 2, 0, 0),
-        530 => set_flags(0, 0, 2, 0),
-        531 => set_flags(0, 0, 0, 2),
-        532 => set_flags(1, 0, 0, 0),
-        533 => set_flags(0, 1, 0, 0),
-        534 => set_flags(0, 0, 1, 0),
-        535 => set_flags(0, 0, 0, 1),
-        536 => set_flags(1, 1, 0, 0),
-        537 => set_flags(1, 0, 1, 0),
-        538 => set_flags(1, 0, 0, 1),
-        539 => set_flags(0, 1, 1, 0),
-        540 => set_flags(0, 1, 0, 1),
-        541 => set_flags(0, 0, 1, 1),
+        LOADW_OPCODE => set_flags(2, 0, 0, 0),
+        STOREW_OPCODE => set_flags(0, 0, 0, 1),
         _ => panic!(),
     }
 
