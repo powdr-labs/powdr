@@ -532,6 +532,7 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
         }
     }
 
+    let mut is_valid_mults = Vec::new();
     for b in &mut machine.bus_interactions {
         if b.id == EXECUTION_BUS_ID || b.id == PC_LOOKUP_BUS_ID {
             b.mult = is_valid.clone();
@@ -543,9 +544,15 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
                 b.mult = is_valid.clone() * b.mult.clone();
                 // TODO this would not have to be cloned if we had *=
                 //c.expr *= guard.clone();
+            } else {
+                let one = AlgebraicExpression::Number(1u64.into());
+                let e = ((one - is_valid.clone()) * b.mult.clone()).into();
+                is_valid_mults.push(e);
             }
         }
     }
+
+    machine.constraints.extend(is_valid_mults);
 
     machine
 }
