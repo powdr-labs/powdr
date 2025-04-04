@@ -718,6 +718,7 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             // Bus interactions send at least their bus ID, which needs to
             // be received for the bus argument to hold.
             Identity::PhantomBusInteraction(..) => None,
+            Identity::BusLink(..) => None,
         })
         .collect();
     pil_file.remove_identities(&to_remove);
@@ -740,6 +741,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 Identity::Connect(..) => 5,
                 Identity::BusInteraction(..) => 6,
                 Identity::PhantomBusInteraction(..) => 7,
+                Identity::BusLink(..) => 8,
             };
 
             discriminant(self)
@@ -800,7 +802,8 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
                     (Identity::BusInteraction(_), Identity::BusInteraction(_))
-                    | (Identity::PhantomBusInteraction(_), Identity::PhantomBusInteraction(_)) => {
+                    | (Identity::PhantomBusInteraction(_), Identity::PhantomBusInteraction(_))
+                    | (Identity::BusLink(_), Identity::BusLink(_)) => {
                         unimplemented!(
                             "Bus interactions should have been removed before this point."
                         )
@@ -836,6 +839,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             // Duplicate bus interactions should not be removed, because that changes the statement.
             Identity::BusInteraction(_) => None,
             Identity::PhantomBusInteraction(_) => None,
+            Identity::BusLink(_) => None,
             _ => match identity_expressions.insert(CanonicalIdentity(identity)) {
                 false => Some(index),
                 true => None,

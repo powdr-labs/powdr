@@ -10,11 +10,12 @@ use std::{
 };
 
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Analyzed, BusInteractionIdentity, ConnectIdentity,
-    DegreeRange, Expression, ExpressionList, FunctionValueDefinition, Identity, LookupIdentity,
-    PermutationIdentity, PhantomBusInteractionIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialType, SelectedExpressions,
-    SolvedTraitImpls, StatementIdentifier, Symbol, SymbolKind,
+    AlgebraicExpression, AlgebraicReference, Analyzed, BatchedLinks, BusInteractionIdentity,
+    BusLinkIdentity, BusLinkerType, ConnectIdentity, DegreeRange, Expression, ExpressionList,
+    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity,
+    PhantomBusInteractionIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolyID,
+    PolynomialIdentity, PolynomialType, SelectedExpressions, SolvedTraitImpls, StatementIdentifier,
+    Symbol, SymbolKind,
 };
 use powdr_ast::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
@@ -839,6 +840,50 @@ fn to_constraint<T: FieldElement>(
                     }
                 }
                 _ => panic!("Expected Enum, got {:?}", fields[6]),
+            },
+        }
+        .into(),
+        "BusLink" => BusLinkIdentity {
+            id: counters.dispense_identity_id(),
+            source,
+            batched_links: match fields[0].as_ref() {
+                Value::Array(fields) => {
+                    fields.iter().map(
+                        |tuple| match tuple.as_ref() {
+                            Value::Tuple(args) => {
+                                assert_eq!(args.len(), 4);
+                                BatchedLinks {
+                                    bus_id: to_expr(args[0].as_ref()),
+                                    selector: to_expr(args[1].as_ref()),
+                                    payload: ExpressionList(match args[2].as_ref() {
+                                        Value::Array(fields) => fields.iter().map(|f| to_expr(f)).collect(),
+                                        _ => panic!("Expected array, got {:?}", args[2]),
+                                    }),
+                                    bus_linker_type: match args[3].as_ref() {
+                                        Value::Enum(enum_value) => {
+                                            assert_eq!(
+                                                enum_value.enum_decl.name,
+                                                "std::protocols::bus::BusLinkerType"
+                                            );
+                                            match enum_value.variant {
+                                                "Send" => BusLinkerType::Send,
+                                                "LookupReceive" => BusLinkerType::LookupReceive,
+                                                "PermutationReceive" => BusLinkerType::PermutationReceive,
+                                                _ => panic!(
+                                                    "Expected Send, LookupReceive, or PermutationReceive, got {0}",
+                                                    enum_value.variant
+                                                ),
+                                            }
+                                        }
+                                        _ => panic!("Expected Enum, got {:?}", args[3]),
+                                    },
+                                }
+                            }
+                            _ => panic!("Expected Tuple, got {:?}", tuple),
+                        }
+                    ).collect()
+                }
+                _ => panic!("Expected array, got {:?}", fields[0]),
             },
         }
         .into(),

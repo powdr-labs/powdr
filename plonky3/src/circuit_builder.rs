@@ -389,7 +389,8 @@ where
                 Identity::BusInteraction(_)
                 | Identity::PhantomPermutation(_)
                 | Identity::PhantomLookup(_)
-                | Identity::PhantomBusInteraction(_) => {
+                | Identity::PhantomBusInteraction(_)
+                | Identity::BusLink(_) => {
                     // phantom identities are only used in witgen
                 }
             }
