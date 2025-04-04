@@ -1126,22 +1126,6 @@ fn try_to_boolean_constrained<T: FieldElement>(id: &Identity<T>) -> Option<PolyI
 fn replace_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     // Maximum allowed polynomial degree after applying a substitution
     const MAX_DEGREE: usize = 2; // TODO: Make this a parameter
-    println!(
-        "Starting replace_constrained_witness_columns with MAX_DEGREE = {}",
-        MAX_DEGREE
-    );
-
-    // Get current intermediate definitions
-    let intermediate_definitions = pil_file.intermediate_definitions();
-    println!(
-        "Loaded {} intermediate definitions",
-        intermediate_definitions.len()
-    );
-
-    // Debug: print all intermediate definitions
-    for (ref_thin, expr) in &intermediate_definitions {
-        println!("  Intermediate def: {:?} = {}", ref_thin, expr);
-    }
 
     // We cannot remove arrays or array elements, so we filter them out.
     // Also, we filter out columns that are used in public declarations.
@@ -1150,17 +1134,12 @@ fn replace_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<
         .public_declarations_in_source_order()
         .map(|(_, pubd)| pubd.referenced_poly().name.clone())
         .collect();
-    println!("Found {} public declarations to preserve", in_publics.len());
 
     let boolean_constrained_witnesses = pil_file
         .identities
         .iter()
         .filter_map(|id| try_to_boolean_constrained(id))
         .collect::<HashSet<_>>();
-    println!(
-        "Found {} boolean constrained witnesses to preserve",
-        boolean_constrained_witnesses.len()
-    );
 
     let keep = pil_file
         .committed_polys_in_source_order()
@@ -1174,60 +1153,18 @@ fn replace_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<
         })
         .map(|(s, _)| s.into())
         .collect::<HashSet<PolyID>>();
-    println!("Total columns to preserve: {}", keep.len());
 
     for (idx, id) in pil_file.identities.iter().enumerate() {
         if let Identity::Polynomial(identity) = id {
-            println!("\nAnalyzing identity {}: {}", idx, identity);
+            println!("Identity {idx}: {identity}");
+            let intermediate_definitions = pil_file.intermediate_definitions();
 
             if let Some(((name, poly_id), expression)) =
                 try_to_constrained_with_max_degree(identity, &intermediate_definitions, MAX_DEGREE)
             {
-                println!("Found potential substitution: {} = {}", name, expression);
-
-                // Calculate the degree of the expression
-                let expr_degree = expression
-                    .degree_with_cache(&intermediate_definitions, &mut Default::default());
-                println!("Expression degree: {}", expr_degree);
-
                 // Skip if this is a column we need to keep
                 if keep.contains(&poly_id) {
-                    println!("Skipping {} as it needs to be preserved", name);
                     continue;
-                }
-
-                // Evaluate the impact of this substitution
-                let constraints = collect_constraints_using_witness(pil_file, poly_id, idx);
-                println!(
-                    "Column {} is used in {} other constraints",
-                    name,
-                    constraints.len()
-                );
-
-                for &constraint_idx in &constraints {
-                    if let Identity::Polynomial(constraint) = &pil_file.identities[constraint_idx] {
-                        println!("  Constraint {}: {}", constraint_idx, constraint);
-
-                        // Calculate current degree
-                        let current_degree = constraint
-                            .expression
-                            .degree_with_cache(&intermediate_definitions, &mut Default::default());
-                        println!("  Current degree: {}", current_degree);
-
-                        // Calculate degree after substitution
-                        let mut cache = BTreeMap::new();
-                        let new_degree = constraint.expression.degree_with_virtual_substitution(
-                            poly_id,
-                            &expression,
-                            &intermediate_definitions,
-                            &mut cache,
-                        );
-                        println!("  Degree after substitution: {}", new_degree);
-
-                        if new_degree > MAX_DEGREE {
-                            println!("  Substitution would exceed MAX_DEGREE!");
-                        }
-                    }
                 }
 
                 let valid_substitution = is_valid_substitution(
@@ -1239,14 +1176,7 @@ fn replace_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<
                     MAX_DEGREE,
                 );
 
-                println!(
-                    "Substitution valid for all constraints: {}",
-                    valid_substitution
-                );
-
                 if valid_substitution {
-                    println!("Applying substitution: {} = {}", name, expression);
-
                     // Remove the definition
                     if let Some((symbol, value)) = pil_file.definitions.remove(&name) {
                         // Sanity checks
@@ -1279,16 +1209,10 @@ fn replace_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<
                             ..symbol
                         };
 
-                        println!("Created new intermediate symbol with id {}", id);
-
                         // Add the definition to the intermediate columns
                         pil_file
                             .intermediate_columns
                             .insert(name.clone(), (symbol, vec![expression.clone()]));
-                        println!(
-                            "Added intermediate column definition: {} = {}",
-                            name, expression
-                        );
 
                         // Create a reference to the new intermediate column
                         let r = AlgebraicReference {
@@ -1300,35 +1224,18 @@ fn replace_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<
                         // Remove the identity used
                         let identities_to_remove = BTreeSet::from([idx]);
                         pil_file.remove_identities(&identities_to_remove);
-                        println!("Removed identity at index {}", idx);
 
                         // Apply the substitution to all remaining identities
                         let substitution =
                             vec![((name, poly_id), AlgebraicExpression::Reference(r))];
                         substitute_polynomial_references(pil_file, substitution);
-                        println!("Applied substitution to all remaining identities");
 
-                        // Print the updated intermediate definitions
-                        let updated_defs = pil_file.intermediate_definitions();
-                        println!(
-                            "Updated intermediate definitions count: {}",
-                            updated_defs.len()
-                        );
-                        for (ref_thin, expr) in &updated_defs {
-                            println!("  Updated def: {:?} = {}", ref_thin, expr);
-                        }
-
-                        // Greedy approach: return after the first successful substitution
-                        println!("Finished replace_constrained_witness_columns (greedy approach)");
                         return;
                     }
                 }
             }
         }
     }
-
-    println!("No valid substitution found");
-    println!("Finished replace_constrained_witness_columns");
 }
 
 /// Collects all constraints that use a specific witness column.
@@ -1380,13 +1287,8 @@ fn is_valid_substitution<T: FieldElement>(
     max_degree: usize,
 ) -> bool {
     let constraints = collect_constraints_using_witness(pil_file, poly_id, exclude_idx);
-    println!(
-        "Checking substitution validity for {} constraints",
-        constraints.len()
-    );
 
     if constraints.is_empty() {
-        println!("No constraints use this witness - substitution not useful");
         return false;
     }
 
@@ -1401,22 +1303,12 @@ fn is_valid_substitution<T: FieldElement>(
                 &mut cache,
             );
 
-            println!(
-                "  Constraint {}: degree after substitution = {}",
-                idx, degree
-            );
-
             if degree > max_degree {
-                println!(
-                    "  Substitution exceeds MAX_DEGREE ({}) in constraint {}",
-                    max_degree, idx
-                );
                 return false; // Substitution exceeds MAX_DEGREE
             }
         }
     }
 
-    println!("Substitution is valid for all constraints");
     true
 }
 
@@ -1426,8 +1318,6 @@ fn try_to_constrained_with_max_degree<T: FieldElement>(
     intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     max_degree: usize,
 ) -> Option<((String, PolyID), AlgebraicExpression<T>)> {
-    println!("Trying to extract constrained witness from: {}", identity);
-
     // We require the constraint to be of the form `left = right`, represented as `left - right`
     let (left, right) = if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
         left,
@@ -1435,10 +1325,8 @@ fn try_to_constrained_with_max_degree<T: FieldElement>(
         right,
     }) = &identity.expression
     {
-        println!("Identity is in the form left - right");
         (left, right)
     } else {
-        println!("Identity is not in the form left - right");
         return None;
     };
 
@@ -1457,22 +1345,15 @@ fn try_to_constrained_with_max_degree<T: FieldElement>(
             },
         ) = left
         {
-            println!("Left side is a witness column: {}", r.name);
             r
         } else {
-            println!("Left side is not a witness column");
             return None;
         };
 
         // Check if the right side has a degree <= max_degree
         let degree = right.degree_with_cache(intermediate_definitions, &mut Default::default());
-        println!("Right side degree: {}", degree);
 
         if degree > max_degree {
-            println!(
-                "Right side degree {} exceeds max_degree {}",
-                degree, max_degree
-            );
             return None;
         }
 
@@ -1482,7 +1363,6 @@ fn try_to_constrained_with_max_degree<T: FieldElement>(
             if let AlgebraicExpression::Reference(r) = e {
                 if r.poly_id == w.poly_id {
                     references_self = true;
-                    println!("Right side references the left side variable");
                 }
             }
         });
@@ -1493,25 +1373,12 @@ fn try_to_constrained_with_max_degree<T: FieldElement>(
 
         // Check that the right side doesn't contain next references
         if right.contains_next_ref(intermediate_definitions) {
-            println!("Right side contains next references");
             return None;
         }
 
-        println!("Found valid substitution: {} = {}", w.name, right);
         Some(((w.name.clone(), w.poly_id), right.clone()))
     };
 
     // Try from both sides
-    let result = try_from_sides(left, right).or_else(|| {
-        println!("Trying from right to left");
-        try_from_sides(right, left)
-    });
-
-    if result.is_some() {
-        println!("Extraction successful");
-    } else {
-        println!("Extraction failed");
-    }
-
-    result
+    try_from_sides(left, right).or_else(|| try_from_sides(right, left))
 }

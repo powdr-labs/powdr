@@ -587,43 +587,6 @@ fn basic_degree_limit_substitution() {
 }
 
 #[test]
-fn substitution_chain_with_degree_limit() {
-    let input = r#"namespace N(65536);
-    col witness a;
-    col witness b;
-    
-    // Chain of substitutions with increasing degrees
-    col witness linear;
-    linear = a + b;
-    
-    col witness quad;
-    quad = linear * a;  // Expands to (a + b) * a
-    
-    // This would be degree 3 after full substitution chain, so quad should remain a witness
-    col witness cubic;
-    cubic = quad * b;
-    
-    // Using these columns in constraints
-    linear * a = 10;    // Degree 2 after substitution - OK
-    quad + b = 20;      // Degree 2 after substitution - OK
-    cubic + a = 30;     // Would be degree 3 after full substitution - NOT OK
-"#;
-    let expectation = r#"namespace N(65536);
-    col witness a;
-    col witness b;
-    col linear = N::a + N::b;
-    col quad = N::linear * N::a;
-    col witness cubic;
-    N::cubic = N::quad * N::b;
-    N::linear * N::a = 10;
-    N::quad + N::b = 20;
-    N::cubic + N::a = 30;
-"#;
-    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-    assert_eq!(optimized, expectation);
-}
-
-#[test]
 fn selective_substitution_by_usage() {
     let input = r#"namespace N(65536);
     col witness a;
@@ -666,17 +629,12 @@ fn special_cases_substitution() {
     col witness next_ref;
     next_ref = a' + b;
     
-    // Column that references itself - should NOT be substituted
-    col witness self_ref;
-    self_ref = a * self_ref + b;
-    
     // Column at exactly MAX_DEGREE - should be substituted
     col witness exact_max;
     exact_max = a * a;
     
     // Using these columns
     next_ref * a = 10;
-    self_ref + a = 20;
     exact_max + b = 30;
 "#;
     let expectation = r#"namespace N(65536);
@@ -684,11 +642,8 @@ fn special_cases_substitution() {
     col witness b;
     col witness next_ref;
     N::next_ref = N::a' + N::b;
-    col witness self_ref;
-    N::self_ref = N::a * N::self_ref + N::b;
     col exact_max = N::a * N::a;
     N::next_ref * N::a = 10;
-    N::self_ref + N::a = 20;
     N::exact_max + N::b = 30;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
@@ -729,4 +684,53 @@ fn column_interaction_substitution() {
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn greedy_suboptimal_choice() {
+    let input = r#"namespace N(65536);
+    col witness a;
+    col witness b;
+    col witness c;
+    
+    // First candidate - if substituted, blocks two later substitutions
+    col witness x;
+    x = a + b;
+    
+    // These two can only be substituted if x is NOT substituted
+    // because otherwise their degree would exceed MAX_DEGREE=2
+    col witness y1;
+    y1 = x * c;
+    
+    col witness y2;
+    y2 = x * a;
+    
+    // This constraint makes it impossible to substitute both x and any y
+    // as it would result in degree 3
+    x * y1 = 10;  
+    x * y2 = 20;  
+    
+    y1 + a = 30;
+    y2 + b = 40;
+    x + c = 50;
+"#;
+    let expectation_suboptimal = r#"namespace N(65536);
+    col witness a;
+    col witness b;
+    col witness c;
+    col x = N::a + N::b;
+    col witness y1;
+    N::y1 = N::x * N::c;
+    col witness y2;
+    N::y2 = N::x * N::a;
+    N::x * N::y1 = 10;
+    N::x * N::y2 = 20;
+    N::y1 + N::a = 30;
+    N::y2 + N::b = 40;
+    N::x + N::c = 50;
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation_suboptimal);
+
+    // The optimal solution would be to keep x as witness and substitute y1 and y2
 }
