@@ -1169,11 +1169,76 @@ fn add_opcode_constraints<T: FieldElement>(
             }
         }
         Err(_) => {
-            // We were not able to extract the flags, so we keep them as witness columns
-            // and add a constraint that the expected opcode needs to equal the compile-time opcode.
-            constraints.push((expected_opcode.clone() - opcode_a).into());
+            if try_set_loadstore_flags(constraints, opcode, expected_opcode).is_err() {
+                // We were not able to extract the flags, so we keep them as witness columns
+                // and add a constraint that the expected opcode needs to equal the compile-time opcode.
+                constraints.push((expected_opcode.clone() - opcode_a).into());
+            }
         }
     }
+}
+
+fn try_set_loadstore_flags<T: FieldElement>(
+    constraints: &mut Vec<SymbolicConstraint<T>>,
+    opcode: usize,
+    expected_opcode: &AlgebraicExpression<T>,
+) -> Result<(), ()> {
+    if opcode < 528 || opcode >= 528 + 14 {
+        return Err(());
+    }
+    // Find the 4 flags, sorted by name.
+    let flag_refs = expected_opcode
+        .all_children()
+        .filter_map(|expr| match expr {
+            AlgebraicExpression::Reference(column_reference) => {
+                Some((column_reference.name.clone(), column_reference))
+            }
+            _ => None,
+        })
+        .sorted_by(|(n1, _), (n2, _)| n1.cmp(n2))
+        .unique_by(|(name, _)| name.clone())
+        .map(|(_, column_reference)| column_reference)
+        .collect::<Vec<_>>();
+    assert_eq!(flag_refs.len(), 4);
+
+    let mut set_flag = |column_ref: &AlgebraicReference, value: u64| {
+        let value = AlgebraicExpression::Number(value.into());
+        let flag_expr = AlgebraicExpression::Reference(column_ref.clone());
+        let constraint = flag_expr - value;
+        constraints.push(constraint.into());
+    };
+
+    let mut set_flags = |f1, f2, f3, f4| {
+        set_flag(flag_refs[0], f1);
+        set_flag(flag_refs[1], f2);
+        set_flag(flag_refs[2], f3);
+        set_flag(flag_refs[3], f4);
+    };
+
+    // See the how the `opcode_flags` array is built here:
+    // https://github.com/openvm-org/openvm/blob/51f07d50d20174b23091f48e25d9ea421b4e2787/extensions/rv32im/circuit/src/loadstore/core.rs#L123-L133
+    // E.g., the first expression is `flag1 * (flag1 - 1) / 2`. Given that the sum of flags needs
+    // to equal 1 or 2, the only possible assignment s.t. this expression evaluates to 1 is
+    // (2, 0, 0, 0).
+    match opcode {
+        528 => set_flags(2, 0, 0, 0),
+        529 => set_flags(0, 2, 0, 0),
+        530 => set_flags(0, 0, 2, 0),
+        531 => set_flags(0, 0, 0, 2),
+        532 => set_flags(1, 0, 0, 0),
+        533 => set_flags(0, 1, 0, 0),
+        534 => set_flags(0, 0, 1, 0),
+        535 => set_flags(0, 0, 0, 1),
+        536 => set_flags(1, 1, 0, 0),
+        537 => set_flags(1, 0, 1, 0),
+        538 => set_flags(1, 0, 0, 1),
+        539 => set_flags(0, 1, 1, 0),
+        540 => set_flags(0, 1, 0, 1),
+        541 => set_flags(0, 0, 1, 1),
+        _ => panic!(),
+    }
+
+    Ok(())
 }
 
 fn try_compute_opcode_map<T: FieldElement>(
@@ -1185,7 +1250,6 @@ fn try_compute_opcode_map<T: FieldElement>(
     let affine_expression = PartialExpressionEvaluator::new(SymbolicEvaluator, &imm)
         .evaluate(expected_opcode)
         .map_err(|_| ())?;
-    println!("GGG affine_expression = {affine_expression}");
 
     // The above would not include any entry for `flag * 0` or `0 * flag`.
     // If it exists, we collect it here.
