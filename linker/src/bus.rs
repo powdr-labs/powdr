@@ -240,28 +240,24 @@ impl LinkerBackend for BusLinker {
 
         // add pil for bus_multi_linker
         if !self.bus_multi_linker_args.items.is_empty() {
-            self.bus_multi_linker_args.items.iter().for_each(|item| {
-                if let Expression::Tuple(_, args) = item {
-                    assert_eq!(args.len(), 4);
-                    self.pil.push(PilStatement::Expression(
-                        SourceRef::unknown(),
-                        Expression::FunctionCall(
+            self.pil.push(PilStatement::Expression(
+                SourceRef::unknown(),
+                Expression::FunctionCall(
+                    SourceRef::unknown(),
+                    FunctionCall {
+                        function: Box::new(Expression::Reference(
                             SourceRef::unknown(),
-                            FunctionCall {
-                                function: Box::new(Expression::Reference(
-                                    SourceRef::unknown(),
-                                    SymbolPath::from_str("std::prelude::Constr::BusLink")
-                                        .unwrap()
-                                        .into(),
-                                )),
-                                arguments: args.clone(),
-                            },
-                        ),
-                    ));
-                } else {
-                    panic!("bus_multi_linker_args should be a tuple");
-                }
-            });
+                            SymbolPath::from_str("std::prelude::Constr::BusLink")
+                                .unwrap()
+                                .into(),
+                        )),
+                        arguments: vec![ArrayLiteral {
+                            items: std::mem::take(&mut self.bus_multi_linker_args.items),
+                        }
+                        .into()],
+                    },
+                ),
+            ));
         }
 
         // if this is the main object, call the main operation

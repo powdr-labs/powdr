@@ -11,7 +11,7 @@ use std::{
 use itertools::Itertools;
 use parsed::{display::format_type_args, LambdaExpression, TypeDeclaration, TypedExpression};
 
-use crate::{parsed::FunctionKind, writeln_indented};
+use crate::{asm_analysis::Batch, parsed::FunctionKind, writeln_indented};
 
 use self::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
@@ -467,11 +467,11 @@ impl<T: Display> Display for PhantomBusInteractionIdentity<T> {
     }
 }
 
-impl<T: Display> Display for BusLinkIdentity<T> {
+impl<T: Display> Display for BatchedLinks<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "Constr::BusLink({}, {}, [{}], {});",
+            "({}, {}, [{}], {})",
             self.bus_id,
             self.selector,
             self.payload.0.iter().map(ToString::to_string).format(", "),
@@ -482,6 +482,19 @@ impl<T: Display> Display for BusLinkIdentity<T> {
                 BusLinkerType::PermutationReceive =>
                     "std::protocols::bus::BusLinkerType::PermutationReceive".to_string(),
             }
+        )
+    }
+}
+
+impl<T: Display> Display for BusLinkIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "Constr::BusLink([{}]);",
+            self.batched_links
+                .iter()
+                .map(ToString::to_string)
+                .format(", "),
         )
     }
 }

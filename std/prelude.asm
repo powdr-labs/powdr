@@ -80,7 +80,7 @@ enum Constr {
     PhantomBusInteraction(expr, expr, expr[], expr, expr[], expr[], Option<expr[]>),
 
     /// interaction id, selector, payload, bus linker type
-    BusLink(expr, expr, expr[], std::protocols::bus::BusLinkerType)
+    BusLink((expr, expr, expr[], std::protocols::bus::BusLinkerType)[])
 }
 
 /// This is the result of the "$" operator. It can be used as the left and

@@ -183,6 +183,14 @@ pub trait BackendFactory<F: FieldElement> {
     fn specialize_pil(&self, pil: Analyzed<F>) -> Analyzed<F> {
         // TODO: currently defaults to the identity function
         // Move `bus_multi_linker` calls here in the future
+        let bus_links = pil.identities.iter().filter_map(|i| {
+            if let powdr_ast::analyzed::Identity::BusLink(bus_link) = i {
+                Some(bus_link)
+            } else {
+                None
+            }
+        });
+
         pil
     }
 }
