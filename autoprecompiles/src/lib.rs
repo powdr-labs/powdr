@@ -1187,7 +1187,7 @@ fn try_set_loadstore_flags<T: FieldElement>(
     opcode: usize,
     expected_opcode: &AlgebraicExpression<T>,
 ) -> Result<(), ()> {
-    if opcode == LOADW_OPCODE || opcode == STOREW_OPCODE {
+    if opcode != LOADW_OPCODE && opcode != STOREW_OPCODE {
         // For other instructions, the flags are not unique :/
         return Err(());
     }
