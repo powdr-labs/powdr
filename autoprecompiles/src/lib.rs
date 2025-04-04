@@ -1186,7 +1186,8 @@ fn try_set_loadstore_flags<T: FieldElement>(
     if opcode < 528 || opcode >= 528 + 14 {
         return Err(());
     }
-    let columns = expected_opcode
+    // Find the 4 flags, sorted by name.
+    let flag_refs = expected_opcode
         .all_children()
         .filter_map(|expr| match expr {
             AlgebraicExpression::Reference(column_reference) => {
@@ -1194,10 +1195,11 @@ fn try_set_loadstore_flags<T: FieldElement>(
             }
             _ => None,
         })
-        .collect::<BTreeMap<_, _>>();
-    assert_eq!(columns.len(), 4);
-
-    let columns = columns.values().collect::<Vec<_>>();
+        .sorted_by(|(n1, _), (n2, _)| n1.cmp(n2))
+        .unique_by(|(name, _)| name.clone())
+        .map(|(_, column_reference)| column_reference)
+        .collect::<Vec<_>>();
+    assert_eq!(flag_refs.len(), 4);
 
     let mut set_flag = |column_ref: &AlgebraicReference, value: u64| {
         let value = AlgebraicExpression::Number(value.into());
@@ -1207,12 +1209,17 @@ fn try_set_loadstore_flags<T: FieldElement>(
     };
 
     let mut set_flags = |f1, f2, f3, f4| {
-        set_flag(columns[0], f1);
-        set_flag(columns[1], f2);
-        set_flag(columns[2], f3);
-        set_flag(columns[3], f4);
+        set_flag(flag_refs[0], f1);
+        set_flag(flag_refs[1], f2);
+        set_flag(flag_refs[2], f3);
+        set_flag(flag_refs[3], f4);
     };
 
+    // See the how the `opcode_flags` array is built here:
+    // https://github.com/openvm-org/openvm/blob/51f07d50d20174b23091f48e25d9ea421b4e2787/extensions/rv32im/circuit/src/loadstore/core.rs#L123-L133
+    // E.g., the first expression is `flag1 * (flag1 - 1) / 2`. Given that the sum of flags needs
+    // to equal 1 or 2, the only possible assignment s.t. this expression evaluates to 1 is
+    // (2, 0, 0, 0).
     match opcode {
         528 => set_flags(2, 0, 0, 0),
         529 => set_flags(0, 2, 0, 0),
