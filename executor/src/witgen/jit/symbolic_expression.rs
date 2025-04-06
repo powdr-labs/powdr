@@ -13,18 +13,20 @@ use std::{
 
 use crate::witgen::range_constraints::RangeConstraint;
 
+use super::quadratic_symbolic_expression::VariableUpdate;
+
 /// A value that is known at run-time, defined through a complex expression
 /// involving known cells or variables and compile-time constants.
 /// Each of the sub-expressions can have its own range constraint.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SymbolicExpression<T: FieldElement, S> {
     /// A concrete constant value known at compile time.
     Concrete(T),
     /// A symbolic value known at run-time, referencing a cell,
     /// an input, a local variable or whatever it is used for.
     Symbol(S, RangeConstraint<T>),
-    BinaryOperation(Arc<Self>, BinaryOperator, Arc<Self>, RangeConstraint<T>),
-    UnaryOperation(UnaryOperator, Arc<Self>, RangeConstraint<T>),
+    BinaryOperation(Box<Self>, BinaryOperator, Box<Self>, RangeConstraint<T>),
+    UnaryOperation(UnaryOperator, Box<Self>, RangeConstraint<T>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,6 +107,37 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
             SymbolicExpression::Symbol(..)
             | SymbolicExpression::BinaryOperation(..)
             | SymbolicExpression::UnaryOperation(..) => None,
+        }
+    }
+}
+
+impl<T: FieldElement, S: Eq> SymbolicExpression<T, S> {
+    /// Applies a variable update and returns true if there was a change.
+    pub fn apply_update(&mut self, variable_update: &VariableUpdate<T, S>) -> bool {
+        match self {
+            SymbolicExpression::Concrete(_) => false,
+            SymbolicExpression::Symbol(v, range_constraint) => {
+                if *v == variable_update.variable {
+                    if let Some(t) = variable_update.range_constraint.try_to_single_value() {
+                        *self = SymbolicExpression::Concrete(t);
+                    } else {
+                        *range_constraint = variable_update.range_constraint.clone();
+                    }
+                    true
+                } else {
+                    false
+                }
+            }
+            SymbolicExpression::BinaryOperation(left, op, right, range_constraint) => {
+                let mut update = left.apply_update(variable_update);
+                update |= right.apply_update(variable_update);
+                todo!()
+            }
+            SymbolicExpression::UnaryOperation(
+                unary_operator,
+                symbolic_expression,
+                range_constraint,
+            ) => todo!(),
         }
     }
 }

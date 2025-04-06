@@ -34,7 +34,6 @@ pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
     linear: BTreeMap<V, SymbolicExpression<T, V>>,
     /// Constant term, a (symbolically) known value.
     constant: SymbolicExpression<T, V>,
-
     occurrences: HashMap<V, HashSet<VariableOccurrence<V>>>,
 }
 
@@ -51,12 +50,12 @@ enum VariableOccurrence<V> {
 // So we also need update functions for the symbolic expressions.
 
 /// An update representing new information about the variable.
-struct VariableUpdate<T: FieldElement, V> {
-    variable: V,
+pub struct VariableUpdate<T: FieldElement, V> {
+    pub variable: V,
     /// If true, the variable is symbolically or concretely known.
-    known: bool,
+    pub known: bool,
     /// The current range constraint of the variable. It can be a single number.
-    range_constraint: RangeConstraint<T>,
+    pub range_constraint: RangeConstraint<T>,
 }
 
 impl<T: FieldElement, V: Clone + Hash + Eq> From<SymbolicExpression<T, V>>
@@ -106,7 +105,29 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
     }
 
     pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V>) {
-        todo!()
+        let VariableUpdate {
+            variable,
+            known,
+            range_constraint,
+        } = var_update;
+        if let Some(occurrences) = self.occurrences.get(variable) {
+            for occurence in occurrences {
+                match occurence {
+                    VariableOccurrence::Quadratic { index, first } => {}
+                    VariableOccurrence::Linear(v) => todo!(),
+                    VariableOccurrence::Constant => todo!(), //self.constant.apply_update(var_update),
+                }
+            }
+        }
+        if *known {
+            // TODO if it turns into a constant, we should remove all occurrences.
+            if let Some(coefficient) = self.linear.remove(variable) {
+                // TODO update occurrences
+                self.constant +=
+                    SymbolicExpression::from_symbol(variable.clone(), range_constraint.clone())
+                        * coefficient
+            }
+        }
     }
 
     /// Returns the set of referenced variables, both know and unknown.

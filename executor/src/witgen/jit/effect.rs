@@ -1,4 +1,5 @@
 use std::fmt::Formatter;
+use std::sync::Arc;
 use std::{cmp::Ordering, fmt::Display};
 
 use std::{fmt, iter};
@@ -13,11 +14,13 @@ use crate::witgen::range_constraints::RangeConstraint;
 
 use super::{symbolic_expression::SymbolicExpression, variable::Variable};
 
+// TODO why does effect need clone?
+
 /// The effect of solving a symbolic equation.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub enum Effect<T: FieldElement, V> {
     /// Variable can be assigned a value.
-    Assignment(V, SymbolicExpression<T, V>),
+    Assignment(V, Arc<SymbolicExpression<T, V>>),
     /// Perform a bit decomposition of a known value, and assign multiple variables.
     BitDecomposition(BitDecomposition<T, V>),
     /// We learnt a new range constraint on variable.
