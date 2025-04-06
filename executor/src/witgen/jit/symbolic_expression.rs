@@ -113,14 +113,14 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
 
 impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
     /// Applies a variable update and returns a modified version if there was a change.
-    pub fn apply_update(&self, variable_update: &VariableUpdate<T, S>) -> Option<Self> {
+    pub fn compute_updated(&self, variable_update: &VariableUpdate<T, S>) -> Option<Self> {
         match self {
             SymbolicExpression::Concrete(_) => None,
-            SymbolicExpression::Symbol(v, range_constraint) => {
+            SymbolicExpression::Symbol(v, _) => {
                 if *v == variable_update.variable {
                     Some(SymbolicExpression::from_symbol(
                         v.clone(),
-                        range_constraint.clone(),
+                        variable_update.range_constraint.clone(),
                     ))
                 } else {
                     None
@@ -128,8 +128,8 @@ impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
             }
             SymbolicExpression::BinaryOperation(left, op, right, _) => {
                 let (l, r) = match (
-                    left.apply_update(variable_update),
-                    right.apply_update(variable_update),
+                    left.compute_updated(variable_update),
+                    right.compute_updated(variable_update),
                 ) {
                     (None, None) => return None,
                     (Some(l), None) => (l, (**right).clone()),
@@ -144,10 +144,17 @@ impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
                 }
             }
             SymbolicExpression::UnaryOperation(op, inner, _) => {
-                let inner = inner.apply_update(variable_update)?;
+                let inner = inner.compute_updated(variable_update)?;
                 assert!(matches!(op, UnaryOperator::Neg));
                 Some(-inner)
             }
+        }
+    }
+
+    /// Applies a variable update in place.
+    pub fn apply_update(&mut self, variable_update: &VariableUpdate<T, S>) {
+        if let Some(updated) = self.compute_updated(variable_update) {
+            *self = updated;
         }
     }
 }

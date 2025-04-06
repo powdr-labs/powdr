@@ -1,8 +1,8 @@
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::BTreeMap,
     fmt::Display,
     hash::Hash,
-    ops::{Add, Mul, MulAssign, Neg, Sub},
+    ops::{Add, AddAssign, Mul, MulAssign, Neg, Sub},
 };
 
 use itertools::Itertools;
@@ -34,15 +34,8 @@ pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
     linear: BTreeMap<V, SymbolicExpression<T, V>>,
     /// Constant term, a (symbolically) known value.
     constant: SymbolicExpression<T, V>,
-    occurrences: HashMap<V, HashSet<VariableOccurrence<V>>>,
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
-enum VariableOccurrence<V> {
-    Quadratic { index: usize, first: bool },
-    Linear(V),
-    Constant,
-}
 // TODO We need occurrence lists for all variables, both in their unknon
 // version and in their known version (in the symbolic expressions),
 // because range constraints therein can also change.
@@ -62,16 +55,10 @@ impl<T: FieldElement, V: Clone + Hash + Eq> From<SymbolicExpression<T, V>>
     for QuadraticSymbolicExpression<T, V>
 {
     fn from(k: SymbolicExpression<T, V>) -> Self {
-        let occurrences = k
-            .referenced_symbols()
-            .map(|v| ((*v).clone(), VariableOccurrence::Constant))
-            .into_grouping_map()
-            .collect();
         Self {
             quadratic: Default::default(),
             linear: Default::default(),
             constant: k,
-            occurrences,
         }
     }
 }
@@ -91,7 +78,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
             quadratic: Default::default(),
             linear: [(var.clone(), T::from(1).into())].into_iter().collect(),
             constant: T::from(0).into(),
-            occurrences: Default::default(),
         }
     }
 
@@ -110,29 +96,65 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
             known,
             range_constraint,
         } = var_update;
-        if let Some(occurrences) = self.occurrences.get(variable) {
-            for occurence in occurrences {
-                match occurence {
-                    VariableOccurrence::Quadratic { index, first } => {}
-                    VariableOccurrence::Linear(v) => todo!(),
-                    VariableOccurrence::Constant => todo!(), //self.constant.apply_update(var_update),
-                }
+        self.constant.apply_update(var_update);
+        // If the variable is a key in `linear`, it must be unknown
+        // and thus can only occur there. Otherwise, it can be in
+        // any symbolic expression.
+        if self.linear.contains_key(variable) {
+            if *known {
+                let coeff = self.linear.remove(variable).unwrap();
+                let expr =
+                    SymbolicExpression::from_symbol(variable.clone(), range_constraint.clone());
+                self.constant += expr * coeff;
+                self.linear.remove(variable);
+            }
+        } else {
+            for coeff in self.linear.values_mut() {
+                coeff.apply_update(var_update);
             }
         }
-        if *known {
-            // TODO if it turns into a constant, we should remove all occurrences.
-            if let Some(coefficient) = self.linear.remove(variable) {
-                // TODO update occurrences
-                self.constant +=
-                    SymbolicExpression::from_symbol(variable.clone(), range_constraint.clone())
-                        * coefficient
+
+        // TODO can we do that without moving everything?
+        // In the end, the order does not matter much.
+
+        let mut to_add = QuadraticSymbolicExpression::from(T::zero());
+        self.quadratic.retain_mut(|(l, r)| {
+            l.apply_update(var_update);
+            r.apply_update(var_update);
+            match (l.try_to_known(), r.try_to_known()) {
+                (Some(l), Some(r)) => {
+                    to_add += (l * r).into();
+                    false
+                }
+                (Some(l), None) => {
+                    to_add += r.clone() * l;
+                    false
+                }
+                (None, Some(r)) => {
+                    to_add += l.clone() * r;
+                    false
+                }
+                _ => true,
             }
+        });
+        if to_add.try_to_known().map(|ta| ta.is_known_zero()) != Some(true) {
+            *self += to_add;
         }
     }
 
     /// Returns the set of referenced variables, both know and unknown.
-    pub fn referenced_variables(&self) -> impl Iterator<Item = &V> {
-        self.occurrences.keys()
+    pub fn referenced_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        let quadr = self
+            .quadratic
+            .iter()
+            .flat_map(|(a, b)| a.referenced_variables().chain(b.referenced_variables()));
+
+        let linear = self
+            .linear
+            .iter()
+            .flat_map(|(var, coeff)| std::iter::once(var).chain(coeff.referenced_symbols()));
+        let constant = self.constant.referenced_symbols();
+        Box::new(quadr.chain(linear).chain(constant))
     }
 }
 
@@ -140,30 +162,7 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Add for QuadraticSymbolicExpre
     type Output = QuadraticSymbolicExpression<T, V>;
 
     fn add(mut self, rhs: Self) -> Self {
-        self.quadratic.extend(rhs.quadratic);
-        for (var, coeff) in rhs.linear {
-            self.linear
-                .entry(var)
-                .and_modify(|f| *f += coeff.clone())
-                .or_insert_with(|| coeff);
-        }
-        self.constant += rhs.constant;
-
-        // Update occurrences.
-        for (var, occurrences) in rhs.occurrences {
-            let occurrences = occurrences.into_iter().map(|occurrence| match &occurrence {
-                VariableOccurrence::Quadratic { index, first } => VariableOccurrence::Quadratic {
-                    index: index + self.quadratic.len(),
-                    first: *first,
-                },
-                VariableOccurrence::Linear(_) | VariableOccurrence::Constant => occurrence,
-            });
-            self.occurrences.entry(var).or_default().extend(occurrences);
-        }
-
-        // TODO remove all occurrences that point to "linear(v)", where
-        // va was removed.
-        self.linear.retain(|_, f| f.is_known_zero());
+        self += rhs;
         self
     }
 }
@@ -173,6 +172,22 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Add for &QuadraticSymbolicExpr
 
     fn add(self, rhs: Self) -> Self::Output {
         self.clone() + rhs.clone()
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> AddAssign<QuadraticSymbolicExpression<T, V>>
+    for QuadraticSymbolicExpression<T, V>
+{
+    fn add_assign(&mut self, rhs: Self) {
+        self.quadratic.extend(rhs.quadratic);
+        for (var, coeff) in rhs.linear {
+            self.linear
+                .entry(var.clone())
+                .and_modify(|f| *f += coeff.clone())
+                .or_insert_with(|| coeff);
+        }
+        self.constant += rhs.constant.clone();
+        self.linear.retain(|_, f| !f.is_known_zero());
     }
 }
 
@@ -252,13 +267,10 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> MulAssign<&SymbolicExpression<
         } else {
             for (first, _) in &mut self.quadratic {
                 *first *= rhs;
-                // TODO update occurrences
             }
             for coeff in self.linear.values_mut() {
-                // TODO update occurrences
                 *coeff *= rhs.clone();
             }
-            // TODO update occurrences
             self.constant *= rhs.clone();
         }
     }
@@ -273,16 +285,10 @@ impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul for QuadraticSymbolicExpre
         } else if let Some(k) = self.try_to_known() {
             rhs * k
         } else {
-            let occurrences = (self.referenced_variables().map(|v| ((*v).clone(), true)))
-                .chain(rhs.referenced_variables().map(|v| ((*v).clone(), false)))
-                .map(|(v, first)| (v, VariableOccurrence::Quadratic { index: 0, first }))
-                .into_grouping_map()
-                .collect();
             Self {
                 quadratic: vec![(self, rhs)],
                 linear: Default::default(),
                 constant: T::from(0).into(),
-                occurrences,
             }
         }
     }
@@ -374,5 +380,33 @@ mod tests {
         let t: Qse = x * y + a;
         assert_eq!(t.to_string(), "(X) * (Y) + A");
         assert_eq!((t.clone() * zero).to_string(), "0");
+    }
+
+    #[test]
+    fn test_apply_update() {
+        let x = Qse::from_unknown_variable("X".to_string());
+        let y = Qse::from_unknown_variable("Y".to_string());
+        let a = Qse::from_known_symbol("A".to_string(), RangeConstraint::default());
+        let b = Qse::from_known_symbol("B".to_string(), RangeConstraint::default());
+        let mut t: Qse = (x * y + a) * b;
+        assert_eq!(t.to_string(), "(B * X) * (Y) + (A * B)");
+        t.apply_update(&VariableUpdate {
+            variable: "B".to_string(),
+            known: true,
+            range_constraint: RangeConstraint::from_value(7.into()),
+        });
+        assert_eq!(t.to_string(), "(7 * X) * (Y) + (A * 7)");
+        t.apply_update(&VariableUpdate {
+            variable: "X".to_string(),
+            known: true,
+            range_constraint: RangeConstraint::from_range(1.into(), 2.into()),
+        });
+        assert_eq!(t.to_string(), "(X * 7) * Y + (A * 7)");
+        t.apply_update(&VariableUpdate {
+            variable: "Y".to_string(),
+            known: true,
+            range_constraint: RangeConstraint::from_value(3.into()),
+        });
+        assert_eq!(t.to_string(), "((A * 7) + (3 * (X * 7)))");
     }
 }

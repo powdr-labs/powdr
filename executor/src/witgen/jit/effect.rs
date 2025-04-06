@@ -1,5 +1,4 @@
 use std::fmt::Formatter;
-use std::sync::Arc;
 use std::{cmp::Ordering, fmt::Display};
 
 use std::{fmt, iter};
