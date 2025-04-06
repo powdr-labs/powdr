@@ -6,7 +6,7 @@ use powdr_ast::{
     parsed::{
         asm::SymbolPath,
         build::{index_access, namespaced_reference},
-        ArrayLiteral, Expression, FunctionCall, NamespacedPolynomialReference, PilStatement,
+        ArrayLiteral, Expression, NamespacedPolynomialReference, PilStatement,
     },
 };
 use powdr_parser_util::SourceRef;
@@ -15,7 +15,9 @@ use std::{
     str::FromStr,
 };
 
-use crate::{call, try_into_namespace_degree, DegreeMode, LinkerBackend, MAIN_OPERATION_NAME};
+use crate::{
+    call, try_into_namespace_degree, BusLinkerArgs, DegreeMode, LinkerBackend, MAIN_OPERATION_NAME,
+};
 
 pub struct BusLinker {
     /// the pil statements
@@ -25,7 +27,7 @@ pub struct BusLinker {
     /// for each used operation, the index in the selector array. For operations accessed via lookups, this is None.
     selector_array_index_by_operation: BTreeMap<LinkTo, Option<usize>>,
     /// arguments for `bus_multi_linker`
-    bus_multi_linker_args: ArrayLiteral,
+    bus_multi_linker_args: BusLinkerArgs,
     /// interaction id map for each link.to
     interaction_id_map: BTreeMap<LinkTo, u32>,
 }
@@ -101,14 +103,17 @@ impl LinkerBackend for BusLinker {
             pil: Default::default(),
             selector_array_size_by_instance,
             selector_array_index_by_operation,
-            bus_multi_linker_args: ArrayLiteral {
-                items: Default::default(),
-            },
+            bus_multi_linker_args: Default::default(),
             interaction_id_map,
         })
     }
 
-    fn process_link(&mut self, link: &Link, _: &Location, objects: &BTreeMap<Location, Object>) {
+    fn process_link(
+        &mut self,
+        link: &Link,
+        location: &Location,
+        objects: &BTreeMap<Location, Object>,
+    ) {
         let from = &link.from;
         let to = &link.to;
 
@@ -134,7 +139,17 @@ impl LinkerBackend for BusLinker {
         )
         .into();
 
-        self.bus_multi_linker_args.items.push(Expression::Tuple(
+        let entry = self
+            .bus_multi_linker_args
+            .entry(location.clone())
+            .or_default();
+
+        // println!(
+        //     "process_link: {:?}, {:?}, {:?}, {:?}",
+        //     interaction_id, selector, tuple, bus_linker_type
+        // );
+
+        entry.push(Expression::Tuple(
             SourceRef::unknown(),
             vec![interaction_id.into(), selector, tuple, bus_linker_type],
         ));
@@ -179,28 +194,6 @@ impl LinkerBackend for BusLinker {
             self.process_operation(name, operation, location, object);
         }
 
-        // add pil for bus_multi_linker
-        if !self.bus_multi_linker_args.items.is_empty() {
-            self.pil.push(PilStatement::Expression(
-                SourceRef::unknown(),
-                Expression::FunctionCall(
-                    SourceRef::unknown(),
-                    FunctionCall {
-                        function: Box::new(Expression::Reference(
-                            SourceRef::unknown(),
-                            SymbolPath::from_str("std::protocols::bus::bus_multi_linker")
-                                .unwrap()
-                                .into(),
-                        )),
-                        arguments: vec![ArrayLiteral {
-                            items: std::mem::take(&mut self.bus_multi_linker_args.items),
-                        }
-                        .into()],
-                    },
-                ),
-            ));
-        }
-
         // if this is the main object, call the main operation
         if *location == Location::main() {
             let operation_id = object.operation_id.clone();
@@ -220,6 +213,10 @@ impl LinkerBackend for BusLinker {
 
     fn into_pil(self) -> Vec<PilStatement> {
         self.pil
+    }
+
+    fn bus_linker_args(&self) -> Option<crate::BusLinkerArgs> {
+        Some(self.bus_multi_linker_args.clone())
     }
 }
 
@@ -301,9 +298,14 @@ impl BusLinker {
                 }
             };
 
-            self.bus_multi_linker_args
-                .items
-                .push(Expression::Tuple(SourceRef::unknown(), arguments));
+            // println!("process_operation: {:?}", arguments);
+
+            let entry = self
+                .bus_multi_linker_args
+                .entry(location.clone())
+                .or_default();
+
+            entry.push(Expression::Tuple(SourceRef::unknown(), arguments));
         }
     }
 }
@@ -375,7 +377,7 @@ namespace main__rom(4);
 
         let file_name = "../test_data/asm/empty_vm.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = BusLinker::link(graph, crate::DegreeMode::Vadcop).unwrap();
+        let (pil, _) = BusLinker::link(graph, crate::DegreeMode::Vadcop).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
@@ -383,7 +385,7 @@ namespace main__rom(4);
     fn pass_native_bus_interaction_to_backend() {
         let file_name = "../test_data/asm/empty_vm.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = BusLinker::link(graph, crate::DegreeMode::Vadcop).unwrap();
+        let (pil, _) = BusLinker::link(graph, crate::DegreeMode::Vadcop).unwrap();
         let analyzed: Analyzed<GoldilocksField> = powdr_pil_analyzer::analyze_ast(pil).unwrap();
         let optimized = powdr_pilopt::optimize(analyzed);
         let native_bus_interactions = optimized
