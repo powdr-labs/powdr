@@ -753,7 +753,7 @@ mod tests {
         var: &Variable,
         e: SymbolicExpression<GoldilocksField, Variable>,
     ) -> Effect<GoldilocksField, Variable> {
-        Effect::Assignment(var.clone(), Arc::new(e))
+        Effect::Assignment(var.clone(), e)
     }
 
     #[test]

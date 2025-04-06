@@ -14,13 +14,11 @@ use crate::witgen::range_constraints::RangeConstraint;
 
 use super::{symbolic_expression::SymbolicExpression, variable::Variable};
 
-// TODO why does effect need clone?
-
 /// The effect of solving a symbolic equation.
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum Effect<T: FieldElement, V> {
     /// Variable can be assigned a value.
-    Assignment(V, Arc<SymbolicExpression<T, V>>),
+    Assignment(V, SymbolicExpression<T, V>),
     /// Perform a bit decomposition of a known value, and assign multiple variables.
     BitDecomposition(BitDecomposition<T, V>),
     /// We learnt a new range constraint on variable.

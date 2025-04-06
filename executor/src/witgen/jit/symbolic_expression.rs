@@ -18,18 +18,18 @@ use super::quadratic_symbolic_expression::VariableUpdate;
 /// A value that is known at run-time, defined through a complex expression
 /// involving known cells or variables and compile-time constants.
 /// Each of the sub-expressions can have its own range constraint.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SymbolicExpression<T: FieldElement, S> {
     /// A concrete constant value known at compile time.
     Concrete(T),
     /// A symbolic value known at run-time, referencing a cell,
     /// an input, a local variable or whatever it is used for.
     Symbol(S, RangeConstraint<T>),
-    BinaryOperation(Box<Self>, BinaryOperator, Box<Self>, RangeConstraint<T>),
-    UnaryOperation(UnaryOperator, Box<Self>, RangeConstraint<T>),
+    BinaryOperation(Arc<Self>, BinaryOperator, Arc<Self>, RangeConstraint<T>),
+    UnaryOperation(UnaryOperator, Arc<Self>, RangeConstraint<T>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOperator {
     Add,
     Sub,
@@ -111,33 +111,43 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
     }
 }
 
-impl<T: FieldElement, S: Eq> SymbolicExpression<T, S> {
-    /// Applies a variable update and returns true if there was a change.
-    pub fn apply_update(&mut self, variable_update: &VariableUpdate<T, S>) -> bool {
+impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
+    /// Applies a variable update and returns a modified version if there was a change.
+    pub fn apply_update(&self, variable_update: &VariableUpdate<T, S>) -> Option<Self> {
         match self {
-            SymbolicExpression::Concrete(_) => false,
+            SymbolicExpression::Concrete(_) => None,
             SymbolicExpression::Symbol(v, range_constraint) => {
                 if *v == variable_update.variable {
-                    if let Some(t) = variable_update.range_constraint.try_to_single_value() {
-                        *self = SymbolicExpression::Concrete(t);
-                    } else {
-                        *range_constraint = variable_update.range_constraint.clone();
-                    }
-                    true
+                    Some(SymbolicExpression::from_symbol(
+                        v.clone(),
+                        range_constraint.clone(),
+                    ))
                 } else {
-                    false
+                    None
                 }
             }
-            SymbolicExpression::BinaryOperation(left, op, right, range_constraint) => {
-                let mut update = left.apply_update(variable_update);
-                update |= right.apply_update(variable_update);
-                todo!()
+            SymbolicExpression::BinaryOperation(left, op, right, _) => {
+                let (l, r) = match (
+                    left.apply_update(variable_update),
+                    right.apply_update(variable_update),
+                ) {
+                    (None, None) => return None,
+                    (Some(l), None) => (l, (**right).clone()),
+                    (None, Some(r)) => ((**left).clone(), r),
+                    (Some(l), Some(r)) => (l, r),
+                };
+                match op {
+                    BinaryOperator::Add => Some(l + r),
+                    BinaryOperator::Sub => Some(l + -r),
+                    BinaryOperator::Mul => Some(l * r),
+                    BinaryOperator::Div => Some(l.field_div(&r)),
+                }
             }
-            SymbolicExpression::UnaryOperation(
-                unary_operator,
-                symbolic_expression,
-                range_constraint,
-            ) => todo!(),
+            SymbolicExpression::UnaryOperation(op, inner, _) => {
+                let inner = inner.apply_update(variable_update)?;
+                assert!(matches!(op, UnaryOperator::Neg));
+                Some(-inner)
+            }
         }
     }
 }
@@ -302,7 +312,7 @@ impl<T: FieldElement, V: Clone> MulAssign for SymbolicExpression<T, V> {
 }
 
 impl<T: FieldElement, V: Clone> SymbolicExpression<T, V> {
-    /// Field element division. See `integer_div` for integer division.
+    /// Field element division.
     /// If you use this, you must ensure that the divisor is not zero.
     pub fn field_div(&self, rhs: &Self) -> Self {
         if let (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) = (self, rhs) {
