@@ -1,6 +1,7 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     fmt::Display,
+    hash::Hash,
     ops::{Add, Mul, MulAssign, Neg, Sub},
 };
 
@@ -33,6 +34,15 @@ pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
     linear: BTreeMap<V, SymbolicExpression<T, V>>,
     /// Constant term, a (symbolically) known value.
     constant: SymbolicExpression<T, V>,
+
+    occurrences: HashMap<V, HashSet<VariableOccurrence<V>>>,
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+enum VariableOccurrence<V> {
+    Quadratic { index: usize, first: bool },
+    Linear(V),
+    Constant,
 }
 // TODO We need occurrence lists for all variables, both in their unknon
 // version and in their known version (in the symbolic expressions),
@@ -40,23 +50,40 @@ pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
 // they could also change to simpler expressions if one sub-expression turns to one or zero.
 // So we also need update functions for the symbolic expressions.
 
-impl<T: FieldElement, V> From<SymbolicExpression<T, V>> for QuadraticSymbolicExpression<T, V> {
+/// An update representing new information about the variable.
+struct VariableUpdate<T: FieldElement, V> {
+    variable: V,
+    /// If true, the variable is symbolically or concretely known.
+    known: bool,
+    /// The current range constraint of the variable. It can be a single number.
+    range_constraint: RangeConstraint<T>,
+}
+
+impl<T: FieldElement, V: Clone + Hash + Eq> From<SymbolicExpression<T, V>>
+    for QuadraticSymbolicExpression<T, V>
+{
     fn from(k: SymbolicExpression<T, V>) -> Self {
+        let occurrences = k
+            .referenced_symbols()
+            .map(|v| ((*v).clone(), VariableOccurrence::Constant))
+            .into_grouping_map()
+            .collect();
         Self {
             quadratic: Default::default(),
             linear: Default::default(),
             constant: k,
+            occurrences,
         }
     }
 }
 
-impl<T: FieldElement, V> From<T> for QuadraticSymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Hash + Eq> From<T> for QuadraticSymbolicExpression<T, V> {
     fn from(k: T) -> Self {
         SymbolicExpression::from(k).into()
     }
 }
 
-impl<T: FieldElement, V: Ord + Clone> QuadraticSymbolicExpression<T, V> {
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T, V> {
     pub fn from_known_symbol(symbol: V, rc: RangeConstraint<T>) -> Self {
         SymbolicExpression::from_symbol(symbol, rc).into()
     }
@@ -65,6 +92,7 @@ impl<T: FieldElement, V: Ord + Clone> QuadraticSymbolicExpression<T, V> {
             quadratic: Default::default(),
             linear: [(var.clone(), T::from(1).into())].into_iter().collect(),
             constant: T::from(0).into(),
+            occurrences: Default::default(),
         }
     }
 
@@ -76,9 +104,18 @@ impl<T: FieldElement, V: Ord + Clone> QuadraticSymbolicExpression<T, V> {
             None
         }
     }
+
+    pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V>) {
+        todo!()
+    }
+
+    /// Returns the set of referenced variables, both know and unknown.
+    pub fn referenced_variables(&self) -> impl Iterator<Item = &V> {
+        self.occurrences.keys()
+    }
 }
 
-impl<T: FieldElement, V: Clone + Ord> Add for QuadraticSymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Add for QuadraticSymbolicExpression<T, V> {
     type Output = QuadraticSymbolicExpression<T, V>;
 
     fn add(mut self, rhs: Self) -> Self {
@@ -89,13 +126,28 @@ impl<T: FieldElement, V: Clone + Ord> Add for QuadraticSymbolicExpression<T, V> 
                 .and_modify(|f| *f += coeff.clone())
                 .or_insert_with(|| coeff);
         }
-        self.linear.retain(|_, f| !f.is_known_zero());
         self.constant += rhs.constant;
+
+        // Update occurrences.
+        for (var, occurrences) in rhs.occurrences {
+            let occurrences = occurrences.into_iter().map(|occurrence| match &occurrence {
+                VariableOccurrence::Quadratic { index, first } => VariableOccurrence::Quadratic {
+                    index: index + self.quadratic.len(),
+                    first: *first,
+                },
+                VariableOccurrence::Linear(_) | VariableOccurrence::Constant => occurrence,
+            });
+            self.occurrences.entry(var).or_default().extend(occurrences);
+        }
+
+        // TODO remove all occurrences that point to "linear(v)", where
+        // va was removed.
+        self.linear.retain(|_, f| f.is_known_zero());
         self
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord> Add for &QuadraticSymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Add for &QuadraticSymbolicExpression<T, V> {
     type Output = QuadraticSymbolicExpression<T, V>;
 
     fn add(self, rhs: Self) -> Self::Output {
@@ -103,7 +155,7 @@ impl<T: FieldElement, V: Clone + Ord> Add for &QuadraticSymbolicExpression<T, V>
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord> Sub for &QuadraticSymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sub for &QuadraticSymbolicExpression<T, V> {
     type Output = QuadraticSymbolicExpression<T, V>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -111,7 +163,7 @@ impl<T: FieldElement, V: Clone + Ord> Sub for &QuadraticSymbolicExpression<T, V>
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord> Sub for QuadraticSymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Sub for QuadraticSymbolicExpression<T, V> {
     type Output = QuadraticSymbolicExpression<T, V>;
 
     fn sub(self, rhs: Self) -> Self::Output {
@@ -149,7 +201,7 @@ impl<T: FieldElement, V: Clone + Ord> Neg for &QuadraticSymbolicExpression<T, V>
 }
 
 /// Multiply by known symbolic expression.
-impl<T: FieldElement, V: Clone + Ord> Mul<&SymbolicExpression<T, V>>
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul<&SymbolicExpression<T, V>>
     for QuadraticSymbolicExpression<T, V>
 {
     type Output = QuadraticSymbolicExpression<T, V>;
@@ -160,7 +212,7 @@ impl<T: FieldElement, V: Clone + Ord> Mul<&SymbolicExpression<T, V>>
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord> Mul<SymbolicExpression<T, V>>
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul<SymbolicExpression<T, V>>
     for QuadraticSymbolicExpression<T, V>
 {
     type Output = QuadraticSymbolicExpression<T, V>;
@@ -170,7 +222,7 @@ impl<T: FieldElement, V: Clone + Ord> Mul<SymbolicExpression<T, V>>
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord> MulAssign<&SymbolicExpression<T, V>>
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> MulAssign<&SymbolicExpression<T, V>>
     for QuadraticSymbolicExpression<T, V>
 {
     fn mul_assign(&mut self, rhs: &SymbolicExpression<T, V>) {
@@ -179,16 +231,19 @@ impl<T: FieldElement, V: Clone + Ord> MulAssign<&SymbolicExpression<T, V>>
         } else {
             for (first, _) in &mut self.quadratic {
                 *first *= rhs;
+                // TODO update occurrences
             }
             for coeff in self.linear.values_mut() {
+                // TODO update occurrences
                 *coeff *= rhs.clone();
             }
+            // TODO update occurrences
             self.constant *= rhs.clone();
         }
     }
 }
 
-impl<T: FieldElement, V: Clone + Ord> Mul for QuadraticSymbolicExpression<T, V> {
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Mul for QuadraticSymbolicExpression<T, V> {
     type Output = QuadraticSymbolicExpression<T, V>;
 
     fn mul(self, rhs: QuadraticSymbolicExpression<T, V>) -> Self {
@@ -197,10 +252,16 @@ impl<T: FieldElement, V: Clone + Ord> Mul for QuadraticSymbolicExpression<T, V> 
         } else if let Some(k) = self.try_to_known() {
             rhs * k
         } else {
+            let occurrences = (self.referenced_variables().map(|v| ((*v).clone(), true)))
+                .chain(rhs.referenced_variables().map(|v| ((*v).clone(), false)))
+                .map(|(v, first)| (v, VariableOccurrence::Quadratic { index: 0, first }))
+                .into_grouping_map()
+                .collect();
             Self {
                 quadratic: vec![(self, rhs)],
                 linear: Default::default(),
                 constant: T::from(0).into(),
+                occurrences,
             }
         }
     }
