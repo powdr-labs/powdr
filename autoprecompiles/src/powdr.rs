@@ -768,6 +768,32 @@ pub fn is_ref<T: Clone>(expr: &AlgebraicExpression<T>) -> bool {
     }
 }
 
+pub fn algebraic_to_smt<T: FieldElement>(expr: &AlgebraicExpression<T>) -> String {
+    match expr {
+        AlgebraicExpression::Number(x) => format!("{x}"),
+        AlgebraicExpression::Reference(AlgebraicReference { name, .. }) => name.clone(),
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            let left = algebraic_to_smt(left);
+            let right = algebraic_to_smt(right);
+            let op_str = match op {
+                AlgebraicBinaryOperator::Add => "+",
+                AlgebraicBinaryOperator::Sub => "-",
+                AlgebraicBinaryOperator::Mul => "*",
+                AlgebraicBinaryOperator::Pow => todo!(),
+            };
+            format!("({op_str} {left} {right})")
+        }
+        _ => todo!(),
+    }
+}
+
+pub fn try_algebraic_number<T: FieldElement>(expr: &AlgebraicExpression<T>) -> Option<T> {
+    match expr {
+        AlgebraicExpression::Number(n) => Some(n.clone()),
+        _ => None,
+    }
+}
+
 pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
     expr: &mut AlgebraicExpression<T>,
     sub: &BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>>,

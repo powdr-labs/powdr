@@ -21,12 +21,13 @@ use powdr_parser_util::SourceRef;
 use powdr_pil_analyzer::analyze_ast;
 use powdr_pilopt::optimize;
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 
 use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
 
 pub mod powdr;
+pub mod smt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
@@ -53,6 +54,23 @@ impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
     }
 }
 
+const P: u32 = 2013265921;
+
+impl<T: FieldElement> SymbolicConstraint<T> {
+    pub fn to_smt(&self) -> String {
+        let n1 = AlgebraicExpression::Number(T::from(2005401601u32));
+        let n2 = AlgebraicExpression::Number(T::from(2013235201u32));
+
+        if powdr::has_ref(&self.expr, &n1) || powdr::has_ref(&self.expr, &n2) {
+            return String::new();
+        }
+
+        let expr = powdr::algebraic_to_smt(&self.expr);
+        format!("(assert (= (mod {expr} {P}) 0))")
+        // format!("(assert (= {expr} 0))")
+    }
+}
+
 impl<T: Clone + Ord + std::fmt::Display> SymbolicConstraint<T> {
     pub fn columns(&self) -> BTreeSet<String> {
         let mut cols = BTreeSet::new();
@@ -73,6 +91,65 @@ pub struct SymbolicBusInteraction<T> {
     pub id: u64,
     pub mult: AlgebraicExpression<T>,
     pub args: Vec<AlgebraicExpression<T>>,
+}
+
+impl<T: FieldElement> SymbolicBusInteraction<T> {
+    pub fn to_smt(&self) -> String {
+        if self.id == RANGE_CHECK_BUS_ID {
+            self.range_check_to_smt()
+        } else if self.id == BYTE_CHECK_BUS_ID {
+            self.byte_check_to_smt()
+        } else if self.id == RANGE_CHECK_BUS_ID_2 {
+            self.range_check_2_to_smt()
+        } else {
+            String::new()
+        }
+    }
+
+    fn range_check_to_smt(&self) -> String {
+        assert_eq!(self.id, RANGE_CHECK_BUS_ID);
+        assert_eq!(self.args.len(), 2);
+        let v = powdr::algebraic_to_smt(&self.args[0]);
+        let bits = powdr::try_algebraic_number(&self.args[1])
+            .unwrap()
+            .to_integer()
+            .try_into_u32()
+            .unwrap();
+        let max_range = 1 << bits;
+        range_check_to_smt(v, max_range)
+    }
+
+    fn range_check_2_to_smt(&self) -> String {
+        assert_eq!(self.id, RANGE_CHECK_BUS_ID_2);
+        assert_eq!(self.args.len(), 2);
+        let v1 = powdr::algebraic_to_smt(&self.args[0]);
+        let v2 = powdr::algebraic_to_smt(&self.args[1]);
+        byte_check_to_smt(v1) + "\n" + &byte_check_to_smt(v2)
+    }
+
+    fn byte_check_to_smt(&self) -> String {
+        assert_eq!(self.id, BYTE_CHECK_BUS_ID);
+        assert_eq!(self.args.len(), 4);
+        let v1 = powdr::algebraic_to_smt(&self.args[0]);
+        let v2 = powdr::algebraic_to_smt(&self.args[1]);
+        let v3 = powdr::algebraic_to_smt(&self.args[2]);
+        let v4 = powdr::algebraic_to_smt(&self.args[3]);
+        byte_check_to_smt(v1)
+            + "\n"
+            + &byte_check_to_smt(v2)
+            + "\n"
+            + &byte_check_to_smt(v3)
+            + "\n"
+            + &byte_check_to_smt(v4)
+    }
+}
+
+fn range_check_to_smt(v: String, max_range: u64) -> String {
+    format!("(assert (and (>= {v} 0) (< {v} {max_range})))")
+}
+
+fn byte_check_to_smt(v: String) -> String {
+    range_check_to_smt(v, 256)
 }
 
 impl<T: Clone + Ord + std::fmt::Display> SymbolicBusInteraction<T> {
@@ -105,6 +182,35 @@ pub enum BusInteractionKind {
 pub struct SymbolicMachine<T> {
     pub constraints: Vec<SymbolicConstraint<T>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
+}
+
+impl<T: FieldElement> SymbolicMachine<T> {
+    pub fn to_smt(&self) -> String {
+        let (decls, ranges) = self
+            .columns()
+            .iter()
+            .map(|c| {
+                (
+                    format!("(declare-fun {c} () Int)"),
+                    range_check_to_smt(c.clone(), P.into()),
+                )
+            })
+            .collect::<(Vec<String>, Vec<String>)>();
+        let mut smt = decls.join("\n");
+        let mut type_ranges = ranges.join("\n");
+        smt.push('\n');
+        smt.push_str(&type_ranges);
+        smt.push('\n');
+        for c in &self.constraints {
+            smt.push_str(&c.to_smt());
+            smt.push('\n');
+        }
+        for b in &self.bus_interactions {
+            smt.push_str(&b.to_smt());
+            smt.push('\n');
+        }
+        smt
+    }
 }
 
 impl<T> SymbolicMachine<T> {
@@ -304,6 +410,8 @@ const EXECUTION_BUS_ID: u64 = 0;
 const MEMORY_BUS_ID: u64 = 1;
 const PC_LOOKUP_BUS_ID: u64 = 2;
 const RANGE_CHECK_BUS_ID: u64 = 3;
+const BYTE_CHECK_BUS_ID: u64 = 5;
+const RANGE_CHECK_BUS_ID_2: u64 = 6;
 
 impl<T: FieldElement> Autoprecompiles<T> {
     pub fn run(
@@ -418,6 +526,9 @@ impl<T: FieldElement> Autoprecompiles<T> {
             machine = remove_zero_mult(machine);
             machine = remove_zero_constraint(machine);
 
+            machine = optimize_smt(machine);
+            machine = powdr_optimize(machine);
+
             // add guards to constraints that are not satisfied by zeroes
             machine = add_guards(machine);
         }
@@ -438,6 +549,13 @@ impl<T: FieldElement> Autoprecompiles<T> {
         }
 
         //let machine = remove_range_checks(machine);
+
+        println!(
+            "After powdr apc full build, columns: {}, constraints: {}, bus_interactions: {}",
+            machine.columns().len(),
+            machine.constraints.len(),
+            machine.bus_interactions.len()
+        );
 
         (machine, subs)
     }
@@ -472,6 +590,32 @@ impl<T: FieldElement> Autoprecompiles<T> {
 
         blocks
     }
+}
+
+pub fn optimize_smt<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+    let smt_query = machine.to_smt();
+    std::fs::write("machine.smt2", &smt_query).unwrap();
+    let vars = machine.columns();
+    let vars = smt::get_unique_vars(&smt_query, &vars);
+    let subs: BTreeMap<String, AlgebraicExpression<T>> = vars
+        .iter()
+        .map(|(v, m)| {
+            let n = m.parse::<u32>().unwrap();
+            (v.clone(), AlgebraicExpression::Number(n.into()))
+        })
+        .collect();
+
+    for c in &mut machine.constraints {
+        powdr::substitute_algebraic(&mut c.expr, &subs);
+    }
+    for b in &mut machine.bus_interactions {
+        powdr::substitute_algebraic(&mut b.mult, &subs);
+        for a in &mut b.args {
+            powdr::substitute_algebraic(a, &subs);
+        }
+    }
+
+    machine
 }
 
 pub fn replace_autoprecompile_basic_blocks<T: Clone>(
@@ -1405,7 +1549,7 @@ fn symbolic_machine_to_pilfile<P: FieldElement>(symbolic_machine: SymbolicMachin
     let mut program = Vec::new();
 
     // Collect all unique polynomial references from constraints and bus interactions
-    let refs: HashSet<AlgebraicExpression<_>> = symbolic_machine
+    let refs: BTreeSet<AlgebraicExpression<_>> = symbolic_machine
         .constraints
         .iter()
         .flat_map(|constraint| collect_cols_algebraic(&constraint.expr))
@@ -1421,7 +1565,7 @@ fn symbolic_machine_to_pilfile<P: FieldElement>(symbolic_machine: SymbolicMachin
                         .flat_map(|expr| collect_cols_algebraic(expr))
                 }),
         )
-        .collect::<HashSet<_>>();
+        .collect::<BTreeSet<_>>();
 
     // Add PolynomialCommitDeclaration for all referenced columns into the program
     for algebraic_ref in &refs {
