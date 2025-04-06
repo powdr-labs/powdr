@@ -1,7 +1,7 @@
 //! PIL-based optimizer
 
 use std::cmp::Ordering;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use itertools::Itertools;
@@ -92,7 +92,7 @@ fn hash_pil_state<T: Hash>(pil_file: &Analyzed<T>) -> u64 {
 fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let poly_id_to_definition_name = build_poly_id_to_definition_name_lookup(pil_file);
     let mut symbols_seen = collect_required_symbols(pil_file, &poly_id_to_definition_name);
-    let mut impls_to_retain = HashSet::new();
+    let mut impls_to_retain = BTreeSet::new();
 
     let mut to_process = symbols_seen.iter().cloned().collect::<Vec<_>>();
     while let Some(n) = to_process.pop() {
@@ -148,7 +148,7 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     let required_names = symbols_seen
         .iter()
         .map(|s| s.name.as_ref())
-        .collect::<HashSet<_>>();
+        .collect::<BTreeSet<_>>();
 
     let definitions_to_remove: BTreeSet<_> = pil_file
         .definitions
@@ -195,8 +195,8 @@ fn build_poly_id_to_definition_name_lookup(
 fn collect_required_symbols<'a, T: FieldElement>(
     pil_file: &'a Analyzed<T>,
     poly_id_to_definition_name: &BTreeMap<PolyID, (&'a String, Option<usize>)>,
-) -> HashSet<SymbolReference<'a>> {
-    let mut required_names: HashSet<SymbolReference<'a>> = Default::default();
+) -> BTreeSet<SymbolReference<'a>> {
+    let mut required_names: BTreeSet<SymbolReference<'a>> = Default::default();
     required_names.extend(
         pil_file
             .public_declarations_in_source_order()
@@ -513,7 +513,7 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 if !matches!(&right.selector, AlgebraicExpression::Number(n) if n == &T::one()) {
                     continue;
                 }
-                let mut extracted = HashSet::new();
+                let mut extracted = BTreeSet::new();
                 for (i, (l, r)) in left
                     .expressions
                     .iter()
@@ -570,7 +570,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .filter_map(constrained_to_constant)
         .collect::<Vec<((String, PolyID), _)>>();
 
-    let in_publics: HashSet<_> = pil_file
+    let in_publics: BTreeSet<_> = pil_file
         .public_declarations_in_source_order()
         .map(|(_, pubd)| pubd.referenced_poly().name.clone())
         .collect();
@@ -580,7 +580,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .committed_polys_in_source_order()
         .filter(|&(s, _)| !s.is_array() && !in_publics.contains(&s.absolute_name))
         .map(|(s, _)| s.into())
-        .collect::<HashSet<PolyID>>();
+        .collect::<BTreeSet<PolyID>>();
     constant_polys.retain(|((_, id), _)| columns.contains(id));
 
     substitute_polynomial_references(pil_file, constant_polys);
@@ -622,11 +622,11 @@ fn substitute_polynomial_references<T: FieldElement>(
     let substitutions_by_id = substitutions
         .iter()
         .map(|((_, id), value)| (*id, value.clone()))
-        .collect::<HashMap<PolyID, _>>();
+        .collect::<BTreeMap<PolyID, _>>();
     let substitutions_by_name = substitutions
         .into_iter()
         .map(|((name, _), value)| (name, value))
-        .collect::<HashMap<String, _>>();
+        .collect::<BTreeMap<String, _>>();
     pil_file.post_visit_expressions_mut(&mut |e: &mut Expression| {
         if let Expression::Reference(
             _,
@@ -902,7 +902,7 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
 
     resolve_transitive_substitutions(&mut substitutions);
 
-    let (subs_by_id, subs_by_name): (HashMap<_, _>, HashMap<_, _>) = substitutions
+    let (subs_by_id, subs_by_name): (BTreeMap<_, _>, BTreeMap<_, _>) = substitutions
         .iter()
         .map(|(k, v)| ((k.1, v), (&k.0, v)))
         .unzip();
