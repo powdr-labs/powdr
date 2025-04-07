@@ -6,11 +6,18 @@ use std::{
 };
 
 use itertools::Itertools;
-use powdr_number::FieldElement;
+use num_traits::Zero;
+use powdr_number::{log2_exact, FieldElement, LargeInt};
 
-use crate::witgen::range_constraints::RangeConstraint;
+use crate::witgen::{
+    jit::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect},
+    range_constraints::RangeConstraint,
+};
 
-use super::symbolic_expression::SymbolicExpression;
+use super::{
+    affine_symbolic_expression::{Error, ProcessResult},
+    symbolic_expression::SymbolicExpression,
+};
 
 /// A symbolic expression in unknown variables of type `V` and (symbolically)
 /// known terms, representing a sum of (super-)quadratic, linear and constant parts.
@@ -90,6 +97,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
+    /// Returns true if this expression contains at least one quadratic term.
+    pub fn is_quadratic(&self) -> bool {
+        !self.quadratic.is_empty()
+    }
+
     pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V>) {
         let VariableUpdate {
             variable,
@@ -155,6 +167,215 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
             .flat_map(|(var, coeff)| std::iter::once(var).chain(coeff.referenced_symbols()));
         let constant = self.constant.referenced_symbols();
         Box::new(quadr.chain(linear).chain(constant))
+    }
+}
+
+pub trait RangeConstraintProvider<T: FieldElement, V> {
+    fn get(&self, var: &V) -> RangeConstraint<T>;
+}
+
+impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExpression<T, V> {
+    /// Solves the equation `self = 0` and returns how to compute the solution.
+    /// The solution can contain assignments to multiple variables.
+    /// If no way to solve the equation (and no way to derive new range
+    /// constraints) has been found, but it still contains
+    /// unknown variables, returns an empty, incomplete result.
+    /// If the equation is known to be unsolvable, returns an error.
+    pub fn solve(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> Result<ProcessResult<T, V>, Error> {
+        Ok(if self.is_quadratic() {
+            ProcessResult::empty()
+        } else if let Some(k) = self.try_to_known() {
+            if k.is_known_nonzero() {
+                return Err(Error::ConstraintUnsatisfiable);
+            } else {
+                // TODO we could still process more information
+                // and reach "unsatisfiable" here.
+                ProcessResult::complete(vec![])
+            }
+        } else if self.linear.len() == 1 {
+            let (var, coeff) = self.linear.iter().next().unwrap();
+            // Solve "coeff * X + self.constant = 0" by division.
+            assert!(
+                !coeff.is_known_zero(),
+                "Zero coefficient has not been removed: {self}"
+            );
+            if coeff.is_known_nonzero() {
+                // In this case, we can always compute a solution.
+                let value = self.constant.field_div(&-coeff);
+                ProcessResult::complete(vec![Effect::Assignment(var.clone(), value)])
+            } else if self.constant.is_known_nonzero() {
+                // If the offset is not zero, then the coefficient must be non-zero,
+                // otherwise the constraint is violated.
+                let value = self.constant.field_div(&-coeff);
+                ProcessResult::complete(vec![
+                    Assertion::assert_is_nonzero(coeff.clone()),
+                    Effect::Assignment(var.clone(), value),
+                ])
+            } else {
+                // If this case, we could have an equation of the form
+                // 0 * X = 0, which is valid and generates no information about X.
+                ProcessResult::empty()
+            }
+        } else {
+            let r = self.solve_bit_decomposition(range_constraints)?;
+
+            if r.complete {
+                r
+            } else {
+                let negated = -self;
+                let effects = self
+                    .transfer_constraints(range_constraints)
+                    .into_iter()
+                    .chain(negated.transfer_constraints(range_constraints))
+                    .collect();
+                ProcessResult {
+                    effects,
+                    complete: false,
+                }
+            }
+        })
+    }
+
+    /// Tries to solve a bit-decomposition equation.
+    fn solve_bit_decomposition(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> Result<ProcessResult<T, V>, Error> {
+        assert!(!self.is_quadratic());
+        // All the coefficients need to be known numbers and the
+        // variables need to be range-constrained.
+        let constrained_coefficients = self
+            .linear
+            .iter()
+            .map(|(var, coeff)| {
+                let coeff = coeff.try_to_number()?;
+                let rc = range_constraints.get(var);
+                let is_negative = !coeff.is_in_lower_half();
+                let coeff_abs = if is_negative { -coeff } else { coeff };
+                // We could work with non-powers of two, but it would require
+                // division instead of shifts.
+                let exponent = log2_exact(coeff_abs.to_arbitrary_integer())?;
+                // We negate here because we are solving
+                // c_1 * x_1 + c_2 * x_2 + ... + offset = 0,
+                // instead of
+                // c_1 * x_1 + c_2 * x_2 + ... = offset.
+                Some((var.clone(), rc, !is_negative, coeff_abs, exponent))
+            })
+            .collect::<Option<Vec<_>>>();
+        let Some(constrained_coefficients) = constrained_coefficients else {
+            return Ok(ProcessResult::empty());
+        };
+
+        // If the offset is a known number, we gradually remove the
+        // components from this number.
+        let mut offset = self.constant.try_to_number();
+        let mut concrete_assignments = vec![];
+
+        // Check if they are mutually exclusive and compute assignments.
+        let mut covered_bits: <T as FieldElement>::Integer = 0.into();
+        let mut components = vec![];
+        for (variable, constraint, is_negative, coeff_abs, exponent) in constrained_coefficients
+            .into_iter()
+            .sorted_by_key(|(_, _, _, _, exponent)| *exponent)
+        {
+            let bit_mask = *constraint.multiple(coeff_abs).mask();
+            if !(bit_mask & covered_bits).is_zero() {
+                // Overlapping range constraints.
+                return Ok(ProcessResult::empty());
+            } else {
+                covered_bits |= bit_mask;
+            }
+
+            // If the offset is a known number, we create concrete assignments and modify the offset.
+            // if it is not known, we return a BitDecomposition effect.
+            if let Some(offset) = &mut offset {
+                let mut component = if is_negative { -*offset } else { *offset }.to_integer();
+                if component > (T::modulus() - 1.into()) >> 1 {
+                    // Convert a signed finite field element into two's complement.
+                    // a regular subtraction would underflow, so we do this.
+                    // We add the difference between negative numbers in the field
+                    // and negative numbers in two's complement.
+                    component += T::Integer::MAX - T::modulus() + 1.into();
+                };
+                component &= bit_mask;
+                concrete_assignments.push(Effect::Assignment(
+                    variable.clone(),
+                    T::from(component >> exponent).into(),
+                ));
+                if is_negative {
+                    *offset += T::from(component);
+                } else {
+                    *offset -= T::from(component);
+                }
+            } else {
+                components.push(BitDecompositionComponent {
+                    variable,
+                    is_negative,
+                    exponent: exponent as u64,
+                    bit_mask,
+                });
+            }
+        }
+
+        if covered_bits >= T::modulus() {
+            return Ok(ProcessResult::empty());
+        }
+
+        if let Some(offset) = offset {
+            if offset != 0.into() {
+                return Err(Error::ConstraintUnsatisfiable);
+            }
+            assert_eq!(concrete_assignments.len(), self.linear.len());
+            Ok(ProcessResult::complete(concrete_assignments))
+        } else {
+            Ok(ProcessResult::complete(vec![Effect::BitDecomposition(
+                BitDecomposition {
+                    value: self.constant.clone(),
+                    components,
+                },
+            )]))
+        }
+    }
+
+    fn transfer_constraints(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> Option<Effect<T, V>> {
+        // We are looking for X = a * Y + b * Z + ... or -X = a * Y + b * Z + ...
+        // where X is least constrained.
+
+        assert!(!self.is_quadratic());
+
+        let (solve_for, solve_for_coefficient) = self
+            .linear
+            .iter()
+            .filter(|(_var, coeff)| coeff.is_known_one() || coeff.is_known_minus_one())
+            .max_by_key(|(var, _c)| {
+                // Sort so that we get the least constrained variable.
+                range_constraints.get(var).range_width()
+            })?;
+
+        // This only works if the coefficients are all known.
+        let summands = self
+            .linear
+            .iter()
+            .filter(|(var, _)| *var != solve_for)
+            .map(|(var, coeff)| {
+                let coeff = coeff.try_to_number()?;
+                Some(range_constraints.get(var).multiple(coeff))
+            })
+            .chain(std::iter::once(Some(self.constant.range_constraint())))
+            .collect::<Option<Vec<_>>>()?;
+        let constraint = summands.into_iter().reduce(|c1, c2| c1.combine_sum(&c2))?;
+        let constraint = if solve_for_coefficient.is_known_one() {
+            -constraint
+        } else {
+            constraint
+        };
+        Some(Effect::RangeConstraint(solve_for.clone(), constraint))
     }
 }
 
@@ -329,6 +550,8 @@ impl<T: FieldElement, V: Clone + Ord + Display> Display for QuadraticSymbolicExp
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::witgen::range_constraints::RangeConstraint;
     use powdr_number::GoldilocksField;
@@ -368,7 +591,7 @@ mod tests {
         let a = Qse::from_known_symbol("A".to_string(), RangeConstraint::default());
         let b = Qse::from_known_symbol("B".to_string(), RangeConstraint::default());
         let t: Qse = (x * y + a) * b;
-        assert_eq!(t.to_string(), "B * (X) * (Y) + B * A");
+        assert_eq!(t.to_string(), "(B * X) * (Y) + (A * B)");
     }
 
     #[test]
@@ -408,5 +631,208 @@ mod tests {
             range_constraint: RangeConstraint::from_value(3.into()),
         });
         assert_eq!(t.to_string(), "((A * 7) + (3 * (X * 7)))");
+    }
+
+    impl RangeConstraintProvider<GoldilocksField, String> for () {
+        fn get(&self, _var: &String) -> RangeConstraint<GoldilocksField> {
+            RangeConstraint::default()
+        }
+    }
+
+    impl RangeConstraintProvider<GoldilocksField, String>
+        for HashMap<String, RangeConstraint<GoldilocksField>>
+    {
+        fn get(&self, var: &String) -> RangeConstraint<GoldilocksField> {
+            self.get(var).cloned().unwrap_or_default()
+        }
+    }
+
+    #[test]
+    fn unsolvable() {
+        let r = Qse::from(GoldilocksField::from(10)).solve(&());
+        assert!(r.is_err());
+    }
+
+    #[test]
+    fn unsolvable_with_vars() {
+        let x = &Qse::from_known_symbol("X".to_string(), Default::default());
+        let y = &Qse::from_known_symbol("Y".to_string(), Default::default());
+        let constr = x + y - GoldilocksField::from(10).into();
+        // We cannot solve it, but we can also not learn anything new from it.
+        let result = constr.solve(&()).unwrap();
+        assert!(result.complete && result.effects.is_empty());
+        // But if we know the values, we can be sure there is a conflict.
+        assert!(Qse::from(GoldilocksField::from(10)).solve(&()).is_err());
+    }
+
+    #[test]
+    fn solvable_without_vars() {
+        let constr = Qse::from(GoldilocksField::from(0));
+        let result = constr.solve(&()).unwrap();
+        assert!(result.complete && result.effects.is_empty());
+    }
+
+    #[test]
+    fn solve_simple_eq() {
+        let y = Qse::from_known_symbol("y".to_string(), Default::default());
+        let x = Qse::from_unknown_variable("X".to_string());
+        // 2 * X + 7 * y - 10 = 0
+        let two = Qse::from(GoldilocksField::from(2));
+        let seven = Qse::from(GoldilocksField::from(7));
+        let ten = Qse::from(GoldilocksField::from(10));
+        let constr = two * x + seven * y - ten;
+        let result = constr.solve(&()).unwrap();
+        assert!(result.complete);
+        assert_eq!(result.effects.len(), 1);
+        let Effect::Assignment(var, expr) = &result.effects[0] else {
+            panic!("Expected assignment");
+        };
+        assert_eq!(var.to_string(), "X");
+        assert_eq!(expr.to_string(), "(((7 * y) + -10) / -2)");
+    }
+
+    #[test]
+    fn solve_div_by_range_constrained_var() {
+        let y = Qse::from_known_symbol("y".to_string(), Default::default());
+        let z = Qse::from_known_symbol("z".to_string(), Default::default());
+        let x = Qse::from_unknown_variable("X".to_string());
+        // z * X + 7 * y - 10 = 0
+        let seven = Qse::from(GoldilocksField::from(7));
+        let ten = Qse::from(GoldilocksField::from(10));
+        let mut constr = z * x + seven * y - ten.clone();
+        // If we do not range-constrain z, we cannot solve since we don't know if it might be zero.
+        let result = constr.solve(&()).unwrap();
+        assert!(!result.complete && result.effects.is_empty());
+        let z_rc = RangeConstraint::from_range(1.into(), 2.into());
+        let range_constraints: HashMap<String, RangeConstraint<GoldilocksField>> =
+            HashMap::from([("z".to_string(), z_rc.clone())]);
+        // Just solving without applying the update to the known symbolic expressions
+        // does not help either.
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(!result.complete && result.effects.is_empty());
+        constr.apply_update(&VariableUpdate {
+            variable: "z".to_string(),
+            known: false,
+            range_constraint: z_rc.clone(),
+        });
+        // Now it should work.
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(result.complete);
+        let effects = result.effects;
+        let Effect::Assignment(var, expr) = &effects[0] else {
+            panic!("Expected assignment");
+        };
+        assert_eq!(var.to_string(), "X");
+        assert_eq!(expr.to_string(), "(((7 * y) + -10) / -z)");
+    }
+
+    #[test]
+    fn solve_bit_decomposition() {
+        let rc = RangeConstraint::from_mask(0xffu32);
+        // First try without range constrain on a, but on b and c.
+        let a = Qse::from_unknown_variable("a".to_string());
+        let b = Qse::from_unknown_variable("b".to_string());
+        let c = Qse::from_unknown_variable("c".to_string());
+        let z = Qse::from_known_symbol("Z".to_string(), Default::default());
+        // a * 0x100 - b * 0x10000 + c * 0x1000000 + 10 + Z = 0
+        let ten = Qse::from(GoldilocksField::from(10));
+        let mut constr: Qse = a * Qse::from(GoldilocksField::from(0x100))
+            - b * Qse::from(GoldilocksField::from(0x10000))
+            + c * Qse::from(GoldilocksField::from(0x1000000))
+            + ten.clone()
+            + z.clone();
+        // Without range constraints on a, this is not solvable.
+        let mut range_constraints =
+            HashMap::from([("b".to_string(), rc.clone()), ("c".to_string(), rc.clone())]);
+        constr.apply_update(&VariableUpdate {
+            variable: "b".to_string(),
+            known: false,
+            range_constraint: rc.clone(),
+        });
+        constr.apply_update(&VariableUpdate {
+            variable: "c".to_string(),
+            known: false,
+            range_constraint: rc.clone(),
+        });
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(!result.complete && result.effects.is_empty());
+        // Now add the range constraint on a, it should be solvable.
+        range_constraints.insert("a".to_string(), rc.clone());
+        constr.apply_update(&VariableUpdate {
+            variable: "a".to_string(),
+            known: false,
+            range_constraint: rc.clone(),
+        });
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(result.complete);
+
+        let [effect] = &result.effects[..] else {
+            panic!();
+        };
+        let Effect::BitDecomposition(BitDecomposition { value, components }) = effect else {
+            panic!();
+        };
+        assert_eq!(format!("{value}"), "(10 + Z)");
+        let formatted = components
+            .iter()
+            .map(|c| {
+                format!(
+                    "{} = (({value} & 0x{:0x}) >> {}){};\n",
+                    c.variable,
+                    c.bit_mask,
+                    c.exponent,
+                    if c.is_negative { " [negative]" } else { "" }
+                )
+            })
+            .join("");
+
+        assert_eq!(
+            formatted,
+            "\
+a = (((10 + Z) & 0xff00) >> 8) [negative];
+b = (((10 + Z) & 0xff0000) >> 16);
+c = (((10 + Z) & 0xff000000) >> 24) [negative];
+"
+        );
+    }
+
+    #[test]
+    fn solve_constraint_transfer() {
+        let rc = RangeConstraint::from_mask(0xffu32);
+        let a = Qse::from_unknown_variable("a".to_string());
+        let b = Qse::from_unknown_variable("b".to_string());
+        let c = Qse::from_unknown_variable("c".to_string());
+        let z = Qse::from_unknown_variable("Z".to_string());
+        let range_constraints = HashMap::from([
+            ("a".to_string(), rc.clone()),
+            ("b".to_string(), rc.clone()),
+            ("c".to_string(), rc.clone()),
+        ]);
+        // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 - Z = 0
+        let ten = Qse::from(GoldilocksField::from(10));
+        let constr = a * Qse::from(GoldilocksField::from(0x100))
+            + b * Qse::from(GoldilocksField::from(0x10000))
+            + c * Qse::from(GoldilocksField::from(0x1000000))
+            + ten.clone()
+            - z.clone();
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(!result.complete);
+        let effects = result
+            .effects
+            .into_iter()
+            .map(|effect| match effect {
+                Effect::RangeConstraint(v, rc) => format!("{v}: {rc};\n"),
+                _ => panic!(),
+            })
+            .format("")
+            .to_string();
+        // It appears twice because we solve the positive and the negated equation.
+        // Note that the negated version has a different bit mask.
+        assert_eq!(
+            effects,
+            "Z: [10, 4294967050] & 0xffffff0a;
+Z: [10, 4294967050] & 0xffffffff;
+"
+        );
     }
 }
