@@ -1125,7 +1125,7 @@ fn try_to_boolean_constrained<T: FieldElement>(id: &Identity<T>) -> Option<PolyI
 /// replaces the witness column with an intermediate polynomial.
 fn replace_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     // Maximum allowed polynomial degree after applying a substitution
-    const MAX_DEGREE: usize = 2; // TODO: Make this a parameter
+    const MAX_DEGREE: usize = 3; // TODO: Make this a parameter
 
     // We cannot remove arrays or array elements, so we filter them out.
     // Also, we filter out columns that are used in public declarations.
