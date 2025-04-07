@@ -25,9 +25,10 @@ mod composite;
 mod field_filter;
 mod mock;
 
-use powdr_ast::analyzed::Analyzed;
+use powdr_ast::analyzed::{Analyzed, Symbol, SymbolKind};
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
+use powdr_pil_analyzer::expressionizer::Expressionizer;
 use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc};
 use strum::{Display, EnumString, EnumVariantNames};
 
@@ -197,6 +198,95 @@ pub trait BackendFactory<F: FieldElement> {
     fn specialize_pil(&self, pil: Analyzed<F>) -> Analyzed<F> {
         // TODO: currently defaults to the identity function
         // Move `bus_multi_linker` calls here in the future
+
+        let poly_id_to_name = pil
+            .definitions
+            .iter()
+            .filter_map(|(name, (symbol, _))| match &symbol.kind {
+                SymbolKind::Poly(poly_type) => Some(((*poly_type, symbol.id), name.clone())),
+                _ => None,
+            })
+            .collect();
+
+        let expressionizer = Expressionizer {
+            poly_id_to_name: &poly_id_to_name,
+        };
+
+        // print the source order to see if we can group bus interactions to namespaces
+        pil.source_order
+            .iter()
+            .for_each(|id| println!("source order: {:?}", id));
+
+        // let proof_items = pil.identities.iter().filter_map(|i| {
+        //     if let powdr_ast::analyzed::Identity::BusInteraction(bus_interaction) = i {
+        //         let tuple = bus_interaction
+        //             .iter()
+        //             .map(
+        //                 |BatchedLinks {
+        //                      bus_id,
+        //                      selector,
+        //                      payload,
+        //                      bus_linker_type,
+        //                  }| {
+        //                     Expression::Tuple(
+        //                         SourceRef::unknown(),
+        //                         vec![
+        //                             expressionizer
+        //                                 .try_algebraic_expression_to_expression(&bus_id)
+        //                                 .unwrap(),
+        //                             expressionizer
+        //                                 .try_algebraic_expression_to_expression(&selector)
+        //                                 .unwrap(),
+        //                             ArrayLiteral {
+        //                                 items: payload
+        //                                     .0
+        //                                     .iter()
+        //                                     .map(|expr| {
+        //                                         expressionizer
+        //                                             .try_algebraic_expression_to_expression(expr)
+        //                                             .unwrap()
+        //                                     })
+        //                                     .collect(),
+        //                             }
+        //                             .into(),
+        //                             Expression::Reference(
+        //                                 SourceRef::unknown(),
+        //                                 Reference::Poly(PolynomialReference {
+        //                                     name: String::from(
+        //                                         match bus_linker_type {
+        //                                             BusLinkerType::Send => "std::protocols::bus::BusLinkerType::Send",
+        //                                             BusLinkerType::PermutationReceive => "std::protocols::bus::BusLinkerType::PermutationReceive",
+        //                                             BusLinkerType::LookupReceive => "std::protocols::bus::BusLinkerType::LookupReceive",
+        //                                         }
+        //                                     ),
+        //                                     type_args: Some(Vec::new()),
+        //                                 })
+        //                                 .into(),
+        //                             ),
+        //                         ],
+        //                     )
+        //                 },
+        //             )
+        //             .collect();
+
+        //         Some(Expression::FunctionCall(
+        //             SourceRef::unknown(),
+        //             FunctionCall {
+        //                 function: Box::new(Expression::Reference(
+        //                     SourceRef::unknown(),
+        //                     Reference::Poly(PolynomialReference {
+        //                         name: "std::protocols::bus::bus_multi_linker".to_string(),
+        //                         type_args: None,
+        //                     }),
+        //                 )),
+        //                 arguments: vec![ArrayLiteral { items: tuple }.into()],
+        //             },
+        //         ))
+        //     } else {
+        //         None
+        //     }
+        // }).collect::<Vec<_>>();
+
         pil
     }
 }

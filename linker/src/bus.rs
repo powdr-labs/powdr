@@ -188,7 +188,7 @@ impl LinkerBackend for BusLinker {
                     FunctionCall {
                         function: Box::new(Expression::Reference(
                             SourceRef::unknown(),
-                            SymbolPath::from_str("std::protocols::bus::bus_multi_linker")
+                            SymbolPath::from_str("std::protocols::bus::bus_multi_native")
                                 .unwrap()
                                 .into(),
                         )),
