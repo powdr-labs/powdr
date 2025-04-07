@@ -25,6 +25,7 @@ use super::{
     affine_symbolic_expression::{AffineSymbolicExpression, Error, ProcessResult},
     effect::{BranchCondition, Effect, ProverFunctionCall},
     prover_function_heuristics::ProverFunction,
+    quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     symbolic_expression::SymbolicExpression,
     variable::{Cell, MachineCallVariable, Variable},
 };
@@ -284,6 +285,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         (lhs_evaluated - variable - offset.into()).solve()
     }
 
+    pub fn process_quadratic_symbolic_equation(
+        &mut self,
+        equation: &QuadraticSymbolicExpression<T, Variable>,
+    ) -> Result<Vec<VariableUpdate<T>>, Error> {
+        let result = equation.solve(self)?;
+        self.ingest_effects(result, None)
+    }
+
     fn process_call_inner(
         &mut self,
         can_process_call: impl CanProcessCall<T>,
@@ -503,6 +512,14 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         self.evaluate(expr, offset)
             .and_then(|s| s.try_to_known().map(|k| k.try_to_number()))
             .flatten()
+    }
+}
+
+impl<T: FieldElement, FixedEval: FixedEvaluator<T>> RangeConstraintProvider<T, Variable>
+    for WitgenInference<'_, T, FixedEval>
+{
+    fn get(&self, variable: &Variable) -> RangeConstraint<T> {
+        self.range_constraint(variable)
     }
 }
 
