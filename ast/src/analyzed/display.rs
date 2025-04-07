@@ -94,7 +94,7 @@ impl<T: Display> Display for Analyzed<T> {
                                 f,
                                 format_witness_column(&name, symbol, definition),
                             )?,
-                            SymbolKind::Poly(PolynomialType::Intermediate) => unreachable!(),
+                            SymbolKind::Poly(PolynomialType::Intermediate) => {}
                             SymbolKind::Public() => {
                                 if let Some(FunctionValueDefinition::PublicDeclaration(decl)) =
                                     definition

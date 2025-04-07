@@ -163,7 +163,7 @@ pub fn condense<T: FieldElement>(
         })
         .collect();
 
-    definitions.retain(|name, _| !intermediate_columns.contains_key(name));
+    // definitions.retain(|name, _| !intermediate_columns.contains_key(name));
     #[allow(clippy::iter_over_hash_type)]
     // This is deterministic because insertion order does not matter.
     for symbol in new_columns {

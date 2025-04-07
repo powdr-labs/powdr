@@ -25,7 +25,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
     let mut pil_hash = hash_pil_state(&pil_file);
     loop {
-        remove_unreferenced_definitions(&mut pil_file);
+        // remove_unreferenced_definitions(&mut pil_file);
         remove_constant_fixed_columns(&mut pil_file);
         deduplicate_fixed_columns(&mut pil_file);
         simplify_identities(&mut pil_file);

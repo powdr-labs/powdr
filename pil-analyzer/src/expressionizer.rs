@@ -58,13 +58,13 @@ pub fn try_value_to_expression<T: FieldElement>(
     Expressionizer { poly_id_to_name }.try_value_to_expression(value)
 }
 
-struct Expressionizer<'a> {
+pub struct Expressionizer<'a> {
     /// Maps polynomial IDs to their names.
     /// For arrays, this does not include the array elements, just the ID
     /// of the first element (the array itself).
     /// Crucially, the polynomial type comes first, so that we can still find
     /// the array's name given an element's ID by using the next smaller entry.
-    poly_id_to_name: &'a BTreeMap<(PolynomialType, u64), String>,
+    pub poly_id_to_name: &'a BTreeMap<(PolynomialType, u64), String>,
 }
 
 impl Expressionizer<'_> {
@@ -233,7 +233,7 @@ impl Expressionizer<'_> {
         })
     }
 
-    fn try_algebraic_expression_to_expression<T: FieldElement>(
+    pub fn try_algebraic_expression_to_expression<T: FieldElement>(
         &self,
         e: &AlgebraicExpression<T>,
     ) -> Result<Expression, EvalError> {
