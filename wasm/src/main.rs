@@ -1,4 +1,7 @@
+mod code_gen;
 mod loader;
+
+use std::path::Path;
 
 fn main() -> wasmparser::Result<()> {
     env_logger::init();
@@ -9,7 +12,7 @@ fn main() -> wasmparser::Result<()> {
 
     let program = loader::load_wasm(&wasm_file)?;
 
-    todo!();
+    code_gen::generate_code(Path::new(&args[2]), &program);
 
     Ok(())
 }
