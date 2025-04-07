@@ -2,10 +2,11 @@ use powdr_number::FieldElement;
 
 use crate::witgen::range_constraints::RangeConstraint;
 
+/// An update representing new information about a variable.
 pub struct VariableUpdate<T: FieldElement, V> {
-    variable: V,
+    pub variable: V,
     /// If true, the variable is symbolically or concretely known.
-    known: bool,
+    pub known: bool,
     /// The current range constraint of the variable. It can be a single number.
-    range_constraint: RangeConstraint<T>,
+    pub range_constraint: RangeConstraint<T>,
 }

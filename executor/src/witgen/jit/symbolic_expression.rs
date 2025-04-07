@@ -13,7 +13,7 @@ use std::{
 
 use crate::witgen::range_constraints::RangeConstraint;
 
-use super::quadratic_symbolic_expression::VariableUpdate;
+use super::variable_update::VariableUpdate;
 
 /// A value that is known at run-time, defined through a complex expression
 /// involving known cells or variables and compile-time constants.

@@ -17,6 +17,7 @@ use crate::witgen::{
 use super::{
     affine_symbolic_expression::{Error, ProcessResult},
     symbolic_expression::SymbolicExpression,
+    variable_update::VariableUpdate,
 };
 
 /// A symbolic expression in unknown variables of type `V` and (symbolically)
@@ -48,15 +49,6 @@ pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
 // because range constraints therein can also change.
 // they could also change to simpler expressions if one sub-expression turns to one or zero.
 // So we also need update functions for the symbolic expressions.
-
-/// An update representing new information about the variable.
-pub struct VariableUpdate<T: FieldElement, V> {
-    pub variable: V,
-    /// If true, the variable is symbolically or concretely known.
-    pub known: bool,
-    /// The current range constraint of the variable. It can be a single number.
-    pub range_constraint: RangeConstraint<T>,
-}
 
 impl<T: FieldElement, V: Clone + Hash + Eq> From<SymbolicExpression<T, V>>
     for QuadraticSymbolicExpression<T, V>

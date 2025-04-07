@@ -28,6 +28,7 @@ use super::{
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     symbolic_expression::SymbolicExpression,
     variable::{Cell, MachineCallVariable, Variable},
+    variable_update::VariableUpdate,
 };
 
 /// This component can generate code that solves identities.
@@ -288,7 +289,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     pub fn process_quadratic_symbolic_equation(
         &mut self,
         equation: &QuadraticSymbolicExpression<T, Variable>,
-    ) -> Result<Vec<VariableUpdate<T>>, Error> {
+    ) -> Result<Vec<Variable>, Error> {
         let result = equation.solve(self)?;
         self.ingest_effects(result, None)
     }
