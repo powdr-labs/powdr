@@ -25,15 +25,15 @@ const DEFAULT_MAX_TABLE_SIZE: u32 = 4096;
 /// Segment is not a WASM concept, but it is used to mean a region of memory
 /// that is allocated for a WASM table or memory.
 #[derive(Clone, Copy)]
-struct Segment {
+pub struct Segment {
     /// The start address of the segment, in bytes.
-    start: u32,
+    pub start: u32,
     /// The size of the segment, in bytes.
-    size: u32,
+    pub size: u32,
 }
 
 #[derive(Clone, Copy)]
-enum MemoryEntry {
+pub enum MemoryEntry {
     /// Actual value stored in memory word.
     Value(u32),
     /// Refers to a code label.
@@ -134,19 +134,36 @@ impl InitialMemory {
     }
 }
 
-struct ModuleContext {
+pub struct Program<'a> {
+    /// The functions defined in the module.
+    pub functions: Vec<Vec<Directive<'a>>>,
+    /// The start function, if any.
+    pub start_function: Option<u32>,
+    /// The main function, if any.
+    pub main_function: Option<u32>,
+    /// The initial memory, with the values to be set at startup.
+    pub initial_memory: BTreeMap<u32, MemoryEntry>,
+    /// The globals, in order of definition.
+    pub globals: Vec<AllocatedVar>,
+    /// The memory segment, if any.
+    pub memory: Option<Segment>,
+    /// The tables, in order of definition.
+    pub tables: Vec<Segment>,
+    /// The special segments for the table initialization.
+    pub elem_segments: Vec<Segment>,
+    /// The special segments for the data initialization.
+    pub data_segments: Vec<Segment>,
+}
+
+struct ModuleContext<'a> {
     types: Vec<SubType>,
     func_types: Vec<u32>,
     imported_functions: Vec<Syscall>,
-    tables: Vec<Segment>,
     table_types: Vec<RefType>,
-    memory: Option<Segment>,
-    globals: Vec<AllocatedVar>,
-    elem_segments: Vec<Segment>,
-    data_segments: Vec<Segment>,
+    p: Program<'a>,
 }
 
-impl ModuleContext {
+impl ModuleContext<'_> {
     fn get_type(&self, type_idx: u32) -> &FuncType {
         let subtype = &self.types[type_idx as usize];
         match &subtype.composite_type.inner {
@@ -223,11 +240,10 @@ impl ModuleContext {
         mem_type: &Option<MemoryType>,
     ) -> Option<Segment> {
         let Some(mem_type) = mem_type else {
-            self.memory?;
-            unreachable!();
+            return None;
         };
 
-        if self.memory.is_none() {
+        if self.p.memory.is_none() {
             let maximum_size = mem_allocator
                 .remaining_space()
                 // From all the memory available, we reserve the space for the stack, and the 8 bytes needed
@@ -241,16 +257,16 @@ impl ModuleContext {
 
             let maximum_size = mem_type
                 .maximum
-                .map_or(maximum_size, |v| maximum_size.min(v as u32 * PAGE_SIZE));
+                .map_or(maximum_size, |v| maximum_size.min(v as u32));
 
             let segment = mem_allocator.allocate_segment(maximum_size * PAGE_SIZE + 8);
             initial_memory.insert(segment.start, MemoryEntry::Value(mem_type.initial as u32));
             initial_memory.insert(segment.start + 4, MemoryEntry::Value(maximum_size));
 
-            self.memory = Some(segment);
+            self.p.memory = Some(segment);
         }
 
-        self.memory
+        self.p.memory
     }
 }
 
@@ -342,25 +358,27 @@ fn pack_bytes_into_words(bytes: &[u8], mut alignment: u32) -> Vec<MemoryEntry> {
     words
 }
 
-pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<()> {
+pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<Program> {
     let parser = Parser::new(0);
 
     let mut ctx = ModuleContext {
         types: Vec::new(),
         func_types: Vec::new(),
         imported_functions: Vec::new(),
-        tables: Vec::new(),
         table_types: Vec::new(),
-        memory: None,
-        globals: Vec::new(),
-        elem_segments: Vec::new(),
-        data_segments: Vec::new(),
+        p: Program {
+            functions: Vec::new(),
+            start_function: None,
+            main_function: None,
+            // This is actually left empty, and will be filled just before returning.
+            initial_memory: BTreeMap::new(),
+            globals: Vec::new(),
+            memory: None,
+            tables: Vec::new(),
+            elem_segments: Vec::new(),
+            data_segments: Vec::new(),
+        },
     };
-
-    let mut functions = Vec::new();
-
-    let mut start_function = None;
-    let mut main_function = None;
 
     // This is the memory layout of the program after all the elements have been allocated:
     // - all tables, in sequence, where each table contains:
@@ -391,7 +409,7 @@ pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<()> {
     // The payloads are processed in the order they appear in the file, so each variable written
     // in one step is available in the next steps.
     let mut unsupported_feature_found = false;
-    for payload in parser.parse_all(&wasm_file) {
+    for payload in parser.parse_all(wasm_file) {
         match payload? {
             Payload::Version { num, .. } => {
                 // This is the encoding version, we don't care about it.
@@ -460,7 +478,7 @@ pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<()> {
                             let label = ctx.func_types.len() as u32;
 
                             // Adds a proxy function that just calls the system call
-                            functions.push(proxy_syscall(label, syscall, ty));
+                            ctx.p.functions.push(proxy_syscall(label, syscall, ty));
 
                             ctx.func_types.push(type_idx);
                             ctx.imported_functions.push(syscall);
@@ -526,7 +544,7 @@ pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<()> {
                         .insert(segment.start, MemoryEntry::Value(table.ty.initial as u32));
                     initial_memory.insert(segment.start + 4, MemoryEntry::Value(max_entries));
 
-                    ctx.tables.push(segment);
+                    ctx.p.tables.push(segment);
                     ctx.table_types.push(table.ty.element_type);
                 }
             }
@@ -535,7 +553,7 @@ pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<()> {
                 for mem in section {
                     let mem = mem?;
 
-                    if ctx.memory.is_some() {
+                    if ctx.p.memory.is_some() {
                         unsupported_feature_found = true;
                         log::error!("Multiple memories are not supported");
                         break;
@@ -564,7 +582,7 @@ pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<()> {
                     let ty = global.ty.content_type;
                     let var = mem_allocator.allocate_var(ty);
 
-                    log::debug!("Global variable {} has type {:?}", ctx.globals.len(), ty);
+                    log::debug!("Global variable {} has type {:?}", ctx.p.globals.len(), ty);
 
                     // Initialize the global variables
                     let words = ctx.eval_const_expr(ty, global.init_expr.get_operators_reader())?;
@@ -572,7 +590,7 @@ pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<()> {
                         initial_memory.insert(var.address + 4 * idx as u32, word);
                     }
 
-                    ctx.globals.push(var);
+                    ctx.p.globals.push(var);
                 }
             }
             Payload::ExportSection(section_limited) => {
@@ -589,13 +607,13 @@ pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<()> {
                     // Following the convention of the Rust target wasm32-unknown-unknown,
                     // we expect one "main" function, that is the entry point of the program.
                     if export.name == "main" {
-                        main_function = Some(export.index);
+                        ctx.p.main_function = Some(export.index);
                     }
                 }
             }
             Payload::StartSection { func, .. } => {
                 log::debug!("Start Section found. Start function: {func}");
-                start_function = Some(func);
+                ctx.p.start_function = Some(func);
             }
             Payload::ElementSection(section) => {
                 log::debug!("Element Section found");
@@ -645,7 +663,7 @@ pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<()> {
                             }
 
                             // Store the segment in the context
-                            ctx.elem_segments.push(segment);
+                            ctx.p.elem_segments.push(segment);
                         }
                         wasmparser::ElementKind::Active {
                             table_index,
@@ -655,7 +673,7 @@ pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<()> {
 
                             // I am assuming the table index of 0 if not provided, as hinted by the WASM binary spec.
                             let idx = table_index.unwrap_or(0);
-                            let table = &ctx.tables[idx as usize];
+                            let table = &ctx.p.tables[idx as usize];
 
                             let &[MemoryEntry::Value(offset)] = ctx
                                 .eval_const_expr(ValType::I32, offset_expr.get_operators_reader())?
@@ -691,7 +709,7 @@ pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<()> {
             }
             Payload::CodeSectionStart { count, .. } => {
                 log::debug!("Code Section Start found. Count: {count}");
-                assert_eq!(functions.len() + count as usize, ctx.func_types.len());
+                assert_eq!(ctx.p.functions.len() + count as usize, ctx.func_types.len());
 
                 // The labels used internally in the functions must be globally unique.
                 // This is the label generator, starting from label available after the
@@ -705,11 +723,11 @@ pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<()> {
 
                 let definition = allocate_locals::infinite_registers_allocation(
                     &ctx,
-                    functions.len() as u32,
+                    ctx.p.functions.len() as u32,
                     internal_labels.as_mut().unwrap(),
                     function,
                 )?;
-                functions.push(definition);
+                ctx.p.functions.push(definition);
             }
             Payload::DataSection(section) => {
                 log::debug!("Data Section found");
@@ -734,7 +752,7 @@ pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<()> {
                             }
 
                             // Store the segment in the context
-                            ctx.data_segments.push(segment);
+                            ctx.p.data_segments.push(segment);
                         }
                         wasmparser::DataKind::Active {
                             memory_index,
@@ -825,5 +843,7 @@ pub fn load_wasm(wasm_file: &[u8]) -> wasmparser::Result<()> {
         "Only WebAssembly Release 2.0 is supported"
     );
 
-    Ok(())
+    ctx.p.initial_memory = initial_memory.0;
+
+    Ok(ctx.p)
 }

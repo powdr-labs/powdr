@@ -40,14 +40,14 @@ pub enum Directive<'a> {
         save_return_info_to: AllocatedVar,
     },
     IndirectCall {
-        /// How much to increase the frame pointer for the called function.
-        new_fp_delta: u32,
-        /// The index of the expected function type.
-        func_type_index: u32,
         /// The table to look for the function reference.
         table_index: u32,
-        /// The index of the function to be called in the table.
-        function_index: AllocatedVar,
+        /// The index of the function referece to be called in the table.
+        function_ref_index: AllocatedVar,
+        /// The index of the expected function type.
+        func_type_index: u32,
+        /// How much to increase the frame pointer for the called function.
+        new_fp_delta: u32,
         /// Where to save the current frame pointer and return address,
         /// so that "return" can restore it.
         save_return_info_to: AllocatedVar,
@@ -222,7 +222,7 @@ impl Stack {
 }
 
 struct StackTracker<'a> {
-    module: &'a ModuleContext,
+    module: &'a ModuleContext<'a>,
     locals: Vec<AllocatedVar>,
     /// In the middle of the locals, right after the function arguments, in a place
     /// "call" will be able to write, we have the return address and the frame pointer
@@ -715,11 +715,11 @@ impl<'a> StackTracker<'a> {
                 (vec![local.val_type], Some(local.val_type))
             }
             Operator::GlobalGet { global_index } => {
-                let global = &self.module.globals[*global_index as usize];
+                let global = &self.module.p.globals[*global_index as usize];
                 (vec![], Some(global.val_type))
             }
             Operator::GlobalSet { global_index } => {
-                let global = &self.module.globals[*global_index as usize];
+                let global = &self.module.p.globals[*global_index as usize];
                 (vec![global.val_type], None)
             }
 
@@ -1101,8 +1101,8 @@ pub fn infinite_registers_allocation<'a>(
             } => {
                 // Consume the function index from the stack. It comes before the actual
                 // function arguments.
-                let function_index = tracker.stack.pop();
-                assert_eq!(function_index.val_type, ValType::I32);
+                let function_ref_index = tracker.stack.pop();
+                assert_eq!(function_ref_index.val_type, ValType::I32);
 
                 // Consume the function arguments and place the outputs on the stack.
                 let func_type = module.get_type(type_index);
@@ -1114,7 +1114,7 @@ pub fn infinite_registers_allocation<'a>(
                     new_fp_delta: bottom_addr,
                     func_type_index: type_index,
                     table_index,
-                    function_index,
+                    function_ref_index,
                     save_return_info_to: tracker.next_return_info_address(bottom_addr, func_type),
                 });
             }
