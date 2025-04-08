@@ -108,7 +108,7 @@ impl<'ast, T: FieldElement> IdentityQueue<'ast, T> {
                     } else {
                         &update
                     };
-                    expr.apply_update(&update);
+                    expr.apply_update(update);
                 }
 
                 if !self.in_queue[*index] {

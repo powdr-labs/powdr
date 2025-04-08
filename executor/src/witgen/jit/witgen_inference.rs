@@ -23,6 +23,7 @@ use crate::witgen::{
 
 use super::{
     affine_symbolic_expression::{AffineSymbolicExpression, Error, ProcessResult},
+    algebraic_to_quadratic::KnownProvider,
     effect::{BranchCondition, Effect, ProverFunctionCall},
     prover_function_heuristics::ProverFunction,
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
@@ -634,6 +635,12 @@ fn is_known_zero<T: FieldElement>(x: &Option<AffineSymbolicExpression<T, Variabl
     x.as_ref()
         .and_then(|x| x.try_to_known().map(|x| x.is_known_zero()))
         .unwrap_or(false)
+}
+
+impl<T: FieldElement, Fixed: FixedEvaluator<T>> KnownProvider for WitgenInference<'_, T, Fixed> {
+    fn is_known(&self, variable: &Variable) -> bool {
+        self.is_known(variable)
+    }
 }
 
 pub trait FixedEvaluator<T: FieldElement>: Clone {
