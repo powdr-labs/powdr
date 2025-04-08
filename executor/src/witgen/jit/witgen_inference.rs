@@ -296,6 +296,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         (lhs_evaluated - variable - offset.into()).solve()
     }
 
+    #[allow(unused)]
     pub fn process_quadratic_symbolic_equation(
         &mut self,
         equation: &QuadraticSymbolicExpression<T, Variable>,
