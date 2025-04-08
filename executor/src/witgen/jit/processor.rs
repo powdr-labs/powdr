@@ -1,9 +1,7 @@
 use std::fmt::{self, Display, Formatter, Write};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicExpression, PolynomialIdentity,
-};
+use powdr_ast::analyzed::{AlgebraicExpression, PolynomialIdentity};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -447,7 +445,8 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             bus_send.selected_payload.expressions.len() > 1
                 || !witgen
                     .evaluate(&bus_send.selected_payload.selector, *row)
-                    .and_then(|v| v.try_to_known().map(|v| v.is_known_one()))
+                    .try_to_known()
+                    .map(|v| v.is_known_one())
                     .unwrap_or(false)
         }) {
             return false;
@@ -515,10 +514,10 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 let is_solved = pairs
                     .iter()
                     .map(move |(expression, row_offset)| {
-                        match witgen.evaluate(expression, *row_offset) {
-                            None => false,
-                            Some(value) => value.try_to_known().is_some(),
-                        }
+                        witgen
+                            .evaluate(expression, *row_offset)
+                            .try_to_known()
+                            .is_some()
                     })
                     .collect_vec();
 

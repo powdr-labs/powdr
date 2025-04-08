@@ -5,10 +5,7 @@ use std::{
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -22,12 +19,13 @@ use crate::witgen::{
 };
 
 use super::{
-    affine_symbolic_expression::{AffineSymbolicExpression, Error, ProcessResult},
-    algebraic_to_quadratic::KnownProvider,
+    affine_symbolic_expression::{Error, ProcessResult},
+    algebraic_to_quadratic::{
+        algebraic_expression_to_quadratic_symbolic_expression, KnownProvider,
+    },
     effect::{BranchCondition, Effect, ProverFunctionCall},
     prover_function_heuristics::ProverFunction,
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
-    symbolic_expression::SymbolicExpression,
     variable::{Cell, MachineCallVariable, Variable},
 };
 
@@ -455,12 +453,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         &self,
         expr: &Expression<T>,
         offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable>> {
-        Evaluator::new(self).evaluate(expr, offset)
+    ) -> QuadraticSymbolicExpression<T, Variable> {
+        algebraic_expression_to_quadratic_symbolic_expression(expr, offset, false, self, self)
     }
 
     pub fn try_evaluate_to_known_number(&self, expr: &Expression<T>, offset: i32) -> Option<T> {
-        self.evaluate(expr, offset)?.try_to_known()?.try_to_number()
+        self.evaluate(expr, offset).try_to_known()?.try_to_number()
     }
 }
 
@@ -470,98 +468,6 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> RangeConstraintProvider<T, V
     fn get(&self, variable: &Variable) -> RangeConstraint<T> {
         self.range_constraint(variable)
     }
-}
-
-struct Evaluator<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
-    witgen_inference: &'a WitgenInference<'a, T, FixedEval>,
-    only_concrete_known: bool,
-}
-
-impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEval> {
-    pub fn new(witgen_inference: &'a WitgenInference<'a, T, FixedEval>) -> Self {
-        Self {
-            witgen_inference,
-            only_concrete_known: false,
-        }
-    }
-
-    pub fn evaluate(
-        &self,
-        expr: &Expression<T>,
-        offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable>> {
-        Some(match expr {
-            Expression::Reference(r) => self.evaluate_variable(Variable::from_reference(r, offset)),
-            Expression::PublicReference(_) | Expression::Challenge(_) => {
-                // TODO we need to introduce a variable type for those.
-                return None;
-            }
-            Expression::Number(n) => (*n).into(),
-            Expression::BinaryOperation(op) => self.evaluate_binary_operation(op, offset)?,
-            Expression::UnaryOperation(op) => self.evaluate_unary_operation(op, offset)?,
-        })
-    }
-
-    /// Turns the given variable either to a known symbolic value or an unknown symbolic value
-    /// depending on if it is known or not.
-    /// If it is known to be range-constrained to a single value, that value is used.
-    pub fn evaluate_variable(&self, variable: Variable) -> AffineSymbolicExpression<T, Variable> {
-        // If a variable is known and has a compile-time constant value,
-        // that value is stored in the range constraints.
-        let rc = self.witgen_inference.range_constraint(&variable);
-        match self.witgen_inference.value(&variable) {
-            Value::Concrete(val) => val.into(),
-            Value::Unknown => AffineSymbolicExpression::from_unknown_variable(variable, rc),
-            Value::Known if self.only_concrete_known => {
-                AffineSymbolicExpression::from_unknown_variable(variable, rc)
-            }
-            Value::Known => AffineSymbolicExpression::from_known_symbol(variable, rc),
-        }
-    }
-
-    fn evaluate_binary_operation(
-        &self,
-        op: &AlgebraicBinaryOperation<T>,
-        offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable>> {
-        let left = self.evaluate(&op.left, offset);
-        let right = self.evaluate(&op.right, offset);
-        match op.op {
-            AlgebraicBinaryOperator::Add => Some(&left? + &right?),
-            AlgebraicBinaryOperator::Sub => Some(&left? - &right?),
-            AlgebraicBinaryOperator::Mul => {
-                if is_known_zero(&left) || is_known_zero(&right) {
-                    Some(SymbolicExpression::from(T::from(0)).into())
-                } else {
-                    left?.try_mul(&right?)
-                }
-            }
-            AlgebraicBinaryOperator::Pow => {
-                let result = left?
-                    .try_to_known()?
-                    .try_to_number()?
-                    .pow(right?.try_to_known()?.try_to_number()?.to_integer());
-                Some(AffineSymbolicExpression::from(result))
-            }
-        }
-    }
-
-    fn evaluate_unary_operation(
-        &self,
-        op: &AlgebraicUnaryOperation<T>,
-        offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable>> {
-        let expr = self.evaluate(&op.expr, offset)?;
-        match op.op {
-            AlgebraicUnaryOperator::Minus => Some(-&expr),
-        }
-    }
-}
-
-fn is_known_zero<T: FieldElement>(x: &Option<AffineSymbolicExpression<T, Variable>>) -> bool {
-    x.as_ref()
-        .and_then(|x| x.try_to_known().map(|x| x.is_known_zero()))
-        .unwrap_or(false)
 }
 
 impl<T: FieldElement, Fixed: FixedEvaluator<T>> KnownProvider for WitgenInference<'_, T, Fixed> {
