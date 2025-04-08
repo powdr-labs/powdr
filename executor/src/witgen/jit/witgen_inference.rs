@@ -19,12 +19,12 @@ use crate::witgen::{
 };
 
 use super::{
-    affine_symbolic_expression::{Error, ProcessResult},
     algebraic_to_quadratic::{
         algebraic_expression_to_quadratic_symbolic_expression, KnownProvider,
     },
     effect::{BranchCondition, Effect, ProverFunctionCall},
     prover_function_heuristics::ProverFunction,
+    quadratic_symbolic_expression::{Error, ProcessResult},
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     variable::{Cell, MachineCallVariable, Variable},
 };

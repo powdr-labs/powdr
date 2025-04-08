@@ -11,7 +11,6 @@ use crate::witgen::{
 };
 
 use super::{
-    affine_symbolic_expression,
     algebraic_to_quadratic::{
         algebraic_expression_to_quadratic_symbolic_expression,
         variable_to_quadratic_symbolic_expression,
@@ -19,7 +18,7 @@ use super::{
     debug_formatter::format_incomplete_bus_sends,
     effect::{format_code, Effect},
     identity_queue::{IdentityQueue, QueueItem},
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
+    quadratic_symbolic_expression::{self, QuadraticSymbolicExpression},
     variable::{MachineCallVariable, Variable},
     variable_update::VariableUpdate,
     witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, WitgenInference},
@@ -281,7 +280,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
         identity_queue: &mut IdentityQueue<'a, T>,
-    ) -> Result<(), affine_symbolic_expression::Error> {
+    ) -> Result<(), quadratic_symbolic_expression::Error> {
         while let Some(item) = identity_queue.next() {
             let updated_vars = match item {
                 QueueItem::Equation { expr, .. } => witgen.process_equation(expr),

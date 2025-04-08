@@ -14,11 +14,36 @@ use crate::witgen::{
     range_constraints::RangeConstraint,
 };
 
-use super::{
-    affine_symbolic_expression::{Error, ProcessResult},
-    symbolic_expression::SymbolicExpression,
-    variable_update::VariableUpdate,
-};
+use super::{symbolic_expression::SymbolicExpression, variable_update::VariableUpdate};
+
+#[derive(Default)]
+pub struct ProcessResult<T: FieldElement, V> {
+    pub effects: Vec<Effect<T, V>>,
+    pub complete: bool,
+}
+
+impl<T: FieldElement, V> ProcessResult<T, V> {
+    pub fn empty() -> Self {
+        Self {
+            effects: vec![],
+            complete: false,
+        }
+    }
+    pub fn complete(effects: Vec<Effect<T, V>>) -> Self {
+        Self {
+            effects,
+            complete: true,
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum Error {
+    /// The range constraints of the parts do not cover the full constant sum.
+    ConflictingRangeConstraints,
+    /// An equality constraint evaluates to a known-nonzero value.
+    ConstraintUnsatisfiable,
+}
 
 /// A symbolic expression in unknown variables of type `V` and (symbolically)
 /// known terms, representing a sum of (super-)quadratic, linear and constant parts.
