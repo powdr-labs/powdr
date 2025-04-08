@@ -19,6 +19,7 @@ use super::{
     effect::{format_code, Effect},
     identity_queue::{IdentityQueue, QueueItem},
     variable::{MachineCallVariable, Variable},
+    variable_update::VariableUpdate,
     witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, WitgenInference},
 };
 
@@ -180,7 +181,16 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             branches: [first_branch, second_branch],
         } = witgen.branch_on(&most_constrained_var.clone());
 
-        identity_queue.variables_updated(vec![most_constrained_var.clone()]);
+        let mut first_identity_queue = identity_queue.clone();
+        first_identity_queue.variables_updated(std::iter::once(variable_update(
+            most_constrained_var.clone(),
+            &first_branch,
+        )));
+        let mut second_identity_queue = identity_queue;
+        second_identity_queue.variables_updated(std::iter::once(variable_update(
+            most_constrained_var.clone(),
+            &second_branch,
+        )));
 
         // TODO Tuning: If this fails (or also if it does not generate progress right away),
         // we could also choose a different variable to branch on.
@@ -188,7 +198,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         let first_branch_result = self.generate_code_for_branch(
             can_process.clone(),
             first_branch,
-            identity_queue.clone(),
+            first_identity_queue,
             branch_depth + 1,
         );
         log::debug!(
@@ -198,7 +208,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         let second_branch_result = self.generate_code_for_branch(
             can_process,
             second_branch,
-            identity_queue,
+            second_identity_queue,
             branch_depth + 1,
         );
         let mut result = match (first_branch_result, second_branch_result) {
@@ -260,6 +270,9 @@ impl<'a, T: FieldElement> Processor<'a, T> {
     ) -> Result<(), affine_symbolic_expression::Error> {
         while let Some(item) = identity_queue.next() {
             let updated_vars = match item {
+                QueueItem::Equation { expr, .. } => {
+                    witgen.process_quadratic_symbolic_equation(expr)
+                }
                 QueueItem::Identity(identity, row_offset) => match identity {
                     Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                         witgen.process_equation_on_row(expression, None, 0.into(), *row_offset)
@@ -285,7 +298,8 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     witgen.process_prover_function(prover_function, *row_offset)
                 }
             }?;
-            identity_queue.variables_updated(updated_vars);
+            identity_queue
+                .variables_updated(updated_vars.into_iter().map(|v| variable_update(v, witgen)));
         }
         Ok(())
     }
@@ -447,7 +461,11 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             assert!(!witgen.is_known(param));
             match modified_witgen.set_variable(param.clone(), 0.into()) {
                 Err(_) => return false,
-                Ok(updated_vars) => modified_identity_queue.variables_updated(updated_vars),
+                Ok(updated_vars) => modified_identity_queue.variables_updated(
+                    updated_vars
+                        .into_iter()
+                        .map(|v| variable_update(v, &modified_witgen)),
+                ),
             };
         }
         if self
@@ -538,7 +556,11 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             let value = tentative_witgen.range_constraint(var).range().0;
             match tentative_witgen.set_variable(var.clone(), value) {
                 Err(_) => return false,
-                Ok(updated_vars) => tentative_identity_queue.variables_updated(updated_vars),
+                Ok(updated_vars) => tentative_identity_queue.variables_updated(
+                    updated_vars
+                        .into_iter()
+                        .map(|v| variable_update(v, &tentative_witgen)),
+                ),
             };
         }
 
@@ -556,6 +578,19 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         } else {
             false
         }
+    }
+}
+
+fn variable_update<T: FieldElement>(
+    variable: Variable,
+    witgen: &WitgenInference<'_, T, impl FixedEvaluator<T>>,
+) -> VariableUpdate<T, Variable> {
+    let known = witgen.is_known(&variable);
+    let range_constraint = witgen.range_constraint(&variable);
+    VariableUpdate {
+        variable,
+        known,
+        range_constraint,
     }
 }
 

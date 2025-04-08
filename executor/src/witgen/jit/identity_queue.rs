@@ -14,7 +14,11 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{data_structures::identity::Identity, jit::variable::MachineCallVariable};
 
-use super::{prover_function_heuristics::ProverFunction, variable::Variable};
+use super::{
+    prover_function_heuristics::ProverFunction,
+    quadratic_symbolic_expression::QuadraticSymbolicExpression, variable::Variable,
+    variable_update::VariableUpdate,
+};
 
 /// Keeps track of identities that still need to be processed and
 /// updates this list based on the occurrence of updated variables
@@ -55,7 +59,7 @@ impl<'ast, T: FieldElement> IdentityQueue<'ast, T> {
         );
         let in_queue = vec![false; items.len()];
         let identity_queue =
-            collect_filtered_indices(&items, &is_polynomial_identity_or_assignment);
+            collect_filtered_indices(&items, &is_polynomial_identity_or_assignment_or_equation);
         let machine_call_queue = collect_filtered_indices(&items, &is_submachine_call);
         let prover_function_queue = collect_filtered_indices(&items, &is_prover_function);
 
@@ -82,35 +86,55 @@ impl<'ast, T: FieldElement> IdentityQueue<'ast, T> {
             })
     }
 
-    pub fn variables_updated(&mut self, variables: impl IntoIterator<Item = Variable>) {
+    pub fn variables_updated(
+        &mut self,
+        updates: impl IntoIterator<Item = VariableUpdate<T, Variable>>,
+    ) {
         // Note that this will usually re-add the item that caused the update,
         // which is fine, since there are situations where we can further process
         // it from an update (for example a range constraint).
-        for id in variables
-            .into_iter()
-            .flat_map(|var| self.occurrences.get(&var))
-            .flatten()
-        {
-            if !self.in_queue[*id] {
-                self.in_queue[*id] = true;
-                if is_polynomial_identity_or_assignment(&self.items[*id]) {
-                    self.identity_queue.push_back(*id);
-                } else if is_submachine_call(&self.items[*id]) {
-                    self.machine_call_queue.insert(*id);
-                } else {
-                    assert!(is_prover_function(&self.items[*id]));
-                    self.prover_function_queue.push_back(*id);
+        for update in updates {
+            for index in self.occurrences.get(&update.variable).into_iter().flatten() {
+                if let QueueItem::Equation {
+                    expr,
+                    require_concretely_known,
+                } = &mut self.items[*index]
+                {
+                    let update = if *require_concretely_known {
+                        &VariableUpdate {
+                            known: update.range_constraint.try_to_single_value().is_some(),
+                            ..update.clone()
+                        }
+                    } else {
+                        &update
+                    };
+                    expr.apply_update(&update);
+                }
+
+                if !self.in_queue[*index] {
+                    self.in_queue[*index] = true;
+                    if is_polynomial_identity_or_assignment_or_equation(&self.items[*index]) {
+                        self.identity_queue.push_back(*index);
+                    } else if is_submachine_call(&self.items[*index]) {
+                        self.machine_call_queue.insert(*index);
+                    } else {
+                        assert!(is_prover_function(&self.items[*index]));
+                        self.prover_function_queue.push_back(*index);
+                    }
                 }
             }
         }
     }
 }
 
-fn is_polynomial_identity_or_assignment<T: FieldElement>(item: &QueueItem<'_, T>) -> bool {
+fn is_polynomial_identity_or_assignment_or_equation<T: FieldElement>(
+    item: &QueueItem<'_, T>,
+) -> bool {
     match item {
         QueueItem::Identity(Identity::Polynomial(..), _)
         | QueueItem::VariableAssignment(..)
-        | QueueItem::ConstantAssignment(..) => true,
+        | QueueItem::ConstantAssignment(..)
+        | QueueItem::Equation { .. } => true,
         QueueItem::Identity(Identity::BusSend(..), _) | QueueItem::ProverFunction(..) => false,
         QueueItem::Identity(Identity::Connect(..), _) => unreachable!(),
     }
@@ -138,6 +162,12 @@ where
 
 #[derive(Clone)]
 pub enum QueueItem<'a, T: FieldElement> {
+    Equation {
+        expr: QuadraticSymbolicExpression<T, Variable>,
+        /// If only variables whose numeric value is known at compile-time are considered
+        /// "known".
+        require_concretely_known: bool,
+    },
     Identity(&'a Identity<T>, i32),
     VariableAssignment(VariableAssignment<'a, T>),
     ConstantAssignment(ConstantAssignment<'a, T>),
@@ -179,10 +209,11 @@ impl<'a, T: FieldElement> QueueItem<'a, T> {
 
     fn order(&self) -> u32 {
         match self {
-            QueueItem::ConstantAssignment(..) => 0,
-            QueueItem::VariableAssignment(..) => 1,
-            QueueItem::Identity(..) => 2,
-            QueueItem::ProverFunction(..) => 3,
+            QueueItem::Equation { .. } => 0,
+            QueueItem::ConstantAssignment(..) => 1,
+            QueueItem::VariableAssignment(..) => 2,
+            QueueItem::Identity(..) => 3,
+            QueueItem::ProverFunction(..) => 4,
         }
     }
 }
@@ -230,6 +261,7 @@ struct ReferencesComputer<'a> {
 impl<'a> ReferencesComputer<'a> {
     pub fn references<T: FieldElement>(&mut self, item: &QueueItem<'a, T>) -> Vec<Variable> {
         let vars: Box<dyn Iterator<Item = _>> = match item {
+            QueueItem::Equation { expr, .. } => Box::new(expr.referenced_variables().cloned()),
             QueueItem::Identity(id, row) => match id {
                 Identity::Polynomial(poly_id) => Box::new(
                     self.references_in_polynomial_identity(poly_id)
