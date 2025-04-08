@@ -162,6 +162,8 @@ pub enum QueueItem<'a, T: FieldElement> {
         /// If only variables whose numeric value is known at compile-time are considered
         /// "known".
         require_concretely_known: bool,
+        // TODO we could add here, which identity and which row this stems from.
+        // then we can re-use these in place of most of the witgen_inference::evaluate calls.
     },
     Identity(&'a Identity<T>, i32),
     ProverFunction(ProverFunction<'a, T>, i32),
