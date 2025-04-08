@@ -544,20 +544,20 @@ main_binary::operation_id[2] = main_binary::operation_id[3];
 2**0 * main_binary::A[2] + 2**24 * main_binary::A_byte[2] := main_binary::A[3];
 2**0 * main_binary::B[2] + 2**24 * main_binary::B_byte[2] := main_binary::B[3];
 main_binary::operation_id_next[2] = main_binary::operation_id[3];
+call_var(9, 2, 0) = main_binary::operation_id_next[2];
 call_var(9, 2, 1) = main_binary::A_byte[2];
 call_var(9, 2, 2) = main_binary::B_byte[2];
-call_var(9, 2, 0) = main_binary::operation_id_next[2];
 main_binary::operation_id[1] = main_binary::operation_id[2];
-main_binary::operation_id_next[1] = main_binary::operation_id[2];
 2**0 * main_binary::A[1] + 2**16 * main_binary::A_byte[1] := main_binary::A[2];
 2**0 * main_binary::B[1] + 2**16 * main_binary::B_byte[1] := main_binary::B[2];
+main_binary::operation_id_next[1] = main_binary::operation_id[2];
+call_var(9, 1, 0) = main_binary::operation_id_next[1];
+call_var(9, 1, 1) = main_binary::A_byte[1];
+call_var(9, 1, 2) = main_binary::B_byte[1];
 main_binary::operation_id[0] = main_binary::operation_id[1];
 main_binary::operation_id_next[0] = main_binary::operation_id[1];
-call_var(9, 1, 0) = main_binary::operation_id_next[1];
 2**0 * main_binary::A[0] + 2**8 * main_binary::A_byte[0] := main_binary::A[1];
-call_var(9, 1, 1) = main_binary::A_byte[1];
 2**0 * main_binary::B[0] + 2**8 * main_binary::B_byte[0] := main_binary::B[1];
-call_var(9, 1, 2) = main_binary::B_byte[1];
 main_binary::operation_id_next[-1] = main_binary::operation_id[0];
 call_var(9, 0, 0) = main_binary::operation_id_next[0];
 main_binary::A_byte[-1] = main_binary::A[0];
@@ -639,10 +639,10 @@ params[1] = Sub::b[0];"
             format_code(&code),
             "SubM::a[0] = params[0];
 2**0 * SubM::c[0] + 2**8 * SubM::b[0] := SubM::a[0];
-params[1] = SubM::b[0];
+params[2] = SubM::c[0];
 call_var(1, 0, 0) = SubM::c[0];
 SubM::c[1] = SubM::c[0];
-params[2] = SubM::c[0];
+params[1] = SubM::b[0];
 SubM::b[1] = SubM::b[0];
 SubM::a[1] = (SubM::c[1] + (SubM::b[1] * 256));
 call_var(1, 1, 0) = SubM::b[1];
@@ -707,7 +707,8 @@ machine_call(3, [Known(call_var(3, 0, 0))]);"
         );
         assert_eq!(
             code,
-            "S::b[0] = 0;
+            "S::a[0] = params[0];
+S::b[0] = 0;
 S::b[1] = 0;
 S::c[0] = 1;
 S::b[2] = 0;
@@ -715,7 +716,6 @@ S::c[1] = 1;
 S::b[3] = 8;
 S::c[2] = 1;
 S::c[3] = 9;
-S::a[0] = params[0];
 params[1] = 0;
 params[2] = 1;"
         );
@@ -772,33 +772,33 @@ params[2] = 1;"
 S::X[0] = params[0];
 S::Y[0] = params[1];
 S::Z1[0] = (S::X[0] + S::Y[0]);
-S::Z2[0] = ((S::Z1[0] * S::Z1[0]) + S::X[0]);
-S::Z3[0] = ((S::Z2[0] * S::Z2[0]) + S::Y[0]);
-S::Z4[0] = ((S::Z3[0] * S::Z3[0]) + S::X[0]);
-S::Z5[0] = ((S::Z4[0] * S::Z4[0]) + S::Y[0]);
-S::Z6[0] = ((S::Z5[0] * S::Z5[0]) + S::X[0]);
-S::Z7[0] = ((S::Z6[0] * S::Z6[0]) + S::Z3[0]);
-S::Z8[0] = ((S::Z7[0] * S::Z7[0]) + S::X[0]);
-S::Z9[0] = ((S::Z8[0] * S::Z8[0]) + S::Y[0]);
-S::Z10[0] = ((S::Z9[0] * S::Z9[0]) + S::X[0]);
-S::Z11[0] = ((S::Z10[0] * S::Z10[0]) + S::Z8[0]);
-S::Z12[0] = ((S::Z11[0] * S::Z11[0]) + S::X[0]);
-S::Z13[0] = ((S::Z12[0] * S::Z12[0]) + S::Y[0]);
-S::Z14[0] = ((S::Z13[0] * S::Z13[0]) + S::X[0]);
-S::Z15[0] = ((S::Z14[0] * S::Z14[0]) + S::Z12[0]);
-S::Z16[0] = ((S::Z15[0] * S::Z15[0]) + S::X[0]);
-S::Z17[0] = ((S::Z16[0] * S::Z16[0]) + S::Y[0]);
-S::Z18[0] = ((S::Z17[0] * S::Z17[0]) + S::X[0]);
-S::Z19[0] = ((S::Z18[0] * S::Z18[0]) + S::Z16[0]);
-S::Z20[0] = ((S::Z19[0] * S::Z19[0]) + S::X[0]);
-S::Z21[0] = ((S::Z20[0] * S::Z20[0]) + S::Y[0]);
-S::Z22[0] = ((S::Z21[0] * S::Z21[0]) + S::X[0]);
-S::Z23[0] = ((S::Z22[0] * S::Z22[0]) + S::Z20[0]);
-S::Z24[0] = ((S::Z23[0] * S::Z23[0]) + S::X[0]);
-S::Z25[0] = ((S::Z24[0] * S::Z24[0]) + S::Y[0]);
-S::Z26[0] = ((S::Z25[0] * S::Z25[0]) + S::X[0]);
-S::Z27[0] = ((S::Z26[0] * S::Z26[0]) + S::Z24[0]);
-S::Z28[0] = ((S::Z27[0] * S::Z27[0]) + S::X[0]);
+S::Z2[0] = (S::X[0] + (S::Z1[0] * S::Z1[0]));
+S::Z3[0] = (S::Y[0] + (S::Z2[0] * S::Z2[0]));
+S::Z4[0] = (S::X[0] + (S::Z3[0] * S::Z3[0]));
+S::Z5[0] = (S::Y[0] + (S::Z4[0] * S::Z4[0]));
+S::Z6[0] = (S::X[0] + (S::Z5[0] * S::Z5[0]));
+S::Z7[0] = (S::Z3[0] + (S::Z6[0] * S::Z6[0]));
+S::Z8[0] = (S::X[0] + (S::Z7[0] * S::Z7[0]));
+S::Z9[0] = (S::Y[0] + (S::Z8[0] * S::Z8[0]));
+S::Z10[0] = (S::X[0] + (S::Z9[0] * S::Z9[0]));
+S::Z11[0] = (S::Z8[0] + (S::Z10[0] * S::Z10[0]));
+S::Z12[0] = (S::X[0] + (S::Z11[0] * S::Z11[0]));
+S::Z13[0] = (S::Y[0] + (S::Z12[0] * S::Z12[0]));
+S::Z14[0] = (S::X[0] + (S::Z13[0] * S::Z13[0]));
+S::Z15[0] = (S::Z12[0] + (S::Z14[0] * S::Z14[0]));
+S::Z16[0] = (S::X[0] + (S::Z15[0] * S::Z15[0]));
+S::Z17[0] = (S::Y[0] + (S::Z16[0] * S::Z16[0]));
+S::Z18[0] = (S::X[0] + (S::Z17[0] * S::Z17[0]));
+S::Z19[0] = (S::Z16[0] + (S::Z18[0] * S::Z18[0]));
+S::Z20[0] = (S::X[0] + (S::Z19[0] * S::Z19[0]));
+S::Z21[0] = (S::Y[0] + (S::Z20[0] * S::Z20[0]));
+S::Z22[0] = (S::X[0] + (S::Z21[0] * S::Z21[0]));
+S::Z23[0] = (S::Z20[0] + (S::Z22[0] * S::Z22[0]));
+S::Z24[0] = (S::X[0] + (S::Z23[0] * S::Z23[0]));
+S::Z25[0] = (S::Y[0] + (S::Z24[0] * S::Z24[0]));
+S::Z26[0] = (S::X[0] + (S::Z25[0] * S::Z25[0]));
+S::Z27[0] = (S::Z24[0] + (S::Z26[0] * S::Z26[0]));
+S::Z28[0] = (S::X[0] + (S::Z27[0] * S::Z27[0]));
 S::Z[0] = S::Z28[0];
 params[2] = S::Z[0];"
         );
@@ -828,9 +828,9 @@ params[2] = S::Z[0];"
 S::X[0] = params[0];
 S::Y[0] = params[1];
 S::Zi[0][0] = (S::X[0] + S::Y[0]);
+S::Zi[1][0] = (S::X[0] * 2);
 S::Zi[2][0] = (S::Y[0] * S::Y[0]);
-S::Zi[1][0] = (2 * S::X[0]);
-S::Z[0] = ((S::Zi[0][0] + S::Zi[2][0]) + S::Zi[1][0]);
+S::Z[0] = ((S::Zi[0][0] + S::Zi[1][0]) + S::Zi[2][0]);
 params[2] = S::Z[0];"
         );
     }
@@ -904,8 +904,8 @@ params[2] = S::carry[0];"
         assert_eq!(
             code,
             "\
-S::Y[0] = 19;
-S::Z[0] = 16;
+S::Y[0] = params[0];
+S::Z[0] = params[1];
 S::X[0] = 253;
 S::carry[0] = 1;
 params[2] = 1;"
@@ -940,8 +940,8 @@ params[2] = 1;"
         assert_eq!(
             code,
             "\
-S::Y[0] = 1;
-S::Z[0] = 16;
+S::Y[0] = params[0];
+S::Z[0] = params[1];
 S::X[0] = 15;
 S::carry[0] = 0;
 params[2] = 0;"
