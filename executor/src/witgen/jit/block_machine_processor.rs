@@ -9,7 +9,10 @@ use crate::witgen::{
     jit::{
         code_cleaner,
         identity_queue::QueueItem,
-        processor::{algebraic_expression_to_queue_items, Processor},
+        processor::{
+            algebraic_expression_to_queue_items, algebraic_variable_equation_to_queue_items,
+            Processor,
+        },
         prover_function_heuristics::decode_prover_functions,
         quadratic_symbolic_expression::QuadraticSymbolicExpression,
     },
@@ -112,15 +115,9 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
         // For each argument, connect the expression on the RHS with the formal parameter.
         for (index, expr) in bus_receive.selected_payload.expressions.iter().enumerate() {
-            let param = Variable::Param(index);
-            queue_items.extend(algebraic_expression_to_queue_items(
+            queue_items.extend(algebraic_variable_equation_to_queue_items(
                 expr,
-                if known_args[index] {
-                    let rc = witgen.range_constraint(&param);
-                    QuadraticSymbolicExpression::from_known_symbol(param, rc)
-                } else {
-                    QuadraticSymbolicExpression::from_unknown_variable(param)
-                },
+                &Variable::Param(index),
                 self.latch_row as i32,
                 &witgen,
             ));

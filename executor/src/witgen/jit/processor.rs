@@ -15,7 +15,10 @@ use crate::witgen::{
 
 use super::{
     affine_symbolic_expression,
-    algebraic_to_quadratic::algebraic_expression_to_quadratic_symbolic_expression,
+    algebraic_to_quadratic::{
+        algebraic_expression_to_quadratic_symbolic_expression,
+        variable_to_quadratic_symbolic_expression,
+    },
     debug_formatter::format_incomplete_bus_sends,
     effect::{format_code, Effect},
     identity_queue::{IdentityQueue, QueueItem},
@@ -95,7 +98,14 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     // Create variable assignments for the arguments of bus send identities.
                     machine_call_params(bus_send, *row_offset)
                         .zip(&bus_send.selected_payload.expressions)
-                        .map(|(var, arg)| QueueItem::variable_assignment(arg, var, *row_offset))
+                        .flat_map(|(var, arg)| {
+                            algebraic_variable_equation_to_queue_items(
+                                arg,
+                                &var,
+                                *row_offset,
+                                &witgen,
+                            )
+                        })
                         .chain(std::iter::once(QueueItem::Identity(id, *row_offset)))
                         .collect_vec()
                 }
@@ -599,15 +609,42 @@ pub fn algebraic_expression_to_queue_items<'b, T: FieldElement, Fixed: FixedEval
 ) -> [QueueItem<'b, T>; 2] {
     let rhs = rhs.into();
     [true, false].map(move |require_concretely_known| {
-        let expr = algebraic_expression_to_quadratic_symbolic_expression(
+        let lhs = algebraic_expression_to_quadratic_symbolic_expression(
             expr,
             row_offset,
             require_concretely_known,
             witgen,
             witgen,
-        ) - rhs.clone();
+        );
         QueueItem::Equation {
+            expr: lhs - rhs.clone(),
+            require_concretely_known,
+        }
+    })
+}
+
+pub fn algebraic_variable_equation_to_queue_items<'b, T: FieldElement>(
+    expr: &AlgebraicExpression<T>,
+    var: &Variable,
+    row_offset: i32,
+    witgen: &WitgenInference<'_, T, impl FixedEvaluator<T>>,
+) -> [QueueItem<'b, T>; 2] {
+    [true, false].map(move |require_concretely_known| {
+        let lhs = algebraic_expression_to_quadratic_symbolic_expression(
             expr,
+            row_offset,
+            require_concretely_known,
+            witgen,
+            witgen,
+        );
+        let rhs = variable_to_quadratic_symbolic_expression(
+            var.clone(),
+            require_concretely_known,
+            witgen,
+            witgen,
+        );
+        QueueItem::Equation {
+            expr: lhs - rhs,
             require_concretely_known,
         }
     })
