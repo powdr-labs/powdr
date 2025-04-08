@@ -113,6 +113,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         }));
         let branch_depth = 0;
         // Sort the queue so that we have proper source order.
+        // TODO the comparator for Expressions is not properly implemented.
         queue_items.sort();
         let identity_queue = IdentityQueue::new(queue_items);
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)

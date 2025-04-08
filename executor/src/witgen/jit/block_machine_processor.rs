@@ -74,9 +74,9 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .collect::<HashSet<_>>();
         let witgen = WitgenInference::new(self.fixed_data, self, known_variables, []);
 
-        let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
-
         let mut queue_items = vec![];
+
+        let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
 
         // In the latch row, set the RHS selector to 1.
         let selector = &bus_receive.selected_payload.selector;
@@ -112,9 +112,15 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
         // For each argument, connect the expression on the RHS with the formal parameter.
         for (index, expr) in bus_receive.selected_payload.expressions.iter().enumerate() {
+            let param = Variable::Param(index);
             queue_items.extend(algebraic_expression_to_queue_items(
                 expr,
-                QuadraticSymbolicExpression::from_unknown_variable(Variable::Param(index)),
+                if known_args[index] {
+                    let rc = witgen.range_constraint(&param);
+                    QuadraticSymbolicExpression::from_known_symbol(param, rc)
+                } else {
+                    QuadraticSymbolicExpression::from_unknown_variable(param)
+                },
                 self.latch_row as i32,
                 &witgen,
             ));
@@ -151,15 +157,17 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         for (poly_id, name) in &self.machine_parts.intermediates {
             let value = &intermediate_definitions[&(*poly_id).into()];
             for row_offset in start_row..=end_row {
-                // TODO contnue here
-                queue_items.push(QueueItem::variable_assignment(
+                queue_items.extend(algebraic_expression_to_queue_items(
                     value,
-                    Variable::IntermediateCell(Cell {
-                        column_name: name.clone(),
-                        id: poly_id.id,
-                        row_offset,
-                    }),
+                    QuadraticSymbolicExpression::from_unknown_variable(Variable::IntermediateCell(
+                        Cell {
+                            column_name: name.clone(),
+                            id: poly_id.id,
+                            row_offset,
+                        },
+                    )),
                     row_offset,
+                    &witgen,
                 ));
             }
         }

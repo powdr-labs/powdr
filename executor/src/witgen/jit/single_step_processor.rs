@@ -11,8 +11,9 @@ use crate::witgen::{machines::MachineParts, FixedData};
 use super::{
     effect::Effect,
     identity_queue::QueueItem,
-    processor::Processor,
+    processor::{algebraic_expression_to_queue_items, Processor},
     prover_function_heuristics::decode_prover_functions,
+    quadratic_symbolic_expression::QuadraticSymbolicExpression,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };
@@ -89,14 +90,17 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 vec![0, 1]
             };
             for row_offset in rows {
-                queue_items.push(QueueItem::variable_assignment(
+                queue_items.extend(algebraic_expression_to_queue_items(
                     value,
-                    Variable::IntermediateCell(Cell {
-                        column_name: name.clone(),
-                        id: poly_id.id,
-                        row_offset,
-                    }),
+                    QuadraticSymbolicExpression::from_unknown_variable(Variable::IntermediateCell(
+                        Cell {
+                            column_name: name.clone(),
+                            id: poly_id.id,
+                            row_offset,
+                        },
+                    )),
                     row_offset,
+                    &witgen,
                 ));
             }
         }

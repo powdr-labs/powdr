@@ -191,6 +191,7 @@ impl<T: FieldElement> Ord for QueueItem<'_, T> {
 }
 
 impl<'a, T: FieldElement> QueueItem<'a, T> {
+    #[allow(unused)]
     pub fn constant_assignment(lhs: &'a Expression<T>, rhs: T, row_offset: i32) -> Self {
         QueueItem::ConstantAssignment(ConstantAssignment {
             lhs,
