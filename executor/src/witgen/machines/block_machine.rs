@@ -438,7 +438,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         RowIndex::from_i64(self.rows() as i64 - 1, self.degree)
     }
 
-    #[allow(dead_code, unreachable_code)]
     fn process_plookup_internal<Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &MutableState<'a, T, Q>,
