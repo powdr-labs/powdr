@@ -287,30 +287,14 @@ impl<'a, T: FieldElement> Processor<'a, T> {
     ) -> Result<(), affine_symbolic_expression::Error> {
         while let Some(item) = identity_queue.next() {
             let updated_vars = match item {
-                QueueItem::Equation { expr, .. } => {
-                    witgen.process_quadratic_symbolic_equation(expr)
-                }
+                QueueItem::Equation { expr, .. } => witgen.process_equation(expr),
                 QueueItem::Identity(identity, row_offset) => match identity {
-                    Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                        witgen.process_equation_on_row(expression, None, 0.into(), *row_offset)
-                    }
+                    Identity::Polynomial(_) => unreachable!(),
                     Identity::BusSend(bus_send) => {
                         witgen.process_call(can_process.clone(), bus_send, *row_offset)
                     }
                     Identity::Connect(..) => Ok(vec![]),
                 },
-                QueueItem::VariableAssignment(assignment) => witgen.process_equation_on_row(
-                    assignment.lhs,
-                    Some(assignment.rhs.clone()),
-                    0.into(),
-                    assignment.row_offset,
-                ),
-                QueueItem::ConstantAssignment(assignment) => witgen.process_equation_on_row(
-                    assignment.lhs,
-                    None,
-                    assignment.rhs,
-                    assignment.row_offset,
-                ),
                 QueueItem::ProverFunction(prover_function, row_offset) => {
                     witgen.process_prover_function(prover_function, *row_offset)
                 }

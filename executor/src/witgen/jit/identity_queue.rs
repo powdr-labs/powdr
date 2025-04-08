@@ -58,8 +58,7 @@ impl<'ast, T: FieldElement> IdentityQueue<'ast, T> {
                 .into_group_map(),
         );
         let in_queue = vec![false; items.len()];
-        let identity_queue =
-            collect_filtered_indices(&items, &is_polynomial_identity_or_assignment_or_equation);
+        let identity_queue = collect_filtered_indices(&items, &is_equation);
         let machine_call_queue = collect_filtered_indices(&items, &is_submachine_call);
         let prover_function_queue = collect_filtered_indices(&items, &is_prover_function);
 
@@ -113,7 +112,7 @@ impl<'ast, T: FieldElement> IdentityQueue<'ast, T> {
 
                 if !self.in_queue[*index] {
                     self.in_queue[*index] = true;
-                    if is_polynomial_identity_or_assignment_or_equation(&self.items[*index]) {
+                    if is_equation(&self.items[*index]) {
                         self.identity_queue.push_back(*index);
                     } else if is_submachine_call(&self.items[*index]) {
                         self.machine_call_queue.insert(*index);
@@ -127,16 +126,12 @@ impl<'ast, T: FieldElement> IdentityQueue<'ast, T> {
     }
 }
 
-fn is_polynomial_identity_or_assignment_or_equation<T: FieldElement>(
-    item: &QueueItem<'_, T>,
-) -> bool {
+fn is_equation<T: FieldElement>(item: &QueueItem<'_, T>) -> bool {
     match item {
-        QueueItem::Identity(Identity::Polynomial(..), _)
-        | QueueItem::VariableAssignment(..)
-        | QueueItem::ConstantAssignment(..)
-        | QueueItem::Equation { .. } => true,
+        QueueItem::Equation { .. } => true,
         QueueItem::Identity(Identity::BusSend(..), _) | QueueItem::ProverFunction(..) => false,
-        QueueItem::Identity(Identity::Connect(..), _) => unreachable!(),
+        QueueItem::Identity(Identity::Connect(..), _)
+        | QueueItem::Identity(Identity::Polynomial(..), _) => unreachable!(),
     }
 }
 
@@ -169,19 +164,16 @@ pub enum QueueItem<'a, T: FieldElement> {
         require_concretely_known: bool,
     },
     Identity(&'a Identity<T>, i32),
-    VariableAssignment(VariableAssignment<'a, T>),
-    ConstantAssignment(ConstantAssignment<'a, T>),
     ProverFunction(ProverFunction<'a, T>, i32),
 }
 
 impl<T: FieldElement> Ord for QueueItem<'_, T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
+            // TODO comparison of Equation is not properly implemented here.
             (QueueItem::Identity(id1, row1), QueueItem::Identity(id2, row2)) => {
                 (row1, id1.id()).cmp(&(row2, id2.id()))
             }
-            (QueueItem::VariableAssignment(a1), QueueItem::VariableAssignment(a2)) => a1.cmp(a2),
-            (QueueItem::ConstantAssignment(a1), QueueItem::ConstantAssignment(a2)) => a1.cmp(a2),
             (QueueItem::ProverFunction(p1, row1), QueueItem::ProverFunction(p2, row2)) => {
                 (row1, p1.index).cmp(&(row2, p2.index))
             }
@@ -190,29 +182,10 @@ impl<T: FieldElement> Ord for QueueItem<'_, T> {
     }
 }
 
-impl<'a, T: FieldElement> QueueItem<'a, T> {
-    #[allow(unused)]
-    pub fn constant_assignment(lhs: &'a Expression<T>, rhs: T, row_offset: i32) -> Self {
-        QueueItem::ConstantAssignment(ConstantAssignment {
-            lhs,
-            row_offset,
-            rhs,
-        })
-    }
-
-    pub fn variable_assignment(lhs: &'a Expression<T>, rhs: Variable, row_offset: i32) -> Self {
-        QueueItem::VariableAssignment(VariableAssignment {
-            lhs,
-            row_offset,
-            rhs,
-        })
-    }
-
+impl<T: FieldElement> QueueItem<'_, T> {
     fn order(&self) -> u32 {
         match self {
             QueueItem::Equation { .. } => 0,
-            QueueItem::ConstantAssignment(..) => 1,
-            QueueItem::VariableAssignment(..) => 2,
             QueueItem::Identity(..) => 3,
             QueueItem::ProverFunction(..) => 4,
         }
@@ -284,12 +257,6 @@ impl<'a> ReferencesComputer<'a> {
                 ),
                 Identity::Connect(..) => Box::new(std::iter::empty()),
             },
-            QueueItem::ConstantAssignment(a) => {
-                Box::new(variables_in_expression(a.lhs, a.row_offset).into_iter())
-            }
-            QueueItem::VariableAssignment(a) => Box::new(
-                std::iter::once(a.rhs.clone()).chain(variables_in_expression(a.lhs, a.row_offset)),
-            ),
             QueueItem::ProverFunction(p, row) => Box::new(
                 p.condition
                     .iter()

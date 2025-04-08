@@ -231,73 +231,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 
     /// Set a variable to a fixed value.
     pub fn set_variable(&mut self, variable: Variable, value: T) -> Result<Vec<Variable>, Error> {
-        self.process_equation_on_row(
-            &Expression::Number(0.into()),
-            Some(variable),
-            -value,
-            // The row does not matter because the algebraic expression is empty
-            0,
+        self.process_equation(
+            &(QuadraticSymbolicExpression::from_unknown_variable(variable) - value.into()),
         )
     }
 
-    /// Processes the equality constraint `lhs = variable + offset` with row offset `row_offset`.
-    /// If `variable` is `None`, it is treated as zero.
-    /// If this returns an error, it means we have conflicting constraints.
-    pub fn process_equation_on_row(
-        &mut self,
-        lhs: &Expression<T>,
-        variable: Option<Variable>,
-        offset: T,
-        row_offset: i32,
-    ) -> Result<Vec<Variable>, Error> {
-        // Try to find a new assignment to a variable in the equality.
-        let mut result = self.process_equation_on_row_using_evaluator(
-            lhs,
-            variable.clone(),
-            offset,
-            row_offset,
-            false,
-        )?;
-        // Try to propagate range constraints.
-        let result_concrete =
-            self.process_equation_on_row_using_evaluator(lhs, variable, offset, row_offset, true)?;
-
-        // We only use the effects of the second evaluation,
-        // its `complete` flag is ignored.
-        result.effects.extend(result_concrete.effects);
-
-        self.ingest_effects(result, None)
-    }
-
-    /// Processes the equality constraint `lhs = variable + offset`.
-    /// If `variable` is `None`, it is treated as zero.
-    /// If `only_concrete_known` is true, then only variables that are known to have a fixed value
-    /// are considered known.
-    /// If this returns an error, it means we have conflicting constraints.
-    fn process_equation_on_row_using_evaluator(
-        &self,
-        lhs: &Expression<T>,
-        variable: Option<Variable>,
-        offset: T,
-        row_offset: i32,
-        only_concrete_known: bool,
-    ) -> Result<ProcessResult<T, Variable>, Error> {
-        let evaluator = if only_concrete_known {
-            Evaluator::new(self).only_concrete_known()
-        } else {
-            Evaluator::new(self)
-        };
-        let Some(lhs_evaluated) = evaluator.evaluate(lhs, row_offset) else {
-            return Ok(ProcessResult::empty());
-        };
-        let variable = variable
-            .map(|v| evaluator.evaluate_variable(v.clone()))
-            .unwrap_or_default();
-
-        (lhs_evaluated - variable - offset.into()).solve()
-    }
-
-    pub fn process_quadratic_symbolic_equation(
+    pub fn process_equation(
         &mut self,
         equation: &QuadraticSymbolicExpression<T, Variable>,
     ) -> Result<Vec<Variable>, Error> {
@@ -546,17 +485,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEv
         }
     }
 
-    /// Sets this evaluator into the mode where only concrete variables are
-    /// considered "known". This means even if we know how to compute a variable,
-    /// as long as we cannot determine it to have a fixed value at compile-time,
-    /// it is considered "unknown" and we can solve for it.
-    pub fn only_concrete_known(self) -> Self {
-        Self {
-            witgen_inference: self.witgen_inference,
-            only_concrete_known: true,
-        }
-    }
-
     pub fn evaluate(
         &self,
         expr: &Expression<T>,
@@ -687,7 +615,10 @@ mod test {
 
     use crate::witgen::{
         global_constraints,
-        jit::{effect::format_code, test_util::read_pil, variable::Cell},
+        jit::{
+            algebraic_to_quadratic::algebraic_expression_to_quadratic_symbolic_expression,
+            effect::format_code, test_util::read_pil, variable::Cell,
+        },
         machines::{FixedLookup, KnownMachine},
         FixedData,
     };
@@ -746,9 +677,12 @@ mod test {
             for row in rows {
                 for id in fixed_data.identities.iter() {
                     let updated_vars = match id {
-                        Identity::Polynomial(PolynomialIdentity { expression, .. }) => witgen
-                            .process_equation_on_row(expression, None, 0.into(), *row)
-                            .unwrap(),
+                        Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
+                            let equation = algebraic_expression_to_quadratic_symbolic_expression(
+                                expression, *row, false, &witgen, &witgen,
+                            );
+                            witgen.process_equation(&equation).unwrap()
+                        }
                         Identity::BusSend(bus_send) => {
                             let mut updated_vars = vec![];
                             for (index, arg) in
@@ -759,11 +693,18 @@ mod test {
                                     row_offset: *row,
                                     index,
                                 });
-                                updated_vars.extend(
-                                    witgen
-                                        .process_equation_on_row(arg, Some(var), 0.into(), *row)
-                                        .unwrap(),
+                                let var = if witgen.is_known(&var) {
+                                    QuadraticSymbolicExpression::from_known_symbol(
+                                        var.clone(),
+                                        witgen.range_constraint(&var),
+                                    )
+                                } else {
+                                    QuadraticSymbolicExpression::from_unknown_variable(var.clone())
+                                };
+                                let arg = algebraic_expression_to_quadratic_symbolic_expression(
+                                    arg, *row, false, &witgen, &witgen,
                                 );
+                                updated_vars.extend(witgen.process_equation(&(var - arg)).unwrap());
                             }
                             updated_vars.extend(
                                 witgen.process_call(&mutable_state, bus_send, *row).unwrap(),
