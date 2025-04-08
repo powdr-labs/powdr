@@ -13,6 +13,7 @@ pub trait KnownProvider {
     fn is_known(&self, variable: &Variable) -> bool;
 }
 
+
 pub fn algebraic_expression_to_quadratic_symbolic_expression<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
     row_offset: i32,

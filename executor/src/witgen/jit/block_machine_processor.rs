@@ -7,8 +7,11 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     jit::{
-        code_cleaner, identity_queue::QueueItem, processor::Processor,
+        code_cleaner,
+        identity_queue::QueueItem,
+        processor::{algebraic_expression_to_queue_items, Processor},
         prover_function_heuristics::decode_prover_functions,
+        quadratic_symbolic_expression::QuadraticSymbolicExpression,
     },
     machines::MachineParts,
     FixedData,
@@ -77,18 +80,20 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
 
         // In the latch row, set the RHS selector to 1.
         let selector = &bus_receive.selected_payload.selector;
-        queue_items.push(QueueItem::constant_assignment(
+        queue_items.extend(algebraic_expression_to_queue_items(
             selector,
             T::one(),
             self.latch_row as i32,
+            &witgen,
         ));
 
         if let Some((index, value)) = known_concrete {
             // Set the known argument to the concrete value.
-            queue_items.push(QueueItem::constant_assignment(
+            queue_items.extend(algebraic_expression_to_queue_items(
                 &bus_receive.selected_payload.expressions[index],
                 value,
                 self.latch_row as i32,
+                &witgen,
             ));
         }
 
@@ -96,20 +101,22 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         for other_receive in self.machine_parts.bus_receives.values() {
             let other_selector = &other_receive.selected_payload.selector;
             if other_selector != selector {
-                queue_items.push(QueueItem::constant_assignment(
+                queue_items.extend(algebraic_expression_to_queue_items(
                     other_selector,
                     T::zero(),
                     self.latch_row as i32,
+                    &witgen,
                 ));
             }
         }
 
         // For each argument, connect the expression on the RHS with the formal parameter.
         for (index, expr) in bus_receive.selected_payload.expressions.iter().enumerate() {
-            queue_items.push(QueueItem::variable_assignment(
+            queue_items.extend(algebraic_expression_to_queue_items(
                 expr,
-                Variable::Param(index),
+                QuadraticSymbolicExpression::from_unknown_variable(Variable::Param(index)),
                 self.latch_row as i32,
+                &witgen,
             ));
         }
 
@@ -144,6 +151,7 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         for (poly_id, name) in &self.machine_parts.intermediates {
             let value = &intermediate_definitions[&(*poly_id).into()];
             for row_offset in start_row..=end_row {
+                // TODO contnue here
                 queue_items.push(QueueItem::variable_assignment(
                     value,
                     Variable::IntermediateCell(Cell {
