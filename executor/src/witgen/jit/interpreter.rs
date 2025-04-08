@@ -137,7 +137,7 @@ enum MachineCallArgumentIdx {
 /// Version of ``effect::ProverFunctionCall`` with variables replaced by their indices.
 #[derive(Debug)]
 struct IndexedProverFunctionCall {
-    pub targets: Vec<usize>,
+    pub targets: Vec<Option<usize>>,
     pub function_index: usize,
     pub row_offset: i32,
     pub inputs: Vec<usize>,
@@ -258,7 +258,10 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
                 row_offset,
                 inputs,
             }) => {
-                let targets = targets.iter().map(|v| var_mapper.map_var(v)).collect();
+                let targets = targets
+                    .iter()
+                    .map(|v| v.as_ref().map(|v| var_mapper.map_var(v)))
+                    .collect();
                 let inputs = inputs.iter().map(|v| var_mapper.map_var(v)).collect();
                 InterpreterAction::ProverFunctionCall(IndexedProverFunctionCall {
                     targets,
@@ -387,7 +390,9 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
                         let result =
                             self.evaluate_prover_function(call, row_offset, inputs, fixed_data);
                         for (idx, val) in call.targets.iter().zip_eq(result) {
-                            vars[*idx] = val;
+                            if let Some(idx) = idx {
+                                vars[*idx] = val;
+                            }
                         }
                     }
                     InterpreterAction::Assertion(e1, e2, expected_equal) => {
@@ -569,7 +574,7 @@ impl<T: FieldElement> InterpreterAction<T> {
                 }
             }),
             InterpreterAction::ProverFunctionCall(call) => {
-                set.extend(call.targets.iter().copied());
+                set.extend(call.targets.iter().flatten().copied());
             }
             InterpreterAction::Branch(_branch_test, if_actions, else_actions) => {
                 set.extend(

@@ -418,7 +418,13 @@ fn format_effect<T: FieldElement>(effect: &Effect<T, Variable>, is_top_level: bo
             format!(
                 "{}[{}] = prover_function_{function_index}(mutable_state, input_from_channel, output_to_channel, row_offset + {row_offset}, &[{}]);",
                 if is_top_level { "let " } else { "" },
-                targets.iter().map(variable_to_string).format(", "),
+                targets.iter().map(|v|
+                    if let Some(v) = v {
+                        variable_to_string(v)
+                    } else {
+                        "_".to_string()
+                    }
+                    ).format(", "),
                 inputs.iter().map(variable_to_string).format(", ")
             )
         }
@@ -1234,7 +1240,7 @@ extern \"C\" fn witgen(
         let y = cell("y", 1, 0);
         let z = cell("z", 2, 0);
         let effects = vec![Effect::ProverFunctionCall(ProverFunctionCall {
-            targets: vec![x.clone()],
+            targets: vec![Some(x.clone())],
             function_index: 0,
             row_offset: 0,
             inputs: vec![y.clone(), z.clone()],
