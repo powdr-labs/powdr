@@ -20,9 +20,9 @@ let provide_if_unknown: expr, int, (-> fe) -> () = query |column, row, f| match 
     _ => (),
 };
 
-/// Returns true if all the provided columns are unknown.
-let all_unknown: expr[] -> bool = query |columns|
-    std::array::fold(columns, true, |acc, c| acc && match try_eval(c) {
+/// Returns true if at least one of the provided columns is unknown.
+let some_unknown: expr[] -> bool = query |columns|
+    std::array::fold(columns, false, |acc, c| acc || match try_eval(c) {
         Option::None => true,
         Option::Some(_) => false,
     });
@@ -33,7 +33,7 @@ let compute_from: expr, int, expr[], (fe[] -> fe) -> () = query |dest_col, row, 
 
 /// Computes the value of multiple columns in a row based on the values of other columns.
 let compute_from_multi: expr[], int, expr[], (fe[] -> fe[]) -> () = query |dest_cols, row, input_cols, f|
-    if all_unknown(dest_cols) {
+    if some_unknown(dest_cols) {
         let values = f(std::array::map(input_cols, eval));
         let _ = std::array::zip(dest_cols, values, |c, v| provide_value(c, row, v));
     } else {

@@ -191,8 +191,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .iter()
             .map(|t| Variable::from_reference(t, row_offset))
             .collect::<Vec<_>>();
-        // Only continue if none of the targets are known.
-        if targets.iter().any(|t| self.is_known(t)) {
+        // Continue if at least one of the targets is unknown.
+        if targets.iter().all(|t| self.is_known(t)) {
             return Ok(vec![]);
         }
         let inputs = prover_function
@@ -213,7 +213,10 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         }
 
         let effect = Effect::ProverFunctionCall(ProverFunctionCall {
-            targets,
+            targets: targets
+                .into_iter()
+                .map(|v| (!self.is_known(&v)).then_some(v))
+                .collect(),
             function_index: prover_function.index,
             row_offset,
             inputs,
@@ -393,7 +396,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     inputs,
                 }) => {
                     let mut some_known = false;
-                    for t in targets {
+                    for t in targets.iter().flatten() {
                         if self.record_known(t.clone()) {
                             some_known = true;
                             updated_variables.push(t.clone());
@@ -402,7 +405,13 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     if some_known {
                         log::trace!(
                             "[{}] := prover_function_{function_index}({row_offset}, {})",
-                            targets.iter().format(", "),
+                            targets
+                                .iter()
+                                .map(|v| v
+                                    .as_ref()
+                                    .map(|v| v.to_string())
+                                    .unwrap_or_else(|| "_".to_string()))
+                                .format(", "),
                             inputs.iter().format(", ")
                         );
 
