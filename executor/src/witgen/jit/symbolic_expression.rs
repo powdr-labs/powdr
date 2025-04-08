@@ -261,6 +261,37 @@ impl<T: FieldElement, V: Clone> Neg for &SymbolicExpression<T, V> {
             SymbolicExpression::UnaryOperation(UnaryOperator::Neg, expr, _) => {
                 expr.as_ref().clone()
             }
+            SymbolicExpression::BinaryOperation(lhs, BinaryOperator::Add, rhs, _) => {
+                -(**lhs).clone() + -(**rhs).clone()
+            }
+            SymbolicExpression::BinaryOperation(lhs, BinaryOperator::Sub, rhs, _) => {
+                SymbolicExpression::BinaryOperation(
+                    rhs.clone(),
+                    BinaryOperator::Sub,
+                    lhs.clone(),
+                    self.range_constraint().multiple(-T::from(1)),
+                )
+            }
+            SymbolicExpression::BinaryOperation(lhs, BinaryOperator::Mul, rhs, _)
+                if matches!(**lhs, SymbolicExpression::Concrete(_)) =>
+            {
+                SymbolicExpression::BinaryOperation(
+                    Arc::new(-(**lhs).clone()),
+                    BinaryOperator::Mul,
+                    rhs.clone(),
+                    self.range_constraint().multiple(-T::from(1)),
+                )
+            }
+            SymbolicExpression::BinaryOperation(lhs, BinaryOperator::Mul, rhs, _)
+                if matches!(**rhs, SymbolicExpression::Concrete(_)) =>
+            {
+                SymbolicExpression::BinaryOperation(
+                    lhs.clone(),
+                    BinaryOperator::Mul,
+                    Arc::new(-(**rhs).clone()),
+                    self.range_constraint().multiple(-T::from(1)),
+                )
+            }
             _ => SymbolicExpression::UnaryOperation(
                 UnaryOperator::Neg,
                 Arc::new(self.clone()),

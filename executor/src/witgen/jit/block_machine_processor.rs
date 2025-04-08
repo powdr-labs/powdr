@@ -7,7 +7,6 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     jit::{
-        algebraic_to_quadratic::algebraic_expression_to_quadratic_symbolic_expression,
         code_cleaner, identity_queue::QueueItem, processor::Processor,
         prover_function_heuristics::decode_prover_functions,
     },
@@ -475,7 +474,7 @@ mod test {
             "Add::sel[0] = 1;
 Add::a[0] = params[0];
 Add::b[0] = params[1];
-Add::c[0] = -(-Add::a[0] + -Add::b[0]);
+Add::c[0] = (Add::a[0] + Add::b[0]);
 params[2] = Add::c[0];"
         );
     }
@@ -538,16 +537,16 @@ call_var(9, 2, 1) = main_binary::A_byte[2];
 call_var(9, 2, 2) = main_binary::B_byte[2];
 call_var(9, 2, 0) = main_binary::operation_id_next[2];
 main_binary::operation_id[1] = main_binary::operation_id[2];
+main_binary::operation_id_next[1] = main_binary::operation_id[2];
 2**0 * main_binary::A[1] + 2**16 * main_binary::A_byte[1] := main_binary::A[2];
 2**0 * main_binary::B[1] + 2**16 * main_binary::B_byte[1] := main_binary::B[2];
-main_binary::operation_id_next[1] = main_binary::operation_id[2];
 main_binary::operation_id[0] = main_binary::operation_id[1];
 main_binary::operation_id_next[0] = main_binary::operation_id[1];
+call_var(9, 1, 0) = main_binary::operation_id_next[1];
 2**0 * main_binary::A[0] + 2**8 * main_binary::A_byte[0] := main_binary::A[1];
 call_var(9, 1, 1) = main_binary::A_byte[1];
 2**0 * main_binary::B[0] + 2**8 * main_binary::B_byte[0] := main_binary::B[1];
 call_var(9, 1, 2) = main_binary::B_byte[1];
-call_var(9, 1, 0) = main_binary::operation_id_next[1];
 main_binary::operation_id_next[-1] = main_binary::operation_id[0];
 call_var(9, 0, 0) = main_binary::operation_id_next[0];
 main_binary::A_byte[-1] = main_binary::A[0];
@@ -630,12 +629,12 @@ params[1] = Sub::b[0];"
             "SubM::a[0] = params[0];
 2**0 * SubM::c[0] + 2**8 * SubM::b[0] := SubM::a[0];
 params[1] = SubM::b[0];
-params[2] = SubM::c[0];
 call_var(1, 0, 0) = SubM::c[0];
 SubM::c[1] = SubM::c[0];
+params[2] = SubM::c[0];
 SubM::b[1] = SubM::b[0];
+SubM::a[1] = (SubM::c[1] + (SubM::b[1] * 256));
 call_var(1, 1, 0) = SubM::b[1];
-SubM::a[1] = ((SubM::b[1] * 256) + SubM::c[1]);
 machine_call(2, [Known(call_var(1, 0, 0))]);
 machine_call(2, [Known(call_var(1, 1, 0))]);"
         );
@@ -697,8 +696,7 @@ machine_call(3, [Known(call_var(3, 0, 0))]);"
         );
         assert_eq!(
             code,
-            "S::a[0] = params[0];
-S::b[0] = 0;
+            "S::b[0] = 0;
 S::b[1] = 0;
 S::c[0] = 1;
 S::b[2] = 0;
@@ -706,6 +704,7 @@ S::c[1] = 1;
 S::b[3] = 8;
 S::c[2] = 1;
 S::c[3] = 9;
+S::a[0] = params[0];
 params[1] = 0;
 params[2] = 1;"
         );
@@ -820,7 +819,7 @@ S::Y[0] = params[1];
 S::Zi[0][0] = (S::X[0] + S::Y[0]);
 S::Zi[2][0] = (S::Y[0] * S::Y[0]);
 S::Zi[1][0] = (2 * S::X[0]);
-S::Z[0] = ((S::Zi[0][0] + S::Zi[1][0]) + S::Zi[2][0]);
+S::Z[0] = ((S::Zi[0][0] + S::Zi[2][0]) + S::Zi[1][0]);
 params[2] = S::Z[0];"
         );
     }
@@ -894,8 +893,8 @@ params[2] = S::carry[0];"
         assert_eq!(
             code,
             "\
-S::Y[0] = params[0];
-S::Z[0] = params[1];
+S::Y[0] = 19;
+S::Z[0] = 16;
 S::X[0] = 253;
 S::carry[0] = 1;
 params[2] = 1;"
@@ -930,8 +929,8 @@ params[2] = 1;"
         assert_eq!(
             code,
             "\
-S::Y[0] = params[0];
-S::Z[0] = params[1];
+S::Y[0] = 1;
+S::Z[0] = 16;
 S::X[0] = 15;
 S::carry[0] = 0;
 params[2] = 0;"
