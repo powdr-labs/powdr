@@ -28,7 +28,6 @@ use super::{
     quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     symbolic_expression::SymbolicExpression,
     variable::{Cell, MachineCallVariable, Variable},
-    variable_update::VariableUpdate,
 };
 
 /// This component can generate code that solves identities.

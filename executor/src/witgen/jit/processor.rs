@@ -116,14 +116,14 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         branch_depth: usize,
     ) -> Result<ProcessorResult<T>, Error<'a, T, FixedEval>> {
         if self
-            .process_until_no_progress(can_process.clone(), &mut witgen, identity_queue.clone())
+            .process_until_no_progress(can_process.clone(), &mut witgen, &mut identity_queue)
             .is_err()
         {
             return Err(Error::conflicting_constraints(witgen));
         }
 
         let missing_variables =
-            match self.try_to_finish(can_process.clone(), &mut witgen, identity_queue.clone()) {
+            match self.try_to_finish(can_process.clone(), &mut witgen, &mut identity_queue) {
                 Ok(()) => {
                     let range_constraints = self
                         .requested_range_constraints
@@ -256,7 +256,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         &self,
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        mut identity_queue: IdentityQueue<'a, '_, T>,
+        identity_queue: &mut IdentityQueue<'a, '_, T>,
     ) -> Result<(), affine_symbolic_expression::Error> {
         while let Some(item) = identity_queue.next() {
             let updated_vars = match item {
@@ -299,7 +299,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         &self,
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        identity_queue: IdentityQueue<'a, '_, T>,
+        identity_queue: &mut IdentityQueue<'a, '_, T>,
     ) -> Result<(), Vec<Variable>> {
         // Check that we could derive all requested variables.
         let missing_variables = self
@@ -321,7 +321,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                 &incomplete_machine_calls,
                 can_process.clone(),
                 witgen,
-                identity_queue.clone(),
+                identity_queue,
             )
         {
             return Err(missing_variables);
@@ -415,7 +415,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         incomplete_machine_calls: &[(&Identity<T>, i32)],
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        mut identity_queue: IdentityQueue<'a, '_, T>,
+        identity_queue: &mut IdentityQueue<'a, '_, T>,
     ) -> bool {
         let missing_sends_in_block = incomplete_machine_calls
             .iter()
@@ -438,6 +438,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         }
         // Create a copy in case we fail.
         let mut modified_witgen = witgen.clone();
+        let mut modified_identity_queue = identity_queue.clone();
         // Now set all parameters to zero.
         for (bus_send, row) in missing_sends_in_block {
             let [param] = &machine_call_params(bus_send, row).collect_vec()[..] else {
@@ -446,15 +447,20 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             assert!(!witgen.is_known(param));
             match modified_witgen.set_variable(param.clone(), 0.into()) {
                 Err(_) => return false,
-                Ok(updated_vars) => identity_queue.variables_updated(updated_vars),
+                Ok(updated_vars) => modified_identity_queue.variables_updated(updated_vars),
             };
         }
         if self
-            .process_until_no_progress(can_process, &mut modified_witgen, identity_queue)
+            .process_until_no_progress(
+                can_process,
+                &mut modified_witgen,
+                &mut modified_identity_queue,
+            )
             .is_ok()
             && self.incomplete_machine_calls(&modified_witgen).is_empty()
         {
             *witgen = modified_witgen;
+            *identity_queue = modified_identity_queue;
             true
         } else {
             false
@@ -520,9 +526,10 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         unknown_variables: &[Variable],
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        mut identity_queue: IdentityQueue<'a, '_, T>,
+        identity_queue: &mut IdentityQueue<'a, '_, T>,
     ) -> bool {
         let mut tentative_witgen = witgen.clone();
+        let mut tentative_identity_queue = identity_queue.clone();
         // TODO: We could also call `process_until_no_progress` after each variable
         // and revert if this caused an error and skip those variables.
         // It might be that the variables will be determined by other variables.
@@ -531,7 +538,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             let value = tentative_witgen.range_constraint(var).range().0;
             match tentative_witgen.set_variable(var.clone(), value) {
                 Err(_) => return false,
-                Ok(updated_vars) => identity_queue.variables_updated(updated_vars),
+                Ok(updated_vars) => tentative_identity_queue.variables_updated(updated_vars),
             };
         }
 
@@ -539,11 +546,12 @@ impl<'a, T: FieldElement> Processor<'a, T> {
             .process_until_no_progress(
                 can_process.clone(),
                 &mut tentative_witgen,
-                identity_queue.clone(),
+                &mut tentative_identity_queue,
             )
             .is_ok()
         {
             *witgen = tentative_witgen;
+            *identity_queue = tentative_identity_queue;
             true
         } else {
             false
