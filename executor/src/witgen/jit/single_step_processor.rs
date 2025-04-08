@@ -79,10 +79,8 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             .map(|f| QueueItem::ProverFunction(f, 1))
             .collect_vec();
 
-        // Add the intermediate definitions. It is fine to iterate over
-        // a hash type because the queue will re-sort its items.
-        #[allow(clippy::iter_over_hash_type)]
-        for (poly_id, name) in &self.machine_parts.intermediates {
+        // Add the intermediate definitions.
+        for (poly_id, name) in self.machine_parts.intermediates.iter().sorted() {
             let value = &intermediate_definitions[&(*poly_id).into()];
             let rows = if value.contains_next_ref(&intermediate_definitions) {
                 vec![0]

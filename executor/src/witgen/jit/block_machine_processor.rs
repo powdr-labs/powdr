@@ -148,10 +148,8 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .collect_vec()
         });
 
-        // Add the intermediate definitions. It is fine to iterate over
-        // a hash type because the queue will re-sort its items.
-        #[allow(clippy::iter_over_hash_type)]
-        for (poly_id, name) in &self.machine_parts.intermediates {
+        // Add the intermediate definitions.
+        for (poly_id, name) in self.machine_parts.intermediates.iter().sorted() {
             let value = &intermediate_definitions[&(*poly_id).into()];
             for row_offset in start_row..=end_row {
                 queue_items.extend(algebraic_expression_to_queue_items(
