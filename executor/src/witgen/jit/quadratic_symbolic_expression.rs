@@ -626,6 +626,28 @@ mod tests {
         assert_eq!(t.to_string(), "((A * 7) + (3 * (X * 7)))");
     }
 
+    #[test]
+    fn test_apply_update_inner_zero() {
+        let x = Qse::from_unknown_variable("X".to_string());
+        let y = Qse::from_unknown_variable("Y".to_string());
+        let a = Qse::from_known_symbol("A".to_string(), RangeConstraint::default());
+        let b = Qse::from_known_symbol("B".to_string(), RangeConstraint::default());
+        let mut t: Qse = (x * a + y) * b;
+        assert_eq!(t.to_string(), "(A * B) * X + B * Y");
+        t.apply_update(&VariableUpdate {
+            variable: "B".to_string(),
+            known: true,
+            range_constraint: RangeConstraint::from_value(7.into()),
+        });
+        assert_eq!(t.to_string(), "(A * 7) * X + 7 * Y");
+        t.apply_update(&VariableUpdate {
+            variable: "A".to_string(),
+            known: true,
+            range_constraint: RangeConstraint::from_value(0.into()),
+        });
+        assert_eq!(t.to_string(), "7 * Y");
+    }
+
     impl RangeConstraintProvider<GoldilocksField, String> for () {
         fn get(&self, _var: &String) -> RangeConstraint<GoldilocksField> {
             RangeConstraint::default()
