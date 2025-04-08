@@ -20,8 +20,8 @@ use super::{prover_function_heuristics::ProverFunction, variable::Variable};
 /// updates this list based on the occurrence of updated variables
 /// in identities.
 #[derive(Clone)]
-pub struct IdentityQueue<'ast, 'queue, T: FieldElement> {
-    items: &'queue Vec<QueueItem<'ast, T>>,
+pub struct IdentityQueue<'ast, T: FieldElement> {
+    items: Vec<QueueItem<'ast, T>>,
     in_queue: Vec<bool>,
     identity_queue: VecDeque<usize>,
     /// This is a priority queue because we always want to process
@@ -34,11 +34,11 @@ pub struct IdentityQueue<'ast, 'queue, T: FieldElement> {
     occurrences: Rc<HashMap<Variable, Vec<usize>>>,
 }
 
-impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
+impl<'ast, T: FieldElement> IdentityQueue<'ast, T> {
     /// Creates a new queue based on the given identities.
     /// The order of identities in this queue matters for the
     /// order in which they are processed.
-    pub fn new(items: &'queue Vec<QueueItem<'ast, T>>) -> Self {
+    pub fn new(items: Vec<QueueItem<'ast, T>>) -> Self {
         let mut references = ReferencesComputer::default();
         let occurrences = Rc::new(
             items
@@ -53,19 +53,25 @@ impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
                 })
                 .into_group_map(),
         );
+        let in_queue = vec![false; items.len()];
+        let identity_queue =
+            collect_filtered_indices(&items, &is_polynomial_identity_or_assignment);
+        let machine_call_queue = collect_filtered_indices(&items, &is_submachine_call);
+        let prover_function_queue = collect_filtered_indices(&items, &is_prover_function);
+
         Self {
             items,
-            in_queue: vec![true; items.len()],
-            identity_queue: collect_filtered_indices(items, &is_polynomial_identity_or_assignment),
-            machine_call_queue: collect_filtered_indices(items, &is_submachine_call),
-            prover_function_queue: collect_filtered_indices(items, &is_prover_function),
+            in_queue,
+            identity_queue,
+            machine_call_queue,
+            prover_function_queue,
             occurrences,
         }
     }
 
     /// Returns the next identity to be processed and its row and
     /// removes it from the queue.
-    pub fn next(&mut self) -> Option<&'queue QueueItem<'ast, T>> {
+    pub fn next(&mut self) -> Option<&QueueItem<'ast, T>> {
         self.identity_queue
             .pop_front()
             .or_else(|| self.machine_call_queue.pop_first())

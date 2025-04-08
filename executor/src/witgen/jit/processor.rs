@@ -104,7 +104,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         let branch_depth = 0;
         // Sort the queue so that we have proper source order.
         queue_items.sort();
-        let identity_queue = IdentityQueue::new(&queue_items);
+        let identity_queue = IdentityQueue::new(queue_items);
         self.generate_code_for_branch(can_process, witgen, identity_queue, branch_depth)
     }
 
@@ -112,7 +112,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         &self,
         can_process: impl CanProcessCall<T>,
         mut witgen: WitgenInference<'a, T, FixedEval>,
-        mut identity_queue: IdentityQueue<'a, '_, T>,
+        mut identity_queue: IdentityQueue<'a, T>,
         branch_depth: usize,
     ) -> Result<ProcessorResult<T>, Error<'a, T, FixedEval>> {
         if self
@@ -256,7 +256,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         &self,
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        identity_queue: &mut IdentityQueue<'a, '_, T>,
+        identity_queue: &mut IdentityQueue<'a, T>,
     ) -> Result<(), affine_symbolic_expression::Error> {
         while let Some(item) = identity_queue.next() {
             let updated_vars = match item {
@@ -299,7 +299,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         &self,
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        identity_queue: &mut IdentityQueue<'a, '_, T>,
+        identity_queue: &mut IdentityQueue<'a, T>,
     ) -> Result<(), Vec<Variable>> {
         // Check that we could derive all requested variables.
         let missing_variables = self
@@ -415,7 +415,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         incomplete_machine_calls: &[(&Identity<T>, i32)],
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        identity_queue: &mut IdentityQueue<'a, '_, T>,
+        identity_queue: &mut IdentityQueue<'a, T>,
     ) -> bool {
         let missing_sends_in_block = incomplete_machine_calls
             .iter()
@@ -526,7 +526,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         unknown_variables: &[Variable],
         can_process: impl CanProcessCall<T>,
         witgen: &mut WitgenInference<'a, T, FixedEval>,
-        identity_queue: &mut IdentityQueue<'a, '_, T>,
+        identity_queue: &mut IdentityQueue<'a, T>,
     ) -> bool {
         let mut tentative_witgen = witgen.clone();
         let mut tentative_identity_queue = identity_queue.clone();
