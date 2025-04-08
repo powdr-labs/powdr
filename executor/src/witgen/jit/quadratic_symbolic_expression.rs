@@ -161,6 +161,15 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         let constant = self.constant.referenced_symbols();
         Box::new(quadr.chain(linear).chain(constant))
     }
+
+    /// Returns the set of referenced unknown variables.
+    pub fn referenced_unknown_variables(&self) -> Box<dyn Iterator<Item = &V> + '_> {
+        let quadratic = self.quadratic.iter().flat_map(|(a, b)| {
+            a.referenced_unknown_variables()
+                .chain(b.referenced_unknown_variables())
+        });
+        Box::new(quadratic.chain(self.linear.keys()))
+    }
 }
 
 pub trait RangeConstraintProvider<T: FieldElement, V> {
