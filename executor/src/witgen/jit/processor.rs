@@ -696,6 +696,7 @@ pub struct Error<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
     pub witgen: WitgenInference<'a, T, FixedEval>,
     /// Required variables that could not be determined
     pub missing_variables: Vec<Variable>,
+    // TODO it should have the identity queue instead.
     pub identities: Vec<(&'a Identity<T>, i32)>,
 }
 
@@ -779,6 +780,7 @@ impl<'a, T: FieldElement, FE: FixedEvaluator<T>> Error<'a, T, FE> {
                 )
                 .unwrap();
         };
+        // TODO instead, we should format the identity queue.
         let formatted_identities = format_polynomial_identities(&self.identities, &self.witgen);
         if !formatted_identities.is_empty() {
             write!(
