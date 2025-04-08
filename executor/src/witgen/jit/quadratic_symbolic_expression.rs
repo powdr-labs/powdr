@@ -101,10 +101,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
             range_constraint,
         } = var_update;
         self.constant.apply_update(var_update);
-        // If the variable is a key in `linear`, it must be unknown
-        // and thus can only occur there. Otherwise, it can be in
-        // any symbolic expression.
         if self.linear.contains_key(variable) {
+            // If the variable is a key in `linear`, it must be unknown
+            // and thus can only occur there. Otherwise, it can be in
+            // any symbolic expression.
             if *known {
                 let coeff = self.linear.remove(variable).unwrap();
                 let expr =
@@ -116,6 +116,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
             for coeff in self.linear.values_mut() {
                 coeff.apply_update(var_update);
             }
+            self.linear.retain(|_, f| !f.is_known_zero());
         }
 
         // TODO can we do that without moving everything?
