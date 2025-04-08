@@ -11,7 +11,7 @@ use std::{
 use itertools::Itertools;
 use parsed::{display::format_type_args, LambdaExpression, TypeDeclaration, TypedExpression};
 
-use crate::{parsed::FunctionKind, writeln_indented};
+use crate::{asm_analysis::Batch, parsed::FunctionKind, writeln_indented};
 
 use self::parsed::{
     asm::{AbsoluteSymbolPath, SymbolPath},
@@ -94,7 +94,7 @@ impl<T: Display> Display for Analyzed<T> {
                                 f,
                                 format_witness_column(&name, symbol, definition),
                             )?,
-                            SymbolKind::Poly(PolynomialType::Intermediate) => unreachable!(),
+                            SymbolKind::Poly(PolynomialType::Intermediate) => {}
                             SymbolKind::Public() => {
                                 if let Some(FunctionValueDefinition::PublicDeclaration(decl)) =
                                     definition
@@ -463,6 +463,38 @@ impl<T: Display> Display for PhantomBusInteractionIdentity<T> {
                 ),
                 None => "Option::None".to_string(),
             },
+        )
+    }
+}
+
+impl<T: Display> Display for BatchedLinks<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "({}, {}, [{}], {})",
+            self.bus_id,
+            self.selector,
+            self.payload.0.iter().map(ToString::to_string).format(", "),
+            match &self.bus_linker_type {
+                BusLinkerType::Send => "std::protocols::bus::BusLinkerType::Send".to_string(),
+                BusLinkerType::LookupReceive =>
+                    "std::protocols::bus::BusLinkerType::LookupReceive".to_string(),
+                BusLinkerType::PermutationReceive =>
+                    "std::protocols::bus::BusLinkerType::PermutationReceive".to_string(),
+            }
+        )
+    }
+}
+
+impl<T: Display> Display for BusLinkIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "Constr::BusLink([{}]);",
+            self.batched_links
+                .iter()
+                .map(ToString::to_string)
+                .format(", "),
         )
     }
 }

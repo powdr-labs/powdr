@@ -62,7 +62,8 @@ impl<T: FieldElement> ExpressionCounter for Identity<T> {
             // phantom identities are not relevant in this context
             Identity::PhantomLookup(..)
             | Identity::PhantomPermutation(..)
-            | Identity::PhantomBusInteraction(..) => 0,
+            | Identity::PhantomBusInteraction(..)
+            | Identity::BusLink => 0,
         }
     }
 }

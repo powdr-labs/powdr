@@ -543,6 +543,7 @@ impl<'a> Definitions<'a> {
         symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = name.to_string();
+        println!("Looking up {name}");
         let (symbol, value) = definitions
             .get(&name)
             .ok_or_else(|| EvalError::SymbolNotFound(format!("Symbol {name} not found.")))?;

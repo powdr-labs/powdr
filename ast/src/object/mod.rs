@@ -14,7 +14,7 @@ mod display;
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Location {
-    limbs: Vec<String>,
+    pub limbs: Vec<String>,
 }
 
 impl Location {
