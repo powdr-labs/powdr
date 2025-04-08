@@ -7,6 +7,7 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     jit::{
+        algebraic_to_quadratic::algebraic_expression_to_quadratic_symbolic_expression,
         code_cleaner, identity_queue::QueueItem, processor::Processor,
         prover_function_heuristics::decode_prover_functions,
     },
@@ -474,7 +475,7 @@ mod test {
             "Add::sel[0] = 1;
 Add::a[0] = params[0];
 Add::b[0] = params[1];
-Add::c[0] = (Add::a[0] + Add::b[0]);
+Add::c[0] = -(-Add::a[0] + -Add::b[0]);
 params[2] = Add::c[0];"
         );
     }

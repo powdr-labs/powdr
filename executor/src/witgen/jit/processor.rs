@@ -15,6 +15,7 @@ use crate::witgen::{
 
 use super::{
     affine_symbolic_expression,
+    algebraic_to_quadratic::algebraic_expression_to_quadratic_symbolic_expression,
     debug_formatter::format_incomplete_bus_sends,
     effect::{format_code, Effect},
     identity_queue::{IdentityQueue, QueueItem},
@@ -97,7 +98,23 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                         .chain(std::iter::once(QueueItem::Identity(id, *row_offset)))
                         .collect_vec()
                 }
-                Identity::Polynomial(..) | Identity::Connect(..) => {
+                Identity::Polynomial(identity) => [true, false]
+                    .into_iter()
+                    .map(|require_concretely_known| {
+                        let expr = algebraic_expression_to_quadratic_symbolic_expression(
+                            &identity.expression,
+                            *row_offset,
+                            require_concretely_known,
+                            &witgen,
+                            &witgen,
+                        );
+                        QueueItem::Equation {
+                            expr,
+                            require_concretely_known,
+                        }
+                    })
+                    .collect(),
+                Identity::Connect(..) => {
                     vec![QueueItem::Identity(id, *row_offset)]
                 }
             }
