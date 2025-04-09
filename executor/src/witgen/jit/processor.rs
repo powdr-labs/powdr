@@ -11,17 +11,17 @@ use crate::witgen::{
 };
 
 use super::{
-    algebraic_to_quadratic::{
-        algebraic_expression_to_quadratic_symbolic_expression,
-        variable_to_quadratic_symbolic_expression,
-    },
+    algebraic_to_quadratic::algebraic_expression_to_quadratic_symbolic_expression,
     debug_formatter::format_incomplete_bus_sends,
     effect::{format_code, Effect},
     identity_queue::{IdentityQueue, QueueItem},
     quadratic_symbolic_expression::{self, QuadraticSymbolicExpression},
     variable::{MachineCallVariable, Variable},
     variable_update::VariableUpdate,
-    witgen_inference::{BranchResult, CanProcessCall, FixedEvaluator, WitgenInference},
+    witgen_inference::{
+        reference_to_quadratic_symbolic_expression, variable_to_quadratic_symbolic_expression,
+        BranchResult, CanProcessCall, FixedEvaluator, WitgenInference,
+    },
 };
 
 /// A generic processor for generating JIT code.
@@ -589,13 +589,14 @@ pub fn algebraic_expression_to_queue_items<'b, T: FieldElement, Fixed: FixedEval
 ) -> [QueueItem<'b, T>; 2] {
     let rhs = rhs.into();
     [true, false].map(move |require_concretely_known| {
-        let lhs = algebraic_expression_to_quadratic_symbolic_expression(
-            expr,
-            row_offset,
-            require_concretely_known,
-            witgen,
-            witgen,
-        );
+        let lhs = algebraic_expression_to_quadratic_symbolic_expression(expr, &|r| {
+            reference_to_quadratic_symbolic_expression(
+                r,
+                row_offset,
+                require_concretely_known,
+                witgen,
+            )
+        });
         QueueItem::Equation {
             expr: lhs - rhs.clone(),
             require_concretely_known,
@@ -610,17 +611,17 @@ pub fn algebraic_variable_equation_to_queue_items<'b, T: FieldElement>(
     witgen: &WitgenInference<'_, T, impl FixedEvaluator<T>>,
 ) -> [QueueItem<'b, T>; 2] {
     [true, false].map(move |require_concretely_known| {
-        let lhs = algebraic_expression_to_quadratic_symbolic_expression(
-            expr,
-            row_offset,
-            require_concretely_known,
-            witgen,
-            witgen,
-        );
+        let lhs = algebraic_expression_to_quadratic_symbolic_expression(expr, &|r| {
+            reference_to_quadratic_symbolic_expression(
+                r,
+                row_offset,
+                require_concretely_known,
+                witgen,
+            )
+        });
         let rhs = variable_to_quadratic_symbolic_expression(
             var.clone(),
             require_concretely_known,
-            witgen,
             witgen,
         );
         QueueItem::Equation {
@@ -678,10 +679,12 @@ fn unknown_relevant_variables<T: FieldElement, FixedEval: FixedEvaluator<T>>(
     witgen: &WitgenInference<'_, T, FixedEval>,
     row_offset: i32,
 ) -> Vec<Variable> {
-    algebraic_expression_to_quadratic_symbolic_expression(expr, row_offset, false, witgen, witgen)
-        .referenced_unknown_variables()
-        .cloned()
-        .collect()
+    algebraic_expression_to_quadratic_symbolic_expression(expr, &|r| {
+        reference_to_quadratic_symbolic_expression(r, row_offset, false, witgen)
+    })
+    .referenced_unknown_variables()
+    .cloned()
+    .collect()
 }
 
 pub struct Error<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
