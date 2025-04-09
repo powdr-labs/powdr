@@ -1,5 +1,5 @@
 mod call_graph;
-mod condenser;
+pub mod condenser;
 pub mod evaluator;
 pub mod expression_processor;
 pub mod expressionizer;

@@ -25,11 +25,22 @@ mod composite;
 mod field_filter;
 mod mock;
 
-use powdr_ast::analyzed::{Analyzed, Symbol, SymbolKind};
+use powdr_ast::{
+    analyzed::{
+        Analyzed, BusInteractionIdentity, Expression, Identity, PolynomialReference, Reference,
+        StatementIdentifier, Symbol, SymbolKind,
+    },
+    parsed::{
+        asm::{AbsoluteSymbolPath, SymbolPath},
+        ArrayLiteral, FunctionCall,
+    },
+};
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
+use powdr_parser_util::SourceRef;
 use powdr_pil_analyzer::expressionizer::Expressionizer;
-use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc};
+use std::str::FromStr;
+use std::{collections::BTreeMap, fmt::Display, io, path::PathBuf, sync::Arc};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, Default, EnumString, EnumVariantNames, Display, Copy)]
@@ -217,77 +228,136 @@ pub trait BackendFactory<F: FieldElement> {
             .iter()
             .for_each(|id| println!("source order: {:?}", id));
 
-        // let proof_items = pil.identities.iter().filter_map(|i| {
-        //     if let powdr_ast::analyzed::Identity::BusInteraction(bus_interaction) = i {
-        //         let tuple = bus_interaction
-        //             .iter()
-        //             .map(
-        //                 |BatchedLinks {
-        //                      bus_id,
-        //                      selector,
-        //                      payload,
-        //                      bus_linker_type,
-        //                  }| {
-        //                     Expression::Tuple(
-        //                         SourceRef::unknown(),
-        //                         vec![
-        //                             expressionizer
-        //                                 .try_algebraic_expression_to_expression(&bus_id)
-        //                                 .unwrap(),
-        //                             expressionizer
-        //                                 .try_algebraic_expression_to_expression(&selector)
-        //                                 .unwrap(),
-        //                             ArrayLiteral {
-        //                                 items: payload
-        //                                     .0
-        //                                     .iter()
-        //                                     .map(|expr| {
-        //                                         expressionizer
-        //                                             .try_algebraic_expression_to_expression(expr)
-        //                                             .unwrap()
-        //                                     })
-        //                                     .collect(),
-        //                             }
-        //                             .into(),
-        //                             Expression::Reference(
-        //                                 SourceRef::unknown(),
-        //                                 Reference::Poly(PolynomialReference {
-        //                                     name: String::from(
-        //                                         match bus_linker_type {
-        //                                             BusLinkerType::Send => "std::protocols::bus::BusLinkerType::Send",
-        //                                             BusLinkerType::PermutationReceive => "std::protocols::bus::BusLinkerType::PermutationReceive",
-        //                                             BusLinkerType::LookupReceive => "std::protocols::bus::BusLinkerType::LookupReceive",
-        //                                         }
-        //                                     ),
-        //                                     type_args: Some(Vec::new()),
-        //                                 })
-        //                                 .into(),
-        //                             ),
-        //                         ],
-        //                     )
-        //                 },
-        //             )
-        //             .collect();
+        let mut current_namespace = AbsoluteSymbolPath::default();
 
-        //         Some(Expression::FunctionCall(
-        //             SourceRef::unknown(),
-        //             FunctionCall {
-        //                 function: Box::new(Expression::Reference(
-        //                     SourceRef::unknown(),
-        //                     Reference::Poly(PolynomialReference {
-        //                         name: "std::protocols::bus::bus_multi_linker".to_string(),
-        //                         type_args: None,
-        //                     }),
-        //                 )),
-        //                 arguments: vec![ArrayLiteral { items: tuple }.into()],
-        //             },
-        //         ))
-        //     } else {
-        //         None
-        //     }
-        // }).collect::<Vec<_>>();
+        let mut bus_multi_logup_args = ArrayLiteral {
+            items: Default::default(),
+        };
 
-        pil
+        let mut proof_item_indices_to_remove: Vec<usize> = Vec::new();
+
+        let mut bus_multi_logup_calls: Vec<Expression> = Vec::new();
+
+        for statement in pil.source_order.clone() {
+            match statement {
+                StatementIdentifier::Definition(name) => {
+                    let mut namespace =
+                        AbsoluteSymbolPath::default().join(SymbolPath::from_str(&name).unwrap());
+                    let name = namespace.pop().unwrap();
+                    if namespace != current_namespace {
+                        current_namespace = namespace;
+                        // reset the pil call and proof item index to replace
+                        if !bus_multi_logup_args.items.is_empty() {
+                            // if not the first namespace or namespace without bus interaction
+                            // replace the proof items with the bus_multi_logup call
+                            let bus_multi_logup_call = Expression::FunctionCall(
+                                SourceRef::unknown(),
+                                FunctionCall {
+                                    function: Box::new(Expression::Reference(
+                                        SourceRef::unknown(),
+                                        Reference::Poly(PolynomialReference {
+                                            name: String::from(
+                                                "std::protocols::bus::bus_multi_linkup",
+                                            ),
+                                            type_args: Some(Vec::new()),
+                                        }),
+                                    )),
+                                    arguments: vec![ArrayLiteral {
+                                        items: std::mem::take(&mut bus_multi_logup_args.items), // reset
+                                    }
+                                    .into()],
+                                },
+                            );
+                            bus_multi_logup_calls.push(bus_multi_logup_call);
+                        }
+                    }
+                }
+                StatementIdentifier::ProofItem(index) => {
+                    match &pil.identities[index] {
+                        Identity::BusInteraction(
+                            bus_interaction @ BusInteractionIdentity {
+                                multiplicity,
+                                bus_id,
+                                payload,
+                                latch,
+                                ..
+                            },
+                        ) => {
+                            proof_item_indices_to_remove.push(index);
+                            // Input is the same as Constr::BusInteraction enum: multiplicity, id, payload, latch
+                            bus_multi_logup_args.items.push(Expression::Tuple(
+                                SourceRef::unknown(),
+                                vec![
+                                    expressionizer
+                                        .try_algebraic_expression_to_expression(&multiplicity)
+                                        .unwrap(),
+                                    expressionizer
+                                        .try_algebraic_expression_to_expression(&bus_id)
+                                        .unwrap(),
+                                    ArrayLiteral {
+                                        items: payload
+                                            .0
+                                            .iter()
+                                            .map(|expr| {
+                                                expressionizer
+                                                    .try_algebraic_expression_to_expression(expr)
+                                                    .unwrap()
+                                            })
+                                            .collect(),
+                                    }
+                                    .into(),
+                                    expressionizer
+                                        .try_algebraic_expression_to_expression(&latch)
+                                        .unwrap(),
+                                ],
+                            ));
+                        }
+                        _ => continue,
+                    }
+                }
+                _ => continue,
+            }
+        }
+
+        let new_identities: Vec<Identity<F>> = Vec::new();
+        let mut new_source_order: Vec<StatementIdentifier> = Vec::new();
+
+        // // replace the proof items with the bus_multi_logup call
+        // pil.identities.iter()
+        //     .enumerate()
+        //     .for_each(|(index, identity)| {
+        //         if !proof_item_indices_to_remove.contains(&index) {
+        //             new_identities.push(identity);
+        //         } else { // if removed, must be bus interaction
+        //             assert!(matches!(identity, Identity::BusInteraction(_)));
+        //         }
+        //     });
+
+        // update the source order
+        let mut proof_item_new_index = 0usize;
+
+        pil.source_order
+            .iter()
+            .for_each(|statement| match statement {
+                StatementIdentifier::ProofItem(index) => {
+                    if !proof_item_indices_to_remove.contains(index) {
+                        new_source_order.push(StatementIdentifier::ProofItem(proof_item_new_index));
+                        proof_item_new_index += 1;
+                    }
+                }
+                _ => new_source_order.push(statement.clone()),
+            });
+
+        let analyzed: Analyzed<F> = powdr_pil_analyzer::condenser::condense(
+            pil.definitions,
+            pil.solved_impls,
+            &bus_multi_logup_calls,
+            pil.trait_impls,
+            new_source_order,
+            pil.auto_added_symbols,
+        );
+
+        analyzed
     }
 }
 

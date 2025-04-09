@@ -233,7 +233,7 @@ impl Expressionizer<'_> {
         })
     }
 
-    fn try_algebraic_expression_to_expression<T: FieldElement>(
+    pub fn try_algebraic_expression_to_expression<T: FieldElement>(
         &self,
         e: &AlgebraicExpression<T>,
     ) -> Result<Expression, EvalError> {
