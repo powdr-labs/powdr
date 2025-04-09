@@ -666,3 +666,39 @@ fn complex_substitutions() {
     println!("Optimized: {}", optimized);
     assert_eq!(optimized, expectation);
 }
+
+#[test]
+fn chain_of_substitutions_bug() {
+    let input = r#"namespace N(65536);
+    col witness a;
+    col witness b;
+    
+    col witness x;
+    x = a + y;
+
+    col witness y;
+    y = x + b;
+
+    col witness m;
+    m = x - y;
+
+    a * b = 10;
+    m * a = 1;
+"#;
+
+    let expectation = r#"namespace N(65536);
+    col witness a;
+    col witness b;
+    col witness x;
+    N::x = N::a + N::b;
+    col witness y;
+    N::y = N::a + N::b;
+    col m = N::b - N::a;
+    N::a * N::b = 10;
+    N::m * N::a = 1;
+    
+"#;
+
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
