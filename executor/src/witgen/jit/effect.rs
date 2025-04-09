@@ -82,7 +82,7 @@ impl<T: FieldElement, V: Hash + Eq> Effect<T, V> {
                 targets, inputs, ..
             }) => Box::new(targets.iter().chain(inputs)),
             Effect::Branch(branch_condition, first, second) => Box::new(
-                iter::once(&branch_condition.variable).chain(
+                branch_condition.value.referenced_symbols().chain(
                     [first, second]
                         .into_iter()
                         .flatten()
@@ -163,7 +163,7 @@ impl<T: FieldElement, V> Assertion<T, V> {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct BranchCondition<T: FieldElement, V> {
-    pub variable: V,
+    pub value: SymbolicExpression<T, V>,
     pub condition: RangeConstraint<T>,
 }
 
@@ -248,7 +248,7 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
 
 fn format_condition<T: FieldElement>(
     BranchCondition {
-        variable,
+        value: variable,
         condition,
     }: &BranchCondition<T, Variable>,
 ) -> String {
@@ -302,13 +302,17 @@ mod test {
         })
     }
 
+    fn var_as_expr(id: u64) -> SymbolicExpression<T, Variable> {
+        SymbolicExpression::from_symbol(var(id), Default::default())
+    }
+
     #[test]
     fn combine_if_else() {
         let effects = vec![
             Effect::Assignment(var(0), SymbolicExpression::from(T::from(1))),
             Effect::Branch(
                 BranchCondition {
-                    variable: var(0),
+                    value: var_as_expr(0),
                     condition: RangeConstraint::from_range(T::from(1), T::from(2)),
                 },
                 vec![Effect::Assignment(
@@ -317,12 +321,12 @@ mod test {
                 )],
                 vec![Effect::Branch(
                     BranchCondition {
-                        variable: var(1),
+                        value: var_as_expr(1),
                         condition: RangeConstraint::from_range(T::from(5), T::from(6)),
                     },
                     vec![Effect::Branch(
                         BranchCondition {
-                            variable: var(2),
+                            value: var_as_expr(2),
                             condition: RangeConstraint::from_range(T::from(5), T::from(6)),
                         },
                         vec![Effect::Assignment(
@@ -336,7 +340,7 @@ mod test {
                     )],
                     vec![Effect::Branch(
                         BranchCondition {
-                            variable: var(3),
+                            value: var_as_expr(3),
                             condition: RangeConstraint::from_range(T::from(5), T::from(6)),
                         },
                         vec![Effect::Assignment(
