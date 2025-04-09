@@ -244,6 +244,12 @@ impl<T: FieldElement> RangeConstraint<T> {
             None
         }
     }
+
+    /// Returns true if no value can satisfy both range constraints at the same time.
+    pub fn is_disjoint(&self, other: &RangeConstraint<T>) -> bool {
+        // We cannot use masks because they always allow zero.
+        interval_intersection((self.min, self.max), (other.min, other.max)).is_none()
+    }
 }
 
 impl<T: FieldElement> Default for RangeConstraint<T> {
