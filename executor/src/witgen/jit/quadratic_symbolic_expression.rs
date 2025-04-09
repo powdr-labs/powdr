@@ -10,11 +10,17 @@ use num_traits::Zero;
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 use crate::witgen::{
-    jit::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect},
+    jit::{
+        effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect},
+        symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
+    },
     range_constraints::RangeConstraint,
 };
 
-use super::{symbolic_expression::SymbolicExpression, variable_update::VariableUpdate};
+use super::{
+    effect::BranchCondition, symbolic_expression::SymbolicExpression,
+    variable_update::VariableUpdate,
+};
 
 #[derive(Default)]
 pub struct ProcessResult<T: FieldElement, V> {
@@ -213,7 +219,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         Ok(if self.is_quadratic() {
-            ProcessResult::empty()
+            self.solve_quadratic(range_constraints)?
         } else if let Some(k) = self.try_to_known() {
             if k.is_known_nonzero() {
                 return Err(Error::ConstraintUnsatisfiable);
@@ -403,6 +409,79 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             constraint
         };
         Some(Effect::RangeConstraint(solve_for.clone(), constraint))
+    }
+
+    fn solve_quadratic(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> Result<ProcessResult<T, V>, Error> {
+        if !self.linear.is_empty() || !self.offset.is_known_zero() {
+            return Ok(ProcessResult::empty());
+        }
+
+        let [(left, right)] = self.quadratic.as_slice() else {
+            return Ok(ProcessResult::empty());
+        };
+        if left.is_quadratic() || right.is_quadratic() {
+            return Ok(ProcessResult::empty());
+        }
+        // TODO if one of them conflicts, we can actually just use the other one.
+        let left_solution = left.solve(range_constraints).unwrap();
+        let right_solution = right.solve(range_constraints).unwrap();
+        if !left_solution.complete || !right_solution.complete {
+            return Ok(ProcessResult::empty());
+        }
+        let (
+            [Effect::Assignment(first_var, first_assignment)],
+            [Effect::Assignment(second_var, second_assignment)],
+        ) = (
+            left_solution.effects.as_slice(),
+            right_solution.effects.as_slice(),
+        )
+        else {
+            return Ok(ProcessResult::empty());
+        };
+
+        if first_var != second_var {
+            return Ok(ProcessResult::empty());
+        }
+
+        let rc = range_constraints.get(first_var);
+        // TODO check this does not have to be ">="
+        if rc.range_width() > T::modulus() >> 1 {
+            return Ok(ProcessResult::empty());
+        }
+
+        let Some(diff) = symbolic_expression_to_quadratic_symbolic_expression(
+            &(first_assignment + &-second_assignment),
+        ) else {
+            return Ok(ProcessResult::empty());
+        };
+        let Some(diff) = diff.try_to_known().and_then(|d| d.try_to_number()) else {
+            return Ok(ProcessResult::empty());
+        };
+        // If rc + diff is disjoint from rc, the two alternatives are disjoint.
+        if !rc
+            .combine_sum(&RangeConstraint::from_value(diff))
+            .is_disjoint(&rc)
+        {
+            return Ok(ProcessResult::empty());
+        }
+
+        Ok(ProcessResult::complete(vec![Effect::Branch(
+            BranchCondition {
+                variable: first_assignment.clone(),
+                condition: rc,
+            },
+            vec![Effect::Assignment(
+                first_var.clone(),
+                first_assignment.clone(),
+            )],
+            vec![Effect::Assignment(
+                first_var.clone(),
+                first_assignment.clone() + diff.into(),
+            )],
+        )]))
     }
 }
 

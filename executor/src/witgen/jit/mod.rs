@@ -12,6 +12,7 @@ mod prover_function_heuristics;
 mod quadratic_symbolic_expression;
 mod single_step_processor;
 mod symbolic_expression;
+mod symbolic_to_quadratic;
 mod variable;
 mod variable_update;
 pub(crate) mod witgen_inference;
