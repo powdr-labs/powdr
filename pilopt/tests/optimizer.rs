@@ -668,7 +668,7 @@ fn complex_substitutions() {
 }
 
 #[test]
-fn chain_of_substitutions_bug() {
+fn chain_of_substitutions() {
     let input = r#"namespace N(65536);
     col witness a;
     col witness b;
@@ -676,6 +676,9 @@ fn chain_of_substitutions_bug() {
     col witness x;
     x = a + y;
 
+    // This cannot be optimized because
+    // it would create a cycle during m degree calculation
+    // because x depends on y and y depends on x
     col witness y;
     y = x + b;
 
@@ -689,16 +692,16 @@ fn chain_of_substitutions_bug() {
     let expectation = r#"namespace N(65536);
     col witness a;
     col witness b;
-    col witness x;
-    N::x = N::a + N::b;
+    col x = N::a + N::y;
     col witness y;
-    N::y = N::a + N::b;
-    col m = N::b - N::a;
+    N::y = N::x + N::b;
+    col m = N::x - N::y;
     N::a * N::b = 10;
     N::m * N::a = 1;
     
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    println!("Optimized: {}", optimized);
     assert_eq!(optimized, expectation);
 }

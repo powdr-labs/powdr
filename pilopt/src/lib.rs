@@ -1350,6 +1350,10 @@ fn try_to_constrained_with_max_degree<T: FieldElement>(
             return None;
         };
 
+        if new_intermediate_create_cycle(&w.poly_id, right, intermediate_definitions) {
+            return None;
+        }
+
         // Check if the right side has a degree <= max_degree
         let degree = right.degree_with_cache(intermediate_definitions, &mut Default::default());
 
@@ -1381,4 +1385,61 @@ fn try_to_constrained_with_max_degree<T: FieldElement>(
 
     // Try from both sides
     try_from_sides(left, right).or_else(|| try_from_sides(right, left))
+}
+
+/// Checks if substituting a polynomial would create a dependency cycle
+fn new_intermediate_create_cycle<T: FieldElement>(
+    poly_id: &PolyID,
+    expression: &AlgebraicExpression<T>,
+    intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+) -> bool {
+    // Set to track visited polynomial references during traversal
+    let mut visited = HashSet::new();
+
+    // Function to recursively check for cycles
+    fn recursive_cycle_check<T: FieldElement>(
+        current_expr: &AlgebraicExpression<T>,
+        target_poly_id: &PolyID,
+        visited: &mut HashSet<AlgebraicReferenceThin>,
+        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+    ) -> bool {
+        match current_expr {
+            AlgebraicExpression::Reference(reference) => {
+                // If we found the target id, we have a cycle
+                if &reference.poly_id == target_poly_id {
+                    return true;
+                }
+
+                if reference.poly_id.ptype == PolynomialType::Intermediate {
+                    let reference_thin = reference.to_thin();
+
+                    if visited.contains(&reference_thin) {
+                        return false;
+                    }
+
+                    if let Some(def) = intermediate_definitions.get(&reference_thin) {
+                        visited.insert(reference_thin.clone());
+                        if recursive_cycle_check(
+                            def,
+                            target_poly_id,
+                            visited,
+                            intermediate_definitions,
+                        ) {
+                            return true;
+                        }
+                        visited.remove(&reference_thin);
+                    }
+                }
+
+                false
+            }
+            // Recursively check all children expressions
+            _ => current_expr.children().any(|child| {
+                recursive_cycle_check(child, target_poly_id, visited, intermediate_definitions)
+            }),
+        }
+    }
+
+    // Start the cycle check from the expression
+    recursive_cycle_check(expression, poly_id, &mut visited, intermediate_definitions)
 }
