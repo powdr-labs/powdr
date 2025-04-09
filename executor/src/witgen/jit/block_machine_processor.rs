@@ -397,7 +397,7 @@ mod test {
     use pretty_assertions::assert_eq;
     use test_log::test;
 
-    use powdr_number::GoldilocksField;
+    use powdr_number::{BabyBearField, GoldilocksField};
 
     use crate::witgen::{
         data_structures::mutable_state::MutableState,
@@ -945,6 +945,59 @@ S::Z[0] = params[1];
 S::X[0] = 15;
 S::carry[0] = 0;
 params[2] = 0;"
+        );
+    }
+
+    #[test]
+    fn solve_quadratic_constraints() {
+        let input = "
+namespace main(4096);
+    col witness w0, w1,w2,w3,w4,w5,w6,w7,w8,w9,w10;
+    [1, w0, w1, w2, w3, w7, w8, w9, w10] is [main_auipc::var_0, main_auipc::from_pc, main_auipc::var_1, main_auipc::var_2, main_auipc::var_3, main_auipc::var_7, main_auipc::var_8, main_auipc::var_9, main_auipc::var_10];
+namespace main_auipc(4096);
+    pol commit from_pc;
+    pol commit var_0;
+    pol commit var_1;
+    pol commit var_2;
+    pol commit var_3;
+    pol commit var_4;
+    pol commit var_5;
+    pol commit var_6;
+    pol commit var_7;
+    pol commit var_8;
+    pol commit var_9;
+    pol commit var_10;
+    var_0 * (var_0 - 1) = 0;
+    var_0 * (var_7 - (from_pc - (0 + var_4 * 256 + var_5 * 65536 + var_6 * 16777216))) = 0;
+    var_0 * (2005401601 * (var_4 + var_1 - var_8 + 0) * (2005401601 * (var_4 + var_1 - var_8 + 0) - 1)) = 0;
+    var_0 * (2005401601 * (var_5 + var_2 - var_9 + 2005401601 * (var_4 + var_1 - var_8 + 0)) * (2005401601 * (var_5 + var_2 - var_9 + 2005401601 * (var_4 + var_1 - var_8 + 0)) - 1)) = 0;
+    var_0 * (2005401601 * (var_6 + var_3 - var_10 + 2005401601 * (var_5 + var_2 - var_9 + 2005401601 * (var_4 + var_1 - var_8 + 0))) * (2005401601 * (var_6 + var_3 - var_10 + 2005401601 * (var_5 + var_2 - var_9 + 2005401601 * (var_4 + var_1 - var_8 + 0))) - 1)) = 0;
+    let BYTE: col = |i| i & 0xff;
+    let FIVEBITS: col = |i| i & 0x1f;
+    [ var_1 ] in [ BYTE ];
+    [ var_2 ] in [ BYTE ];
+    [ var_3 ] in [ BYTE ];
+    [ var_4 ] in [ BYTE ];
+    [ var_5 ] in [ BYTE ];
+    [ var_6 ] in [ FIVEBITS ];
+    [ var_7 ] in [ BYTE ];
+    [ var_8 ] in [ BYTE ];
+    [ var_9 ] in [ BYTE ];
+    [ var_10 ] in [ BYTE ];
+        ";
+        let code = format_code(
+            &generate_for_block_machine::<BabyBearField>(input, "main_auipc", None, 5, 4)
+                .map_err(|e| eprintln!("{e}"))
+                .unwrap()
+                .code,
+        );
+        assert_eq!(
+            code,
+            "\
+S::Y[0] = params[0];
+S::Z[0] = params[1];
+-2**0 * S::X[0] + 2**8 * S::carry[0] := (S::Y[0] + -S::Z[0]);
+params[2] = S::carry[0];"
         );
     }
 }
