@@ -247,16 +247,13 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
 }
 
 fn format_condition<T: FieldElement>(
-    BranchCondition {
-        value: variable,
-        condition,
-    }: &BranchCondition<T, Variable>,
+    BranchCondition { value, condition }: &BranchCondition<T, Variable>,
 ) -> String {
     let (min, max) = condition.range();
     match min.cmp(&max) {
-        Ordering::Equal => format!("{variable} == {min}"),
-        Ordering::Less => format!("{min} <= {variable} && {variable} <= {max}"),
-        Ordering::Greater => format!("{variable} <= {min} || {variable} >= {max}"),
+        Ordering::Equal => format!("{value} == {min}"),
+        Ordering::Less => format!("{min} <= {value} && {value} <= {max}"),
+        Ordering::Greater => format!("{value} <= {min} || {value} >= {max}"),
     }
 }
 
