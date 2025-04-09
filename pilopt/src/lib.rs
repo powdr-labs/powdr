@@ -562,7 +562,7 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     }
 }
 
-/// Identifies witness columns that are constrained to a non-shifted (multi)linear expression, replaces the witness column by an intermediate polynomial.
+/// Identifies witness columns that are constrained to a non-shifted (multi)linear expression, replaces the witness column by an intermediate column defined to be that expression.
 /// The pattern is the following:
 /// ```pil
 /// col witness x;
