@@ -543,3 +543,36 @@ fn simplify_associative_operations() {
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
+
+#[test]
+fn inline_chain_of_substitutions() {
+    let input = r#"namespace N(65536);
+    col witness a;
+    col witness b;
+    
+    col witness x;
+    x = a + y;
+
+    col witness y;
+    y = x + b;
+
+    col witness m;
+    m = x - y;
+
+    a * b = 10;
+    m * a = 1;
+"#;
+
+    let expectation = r#"namespace N(65536);
+    col witness a;
+    col witness b;
+    col x = N::a + N::y;
+    col y = N::x + N::b;
+    col m = N::x - N::y;
+    N::a * N::b = 10;
+    N::m * N::a = 1;
+"#;
+
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
