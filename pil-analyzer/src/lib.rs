@@ -1,8 +1,8 @@
 mod call_graph;
-mod condenser;
+pub mod condenser;
 pub mod evaluator;
 pub mod expression_processor;
-pub(crate) mod expressionizer;
+pub mod expressionizer;
 mod pil_analyzer;
 mod side_effect_checker;
 mod statement_processor;

@@ -202,17 +202,6 @@ let bus_multi_interaction: expr[], expr[][], expr[], expr[] -> () = constr |ids,
             )
         }
     );
-
-    // Add array of native bus interactions
-    array::new(
-        input_len,
-        |i| Constr::BusInteraction(
-            multiplicities[i], 
-            ids[i], 
-            payloads[i], 
-            latches[i]
-        )
-    );
 };
 
 /// Compute acc' = acc * (1 - is_first') + multiplicity' / fingerprint(id, payload...),
@@ -276,10 +265,7 @@ enum BusLinkerType {
     PermutationReceive
 }
 
-/// Exposed to the linker and not intended for end user because it requires expert knowledge of Powdr's bus protocol.
-/// Inputs in the order of: id, selector, payload, type for both lookup and permutation.
-/// where type can be: bus send, lookup bus receive, or permutation bus receive.
-let bus_multi_linker: (expr, expr, expr[], BusLinkerType)[] -> () = constr |inputs| {
+let bus_multi_native: (expr, expr, expr[], BusLinkerType)[] -> () = constr |inputs| {
     // Lookup requires adding a multiplicity column and constraining it to zero if selector is zero.
     // Permutation passes the selector to both multiplicity and latch fields as well.
     let inputs_inner = array::fold(inputs, [], constr |acc, input| {
@@ -297,7 +283,38 @@ let bus_multi_linker: (expr, expr, expr[], BusLinkerType)[] -> () = constr |inpu
             BusLinkerType::PermutationReceive => acc + [BusInteraction::Receive(id, payload, selector, selector)],
         }
     });
-    bus_multi(inputs_inner);
+    
+    let (ids, payloads, multiplicities, latches) = transpose_bus_inputs(inputs_inner);
+    
+    // Check length of inputs
+    let input_len: int = array::len(ids);
+    assert(input_len == array::len(payloads), || "inputs ids and payloads have unequal lengths");
+    assert(input_len == array::len(multiplicities), || "inputs ids and multiplicities have unequal lengths");
+    assert(input_len == array::len(latches), || "inputs ids and latches have unequal lengths");
+
+    // Add array of native bus interactions
+    array::new(
+        input_len,
+        |i| Constr::BusInteraction(
+            multiplicities[i], 
+            ids[i], 
+            payloads[i], 
+            latches[i]
+        )
+    );
+};
+
+/// Input is the same as Constr::BusInteraction enum: multiplicity, id, payload, latch
+let bus_multi_logup: (expr, expr, expr[], expr)[] -> () = constr |inputs| {
+    let (ids, payloads, multiplicities, latches) = 
+        array::fold(
+            inputs, ([], [], [], []),
+            |(ids, payloads, multiplicities, latches), input| {
+                let (multiplicity, id, payload, latch) = input;
+                (ids + [id], payloads + [payload], multiplicities + [multiplicity], latches + [latch])
+            }
+        );
+    bus_multi_interaction(ids, payloads, multiplicities, latches);
 };
 
 /// Builds a single bus interaction by using `bus_multi_interaction` for optimized performance.
