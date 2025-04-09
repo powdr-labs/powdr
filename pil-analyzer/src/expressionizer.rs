@@ -58,7 +58,7 @@ pub fn try_value_to_expression<T: FieldElement>(
     Expressionizer { poly_id_to_name }.try_value_to_expression(value)
 }
 
-/// Tries to convert an algebraic expression to an expression.
+/// Tries to convert an algebraic expression to an expression that evaluates to the same value.
 pub fn try_algebraic_expression_to_expression<T: FieldElement>(
     poly_id_to_name: &BTreeMap<(PolynomialType, u64), String>,
     e: &AlgebraicExpression<T>,
