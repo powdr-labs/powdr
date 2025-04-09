@@ -4,6 +4,7 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, ContainsNextRef, PolyID, PolynomialType,
 };
+use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_number::FieldElement;
 
 use crate::witgen::{machines::MachineParts, FixedData};
@@ -13,7 +14,6 @@ use super::{
     identity_queue::QueueItem,
     processor::{algebraic_expression_to_queue_items, Processor},
     prover_function_heuristics::decode_prover_functions,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
 };

@@ -1,4 +1,3 @@
-mod algebraic_to_quadratic;
 mod block_machine_processor;
 pub(crate) mod code_cleaner;
 mod compiler;
@@ -9,11 +8,8 @@ mod identity_queue;
 mod interpreter;
 mod processor;
 mod prover_function_heuristics;
-mod quadratic_symbolic_expression;
 mod single_step_processor;
-mod symbolic_expression;
 mod variable;
-mod variable_update;
 pub(crate) mod witgen_inference;
 
 #[cfg(test)]

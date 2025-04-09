@@ -41,7 +41,6 @@ mod machines;
 mod multiplicity_column_generator;
 mod processor;
 mod query_processor;
-mod range_constraints;
 mod rows;
 mod sequence_iterator;
 mod util;
