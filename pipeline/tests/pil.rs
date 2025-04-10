@@ -170,19 +170,11 @@ fn external_witgen_a_provided() {
 }
 
 #[test]
-fn external_witgen_b_provided() {
-    let f = "pil/external_witgen.pil";
-    let external_witness = vec![("main::b".to_string(), vec![GoldilocksField::from(4); 16])];
-    let pipeline = make_prepared_pipeline(f, Default::default(), external_witness, LinkerMode::Bus);
-    test_mock_backend(pipeline);
-}
-
-#[test]
 fn external_witgen_both_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![
         ("main::a".to_string(), vec![GoldilocksField::from(3); 16]),
-        ("main::b".to_string(), vec![GoldilocksField::from(4); 16]),
+        ("main::b".to_string(), vec![GoldilocksField::from(16); 16]),
     ];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness, LinkerMode::Bus);
     test_mock_backend(pipeline);
@@ -194,8 +186,8 @@ fn external_witgen_fails_on_conflicting_external_witness() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![
         ("main::a".to_string(), vec![GoldilocksField::from(3); 16]),
-        // Does not satisfy b = a + 1
-        ("main::b".to_string(), vec![GoldilocksField::from(3); 16]),
+        // Does not satisfy b = (a + 1) * (a + 1)
+        ("main::b".to_string(), vec![GoldilocksField::from(15); 16]),
     ];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness, LinkerMode::Bus);
     test_mock_backend(pipeline);
@@ -260,7 +252,7 @@ fn halo_without_lookup() {
 
 #[test]
 fn add() {
-    let f = "pil/add.pil";
+    let f = "pil/mul.pil";
     regular_test_gl(f, Default::default());
 }
 
