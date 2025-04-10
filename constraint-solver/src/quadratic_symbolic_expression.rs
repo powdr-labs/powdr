@@ -114,9 +114,37 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
+    /// Returns true if this expression does not contain any quadratic terms.
+    pub fn is_affine(&self) -> bool {
+        !self.is_quadratic()
+    }
+
     /// Returns true if this expression contains at least one quadratic term.
     pub fn is_quadratic(&self) -> bool {
         !self.quadratic.is_empty()
+    }
+
+    /// Returns `(l, r)` if `self == l * r`.
+    pub fn try_as_single_product(&self) -> Option<(&Self, &Self)> {
+        if self.linear.is_empty() && self.quadratic.len() == 1 && self.constant.is_known_zero() {
+            let (l, r) = &self.quadratic[0];
+            Some((l, r))
+        } else {
+            None
+        }
+    }
+
+    /// Returns the coefficient of `variable` if this expression is
+    /// affine (i.e. does not contain any quadratic terms).
+    /// Returns zero if the variable does not occur.
+    ///
+    /// Panics if this expression is not affine.
+    pub fn coefficient_of(&self, variable: &V) -> SymbolicExpression<T, V> {
+        assert!(self.is_affine());
+        self.linear
+            .get(variable)
+            .cloned()
+            .unwrap_or_else(|| T::zero().into())
     }
 
     pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V>) {
@@ -422,6 +450,18 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         // TODO if one of them conflicts, we can actually just use the other one.
         let left_solution = left.solve(range_constraints).unwrap();
         let right_solution = right.solve(range_constraints).unwrap();
+        println!(
+            "Found left solution: {}",
+            left_solution
+                .effects
+                .iter()
+                .map(|e| match e {
+                    Effect::Assignment(var, value) => format!("{var} = {value}"),
+                    Effect::RangeConstraint(var, rc) => format!("{var} = {rc}"),
+                    _ => format!("other"),
+                })
+                .join(", ")
+        );
         if !left_solution.complete || !right_solution.complete {
             return Ok(ProcessResult::empty());
         }
@@ -477,6 +517,14 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                 out_of_range_value: second_assignment,
             },
         ]))
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> PartialEq for QuadraticSymbolicExpression<T, V> {
+    fn eq(&self, other: &Self) -> bool {
+        self.quadratic == other.quadratic
+            && self.linear == other.linear
+            && self.constant == other.constant
     }
 }
 

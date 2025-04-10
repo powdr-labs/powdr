@@ -534,8 +534,8 @@ namespace N(128);
         &mut analyzed,
         RangeConstraintSet(
             [
-                ("X", RangeConstraint::from_mask(0xffu32)),
-                ("Y", RangeConstraint::from_mask(0xffu32)),
+                ("N::X", RangeConstraint::from_mask(0xffu32)),
+                ("N::Y", RangeConstraint::from_mask(0xffu32)),
             ]
             .into_iter()
             .collect(),
@@ -547,7 +547,8 @@ namespace N(128);
     col witness A;
     (N::X - N::A - 256) * (N::X - N::A) = 0;
     (N::Y - N::A - 256) * (N::Y - N::A) = 0;
-    X = Y;";
+    N::X = N::Y;
+";
     let optimized = analyzed.to_string();
     assert_eq!(optimized, expectation);
 }

@@ -1,5 +1,9 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt::Display,
+};
 
+use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Identity, PolynomialIdentity,
@@ -19,7 +23,7 @@ pub fn run_qse_optimization<T: FieldElement>(
 ) {
     for result in optimize(pil_file, range_constraints) {
         match result {
-            Result::Equality(var, value) => {
+            OptimizationResult::Equality(var, value) => {
                 pil_file.append_polynomial_identity(
                     AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
                         left: Box::new(AlgebraicExpression::Reference(var)),
@@ -36,7 +40,7 @@ pub fn run_qse_optimization<T: FieldElement>(
 pub fn optimize<'a, T: FieldElement>(
     pil_file: &Analyzed<T>,
     range_constraints: impl RangeConstraintProvider<T, AlgebraicReference>,
-) -> Vec<Result<T>> {
+) -> Vec<OptimizationResult<T>> {
     // TODO extract range constraints from bus interactions
     process_identities(create_identities(pil_file), range_constraints)
 }
@@ -62,7 +66,7 @@ fn create_identities<T: FieldElement>(
 fn process_identities<T: FieldElement>(
     identities: Vec<QuadraticSymbolicExpression<T, Variable>>,
     range_constraints: impl RangeConstraintProvider<T, AlgebraicReference>,
-) -> Vec<Result<T>> {
+) -> Vec<OptimizationResult<T>> {
     let mut results = vec![];
     let mut range_constraints = RangeConstraints::new(range_constraints);
     let mut complete_identities = vec![false; identities.len()];
@@ -80,7 +84,7 @@ fn process_identities<T: FieldElement>(
                             Effect::Assignment(var, symbolic_expression) => {
                                 range_constraints
                                     .add(var.clone(), symbolic_expression.range_constraint());
-                                results.push(Result::Equality(
+                                results.push(OptimizationResult::Equality(
                                     var.0.clone(),
                                     symbolic_expression_to_algebraic(&symbolic_expression),
                                 ));
@@ -88,7 +92,7 @@ fn process_identities<T: FieldElement>(
                             }
                             Effect::RangeConstraint(var, range_constraint) => {
                                 if let Some(value) = range_constraint.try_to_single_value() {
-                                    results.push(Result::Equality(
+                                    results.push(OptimizationResult::Equality(
                                         var.0.clone(),
                                         AlgebraicExpression::Number(value),
                                     ));
@@ -102,7 +106,9 @@ fn process_identities<T: FieldElement>(
                                 condition,
                                 in_range_value,
                                 out_of_range_value,
-                            } => todo!(),
+                            } => {
+                                println!("Conditional assignment: {variable} condition {in_range_value} {out_of_range_value}");
+                            }
                             Effect::BitDecomposition(_) | Effect::Assertion(_) => {}
                         }
                     }
@@ -117,7 +123,76 @@ fn process_identities<T: FieldElement>(
             break;
         }
     }
+
+    results.extend(process_quadratic_equalities(&identities, range_constraints));
     results
+}
+
+fn process_quadratic_equalities<T: FieldElement>(
+    identities: &Vec<QuadraticSymbolicExpression<T, Variable>>,
+    range_constraints: impl RangeConstraintProvider<T, Variable>,
+) -> Vec<OptimizationResult<T>> {
+    let candidates = identities
+        .iter()
+        .filter_map(QuadraticEqualityCandidate::try_from_qse)
+        .collect::<Vec<_>>();
+    let mut result = vec![];
+    for (i, c1) in candidates.iter().enumerate() {
+        for c2 in &candidates[(i + 1)..] {
+            if let Some((v1, v2)) =
+                process_quadratic_equality_candidate_pair(c1, c2, &range_constraints)
+            {
+                result.push(OptimizationResult::Equality(
+                    v1.0.clone(),
+                    AlgebraicExpression::Reference(v2.0),
+                ));
+            }
+        }
+    }
+
+    result
+}
+
+fn process_quadratic_equality_candidate_pair<T: FieldElement>(
+    c1: &QuadraticEqualityCandidate<T>,
+    c2: &QuadraticEqualityCandidate<T>,
+    range_constraints: &impl RangeConstraintProvider<T, Variable>,
+) -> Option<(Variable, Variable)> {
+    if c1.offset != c2.offset {
+        return None;
+    }
+    if !(c1.variables.len() == c2.variables.len() && c1.variables.len() >= 2) {
+        return None;
+    }
+    let c1_var = c1.variables.difference(&c2.variables).exactly_one().ok()?;
+    let c2_var = c2.variables.difference(&c1.variables).exactly_one().ok()?;
+    println!("Candidate vars: {c1_var} {c2_var}");
+    let rc1 = range_constraints.get(c1_var);
+    let rc2 = range_constraints.get(c2_var);
+    if rc1 != rc2 {
+        return None;
+    }
+    println!("offset: {:x} or {:x}", c1.offset, -c1.offset);
+    println!("RC width: {:x}", rc1.range_width());
+    // TODO correct?
+    // TODO do we need to check that range width is at least field size half? Probabyl not due to the negation.
+    if c1.offset.to_integer() < rc1.range_width() || (-c1.offset).to_integer() < rc1.range_width() {
+        return None;
+    }
+    // Now we need to show that the rest of the affine expression is the same.
+
+    // TODO does it work with factors tat are not one? What about minus one?
+    // let c1_coeff = c1.expr.coefficient_of(c1_var);
+    // let c2_coeff = c2.expr.coefficient_of(c2_var);
+    // println!("Coefficients: {c1_coeff} {c2_coeff}");
+    if c1.expr.clone() - QuadraticSymbolicExpression::from_unknown_variable(c1_var.clone())
+        != c2.expr.clone() - QuadraticSymbolicExpression::from_unknown_variable(c2_var.clone())
+    {
+        return None;
+    }
+
+    println!("OOOOOOOOOOOOOOOOOOOOOOKFound quadratic equality candidates: {c1_var} = {c2_var}");
+    Some((c1_var.clone(), c2_var.clone()))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -141,7 +216,7 @@ impl Display for Variable {
     }
 }
 
-enum Result<T: FieldElement> {
+enum OptimizationResult<T: FieldElement> {
     Equality(AlgebraicReference, AlgebraicExpression<T>),
 }
 
@@ -179,6 +254,39 @@ impl<T: FieldElement, R: RangeConstraintProvider<T, AlgebraicReference>> RangeCo
         } else {
             false
         }
+    }
+}
+
+/// This represents an identity `expr * (expr + offset) = 0`,
+/// where `expr` is an affine expression.
+struct QuadraticEqualityCandidate<T: FieldElement> {
+    expr: QuadraticSymbolicExpression<T, Variable>,
+    offset: T,
+    variables: HashSet<Variable>,
+}
+
+impl<T: FieldElement> QuadraticEqualityCandidate<T> {
+    fn try_from_qse(constr: &QuadraticSymbolicExpression<T, Variable>) -> Option<Self> {
+        println!("Trying to convert QSE to quadratic equality candidate: {constr}");
+        let (left, right) = constr.try_as_single_product()?;
+        if !left.is_affine() || !right.is_affine() {
+            return None;
+        }
+        // `constr = 0` is equivalent to `left * right = 0`
+        let offset = (left - right).try_to_known()?.try_to_number()?;
+        // `offset + right = left`
+        // `constr = 0` is equivalent to `right * (right + offset) = 0`
+        let variables = right
+            .referenced_unknown_variables()
+            .into_iter()
+            .cloned()
+            .collect::<HashSet<_>>();
+        println!("-> ({right}) * ({right} + {offset})");
+        Some(Self {
+            expr: right.clone(),
+            offset,
+            variables,
+        })
     }
 }
 
