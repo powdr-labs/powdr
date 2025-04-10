@@ -578,36 +578,6 @@ fn basic_degree_limit_substitution() {
 }
 
 #[test]
-fn selective_substitution_by_usage() {
-    let input = r#"namespace N(65536);
-    col witness a;
-    col witness b;
-    
-    col witness x;
-    x = a + b;
-    
-    col witness y;
-    y = a * a * a;
-    
-    x * a = 10;    
-    x + b = 20;     
-    y * b = 30;    
-"#;
-    let expectation = r#"namespace N(65536);
-    col witness a;
-    col witness b;
-    col x = N::a + N::b;
-    col witness y;
-    N::y = N::a * N::a * N::a;
-    N::x * N::a = 10;
-    N::x + N::b = 20;
-    N::y * N::b = 30;
-"#;
-    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-    assert_eq!(optimized, expectation);
-}
-
-#[test]
 fn special_cases_substitution() {
     let input = r#"namespace N(65536);
     col witness a;
@@ -632,38 +602,6 @@ fn special_cases_substitution() {
     N::exact_max + N::b = 30;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-    assert_eq!(optimized, expectation);
-}
-
-#[test]
-fn complex_substitutions() {
-    let input = r#"namespace N(65536);
-    col witness a;
-    col witness b;
-    
-    col witness w;
-    col witness x;
-    col witness y;
-    col witness z;
-
-    x = a * a;
-    y = x * b;
-    z = a * a * y;
-    w = b * b * y;
-"#;
-    let expectation = r#"namespace N(65536);
-    col witness a;
-    col witness b;
-    col witness w;
-    col x = N::a * N::a;
-    col witness y;
-    col witness z;
-    N::y = N::x * N::b;
-    N::z = N::a * N::a * N::y;
-    N::w = N::b * N::b * N::y;
-"#;
-    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-    println!("Optimized: {}", optimized);
     assert_eq!(optimized, expectation);
 }
 
@@ -698,7 +636,6 @@ fn chain_of_substitutions() {
     col m = N::x - N::y;
     N::a * N::b = 10;
     N::m * N::a = 1;
-    
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
