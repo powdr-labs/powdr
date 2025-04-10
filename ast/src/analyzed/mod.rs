@@ -107,32 +107,28 @@ impl<T> Analyzed<T> {
             + 1
     }
 
+    /// Returns the next available ID for a polynomial of the specified type.
     pub fn next_id_for_kind(&self, poly_type: PolynomialType) -> u64 {
         match poly_type {
-            PolynomialType::Committed => {
-                self.committed_polys_in_source_order()
-                    .map(|(symbol, _)| symbol.id)
-                    .max()
-                    .unwrap_or(0)
-                    + 1
-            }
-            PolynomialType::Constant => {
-                self.constant_polys_in_source_order()
-                    .map(|(symbol, _)| symbol.id)
-                    .max()
-                    .unwrap_or(0)
-                    + 1
-            }
-            PolynomialType::Intermediate => {
-                self.intermediate_columns
-                    .values()
-                    .flat_map(|(s, _)| s.array_elements())
-                    .map(|(_, poly_id)| poly_id.id)
-                    .max()
-                    .unwrap_or(0)
-                    + 1
-            }
+            PolynomialType::Committed => self
+                .committed_polys_in_source_order()
+                .flat_map(|(s, _)| s.array_elements())
+                .map(|(_, poly)| poly.id)
+                .max(),
+            PolynomialType::Constant => self
+                .constant_polys_in_source_order()
+                .flat_map(|(s, _)| s.array_elements())
+                .map(|(_, poly)| poly.id)
+                .max(),
+            PolynomialType::Intermediate => self
+                .intermediate_columns
+                .values()
+                .flat_map(|(s, _)| s.array_elements())
+                .map(|(_, poly_id)| poly_id.id)
+                .max(),
         }
+        .unwrap_or(0)
+            + 1
     }
 
     /// @returns the number of committed polynomials (with multiplicities for arrays)
@@ -176,27 +172,10 @@ impl<T> Analyzed<T> {
 
     /// Builds a lookup-table that can be used to turn all poly ids into the names of the symbols that define them.
     /// For array elements, this contains the array name and the index of the element in the array.
-    pub fn build_poly_id_to_definition_name_lookup(
-        &self,
-    ) -> BTreeMap<(PolynomialType, u64), (&String, Option<usize>)> {
-        self.definitions
-            .iter()
-            .map(|(name, (symbol, _))| (name, symbol))
-            .chain(
-                self.intermediate_columns
-                    .iter()
-                    .map(|(name, (symbol, _))| (name, symbol)),
-            )
-            .filter(|(_, symbol)| matches!(symbol.kind, SymbolKind::Poly(_)))
-            .flat_map(|(name, symbol)| {
-                symbol
-                    .array_elements()
-                    .enumerate()
-                    .map(move |(idx, (_, id))| {
-                        let array_pos = symbol.is_array().then_some(idx);
-                        ((id.ptype, id.id), (name, array_pos))
-                    })
-            })
+    pub fn build_poly_id_to_definition_name_lookup(&self) -> BTreeMap<PolyID, String> {
+        self.name_to_poly_id()
+            .into_iter()
+            .map(|(name, id)| (id, name))
             .collect()
     }
 
