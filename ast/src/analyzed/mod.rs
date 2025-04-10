@@ -170,15 +170,6 @@ impl<T> Analyzed<T> {
             .collect()
     }
 
-    /// Builds a lookup-table that can be used to turn all poly ids into the names of the symbols that define them.
-    /// For array elements, this contains the array name and the index of the element in the array.
-    pub fn build_poly_id_to_definition_name_lookup(&self) -> BTreeMap<PolyID, String> {
-        self.name_to_poly_id()
-            .into_iter()
-            .map(|(name, id)| (id, name))
-            .collect()
-    }
-
     /// Tries to resolve a symbol by name. Does not support individual array elements,
     /// just plain symbols. Also supports intermediate columns.
     pub fn try_symbol_by_name(&self, name: &str) -> Option<&Symbol> {
