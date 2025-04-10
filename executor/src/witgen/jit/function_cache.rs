@@ -2,6 +2,7 @@ use std::{collections::HashMap, hash::Hash};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_number::{FieldElement, KnownField};
 
 use crate::witgen::{
@@ -11,7 +12,6 @@ use crate::witgen::{
         profiling::{record_end, record_start},
         LookupCell, MachineParts,
     },
-    range_constraints::RangeConstraint,
     EvalError, FixedData, MutableState, QueryCallback,
 };
 
