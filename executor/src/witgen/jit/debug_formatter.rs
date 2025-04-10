@@ -48,8 +48,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
                         let value = self
                             .witgen
                             .evaluate(expression, *row)
-                            .try_to_known()
-                            .cloned();
+                            .and_then(|v| v.try_to_known().cloned());
                         let conflict = value
                             .as_ref()
                             .and_then(|v| v.try_to_number().map(|n| n != 0.into()))
@@ -343,7 +342,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     }
 
     fn try_to_known(&self, e: &Expression<T>, row_offset: i32) -> Option<T> {
-        let v = self.witgen.evaluate(e, row_offset);
+        let v = self.witgen.evaluate(e, row_offset)?;
         v.try_to_known()?.try_to_number()
     }
 }

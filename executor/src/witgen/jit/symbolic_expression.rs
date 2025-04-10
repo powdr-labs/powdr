@@ -119,6 +119,7 @@ impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
             SymbolicExpression::Concrete(_) => None,
             SymbolicExpression::Symbol(v, _) => {
                 if *v == variable_update.variable {
+                    assert!(variable_update.known);
                     Some(SymbolicExpression::from_symbol(
                         v.clone(),
                         variable_update.range_constraint.clone(),
