@@ -1,4 +1,4 @@
-Tests from https://github.com/riscv/riscv-tests/tree/master/isa/
+Tests from https://github.com/riscv-software-src/riscv-tests/tree/master/isa
 
 Powdr partially implements riscv32imac userspace ISA. One major difference is
 that the code in our zkVM is interpreted at a higher abstraction level than the
