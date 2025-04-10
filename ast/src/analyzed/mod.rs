@@ -137,10 +137,9 @@ impl<T> Analyzed<T> {
             .chain(self.intermediate_columns.values().map(|(symbol, _)| symbol))
     }
 
-    pub fn name_to_poly_id(&self) -> BTreeMap<String, PolyID> {
+    pub fn name_to_poly_id(&self) -> impl Iterator<Item = (String, PolyID)> + '_ {
         self.column_symbols()
             .flat_map(|symbol| symbol.array_elements())
-            .collect()
     }
 
     /// Tries to resolve a symbol by name. Does not support individual array elements,
