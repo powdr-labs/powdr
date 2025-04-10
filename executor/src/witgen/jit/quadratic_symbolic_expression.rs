@@ -723,12 +723,12 @@ mod tests {
         // The same with range constraints that disallow zero.
         constr.apply_update(&VariableUpdate {
             variable: "X",
-            known: false,
+            known: true,
             range_constraint: RangeConstraint::from_value(5.into()),
         });
         constr.apply_update(&VariableUpdate {
             variable: "Y",
-            known: false,
+            known: true,
             range_constraint: RangeConstraint::from_range(100.into(), 102.into()),
         });
         assert!(Qse::from(GoldilocksField::from(10))
