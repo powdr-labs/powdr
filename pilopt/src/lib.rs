@@ -91,7 +91,7 @@ fn hash_pil_state<T: Hash>(pil_file: &Analyzed<T>) -> u64 {
 /// Removes all definitions that are not referenced by an identity, public declaration
 /// or witness column hint.
 fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let poly_id_to_definition_name = build_poly_id_to_definition_name_lookup(pil_file);
+    let poly_id_to_definition_name = pil_file.build_poly_id_to_definition_name_lookup();
     let mut symbols_seen = collect_required_symbols(pil_file, &poly_id_to_definition_name);
     let mut impls_to_retain = HashSet::new();
 
@@ -134,7 +134,11 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
             Box::new(value.iter().flat_map(|v| {
                 v.all_children().flat_map(|e| {
                     if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
-                        Some(poly_id_to_definition_name[poly_id].0.into())
+                        Some(
+                            poly_id_to_definition_name[&(poly_id.ptype, poly_id.id)]
+                                .0
+                                .into(),
+                        )
                     } else {
                         None
                     }
@@ -169,37 +173,10 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     pil_file.remove_trait_impls(&impls_to_remove);
 }
 
-/// Builds a lookup-table that can be used to turn all poly ids into the names of the symbols that define them.
-/// For array elements, this contains the array name and the index of the element in the array.
-fn build_poly_id_to_definition_name_lookup(
-    pil_file: &Analyzed<impl FieldElement>,
-) -> BTreeMap<PolyID, (&String, Option<usize>)> {
-    pil_file
-        .definitions
-        .iter()
-        .map(|(name, (symbol, _))| (name, symbol))
-        .chain(
-            pil_file
-                .intermediate_columns
-                .iter()
-                .map(|(name, (symbol, _))| (name, symbol)),
-        )
-        .filter(|(_, symbol)| matches!(symbol.kind, SymbolKind::Poly(_)))
-        .flat_map(|(name, symbol)| {
-            symbol
-                .array_elements()
-                .enumerate()
-                .map(move |(idx, (_, id))| {
-                    let array_pos = symbol.is_array().then_some(idx);
-                    (id, (name, array_pos))
-                })
-        })
-        .collect()
-}
 /// Collect all names that are referenced in identities and public declarations.
 fn collect_required_symbols<'a, T: FieldElement>(
     pil_file: &'a Analyzed<T>,
-    poly_id_to_definition_name: &BTreeMap<PolyID, (&'a String, Option<usize>)>,
+    poly_id_to_definition_name: &BTreeMap<(PolynomialType, u64), (&'a String, Option<usize>)>,
 ) -> HashSet<SymbolReference<'a>> {
     let mut required_names: HashSet<SymbolReference<'a>> = Default::default();
     required_names.extend(
@@ -217,7 +194,11 @@ fn collect_required_symbols<'a, T: FieldElement>(
     for id in &pil_file.identities {
         id.pre_visit_expressions(&mut |e: &AlgebraicExpression<T>| {
             if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
-                required_names.insert(poly_id_to_definition_name[poly_id].0.into());
+                required_names.insert(
+                    poly_id_to_definition_name[&(poly_id.ptype, poly_id.id)]
+                        .0
+                        .into(),
+                );
             }
         });
     }
@@ -632,14 +613,7 @@ fn replace_linear_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 assert!(symbol.length.is_none());
 
                 // we introduce a new intermediate symbol, so we need a new unique id
-                let id = pil_file
-                    .intermediate_columns
-                    .values()
-                    .flat_map(|(s, _)| s.array_elements())
-                    .map(|(_, poly_id)| poly_id.id)
-                    .max()
-                    .unwrap_or(0)
-                    + 1;
+                let id = pil_file.next_id_for_kind(PolynomialType::Intermediate);
 
                 // the symbol is not an array, so the poly_id uses the same id as the symbol
                 let poly_id = PolyID {
@@ -733,7 +707,7 @@ fn inline_trivial_intermediate_polynomials<T: FieldElement>(pil_file: &mut Analy
                         AlgebraicExpression::BinaryOperation(_) | AlgebraicExpression::UnaryOperation(_) => {
                             None
                         }
-                        _ =>{
+                        AlgebraicExpression::Reference(_) | AlgebraicExpression::PublicReference(_) | AlgebraicExpression::Number(_) | AlgebraicExpression::Challenge(_)=>{
                             log::debug!(
                                 "Determined intermediate column {name} to be trivial value `{value}`. Removing.",
                             );
@@ -754,26 +728,10 @@ fn substitute_polynomial_references<T: FieldElement>(
     substitutions: Vec<((String, PolyID), AlgebraicExpression<T>)>,
 ) {
     let poly_id_to_name = pil_file
-        .committed_polys_in_source_order()
-        .filter_map(|(s, _)| {
-            if let SymbolKind::Poly(kind) = s.kind {
-                Some(((kind, s.id), s.absolute_name.clone()))
-            } else {
-                None
-            }
-        })
-        .chain(
-            pil_file
-                .intermediate_polys_in_source_order()
-                .filter_map(|(s, _)| {
-                    if let SymbolKind::Poly(kind) = s.kind {
-                        Some(((kind, s.id), s.absolute_name.clone()))
-                    } else {
-                        None
-                    }
-                }),
-        )
-        .collect::<BTreeMap<_, _>>();
+        .build_poly_id_to_definition_name_lookup()
+        .into_iter()
+        .map(|((ptype, id), (name, _))| ((ptype, id), name.clone()))
+        .collect();
     let substitutions_by_id = substitutions
         .iter()
         .map(|((_, id), value)| (*id, value.clone()))

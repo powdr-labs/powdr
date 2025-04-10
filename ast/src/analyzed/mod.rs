@@ -107,6 +107,34 @@ impl<T> Analyzed<T> {
             + 1
     }
 
+    pub fn next_id_for_kind(&self, poly_type: PolynomialType) -> u64 {
+        match poly_type {
+            PolynomialType::Committed => {
+                self.committed_polys_in_source_order()
+                    .map(|(symbol, _)| symbol.id)
+                    .max()
+                    .unwrap_or(0)
+                    + 1
+            }
+            PolynomialType::Constant => {
+                self.constant_polys_in_source_order()
+                    .map(|(symbol, _)| symbol.id)
+                    .max()
+                    .unwrap_or(0)
+                    + 1
+            }
+            PolynomialType::Intermediate => {
+                self.intermediate_columns
+                    .values()
+                    .flat_map(|(s, _)| s.array_elements())
+                    .map(|(_, poly_id)| poly_id.id)
+                    .max()
+                    .unwrap_or(0)
+                    + 1
+            }
+        }
+    }
+
     /// @returns the number of committed polynomials (with multiplicities for arrays)
     pub fn commitment_count(&self) -> usize {
         self.declaration_type_count(PolynomialType::Committed)
@@ -143,6 +171,32 @@ impl<T> Analyzed<T> {
             .filter(|symbol| matches!(symbol.kind, SymbolKind::Poly(_)))
             .chain(self.intermediate_columns.values().map(|(symbol, _)| symbol))
             .flat_map(|symbol| symbol.array_elements())
+            .collect()
+    }
+
+    /// Builds a lookup-table that can be used to turn all poly ids into the names of the symbols that define them.
+    /// For array elements, this contains the array name and the index of the element in the array.
+    pub fn build_poly_id_to_definition_name_lookup(
+        &self,
+    ) -> BTreeMap<(PolynomialType, u64), (&String, Option<usize>)> {
+        self.definitions
+            .iter()
+            .map(|(name, (symbol, _))| (name, symbol))
+            .chain(
+                self.intermediate_columns
+                    .iter()
+                    .map(|(name, (symbol, _))| (name, symbol)),
+            )
+            .filter(|(_, symbol)| matches!(symbol.kind, SymbolKind::Poly(_)))
+            .flat_map(|(name, symbol)| {
+                symbol
+                    .array_elements()
+                    .enumerate()
+                    .map(move |(idx, (_, id))| {
+                        let array_pos = symbol.is_array().then_some(idx);
+                        ((id.ptype, id.id), (name, array_pos))
+                    })
+            })
             .collect()
     }
 
