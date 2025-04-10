@@ -7,8 +7,14 @@ use powdr_number::FieldElement;
 
 use crate::witgen::{
     jit::{
-        code_cleaner, identity_queue::QueueItem, processor::Processor,
+        code_cleaner,
+        identity_queue::QueueItem,
+        processor::{
+            algebraic_expression_to_queue_items, algebraic_variable_equation_to_queue_items,
+            Processor,
+        },
         prover_function_heuristics::decode_prover_functions,
+        quadratic_symbolic_expression::QuadraticSymbolicExpression,
     },
     machines::MachineParts,
     FixedData,
@@ -71,24 +77,26 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
             .collect::<HashSet<_>>();
         let witgen = WitgenInference::new(self.fixed_data, self, known_variables, []);
 
-        let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
-
         let mut queue_items = vec![];
+
+        let prover_functions = decode_prover_functions(&self.machine_parts, self.fixed_data)?;
 
         // In the latch row, set the RHS selector to 1.
         let selector = &bus_receive.selected_payload.selector;
-        queue_items.push(QueueItem::constant_assignment(
+        queue_items.extend(algebraic_expression_to_queue_items(
             selector,
             T::one(),
             self.latch_row as i32,
+            &witgen,
         ));
 
         if let Some((index, value)) = known_concrete {
             // Set the known argument to the concrete value.
-            queue_items.push(QueueItem::constant_assignment(
+            queue_items.extend(algebraic_expression_to_queue_items(
                 &bus_receive.selected_payload.expressions[index],
                 value,
                 self.latch_row as i32,
+                &witgen,
             ));
         }
 
@@ -96,20 +104,22 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
         for other_receive in self.machine_parts.bus_receives.values() {
             let other_selector = &other_receive.selected_payload.selector;
             if other_selector != selector {
-                queue_items.push(QueueItem::constant_assignment(
+                queue_items.extend(algebraic_expression_to_queue_items(
                     other_selector,
                     T::zero(),
                     self.latch_row as i32,
+                    &witgen,
                 ));
             }
         }
 
         // For each argument, connect the expression on the RHS with the formal parameter.
         for (index, expr) in bus_receive.selected_payload.expressions.iter().enumerate() {
-            queue_items.push(QueueItem::variable_assignment(
+            queue_items.extend(algebraic_variable_equation_to_queue_items(
                 expr,
-                Variable::Param(index),
+                &Variable::Param(index),
                 self.latch_row as i32,
+                &witgen,
             ));
         }
 
@@ -138,20 +148,21 @@ impl<'a, T: FieldElement> BlockMachineProcessor<'a, T> {
                 .collect_vec()
         });
 
-        // Add the intermediate definitions. It is fine to iterate over
-        // a hash type because the queue will re-sort its items.
-        #[allow(clippy::iter_over_hash_type)]
-        for (poly_id, name) in &self.machine_parts.intermediates {
+        // Add the intermediate definitions.
+        for (poly_id, name) in self.machine_parts.intermediates.iter().sorted() {
             let value = &intermediate_definitions[&(*poly_id).into()];
             for row_offset in start_row..=end_row {
-                queue_items.push(QueueItem::variable_assignment(
+                queue_items.extend(algebraic_expression_to_queue_items(
                     value,
-                    Variable::IntermediateCell(Cell {
-                        column_name: name.clone(),
-                        id: poly_id.id,
-                        row_offset,
-                    }),
+                    QuadraticSymbolicExpression::from_unknown_variable(Variable::IntermediateCell(
+                        Cell {
+                            column_name: name.clone(),
+                            id: poly_id.id,
+                            row_offset,
+                        },
+                    )),
                     row_offset,
+                    &witgen,
                 ));
             }
         }
@@ -533,20 +544,20 @@ main_binary::operation_id[2] = main_binary::operation_id[3];
 2**0 * main_binary::A[2] + 2**24 * main_binary::A_byte[2] := main_binary::A[3];
 2**0 * main_binary::B[2] + 2**24 * main_binary::B_byte[2] := main_binary::B[3];
 main_binary::operation_id_next[2] = main_binary::operation_id[3];
+call_var(9, 2, 0) = main_binary::operation_id_next[2];
 call_var(9, 2, 1) = main_binary::A_byte[2];
 call_var(9, 2, 2) = main_binary::B_byte[2];
-call_var(9, 2, 0) = main_binary::operation_id_next[2];
 main_binary::operation_id[1] = main_binary::operation_id[2];
 2**0 * main_binary::A[1] + 2**16 * main_binary::A_byte[1] := main_binary::A[2];
 2**0 * main_binary::B[1] + 2**16 * main_binary::B_byte[1] := main_binary::B[2];
 main_binary::operation_id_next[1] = main_binary::operation_id[2];
+call_var(9, 1, 0) = main_binary::operation_id_next[1];
+call_var(9, 1, 1) = main_binary::A_byte[1];
+call_var(9, 1, 2) = main_binary::B_byte[1];
 main_binary::operation_id[0] = main_binary::operation_id[1];
 main_binary::operation_id_next[0] = main_binary::operation_id[1];
 2**0 * main_binary::A[0] + 2**8 * main_binary::A_byte[0] := main_binary::A[1];
-call_var(9, 1, 1) = main_binary::A_byte[1];
 2**0 * main_binary::B[0] + 2**8 * main_binary::B_byte[0] := main_binary::B[1];
-call_var(9, 1, 2) = main_binary::B_byte[1];
-call_var(9, 1, 0) = main_binary::operation_id_next[1];
 main_binary::operation_id_next[-1] = main_binary::operation_id[0];
 call_var(9, 0, 0) = main_binary::operation_id_next[0];
 main_binary::A_byte[-1] = main_binary::A[0];
@@ -628,13 +639,13 @@ params[1] = Sub::b[0];"
             format_code(&code),
             "SubM::a[0] = params[0];
 2**0 * SubM::c[0] + 2**8 * SubM::b[0] := SubM::a[0];
-params[1] = SubM::b[0];
 params[2] = SubM::c[0];
 call_var(1, 0, 0) = SubM::c[0];
 SubM::c[1] = SubM::c[0];
+params[1] = SubM::b[0];
 SubM::b[1] = SubM::b[0];
+SubM::a[1] = (SubM::c[1] + (SubM::b[1] * 256));
 call_var(1, 1, 0) = SubM::b[1];
-SubM::a[1] = ((SubM::b[1] * 256) + SubM::c[1]);
 machine_call(2, [Known(call_var(1, 0, 0))]);
 machine_call(2, [Known(call_var(1, 1, 0))]);"
         );
@@ -761,33 +772,33 @@ params[2] = 1;"
 S::X[0] = params[0];
 S::Y[0] = params[1];
 S::Z1[0] = (S::X[0] + S::Y[0]);
-S::Z2[0] = ((S::Z1[0] * S::Z1[0]) + S::X[0]);
-S::Z3[0] = ((S::Z2[0] * S::Z2[0]) + S::Y[0]);
-S::Z4[0] = ((S::Z3[0] * S::Z3[0]) + S::X[0]);
-S::Z5[0] = ((S::Z4[0] * S::Z4[0]) + S::Y[0]);
-S::Z6[0] = ((S::Z5[0] * S::Z5[0]) + S::X[0]);
-S::Z7[0] = ((S::Z6[0] * S::Z6[0]) + S::Z3[0]);
-S::Z8[0] = ((S::Z7[0] * S::Z7[0]) + S::X[0]);
-S::Z9[0] = ((S::Z8[0] * S::Z8[0]) + S::Y[0]);
-S::Z10[0] = ((S::Z9[0] * S::Z9[0]) + S::X[0]);
-S::Z11[0] = ((S::Z10[0] * S::Z10[0]) + S::Z8[0]);
-S::Z12[0] = ((S::Z11[0] * S::Z11[0]) + S::X[0]);
-S::Z13[0] = ((S::Z12[0] * S::Z12[0]) + S::Y[0]);
-S::Z14[0] = ((S::Z13[0] * S::Z13[0]) + S::X[0]);
-S::Z15[0] = ((S::Z14[0] * S::Z14[0]) + S::Z12[0]);
-S::Z16[0] = ((S::Z15[0] * S::Z15[0]) + S::X[0]);
-S::Z17[0] = ((S::Z16[0] * S::Z16[0]) + S::Y[0]);
-S::Z18[0] = ((S::Z17[0] * S::Z17[0]) + S::X[0]);
-S::Z19[0] = ((S::Z18[0] * S::Z18[0]) + S::Z16[0]);
-S::Z20[0] = ((S::Z19[0] * S::Z19[0]) + S::X[0]);
-S::Z21[0] = ((S::Z20[0] * S::Z20[0]) + S::Y[0]);
-S::Z22[0] = ((S::Z21[0] * S::Z21[0]) + S::X[0]);
-S::Z23[0] = ((S::Z22[0] * S::Z22[0]) + S::Z20[0]);
-S::Z24[0] = ((S::Z23[0] * S::Z23[0]) + S::X[0]);
-S::Z25[0] = ((S::Z24[0] * S::Z24[0]) + S::Y[0]);
-S::Z26[0] = ((S::Z25[0] * S::Z25[0]) + S::X[0]);
-S::Z27[0] = ((S::Z26[0] * S::Z26[0]) + S::Z24[0]);
-S::Z28[0] = ((S::Z27[0] * S::Z27[0]) + S::X[0]);
+S::Z2[0] = (S::X[0] + (S::Z1[0] * S::Z1[0]));
+S::Z3[0] = (S::Y[0] + (S::Z2[0] * S::Z2[0]));
+S::Z4[0] = (S::X[0] + (S::Z3[0] * S::Z3[0]));
+S::Z5[0] = (S::Y[0] + (S::Z4[0] * S::Z4[0]));
+S::Z6[0] = (S::X[0] + (S::Z5[0] * S::Z5[0]));
+S::Z7[0] = (S::Z3[0] + (S::Z6[0] * S::Z6[0]));
+S::Z8[0] = (S::X[0] + (S::Z7[0] * S::Z7[0]));
+S::Z9[0] = (S::Y[0] + (S::Z8[0] * S::Z8[0]));
+S::Z10[0] = (S::X[0] + (S::Z9[0] * S::Z9[0]));
+S::Z11[0] = (S::Z8[0] + (S::Z10[0] * S::Z10[0]));
+S::Z12[0] = (S::X[0] + (S::Z11[0] * S::Z11[0]));
+S::Z13[0] = (S::Y[0] + (S::Z12[0] * S::Z12[0]));
+S::Z14[0] = (S::X[0] + (S::Z13[0] * S::Z13[0]));
+S::Z15[0] = (S::Z12[0] + (S::Z14[0] * S::Z14[0]));
+S::Z16[0] = (S::X[0] + (S::Z15[0] * S::Z15[0]));
+S::Z17[0] = (S::Y[0] + (S::Z16[0] * S::Z16[0]));
+S::Z18[0] = (S::X[0] + (S::Z17[0] * S::Z17[0]));
+S::Z19[0] = (S::Z16[0] + (S::Z18[0] * S::Z18[0]));
+S::Z20[0] = (S::X[0] + (S::Z19[0] * S::Z19[0]));
+S::Z21[0] = (S::Y[0] + (S::Z20[0] * S::Z20[0]));
+S::Z22[0] = (S::X[0] + (S::Z21[0] * S::Z21[0]));
+S::Z23[0] = (S::Z20[0] + (S::Z22[0] * S::Z22[0]));
+S::Z24[0] = (S::X[0] + (S::Z23[0] * S::Z23[0]));
+S::Z25[0] = (S::Y[0] + (S::Z24[0] * S::Z24[0]));
+S::Z26[0] = (S::X[0] + (S::Z25[0] * S::Z25[0]));
+S::Z27[0] = (S::Z24[0] + (S::Z26[0] * S::Z26[0]));
+S::Z28[0] = (S::X[0] + (S::Z27[0] * S::Z27[0]));
 S::Z[0] = S::Z28[0];
 params[2] = S::Z[0];"
         );
@@ -817,8 +828,8 @@ params[2] = S::Z[0];"
 S::X[0] = params[0];
 S::Y[0] = params[1];
 S::Zi[0][0] = (S::X[0] + S::Y[0]);
+S::Zi[1][0] = (S::X[0] * 2);
 S::Zi[2][0] = (S::Y[0] * S::Y[0]);
-S::Zi[1][0] = (2 * S::X[0]);
 S::Z[0] = ((S::Zi[0][0] + S::Zi[1][0]) + S::Zi[2][0]);
 params[2] = S::Z[0];"
         );
