@@ -64,7 +64,11 @@ impl<T: FieldElement, S> AllChildren<SymbolicExpression<T, S>> for SymbolicExpre
 
 impl<T: FieldElement, S> SymbolicExpression<T, S> {
     pub fn from_symbol(symbol: S, rc: RangeConstraint<T>) -> Self {
-        SymbolicExpression::Symbol(symbol, rc)
+        if let Some(v) = rc.try_to_single_value() {
+            SymbolicExpression::Concrete(v)
+        } else {
+            SymbolicExpression::Symbol(symbol, rc)
+        }
     }
 
     pub fn is_known_zero(&self) -> bool {
