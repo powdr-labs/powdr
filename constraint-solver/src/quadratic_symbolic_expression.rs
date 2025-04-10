@@ -9,6 +9,11 @@ use itertools::Itertools;
 use num_traits::Zero;
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
+use crate::{
+    effect::BranchCondition,
+    symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
+};
+
 use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
 use super::range_constraint::RangeConstraint;
 use super::{symbolic_expression::SymbolicExpression, variable_update::VariableUpdate};
@@ -420,13 +425,17 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         if !left_solution.complete || !right_solution.complete {
             return Ok(ProcessResult::empty());
         }
-        let (
-            [Effect::Assignment(first_var, first_assignment)],
-            [Effect::Assignment(second_var, second_assignment)],
-        ) = (
-            left_solution.effects.as_slice(),
-            right_solution.effects.as_slice(),
-        )
+        let Some(Effect::Assignment(first_var, first_assignment)) = left_solution
+            .effects
+            .into_iter()
+            .find(|e| matches!(e, Effect::Assignment(..)))
+        else {
+            return Ok(ProcessResult::empty());
+        };
+        let Some(Effect::Assignment(second_var, second_assignment)) = right_solution
+            .effects
+            .into_iter()
+            .find(|e| matches!(e, Effect::Assignment(..)))
         else {
             return Ok(ProcessResult::empty());
         };
@@ -435,14 +444,14 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             return Ok(ProcessResult::empty());
         }
 
-        let rc = range_constraints.get(first_var);
+        let rc = range_constraints.get(&first_var);
         // TODO check this does not have to be ">="
         if rc.range_width() > T::modulus() >> 1 {
             return Ok(ProcessResult::empty());
         }
 
         let Some(diff) = symbolic_expression_to_quadratic_symbolic_expression(
-            &(first_assignment + &-second_assignment),
+            &(first_assignment.clone() + -&second_assignment),
         ) else {
             return Ok(ProcessResult::empty());
         };
@@ -458,15 +467,15 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         }
 
         Ok(ProcessResult::complete(vec![
-            Effect::ConditionalAssignment(
+            Effect::ConditionalAssignment {
                 variable: first_var.clone(),
-                BranchCondition {
-                    variable: first_assignment.clone(),
+                condition: BranchCondition {
+                    variable: first_var.clone(),
                     condition: rc,
                 },
-                first_assignment,
-                second_assignment
-            ),
+                in_range_value: first_assignment,
+                out_of_range_value: second_assignment,
+            },
         ]))
     }
 }
@@ -948,4 +957,6 @@ Z: [10, 4294967050] & 0xffffffff;
 "
         );
     }
+
+    // TODO test solve quadratic
 }
