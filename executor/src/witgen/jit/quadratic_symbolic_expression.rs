@@ -785,7 +785,7 @@ mod tests {
         assert!(!result.complete && result.effects.is_empty());
         constr.apply_update(&VariableUpdate {
             variable: "z",
-            known: false,
+            known: true,
             range_constraint: z_rc.clone(),
         });
         // Now it should work.
