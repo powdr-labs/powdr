@@ -19,9 +19,7 @@ use crate::witgen::{
 };
 
 use super::{
-    algebraic_to_quadratic::{
-        algebraic_expression_to_quadratic_symbolic_expression, KnownProvider,
-    },
+    algebraic_to_quadratic::algebraic_expression_to_quadratic_symbolic_expression,
     effect::{BranchCondition, Effect, ProverFunctionCall},
     prover_function_heuristics::ProverFunction,
     quadratic_symbolic_expression::{Error, ProcessResult},
@@ -454,7 +452,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         expr: &Expression<T>,
         offset: i32,
     ) -> QuadraticSymbolicExpression<T, Variable> {
-        algebraic_expression_to_quadratic_symbolic_expression(expr, offset, false, self, self)
+        algebraic_expression_to_quadratic_symbolic_expression(expr, &|r| {
+            reference_to_quadratic_symbolic_expression(r, offset, false, self)
+        })
     }
 
     pub fn try_evaluate_to_known_number(&self, expr: &Expression<T>, offset: i32) -> Option<T> {
@@ -462,17 +462,42 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     }
 }
 
-impl<T: FieldElement, FixedEval: FixedEvaluator<T>> RangeConstraintProvider<T, Variable>
-    for WitgenInference<'_, T, FixedEval>
-{
-    fn get(&self, variable: &Variable) -> RangeConstraint<T> {
-        self.range_constraint(variable)
+pub fn reference_to_quadratic_symbolic_expression<T: FieldElement, Fixed: FixedEvaluator<T>>(
+    reference: &AlgebraicReference,
+    row_offset: i32,
+    require_concretely_known: bool,
+    witgen: &WitgenInference<'_, T, Fixed>,
+) -> QuadraticSymbolicExpression<T, Variable> {
+    variable_to_quadratic_symbolic_expression(
+        Variable::from_reference(reference, row_offset),
+        require_concretely_known,
+        witgen,
+    )
+}
+
+pub fn variable_to_quadratic_symbolic_expression<T: FieldElement, Fixed: FixedEvaluator<T>>(
+    variable: Variable,
+    require_concretely_known: bool,
+    witgen: &WitgenInference<'_, T, Fixed>,
+) -> QuadraticSymbolicExpression<T, Variable> {
+    let rc = witgen.range_constraint(&variable);
+    let known = if require_concretely_known {
+        rc.try_to_single_value().is_some()
+    } else {
+        witgen.is_known(&variable)
+    };
+    if known {
+        QuadraticSymbolicExpression::from_known_symbol(variable, rc)
+    } else {
+        QuadraticSymbolicExpression::from_unknown_variable(variable)
     }
 }
 
-impl<T: FieldElement, Fixed: FixedEvaluator<T>> KnownProvider for WitgenInference<'_, T, Fixed> {
-    fn is_known(&self, variable: &Variable) -> bool {
-        self.is_known(variable)
+impl<T: FieldElement, Fixed: FixedEvaluator<T>> RangeConstraintProvider<T, Variable>
+    for WitgenInference<'_, T, Fixed>
+{
+    fn get(&self, var: &Variable) -> RangeConstraint<T> {
+        self.range_constraint(var)
     }
 }
 
@@ -585,7 +610,12 @@ mod test {
                     let updated_vars = match id {
                         Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                             let equation = algebraic_expression_to_quadratic_symbolic_expression(
-                                expression, *row, false, &witgen, &witgen,
+                                expression,
+                                &|r| {
+                                    reference_to_quadratic_symbolic_expression(
+                                        r, *row, false, &witgen,
+                                    )
+                                },
                             );
                             witgen.process_equation(&equation).unwrap()
                         }
@@ -608,7 +638,12 @@ mod test {
                                     QuadraticSymbolicExpression::from_unknown_variable(var.clone())
                                 };
                                 let arg = algebraic_expression_to_quadratic_symbolic_expression(
-                                    arg, *row, false, &witgen, &witgen,
+                                    arg,
+                                    &|r| {
+                                        reference_to_quadratic_symbolic_expression(
+                                            r, *row, false, &witgen,
+                                        )
+                                    },
                                 );
                                 updated_vars.extend(witgen.process_equation(&(var - arg)).unwrap());
                             }

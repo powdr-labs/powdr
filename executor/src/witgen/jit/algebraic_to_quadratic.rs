@@ -1,49 +1,29 @@
+use std::hash::Hash;
+
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator,
 };
 use powdr_number::FieldElement;
 
-use super::{
-    quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
-    variable::Variable,
-};
+use super::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 
-pub trait KnownProvider {
-    fn is_known(&self, variable: &Variable) -> bool;
-}
-
-pub fn algebraic_expression_to_quadratic_symbolic_expression<T: FieldElement>(
+pub fn algebraic_expression_to_quadratic_symbolic_expression<
+    T: FieldElement,
+    V: Clone + Ord + Hash + Eq,
+>(
     expr: &AlgebraicExpression<T>,
-    row_offset: i32,
-    require_concretely_known: bool,
-    range_constraints: &impl RangeConstraintProvider<T, Variable>,
-    known_provider: &impl KnownProvider,
-) -> QuadraticSymbolicExpression<T, Variable> {
+    reference_converter: &impl Fn(&AlgebraicReference) -> QuadraticSymbolicExpression<T, V>,
+) -> QuadraticSymbolicExpression<T, V> {
     match expr {
-        AlgebraicExpression::Reference(r) => variable_to_quadratic_symbolic_expression(
-            Variable::from_reference(r, row_offset),
-            require_concretely_known,
-            range_constraints,
-            known_provider,
-        ),
+        AlgebraicExpression::Reference(r) => reference_converter(r),
         AlgebraicExpression::PublicReference(_) | AlgebraicExpression::Challenge(_) => todo!(),
         AlgebraicExpression::Number(n) => (*n).into(),
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let left = algebraic_expression_to_quadratic_symbolic_expression(
-                left,
-                row_offset,
-                require_concretely_known,
-                range_constraints,
-                known_provider,
-            );
-            let right = algebraic_expression_to_quadratic_symbolic_expression(
-                right,
-                row_offset,
-                require_concretely_known,
-                range_constraints,
-                known_provider,
-            );
+            let left =
+                algebraic_expression_to_quadratic_symbolic_expression(left, reference_converter);
+            let right =
+                algebraic_expression_to_quadratic_symbolic_expression(right, reference_converter);
             match op {
                 AlgebraicBinaryOperator::Add => left + right,
                 AlgebraicBinaryOperator::Sub => left - right,
@@ -54,35 +34,11 @@ pub fn algebraic_expression_to_quadratic_symbolic_expression<T: FieldElement>(
             }
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-            let expr = algebraic_expression_to_quadratic_symbolic_expression(
-                expr,
-                row_offset,
-                require_concretely_known,
-                range_constraints,
-                known_provider,
-            );
+            let expr =
+                algebraic_expression_to_quadratic_symbolic_expression(expr, reference_converter);
             match op {
                 AlgebraicUnaryOperator::Minus => -expr,
             }
         }
-    }
-}
-
-pub fn variable_to_quadratic_symbolic_expression<T: FieldElement>(
-    variable: Variable,
-    require_concretely_known: bool,
-    range_constraints: &impl RangeConstraintProvider<T, Variable>,
-    known_provider: &impl KnownProvider,
-) -> QuadraticSymbolicExpression<T, Variable> {
-    let rc = range_constraints.get(&variable);
-    let known = if require_concretely_known {
-        rc.try_to_single_value().is_some()
-    } else {
-        known_provider.is_known(&variable)
-    };
-    if known {
-        QuadraticSymbolicExpression::from_known_symbol(variable, rc)
-    } else {
-        QuadraticSymbolicExpression::from_unknown_variable(variable)
     }
 }

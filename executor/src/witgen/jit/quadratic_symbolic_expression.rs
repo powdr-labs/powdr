@@ -69,9 +69,7 @@ pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
     constant: SymbolicExpression<T, V>,
 }
 
-impl<T: FieldElement, V: Clone + Hash + Eq> From<SymbolicExpression<T, V>>
-    for QuadraticSymbolicExpression<T, V>
-{
+impl<T: FieldElement, V> From<SymbolicExpression<T, V>> for QuadraticSymbolicExpression<T, V> {
     fn from(k: SymbolicExpression<T, V>) -> Self {
         Self {
             quadratic: Default::default(),
@@ -81,7 +79,7 @@ impl<T: FieldElement, V: Clone + Hash + Eq> From<SymbolicExpression<T, V>>
     }
 }
 
-impl<T: FieldElement, V: Clone + Hash + Eq> From<T> for QuadraticSymbolicExpression<T, V> {
+impl<T: FieldElement, V> From<T> for QuadraticSymbolicExpression<T, V> {
     fn from(k: T) -> Self {
         SymbolicExpression::from(k).into()
     }
