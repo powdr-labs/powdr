@@ -5,6 +5,7 @@ use bit_vec::BitVec;
 use dynamic_machine::DynamicMachine;
 use powdr_ast::analyzed::{self, ContainsNextRef, DegreeRange, PolyID};
 
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_number::DegreeType;
 use powdr_number::FieldElement;
 
@@ -22,7 +23,6 @@ use self::write_once_memory::WriteOnceMemory;
 use super::data_structures::identity::{BusReceive, Identity};
 use super::global_constraints::RangeConstraintSet;
 use super::jit::witgen_inference::CanProcessCall;
-use super::range_constraints::RangeConstraint;
 use super::{AffineExpression, AlgebraicVariable, EvalError, EvalResult, FixedData, QueryCallback};
 
 mod block_machine;

@@ -341,7 +341,6 @@ mod test {
     use itertools::Itertools;
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
-    use test_log::test;
 
     use super::*;
 

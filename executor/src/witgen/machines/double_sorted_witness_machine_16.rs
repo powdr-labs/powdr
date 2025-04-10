@@ -3,6 +3,7 @@ use std::iter::once;
 
 use bit_vec::BitVec;
 use itertools::Itertools;
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 
 use super::{LookupCell, Machine, MachineParts};
 use crate::witgen::data_structures::caller_data::CallerData;
@@ -11,7 +12,6 @@ use crate::witgen::global_constraints::RangeConstraintSet;
 use crate::witgen::jit::witgen_inference::CanProcessCall;
 use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::processor::OuterQuery;
-use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
     AffineExpression, AlgebraicVariable, EvalError, EvalResult, FixedData, QueryCallback,
