@@ -13,8 +13,11 @@ use powdr_constraint_solver::{
 };
 use powdr_number::FieldElement;
 
-pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    for result in optimize(pil_file) {
+pub fn run_qse_optimization<T: FieldElement>(
+    pil_file: &mut Analyzed<T>,
+    range_constraints: impl RangeConstraintProvider<T, AlgebraicReference>,
+) {
+    for result in optimize(pil_file, range_constraints) {
         match result {
             Result::Equality(var, value) => {
                 pil_file.append_polynomial_identity(
@@ -30,9 +33,12 @@ pub fn run_qse_optimization<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     }
 }
 
-pub fn optimize<T: FieldElement>(pil_file: &Analyzed<T>) -> Vec<Result<T>> {
+pub fn optimize<'a, T: FieldElement>(
+    pil_file: &Analyzed<T>,
+    range_constraints: impl RangeConstraintProvider<T, AlgebraicReference>,
+) -> Vec<Result<T>> {
     // TODO extract range constraints from bus interactions
-    process_identities(create_identities(pil_file))
+    process_identities(create_identities(pil_file), range_constraints)
 }
 
 fn create_identities<T: FieldElement>(
@@ -55,9 +61,10 @@ fn create_identities<T: FieldElement>(
 
 fn process_identities<T: FieldElement>(
     identities: Vec<QuadraticSymbolicExpression<T, Variable>>,
+    range_constraints: impl RangeConstraintProvider<T, AlgebraicReference>,
 ) -> Vec<Result<T>> {
     let mut results = vec![];
-    let mut range_constraints = RangeConstraints::default();
+    let mut range_constraints = RangeConstraints::new(range_constraints);
     let mut complete_identities = vec![false; identities.len()];
 
     loop {
@@ -90,9 +97,13 @@ fn process_identities<T: FieldElement>(
                                     progress = true;
                                 }
                             }
-                            Effect::BitDecomposition(_)
-                            | Effect::Assertion(_)
-                            | Effect::Branch(..) => {}
+                            Effect::ConditionalAssignment {
+                                variable,
+                                condition,
+                                in_range_value,
+                                out_of_range_value,
+                            } => todo!(),
+                            Effect::BitDecomposition(_) | Effect::Assertion(_) => {}
                         }
                     }
                     if result.complete {
@@ -135,29 +146,35 @@ enum Result<T: FieldElement> {
 }
 
 #[derive(Default)]
-struct RangeConstraints<T: FieldElement> {
-    range_constraints: HashMap<Variable, RangeConstraint<T>>,
+struct RangeConstraints<T: FieldElement, R: RangeConstraintProvider<T, AlgebraicReference>> {
+    range_constraints: R,
+    new_range_constraints: HashMap<Variable, RangeConstraint<T>>,
 }
 
-impl<T: FieldElement> RangeConstraintProvider<T, Variable> for RangeConstraints<T> {
+impl<T: FieldElement, R: RangeConstraintProvider<T, AlgebraicReference>>
+    RangeConstraintProvider<T, Variable> for RangeConstraints<T, R>
+{
     fn get(&self, variable: &Variable) -> RangeConstraint<T> {
-        self.range_constraints
+        self.new_range_constraints
             .get(variable)
             .cloned()
-            .unwrap_or_default()
+            .unwrap_or_else(|| self.range_constraints.get(&variable.0))
     }
 }
 
-impl<T: FieldElement> RangeConstraints<T> {
+impl<T: FieldElement, R: RangeConstraintProvider<T, AlgebraicReference>> RangeConstraints<T, R> {
+    fn new(range_constraints: R) -> Self {
+        Self {
+            range_constraints,
+            new_range_constraints: HashMap::new(),
+        }
+    }
+
     fn add(&mut self, variable: Variable, range_constraint: RangeConstraint<T>) -> bool {
-        let existing = self
-            .range_constraints
-            .get(&variable)
-            .cloned()
-            .unwrap_or_default();
+        let existing = self.get(&variable);
         let new = existing.conjunction(&range_constraint);
         if new != existing {
-            self.range_constraints.insert(variable.clone(), new);
+            self.new_range_constraints.insert(variable.clone(), new);
             true
         } else {
             false
