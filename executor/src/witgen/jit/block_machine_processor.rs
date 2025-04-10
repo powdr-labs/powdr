@@ -936,4 +936,33 @@ S::carry[0] = 0;
 params[2] = 0;"
         );
     }
+
+    #[test]
+    fn addr_increment() {
+        let input = "
+namespace Main(256);
+    col witness a, b;
+    [a, b] is S.CLK $ [S.input_addr_high, S.input_addr_low];
+namespace S(256);
+    col witness input_addr_high;
+    col witness input_addr_low;
+    col witness high_addr;
+    col witness low_addr;
+    CLK * (high_addr - input_addr_high) = 0;
+    CLK * (low_addr - input_addr_low) = 0;
+    col witness carry;
+    col witness inverse;
+    (inverse * (low_addr - 65532) - 1) * (low_addr - 65532) = 0;
+    carry = 1 - inverse * (low_addr - 65532);
+    (1 - CLK') * (carry * low_addr' + (1 - carry) * (low_addr' - (low_addr + 4))) = 0;
+    (1 - CLK') * (high_addr' - (high_addr + carry)) = 0;
+    let CLK: col = |row| if row % 2 == 0 { 1_fe } else { 0_fe };
+    ";
+        let code = format_code(
+            &generate_for_block_machine::<GoldilocksField>(input, "S", None, 2, 0)
+                .unwrap()
+                .code,
+        );
+        assert_eq!(code, "something");
+    }
 }
