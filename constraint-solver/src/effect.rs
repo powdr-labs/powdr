@@ -16,8 +16,13 @@ pub enum Effect<T: FieldElement, V> {
     RangeConstraint(V, RangeConstraint<T>),
     /// A run-time assertion. If this fails, we have conflicting constraints.
     Assertion(Assertion<T, V>),
-    /// A branch on a variable.
-    Branch(BranchCondition<T, V>, Vec<Effect<T, V>>, Vec<Effect<T, V>>),
+    /// A variable is assigned one of two alterantive expressions, depending on a condition.
+    ConditionalAssignment {
+        variable: V,
+        condition: BranchCondition<T, V>,
+        in_range_value: SymbolicExpression<T, V>,
+        out_of_range_value: SymbolicExpression<T, V>,
+    },
 }
 
 /// A bit decomposition of a value.
