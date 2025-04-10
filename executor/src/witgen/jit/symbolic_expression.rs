@@ -139,7 +139,7 @@ impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
                 };
                 match op {
                     BinaryOperator::Add => Some(l + r),
-                    BinaryOperator::Sub => Some(l + -r),
+                    BinaryOperator::Sub => Some(l - r),
                     BinaryOperator::Mul => Some(l * r),
                     BinaryOperator::Div => Some(l.field_div(&r)),
                 }
