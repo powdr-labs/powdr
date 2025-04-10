@@ -91,8 +91,8 @@ fn hash_pil_state<T: Hash>(pil_file: &Analyzed<T>) -> u64 {
 /// Removes all definitions that are not referenced by an identity, public declaration
 /// or witness column hint.
 fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let poly_id_to_definition_name = build_poly_id_to_definition_name_lookup(&pil_file);
-    let mut symbols_seen = collect_required_symbols(&pil_file, &poly_id_to_definition_name);
+    let poly_id_to_definition_name = build_poly_id_to_definition_name_lookup(pil_file);
+    let mut symbols_seen = collect_required_symbols(pil_file, &poly_id_to_definition_name);
     let mut impls_to_retain = HashSet::new();
 
     let mut to_process = symbols_seen.iter().cloned().collect::<Vec<_>>();
