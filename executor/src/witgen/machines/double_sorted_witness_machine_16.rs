@@ -1,12 +1,17 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::once;
 
+use bit_vec::BitVec;
 use itertools::Itertools;
 
 use super::{LookupCell, Machine, MachineParts};
+use crate::witgen::data_structures::caller_data::CallerData;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::global_constraints::RangeConstraintSet;
+use crate::witgen::jit::witgen_inference::CanProcessCall;
 use crate::witgen::machines::compute_size_and_log;
+use crate::witgen::processor::OuterQuery;
+use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
     AffineExpression, AlgebraicVariable, EvalError, EvalResult, FixedData, QueryCallback,
@@ -87,6 +92,7 @@ pub struct DoubleSortedWitnesses16<'a, T: FieldElement> {
     //witness_positions: HashMap<String, usize>,
     /// (addr, step) -> (value1, value2)
     trace: BTreeMap<(Word32<T>, Word32<T>), Operation<T>>,
+    // TODO make this paged for performance.
     data: BTreeMap<u64, u64>,
     is_initialized: BTreeMap<Word32<T>, bool>,
     namespace: String,
@@ -98,6 +104,7 @@ pub struct DoubleSortedWitnesses16<'a, T: FieldElement> {
     has_bootloader_write_column: bool,
     /// All selector IDs that are used on the right-hand side connecting identities, by bus ID.
     selector_ids: BTreeMap<T, PolyID>,
+    latest_step: BTreeMap<u64, T>,
 }
 
 struct Operation<T> {
@@ -213,18 +220,50 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
             data: Default::default(),
             is_initialized: Default::default(),
             selector_ids,
+            latest_step: Default::default(),
         })
     }
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
+    fn can_process_call_fully(
+        &mut self,
+        _can_process: impl CanProcessCall<T>,
+        bus_id: T,
+        known_arguments: &BitVec,
+        range_constraints: Vec<RangeConstraint<T>>,
+    ) -> (bool, Vec<RangeConstraint<T>>) {
+        assert!(self.parts.bus_receives.contains_key(&bus_id));
+        assert_eq!(known_arguments.len(), 6);
+        assert_eq!(range_constraints.len(), 6);
+
+        // We blindly assume the parameters to be operation_id, high_addr, low_addr, step, value_high, value_low
+
+        // We need to known operation_id, step, high_addr and low_addr for all calls.
+        if !known_arguments[0] || !known_arguments[1] || !known_arguments[2] || !known_arguments[3]
+        {
+            return (false, range_constraints);
+        }
+
+        // For the value, it depends: If we write, we need to know it, if we read we do not need to know it.
+        let can_answer = if known_arguments[4] && known_arguments[5] {
+            // It is known, so we are good anyway.
+            true
+        } else {
+            // It is not known, so we can only process if we do not write.
+            !range_constraints[0].allows_value(T::from(OPERATION_ID_BOOTLOADER_WRITE))
+                && !range_constraints[0].allows_value(T::from(OPERATION_ID_WRITE))
+        };
+        (can_answer, range_constraints)
+    }
+
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b MutableState<'a, T, Q>,
-        _bus_id: T,
-        _values: &mut [LookupCell<'c, T>],
+        bus_id: T,
+        values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
-        unimplemented!("Direct lookup not supported by machine {}.", self.name())
+        self.process_call_internal(bus_id, values)
     }
 
     fn bus_ids(&self) -> Vec<T> {
@@ -237,12 +276,37 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
 
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &MutableState<'a, T, Q>,
+        mutable_state: &MutableState<'a, T, Q>,
         bus_id: T,
         arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
         range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(bus_id, arguments, range_constraints)
+        let receives = self.parts.bus_receives[&bus_id];
+        let outer_query = OuterQuery::new(arguments, range_constraints, receives);
+        let mut data = CallerData::from(&outer_query);
+        if self.process_lookup_direct(mutable_state, bus_id, &mut data.as_lookup_cells())? {
+            Ok(EvalResult::from(data)?.report_side_effect())
+        } else {
+            // One of the required arguments was not set, find out which:
+            let data = data.as_lookup_cells();
+            Ok(EvalValue::incomplete(
+                IncompleteCause::NonConstantRequiredArgument(
+                    match (&data[0], &data[1], &data[2], &data[3], &data[4], &data[5]) {
+                        // m_addr_high, m_addr_low, m_step -> m_value1, m_value2;
+                        (LookupCell::Output(_), _, _, _, _, _) => "operation_id",
+                        (_, LookupCell::Output(_), _, _, _, _) => "m_addr_high",
+                        (_, _, LookupCell::Output(_), _, _, _) => "m_addr_low",
+                        (_, _, _, LookupCell::Output(_), _, _) => "m_step",
+                        // Note that for the mload operation, we'd expect these to be a outputs.
+                        // But since process_lookup_direct returned false and all other arguments are set,
+                        // we must have been in the mstore operation, in which case these values are required.
+                        (_, _, _, _, LookupCell::Output(_), _) => "m_value1",
+                        (_, _, _, _, _, LookupCell::Output(_)) => "m_value2",
+                        _ => unreachable!(),
+                    },
+                ),
+            ))
+        }
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -412,13 +476,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
-    pub fn process_plookup_internal(
+impl<T: FieldElement> DoubleSortedWitnesses16<'_, T> {
+    fn process_call_internal(
         &mut self,
         bus_id: T,
-        arguments: &[AffineExpression<AlgebraicVariable<'a>, T>],
-        range_constraints: &dyn RangeConstraintSet<AlgebraicVariable<'a>, T>,
-    ) -> EvalResult<'a, T> {
+        values: &mut [LookupCell<'_, T>],
+    ) -> Result<bool, EvalError<T>> {
         // We blindly assume the lookup is of the form
         // OP { operation_id, ADDR_high, ADDR_low, STEP, X_high, X_low } is
         // <selector> { operation_id, m_addr_high, m_addr_low, m_step_high * 2**16 + m_step_low, m_value_high, m_value_low }
@@ -427,30 +490,33 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         // - operation_id == 1: Write
         // - operation_id == 2: Bootloader write
 
-        let operation_id = match arguments[0].constant_value() {
-            Some(v) => v,
-            None => {
-                return Ok(EvalValue::incomplete(
-                    IncompleteCause::NonConstantRequiredArgument("operation_id"),
-                ))
-            }
+        let operation_id = match values[0] {
+            LookupCell::Input(v) => v,
+            LookupCell::Output(_) => return Ok(false),
+        };
+        let addr_high = match values[1] {
+            LookupCell::Input(v) => v,
+            LookupCell::Output(_) => return Ok(false),
+        };
+        let addr_low = match values[2] {
+            LookupCell::Input(v) => v,
+            LookupCell::Output(_) => return Ok(false),
+        };
+        let addr = Word32(*addr_high, *addr_low);
+        let addr_int: u64 = addr.into();
+        let step = match values[3] {
+            LookupCell::Input(v) => v,
+            LookupCell::Output(_) => return Ok(false),
+        };
+        let [value1_ptr, value2_ptr] = &mut values[4..=5] else {
+            unreachable!();
         };
 
         let selector_id = *self.selector_ids.get(&bus_id).unwrap();
 
-        let is_normal_write = operation_id == T::from(OPERATION_ID_WRITE);
-        let is_bootloader_write = operation_id == T::from(OPERATION_ID_BOOTLOADER_WRITE);
+        let is_normal_write = *operation_id == T::from(OPERATION_ID_WRITE);
+        let is_bootloader_write = *operation_id == T::from(OPERATION_ID_BOOTLOADER_WRITE);
         let is_write = is_bootloader_write || is_normal_write;
-        let addr = match (arguments[1].constant_value(), arguments[2].constant_value()) {
-            (Some(high), Some(low)) => Word32(high, low),
-            _ => {
-                return Ok(EvalValue::incomplete(
-                    IncompleteCause::NonConstantRequiredArgument("m_addr"),
-                ))
-            }
-        };
-
-        let addr_int: u64 = addr.into();
 
         if self.has_bootloader_write_column {
             let is_initialized = self.is_initialized.get(&addr).cloned().unwrap_or_default();
@@ -460,28 +526,13 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
             self.is_initialized.insert(addr, true);
         }
 
-        let step = arguments[3]
-            .constant_value()
-            .ok_or_else(|| format!("Step must be known but is: {}", arguments[3]))?;
         let step_word = Word32::from(step.to_degree());
 
-        let value1_expr = &arguments[4];
-        let value2_expr = &arguments[5];
-
-        log::trace!(
-            "Query addr=0x{addr_int:x}, step={step}, write: {is_write}, value: ({value1_expr} {value2_expr})"
-        );
-
         // TODO this does not check any of the failure modes
-        let mut assignments = EvalValue::complete(vec![]);
         let has_side_effect = if is_write {
-            let value = match (value1_expr.constant_value(), value2_expr.constant_value()) {
-                (Some(high), Some(low)) => Word32(high, low),
-                _ => {
-                    return Ok(EvalValue::incomplete(
-                        IncompleteCause::NonConstantRequiredArgument("m_value"),
-                    ))
-                }
+            let value = match (value1_ptr, value2_ptr) {
+                (LookupCell::Input(high), LookupCell::Input(low)) => Word32(**high, **low),
+                _ => return Ok(false),
             };
 
             let value_int: u64 = value.into();
@@ -509,12 +560,26 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
             let value_low_fe: T = value_low.into();
             let value_high_fe: T = value_high.into();
 
-            let ass = (value1_expr.clone() - value_high_fe.into())
-                .solve_with_range_constraints(range_constraints)?;
-            assignments.combine(ass);
-            let ass2 = (value2_expr.clone() - value_low_fe.into())
-                .solve_with_range_constraints(range_constraints)?;
-            assignments.combine(ass2);
+            match value1_ptr {
+                LookupCell::Output(v) => **v = value_high_fe,
+                LookupCell::Input(v) => {
+                    if *v != &value_high_fe {
+                        return Err(EvalError::ConstraintUnsatisfiable(format!(
+                            "{v} != {value_high_fe} (high) (address 0x{addr_int:x}, time step)"
+                        )));
+                    }
+                }
+            }
+            match value2_ptr {
+                LookupCell::Output(v) => **v = value_low_fe,
+                LookupCell::Input(v) => {
+                    if *v != &value_low_fe {
+                        return Err(EvalError::ConstraintUnsatisfiable(format!(
+                            "{v} != {value_low_fe} (low) (address 0x{addr_int:x}, time step)"
+                        )));
+                    }
+                }
+            }
             self.trace
                 .insert(
                     (addr, step_word),
@@ -527,16 +592,26 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
                 )
                 .is_none()
         };
+
+        let latest_step = self.latest_step.entry(addr_int).or_insert_with(T::zero);
+
+        if step < latest_step {
+            panic!(
+                "Expected the step for addr 0x{addr_int:x} to be at least equal to the previous step, but {step} < {latest_step}!\nFrom receive: {}",
+                self.parts.bus_receives[&bus_id]
+            );
+        }
+        self.latest_step.insert(addr_int, *step);
+
         assert!(
             has_side_effect,
             "Already had a memory access for address 0x{addr_int:x} and time step {step}!"
         );
-        assignments = assignments.report_side_effect();
 
         if self.trace.len() > (self.degree as usize) {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
-        Ok(assignments)
+        Ok(true)
     }
 }

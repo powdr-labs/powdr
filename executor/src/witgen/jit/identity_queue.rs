@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, VecDeque},
     rc::Rc,
 };
 
@@ -20,48 +20,114 @@ use super::{prover_function_heuristics::ProverFunction, variable::Variable};
 /// updates this list based on the occurrence of updated variables
 /// in identities.
 #[derive(Clone)]
-pub struct IdentityQueue<'a, T: FieldElement> {
-    queue: BTreeSet<QueueItem<'a, T>>,
-    occurrences: Rc<HashMap<Variable, Vec<QueueItem<'a, T>>>>,
+pub struct IdentityQueue<'ast, 'queue, T: FieldElement> {
+    items: &'queue Vec<QueueItem<'ast, T>>,
+    in_queue: Vec<bool>,
+    identity_queue: VecDeque<usize>,
+    /// This is a priority queue because we always want to process
+    /// the "first" machine call that received a variable update
+    /// in the hope that this results in the machine calls to be
+    /// in source order, where possible.
+    machine_call_queue: BTreeSet<usize>,
+    prover_function_queue: VecDeque<usize>,
+    /// Maps a variable to a list of indices in `items`, pointing to the items where they are referenced.
+    occurrences: Rc<HashMap<Variable, Vec<usize>>>,
 }
 
-impl<'a, T: FieldElement> IdentityQueue<'a, T> {
-    pub fn new(items: impl IntoIterator<Item = QueueItem<'a, T>>) -> Self {
-        let queue: BTreeSet<_> = items.into_iter().collect();
+impl<'ast, 'queue, T: FieldElement> IdentityQueue<'ast, 'queue, T> {
+    /// Creates a new queue based on the given identities.
+    /// The order of identities in this queue matters for the
+    /// order in which they are processed.
+    pub fn new(items: &'queue Vec<QueueItem<'ast, T>>) -> Self {
         let mut references = ReferencesComputer::default();
         let occurrences = Rc::new(
-            queue
+            items
                 .iter()
-                .flat_map(|item| {
+                .enumerate()
+                .flat_map(|(id, item)| {
                     references
                         .references(item)
                         .iter()
-                        .map(|v| (v.clone(), item.clone()))
+                        .map(|v| (v.clone(), id))
                         .collect_vec()
                 })
                 .into_group_map(),
         );
-        Self { queue, occurrences }
+        Self {
+            items,
+            in_queue: vec![true; items.len()],
+            identity_queue: collect_filtered_indices(items, &is_polynomial_identity_or_assignment),
+            machine_call_queue: collect_filtered_indices(items, &is_submachine_call),
+            prover_function_queue: collect_filtered_indices(items, &is_prover_function),
+            occurrences,
+        }
     }
 
     /// Returns the next identity to be processed and its row and
     /// removes it from the queue.
-    pub fn next(&mut self) -> Option<QueueItem<'a, T>> {
-        self.queue.pop_first()
+    pub fn next(&mut self) -> Option<&'queue QueueItem<'ast, T>> {
+        self.identity_queue
+            .pop_front()
+            .or_else(|| self.machine_call_queue.pop_first())
+            .or_else(|| self.prover_function_queue.pop_front())
+            .map(|id| {
+                self.in_queue[id] = false;
+                &self.items[id]
+            })
     }
 
     pub fn variables_updated(&mut self, variables: impl IntoIterator<Item = Variable>) {
         // Note that this will usually re-add the item that caused the update,
         // which is fine, since there are situations where we can further process
         // it from an update (for example a range constraint).
-        self.queue.extend(
-            variables
-                .into_iter()
-                .flat_map(|var| self.occurrences.get(&var))
-                .flatten()
-                .cloned(),
-        )
+        for id in variables
+            .into_iter()
+            .flat_map(|var| self.occurrences.get(&var))
+            .flatten()
+        {
+            if !self.in_queue[*id] {
+                self.in_queue[*id] = true;
+                if is_polynomial_identity_or_assignment(&self.items[*id]) {
+                    self.identity_queue.push_back(*id);
+                } else if is_submachine_call(&self.items[*id]) {
+                    self.machine_call_queue.insert(*id);
+                } else {
+                    assert!(is_prover_function(&self.items[*id]));
+                    self.prover_function_queue.push_back(*id);
+                }
+            }
+        }
     }
+}
+
+fn is_polynomial_identity_or_assignment<T: FieldElement>(item: &QueueItem<'_, T>) -> bool {
+    match item {
+        QueueItem::Identity(Identity::Polynomial(..), _)
+        | QueueItem::VariableAssignment(..)
+        | QueueItem::ConstantAssignment(..) => true,
+        QueueItem::Identity(Identity::BusSend(..), _) | QueueItem::ProverFunction(..) => false,
+        QueueItem::Identity(Identity::Connect(..), _) => unreachable!(),
+    }
+}
+
+fn is_submachine_call<T: FieldElement>(item: &QueueItem<'_, T>) -> bool {
+    matches!(item, QueueItem::Identity(Identity::BusSend(..), _))
+}
+
+fn is_prover_function<T: FieldElement>(item: &QueueItem<'_, T>) -> bool {
+    matches!(item, QueueItem::ProverFunction(..))
+}
+
+/// Filters a slice by a boolean selector and returns a collection of the matching indices.
+fn collect_filtered_indices<D, F, C: FromIterator<usize>>(items: &[D], mut filter: F) -> C
+where
+    F: FnMut(&D) -> bool,
+{
+    items
+        .iter()
+        .enumerate()
+        .filter_map(|(index, item)| if filter(item) { Some(index) } else { None })
+        .collect()
 }
 
 #[derive(Clone)]

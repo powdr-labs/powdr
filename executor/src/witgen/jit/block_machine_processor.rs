@@ -399,12 +399,13 @@ mod test {
 
     use super::*;
 
-    fn generate_for_block_machine(
+    fn generate_for_block_machine<T: FieldElement>(
         input_pil: &str,
         machine_name: &str,
+        receive_bus_id: Option<T>,
         num_inputs: usize,
         num_outputs: usize,
-    ) -> Result<ProcessorResult<GoldilocksField>, String> {
+    ) -> Result<ProcessorResult<T>, String> {
         let (analyzed, fixed_col_vals) = read_pil(input_pil);
 
         let fixed_data = FixedData::new(&analyzed, &fixed_col_vals, &[], Default::default(), 0);
@@ -419,8 +420,20 @@ mod test {
             panic!("Expected exactly one matching block machine")
         };
         let (machine_parts, block_size, latch_row) = machine.machine_info();
-        assert_eq!(machine_parts.bus_receives.len(), 1);
-        let bus_id = *machine_parts.bus_receives.keys().next().unwrap();
+
+        let bus_id = receive_bus_id.unwrap_or_else(|| {
+            assert_eq!(
+                machine_parts.bus_receives.len(),
+                1,
+                "No bus ID given and multiple receives present: {}",
+                machine_parts.bus_receives.keys().format(", ")
+            );
+            *machine_parts
+                .bus_receives
+                .keys()
+                .next()
+                .expect("No bus receives found")
+        });
         let processor = BlockMachineProcessor {
             fixed_data: &fixed_data,
             machine_parts: machine_parts.clone(),
@@ -453,7 +466,9 @@ mod test {
             col witness sel, a, b, c;
             c = a + b;
         ";
-        let code = generate_for_block_machine(input, "Add", 2, 1).unwrap().code;
+        let code = generate_for_block_machine::<GoldilocksField>(input, "Add", None, 2, 1)
+            .unwrap()
+            .code;
         assert_eq!(
             format_code(&code),
             "Add::sel[0] = 1;
@@ -474,9 +489,10 @@ params[2] = Add::c[0];"
             col witness sel, a, b, c;
             a + b = 0;
         ";
-        let err_str = generate_for_block_machine(input, "Unconstrained", 2, 1)
-            .err()
-            .unwrap();
+        let err_str =
+            generate_for_block_machine::<GoldilocksField>(input, "Unconstrained", None, 2, 1)
+                .err()
+                .unwrap();
         assert!(err_str
             .contains("The following variables or values are still missing: Unconstrained::c"));
     }
@@ -493,13 +509,15 @@ params[2] = Add::c[0];"
             col witness sel, a;
             a = a';
         ";
-        generate_for_block_machine(input, "NotStackable", 1, 0).unwrap();
+        generate_for_block_machine::<GoldilocksField>(input, "NotStackable", None, 1, 0).unwrap();
     }
 
     #[test]
     fn binary() {
         let input = read_to_string("../test_data/pil/binary.pil").unwrap();
-        let result = generate_for_block_machine(&input, "main_binary", 3, 1).unwrap();
+        let result =
+            generate_for_block_machine::<GoldilocksField>(&input, "main_binary", None, 3, 1)
+                .unwrap();
         let [op_rc, a_rc, b_rc, c_rc] = &result.range_constraints.try_into().unwrap();
         assert_eq!(op_rc, &RangeConstraint::from_range(0.into(), 2.into()));
         assert_eq!(a_rc, &RangeConstraint::from_mask(0xffffffffu64));
@@ -512,29 +530,31 @@ main_binary::operation_id[3] = params[0];
 main_binary::A[3] = params[1];
 main_binary::B[3] = params[2];
 main_binary::operation_id[2] = main_binary::operation_id[3];
-main_binary::operation_id[1] = main_binary::operation_id[2];
-main_binary::operation_id[0] = main_binary::operation_id[1];
-main_binary::operation_id_next[-1] = main_binary::operation_id[0];
-call_var(9, -1, 0) = main_binary::operation_id_next[-1];
-main_binary::operation_id_next[0] = main_binary::operation_id[1];
-call_var(9, 0, 0) = main_binary::operation_id_next[0];
-main_binary::operation_id_next[1] = main_binary::operation_id[2];
-call_var(9, 1, 0) = main_binary::operation_id_next[1];
-2**24 * main_binary::A_byte[2] + 2**0 * main_binary::A[2] := main_binary::A[3];
+2**0 * main_binary::A[2] + 2**24 * main_binary::A_byte[2] := main_binary::A[3];
+2**0 * main_binary::B[2] + 2**24 * main_binary::B_byte[2] := main_binary::B[3];
+main_binary::operation_id_next[2] = main_binary::operation_id[3];
 call_var(9, 2, 1) = main_binary::A_byte[2];
-2**16 * main_binary::A_byte[1] + 2**0 * main_binary::A[1] := main_binary::A[2];
-call_var(9, 1, 1) = main_binary::A_byte[1];
-2**8 * main_binary::A_byte[0] + 2**0 * main_binary::A[0] := main_binary::A[1];
-call_var(9, 0, 1) = main_binary::A_byte[0];
-main_binary::A_byte[-1] = main_binary::A[0];
-call_var(9, -1, 1) = main_binary::A_byte[-1];
-2**24 * main_binary::B_byte[2] + 2**0 * main_binary::B[2] := main_binary::B[3];
 call_var(9, 2, 2) = main_binary::B_byte[2];
-2**16 * main_binary::B_byte[1] + 2**0 * main_binary::B[1] := main_binary::B[2];
+call_var(9, 2, 0) = main_binary::operation_id_next[2];
+main_binary::operation_id[1] = main_binary::operation_id[2];
+2**0 * main_binary::A[1] + 2**16 * main_binary::A_byte[1] := main_binary::A[2];
+2**0 * main_binary::B[1] + 2**16 * main_binary::B_byte[1] := main_binary::B[2];
+main_binary::operation_id_next[1] = main_binary::operation_id[2];
+main_binary::operation_id[0] = main_binary::operation_id[1];
+main_binary::operation_id_next[0] = main_binary::operation_id[1];
+2**0 * main_binary::A[0] + 2**8 * main_binary::A_byte[0] := main_binary::A[1];
+call_var(9, 1, 1) = main_binary::A_byte[1];
+2**0 * main_binary::B[0] + 2**8 * main_binary::B_byte[0] := main_binary::B[1];
 call_var(9, 1, 2) = main_binary::B_byte[1];
-2**8 * main_binary::B_byte[0] + 2**0 * main_binary::B[0] := main_binary::B[1];
-call_var(9, 0, 2) = main_binary::B_byte[0];
+call_var(9, 1, 0) = main_binary::operation_id_next[1];
+main_binary::operation_id_next[-1] = main_binary::operation_id[0];
+call_var(9, 0, 0) = main_binary::operation_id_next[0];
+main_binary::A_byte[-1] = main_binary::A[0];
+call_var(9, 0, 1) = main_binary::A_byte[0];
 main_binary::B_byte[-1] = main_binary::B[0];
+call_var(9, 0, 2) = main_binary::B_byte[0];
+call_var(9, -1, 0) = main_binary::operation_id_next[-1];
+call_var(9, -1, 1) = main_binary::A_byte[-1];
 call_var(9, -1, 2) = main_binary::B_byte[-1];
 machine_call(2, [Known(call_var(9, -1, 0)), Known(call_var(9, -1, 1)), Known(call_var(9, -1, 2)), Unknown(call_var(9, -1, 3))]);
 main_binary::C_byte[-1] = call_var(9, -1, 3);
@@ -545,8 +565,6 @@ main_binary::C[1] = (main_binary::C[0] + (main_binary::C_byte[0] * 256));
 machine_call(2, [Known(call_var(9, 1, 0)), Known(call_var(9, 1, 1)), Known(call_var(9, 1, 2)), Unknown(call_var(9, 1, 3))]);
 main_binary::C_byte[1] = call_var(9, 1, 3);
 main_binary::C[2] = (main_binary::C[1] + (main_binary::C_byte[1] * 65536));
-main_binary::operation_id_next[2] = main_binary::operation_id[3];
-call_var(9, 2, 0) = main_binary::operation_id_next[2];
 machine_call(2, [Known(call_var(9, 2, 0)), Known(call_var(9, 2, 1)), Known(call_var(9, 2, 2)), Unknown(call_var(9, 2, 3))]);
 main_binary::C_byte[2] = call_var(9, 2, 3);
 main_binary::C[3] = (main_binary::C[2] + (main_binary::C_byte[2] * 16777216));
@@ -557,7 +575,7 @@ params[3] = main_binary::C[3];"
     #[test]
     fn poseidon() {
         let input = read_to_string("../test_data/pil/poseidon_gl.pil").unwrap();
-        generate_for_block_machine(&input, "main_poseidon", 12, 4)
+        generate_for_block_machine::<GoldilocksField>(&input, "main_poseidon", None, 12, 4)
             .map_err(|e| eprintln!("{e}"))
             .unwrap();
     }
@@ -575,7 +593,9 @@ params[3] = main_binary::C[3];"
             (a - 20) * (b + 3) = 1;
             query |i| std::prover::compute_from(b, i, [a], |values| 20);
         ";
-        let code = generate_for_block_machine(input, "Sub", 1, 1).unwrap().code;
+        let code = generate_for_block_machine::<GoldilocksField>(input, "Sub", None, 1, 1)
+            .unwrap()
+            .code;
         assert_eq!(
             format_code(&code),
             "Sub::a[0] = params[0];
@@ -601,22 +621,22 @@ params[1] = Sub::b[0];"
             (c' - c) * sel = 0;
             a = b * 256 + c;
         ";
-        let code = generate_for_block_machine(input, "SubM", 1, 2)
+        let code = generate_for_block_machine::<GoldilocksField>(input, "SubM", None, 1, 2)
             .unwrap()
             .code;
         assert_eq!(
             format_code(&code),
             "SubM::a[0] = params[0];
-2**8 * SubM::b[0] + 2**0 * SubM::c[0] := SubM::a[0];
+2**0 * SubM::c[0] + 2**8 * SubM::b[0] := SubM::a[0];
 params[1] = SubM::b[0];
 params[2] = SubM::c[0];
 call_var(1, 0, 0) = SubM::c[0];
-machine_call(2, [Known(call_var(1, 0, 0))]);
+SubM::c[1] = SubM::c[0];
 SubM::b[1] = SubM::b[0];
 call_var(1, 1, 0) = SubM::b[1];
-SubM::c[1] = SubM::c[0];
-machine_call(2, [Known(call_var(1, 1, 0))]);
-SubM::a[1] = ((SubM::b[1] * 256) + SubM::c[1]);"
+SubM::a[1] = ((SubM::b[1] * 256) + SubM::c[1]);
+machine_call(2, [Known(call_var(1, 0, 0))]);
+machine_call(2, [Known(call_var(1, 1, 0))]);"
         );
     }
 
@@ -636,7 +656,11 @@ SubM::a[1] = ((SubM::b[1] * 256) + SubM::c[1]);"
             [ (a - 1) * y ] in [ B ];
             a + b = c;
         ";
-        let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        let code = format_code(
+            &generate_for_block_machine::<GoldilocksField>(input, "S", None, 2, 1)
+                .unwrap()
+                .code,
+        );
         assert_eq!(
             code,
             "S::a[0] = params[0];
@@ -665,20 +689,24 @@ machine_call(3, [Known(call_var(3, 0, 0))]);"
             b' = FACTOR * 8;
             c = b + 1;
         ";
-        let code = format_code(&generate_for_block_machine(input, "S", 1, 2).unwrap().code);
+        let code = format_code(
+            &generate_for_block_machine::<GoldilocksField>(input, "S", None, 1, 2)
+                .unwrap()
+                .code,
+        );
         assert_eq!(
             code,
             "S::a[0] = params[0];
 S::b[0] = 0;
-params[1] = 0;
 S::b[1] = 0;
 S::c[0] = 1;
-params[2] = 1;
 S::b[2] = 0;
 S::c[1] = 1;
 S::b[3] = 8;
 S::c[2] = 1;
-S::c[3] = 9;"
+S::c[3] = 9;
+params[1] = 0;
+params[2] = 1;"
         );
     }
 
@@ -722,7 +750,11 @@ S::c[3] = 9;"
             let Z28: inter = Z27 * Z27 + X;
             Z = Z28;
         ";
-        let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        let code = format_code(
+            &generate_for_block_machine::<GoldilocksField>(input, "S", None, 2, 1)
+                .unwrap()
+                .code,
+        );
         assert_eq!(
             code,
             "\
@@ -774,7 +806,11 @@ params[2] = S::Z[0];"
             let Zi: inter[3] = [X + Y, 2 * X, Y * Y];
             Z = Zi[0] + Zi[1] + Zi[2];
         ";
-        let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        let code = format_code(
+            &generate_for_block_machine::<GoldilocksField>(input, "S", None, 2, 1)
+                .unwrap()
+                .code,
+        );
         assert_eq!(
             code,
             "\
@@ -806,7 +842,11 @@ params[2] = S::Z[0];"
             [ Z ] in [ BYTE ];
             X + Y = Z + 256 * carry;
         ";
-        let code = format_code(&generate_for_block_machine(input, "S", 2, 1).unwrap().code);
+        let code = format_code(
+            &generate_for_block_machine::<GoldilocksField>(input, "S", None, 2, 1)
+                .unwrap()
+                .code,
+        );
         assert_eq!(
             code,
             "\
@@ -814,6 +854,86 @@ S::Y[0] = params[0];
 S::Z[0] = params[1];
 -2**0 * S::X[0] + 2**8 * S::carry[0] := (S::Y[0] + -S::Z[0]);
 params[2] = S::carry[0];"
+        );
+    }
+
+    #[test]
+    fn block_lookup_or_permutation() {
+        let input = read_to_string("../test_data/pil/block_lookup_or_permutation.pil").unwrap();
+        generate_for_block_machine::<GoldilocksField>(&input, "Or", Some(2.into()), 2, 1)
+            .map_err(|e| eprintln!("{e}"))
+            .unwrap();
+    }
+
+    #[test]
+    fn bit_decomp_negative_concrete() {
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is [S.Y, S.Z,  S.carry];
+        namespace S(256);
+            let BYTE: col = |i| i & 0xff;
+            let X;
+            let Y;
+            let Z;
+            Y = 19;
+            Z = 16;
+            let carry;
+            carry * (1 - carry) = 0;
+            [ X ] in [ BYTE ];
+            [ Y ] in [ BYTE ];
+            [ Z ] in [ BYTE ];
+            X + Y = Z + 256 * carry;
+        ";
+        let code = format_code(
+            &generate_for_block_machine::<GoldilocksField>(input, "S", None, 2, 1)
+                .unwrap()
+                .code,
+        );
+        assert_eq!(
+            code,
+            "\
+S::Y[0] = params[0];
+S::Z[0] = params[1];
+S::X[0] = 253;
+S::carry[0] = 1;
+params[2] = 1;"
+        );
+    }
+
+    #[test]
+    fn bit_decomp_negative_concrete_2() {
+        let input = "
+        namespace Main(256);
+            col witness a, b, c;
+            [a, b, c] is [S.Y, S.Z,  S.carry];
+        namespace S(256);
+            let BYTE: col = |i| i & 0xff;
+            let X;
+            let Y;
+            let Z;
+            Y = 1;
+            Z = 16;
+            let carry;
+            carry * (1 - carry) = 0;
+            [ X ] in [ BYTE ];
+            [ Y ] in [ BYTE ];
+            [ Z ] in [ BYTE ];
+            X + Y = Z + 256 * carry;
+        ";
+        let code = format_code(
+            &generate_for_block_machine::<GoldilocksField>(input, "S", None, 2, 1)
+                .unwrap()
+                .code,
+        );
+        assert_eq!(
+            code,
+            "\
+S::Y[0] = params[0];
+S::Z[0] = params[1];
+S::X[0] = 15;
+S::carry[0] = 0;
+params[2] = 0;"
         );
     }
 }
