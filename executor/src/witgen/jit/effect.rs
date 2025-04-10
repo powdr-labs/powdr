@@ -35,7 +35,7 @@ pub enum Effect<T: FieldElement, V> {
     Branch(BranchCondition<T, V>, Vec<Effect<T, V>>, Vec<Effect<T, V>>),
 }
 
-impl<T: FieldElement, V> From<ConstraintSolverEffect<T, V>> for Effect<T, V> {
+impl<T: FieldElement, V: Clone> From<ConstraintSolverEffect<T, V>> for Effect<T, V> {
     fn from(effect: ConstraintSolverEffect<T, V>) -> Self {
         match effect {
             ConstraintSolverEffect::Assignment(v, expr) => Effect::Assignment(v, expr),
@@ -44,10 +44,15 @@ impl<T: FieldElement, V> From<ConstraintSolverEffect<T, V>> for Effect<T, V> {
                 Effect::BitDecomposition(bit_decomp)
             }
             ConstraintSolverEffect::Assertion(assertion) => Effect::Assertion(assertion),
-            ConstraintSolverEffect::Branch(condition, first, second) => Effect::Branch(
+            ConstraintSolverEffect::ConditionalAssignment {
+                variable,
                 condition,
-                first.into_iter().map(Into::into).collect(),
-                second.into_iter().map(Into::into).collect(),
+                in_range_value,
+                out_of_range_value,
+            } => Effect::Branch(
+                condition,
+                vec![Effect::Assignment(variable.clone(), in_range_value)],
+                vec![Effect::Assignment(variable, out_of_range_value)],
             ),
         }
     }
