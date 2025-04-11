@@ -64,7 +64,7 @@ fn optional_vars_in_effect<T: FieldElement>(
             let mut required_right = required.clone();
             let optional_right = optional_vars_in_branch(right, &mut required_right);
             required.extend(required_left.iter().chain(required_right.iter()).cloned());
-            required.insert(condition.variable.clone());
+            required.extend(condition.value.referenced_symbols().cloned());
             return optional_left
                 .intersection(&optional_right)
                 .cloned()
