@@ -385,7 +385,7 @@ namespace main__rom(4);
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = BusLinker::link(graph, crate::DegreeMode::Vadcop).unwrap();
         let analyzed: Analyzed<GoldilocksField> = powdr_pil_analyzer::analyze_ast(pil).unwrap();
-        let optimized = powdr_pilopt::optimize(analyzed);
+        let optimized = powdr_pilopt::optimize(analyzed, 3);
         let native_bus_interactions = optimized
             .identities
             .iter()

@@ -22,7 +22,7 @@ pub mod referenced_symbols;
 use powdr_pil_analyzer::try_algebraic_expression_to_expression;
 use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
-pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
+pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>, max_degree: usize) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
     let mut pil_hash = hash_pil_state(&pil_file);
     loop {
@@ -31,7 +31,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         deduplicate_fixed_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
         extract_constant_lookups(&mut pil_file);
-        replace_constrained_witness_columns(&mut pil_file);
+        replace_constrained_witness_columns(&mut pil_file, max_degree);
         remove_constant_witness_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
         inline_trivial_intermediate_polynomials(&mut pil_file);
@@ -923,10 +923,11 @@ fn try_to_boolean_constrained<T: FieldElement>(id: &Identity<T>) -> Option<PolyI
 
 /// Identifies witness columns that are constrained to expressions of degree <= MAX_DEGREE, and
 /// replaces the witness column with an intermediate polynomial.
-fn replace_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    // Maximum allowed polynomial degree after applying a substitution
-    const MAX_DEGREE: usize = 3; // TODO: Make this a parameter
-
+/// max_degree: Maximum allowed polynomial degree after applying a substitution
+fn replace_constrained_witness_columns<T: FieldElement>(
+    pil_file: &mut Analyzed<T>,
+    max_degree: usize,
+) {
     // We cannot remove arrays or array elements, so we filter them out.
     // Also, we filter out columns that are used in public declarations.
     // Also, we filter out columns that are boolean constrained.
@@ -955,10 +956,13 @@ fn replace_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<
         .collect::<HashSet<PolyID>>();
 
     let intermediate_definitions = pil_file.intermediate_definitions();
+    let mut all_substitutions = Vec::new();
+
+    // Identify all possible substitutions
     for (idx, id) in pil_file.identities.iter().enumerate() {
         if let Identity::Polynomial(identity) = id {
             if let Some(((name, poly_id), expression)) =
-                try_to_constrained_with_max_degree(identity, &intermediate_definitions, MAX_DEGREE)
+                try_to_constrained_with_max_degree(identity, &intermediate_definitions, max_degree)
             {
                 // Skip if this is a column we need to keep
                 if keep.contains(&poly_id) {
@@ -971,69 +975,68 @@ fn replace_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<
                     poly_id,
                     &expression,
                     &intermediate_definitions,
-                    MAX_DEGREE,
+                    max_degree,
                 );
 
                 if valid_substitution {
-                    // Remove the definition
-                    if let Some((symbol, value)) = pil_file.definitions.remove(&name) {
-                        // Sanity checks
-                        assert!(symbol.kind == SymbolKind::Poly(PolynomialType::Committed));
-                        assert!(value.is_none());
-                        assert!(symbol.length.is_none());
-
-                        // Create a new intermediate symbol
-                        let id = pil_file
-                            .intermediate_columns
-                            .values()
-                            .flat_map(|(s, _)| s.array_elements())
-                            .map(|(_, poly_id)| poly_id.id)
-                            .max()
-                            .unwrap_or(0)
-                            + 1;
-
-                        let new_poly_id = PolyID {
-                            ptype: PolynomialType::Intermediate,
-                            id,
-                        };
-
-                        let kind = SymbolKind::Poly(PolynomialType::Intermediate);
-                        let stage = None;
-
-                        let symbol = Symbol {
-                            id,
-                            kind,
-                            stage,
-                            ..symbol
-                        };
-
-                        // Add the definition to the intermediate columns
-                        pil_file
-                            .intermediate_columns
-                            .insert(name.clone(), (symbol, vec![expression.clone()]));
-
-                        // Create a reference to the new intermediate column
-                        let r = AlgebraicReference {
-                            name: name.clone(),
-                            poly_id: new_poly_id,
-                            next: false,
-                        };
-
-                        // Remove the identity used
-                        let identities_to_remove = BTreeSet::from([idx]);
-                        pil_file.remove_identities(&identities_to_remove);
-
-                        // Apply the substitution to all remaining identities
-                        let substitution =
-                            vec![((name, poly_id), AlgebraicExpression::Reference(r))];
-                        substitute_polynomial_references(pil_file, substitution);
-
-                        return;
-                    }
+                    all_substitutions.push((idx, name.clone(), poly_id, expression.clone()));
                 }
             }
         }
     }
+
+    // If no substitutions found, return early
+    if all_substitutions.is_empty() {
+        return;
+    }
+
+    let mut identities_to_remove = BTreeSet::new();
+    let mut substitutions = Vec::new();
+    let mut next_id = pil_file.next_id_for_kind(PolynomialType::Intermediate);
+
+    for (idx, name, poly_id, expression) in all_substitutions {
+        // Remove the definition if it exists
+        if let Some((symbol, value)) = pil_file.definitions.remove(&name) {
+            assert!(symbol.kind == SymbolKind::Poly(PolynomialType::Committed));
+            assert!(value.is_none());
+            assert!(symbol.length.is_none());
+
+            // Create a new intermediate symbol
+            let id = next_id;
+            next_id += 1;
+
+            let new_poly_id = PolyID {
+                ptype: PolynomialType::Intermediate,
+                id,
+            };
+
+            let kind = SymbolKind::Poly(PolynomialType::Intermediate);
+            let stage = None;
+
+            let symbol = Symbol {
+                id,
+                kind,
+                stage,
+                ..symbol
+            };
+
+            pil_file
+                .intermediate_columns
+                .insert(name.clone(), (symbol, vec![expression]));
+
+            let r = AlgebraicReference {
+                name: name.clone(),
+                poly_id: new_poly_id,
+                next: false,
+            };
+
+            identities_to_remove.insert(idx);
+            substitutions.push(((name, poly_id), AlgebraicExpression::Reference(r)));
+        }
+    }
+
+    pil_file.remove_identities(&identities_to_remove);
+    substitute_polynomial_references(pil_file, substitutions);
 }
 
 /// Collects all constraints that use a specific witness column.

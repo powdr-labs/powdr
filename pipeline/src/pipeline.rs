@@ -980,7 +980,7 @@ impl<T: FieldElement> Pipeline<T> {
         let analyzed_pil = self.artifact.analyzed_pil.take().unwrap();
 
         self.log("Optimizing pil...");
-        let optimized = powdr_pilopt::optimize(analyzed_pil);
+        let optimized = powdr_pilopt::optimize(analyzed_pil, 3);
         self.maybe_write_pil(&optimized, "_opt")?;
         self.maybe_write_pil_object(&optimized, "_opt")?;
 
@@ -1008,7 +1008,7 @@ impl<T: FieldElement> Pipeline<T> {
         self.log("Apply backend-specific tuning to optimized pil...");
         let backend_tuned_pil = factory.specialize_pil(optimized_pil);
         self.log("Optimizing pil (post backend-specific tuning)...");
-        let reoptimized_pil = powdr_pilopt::optimize(backend_tuned_pil);
+        let reoptimized_pil = powdr_pilopt::optimize(backend_tuned_pil, 3);
         self.maybe_write_pil(&reoptimized_pil, "_backend_tuned")?;
         self.maybe_write_pil_object(&reoptimized_pil, "_backend_tuned")?;
         self.artifact.backend_tuned_pil = Some(Arc::new(reoptimized_pil));
