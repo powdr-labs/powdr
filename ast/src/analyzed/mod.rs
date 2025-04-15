@@ -1577,7 +1577,7 @@ impl<T> AlgebraicExpression<T> {
     /// This specifically does not implement Children because otherwise it would
     /// have a wrong implementation of ExpressionVisitable (which is implemented
     /// generically for all types that implement Children<Expr>).
-    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+    pub fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         match self {
             AlgebraicExpression::Reference(_)
             | AlgebraicExpression::PublicReference(_)
@@ -1595,7 +1595,7 @@ impl<T> AlgebraicExpression<T> {
     /// This specifically does not implement Children because otherwise it would
     /// have a wrong implementation of ExpressionVisitable (which is implemented
     /// generically for all types that implement Children<Expr>).
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+    pub fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
         match self {
             AlgebraicExpression::Reference(_)
             | AlgebraicExpression::PublicReference(_)
@@ -1671,6 +1671,81 @@ impl<T> AlgebraicExpression<T> {
             _ => self
                 .children()
                 .map(|e| e.degree_with_cache(intermediate_definitions, cache))
+                .max()
+                .unwrap_or(0),
+        }
+    }
+
+    /// Calculates the degree of an expression with a virtual substitution.
+    /// This is similar to `degree_with_cache` but allows calculating the degree
+    /// as if a specific polynomial reference was replaced with another expression.
+    pub fn degree_with_virtual_substitution(
+        &self,
+        poly_id: PolyID,
+        substitution: &AlgebraicExpression<T>,
+        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+        cache: &mut BTreeMap<AlgebraicReferenceThin, usize>,
+    ) -> usize {
+        match self {
+            AlgebraicExpression::Reference(reference)
+                if reference.poly_id == poly_id && !reference.next =>
+            {
+                // Virtual substitution
+                substitution.degree_with_virtual_substitution(
+                    poly_id,
+                    substitution,
+                    intermediate_definitions,
+                    cache,
+                )
+            }
+            AlgebraicExpression::Reference(reference) => match reference.poly_id.ptype {
+                PolynomialType::Committed | PolynomialType::Constant => 1,
+                PolynomialType::Intermediate => {
+                    let reference = reference.to_thin();
+                    cache.get(&reference).cloned().unwrap_or_else(|| {
+                        let def = intermediate_definitions
+                            .get(&reference)
+                            .expect("Intermediate definition not found.");
+                        let result = def.degree_with_virtual_substitution(
+                            poly_id,
+                            substitution,
+                            intermediate_definitions,
+                            cache,
+                        );
+                        cache.insert(reference, result);
+                        result
+                    })
+                }
+            },
+            // Multiplying two expressions adds their degrees
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                op: AlgebraicBinaryOperator::Mul,
+                left,
+                right,
+            }) => {
+                left.degree_with_virtual_substitution(
+                    poly_id,
+                    substitution,
+                    intermediate_definitions,
+                    cache,
+                ) + right.degree_with_virtual_substitution(
+                    poly_id,
+                    substitution,
+                    intermediate_definitions,
+                    cache,
+                )
+            }
+            // In all other cases, we take the maximum of the degrees of the children
+            _ => self
+                .children()
+                .map(|e| {
+                    e.degree_with_virtual_substitution(
+                        poly_id,
+                        substitution,
+                        intermediate_definitions,
+                        cache,
+                    )
+                })
                 .max()
                 .unwrap_or(0),
         }
