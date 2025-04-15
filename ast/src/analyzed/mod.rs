@@ -1690,13 +1690,7 @@ impl<T> AlgebraicExpression<T> {
             AlgebraicExpression::Reference(reference)
                 if reference.poly_id == poly_id && !reference.next =>
             {
-                // Virtual substitution
-                substitution.degree_with_virtual_substitution(
-                    poly_id,
-                    substitution,
-                    intermediate_definitions,
-                    cache,
-                )
+                substitution.degree_with_cache(intermediate_definitions, cache)
             }
             AlgebraicExpression::Reference(reference) => match reference.poly_id.ptype {
                 PolynomialType::Committed | PolynomialType::Constant => 1,
