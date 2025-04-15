@@ -10,8 +10,8 @@ namespace main(N);
     // satisfied by filling everything with zero.
     // However, providing values for a or b externally should lead witgen to find a
     // unique witness.
-    b = a + 1;
+    b = (a + 1) * (a + 1);
 
     // The pipeline skips witgen if the full witness is provided.
     // The `c` column is here only so that the provided external witness becomes partial, making witgen run.
-    c = b + 1;
+    c = (b + 1) * (b + 1);

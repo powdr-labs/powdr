@@ -50,8 +50,8 @@ fn optional_vars_in_effect<T: FieldElement>(
     required: &mut HashSet<Variable>,
 ) -> HashSet<Variable> {
     let needed = match &effect {
-        Effect::Assignment(..) | Effect::ProverFunctionCall(..) => {
-            effect.written_vars().any(|(v, _)| required.contains(v))
+        Effect::Assignment(..) | Effect::ProverFunctionCall(..) | Effect::BitDecomposition(_) => {
+            effect.written_vars().any(|v| required.contains(v))
         }
         Effect::Assertion(_) => false,
         Effect::MachineCall(..) => {
@@ -64,7 +64,7 @@ fn optional_vars_in_effect<T: FieldElement>(
             let mut required_right = required.clone();
             let optional_right = optional_vars_in_branch(right, &mut required_right);
             required.extend(required_left.iter().chain(required_right.iter()).cloned());
-            required.insert(condition.variable.clone());
+            required.extend(condition.value.referenced_symbols().cloned());
             return optional_left
                 .intersection(&optional_right)
                 .cloned()
@@ -76,7 +76,7 @@ fn optional_vars_in_effect<T: FieldElement>(
         required.extend(effect.referenced_variables().cloned());
         HashSet::new()
     } else {
-        effect.written_vars().map(|(v, _)| v).cloned().collect()
+        effect.written_vars().cloned().collect()
     }
 }
 
@@ -108,7 +108,7 @@ fn remove_variables_from_effect<T: FieldElement>(
         to_remove.extend(remove_left);
         Some(Effect::Branch(condition, left, right))
     } else if effect.referenced_variables().any(|v| to_remove.contains(v)) {
-        to_remove.extend(effect.written_vars().map(|(v, _)| v).cloned());
+        to_remove.extend(effect.written_vars().cloned());
         None
     } else {
         Some(effect)
@@ -120,7 +120,7 @@ fn remove_machine_calls_from_effect<T: FieldElement>(
     to_remove: &HashSet<(u64, i32)>,
 ) -> Option<Effect<T, Variable>> {
     match effect {
-        Effect::MachineCall(id, known, arguments) => {
+        Effect::MachineCall(bus_id, known, arguments) => {
             let Variable::MachineCallParam(MachineCallVariable {
                 identity_id,
                 row_offset,
@@ -129,11 +129,10 @@ fn remove_machine_calls_from_effect<T: FieldElement>(
             else {
                 panic!()
             };
-            assert_eq!(id, *identity_id);
-            if to_remove.contains(&(id, *row_offset)) {
+            if to_remove.contains(&(*identity_id, *row_offset)) {
                 None
             } else {
-                Some(Effect::MachineCall(id, known, arguments))
+                Some(Effect::MachineCall(bus_id, known, arguments))
             }
         }
         Effect::Branch(condition, first, second) => {

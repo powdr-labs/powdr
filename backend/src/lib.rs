@@ -7,19 +7,34 @@ mod plonky3;
 #[cfg(feature = "stwo")]
 mod stwo;
 
+#[cfg(any(
+    feature = "halo2",
+    feature = "estark-polygon",
+    feature = "estark-starky",
+    feature = "plonky3",
+    feature = "stwo"
+))]
 mod composite;
+#[cfg(any(
+    feature = "halo2",
+    feature = "estark-polygon",
+    feature = "estark-starky",
+    feature = "plonky3",
+    feature = "stwo"
+))]
 mod field_filter;
 mod mock;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
-use std::{io, path::PathBuf, sync::Arc};
+use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc};
 use strum::{Display, EnumString, EnumVariantNames};
 
-#[derive(Clone, EnumString, EnumVariantNames, Display, Copy)]
+#[derive(Clone, Default, EnumString, EnumVariantNames, Display, Copy)]
 pub enum BackendType {
     #[strum(serialize = "mock")]
+    #[default]
     Mock,
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2")]
@@ -178,6 +193,12 @@ pub trait BackendFactory<F: FieldElement> {
     fn generate_setup(&self, _size: DegreeType, _output: &mut dyn io::Write) -> Result<(), Error> {
         Err(Error::NoSetupAvailable)
     }
+
+    fn specialize_pil(&self, pil: Analyzed<F>) -> Analyzed<F> {
+        // TODO: currently defaults to the identity function
+        // Move `bus_multi_linker` calls here in the future
+        pil
+    }
 }
 
 /// Dynamic interface for a backend.
@@ -191,6 +212,7 @@ pub trait Backend<F: FieldElement>: Send {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
+        publics: &BTreeMap<String, Option<F>>,
         prev_proof: Option<Proof>,
         witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error>;

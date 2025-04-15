@@ -36,7 +36,7 @@ powdr-pil-analyzer.workspace = true
 powdr-schemas.workspace = true
 
 itertools = "0.13"
-log = "0.4.17"
+log = "0.4.27"
 mktemp = "0.5.0"
 serde = { version = "1.0", default-features = false, features = [
   "alloc",

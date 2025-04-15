@@ -69,5 +69,6 @@ machine Main with degree: main_degree {
         t_0_0, t_0_1, t_1_0, t_1_1 <== div(0xabcd, 0xef01, 0, 0);
         assert_eq t_0_0, t_0_1, t_1_0, t_1_1, 0, 0, 0xabcd, 0xef01;
 
+        return;
     }
 }

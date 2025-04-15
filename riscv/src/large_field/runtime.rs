@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use powdr_riscv_syscalls::Syscall;
+use powdr_syscalls::Syscall;
 
 use itertools::Itertools;
 

@@ -87,11 +87,10 @@ pub(crate) struct PowdrCircuit<'a, T> {
 
 fn get_publics<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, usize)> {
     let mut publics = analyzed
-        .public_declarations
-        .values()
-        .map(|public_declaration| {
+        .public_declarations_in_source_order()
+        .map(|(_, public_declaration)| {
             let witness_name = public_declaration.referenced_poly_name();
-            let witness_offset = public_declaration.index as usize;
+            let witness_offset = public_declaration.row() as usize;
             (witness_name, witness_offset)
         })
         .collect::<Vec<_>>();
@@ -394,7 +393,7 @@ impl<T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCircui
                     "Running witness generation for stage {stage} ({} challenges)!",
                     challenges.len()
                 );
-                new_witness = self
+                (new_witness, _) = self
                     .witgen_callback
                     .as_ref()
                     .expect("Expected witgen callback!")

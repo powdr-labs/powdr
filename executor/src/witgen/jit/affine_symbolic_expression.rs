@@ -6,12 +6,13 @@ use std::{
 
 use itertools::Itertools;
 use num_traits::Zero;
-use powdr_number::FieldElement;
+use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 use crate::witgen::jit::effect::Assertion;
 
 use super::{
-    super::range_constraints::RangeConstraint, effect::Effect,
+    super::range_constraints::RangeConstraint,
+    effect::{BitDecomposition, BitDecompositionComponent, Effect},
     symbolic_expression::SymbolicExpression,
 };
 
@@ -215,23 +216,19 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             }
             _ => {
                 let r = self.solve_bit_decomposition()?;
+
                 if r.complete {
                     r
                 } else {
                     let negated = -self;
-                    let r = negated.solve_bit_decomposition()?;
-                    if r.complete {
-                        r
-                    } else {
-                        let effects = self
-                            .transfer_constraints()
-                            .into_iter()
-                            .chain(negated.transfer_constraints())
-                            .collect();
-                        ProcessResult {
-                            effects,
-                            complete: false,
-                        }
+                    let effects = self
+                        .transfer_constraints()
+                        .into_iter()
+                        .chain(negated.transfer_constraints())
+                        .collect();
+                    ProcessResult {
+                        effects,
+                        complete: false,
                     }
                 }
             }
@@ -246,52 +243,93 @@ impl<T: FieldElement, V: Ord + Clone + Display> AffineSymbolicExpression<T, V> {
             .coefficients
             .iter()
             .map(|(var, coeff)| {
-                let c = coeff.try_to_number()?;
+                let coeff = coeff.try_to_number()?;
                 let rc = self.range_constraints.get(var)?;
-                Some((var.clone(), c, rc))
+                let is_negative = !coeff.is_in_lower_half();
+                let coeff_abs = if is_negative { -coeff } else { coeff };
+                // We could work with non-powers of two, but it would require
+                // division instead of shifts.
+                let exponent = log2_exact(coeff_abs.to_arbitrary_integer())?;
+                // We negate here because we are solving
+                // c_1 * x_1 + c_2 * x_2 + ... + offset = 0,
+                // instead of
+                // c_1 * x_1 + c_2 * x_2 + ... = offset.
+                Some((var.clone(), rc, !is_negative, coeff_abs, exponent))
             })
             .collect::<Option<Vec<_>>>();
         let Some(constrained_coefficients) = constrained_coefficients else {
             return Ok(ProcessResult::empty());
         };
 
+        // If the offset is a known number, we gradually remove the
+        // components from this number.
+        let mut offset = self.offset.try_to_number();
+        let mut concrete_assignments = vec![];
+
         // Check if they are mutually exclusive and compute assignments.
         let mut covered_bits: <T as FieldElement>::Integer = 0.into();
-        let mut effects = vec![];
-        for (var, coeff, constraint) in constrained_coefficients {
-            let mask = *constraint.multiple(coeff).mask();
-            if !(mask & covered_bits).is_zero() {
+        let mut components = vec![];
+        for (variable, constraint, is_negative, coeff_abs, exponent) in constrained_coefficients
+            .into_iter()
+            .sorted_by_key(|(_, _, _, _, exponent)| *exponent)
+        {
+            let bit_mask = *constraint.multiple(coeff_abs).mask();
+            if !(bit_mask & covered_bits).is_zero() {
                 // Overlapping range constraints.
                 return Ok(ProcessResult::empty());
             } else {
-                covered_bits |= mask;
+                covered_bits |= bit_mask;
             }
-            let masked = -&self.offset & mask;
-            effects.push(Effect::Assignment(
-                var.clone(),
-                masked.integer_div(&coeff.into()),
-            ));
+
+            // If the offset is a known number, we create concrete assignments and modify the offset.
+            // if it is not known, we return a BitDecomposition effect.
+            if let Some(offset) = &mut offset {
+                let mut component = if is_negative { -*offset } else { *offset }.to_integer();
+                if component > (T::modulus() - 1.into()) >> 1 {
+                    // Convert a signed finite field element into two's complement.
+                    // a regular subtraction would underflow, so we do this.
+                    // We add the difference between negative numbers in the field
+                    // and negative numbers in two's complement.
+                    component += T::Integer::MAX - T::modulus() + 1.into();
+                };
+                component &= bit_mask;
+                concrete_assignments.push(Effect::Assignment(
+                    variable.clone(),
+                    T::from(component >> exponent).into(),
+                ));
+                if is_negative {
+                    *offset += T::from(component);
+                } else {
+                    *offset -= T::from(component);
+                }
+            } else {
+                components.push(BitDecompositionComponent {
+                    variable,
+                    is_negative,
+                    exponent: exponent as u64,
+                    bit_mask,
+                });
+            }
         }
 
         if covered_bits >= T::modulus() {
             return Ok(ProcessResult::empty());
         }
 
-        // We need to assert that the masks cover "-offset",
-        // otherwise the equation is not solvable.
-        // We assert -offset & !masks == 0
-        if let Some(offset) = self.offset.try_to_number() {
-            if (-offset).to_integer() & !covered_bits != 0.into() {
-                return Err(Error::ConflictingRangeConstraints);
+        if let Some(offset) = offset {
+            if offset != 0.into() {
+                return Err(Error::ConstraintUnsatisfiable);
             }
+            assert_eq!(concrete_assignments.len(), self.coefficients.len());
+            Ok(ProcessResult::complete(concrete_assignments))
         } else {
-            effects.push(Assertion::assert_eq(
-                -&self.offset & !covered_bits,
-                T::from(0).into(),
-            ));
+            Ok(ProcessResult::complete(vec![Effect::BitDecomposition(
+                BitDecomposition {
+                    value: self.offset.clone(),
+                    components,
+                },
+            )]))
         }
-
-        Ok(ProcessResult::complete(effects))
     }
 
     fn transfer_constraints(&self) -> Option<Effect<T, V>> {
@@ -521,10 +559,9 @@ mod test {
         let b = Ase::from_unknown_variable("b", rc.clone());
         let c = Ase::from_unknown_variable("c", rc.clone());
         let z = Ase::from_known_symbol("Z", Default::default());
-        // a * 0x100 + b * 0x10000 + c * 0x1000000 + 10 + Z = 0
+        // a * 0x100 - b * 0x10000 + c * 0x1000000 + 10 + Z = 0
         let ten = from_number(10);
-        let constr = mul(&a, &from_number(0x100))
-            + mul(&b, &from_number(0x10000))
+        let constr = mul(&a, &from_number(0x100)) - mul(&b, &from_number(0x10000))
             + mul(&c, &from_number(0x1000000))
             + ten.clone()
             + z.clone();
@@ -533,38 +570,39 @@ mod test {
         assert!(!result.complete && result.effects.is_empty());
         // Now add the range constraint on a, it should be solvable.
         let a = Ase::from_unknown_variable("a", rc.clone());
-        let constr = mul(&a, &from_number(0x100))
-            + mul(&b, &from_number(0x10000))
+        let constr = mul(&a, &from_number(0x100)) - mul(&b, &from_number(0x10000))
             + mul(&c, &from_number(0x1000000))
             + ten.clone()
             + z;
         let result = constr.solve().unwrap();
         assert!(result.complete);
-        let effects = result
-            .effects
-            .into_iter()
-            .map(|effect| match effect {
-                Effect::Assignment(v, expr) => format!("{v} = {expr};\n"),
-                Effect::Assertion(Assertion {
-                    lhs,
-                    rhs,
-                    expected_equal,
-                }) => {
-                    format!(
-                        "assert {lhs} {} {rhs};\n",
-                        if expected_equal { "==" } else { "!=" }
-                    )
-                }
-                _ => panic!(),
+
+        let [effect] = &result.effects[..] else {
+            panic!();
+        };
+        let Effect::BitDecomposition(BitDecomposition { value, components }) = effect else {
+            panic!();
+        };
+        assert_eq!(format!("{value}"), "(10 + Z)");
+        let formatted = components
+            .iter()
+            .map(|c| {
+                format!(
+                    "{} = (({value} & 0x{:0x}) >> {}){};\n",
+                    c.variable,
+                    c.bit_mask,
+                    c.exponent,
+                    if c.is_negative { " [negative]" } else { "" }
+                )
             })
-            .format("")
-            .to_string();
+            .join("");
+
         assert_eq!(
-            effects,
-            "a = ((-(10 + Z) & 0xff00) // 256);
-b = ((-(10 + Z) & 0xff0000) // 65536);
-c = ((-(10 + Z) & 0xff000000) // 16777216);
-assert (-(10 + Z) & 0xffffffff000000ff) == 0;
+            formatted,
+            "\
+a = (((10 + Z) & 0xff00) >> 8) [negative];
+b = (((10 + Z) & 0xff0000) >> 16);
+c = (((10 + Z) & 0xff000000) >> 24) [negative];
 "
         );
     }

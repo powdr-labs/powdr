@@ -2,9 +2,7 @@ use powdr_linker::LinkerMode;
 use powdr_number::{GoldilocksField, Mersenne31Field};
 use powdr_pipeline::{
     test_util::{
-        assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
-        assert_proofs_fail_for_invalid_witnesses_mock,
-        assert_proofs_fail_for_invalid_witnesses_pilcom,
+        assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_mock,
         assert_proofs_fail_for_invalid_witnesses_stwo, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test_all_fields, regular_test_gl,
         test_halo2_with_backend_variant, test_mock_backend, test_stwo, test_stwo_stage1_public,
@@ -44,13 +42,13 @@ fn lookup_with_selector() {
     // Invalid witness: 0 is not in the set {2, 4}
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
 }
 
 #[test]
 #[cfg(feature = "estark-starky")]
 #[should_panic = "Number not included: F3G { cube: [Fr(0x0000000000000000), Fr(0x0000000000000000), Fr(0x0000000000000000)], dim: 3 }"]
 fn lookup_with_selector_starky() {
+    use powdr_pipeline::test_util::assert_proofs_fail_for_invalid_witnesses_estark;
     // witness[0] and witness[2] have to be in {2, 4}
 
     let f = "pil/lookup_with_selector.pil";
@@ -84,13 +82,13 @@ fn permutation_with_selector() {
     // Invalid witness: 0 is not in the set {2, 4}
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
 }
 
 #[test]
 #[cfg(feature = "estark-starky")]
 #[should_panic = "assertion failed: check_val._eq(&F::one())"]
 fn permutation_with_selector_starky() {
+    use powdr_pipeline::test_util::assert_proofs_fail_for_invalid_witnesses_estark;
     // witness[0] and witness[2] have to be in {2, 4}
 
     let f = "pil/permutation_with_selector.pil";
@@ -130,7 +128,6 @@ fn fibonacci_invalid_witness() {
         ("Fibonacci::y".to_string(), vec![1, 2, 3, 13]),
     ];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
     assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness);
 
     // All constraints are valid, except the initial row.
@@ -141,7 +138,6 @@ fn fibonacci_invalid_witness() {
         ("Fibonacci::y".to_string(), vec![2, 3, 5, 8]),
     ];
     assert_proofs_fail_for_invalid_witnesses_mock(f, &witness);
-    assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
     assert_proofs_fail_for_invalid_witnesses_stwo(f, &witness);
 }
 
@@ -174,19 +170,11 @@ fn external_witgen_a_provided() {
 }
 
 #[test]
-fn external_witgen_b_provided() {
-    let f = "pil/external_witgen.pil";
-    let external_witness = vec![("main::b".to_string(), vec![GoldilocksField::from(4); 16])];
-    let pipeline = make_prepared_pipeline(f, Default::default(), external_witness, LinkerMode::Bus);
-    test_mock_backend(pipeline);
-}
-
-#[test]
 fn external_witgen_both_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![
         ("main::a".to_string(), vec![GoldilocksField::from(3); 16]),
-        ("main::b".to_string(), vec![GoldilocksField::from(4); 16]),
+        ("main::b".to_string(), vec![GoldilocksField::from(16); 16]),
     ];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness, LinkerMode::Bus);
     test_mock_backend(pipeline);
@@ -198,8 +186,8 @@ fn external_witgen_fails_on_conflicting_external_witness() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![
         ("main::a".to_string(), vec![GoldilocksField::from(3); 16]),
-        // Does not satisfy b = a + 1
-        ("main::b".to_string(), vec![GoldilocksField::from(3); 16]),
+        // Does not satisfy b = (a + 1) * (a + 1)
+        ("main::b".to_string(), vec![GoldilocksField::from(15); 16]),
     ];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness, LinkerMode::Bus);
     test_mock_backend(pipeline);
@@ -264,7 +252,7 @@ fn halo_without_lookup() {
 
 #[test]
 fn add() {
-    let f = "pil/add.pil";
+    let f = "pil/mul.pil";
     regular_test_gl(f, Default::default());
 }
 
@@ -399,10 +387,10 @@ fn serialize_deserialize_optimized_pil() {
     let f = "pil/fibonacci.pil";
     let path = powdr_pipeline::test_util::resolve_test_file(f);
 
-    let optimized = powdr_pipeline::Pipeline::<powdr_number::Bn254Field>::default()
-        .from_file(path)
-        .compute_optimized_pil()
-        .unwrap();
+    let mut pipeline =
+        powdr_pipeline::Pipeline::<powdr_number::Bn254Field>::default().from_file(path);
+
+    let optimized = pipeline.compute_optimized_pil().unwrap();
 
     let optimized_serialized = serde_cbor::to_vec(&optimized).unwrap();
     let optimized_deserialized: powdr_ast::analyzed::Analyzed<powdr_number::Bn254Field> =

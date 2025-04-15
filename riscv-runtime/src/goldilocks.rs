@@ -1,5 +1,5 @@
 use core::{arch::asm, mem::MaybeUninit};
-use powdr_riscv_syscalls::Syscall;
+use powdr_syscalls::Syscall;
 
 pub const PRIME: u64 = 0xffffffff00000001;
 

@@ -111,7 +111,7 @@ impl Display for RowIndex {
     }
 }
 
-#[derive(Default, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 enum CellValue<T: FieldElement> {
     Known(T),
     RangeConstraint(RangeConstraint<T>),
@@ -157,7 +157,7 @@ impl<T: FieldElement> CellValue<T> {
             (CellValue::RangeConstraint(current), Constraint::RangeConstraint(c)) => {
                 let new = c.conjunction(current);
                 assert!(new != *current, "Range constraint was already set");
-                log::trace!("         (the conjunction is {})", new);
+                log::trace!("         (the conjunction is {new})");
                 *self = CellValue::RangeConstraint(new)
             }
             (CellValue::Unknown, Constraint::RangeConstraint(c)) => {
@@ -177,7 +177,7 @@ impl<T: FieldElement> Display for CellValue<T> {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Row<T: FieldElement> {
     values: WitnessColumnMap<CellValue<T>>,
 }

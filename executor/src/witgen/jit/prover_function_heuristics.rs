@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, AlgebraicReference, Analyzed, Expression, PolynomialReference,
@@ -5,7 +7,7 @@ use powdr_ast::{
     },
     parsed::{
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, FunctionKind,
-        LambdaExpression, Number, UnaryOperation, UnaryOperator,
+        LambdaExpression, MatchExpression, Number, Pattern, UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::FieldElement;
@@ -13,6 +15,7 @@ use powdr_number::FieldElement;
 use crate::witgen::{machines::MachineParts, FixedData};
 
 pub trait TrySymbolByName: Copy {
+    /// Tries to resolve a symbol by name.
     fn try_symbol_by_name<'a>(&'a self, name: &str) -> Option<&'a Symbol>;
 }
 
@@ -36,12 +39,28 @@ pub enum ProverFunctionComputation<'a> {
     /// The expression `f` in `query |i| std::prover::compute_from(Y, i, [X, ...], f)`,
     /// where f: (fe[] -> fe)
     ComputeFrom(&'a Expression),
+    /// Represents a call to `handle_query`, i.e. a function of the form
+    ///    query |<i>| std::prover::handle_query(<Y>, <i>, match std::prover::eval(<pc>) {
+    ///      <value1> => std::prelude::Query::Output(std::convert::int::<fe>(std::prover::eval(<arg1>)), std::prover::eval(<arg2>)),
+    ///      <value2> => std::prelude::Query::Input(std::convert::int::<fe>(std::prover::eval(<arg1>)), std::convert::int::<fe>(std::prover::eval(<arg2>))),
+    ///      ...
+    ///      _ => std::prelude::Query::None,
+    ///    }
+    /// where the map maps the `value<i>` patterns (as u64 numbers) to the type of query used for that number.
+    HandleQueryInputOutput(BTreeMap<u64, QueryType>),
+}
+
+#[derive(Clone, Copy)]
+pub enum QueryType {
+    Input,
+    Output,
 }
 
 /// Tries to decode the prover functions.
 /// Supported are the following forms:
 /// - query |i| std::prover::provide_if_unknown(Y, i, || <value>)
 /// - query |i| std::prover::compute_from(Y, i, [X, ...], f)
+/// - query |i| std::prover::handle_query(...)
 pub fn decode_prover_functions<'a, T: FieldElement>(
     machine_parts: &MachineParts<'a, T>,
     try_symbol_by_name: impl TrySymbolByName,
@@ -59,13 +78,20 @@ fn decode_prover_function<T: FieldElement>(
     function: &Expression,
     try_symbol_by_name: impl TrySymbolByName,
 ) -> Result<ProverFunction<'_, T>, String> {
-    if let Some(provide_if_unknown) =
-        try_decode_provide_if_unknown(index, function, try_symbol_by_name)
-    {
-        Ok(provide_if_unknown)
+    let results = [
+        try_decode_provide_if_unknown(index, function, try_symbol_by_name),
+        try_decode_handle_query(index, function, try_symbol_by_name),
+        try_decode_compute_from(index, function, try_symbol_by_name),
+    ];
+    if let Some(index) = results.iter().position(|r| r.is_ok()) {
+        results.into_iter().nth(index).unwrap()
     } else {
-        try_decode_compute_from(index, function, try_symbol_by_name)
-            .map_err(|e| format!("Prover function not recognized: {e}"))
+        Err(format!(
+        "Prover function not recognized:\n{function}\nTried decoding 'provide_if_unknown': {}\nTried decoding 'handle_query': {}\nTried decoding 'compute_from': {}",
+        results[0].as_ref().err().unwrap(),
+        results[1].as_ref().err().unwrap(),
+        results[2].as_ref().err().unwrap(),
+    ))
     }
 }
 
@@ -73,25 +99,121 @@ fn try_decode_provide_if_unknown<T>(
     index: usize,
     function: &Expression,
     try_symbol_by_name: impl TrySymbolByName,
-) -> Option<ProverFunction<'_, T>> {
-    let body = try_as_lambda_expression(function, Some(FunctionKind::Query)).ok()?;
+) -> Result<ProverFunction<'_, T>, String> {
+    let body = try_as_lambda_expression(function, Some(FunctionKind::Query))?;
     let [arg_column, arg_row, arg_value] =
         try_as_function_call_to(body, "std::prover::provide_if_unknown")?
     else {
-        return None;
+        panic!();
     };
-    let assigned_column =
-        try_extract_witness_reference(arg_column, try_symbol_by_name, false).ok()?;
+    let assigned_column = try_extract_witness_reference(arg_column, try_symbol_by_name, false)?;
     if !is_local_var(arg_row, 0) {
-        return None;
+        return Err(format!(
+            "Expected row variable as second argument, but got {arg_row}"
+        ));
     }
-    Some(ProverFunction {
+    Ok(ProverFunction {
         index,
         condition: None,
         target: vec![assigned_column],
         compute_multi: false,
         input_columns: vec![],
         computation: ProverFunctionComputation::ProvideIfUnknown(arg_value),
+    })
+}
+
+/// Decodes functions of the form
+/// ```compile_fail
+/// query |<i>| std::prover::handle_query(<Y>, <i>, match std::prover::eval(<pc>)) {
+///   <value1> => std::prelude::Query::Output(std::convert::int::<fe>(std::prover::eval(<arg1>)), std::prover::eval(<arg2>)),
+///   <value2> => std::prelude::Query::Input(std::convert::int::<fe>(std::prover::eval(<arg1>)), std::convert::int::<fe>(std::prover::eval(<arg2>))),
+///   ...
+///   _ => std::prelude::Query::None,
+/// }
+/// ```
+fn try_decode_handle_query<T>(
+    index: usize,
+    function: &Expression,
+    try_symbol_by_name: impl TrySymbolByName,
+) -> Result<ProverFunction<'_, T>, String> {
+    let body = try_as_lambda_expression(function, Some(FunctionKind::Query))?;
+    let [arg_target, arg_row, arg_match] =
+        try_as_function_call_to(body, "std::prover::handle_query")?
+    else {
+        panic!()
+    };
+    let target = try_extract_witness_reference(arg_target, try_symbol_by_name, false)?;
+    if !is_local_var(arg_row, 0) {
+        return Err(format!(
+            "Expected row variable as second argument, but got {arg_row}"
+        ));
+    }
+    let (scrutinee, arms) = try_as_match(arg_match)?;
+    let [pc_col] = try_as_function_call_to(scrutinee, "std::prover::eval")? else {
+        unreachable!()
+    };
+    let pc_col = try_extract_witness_reference(pc_col, try_symbol_by_name, true)?;
+    let mut arms_parsed = BTreeMap::new();
+    let mut args = None;
+    for (pattern, value) in arms {
+        match pattern {
+            None => {
+                if !is_reference_to(value, "std::prelude::Query::None") {
+                    return Err(format!(
+                        "Expected `std::prelude::Query::None` but got {value}"
+                    ));
+                }
+            }
+            Some(n) => {
+                // Decode the following:
+                //   <value1> => std::prelude::Query::Input(std::convert::int::<fe>(std::prover::eval(<arg1>)), std::convert::int::<fe>(std::prover::eval(<arg2>))),
+                //   <value2> => std::prelude::Query::Output(std::convert::int::<fe>(std::prover::eval(<arg1>)), std::prover::eval(<arg2>)),
+                let value = try_as_function_call(value)?;
+                let query_type = if is_reference_to(&value.function, "std::prelude::Query::Input") {
+                    QueryType::Input
+                } else if is_reference_to(&value.function, "std::prelude::Query::Output") {
+                    QueryType::Output
+                } else {
+                    return Err(format!(
+                        "Expected call to function `std::prelude::Query::Output` or `std::prelude::Query::Input`, but got {}", value.function
+                    ));
+                };
+                let arg1 = try_as_int_converted_evaluated_witness_reference(
+                    &value.arguments[0],
+                    try_symbol_by_name,
+                )?;
+                let arg2 = match query_type {
+                    QueryType::Input => try_as_int_converted_evaluated_witness_reference(
+                        &value.arguments[1],
+                        try_symbol_by_name,
+                    )?,
+                    QueryType::Output => {
+                        try_as_evaluated_witness_reference(&value.arguments[1], try_symbol_by_name)?
+                    }
+                };
+                if args.is_none() {
+                    args = Some((arg1, arg2));
+                } else if args.clone() != Some((arg1.clone(), arg2.clone())) {
+                    let (e_arg1, e_arg2) = args.clone().unwrap();
+                    return Err(format!(
+                        "Inconsistent arguments in input and output branches. Expected {e_arg1} and {e_arg2} but got {arg1} and {arg2}",
+                    ));
+                }
+                arms_parsed.insert(n, query_type);
+            }
+        }
+    }
+    let input_columns = match args {
+        Some((a1, a2)) => vec![pc_col, a1, a2],
+        None => vec![pc_col],
+    };
+    Ok(ProverFunction {
+        index,
+        condition: None,
+        target: vec![target],
+        compute_multi: false,
+        input_columns,
+        computation: ProverFunctionComputation::HandleQueryInputOutput(arms_parsed),
     })
 }
 
@@ -134,9 +256,6 @@ fn try_decode_compute_from<T: FieldElement>(
         try_extract_array_of_witness_references(target, try_symbol_by_name, false)?
     } else {
         let target_expr = try_extract_witness_reference(target, try_symbol_by_name, false)?;
-        if target_expr.next {
-            return Err(format!("Next references not supported in {target}"));
-        }
         vec![target_expr]
     };
     if !is_local_var(row, 0) {
@@ -323,12 +442,14 @@ fn try_as_function_call(e: &Expression) -> Result<&FunctionCall<Expression>, Str
 
 /// Tries to parse `e` as a function call to a function called `name` and returns
 /// the arguments in that case.
-fn try_as_function_call_to<'a>(e: &'a Expression, name: &str) -> Option<&'a [Expression]> {
+fn try_as_function_call_to<'a>(e: &'a Expression, name: &str) -> Result<&'a [Expression], String> {
     let FunctionCall {
         function,
         arguments,
-    } = try_as_function_call(e).ok()?;
-    is_reference_to(function, name).then_some(arguments.as_slice())
+    } = try_as_function_call(e)?;
+    is_reference_to(function, name)
+        .then_some(arguments.as_slice())
+        .ok_or_else(|| format!("Expected call to function `{name}` but got {e}"))
 }
 
 /// Returns the body of a lambda expression if it is a lambda expression with the given kind
@@ -355,6 +476,52 @@ fn try_as_lambda_expression(
     }
 }
 
+/// Tries to parse `std::convert::int::<_>(std::prover::eval(<column>))` and returns the inner witness reference
+fn try_as_int_converted_evaluated_witness_reference(
+    e: &Expression,
+    try_symbol_by_name: impl TrySymbolByName,
+) -> Result<AlgebraicReference, String> {
+    let [arg] = try_as_function_call_to(e, "std::convert::int")? else {
+        unreachable!()
+    };
+    try_as_evaluated_witness_reference(arg, try_symbol_by_name)
+}
+
+/// Tries to parse `std::prover::eval(<column>)` and returns the inner witness reference
+fn try_as_evaluated_witness_reference(
+    e: &Expression,
+    try_symbol_by_name: impl TrySymbolByName,
+) -> Result<AlgebraicReference, String> {
+    let [arg] = try_as_function_call_to(e, "std::prover::eval")? else {
+        unreachable!()
+    };
+    try_extract_witness_reference(arg, try_symbol_by_name, true)
+}
+
+fn try_as_match(
+    e: &Expression,
+) -> Result<(&Expression, BTreeMap<Option<u64>, &Expression>), String> {
+    let Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) = unpack(e) else {
+        return Err(format!("Expected match expression but got {e}"));
+    };
+    let arms = arms
+        .iter()
+        .map(|arm| {
+            let pattern: Option<u64> = match &arm.pattern {
+                Pattern::Number(_, value) => Some(
+                    value
+                        .try_into()
+                        .map_err(|e| format!("Number in pattern expected to fit u64: {e}"))?,
+                ),
+                Pattern::CatchAll(_) => None,
+                p => return Err(format!("Expected number or catch-all pattern but got {p}")),
+            };
+            Ok((pattern, &arm.value))
+        })
+        .collect::<Result<BTreeMap<_, _>, _>>()?;
+    Ok((scrutinee.as_ref(), arms))
+}
+
 /// If `e` is a block with just a single expression, returns this inner expression,
 /// otherwise returns `e` again.
 fn unpack(mut e: &Expression) -> &Expression {
@@ -374,13 +541,13 @@ fn unpack(mut e: &Expression) -> &Expression {
 
 impl<T: FieldElement> TrySymbolByName for &FixedData<'_, T> {
     fn try_symbol_by_name<'a>(&'a self, name: &str) -> Option<&'a Symbol> {
-        FixedData::try_symbol_by_name(self, name)
+        self.analyzed.try_symbol_by_name(name)
     }
 }
 
 impl<T> TrySymbolByName for &Analyzed<T> {
     fn try_symbol_by_name<'a>(&'a self, name: &str) -> Option<&'a Symbol> {
-        self.definitions.get(name).map(|(s, _)| s)
+        Analyzed::try_symbol_by_name(self, name)
     }
 }
 
@@ -555,5 +722,40 @@ mod test {
         assert_eq!(p3.input_columns.len(), 16 + 16 + 1);
         assert!(p3.compute_multi);
         assert!(p3.condition.is_some());
+    }
+
+    #[test]
+    fn handle_query() {
+        let input = "
+    namespace std::convert;
+        let int = [];
+    namespace std::prover;
+        let eval: expr -> fe = |_| 0;
+        let handle_query: expr, int, std::prelude::Query -> () = query |_, _, _| ();
+    namespace main;
+        pol commit Y;
+        pol commit X1, X2;
+        pol commit pc;
+        query |i| std::prover::handle_query(Y, i, match std::prover::eval(pc) {
+            6 => std::prelude::Query::Output(std::convert::int::<fe>(std::prover::eval(X1)), std::prover::eval(X2)),
+            8 => std::prelude::Query::Input(std::convert::int::<fe>(std::prover::eval(X1)), std::convert::int::<fe>(std::prover::eval(X2))),
+            _ => std::prelude::Query::None,
+        });
+        ";
+        let (analyzed, _) = read_pil::<GoldilocksField>(input);
+        assert_eq!(analyzed.prover_functions.len(), 1);
+        let p =
+            try_decode_handle_query::<GoldilocksField>(7, &analyzed.prover_functions[0], &analyzed)
+                .unwrap();
+        assert_eq!(p.target.len(), 1);
+        assert_eq!(p.input_columns.len(), 3);
+        assert!(!p.compute_multi);
+        assert!(p.condition.is_none());
+        let ProverFunctionComputation::HandleQueryInputOutput(branches) = p.computation else {
+            panic!()
+        };
+        assert_eq!(branches.len(), 2);
+        assert!(matches!(branches[&6], QueryType::Output));
+        assert!(matches!(branches[&8], QueryType::Input));
     }
 }

@@ -34,7 +34,8 @@ machine Main with degree: 2048 {
     col witness stage(1) fingerprint_value1_hint(i) query Query::Hint(fingerprint_hint()[1]);
 
     // Assert consistency between `fingerprint` and `fingerprint_inter`
-    fingerprint_value0 = fingerprint_value0_hint;
-    fingerprint_value1 = fingerprint_value1_hint;
+    // We compare squares to avoid the linear constraint being optimized away, which currently leads to an issue because `fingerprint_value0_hint` has a hint
+    fingerprint_value0 * fingerprint_value0 = fingerprint_value0_hint * fingerprint_value0_hint;
+    fingerprint_value1 * fingerprint_value1 = fingerprint_value1_hint * fingerprint_value1_hint;
 
 }

@@ -55,7 +55,7 @@ impl<T: FieldElement> BusSend<T> {
         &self,
         receives: &'a BTreeMap<T, BusReceive<T>>,
     ) -> Option<&'a BusReceive<T>> {
-        let bus_id = self.bus_id()?;
+        let bus_id = self.try_to_static_bus_id()?;
         Some(
             receives
                 .get(&bus_id)
@@ -65,7 +65,7 @@ impl<T: FieldElement> BusSend<T> {
 
     /// Returns the bus ID if it is a static number.
     /// Sends and receives can be matched by matching the bus ID.
-    pub fn bus_id(&self) -> Option<T> {
+    pub fn try_to_static_bus_id(&self) -> Option<T> {
         match &self.bus_id {
             AlgebraicExpression::Number(id) => Some(*id),
             _ => None,
@@ -295,16 +295,15 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
         },
         _ => (false, bus_interaction.multiplicity.clone()),
     };
-    let bus_id = match bus_interaction.bus_id {
-        AlgebraicExpression::Number(id) => id,
-        // TODO: Relax this for sends when implementing dynamic sends
-        _ => panic!("Expected first payload entry to be a static ID"),
-    };
     let selected_payload = SelectedExpressions {
         selector: bus_interaction.latch.clone(),
         expressions: bus_interaction.payload.0.clone(),
     };
     if is_receive {
+        let bus_id = match bus_interaction.bus_id {
+            AlgebraicExpression::Number(id) => id,
+            _ => panic!("Expected first payload entry of a receive to be a static ID"),
+        };
         IdentityOrReceive::Receive(BusReceive {
             bus_id,
             multiplicity: Some(multiplicity),
@@ -314,7 +313,7 @@ fn convert_phantom_bus_interaction<T: FieldElement>(
         assert_eq!(multiplicity, bus_interaction.latch);
         IdentityOrReceive::Identity(Identity::BusSend(BusSend {
             identity_id: bus_interaction.id,
-            bus_id: AlgebraicExpression::Number(bus_id),
+            bus_id: bus_interaction.bus_id.clone(),
             selected_payload,
         }))
     }

@@ -1,7 +1,7 @@
 use powdr_ast::parsed::asm::{FunctionStatement, MachineStatement, SymbolPath};
 
 use powdr_parser::ParserContext;
-use powdr_riscv_syscalls::Syscall;
+use powdr_syscalls::Syscall;
 
 lazy_static::lazy_static! {
     static ref INSTRUCTION_DECLARATION_PARSER: powdr_parser::powdr::InstructionDeclarationParser

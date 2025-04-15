@@ -26,13 +26,13 @@ powdr-parser.workspace = true
 powdr-parser-util.workspace = true
 powdr-pipeline.workspace = true
 powdr-riscv-executor.workspace = true
-powdr-riscv-syscalls.workspace = true
+powdr-syscalls.workspace = true
 
 gimli = "0.31"
 goblin = "0.8"
 lazy_static = "1.4.0"
 itertools = "0.13"
-log = "0.4.17"
+log = "0.4.27"
 raki = "0.1.4"
 rand = "0.8"
 serde_json = "1.0"

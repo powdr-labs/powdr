@@ -58,6 +58,14 @@ pub fn try_value_to_expression<T: FieldElement>(
     Expressionizer { poly_id_to_name }.try_value_to_expression(value)
 }
 
+/// Tries to convert an algebraic expression to an expression that evaluates to the same value.
+pub fn try_algebraic_expression_to_expression<T: FieldElement>(
+    poly_id_to_name: &BTreeMap<(PolynomialType, u64), String>,
+    e: &AlgebraicExpression<T>,
+) -> Result<Expression, EvalError> {
+    Expressionizer { poly_id_to_name }.try_algebraic_expression_to_expression(e)
+}
+
 struct Expressionizer<'a> {
     /// Maps polynomial IDs to their names.
     /// For arrays, this does not include the array elements, just the ID
@@ -287,9 +295,13 @@ impl Expressionizer<'_> {
             }
             .into(),
 
-            AlgebraicExpression::PublicReference(s) => {
-                Expression::PublicReference(SourceRef::unknown(), s.clone())
-            }
+            AlgebraicExpression::PublicReference(s) => Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: s.clone(),
+                    type_args: None,
+                }),
+            ),
         })
     }
 

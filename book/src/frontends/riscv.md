@@ -1,6 +1,6 @@
 # RISCV
 
-A [RISCV](https://riscv.org/technical/specifications/) frontend for powdr is already available.
+A [RISCV](https://riscv.org/specifications/ratified/) frontend for powdr is already available.
 
 ## How to run the Rust-RISCV example
 

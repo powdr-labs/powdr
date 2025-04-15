@@ -28,7 +28,6 @@ use powdr_ast::analyzed::{
 };
 
 use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder};
-use powdr_ast::parsed::visitor::ExpressionVisitable;
 
 use powdr_executor_utils::{
     expression_evaluator::{ExpressionEvaluator, TerminalAccess},
@@ -97,12 +96,9 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
 
         // we use a set to collect all used challenges
         let mut challenges_by_stage = vec![BTreeSet::new(); analyzed.stage_count()];
-        for identity in &identities {
-            identity.pre_visit_expressions(&mut |expr| {
-                if let AlgebraicExpression::Challenge(challenge) = expr {
-                    challenges_by_stage[challenge.stage as usize].insert(challenge.id);
-                }
-            });
+        let challenges = analyzed.challenges();
+        for challenge in challenges {
+            challenges_by_stage[challenge.stage as usize].insert(challenge.id);
         }
 
         // finally, we convert the set to a vector
@@ -468,12 +464,13 @@ where
             witness_by_machine
                 .par_iter()
                 .map(|(machine_name, machine_witness)| {
-                    let new_witness = self.witgen_callback.as_ref().unwrap().next_stage_witness(
-                        &self.split[machine_name].0,
-                        machine_witness,
-                        challenge_map.clone(),
-                        trace_stage,
-                    );
+                    let (new_witness, _) =
+                        self.witgen_callback.as_ref().unwrap().next_stage_witness(
+                            &self.split[machine_name].0,
+                            machine_witness,
+                            challenge_map.clone(),
+                            trace_stage,
+                        );
                     (machine_name.clone(), new_witness)
                 })
                 .collect()

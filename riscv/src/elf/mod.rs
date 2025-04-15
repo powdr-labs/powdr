@@ -14,7 +14,7 @@ use goblin::elf::{
 };
 use itertools::{Either, Itertools};
 use powdr_isa_utils::SingleDataValue;
-use powdr_riscv_syscalls::Syscall;
+use powdr_syscalls::Syscall;
 use raki::{
     decode::Decode,
     instruction::{Extensions, Instruction as Ins, OpcodeKind as Op},
@@ -190,7 +190,7 @@ fn load_elf(file_name: &Path) -> ElfProgram {
                     log::info!("No DWARF debug information found.")
                 }
                 err => {
-                    log::warn!("Error reading DWARF debug information: {}", err)
+                    log::warn!("Error reading DWARF debug information: {err}")
                 }
             }
             log::info!("Falling back to using ELF symbol table.");
@@ -859,7 +859,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
 
                         HighLevelInsn { op, args, loc }
                     }
-                    // l{b|h|w} rd, symbol
+                    // l{b|h|w}[u] rd, symbol
                     Ins {
                         opc: l_op,
                         rd: Some(rd_l),
@@ -867,7 +867,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                         rs2: None,
                         imm: Some(lo),
                         ..
-                    } if matches!(l_op, Op::LB | Op::LH | Op::LW)
+                    } if matches!(l_op, Op::LB | Op::LH | Op::LW | Op::LBU | Op::LHU)
                         && rd_auipc == rd_l
                         && rd_l == rs1_l =>
                     {

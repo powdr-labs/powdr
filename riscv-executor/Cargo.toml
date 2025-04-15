@@ -15,7 +15,7 @@ powdr-parser.workspace = true
 # we need powdr-plonky3 for the poseidon2 params
 powdr-plonky3.workspace = true
 
-log = "0.4.17"
+log = "0.4.27"
 itertools = "0.13"
 num-bigint = "0.4.3"
 num-traits = "0.2.15"
