@@ -11,7 +11,7 @@ use crate::loader::{sz, ModuleContext};
 
 use super::many_sz;
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct AllocatedVar {
     pub val_type: ValType,
     /// If it is a local or stack, this address is relative to the stack base.
@@ -19,6 +19,7 @@ pub struct AllocatedVar {
     pub address: u32,
 }
 
+#[derive(Debug)]
 pub enum Directive<'a> {
     WasmOp {
         op: Operator<'a>,
@@ -935,6 +936,13 @@ pub fn infinite_registers_allocation<'a>(
                 else {
                     panic!("Else without If");
                 };
+
+                // The last instruction of the if block must be a jump over the else.
+                directives.push(Directive::Jump {
+                    target: target_label,
+                });
+
+                // Now we are writing the else block.
                 last_frame.frame_kind = FrameKind::Else { target_label };
 
                 directives.push(Directive::Label(else_label));
