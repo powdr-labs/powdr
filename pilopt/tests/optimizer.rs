@@ -633,13 +633,15 @@ fn inline_chain_of_substitutions() {
     col witness a;
     col witness b;
     col x = N::a + N::y;
-    col y = N::x + N::b;
+    col witness y;
+    N::y = N::x + N::b;
     col m = N::x - N::y;
     N::a * N::b = 10;
     N::m * N::a = 1;
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
+    println!("Optimized:\n{optimized}");
     assert_eq!(optimized, expectation);
 }
 
@@ -692,17 +694,12 @@ fn multi_pass_optimization_unlocks_transformations() {
     let input = r#"namespace N(65536);
     col witness a;
     
-    // This column can be inlined (degree 2)
     col witness early;
     early = a * a;
     
-    // This column initially cannot be inlined because it would make
-    // the 'valuable' constraint exceed MAX_DEGREE
     col witness middle;
     middle = early * a;
     
-    // This column can be inlined (treating middle as reference, degree 2)
-    // Once this is inlined, it unlocks the ability to inline 'middle' in a subsequent pass
     col witness valuable;
     valuable = middle * middle;
     
@@ -712,16 +709,11 @@ fn multi_pass_optimization_unlocks_transformations() {
     valuable + a = 30;
 "#;
 
-    // The optimizer works in multiple passes:
-    // 1. Inlines 'early' (degree 2)
-    // 2. Cannot inline 'middle' yet (would make valuable's constraint exceed MAX_DEGREE)
-    // 3. Inlines 'valuable' as 'middle * middle' (degree 2)
-    // 4. Now that 'valuable' is inlined, 'middle' can be inlined in the next pass
-    // 5. Inlines 'middle' (degree 3)
     let expectation = r#"namespace N(65536);
     col witness a;
     col early = N::a * N::a;
-    col middle = N::early * N::a;
+    col witness middle;
+    N::middle = N::early * N::a;
     col valuable = N::middle * N::middle;
     N::early + N::a = 10;
     N::middle + N::a = 20;
@@ -729,5 +721,6 @@ fn multi_pass_optimization_unlocks_transformations() {
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
+    println!("Optimized:\n{optimized}");
     assert_eq!(optimized, expectation);
 }
