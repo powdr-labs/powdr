@@ -1159,6 +1159,7 @@ fn try_to_constrained_with_max_degree<T: FieldElement>(
             return None;
         };
 
+        // Check if creating a new intermediate would create a cycle when calculating the degree
         if new_intermediate_create_cycle(&w.poly_id, right, intermediate_definitions) {
             return None;
         }
