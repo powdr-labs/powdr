@@ -954,11 +954,9 @@ fn replace_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<
         .map(|(s, _)| s.into())
         .collect::<HashSet<PolyID>>();
 
+    let intermediate_definitions = pil_file.intermediate_definitions();
     for (idx, id) in pil_file.identities.iter().enumerate() {
         if let Identity::Polynomial(identity) = id {
-            println!("Identity {idx}: {identity}");
-            let intermediate_definitions = pil_file.intermediate_definitions();
-
             if let Some(((name, poly_id), expression)) =
                 try_to_constrained_with_max_degree(identity, &intermediate_definitions, MAX_DEGREE)
             {

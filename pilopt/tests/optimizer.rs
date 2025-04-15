@@ -542,6 +542,7 @@ fn simplify_associative_operations() {
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
+
 #[test]
 fn basic_degree_limit_substitution() {
     let input = r#"namespace N(65536);
@@ -639,6 +640,94 @@ fn inline_chain_of_substitutions() {
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-    println!("Optimized: {}", optimized);
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn witness_column_degree_limitation() {
+    let input = r#"namespace N(65536);
+    col witness a;
+    
+    // This column can be inlined (degree 2)
+    col witness x;
+    x = a * a;
+    
+    // This column CANNOT be inlined directly because
+    // its definition already has degree 4 > MAX_DEGREE (3)
+    col witness high_degree;
+    high_degree = a * a * a * a;
+    
+    // This column depends on high_degree but has degree 2
+    // It CAN be inlined because high_degree has degree 1
+    // when calculating the degree of this expression
+    col witness depends_on_high;
+    depends_on_high = high_degree + x;
+    
+    // Usage of columns
+    x + a = 10;
+    high_degree + a = 20;
+    depends_on_high + a = 30;
+    depends_on_high + a = 31;
+"#;
+
+    // Expected result: x and depends_on_high can be inlined, but high_degree remains a witness
+    let expectation = r#"namespace N(65536);
+    col witness a;
+    col x = N::a * N::a;
+    col witness high_degree;
+    N::high_degree = N::a * N::a * N::a * N::a;
+    col depends_on_high = N::high_degree + N::x;
+    N::x + N::a = 10;
+    N::high_degree + N::a = 20;
+    N::depends_on_high + N::a = 30;
+    N::depends_on_high + N::a = 31;
+"#;
+
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn multi_pass_optimization_unlocks_transformations() {
+    let input = r#"namespace N(65536);
+    col witness a;
+    
+    // This column can be inlined (degree 2)
+    col witness early;
+    early = a * a;
+    
+    // This column initially cannot be inlined because it would make
+    // the 'valuable' constraint exceed MAX_DEGREE
+    col witness middle;
+    middle = early * a;
+    
+    // This column can be inlined (treating middle as reference, degree 2)
+    // Once this is inlined, it unlocks the ability to inline 'middle' in a subsequent pass
+    col witness valuable;
+    valuable = middle * middle;
+    
+    // Usage of columns
+    early + a = 10;
+    middle + a = 20;
+    valuable + a = 30;
+"#;
+
+    // The optimizer works in multiple passes:
+    // 1. Inlines 'early' (degree 2)
+    // 2. Cannot inline 'middle' yet (would make valuable's constraint exceed MAX_DEGREE)
+    // 3. Inlines 'valuable' as 'middle * middle' (degree 2)
+    // 4. Now that 'valuable' is inlined, 'middle' can be inlined in the next pass
+    // 5. Inlines 'middle' (degree 3)
+    let expectation = r#"namespace N(65536);
+    col witness a;
+    col early = N::a * N::a;
+    col middle = N::early * N::a;
+    col valuable = N::middle * N::middle;
+    N::early + N::a = 10;
+    N::middle + N::a = 20;
+    N::valuable + N::a = 30;
+"#;
+
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
