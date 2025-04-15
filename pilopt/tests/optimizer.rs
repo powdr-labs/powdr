@@ -641,7 +641,6 @@ fn inline_chain_of_substitutions() {
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
-    println!("Optimized:\n{optimized}");
     assert_eq!(optimized, expectation);
 }
 
@@ -721,6 +720,5 @@ fn multi_pass_optimization_unlocks_transformations() {
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
-    println!("Optimized:\n{optimized}");
     assert_eq!(optimized, expectation);
 }
