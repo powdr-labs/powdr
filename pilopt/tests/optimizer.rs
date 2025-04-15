@@ -606,7 +606,7 @@ fn special_cases_substitution() {
 }
 
 #[test]
-fn chain_of_substitutions() {
+fn inline_chain_of_substitutions() {
     let input = r#"namespace N(65536);
     col witness a;
     col witness b;
