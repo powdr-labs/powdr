@@ -1090,7 +1090,11 @@ fn is_valid_substitution<T: FieldElement>(
         return false;
     }
 
-    for idx in constraints {
+    // Convert HashSet to a sorted Vec to ensure deterministic iteration
+    let mut sorted_constraints: Vec<_> = constraints.into_iter().collect();
+    sorted_constraints.sort();
+
+    for idx in sorted_constraints {
         if let Identity::Polynomial(identity) = &pil_file.identities[idx] {
             // Calculate degree with virtual substitution
             let mut cache = BTreeMap::new();
