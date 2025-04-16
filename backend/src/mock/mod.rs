@@ -8,12 +8,10 @@ use std::{
 
 use bus_checker::{BusChecker, BusInteraction};
 use connection_constraint_checker::{Connection, ConnectionConstraintChecker};
+use itertools::Itertools;
 use machine::Machine;
 use polynomial_constraint_checker::PolynomialConstraintChecker;
-use powdr_ast::{
-    analyzed::{AlgebraicExpression, Analyzed},
-    parsed::visitor::AllChildren,
-};
+use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -87,18 +85,16 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
         let challenges = self
             .machine_to_pil
             .values()
-            .flat_map(|pil| pil.identities.iter())
-            .flat_map(|identity| identity.all_children())
-            .filter_map(|expr| match expr {
-                AlgebraicExpression::Challenge(challenge) => {
-                    // Use the hash of the ID as the challenge.
-                    // This way, if the same challenge is used by different machines, they will
-                    // have the same value.
-                    let mut hasher = DefaultHasher::new();
-                    challenge.id.hash(&mut hasher);
-                    Some((challenge.id, F::from(hasher.finish())))
-                }
-                _ => None,
+            .flat_map(|pil| pil.challenges())
+            // deduplicate challenges across machines
+            .unique()
+            .map(|challenge| {
+                // Use the hash of the ID as the challenge.
+                // This way, if the same challenge is used by different machines, they will
+                // have the same value.
+                let mut hasher = DefaultHasher::new();
+                challenge.id.hash(&mut hasher);
+                (challenge.id, F::from(hasher.finish()))
             })
             .collect::<BTreeMap<_, _>>();
 

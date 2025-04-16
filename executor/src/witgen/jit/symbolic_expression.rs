@@ -3,6 +3,7 @@ use itertools::Itertools;
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_number::FieldElement;
 use std::hash::Hash;
+use std::ops::Sub;
 use std::{
     fmt::{self, Display, Formatter},
     iter,
@@ -64,7 +65,11 @@ impl<T: FieldElement, S> AllChildren<SymbolicExpression<T, S>> for SymbolicExpre
 
 impl<T: FieldElement, S> SymbolicExpression<T, S> {
     pub fn from_symbol(symbol: S, rc: RangeConstraint<T>) -> Self {
-        SymbolicExpression::Symbol(symbol, rc)
+        if let Some(v) = rc.try_to_single_value() {
+            SymbolicExpression::Concrete(v)
+        } else {
+            SymbolicExpression::Symbol(symbol, rc)
+        }
     }
 
     pub fn is_known_zero(&self) -> bool {
@@ -188,6 +193,38 @@ impl<T: FieldElement, V: Clone> Add for SymbolicExpression<T, V> {
     type Output = SymbolicExpression<T, V>;
     fn add(self, rhs: Self) -> Self::Output {
         &self + &rhs
+    }
+}
+
+impl<T: FieldElement, V: Clone> Sub for &SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        if self.is_known_zero() {
+            return -rhs.clone();
+        }
+        if rhs.is_known_zero() {
+            return self.clone();
+        }
+        match (self, rhs) {
+            (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) => {
+                SymbolicExpression::Concrete(*a - *b)
+            }
+            _ => SymbolicExpression::BinaryOperation(
+                Arc::new(self.clone()),
+                BinaryOperator::Sub,
+                Arc::new(rhs.clone()),
+                self.range_constraint()
+                    .combine_sum(&rhs.range_constraint().neg()),
+            ),
+        }
+    }
+}
+
+impl<T: FieldElement, V: Clone> Sub for SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
+    fn sub(self, rhs: Self) -> Self::Output {
+        &self - &rhs
     }
 }
 
