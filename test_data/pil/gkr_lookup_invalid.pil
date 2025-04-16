@@ -1,0 +1,9 @@
+namespace main(32);
+    col fixed x(i) {i};
+    col witness y;
+    col witness z;
+    main::y = main::x;
+    main::z = main::x+1;
+    
+    Constr::BusInteraction(1, 42, [main::y], 1);
+    Constr::BusInteraction(-1, 42, [main::z], 1);
