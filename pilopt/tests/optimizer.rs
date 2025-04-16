@@ -722,3 +722,26 @@ fn multi_pass_optimization_unlocks_transformations() {
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
 }
+
+#[test]
+fn avoid_removing_not_used_columns() {
+    let input = r#"
+        let N: int = 8;
+        
+        namespace Global(N); 
+            let alpha: expr = std::prelude::challenge(0, 41);
+            let beta: expr = std::prelude::challenge(0, 42);
+            col witness x;
+            col witness stage(1) y;
+            y = x * x + beta * alpha;
+        "#;
+
+    let expectation = r#"namespace Global(8);
+    col witness x;
+    col witness stage(1) y;
+    Global::y = Global::x * Global::x + std::prelude::challenge(0, 42) * std::prelude::challenge(0, 41);
+"#;
+
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
+    assert_eq!(optimized, expectation);
+}

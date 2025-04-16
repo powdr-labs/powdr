@@ -1041,6 +1041,7 @@ fn is_valid_substitution<T: FieldElement>(
     intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     max_degree: usize,
 ) -> bool {
+    let mut only_definition = true;
     for (idx, id) in pil_file.identities.iter().enumerate() {
         if idx == exclude_idx {
             continue; // Skip the constraint we're extracting from
@@ -1058,6 +1059,7 @@ fn is_valid_substitution<T: FieldElement>(
                 {
                     if *ref_id == poly_id {
                         uses_witness = true;
+                        only_definition = false;
                     }
                 }
             });
@@ -1091,6 +1093,7 @@ fn is_valid_substitution<T: FieldElement>(
             {
                 if *ref_id == poly_id {
                     uses_witness = true;
+                    only_definition = false;
                 }
             }
         });
@@ -1107,6 +1110,10 @@ fn is_valid_substitution<T: FieldElement>(
                 return false;
             }
         }
+    }
+
+    if only_definition {
+        return false;
     }
 
     true
