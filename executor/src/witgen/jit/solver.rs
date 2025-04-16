@@ -42,6 +42,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         }
     }
 
+    /// Solves the constraints as far as possible. For each variable it was able to
+    /// find a unique solution for, the result contains an expression, indicating
+    /// how the variable can be computed from other variables at runtime.
+    /// If we were able to solve for the value already, the expression will be an
+    /// instance of `SymbolicExpression::Concrete(_)`.
     #[allow(dead_code)]
     pub fn solve(mut self) -> Result<BTreeMap<V, SymbolicExpression<T, V>>, Error> {
         loop {
