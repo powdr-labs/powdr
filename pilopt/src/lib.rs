@@ -738,7 +738,6 @@ fn substitute_polynomial_references<T: FieldElement>(
 ) {
     let poly_id_to_name = pil_file
         .name_to_poly_id()
-        .into_iter()
         .map(|(name, poly)| ((poly.ptype, poly.id), name))
         .collect();
     let substitutions_by_id = substitutions
