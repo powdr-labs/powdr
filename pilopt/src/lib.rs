@@ -1041,6 +1041,7 @@ fn is_valid_substitution<T: FieldElement>(
     intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     max_degree: usize,
 ) -> bool {
+    // If the expression is not used in other constraints or intermediate columns, it's always valid
     let mut only_definition = true;
     for (idx, id) in pil_file.identities.iter().enumerate() {
         if idx == exclude_idx {
@@ -1201,53 +1202,61 @@ fn new_intermediate_create_cycle<T: FieldElement>(
     expression: &AlgebraicExpression<T>,
     intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
 ) -> bool {
-    // Set to track visited polynomial references during traversal
+    // Stack to manage expression traversal: (expression, is_backtracking)
+    // The boolean flag indicates whether we're backtracking from this node
+    let mut stack = vec![(expression, false)];
+
+    // Set of all visited references to avoid redundant processing
     let mut visited = HashSet::new();
 
-    // Function to recursively check for cycles
-    fn recursive_cycle_check<T: FieldElement>(
-        current_expr: &AlgebraicExpression<T>,
-        target_poly_id: &PolyID,
-        visited: &mut HashSet<AlgebraicReferenceThin>,
-        intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
-    ) -> bool {
-        match current_expr {
+    // Set of references in the current path to detect cycles
+    let mut path = HashSet::new();
+
+    while let Some((expr, backtracking)) = stack.pop() {
+        if backtracking {
+            if let AlgebraicExpression::Reference(reference) = expr {
+                if reference.poly_id.ptype == PolynomialType::Intermediate {
+                    path.remove(&reference.to_thin());
+                }
+            }
+            continue;
+        }
+
+        match expr {
             AlgebraicExpression::Reference(reference) => {
-                // If we found the target id, we have a cycle
-                if &reference.poly_id == target_poly_id {
+                // If we found the target polynomial ID, we have a cycle
+                if &reference.poly_id == poly_id {
                     return true;
                 }
 
                 if reference.poly_id.ptype == PolynomialType::Intermediate {
                     let reference_thin = reference.to_thin();
 
-                    if visited.contains(&reference_thin) {
-                        return false;
+                    // If this reference is already in our current path, we found a cycle
+                    if path.contains(&reference_thin) {
+                        return true;
                     }
 
-                    if let Some(def) = intermediate_definitions.get(&reference_thin) {
-                        visited.insert(reference_thin.clone());
-                        if recursive_cycle_check(
-                            def,
-                            target_poly_id,
-                            visited,
-                            intermediate_definitions,
-                        ) {
-                            return true;
+                    if !visited.contains(&reference_thin) {
+                        if let Some(def) = intermediate_definitions.get(&reference_thin) {
+                            visited.insert(reference_thin.clone());
+                            path.insert(reference_thin.clone());
+                            stack.push((expr, true));
+                            stack.push((def, false));
+                            continue;
                         }
-                        visited.remove(&reference_thin);
                     }
                 }
-
-                false
             }
-            // Recursively check all children expressions
-            _ => current_expr.children().any(|child| {
-                recursive_cycle_check(child, target_poly_id, visited, intermediate_definitions)
-            }),
+            _ => {
+                stack.push((expr, true));
+                for child in expr.children().collect::<Vec<_>>().into_iter().rev() {
+                    stack.push((child, false));
+                }
+                continue;
+            }
         }
     }
 
-    // Start the cycle check from the expression
-    recursive_cycle_check(expression, poly_id, &mut visited, intermediate_definitions)
+    false
 }
