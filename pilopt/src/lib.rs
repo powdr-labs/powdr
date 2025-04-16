@@ -1041,7 +1041,7 @@ fn is_valid_substitution<T: FieldElement>(
     intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     max_degree: usize,
 ) -> bool {
-    // If the expression is not used in other constraints or intermediate columns, it's always valid
+    // If the expression is not used in other constraints or intermediate columns, the transformation is not valid
     let mut only_definition = true;
     for (idx, id) in pil_file.identities.iter().enumerate() {
         if idx == exclude_idx {
