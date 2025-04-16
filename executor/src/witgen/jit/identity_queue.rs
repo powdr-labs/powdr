@@ -169,45 +169,6 @@ pub enum QueueItem<'a, T: FieldElement> {
     ProverFunction(ProverFunction<'a, T>, i32),
 }
 
-impl<T: FieldElement> Ord for QueueItem<'_, T> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        match (self, other) {
-            // TODO comparison of Equation is not properly implemented here.
-            (QueueItem::Identity(id1, row1), QueueItem::Identity(id2, row2)) => {
-                (row1, id1.id()).cmp(&(row2, id2.id()))
-            }
-            (QueueItem::ProverFunction(p1, row1), QueueItem::ProverFunction(p2, row2)) => {
-                (row1, p1.index).cmp(&(row2, p2.index))
-            }
-            (a, b) => a.order().cmp(&b.order()),
-        }
-    }
-}
-
-impl<T: FieldElement> QueueItem<'_, T> {
-    fn order(&self) -> u32 {
-        match self {
-            QueueItem::Equation { .. } => 0,
-            QueueItem::Identity(..) => 3,
-            QueueItem::ProverFunction(..) => 4,
-        }
-    }
-}
-
-impl<T: FieldElement> PartialOrd for QueueItem<'_, T> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<T: FieldElement> PartialEq for QueueItem<'_, T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == std::cmp::Ordering::Equal
-    }
-}
-
-impl<T: FieldElement> Eq for QueueItem<'_, T> {}
-
 /// An equality constraint between an algebraic expression evaluated
 /// on a certain row offset and a variable.
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Debug)]

@@ -14,6 +14,7 @@ use crate::witgen::{
         mutable_state::MutableState,
     },
     global_constraints::RangeConstraintSet,
+    jit::symbolic_expression::SymbolicExpression,
     range_constraints::RangeConstraint,
     FixedData, QueryCallback,
 };
