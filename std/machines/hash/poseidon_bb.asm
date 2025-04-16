@@ -2,7 +2,6 @@ use std::array;
 use std::check::assert;
 use std::utils::unchanged_until;
 use std::utils::force_bool;
-use std::utils::new_bool;
 use std::utils::sum;
 use std::convert::expr;
 use std::machines::small_field::memory::Memory;
