@@ -237,7 +237,7 @@ fn remove_unreferenced_keep_enums() {
         // Y is not mentioned anywhere.
         let f: col = |i| if i == 0 { t([]) } else { (|x| 1)(Y::F([])) };
         let x;
-        x = f * f * f ;
+        x = f * f * f * f;
     "#;
     let expectation = r#"namespace N(65536);
     enum X {
@@ -256,7 +256,7 @@ fn remove_unreferenced_keep_enums() {
     let t: N::X[] -> int = |r| 1_int;
     col fixed f(i) { if i == 0_int { N::t([]) } else { (|x| 1_int)(N::Y::F([])) } };
     col witness x;
-    N::x = N::f * N::f * N::f;
+    N::x = N::f * N::f * N::f * N::f;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
@@ -277,7 +277,7 @@ fn test_trait_impl() {
         impl Default<int> { f: || 1, g: |x| x }
         let x: col = |_| Default::f();
         let w;
-        w = x * x * x;
+        w = x * x * x * x;
     "#;
     let expectation = r#"namespace N(65536);
     trait Default<T> {
@@ -291,7 +291,7 @@ fn test_trait_impl() {
     let dep: fe -> fe = |x| x + 1_fe;
     col fixed x(_) { N::Default::f::<fe>() };
     col witness w;
-    N::w = N::x * N::x * N::x;
+    N::w = N::x * N::x * N::x * N::x;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
@@ -306,7 +306,7 @@ fn enum_ref_by_trait() {
         impl X<fe> { f: |_| O::Y(1), g: || { let r = Q::B(1_int); 1 } }
         let x: col = |i| { match X::f(1_fe) { O::Y(y) => y, _ => 0 } };
         let w;
-        w = x * x * x;
+        w = x * x * x * x;
     "#;
     let expectation = r#"namespace N(65536);
     enum O<T> {
@@ -333,7 +333,7 @@ fn enum_ref_by_trait() {
         _ => 0_fe,
     } };
     col witness w;
-    N::w = N::x * N::x * N::x;
+    N::w = N::x * N::x * N::x * N::x;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
