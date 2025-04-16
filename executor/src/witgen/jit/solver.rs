@@ -50,63 +50,19 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     #[allow(dead_code)]
     pub fn solve(mut self) -> Result<BTreeMap<V, SymbolicExpression<T, V>>, Error> {
         loop {
-            let mut variable_updates = vec![];
-            for constraint in &self.constraints {
+            let mut progress = false;
+            for i in 0..self.constraints.len() {
+                // TODO: Handle complete
                 let ProcessResult {
                     effects,
                     complete: _complete,
-                } = constraint.solve(&self)?;
+                } = self.constraints[i].solve(&self)?;
                 for effect in effects {
-                    match effect {
-                        Effect::Assignment(v, expr) => {
-                            let existing_expr = &mut self
-                                .variable_states
-                                .entry(v.clone())
-                                .or_default()
-                                .symbolic_expression;
-                            if let Some(existing_expr) = existing_expr {
-                                assert_eq!(existing_expr, &expr);
-                            } else {
-                                // println!("{v} = {expr}");
-                                variable_updates.push(VariableUpdate {
-                                    variable: v,
-                                    known: true,
-                                    range_constraint: expr.range_constraint(),
-                                });
-                                *existing_expr = Some(expr.clone())
-                            }
-                        }
-                        Effect::RangeConstraint(v, range_constraint) => {
-                            let variable_info =
-                                &mut self.variable_states.entry(v.clone()).or_default();
-                            let range_constraint =
-                                range_constraint.conjunction(&variable_info.range_constraint);
-                            if variable_info.range_constraint != range_constraint {
-                                // println!("({v}: {range_constraint})");
-                                variable_updates.push(VariableUpdate {
-                                    variable: v,
-                                    known: variable_info.symbolic_expression.is_some(),
-                                    range_constraint: range_constraint.clone(),
-                                });
-                                variable_info.range_constraint = range_constraint;
-                            }
-                        }
-                        Effect::BitDecomposition(..) => todo!(),
-                        // QuadraticSymbolicExpression::solve() never returns these
-                        Effect::MachineCall(..)
-                        | Effect::Assertion(..)
-                        | Effect::ProverFunctionCall(..)
-                        | Effect::Branch(..) => unreachable!(),
-                    }
+                    progress |= self.apply_effect(effect);
                 }
             }
-            if variable_updates.is_empty() {
+            if !progress {
                 break;
-            }
-            for constraint in &mut self.constraints {
-                for variable_update in &variable_updates {
-                    constraint.apply_update(variable_update);
-                }
             }
         }
         Ok(self
@@ -114,6 +70,63 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             .into_iter()
             .filter_map(|(k, v)| v.symbolic_expression.map(|expr| (k, expr)))
             .collect())
+    }
+
+    fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
+        match effect {
+            Effect::Assignment(v, expr) => {
+                let existing_expr = &mut self
+                    .variable_states
+                    .entry(v.clone())
+                    .or_default()
+                    .symbolic_expression;
+                if let Some(existing_expr) = existing_expr {
+                    assert_eq!(existing_expr, &expr);
+                    false
+                } else {
+                    // println!("{v} = {expr}");
+                    *existing_expr = Some(expr.clone());
+                    self.update_constraints(&VariableUpdate {
+                        variable: v,
+                        known: true,
+                        range_constraint: expr.range_constraint(),
+                    });
+                    true
+                }
+            }
+            Effect::RangeConstraint(v, range_constraint) => {
+                let variable_info = &mut self.variable_states.entry(v.clone()).or_default();
+                let range_constraint =
+                    range_constraint.conjunction(&variable_info.range_constraint);
+                if variable_info.range_constraint != range_constraint {
+                    // println!("({v}: {range_constraint})");
+
+                    variable_info.range_constraint = range_constraint.clone();
+                    let known = variable_info.symbolic_expression.is_some();
+                    self.update_constraints(&VariableUpdate {
+                        variable: v,
+                        known,
+                        range_constraint: range_constraint,
+                    });
+                    true
+                } else {
+                    false
+                }
+            }
+            Effect::BitDecomposition(..) => todo!(),
+            // QuadraticSymbolicExpression::solve() never returns these
+            Effect::MachineCall(..)
+            | Effect::Assertion(..)
+            | Effect::ProverFunctionCall(..)
+            | Effect::Branch(..) => unreachable!(),
+        }
+    }
+
+    fn update_constraints(&mut self, variable_update: &VariableUpdate<T, V>) {
+        // TODO: Make this more efficient by remembering where the the variable appears
+        for constraint in &mut self.constraints {
+            constraint.apply_update(variable_update);
+        }
     }
 }
 
