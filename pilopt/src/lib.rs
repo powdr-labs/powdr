@@ -1031,21 +1031,23 @@ fn replace_constrained_witness_columns<T: FieldElement>(
     }
 }
 
-/// Collects all constraints that use a specific witness column.
-/// Excludes the constraint at exclude_idx (typically the constraint used for extraction).
-fn collect_constraints_using_witness<T: FieldElement>(
+/// Checks if a substitution is valid for all affected constraints.
+/// A substitution is valid if it doesn't increase the degree of any constraint beyond max_degree.
+fn is_valid_substitution<T: FieldElement>(
     pil_file: &Analyzed<T>,
-    poly_id: PolyID,
     exclude_idx: usize,
-) -> HashSet<usize> {
-    let mut constraints = HashSet::new();
-
+    poly_id: PolyID,
+    expression: &AlgebraicExpression<T>,
+    intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+    max_degree: usize,
+) -> bool {
     for (idx, id) in pil_file.identities.iter().enumerate() {
         if idx == exclude_idx {
             continue; // Skip the constraint we're extracting from
         }
 
         if let Identity::Polynomial(identity) = id {
+            // Check if this identity uses the witness we're trying to substitute
             let mut uses_witness = false;
             identity.expression.pre_visit_expressions(&mut |e| {
                 if let AlgebraicExpression::Reference(AlgebraicReference {
@@ -1060,61 +1062,50 @@ fn collect_constraints_using_witness<T: FieldElement>(
                 }
             });
 
+            // If this identity uses the witness, check if substitution would exceed max_degree
             if uses_witness {
-                constraints.insert(idx);
+                let degree = identity.expression.degree_with_virtual_substitution(
+                    poly_id,
+                    expression,
+                    intermediate_definitions,
+                    &mut BTreeMap::new(),
+                );
+
+                if degree > max_degree {
+                    return false; // Substitution exceeds max_degree
+                }
             }
         }
     }
 
-    constraints
-}
+    // Check if any intermediate definition that uses the witness exceeds max_degree
+    for expr in intermediate_definitions.values() {
+        // First check if this intermediate definition uses the witness
+        let mut uses_witness = false;
+        expr.pre_visit_expressions(&mut |e| {
+            if let AlgebraicExpression::Reference(AlgebraicReference {
+                poly_id: ref_id,
+                next: false,
+                ..
+            }) = e
+            {
+                if *ref_id == poly_id {
+                    uses_witness = true;
+                }
+            }
+        });
 
-/// Checks if a substitution is valid for all affected constraints.
-/// A substitution is valid if it doesn't increase the degree of any constraint beyond MAX_DEGREE.
-fn is_valid_substitution<T: FieldElement>(
-    pil_file: &Analyzed<T>,
-    exclude_idx: usize,
-    poly_id: PolyID,
-    expression: &AlgebraicExpression<T>,
-    intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
-    max_degree: usize,
-) -> bool {
-    let constraints = collect_constraints_using_witness(pil_file, poly_id, exclude_idx);
-
-    if constraints.is_empty() {
-        return false;
-    }
-
-    // Convert HashSet to a sorted Vec to ensure deterministic iteration
-    let mut sorted_constraints: Vec<_> = constraints.into_iter().collect();
-    sorted_constraints.sort();
-
-    for idx in sorted_constraints {
-        if let Identity::Polynomial(identity) = &pil_file.identities[idx] {
-            // Calculate degree with virtual substitution
-            let degree = identity.expression.degree_with_virtual_substitution(
+        // Only check degree if this definition uses the witness
+        if uses_witness {
+            let degree = expr.degree_with_virtual_substitution(
                 poly_id,
                 expression,
                 intermediate_definitions,
                 &mut BTreeMap::new(),
             );
-
             if degree > max_degree {
-                return false; // Substitution exceeds MAX_DEGREE
+                return false;
             }
-        }
-    }
-
-    // Check if any intermediate definition exceeds MAX_DEGREE
-    for expr in intermediate_definitions.values() {
-        let degree = expr.degree_with_virtual_substitution(
-            poly_id,
-            expression,
-            intermediate_definitions,
-            &mut BTreeMap::new(),
-        );
-        if degree > max_degree {
-            return false;
         }
     }
 
@@ -1159,6 +1150,11 @@ fn try_to_constrained_with_max_degree<T: FieldElement>(
             return None;
         };
 
+        // Check that the right side doesn't contain next references
+        if right.contains_next_ref(intermediate_definitions) {
+            return None;
+        }
+
         // Check if creating a new intermediate would create a cycle when calculating the degree
         if new_intermediate_create_cycle(&w.poly_id, right, intermediate_definitions) {
             return None;
@@ -1182,11 +1178,6 @@ fn try_to_constrained_with_max_degree<T: FieldElement>(
         });
 
         if references_self {
-            return None;
-        }
-
-        // Check that the right side doesn't contain next references
-        if right.contains_next_ref(intermediate_definitions) {
             return None;
         }
 

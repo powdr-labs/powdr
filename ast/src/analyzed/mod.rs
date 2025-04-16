@@ -1679,6 +1679,7 @@ impl<T> AlgebraicExpression<T> {
     /// Calculates the degree of an expression with a virtual substitution.
     /// This is similar to `degree_with_cache` but allows calculating the degree
     /// as if a specific polynomial reference was replaced with another expression.
+    /// Recursive substitutions in the new expression are not applied.
     pub fn degree_with_virtual_substitution(
         &self,
         poly_id: PolyID,
@@ -1687,9 +1688,7 @@ impl<T> AlgebraicExpression<T> {
         cache: &mut BTreeMap<AlgebraicReferenceThin, usize>,
     ) -> usize {
         match self {
-            AlgebraicExpression::Reference(reference)
-                if reference.poly_id == poly_id && !reference.next =>
-            {
+            AlgebraicExpression::Reference(reference) if reference.poly_id == poly_id => {
                 substitution.degree_with_cache(intermediate_definitions, cache)
             }
             AlgebraicExpression::Reference(reference) => match reference.poly_id.ptype {
