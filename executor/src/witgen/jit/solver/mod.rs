@@ -1,7 +1,7 @@
 use powdr_number::FieldElement;
 
 use super::effect::Effect;
-use super::quadratic_symbolic_expression::{Error, ProcessResult, RangeConstraintProvider};
+use super::quadratic_symbolic_expression::{Error, RangeConstraintProvider};
 use super::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     symbolic_expression::SymbolicExpression,
@@ -52,11 +52,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         loop {
             let mut progress = false;
             for i in 0..self.constraints.len() {
-                // TODO: Handle complete
-                let ProcessResult {
-                    effects,
-                    complete: _complete,
-                } = self.constraints[i].solve(&self)?;
+                // TODO: Improve efficiency by only running skipping constraints that
+                // have not received any updates since they were last processed.
+                let effects = self.constraints[i].solve(&self)?.effects;
                 for effect in effects {
                     progress |= self.apply_effect(effect);
                 }
