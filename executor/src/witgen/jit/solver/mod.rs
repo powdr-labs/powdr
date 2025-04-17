@@ -41,6 +41,8 @@ impl<T: FieldElement, V> Default for VariableState<T, V> {
 /// Given a list of constraints, tries to derive as many variable assignments as possible.
 pub struct Solver<T: FieldElement, V> {
     /// The algebraic constraints to solve.
+    /// Note that these are mutated during the solving process.
+    /// They must be kept consistent with the variable states.
     algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
     /// The current state of the variables.
     variable_states: BTreeMap<V, VariableState<T, V>>,
@@ -136,22 +138,35 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
 
         let entry = self.variable_states.entry(variable.clone()).or_default();
         let variable_update = match &entry.symbolic_expression {
-            Some(existing) if existing == &expr => return progress_range_constraint,
+            // We already know the expression
+            Some(existing) if existing == &expr => None,
+
+            // The expression was updated. This should never happen.
             Some(existing) => {
                 panic!("Expression set for {variable} set to {expr} but already was {existing}")
             }
+
+            // An unknown variable became known.
             None => {
                 log::trace!("{variable} = {expr}");
                 entry.symbolic_expression = Some(expr.clone());
-                VariableUpdate {
+
+                // The borrow checker won't let us call `update_constraints` here, so we
+                // just return the update.
+                Some(VariableUpdate {
                     variable,
                     known: true,
                     range_constraint: entry.range_constraint.clone(),
-                }
+                })
             }
         };
-        self.update_constraints(&variable_update);
-        true
+
+        if let Some(variable_update) = variable_update {
+            self.update_constraints(&variable_update);
+            true
+        } else {
+            progress_range_constraint
+        }
     }
 
     fn apply_range_constraint_update(
