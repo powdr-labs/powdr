@@ -788,6 +788,5 @@ fn preserve_input_output_witnesses() {
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
-    println!("optimized:\n{optimized}");
     assert_eq!(optimized, expectation);
 }
