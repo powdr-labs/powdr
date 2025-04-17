@@ -1062,7 +1062,7 @@ fn replace_constrained_witness_columns<T: FieldElement>(
         .filter_map(|id| try_to_boolean_constrained(id))
         .collect::<HashSet<_>>();
 
-    let inputs_outputs = collect_inputs_outputs_ids(&pil_file);
+    let inputs_outputs = collect_inputs_outputs_ids(pil_file);
 
     let keep = pil_file
         .committed_polys_in_source_order()
