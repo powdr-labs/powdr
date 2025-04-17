@@ -84,7 +84,7 @@ let poseidon2 = constr |
 
     // We now chain the rounds together:
 
-    // Perform the inital MDS step
+    // Perform the initial MDS step
     let pre_rounds = apply_mds(input_state, state_size);
 
     // Perform the first half of the external rounds
