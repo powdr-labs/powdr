@@ -106,7 +106,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                     self.update_constraints(&VariableUpdate {
                         variable: v,
                         known,
-                        range_constraint: range_constraint,
+                        range_constraint,
                     });
                     true
                 } else {
