@@ -8,13 +8,19 @@ use super::{
 };
 use crate::witgen::jit::variable_update::VariableUpdate;
 use crate::witgen::range_constraints::RangeConstraint;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
+/// Current state of a variable in the solver.
 #[derive(Debug, PartialEq)]
 struct VariableState<T: FieldElement, V> {
+    /// Range constraint for the variable.
     range_constraint: RangeConstraint<T>,
+    /// None if unknown, otherwise a symbolic expression that can be used to compute
+    /// the variable from other variables.
+    /// Note that the expression is an instance of `SymbolicExpression::Concrete(_)`,
+    /// we have found a concrete variable assignment.
     symbolic_expression: Option<SymbolicExpression<T, V>>,
 }
 
@@ -27,18 +33,58 @@ impl<T: FieldElement, V> Default for VariableState<T, V> {
     }
 }
 
+/// Given a list of constraints, tries to derive as many variable assignments as possible.
 pub struct Solver<T: FieldElement, V> {
-    #[allow(dead_code)]
-    constraints: Vec<QuadraticSymbolicExpression<T, V>>,
+    /// The algebraic constraints to solve.
+    algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>,
+    /// The current state of the variables.
     variable_states: BTreeMap<V, VariableState<T, V>>,
+    /// Input nodes to the constraint system.
+    input_variables: BTreeSet<V>,
 }
 
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
     #[allow(dead_code)]
-    pub fn new(constraints: Vec<QuadraticSymbolicExpression<T, V>>) -> Self {
+    pub fn new(algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>) -> Self {
+        let input_variables = algebraic_constraints
+            .iter()
+            .flat_map(|constraint| {
+                let all_vars = constraint
+                    .referenced_variables()
+                    .cloned()
+                    .collect::<BTreeSet<_>>();
+                let unknown_vars = constraint
+                    .referenced_unknown_variables()
+                    .cloned()
+                    .collect::<BTreeSet<_>>();
+                all_vars
+                    .difference(&unknown_vars)
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .into_iter()
+            })
+            .collect::<BTreeSet<_>>();
+        let variable_states = input_variables
+            .iter()
+            .map(|known_var| {
+                (
+                    known_var.clone(),
+                    VariableState {
+                        // TODO: We're losing the initial range constraint here!
+                        range_constraint: RangeConstraint::default(),
+                        symbolic_expression: Some(SymbolicExpression::Symbol(
+                            known_var.clone(),
+                            RangeConstraint::default(),
+                        )),
+                    },
+                )
+            })
+            .collect();
+
         Solver {
-            constraints,
-            variable_states: Default::default(),
+            algebraic_constraints,
+            variable_states,
+            input_variables,
         }
     }
 
@@ -49,12 +95,24 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     /// instance of `SymbolicExpression::Concrete(_)`.
     #[allow(dead_code)]
     pub fn solve(mut self) -> Result<BTreeMap<V, SymbolicExpression<T, V>>, Error> {
+        self.loop_until_no_progress()?;
+
+        // Return assignment for all known variables
+        Ok(self
+            .variable_states
+            .into_iter()
+            .filter_map(|(v, info)| info.symbolic_expression.map(|expr| (v, expr)))
+            .filter(|(v, _)| !self.input_variables.contains(v))
+            .collect())
+    }
+
+    fn loop_until_no_progress(&mut self) -> Result<(), Error> {
         loop {
             let mut progress = false;
-            for i in 0..self.constraints.len() {
+            for i in 0..self.algebraic_constraints.len() {
                 // TODO: Improve efficiency by only running skipping constraints that
                 // have not received any updates since they were last processed.
-                let effects = self.constraints[i].solve(&self)?.effects;
+                let effects = self.algebraic_constraints[i].solve(self)?.effects;
                 for effect in effects {
                     progress |= self.apply_effect(effect);
                 }
@@ -63,55 +121,17 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 break;
             }
         }
-        Ok(self
-            .variable_states
-            .into_iter()
-            .filter_map(|(k, v)| v.symbolic_expression.map(|expr| (k, expr)))
-            .collect())
+        Ok(())
     }
 
     fn apply_effect(&mut self, effect: Effect<T, V>) -> bool {
         match effect {
-            Effect::Assignment(v, expr) => {
-                let existing_expr = &mut self
-                    .variable_states
-                    .entry(v.clone())
-                    .or_default()
-                    .symbolic_expression;
-                if let Some(existing_expr) = existing_expr {
-                    assert_eq!(existing_expr, &expr);
-                    false
-                } else {
-                    log::trace!("{v} = {expr}");
-                    *existing_expr = Some(expr.clone());
-                    self.update_constraints(&VariableUpdate {
-                        variable: v,
-                        known: true,
-                        range_constraint: expr.range_constraint(),
-                    });
-                    true
-                }
-            }
+            Effect::Assignment(v, expr) => self.apply_assignment(v, expr),
             Effect::RangeConstraint(v, range_constraint) => {
-                let variable_info = &mut self.variable_states.entry(v.clone()).or_default();
-                let range_constraint =
-                    range_constraint.conjunction(&variable_info.range_constraint);
-                if variable_info.range_constraint != range_constraint {
-                    log::trace!("({v}: {range_constraint})");
-
-                    variable_info.range_constraint = range_constraint.clone();
-                    let known = variable_info.symbolic_expression.is_some();
-                    self.update_constraints(&VariableUpdate {
-                        variable: v,
-                        known,
-                        range_constraint,
-                    });
-                    true
-                } else {
-                    false
-                }
+                self.apply_range_constraint_update(v, range_constraint)
             }
-            Effect::BitDecomposition(..) => todo!(),
+            // TODO: We need to introduce a new operator in `SymbolicExpression` for this.
+            Effect::BitDecomposition(..) => unimplemented!(),
             // QuadraticSymbolicExpression::solve() never returns these
             Effect::MachineCall(..)
             | Effect::Assertion(..)
@@ -120,9 +140,60 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         }
     }
 
+    fn apply_assignment(&mut self, variable: V, expr: SymbolicExpression<T, V>) -> bool {
+        // If the expression's range constraint tighter than the current one, we need to
+        // update it.
+        let progress_range_constraint =
+            self.apply_range_constraint_update(variable.clone(), expr.range_constraint());
+
+        let entry = self.variable_states.entry(variable.clone()).or_default();
+        let variable_update = match &entry.symbolic_expression {
+            Some(existing) if existing == &expr => return progress_range_constraint,
+            Some(existing) => {
+                panic!("Expression set for {variable} set to {expr} but already was {existing}")
+            }
+            None => {
+                log::trace!("{variable} = {expr}");
+                entry.symbolic_expression = Some(expr.clone());
+                VariableUpdate {
+                    variable,
+                    known: true,
+                    range_constraint: entry.range_constraint.clone(),
+                }
+            }
+        };
+        self.update_constraints(&variable_update);
+        true
+    }
+
+    fn apply_range_constraint_update(
+        &mut self,
+        variable: V,
+        range_constraint: RangeConstraint<T>,
+    ) -> bool {
+        let entry = self.variable_states.entry(variable.clone()).or_default();
+        let updated_constraint = range_constraint.conjunction(&entry.range_constraint);
+
+        if entry.range_constraint == updated_constraint {
+            // Already knew the constraint, no progress
+            return false;
+        }
+
+        log::trace!("({variable}: {updated_constraint})");
+
+        entry.range_constraint = updated_constraint.clone();
+        let known = entry.symbolic_expression.is_some();
+        self.update_constraints(&VariableUpdate {
+            variable,
+            known,
+            range_constraint: updated_constraint,
+        });
+        true
+    }
+
     fn update_constraints(&mut self, variable_update: &VariableUpdate<T, V>) {
         // TODO: Make this more efficient by remembering where the the variable appears
-        for constraint in &mut self.constraints {
+        for constraint in &mut self.algebraic_constraints {
             constraint.apply_update(variable_update);
         }
     }
@@ -257,30 +328,6 @@ mod tests {
             ("c", -constant_expr(3) * (-var_expr("a"))),
             // TODO: This should simplify to `11 * a`
             ("d", -var_expr("a") + var_expr("c") * constant_expr(4)),
-        ]);
-        assert_expected_state(final_state, expected_final_state);
-    }
-
-    #[test]
-    fn symbolically_solvable2() {
-        init_logging();
-        let constraints = [
-            var("a") - constant(2),
-            var("b") - constant(3),
-            var("c") - known("a") * var("b"),
-            var("d") - (var("c") * constant(4) - known("a")),
-        ]
-        .into_iter()
-        // Reverse to make sure several passes are necessary
-        .rev()
-        .collect();
-
-        let final_state = Solver::new(constraints).solve().unwrap();
-        let expected_final_state = BTreeMap::from([
-            ("a", constant_expr(2)),
-            ("b", constant_expr(3)),
-            ("c", constant_expr(6)),
-            ("d", constant_expr(22)),
         ]);
         assert_expected_state(final_state, expected_final_state);
     }
