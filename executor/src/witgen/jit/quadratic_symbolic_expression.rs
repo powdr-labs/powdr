@@ -205,7 +205,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         Ok(if self.is_quadratic() {
-            ProcessResult::empty()
+            if let Some(r) = self.try_detect_bit_constraint() {
+                return Ok(r);
+            } else {
+                ProcessResult::empty()
+            }
         } else if let Some(k) = self.try_to_known() {
             if k.is_known_nonzero() {
                 return Err(Error::ConstraintUnsatisfiable);
@@ -405,6 +409,60 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             constraint
         };
         Some(Effect::RangeConstraint(solve_for.clone(), constraint))
+    }
+
+    /// Tries to detect a bit constraint of the form `X * (X - 1) = 0`.
+    /// In that case, we can return a range constraint for `X` and mark the
+    /// constraint as complete.
+    // TODO: This function would not detect many equivalent constraints, like
+    // `X * X - X` or `5 * X * (3 * X - 3) = 0`.
+    // This could be fixed by finding a canonical form for the quadratic
+    // expression, and normalizing the constants.
+    fn try_detect_bit_constraint(&self) -> Option<ProcessResult<T, V>> {
+        // Bit range constraints can be implemented as `X * (X - 1) = 0`.
+        if !self.linear.is_empty() || !self.constant.is_known_zero() || self.quadratic.len() != 1 {
+            return None;
+        }
+
+        // Looking for `X * (X - 1)`
+        let (factor1, factor2) = &self.quadratic[0];
+
+        // Check if factor1 is of the form `X`
+        let variable = {
+            if factor1.is_quadratic()
+                || !factor1.constant.is_known_zero()
+                || factor1.linear.len() != 1
+            {
+                return None;
+            }
+            let (var, factor) = factor1.linear.iter().next().unwrap();
+            if !factor.is_known_one() {
+                return None;
+            }
+            var.clone()
+        };
+
+        // Check if factor2 is of the form `X - 1`
+        {
+            if factor2.is_quadratic() || factor2.linear.len() != 1 {
+                return None;
+            }
+            let (var, factor) = factor2.linear.iter().next().unwrap();
+            if !factor.is_known_one() || var != &variable {
+                return None;
+            }
+            let offset = factor2.constant.try_to_number()?;
+            if offset != T::from(-1) {
+                return None;
+            }
+        }
+
+        // We have a boolean range constraint, return the effect and mark the constraint as complete.
+        let range_constraint = RangeConstraint::from_mask(1);
+        Some(ProcessResult {
+            effects: vec![Effect::RangeConstraint(variable, range_constraint)],
+            complete: true,
+        })
     }
 }
 
@@ -903,5 +961,21 @@ c = (((10 + Z) & 0xff000000) >> 24) [negative];
 Z: [10, 4294967050] & 0xffffffff;
 "
         );
+    }
+
+    #[test]
+    fn detect_bit_constraint() {
+        let a = Qse::from_unknown_variable("a");
+        let constraint = a.clone() * (a - Qse::from(GoldilocksField::from(1)));
+        let result = constraint.solve(&NoRangeConstraints).unwrap();
+        assert!(result.complete);
+        let [effect] = &result.effects[..] else {
+            panic!();
+        };
+        let Effect::RangeConstraint(var, rc) = effect else {
+            panic!();
+        };
+        assert_eq!(var.to_string(), "a");
+        assert_eq!(rc, &RangeConstraint::from_mask(1u64));
     }
 }
