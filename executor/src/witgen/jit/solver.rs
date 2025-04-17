@@ -84,7 +84,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                     assert_eq!(existing_expr, &expr);
                     false
                 } else {
-                    // println!("{v} = {expr}");
+                    log::trace!("{v} = {expr}");
                     *existing_expr = Some(expr.clone());
                     self.update_constraints(&VariableUpdate {
                         variable: v,
@@ -99,7 +99,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 let range_constraint =
                     range_constraint.conjunction(&variable_info.range_constraint);
                 if variable_info.range_constraint != range_constraint {
-                    // println!("({v}: {range_constraint})");
+                    log::trace!("({v}: {range_constraint})");
 
                     variable_info.range_constraint = range_constraint.clone();
                     let known = variable_info.symbolic_expression.is_some();
@@ -151,12 +151,26 @@ mod tests {
         Qse::from_unknown_variable(name)
     }
 
+    fn known(name: &'static str) -> Qse {
+        Qse::from_known_symbol(name, RangeConstraint::default())
+    }
+
     fn constant(value: u64) -> Qse {
         GoldilocksField::from(value).into()
     }
 
+    fn init_logging() {
+        static INIT: std::sync::Once = std::sync::Once::new();
+        INIT.call_once(|| {
+            env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("trace"))
+                .is_test(true)
+                .init();
+        });
+    }
+
     #[test]
     fn single_variable() {
+        init_logging();
         let constraints = vec![var("x") - constant(5)];
         let final_state = Solver::new(constraints).solve().unwrap();
 
@@ -166,6 +180,7 @@ mod tests {
 
     #[test]
     fn concretely_solvable() {
+        init_logging();
         let constraints = [
             var("a") - constant(2),
             var("b") - constant(3),
@@ -187,5 +202,29 @@ mod tests {
             ("d", GoldilocksField::from(22).into()),
         ]);
         assert_eq!(final_state, expected_final_state);
+    }
+
+    #[test]
+    fn symbolically_solvable() {
+        init_logging();
+        let constraints = [
+            // Like above, but this time `a` is only known at runtime
+            var("b") - constant(3),
+            var("c") - known("a") * var("b"),
+            var("d") - (var("c") * constant(4) - known("a")),
+        ]
+        .into_iter()
+        // Reverse to make sure several passes are necessary
+        .rev()
+        .collect();
+
+        let final_state = Solver::new(constraints).solve().unwrap();
+        // let expected_final_state = BTreeMap::from([
+        //     ("a", GoldilocksField::from(2).into()),
+        //     ("b", GoldilocksField::from(3).into()),
+        //     ("c", GoldilocksField::from(6).into()),
+        //     ("d", GoldilocksField::from(22).into()),
+        // ]);
+        // assert_eq!(final_state, expected_final_state);
     }
 }
