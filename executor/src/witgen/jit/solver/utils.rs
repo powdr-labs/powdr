@@ -34,8 +34,7 @@ pub fn known_variables<T: FieldElement, V: Clone + Hash + Ord + Eq + Debug + Dis
         .collect::<Vec<_>>();
     if !inconsistent_variables.is_empty() {
         panic!(
-            "The following variables appear as both known and unknown: {:?}",
-            inconsistent_variables
+            "The following variables appear as both known and unknown: {inconsistent_variables:?}",
         );
     }
 
