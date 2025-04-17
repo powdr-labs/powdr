@@ -921,6 +921,126 @@ fn try_to_boolean_constrained<T: FieldElement>(id: &Identity<T>) -> Option<PolyI
     }
 }
 
+fn collect_inputs_outputs_ids<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<PolyID> {
+    let mut inputs_outputs = HashSet::new();
+    for (symbol, _) in pil_file.committed_polys_in_source_order() {
+        let elements: Vec<_> = symbol.array_elements().collect();
+        if elements.len() == 1 {
+            let poly_id = elements[0].1;
+            assert!(poly_id.ptype == PolynomialType::Committed);
+
+            let is_input_poly = is_input(poly_id, &pil_file.identities);
+            let is_output_poly = is_output(poly_id, &pil_file.identities);
+
+            if is_input_poly ^ is_output_poly {
+                inputs_outputs.insert(poly_id);
+            }
+        }
+    }
+    inputs_outputs
+}
+
+/// Returns `true` if the given poly_id is never used as a single witness column in any side of any identity.
+/// poly_id = other_poly1 + other_poly2 returns `true`
+/// poly_id + other_poly1 = other_poly2 returns `false`
+fn is_input<T: FieldElement>(id: PolyID, identities: &[Identity<T>]) -> bool {
+    for identity in identities {
+        if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = identity {
+            let (a, b) = match expression {
+                AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                    left: a,
+                    op: AlgebraicBinaryOperator::Sub,
+                    right: b,
+                }) => (a, b),
+                _ => continue,
+            };
+
+            match a.as_ref() {
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    poly_id: ref_id,
+                    next: false,
+                    ..
+                }) if *ref_id == id => return false,
+                _ => {}
+            }
+
+            match b.as_ref() {
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    poly_id: ref_id,
+                    next: false,
+                    ..
+                }) if *ref_id == id => return false,
+                _ => {}
+            }
+        } else {
+            continue;
+        };
+    }
+    true
+}
+
+/// Returns `true` if the given poly_id is only used as a single witness column in any side of any identity.
+/// poly_id = other_poly1 + other_poly2 returns `false`
+/// poly_id + other_poly1 = other_poly2 returns `true`
+fn is_output<T: FieldElement>(id: PolyID, identities: &[Identity<T>]) -> bool {
+    let mut is_output = true;
+    for identity in identities {
+        if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = identity {
+            let (a, b) = match expression {
+                AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                    left: a,
+                    op: AlgebraicBinaryOperator::Sub,
+                    right: b,
+                }) => (a, b),
+                _ => continue,
+            };
+
+            match a.as_ref() {
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    poly_id: _,
+                    next: false,
+                    ..
+                }) => {}
+                a => a.pre_visit_expressions(&mut |e| {
+                    if let AlgebraicExpression::Reference(AlgebraicReference {
+                        poly_id: ref_id,
+                        next: false,
+                        ..
+                    }) = e
+                    {
+                        if *ref_id == id {
+                            is_output = false;
+                        }
+                    }
+                }),
+            };
+
+            match b.as_ref() {
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    poly_id: _,
+                    next: false,
+                    ..
+                }) => {}
+                b => b.pre_visit_expressions(&mut |e| {
+                    if let AlgebraicExpression::Reference(AlgebraicReference {
+                        poly_id: ref_id,
+                        next: false,
+                        ..
+                    }) = e
+                    {
+                        if *ref_id == id {
+                            is_output = false;
+                        }
+                    }
+                }),
+            };
+        } else {
+            continue;
+        };
+    }
+    is_output
+}
+
 /// Identifies witness columns that are constrained to expressions of degree <= MAX_DEGREE, and
 /// replaces the witness column with an intermediate polynomial.
 /// max_degree: Maximum allowed polynomial degree after applying a substitution
@@ -942,6 +1062,8 @@ fn replace_constrained_witness_columns<T: FieldElement>(
         .filter_map(|id| try_to_boolean_constrained(id))
         .collect::<HashSet<_>>();
 
+    let inputs_outputs = collect_inputs_outputs_ids(&pil_file);
+
     let keep = pil_file
         .committed_polys_in_source_order()
         .filter(|&(s, _)| {
@@ -951,6 +1073,7 @@ fn replace_constrained_witness_columns<T: FieldElement>(
                     .intersection(&s.array_elements().map(|(_, poly_id)| poly_id).collect())
                     .count()
                     > 0
+                || inputs_outputs.contains(&s.into())
         })
         .map(|(s, _)| s.into())
         .collect::<HashSet<PolyID>>();
@@ -1041,8 +1164,6 @@ fn is_valid_substitution<T: FieldElement>(
     intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     max_degree: usize,
 ) -> bool {
-    // If the expression is not used in other constraints or intermediate columns, the transformation is not valid
-    let mut only_definition = true;
     for (idx, id) in pil_file.identities.iter().enumerate() {
         if idx == exclude_idx {
             continue; // Skip the constraint we're extracting from
@@ -1060,7 +1181,6 @@ fn is_valid_substitution<T: FieldElement>(
                 {
                     if *ref_id == poly_id {
                         uses_witness = true;
-                        only_definition = false;
                     }
                 }
             });
@@ -1094,7 +1214,6 @@ fn is_valid_substitution<T: FieldElement>(
             {
                 if *ref_id == poly_id {
                     uses_witness = true;
-                    only_definition = false;
                 }
             }
         });
@@ -1111,10 +1230,6 @@ fn is_valid_substitution<T: FieldElement>(
                 return false;
             }
         }
-    }
-
-    if only_definition {
-        return false;
     }
 
     true

@@ -503,7 +503,8 @@ fn replace_witness_by_intermediate() {
     N::linear_with_next_ref + N::w = 5;
     col quadratic = 2 * N::w * N::w + 3 * N::f + 5;
     N::quadratic + N::w = 5;
-    col constrained_twice = 2 * N::w + 3 * N::f + 5;
+    col witness constrained_twice;
+    N::constrained_twice = 2 * N::w + 3 * N::f + 5;
     N::constrained_twice = N::w + N::f;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
@@ -724,7 +725,7 @@ fn multi_pass_optimization_unlocks_transformations() {
 }
 
 #[test]
-fn avoid_removing_not_used_columns() {
+fn avoid_removing_output_columns() {
     let input = r#"
         let N: int = 8;
         
@@ -743,5 +744,50 @@ fn avoid_removing_not_used_columns() {
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn preserve_input_output_witnesses() {
+    let input = r#"namespace N(65536);
+    col witness input_only;
+    col witness output_only;
+    col witness both_io;
+    col witness regular;
+    
+    // input_only only appears on the right side of equations
+    regular = input_only + 5;
+    output_only = input_only * 2;
+    
+    // output_only only appears on the left side of equations
+    output_only = regular + 3;
+    output_only = input_only * 2;
+    
+    // both_io appears on both sides
+    both_io = regular + 1;
+    regular = both_io + 2;
+    
+    // regular appears on both sides and is not exclusively input or output
+    regular = input_only + 5;
+    output_only = regular + 3;
+"#;
+
+    // In the expected result:
+    // - input_only should be preserved because it's exclusively an input
+    // - output_only should be preserved because it's exclusively an output
+    // - both_io and regular can be optimized if they meet other conditions
+    let expectation = r#"namespace N(65536);
+    col witness input_only;
+    col witness output_only;
+    col both_io = N::regular + 1;
+    col regular = N::input_only + 5;
+    N::output_only = N::input_only * 2;
+    N::output_only = N::regular + 3;
+    N::regular = N::both_io + 2;
+    N::regular = N::input_only + 5;
+"#;
+
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
+    println!("optimized:\n{optimized}");
     assert_eq!(optimized, expectation);
 }
