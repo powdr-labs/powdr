@@ -195,7 +195,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     }
 
     fn update_constraints(&mut self, variable_update: &VariableUpdate<T, V>) {
-        // TODO: Make this more efficient by remembering where the the variable appears
+        // TODO: Make this more efficient by remembering where the variable appears
         for constraint in &mut self.algebraic_constraints {
             constraint.apply_update(variable_update);
         }
