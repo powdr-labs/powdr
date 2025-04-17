@@ -1,0 +1,19 @@
+[package]
+name = "powdr_wasm"
+description = "powdr WebAssembly frontend"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+powdr-syscalls.workspace = true
+
+env_logger = "0.10.0"
+itertools = "0.13"
+log = "0.4.17"
+wasmparser = "0.227"
+
+[lints]
+workspace = true

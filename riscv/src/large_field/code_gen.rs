@@ -185,7 +185,7 @@ fn translate_program_impl(
     (initial_mem, statements)
 }
 
-const RISCV_ASM_TEMPLATE: &str = include_str!("../riscv_gl.asm");
+const RISCV_ASM_TEMPLATE: &str = include_str!("../riscv_gl.asm.template");
 
 fn riscv_machine(
     options: CompilerOptions,
