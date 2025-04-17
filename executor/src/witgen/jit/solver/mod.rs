@@ -1,4 +1,5 @@
 use powdr_number::FieldElement;
+use utils::known_variables;
 
 use super::effect::Effect;
 use super::quadratic_symbolic_expression::{Error, RangeConstraintProvider};
@@ -14,6 +15,7 @@ use std::hash::Hash;
 
 #[cfg(test)]
 mod tests;
+mod utils;
 
 /// Current state of a variable in the solver.
 #[derive(Debug, PartialEq)]
@@ -49,24 +51,7 @@ pub struct Solver<T: FieldElement, V> {
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V> {
     #[allow(dead_code)]
     pub fn new(algebraic_constraints: Vec<QuadraticSymbolicExpression<T, V>>) -> Self {
-        let input_variables = algebraic_constraints
-            .iter()
-            .flat_map(|constraint| {
-                let all_vars = constraint
-                    .referenced_variables()
-                    .cloned()
-                    .collect::<BTreeSet<_>>();
-                let unknown_vars = constraint
-                    .referenced_unknown_variables()
-                    .cloned()
-                    .collect::<BTreeSet<_>>();
-                all_vars
-                    .difference(&unknown_vars)
-                    .cloned()
-                    .collect::<Vec<_>>()
-                    .into_iter()
-            })
-            .collect::<BTreeSet<_>>();
+        let input_variables = known_variables(&algebraic_constraints);
         let variable_states = input_variables
             .iter()
             .map(|known_var| {
