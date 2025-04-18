@@ -42,7 +42,7 @@ jobs:
         run: cat target/cache-build-date.txt
         continue-on-error: true
       - name: Check out cache commit state and update mtime accordingly.
-        run: git rev-parse HEAD > target/stored_hash.txt && git checkout "$(cat target/cache-commit-hash.txt || echo 'f02fd626e2bb9e46a22ea1cda96b4feb5c6bda43')" && git ls-files -z | xargs -0 -n1 touch -d '$(cat target/cache-build-date.txt)' && git checkout $(target/stored_hash.txt)
+        run: pwd && ls -la /tmp/ && ls -la && ls -la target && git rev-parse HEAD > target/stored_hash.txt && git checkout "$(cat target/cache-commit-hash.txt || echo 'f02fd626e2bb9e46a22ea1cda96b4feb5c6bda43')" && git ls-files -z | xargs -0 -n1 touch -d '$(cat target/cache-build-date.txt)' && git checkout $(target/stored_hash.txt)
         continue-on-error: true
 
       ##### The block below is shared between cache build and PR build workflows #####
