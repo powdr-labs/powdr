@@ -22,7 +22,7 @@ pub mod referenced_symbols;
 use powdr_pil_analyzer::try_algebraic_expression_to_expression;
 use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
-pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
+pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>, max_degree: usize) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
     let mut pil_hash = hash_pil_state(&pil_file);
     loop {
@@ -31,7 +31,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         deduplicate_fixed_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
         extract_constant_lookups(&mut pil_file);
-        replace_linear_witness_columns(&mut pil_file);
+        replace_constrained_witness_columns(&mut pil_file, max_degree);
         remove_constant_witness_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
         inline_trivial_intermediate_polynomials(&mut pil_file);
@@ -561,121 +561,6 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     }
 }
 
-/// Identifies witness columns that are constrained to a non-shifted (multi)linear expression, replaces the witness column by an intermediate column defined to be that expression.
-/// The pattern is the following:
-/// ```pil
-/// col witness x;
-/// x = lin;
-/// ```
-/// Where `lin` is a non-shifted multi-linear expression.
-/// This optimization makes sense because it saves the cost of committing to `x` and does not increase the degree of the constraints `x` is involved in.
-/// TODO: the optimization is *NOT* applied to witness columns which are boolean constrained: intermediate polynomials get inlined in witness generation and
-/// the boolean constraint gets lost. Remove this limitation once intermediate polynomials are handled correctly in witness generation.
-fn replace_linear_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let intermediate_definitions = pil_file.intermediate_definitions();
-
-    // We cannot remove arrays or array elements, so we filter them out.
-    // Also, we filter out columns that are used in public declarations.
-    // Also, we filter out columns that are boolean constrained.
-
-    let in_publics: HashSet<_> = pil_file
-        .public_declarations_in_source_order()
-        .map(|(_, pubd)| pubd.referenced_poly().name.clone())
-        .collect();
-
-    // pattern match identities looking for `w * (1 - w) = 0` and `(1 - w) * w = 0` constraints
-    let boolean_constrained_witnesses = pil_file
-        .identities
-        .iter()
-        .filter_map(|id| try_to_boolean_constrained(id))
-        .collect::<HashSet<_>>();
-
-    let keep = pil_file
-        .committed_polys_in_source_order()
-        .filter(|&(s, _)| {
-            s.is_array()
-                || in_publics.contains(&s.absolute_name)
-                || boolean_constrained_witnesses
-                    .intersection(&s.array_elements().map(|(_, poly_id)| poly_id).collect())
-                    .count()
-                    > 0
-        })
-        .map(|(s, _)| s.into())
-        .collect::<HashSet<PolyID>>();
-
-    let linear_polys = pil_file
-        .identities
-        .iter()
-        .enumerate()
-        .filter_map(|(index, id)| {
-            if let Identity::Polynomial(i) = id {
-                Some((index, i))
-            } else {
-                None
-            }
-        })
-        .filter_map(|(index, identity)| {
-            try_to_linearly_constrained(identity, &intermediate_definitions).map(|e| (index, e))
-        })
-        .filter(|(_, ((_, poly_id), _))| !keep.contains(poly_id))
-        .collect::<Vec<(usize, ((String, PolyID), _))>>();
-
-    let (identities_to_remove, intermediate_polys): (BTreeSet<_>, Vec<_>) = linear_polys
-        .iter()
-        .filter_map(|(index, ((name, old_poly_id), expression))| {
-            // Remove the definition. If this fails, we have already replaced it by an intermediate column.
-            pil_file.definitions.remove(name).map(|(symbol, value)| {
-                // sanity checks that we are looking at a single witness column
-                assert!(symbol.kind == SymbolKind::Poly(PolynomialType::Committed));
-                assert!(value.is_none());
-                assert!(symbol.length.is_none());
-
-                // we introduce a new intermediate symbol, so we need a new unique id
-                let id = pil_file.next_id_for_kind(PolynomialType::Intermediate);
-
-                // the symbol is not an array, so the poly_id uses the same id as the symbol
-                let poly_id = PolyID {
-                    ptype: PolynomialType::Intermediate,
-                    id,
-                };
-
-                let kind = SymbolKind::Poly(PolynomialType::Intermediate);
-
-                let stage = None;
-
-                let symbol = Symbol {
-                    id,
-                    kind,
-                    stage,
-                    ..symbol
-                };
-                // Add the definition to the intermediate columns
-                assert!(pil_file
-                    .intermediate_columns
-                    .insert(name.clone(), (symbol, vec![expression.clone()]))
-                    .is_none());
-                // Note: the `statement_order` does not need to be updated, since we are still declaring the same symbol
-                let r = AlgebraicReference {
-                    name: name.clone(),
-                    poly_id,
-                    next: false,
-                };
-                (
-                    index,
-                    (
-                        (name.clone(), *old_poly_id),
-                        AlgebraicExpression::Reference(r),
-                    ),
-                )
-            })
-        })
-        .unzip();
-    // we remove the identities by hand here, because they do *not* become trivial by applying this optimization
-    pil_file.remove_identities(&identities_to_remove);
-    // we substitute the references to the witnesses by references to the intermediate columns
-    substitute_polynomial_references(pil_file, intermediate_polys);
-}
-
 /// Identifies witness columns that are constrained to a single value, replaces every
 /// reference to this column by the value and deletes the column.
 fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
@@ -811,66 +696,6 @@ fn constrained_to_constant<T: FieldElement>(
         _ => {}
     }
     None
-}
-
-/// Tries to extract a witness column which is constrained to a non-shifted multi-linear expression.
-/// Inputs:
-/// - `identity`: a polynomial identity
-/// - `intermediate_columns`: the intermediate column definitions
-///
-/// Outputs:
-/// - `None` if the identity does not match the pattern
-/// - `Some(((name, poly_id), expression))` if the identity matches the pattern, where:
-///     - `name` is the name of the witness column
-///     - `poly_id` is the id of the witness column
-///     - `expression` is the (multi)linear expression that the witness column is constrained to
-fn try_to_linearly_constrained<T: FieldElement>(
-    identity: &PolynomialIdentity<T>,
-    intermediate_columns: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
-) -> Option<((String, PolyID), AlgebraicExpression<T>)> {
-    // We require the constraint to be of the form `left = right`, represented as `left - right`
-    let (left, right) = if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-        left,
-        op: AlgebraicBinaryOperator::Sub,
-        right,
-    }) = &identity.expression
-    {
-        (left, right)
-    } else {
-        return None;
-    };
-
-    // Helper function to try to extract a witness column from two sides of an identity
-    let try_from_sides = |left: &AlgebraicExpression<T>, right: &AlgebraicExpression<T>| {
-        // We require `left` to be a single, non-shifted, witness column `w`
-        let w = if let AlgebraicExpression::Reference(
-            r @ AlgebraicReference {
-                poly_id:
-                    PolyID {
-                        ptype: PolynomialType::Committed,
-                        ..
-                    },
-                next: false,
-                ..
-            },
-        ) = left
-        {
-            r
-        } else {
-            return None;
-        };
-
-        // we require `right` to be a multi-linear expression over non-shifted columns
-        if right.contains_next_ref(intermediate_columns)
-            || right.degree_with_cache(intermediate_columns, &mut Default::default()) != 1
-        {
-            return None;
-        }
-
-        Some(((w.name.clone(), w.poly_id), right.clone()))
-    };
-
-    try_from_sides(left, right).or_else(|| try_from_sides(right, left))
 }
 
 /// Removes identities that evaluate to zero (including constraints of the form "X = X") and lookups with empty columns.
@@ -1094,4 +919,430 @@ fn try_to_boolean_constrained<T: FieldElement>(id: &Identity<T>) -> Option<PolyI
     } else {
         None
     }
+}
+
+/// Collects polynomial IDs that are exclusively inputs or exclusively outputs in the PIL file.
+///
+/// A witness column is considered an input if it is never used as a single witness column
+/// in any side of any identity (i.e., it only appears in complex expressions).
+///
+/// A witness column is considered an output if it is only used as a single witness column
+/// in any side of any identity (i.e., it never appears in complex expressions).
+fn collect_inputs_outputs_ids<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<PolyID> {
+    pil_file
+        .committed_polys_in_source_order()
+        .filter_map(|(symbol, _)| {
+            let elements: Vec<_> = symbol.array_elements().collect();
+            if elements.len() == 1 {
+                let (_, poly_id) = elements[0];
+                let is_input_poly = is_input(poly_id, &pil_file.identities);
+                let is_output_poly = is_output(poly_id, &pil_file.identities);
+
+                if is_input_poly ^ is_output_poly {
+                    return Some(poly_id);
+                }
+            }
+            None
+        })
+        .collect()
+}
+
+/// Returns `true` if the given poly_id is never used as a single witness column in any side of any identity.
+/// poly_id = other_poly1 + other_poly2 returns `true`
+/// poly_id + other_poly1 = other_poly2 returns `false`
+fn is_input<T: FieldElement>(id: PolyID, identities: &[Identity<T>]) -> bool {
+    for identity in identities {
+        if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = identity {
+            let (a, b) = match expression {
+                AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                    left: a,
+                    op: AlgebraicBinaryOperator::Sub,
+                    right: b,
+                }) => (a, b),
+                _ => continue,
+            };
+
+            match a.as_ref() {
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    poly_id: ref_id,
+                    next: false,
+                    ..
+                }) if *ref_id == id => return false,
+                _ => {}
+            }
+
+            match b.as_ref() {
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    poly_id: ref_id,
+                    next: false,
+                    ..
+                }) if *ref_id == id => return false,
+                _ => {}
+            }
+        } else {
+            continue;
+        };
+    }
+    true
+}
+
+/// Returns `true` if the given poly_id is only used as a single witness column in any side of any identity.
+/// poly_id = other_poly1 + other_poly2 returns `false`
+/// poly_id + other_poly1 = other_poly2 returns `true`
+fn is_output<T: FieldElement>(id: PolyID, identities: &[Identity<T>]) -> bool {
+    let mut is_output = true;
+    for identity in identities {
+        if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = identity {
+            let (a, b) = match expression {
+                AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                    left: a,
+                    op: AlgebraicBinaryOperator::Sub,
+                    right: b,
+                }) => (a, b),
+                _ => continue,
+            };
+
+            match a.as_ref() {
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    poly_id: _,
+                    next: false,
+                    ..
+                }) => {}
+                a => a.pre_visit_expressions(&mut |e| {
+                    if let AlgebraicExpression::Reference(AlgebraicReference {
+                        poly_id: ref_id,
+                        next: false,
+                        ..
+                    }) = e
+                    {
+                        if *ref_id == id {
+                            is_output = false;
+                        }
+                    }
+                }),
+            };
+
+            match b.as_ref() {
+                AlgebraicExpression::Reference(AlgebraicReference {
+                    poly_id: _,
+                    next: false,
+                    ..
+                }) => {}
+                b => b.pre_visit_expressions(&mut |e| {
+                    if let AlgebraicExpression::Reference(AlgebraicReference {
+                        poly_id: ref_id,
+                        next: false,
+                        ..
+                    }) = e
+                    {
+                        if *ref_id == id {
+                            is_output = false;
+                        }
+                    }
+                }),
+            };
+        } else {
+            continue;
+        };
+    }
+    is_output
+}
+
+/// Identifies witness columns that are constrained to expressions of degree <= MAX_DEGREE, and
+/// replaces the witness column with an intermediate polynomial.
+/// max_degree: Maximum allowed polynomial degree after applying a substitution
+fn replace_constrained_witness_columns<T: FieldElement>(
+    pil_file: &mut Analyzed<T>,
+    max_degree: usize,
+) {
+    // We cannot remove arrays or array elements, so we filter them out.
+    // Also, we filter out columns that are used in public declarations.
+    // Also, we filter out columns that are boolean constrained.
+    let in_publics: HashSet<_> = pil_file
+        .public_declarations_in_source_order()
+        .map(|(_, pubd)| pubd.referenced_poly().name.clone())
+        .collect();
+
+    let boolean_constrained_witnesses = pil_file
+        .identities
+        .iter()
+        .filter_map(|id| try_to_boolean_constrained(id))
+        .collect::<HashSet<_>>();
+
+    let inputs_outputs = collect_inputs_outputs_ids(pil_file);
+
+    let keep = pil_file
+        .committed_polys_in_source_order()
+        .filter(|&(s, _)| {
+            s.is_array()
+                || in_publics.contains(&s.absolute_name)
+                || boolean_constrained_witnesses
+                    .intersection(&s.array_elements().map(|(_, poly_id)| poly_id).collect())
+                    .count()
+                    > 0
+                || inputs_outputs.contains(&s.into())
+        })
+        .map(|(s, _)| s.into())
+        .collect::<HashSet<PolyID>>();
+
+    let intermediate_definitions = pil_file.intermediate_definitions();
+
+    for (idx, id) in pil_file.identities.iter().enumerate() {
+        if let Identity::Polynomial(identity) = id {
+            if let Some(((name, poly_id), expression)) =
+                try_to_constrained_with_max_degree(identity, &intermediate_definitions, max_degree)
+            {
+                // Skip if this is a column we need to keep
+                if keep.contains(&poly_id) {
+                    continue;
+                }
+
+                let is_valid_substitution = is_valid_substitution(
+                    pil_file,
+                    idx,
+                    poly_id,
+                    &expression,
+                    &intermediate_definitions,
+                    max_degree,
+                );
+
+                if is_valid_substitution {
+                    // Remove the definition
+                    if let Some((symbol, value)) = pil_file.definitions.remove(&name) {
+                        // Sanity checks
+                        assert!(symbol.kind == SymbolKind::Poly(PolynomialType::Committed));
+                        assert!(value.is_none());
+                        assert!(symbol.length.is_none());
+
+                        // Create a new intermediate symbol
+                        let id = pil_file.next_id_for_kind(PolynomialType::Intermediate);
+
+                        let new_poly_id = PolyID {
+                            ptype: PolynomialType::Intermediate,
+                            id,
+                        };
+
+                        let kind = SymbolKind::Poly(PolynomialType::Intermediate);
+                        let stage = None;
+
+                        let symbol = Symbol {
+                            id,
+                            kind,
+                            stage,
+                            ..symbol
+                        };
+
+                        // Add the definition to the intermediate columns
+                        pil_file
+                            .intermediate_columns
+                            .insert(name.clone(), (symbol, vec![expression.clone()]));
+
+                        // Create a reference to the new intermediate column
+                        let r = AlgebraicReference {
+                            name: name.clone(),
+                            poly_id: new_poly_id,
+                            next: false,
+                        };
+
+                        // Remove the identity used
+                        let identities_to_remove = BTreeSet::from([idx]);
+                        pil_file.remove_identities(&identities_to_remove);
+
+                        // Apply the substitution to all remaining identities
+                        let substitution =
+                            vec![((name, poly_id), AlgebraicExpression::Reference(r))];
+                        substitute_polynomial_references(pil_file, substitution);
+
+                        return;
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Checks if a substitution is valid for all affected constraints.
+/// A substitution is valid if it doesn't increase the degree of any constraint beyond max_degree.
+fn is_valid_substitution<T: FieldElement>(
+    pil_file: &Analyzed<T>,
+    exclude_idx: usize,
+    poly_id: PolyID,
+    expression: &AlgebraicExpression<T>,
+    intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+    max_degree: usize,
+) -> bool {
+    let substitutions = BTreeMap::from([(poly_id, expression.clone())]);
+
+    for (idx, id) in pil_file.identities.iter().enumerate() {
+        if idx == exclude_idx {
+            continue; // Skip the constraint we're extracting from
+        }
+
+        if let Identity::Polynomial(identity) = id {
+            // If this identity uses the witness, check if substitution would exceed max_degree
+            let degree = identity.expression.degree_with_virtual_substitutions(
+                &substitutions,
+                intermediate_definitions,
+                &mut BTreeMap::new(),
+            );
+
+            if degree > max_degree {
+                return false; // Substitution exceeds max_degree
+            }
+        }
+    }
+
+    // Check if any intermediate definition that uses the witness exceeds max_degree
+    for expr in intermediate_definitions.values() {
+        let degree = expr.degree_with_virtual_substitutions(
+            &substitutions,
+            intermediate_definitions,
+            &mut BTreeMap::new(),
+        );
+        if degree > max_degree {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Tries to extract a witness column which is constrained to an expression of degree <= max_degree.
+fn try_to_constrained_with_max_degree<T: FieldElement>(
+    identity: &PolynomialIdentity<T>,
+    intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+    max_degree: usize,
+) -> Option<((String, PolyID), AlgebraicExpression<T>)> {
+    // We require the constraint to be of the form `left = right`, represented as `left - right`
+    let (left, right) = if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+        left,
+        op: AlgebraicBinaryOperator::Sub,
+        right,
+    }) = &identity.expression
+    {
+        (left, right)
+    } else {
+        return None;
+    };
+
+    // Helper function to try to extract a witness column from two sides of an identity
+    let try_from_sides = |left: &AlgebraicExpression<T>, right: &AlgebraicExpression<T>| {
+        // We require `left` to be a single, non-shifted, witness column `w`
+        let w = if let AlgebraicExpression::Reference(
+            r @ AlgebraicReference {
+                poly_id:
+                    PolyID {
+                        ptype: PolynomialType::Committed,
+                        ..
+                    },
+                next: false,
+                ..
+            },
+        ) = left
+        {
+            r
+        } else {
+            return None;
+        };
+
+        // Check that the right side doesn't contain next references
+        if right.contains_next_ref(intermediate_definitions) {
+            return None;
+        }
+
+        // Check if creating a new intermediate would create a cycle when calculating the degree
+        if is_substitution_creating_cycle(&w.poly_id, right, intermediate_definitions) {
+            return None;
+        }
+
+        // Check if the right side has a degree <= max_degree
+        let degree = right.degree_with_cache(intermediate_definitions, &mut Default::default());
+
+        if degree > max_degree {
+            panic!("Degree of constraint exceeds max_degree");
+        }
+
+        // Check that the right side doesn't reference the left side variable
+        let mut references_self = false;
+        right.pre_visit_expressions(&mut |e| {
+            if let AlgebraicExpression::Reference(r) = e {
+                if r.poly_id == w.poly_id {
+                    references_self = true;
+                }
+            }
+        });
+
+        if references_self {
+            return None;
+        }
+
+        Some(((w.name.clone(), w.poly_id), right.clone()))
+    };
+
+    // Try from both sides
+    try_from_sides(left, right).or_else(|| try_from_sides(right, left))
+}
+
+/// Checks if substituting a polynomial would create a dependency cycle
+fn is_substitution_creating_cycle<T: FieldElement>(
+    poly_id: &PolyID,
+    expression: &AlgebraicExpression<T>,
+    intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
+) -> bool {
+    // Stack to manage expression traversal: (expression, is_backtracking)
+    // The boolean flag indicates whether we're backtracking from this node
+    let mut stack = vec![(expression, false)];
+
+    // Set of all visited references to avoid redundant processing
+    let mut visited = HashSet::new();
+
+    // Set of references in the current path to detect cycles
+    let mut path = HashSet::new();
+
+    while let Some((expr, backtracking)) = stack.pop() {
+        if backtracking {
+            if let AlgebraicExpression::Reference(reference) = expr {
+                if reference.poly_id.ptype == PolynomialType::Intermediate {
+                    path.remove(&reference.to_thin());
+                }
+            }
+            continue;
+        }
+
+        match expr {
+            AlgebraicExpression::Reference(reference) => {
+                // If we found the target polynomial ID, we have a cycle
+                if &reference.poly_id == poly_id {
+                    return true;
+                }
+
+                if reference.poly_id.ptype == PolynomialType::Intermediate {
+                    let reference_thin = reference.to_thin();
+
+                    // If this reference is already in our current path, we found a cycle
+                    if path.contains(&reference_thin) {
+                        return true;
+                    }
+
+                    if !visited.contains(&reference_thin) {
+                        if let Some(def) = intermediate_definitions.get(&reference_thin) {
+                            visited.insert(reference_thin.clone());
+                            path.insert(reference_thin.clone());
+                            stack.push((expr, true));
+                            stack.push((def, false));
+                            continue;
+                        }
+                    }
+                }
+            }
+            _ => {
+                stack.push((expr, true));
+                let children: Vec<_> = expr.children().collect();
+                stack.extend(children.into_iter().rev().map(|child| (child, false)));
+                continue;
+            }
+        }
+    }
+
+    false
 }
