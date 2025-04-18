@@ -16,6 +16,11 @@ jobs:
       with:
         submodules: recursive
 
+    - name: Save date of cache build
+      run: date -R -u > target/cache-build-date.txt
+    - name: Save commit hash of cache build
+      run: git rev-parse HEAD > target/cache-commit-hash.txt
+
     ##### The block below is shared between cache build and PR build workflows #####
     - name: Install EStarkPolygon prover dependencies
       run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm libgrpc++-dev uuid-dev
@@ -36,11 +41,6 @@ jobs:
     - name: Build
       run: cargo build --all-targets --all --all-features --profile pr-tests --verbose
     ###############################################################################
-
-    - name: Save date of cache build
-      run: date -R -u > target/cache-build-date.txt
-    - name: Save commit hash of cache build
-      run: git rev-parse HEAD > target/cache-commit-hash.txt
 
     - name: Delete the old cache
       uses: WarpBuilds/cache@v1
