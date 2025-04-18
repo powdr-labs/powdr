@@ -10,15 +10,14 @@ use powdr_ast::{
     },
     parsed::visitor::{AllChildren, Children},
 };
+use powdr_constraint_solver::{
+    quadratic_symbolic_expression::QuadraticSymbolicExpression, variable_update::VariableUpdate,
+};
 use powdr_number::FieldElement;
 
 use crate::witgen::{data_structures::identity::Identity, jit::variable::MachineCallVariable};
 
-use super::{
-    prover_function_heuristics::ProverFunction,
-    quadratic_symbolic_expression::QuadraticSymbolicExpression, variable::Variable,
-    variable_update::VariableUpdate,
-};
+use super::{prover_function_heuristics::ProverFunction, variable::Variable};
 
 /// Keeps track of identities that still need to be processed and
 /// updates this list based on the occurrence of updated variables

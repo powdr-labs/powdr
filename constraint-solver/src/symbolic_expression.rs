@@ -1,7 +1,5 @@
 use auto_enums::auto_enum;
 use itertools::Itertools;
-use powdr_ast::parsed::visitor::AllChildren;
-use powdr_number::FieldElement;
 use std::hash::Hash;
 use std::ops::Sub;
 use std::ops::{AddAssign, MulAssign};
@@ -12,8 +10,10 @@ use std::{
     sync::Arc,
 };
 
-use crate::witgen::range_constraints::RangeConstraint;
+use powdr_ast::parsed::visitor::AllChildren;
+use powdr_number::FieldElement;
 
+use super::range_constraint::RangeConstraint;
 use super::variable_update::VariableUpdate;
 
 /// A value that is known at run-time, defined through a complex expression

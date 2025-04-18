@@ -3,12 +3,10 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicUnaryOperation, PolynomialIdentity, SelectedExpressions,
 };
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_number::FieldElement;
 
-use crate::witgen::{
-    data_structures::identity::{BusSend, Identity},
-    range_constraints::RangeConstraint,
-};
+use crate::witgen::data_structures::identity::{BusSend, Identity};
 
 use super::{
     variable::Variable,

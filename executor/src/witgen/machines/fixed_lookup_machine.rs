@@ -5,6 +5,7 @@ use std::mem;
 
 use itertools::{Either, Itertools};
 use powdr_ast::analyzed::{AlgebraicExpression, PolyID, PolynomialType};
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_number::FieldElement;
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
@@ -14,7 +15,6 @@ use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
 use crate::witgen::jit::witgen_inference::CanProcessCall;
 use crate::witgen::processor::OuterQuery;
-use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause, QueryCallback};
 use crate::witgen::{EvalResult, FixedData};

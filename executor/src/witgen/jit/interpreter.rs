@@ -1,24 +1,27 @@
-use super::effect::{
-    Assertion, BitDecomposition, BitDecompositionComponent, BranchCondition, Effect,
-    ProverFunctionCall,
-};
+use std::cmp::Ordering;
+use std::collections::{BTreeSet, HashMap};
+use std::sync::Arc;
 
+use itertools::Itertools;
+
+use powdr_ast::analyzed::{PolyID, PolynomialType};
+use powdr_constraint_solver::effect::{
+    Assertion, BitDecomposition, BitDecompositionComponent, BranchCondition,
+};
+use powdr_constraint_solver::symbolic_expression::{
+    BinaryOperator, SymbolicExpression, UnaryOperator,
+};
+use powdr_number::{FieldElement, LargeInt};
+use powdr_pil_analyzer::evaluator::{self, Definitions, Value};
+
+use super::effect::{Effect, ProverFunctionCall};
 use super::prover_function_heuristics::{ProverFunction, ProverFunctionComputation};
-use super::symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator};
 use super::variable::{Cell, Variable};
+
 use crate::witgen::data_structures::finalizable_data::CompactDataRef;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::LookupCell;
 use crate::witgen::{FixedData, QueryCallback};
-
-use itertools::Itertools;
-use powdr_ast::analyzed::{PolyID, PolynomialType};
-use powdr_number::{FieldElement, LargeInt};
-use powdr_pil_analyzer::evaluator::{self, Definitions, Value};
-
-use std::cmp::Ordering;
-use std::collections::{BTreeSet, HashMap};
-use std::sync::Arc;
 
 /// Interpreter for instructions compiled from witgen effects.
 pub struct EffectsInterpreter<'a, T: FieldElement> {
