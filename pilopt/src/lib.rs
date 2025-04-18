@@ -1090,7 +1090,7 @@ fn replace_constrained_witness_columns<T: FieldElement>(
                     continue;
                 }
 
-                let valid_substitution = is_valid_substitution(
+                let is_valid_substitution = is_valid_substitution(
                     pil_file,
                     idx,
                     poly_id,
