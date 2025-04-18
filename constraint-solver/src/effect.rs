@@ -117,6 +117,6 @@ impl<T: FieldElement, V> Assertion<T, V> {
 
 #[derive(Clone, PartialEq, Eq)]
 pub struct BranchCondition<T: FieldElement, V> {
-    pub variable: V,
+    pub value: SymbolicExpression<T, V>,
     pub condition: RangeConstraint<T>,
 }

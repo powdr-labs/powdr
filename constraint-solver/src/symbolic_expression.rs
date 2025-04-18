@@ -1,6 +1,7 @@
 use auto_enums::auto_enum;
 use itertools::Itertools;
 use std::hash::Hash;
+use std::ops::Sub;
 use std::ops::{AddAssign, MulAssign};
 use std::{
     fmt::{self, Display, Formatter},
@@ -118,6 +119,7 @@ impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
             SymbolicExpression::Concrete(_) => None,
             SymbolicExpression::Symbol(v, _) => {
                 if *v == variable_update.variable {
+                    assert!(variable_update.known);
                     Some(SymbolicExpression::from_symbol(
                         v.clone(),
                         variable_update.range_constraint.clone(),
@@ -138,7 +140,7 @@ impl<T: FieldElement, S: Clone + Eq> SymbolicExpression<T, S> {
                 };
                 match op {
                     BinaryOperator::Add => Some(l + r),
-                    BinaryOperator::Sub => Some(l + -r),
+                    BinaryOperator::Sub => Some(l - r),
                     BinaryOperator::Mul => Some(l * r),
                     BinaryOperator::Div => Some(l.field_div(&r)),
                 }
@@ -249,6 +251,38 @@ impl<T: FieldElement, V: Clone> Add for SymbolicExpression<T, V> {
 impl<T: FieldElement, V: Clone> AddAssign for SymbolicExpression<T, V> {
     fn add_assign(&mut self, rhs: Self) {
         *self = self.clone() + rhs;
+    }
+}
+
+impl<T: FieldElement, V: Clone> Sub for &SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        if self.is_known_zero() {
+            return -rhs.clone();
+        }
+        if rhs.is_known_zero() {
+            return self.clone();
+        }
+        match (self, rhs) {
+            (SymbolicExpression::Concrete(a), SymbolicExpression::Concrete(b)) => {
+                SymbolicExpression::Concrete(*a - *b)
+            }
+            _ => SymbolicExpression::BinaryOperation(
+                Arc::new(self.clone()),
+                BinaryOperator::Sub,
+                Arc::new(rhs.clone()),
+                self.range_constraint()
+                    .combine_sum(&rhs.range_constraint().neg()),
+            ),
+        }
+    }
+}
+
+impl<T: FieldElement, V: Clone> Sub for SymbolicExpression<T, V> {
+    type Output = SymbolicExpression<T, V>;
+    fn sub(self, rhs: Self) -> Self::Output {
+        &self - &rhs
     }
 }
 

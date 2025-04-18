@@ -528,17 +528,14 @@ fn format_bit_decomposition<T: FieldElement>(
 }
 
 fn format_condition<T: FieldElement>(
-    BranchCondition {
-        variable,
-        condition,
-    }: &BranchCondition<T, Variable>,
+    BranchCondition { value, condition }: &BranchCondition<T, Variable>,
 ) -> String {
-    let var = format!("IntType::from({})", variable_to_string(variable));
+    let value = format!("IntType::from({})", format_expression(value));
     let (min, max) = condition.range();
     match min.cmp(&max) {
-        Ordering::Equal => format!("{var} == {min}",),
-        Ordering::Less => format!("{min} <= {var} && {var} <= {max}"),
-        Ordering::Greater => format!("{var} <= {min} || {var} >= {max}"),
+        Ordering::Equal => format!("{value} == {min}",),
+        Ordering::Less => format!("{{ let v = {value}; {min} <= v && v <= {max} }}"),
+        Ordering::Greater => format!("{{ let v = {value}; v <= {min} || v >= {max} }}"),
     }
 }
 
@@ -1163,7 +1160,7 @@ extern \"C\" fn witgen(
         let mut y_val: GoldilocksField = 9.into();
         let effects = vec![Effect::Branch(
             BranchCondition {
-                variable: x.clone(),
+                value: SymbolicExpression::from_symbol(x.clone(), Default::default()),
                 condition: RangeConstraint::from_range(7.into(), 20.into()),
             },
             vec![assignment(&y, symbol(&x) + number(1))],
@@ -1192,13 +1189,13 @@ extern \"C\" fn witgen(
         let z = param(2);
         let branch_effect = Effect::Branch(
             BranchCondition {
-                variable: x.clone(),
+                value: SymbolicExpression::from_symbol(x.clone(), Default::default()),
                 condition: RangeConstraint::from_range(7.into(), 20.into()),
             },
             vec![assignment(&y, symbol(&x) + number(1))],
             vec![Effect::Branch(
                 BranchCondition {
-                    variable: z.clone(),
+                    value: SymbolicExpression::from_symbol(z.clone(), Default::default()),
                     condition: RangeConstraint::from_range(7.into(), 20.into()),
                 },
                 vec![assignment(&y, symbol(&x) + number(2))],
@@ -1206,9 +1203,9 @@ extern \"C\" fn witgen(
             )],
         );
         let expectation = "    let mut p_1 = FieldElement::default();
-    if 7 <= IntType::from(p_0) && IntType::from(p_0) <= 20 {
+    if { let v = IntType::from(p_0); 7 <= v && v <= 20 } {
         p_1 = (p_0 + FieldElement::from(1));
-    } else if 7 <= IntType::from(p_2) && IntType::from(p_2) <= 20 {
+    } else if { let v = IntType::from(p_2); 7 <= v && v <= 20 } {
         p_1 = (p_0 + FieldElement::from(2));
     } else {
         p_1 = (p_0 + FieldElement::from(3));
