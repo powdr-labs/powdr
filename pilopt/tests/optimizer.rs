@@ -1,7 +1,13 @@
-use powdr_number::GoldilocksField;
+use std::collections::HashMap;
+
+use powdr_ast::analyzed::AlgebraicReference;
+use powdr_constraint_solver::{
+    quadratic_symbolic_expression::RangeConstraintProvider, range_constraint::RangeConstraint,
+};
+use powdr_number::{FieldElement, GoldilocksField};
 use powdr_pil_analyzer::analyze_string;
 
-use powdr_pilopt::optimize;
+use powdr_pilopt::{optimize, qse_opt::run_qse_optimization};
 use pretty_assertions::assert_eq;
 
 #[test]
@@ -574,5 +580,50 @@ fn inline_chain_of_substitutions() {
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+struct RangeConstraintSet<T: FieldElement>(HashMap<&'static str, RangeConstraint<T>>);
+
+impl<T: FieldElement> RangeConstraintProvider<T, AlgebraicReference> for RangeConstraintSet<T> {
+    fn get(&self, variable: &AlgebraicReference) -> RangeConstraint<T> {
+        self.0
+            .get(variable.name.as_str())
+            .cloned()
+            .unwrap_or_default()
+    }
+}
+
+#[test]
+fn simplify_add_with_carry() {
+    let input = "
+namespace N(128);
+    let X;
+    let Y;
+    let A;
+    (X - A - 256) * (X - A) = 0;
+    (Y - A - 256) * (Y - A) = 0;
+";
+    let mut analyzed = analyze_string::<GoldilocksField>(input).unwrap();
+    run_qse_optimization(
+        &mut analyzed,
+        RangeConstraintSet(
+            [
+                ("N::X", RangeConstraint::from_mask(0xffu32)),
+                ("N::Y", RangeConstraint::from_mask(0xffu32)),
+            ]
+            .into_iter()
+            .collect(),
+        ),
+    );
+    let expectation = "namespace N(128);
+    col witness X;
+    col witness Y;
+    col witness A;
+    (N::X - N::A - 256) * (N::X - N::A) = 0;
+    (N::Y - N::A - 256) * (N::Y - N::A) = 0;
+    N::X = N::Y;
+";
+    let optimized = analyzed.to_string();
     assert_eq!(optimized, expectation);
 }

@@ -15,20 +15,33 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
 use powdr_ast::parsed::Number;
+use powdr_constraint_solver::quadratic_symbolic_expression::RangeConstraintProvider;
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_number::{BigUint, FieldElement};
 
+pub mod qse_opt;
 pub mod referenced_symbols;
 
 use powdr_pil_analyzer::try_algebraic_expression_to_expression;
+use qse_opt::run_qse_optimization;
 use referenced_symbols::{ReferencedSymbols, SymbolReference};
+
+struct NoRangeConstraints;
+impl<T: FieldElement> RangeConstraintProvider<T, AlgebraicReference> for NoRangeConstraints {
+    fn get(&self, _: &AlgebraicReference) -> RangeConstraint<T> {
+        Default::default()
+    }
+}
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
     let mut pil_hash = hash_pil_state(&pil_file);
+
     loop {
         remove_unreferenced_definitions(&mut pil_file);
         remove_constant_fixed_columns(&mut pil_file);
         deduplicate_fixed_columns(&mut pil_file);
+        run_qse_optimization(&mut pil_file, NoRangeConstraints);
         simplify_identities(&mut pil_file);
         extract_constant_lookups(&mut pil_file);
         replace_linear_witness_columns(&mut pil_file);

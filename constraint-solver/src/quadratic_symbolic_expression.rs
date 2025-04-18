@@ -9,11 +9,13 @@ use itertools::Itertools;
 use num_traits::Zero;
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
-use crate::witgen::{
-    jit::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect},
-    range_constraints::RangeConstraint,
+use crate::{
+    effect::BranchCondition,
+    symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
 };
 
+use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
+use super::range_constraint::RangeConstraint;
 use super::{symbolic_expression::SymbolicExpression, variable_update::VariableUpdate};
 
 #[derive(Default)]
@@ -107,9 +109,37 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
+    /// Returns true if this expression does not contain any quadratic terms.
+    pub fn is_affine(&self) -> bool {
+        !self.is_quadratic()
+    }
+
     /// Returns true if this expression contains at least one quadratic term.
     pub fn is_quadratic(&self) -> bool {
         !self.quadratic.is_empty()
+    }
+
+    /// Returns `(l, r)` if `self == l * r`.
+    pub fn try_as_single_product(&self) -> Option<(&Self, &Self)> {
+        if self.linear.is_empty() && self.quadratic.len() == 1 && self.constant.is_known_zero() {
+            let (l, r) = &self.quadratic[0];
+            Some((l, r))
+        } else {
+            None
+        }
+    }
+
+    /// Returns the coefficient of `variable` if this expression is
+    /// affine (i.e. does not contain any quadratic terms).
+    /// Returns zero if the variable does not occur.
+    ///
+    /// Panics if this expression is not affine.
+    pub fn coefficient_of(&self, variable: &V) -> SymbolicExpression<T, V> {
+        assert!(self.is_affine());
+        self.linear
+            .get(variable)
+            .cloned()
+            .unwrap_or_else(|| T::zero().into())
     }
 
     pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V>) {
@@ -205,7 +235,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         Ok(if self.is_quadratic() {
-            ProcessResult::empty()
+            self.solve_quadratic(range_constraints)?
         } else if let Some(k) = self.try_to_known() {
             if k.is_known_nonzero() {
                 return Err(Error::ConstraintUnsatisfiable);
@@ -406,6 +436,100 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         };
         Some(Effect::RangeConstraint(solve_for.clone(), constraint))
     }
+
+    fn solve_quadratic(
+        &self,
+        range_constraints: &impl RangeConstraintProvider<T, V>,
+    ) -> Result<ProcessResult<T, V>, Error> {
+        if !self.linear.is_empty() || !self.constant.is_known_zero() {
+            return Ok(ProcessResult::empty());
+        }
+
+        let [(left, right)] = self.quadratic.as_slice() else {
+            return Ok(ProcessResult::empty());
+        };
+        if left.is_quadratic() || right.is_quadratic() {
+            return Ok(ProcessResult::empty());
+        }
+        // TODO if one of them conflicts, we can actually just use the other one.
+        let left_solution = left.solve(range_constraints).unwrap();
+        let right_solution = right.solve(range_constraints).unwrap();
+        println!(
+            "Found left solution: {}",
+            left_solution
+                .effects
+                .iter()
+                .map(|e| match e {
+                    Effect::Assignment(var, value) => format!("{var} = {value}"),
+                    Effect::RangeConstraint(var, rc) => format!("{var} = {rc}"),
+                    _ => "other".to_string(),
+                })
+                .join(", ")
+        );
+        if !left_solution.complete || !right_solution.complete {
+            return Ok(ProcessResult::empty());
+        }
+        let Some(Effect::Assignment(first_var, first_assignment)) = left_solution
+            .effects
+            .into_iter()
+            .find(|e| matches!(e, Effect::Assignment(..)))
+        else {
+            return Ok(ProcessResult::empty());
+        };
+        let Some(Effect::Assignment(second_var, second_assignment)) = right_solution
+            .effects
+            .into_iter()
+            .find(|e| matches!(e, Effect::Assignment(..)))
+        else {
+            return Ok(ProcessResult::empty());
+        };
+
+        if first_var != second_var {
+            return Ok(ProcessResult::empty());
+        }
+
+        let rc = range_constraints.get(&first_var);
+        // TODO check this does not have to be ">="
+        if rc.range_width() > T::modulus() >> 1 {
+            return Ok(ProcessResult::empty());
+        }
+
+        let Some(diff) = symbolic_expression_to_quadratic_symbolic_expression(
+            &(first_assignment.clone() + -&second_assignment),
+        ) else {
+            return Ok(ProcessResult::empty());
+        };
+        let Some(diff) = diff.try_to_known().and_then(|d| d.try_to_number()) else {
+            return Ok(ProcessResult::empty());
+        };
+        // If rc + diff is disjoint from rc, the two alternatives are disjoint.
+        if !rc
+            .combine_sum(&RangeConstraint::from_value(diff))
+            .is_disjoint(&rc)
+        {
+            return Ok(ProcessResult::empty());
+        }
+
+        Ok(ProcessResult::complete(vec![
+            Effect::ConditionalAssignment {
+                variable: first_var.clone(),
+                condition: BranchCondition {
+                    value: SymbolicExpression::from_symbol(first_var.clone(), Default::default()),
+                    condition: rc,
+                },
+                in_range_value: first_assignment,
+                out_of_range_value: second_assignment,
+            },
+        ]))
+    }
+}
+
+impl<T: FieldElement, V: Clone + Ord + Hash + Eq> PartialEq for QuadraticSymbolicExpression<T, V> {
+    fn eq(&self, other: &Self) -> bool {
+        self.quadratic == other.quadratic
+            && self.linear == other.linear
+            && self.constant == other.constant
+    }
 }
 
 impl<T: FieldElement, V: Clone + Ord + Hash + Eq> Add for QuadraticSymbolicExpression<T, V> {
@@ -582,7 +706,6 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::witgen::range_constraints::RangeConstraint;
     use powdr_number::GoldilocksField;
 
     use pretty_assertions::assert_eq;
@@ -904,4 +1027,6 @@ Z: [10, 4294967050] & 0xffffffff;
 "
         );
     }
+
+    // TODO test solve quadratic
 }

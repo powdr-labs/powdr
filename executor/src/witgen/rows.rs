@@ -6,6 +6,7 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::Constraint;
@@ -16,7 +17,6 @@ use super::{
     evaluators::symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},
     global_constraints::RangeConstraintSet,
     machines::MachineParts,
-    range_constraints::RangeConstraint,
     FixedData, PartialExpressionEvaluator,
 };
 

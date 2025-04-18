@@ -9,6 +9,7 @@ use powdr_ast::analyzed::{
     AlgebraicReference, AlgebraicReferenceThin, ContainsNextRef, PolyID, PolynomialType,
 };
 
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_number::FieldElement;
 
 use crate::witgen::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
@@ -17,7 +18,6 @@ use super::affine_expression::AlgebraicVariable;
 use super::data_structures::identity::{BusReceive, Identity};
 use super::evaluators::partial_expression_evaluator::PartialExpressionEvaluator;
 use super::evaluators::symbolic_evaluator::SymbolicEvaluator;
-use super::range_constraints::RangeConstraint;
 use super::util::try_to_simple_poly;
 use super::{Constraint, FixedData};
 use powdr_ast::analyzed::AlgebraicExpression;
