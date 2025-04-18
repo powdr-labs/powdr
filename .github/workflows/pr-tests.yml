@@ -47,7 +47,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm libgrpc++-dev uuid-dev git-restore-mtime
 
       - name: Check out cache commit state and update mtime accordingly.
-        run: git rev-parse HEAD > /tmp/stored_hash && git checkout "$(cat target/cache-commit-hash.txt || echo 'f02fd626e2bb9e46a22ea1cda96b4feb5c6bda43')" && git restore-mtime --commit-time && git checkout $(/tmp/stored_hash)
+        run: git rev-parse HEAD > target/stored_hash.txt && git checkout "$(cat target/cache-commit-hash.txt || echo 'f02fd626e2bb9e46a22ea1cda96b4feb5c6bda43')" && git restore-mtime --commit-time && git checkout $(target/stored_hash.txt)
         continue-on-error: true
 
 
