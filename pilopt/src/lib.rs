@@ -929,22 +929,22 @@ fn try_to_boolean_constrained<T: FieldElement>(id: &Identity<T>) -> Option<PolyI
 /// A witness column is considered an output if it is only used as a single witness column
 /// in any side of any identity (i.e., it never appears in complex expressions).
 fn collect_inputs_outputs_ids<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<PolyID> {
-    let mut inputs_outputs = HashSet::new();
-    for (symbol, _) in pil_file.committed_polys_in_source_order() {
-        let elements: Vec<_> = symbol.array_elements().collect();
-        if elements.len() == 1 {
-            let poly_id = elements[0].1;
-            assert!(poly_id.ptype == PolynomialType::Committed);
+    pil_file
+        .committed_polys_in_source_order()
+        .filter_map(|(symbol, _)| {
+            let elements: Vec<_> = symbol.array_elements().collect();
+            if elements.len() == 1 {
+                let (_, poly_id) = elements[0];
+                let is_input_poly = is_input(poly_id, &pil_file.identities);
+                let is_output_poly = is_output(poly_id, &pil_file.identities);
 
-            let is_input_poly = is_input(poly_id, &pil_file.identities);
-            let is_output_poly = is_output(poly_id, &pil_file.identities);
-
-            if is_input_poly ^ is_output_poly {
-                inputs_outputs.insert(poly_id);
+                if is_input_poly ^ is_output_poly {
+                    return Some(poly_id);
+                }
             }
-        }
-    }
-    inputs_outputs
+            None
+        })
+        .collect()
 }
 
 /// Returns `true` if the given poly_id is never used as a single witness column in any side of any identity.
