@@ -11,6 +11,7 @@ mod processor;
 mod prover_function_heuristics;
 mod quadratic_symbolic_expression;
 mod single_step_processor;
+pub mod solver;
 mod symbolic_expression;
 mod variable;
 mod variable_update;
