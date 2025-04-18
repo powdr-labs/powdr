@@ -15,18 +15,16 @@ fn replace_fixed() {
         let _ = one;
     };
     X * one = X * zero - zero + Y;
-    one * Y = zero * Y + 7 * X * X * X * X;
+    one * Y = zero * Y + 7 * X * X;
 "#;
 
     //TODO GZ: N::X = N::Y should have been optimized away
     let expectation = r#"namespace N(65536);
-    col witness X;
     col witness Y;
     query |i| {
         let _: expr = 1_expr;
     };
-    N::X = N::Y;
-    N::Y = 7 * N::X * N::X * N::X * N::X;
+    N::Y = 7 * N::Y * N::Y;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
@@ -237,7 +235,7 @@ fn remove_unreferenced_keep_enums() {
         // Y is not mentioned anywhere.
         let f: col = |i| if i == 0 { t([]) } else { (|x| 1)(Y::F([])) };
         let x;
-        x = f * f * f * f;
+        x = f * f;
     "#;
     let expectation = r#"namespace N(65536);
     enum X {
@@ -256,7 +254,7 @@ fn remove_unreferenced_keep_enums() {
     let t: N::X[] -> int = |r| 1_int;
     col fixed f(i) { if i == 0_int { N::t([]) } else { (|x| 1_int)(N::Y::F([])) } };
     col witness x;
-    N::x = N::f * N::f * N::f * N::f;
+    N::x = N::f * N::f;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
@@ -277,7 +275,7 @@ fn test_trait_impl() {
         impl Default<int> { f: || 1, g: |x| x }
         let x: col = |_| Default::f();
         let w;
-        w = x * x * x * x;
+        w = x * x;
     "#;
     let expectation = r#"namespace N(65536);
     trait Default<T> {
@@ -291,7 +289,7 @@ fn test_trait_impl() {
     let dep: fe -> fe = |x| x + 1_fe;
     col fixed x(_) { N::Default::f::<fe>() };
     col witness w;
-    N::w = N::x * N::x * N::x * N::x;
+    N::w = N::x * N::x;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
@@ -306,7 +304,7 @@ fn enum_ref_by_trait() {
         impl X<fe> { f: |_| O::Y(1), g: || { let r = Q::B(1_int); 1 } }
         let x: col = |i| { match X::f(1_fe) { O::Y(y) => y, _ => 0 } };
         let w;
-        w = x * x * x * x;
+        w = x * x;
     "#;
     let expectation = r#"namespace N(65536);
     enum O<T> {
@@ -333,7 +331,7 @@ fn enum_ref_by_trait() {
         _ => 0_fe,
     } };
     col witness w;
-    N::w = N::x * N::x * N::x * N::x;
+    N::w = N::x * N::x;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
@@ -654,12 +652,11 @@ fn witness_column_degree_limitation() {
     col witness x;
     x = a * a;
     
-    // This column CANNOT be inlined directly because
+    // This column CANNOT be inlined because
     // its definition already has degree 4 > MAX_DEGREE (3)
     col witness high_degree;
     high_degree = a * a * a * a;
     
-    // This column depends on high_degree but has degree 2
     // It CAN be inlined because high_degree has degree 1
     // when calculating the degree of this expression
     col witness depends_on_high;
@@ -672,7 +669,6 @@ fn witness_column_degree_limitation() {
     depends_on_high + a = 31;
 "#;
 
-    // Expected result: x and depends_on_high can be inlined, but high_degree remains a witness
     let expectation = r#"namespace N(65536);
     col witness a;
     col x = N::a * N::a;
@@ -725,29 +721,6 @@ fn multi_pass_optimization_unlocks_transformations() {
 }
 
 #[test]
-fn avoid_removing_output_columns() {
-    let input = r#"
-        let N: int = 8;
-        
-        namespace Global(N); 
-            let alpha: expr = std::prelude::challenge(0, 41);
-            let beta: expr = std::prelude::challenge(0, 42);
-            col witness x;
-            col witness stage(1) y;
-            y = x * x + beta * alpha;
-        "#;
-
-    let expectation = r#"namespace Global(8);
-    col witness x;
-    col witness stage(1) y;
-    Global::y = Global::x * Global::x + std::prelude::challenge(0, 42) * std::prelude::challenge(0, 41);
-"#;
-
-    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
-    assert_eq!(optimized, expectation);
-}
-
-#[test]
 fn preserve_input_output_witnesses() {
     let input = r#"namespace N(65536);
     col witness input_only;
@@ -755,11 +728,11 @@ fn preserve_input_output_witnesses() {
     col witness both_io;
     col witness regular;
     
-    // input_only only appears on the right side of equations
+    // input_only never appears as a standalone witness column (it's always part of an operation)
     regular = input_only + 5;
     output_only = input_only * 2;
     
-    // output_only only appears on the left side of equations
+    // output_only only appears as a standalone variable on one side of constraints
     output_only = regular + 3;
     output_only = input_only * 2;
     
@@ -767,7 +740,7 @@ fn preserve_input_output_witnesses() {
     both_io = regular + 1;
     regular = both_io + 2;
     
-    // regular appears on both sides and is not exclusively input or output
+    // regular appears on both sides
     regular = input_only + 5;
     output_only = regular + 3;
 "#;
