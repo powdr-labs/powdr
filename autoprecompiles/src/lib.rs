@@ -20,6 +20,7 @@ use powdr_pil_analyzer::analyze_ast;
 use powdr_pilopt::optimize;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt::Display;
 
 use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
@@ -43,6 +44,12 @@ pub struct SymbolicInstructionDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolicConstraint<T> {
     pub expr: AlgebraicExpression<T>,
+}
+
+impl<T: Display> Display for SymbolicConstraint<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.expr)
+    }
 }
 
 impl<T> From<AlgebraicExpression<T>> for SymbolicConstraint<T> {
@@ -71,6 +78,18 @@ pub struct SymbolicBusInteraction<T> {
     pub id: u64,
     pub mult: AlgebraicExpression<T>,
     pub args: Vec<AlgebraicExpression<T>>,
+}
+
+impl<T: Display> Display for SymbolicBusInteraction<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "(id={}, mult={}, args=[{}])",
+            self.id,
+            self.mult,
+            self.args.iter().join(", ")
+        )
+    }
 }
 
 impl<T: Clone + Ord + std::fmt::Display> SymbolicBusInteraction<T> {
@@ -103,6 +122,18 @@ pub enum BusInteractionKind {
 pub struct SymbolicMachine<T> {
     pub constraints: Vec<SymbolicConstraint<T>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
+}
+
+impl<T: Display> Display for SymbolicMachine<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        for constraint in &self.constraints {
+            writeln!(f, "{constraint}")?;
+        }
+        for bus_interaction in &self.bus_interactions {
+            writeln!(f, "{bus_interaction}")?;
+        }
+        Ok(())
+    }
 }
 
 impl<T> SymbolicMachine<T> {
@@ -418,8 +449,13 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
     }
 
     let mut is_valid_mults = Vec::new();
+    let mut receive_exec = true;
     for b in &mut machine.bus_interactions {
-        if b.id == EXECUTION_BUS_ID || b.id == PC_LOOKUP_BUS_ID {
+        if b.id == EXECUTION_BUS_ID && receive_exec {
+            b.mult =
+                AlgebraicExpression::new_unary(AlgebraicUnaryOperator::Minus, is_valid.clone());
+            receive_exec = !receive_exec;
+        } else if (b.id == EXECUTION_BUS_ID && !receive_exec) || b.id == PC_LOOKUP_BUS_ID {
             b.mult = is_valid.clone();
         } else {
             let mut zeroed_expr = b.mult.clone();
@@ -467,76 +503,26 @@ pub fn remove_range_checks<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
 }
 
 pub fn exec_receive<T: FieldElement>(machine: &SymbolicMachine<T>) -> SymbolicBusInteraction<T> {
-    machine
+    let [r, _s] = machine
         .bus_interactions
         .iter()
-        .filter_map(|bus_int| match (bus_int.id, &bus_int.kind) {
-            (EXECUTION_BUS_ID, BusInteractionKind::Receive) => Some(bus_int.clone()),
+        .filter_map(|bus_int| match bus_int.id {
+            EXECUTION_BUS_ID => Some(bus_int.clone()),
             _ => None,
         })
-        .exactly_one()
-        .expect("Expected single execution receive")
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    // TODO assert that r.mult matches -expr
+    r
 }
 
 pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+    let mut receive = true;
     let mut local_reg_mem: BTreeMap<u32, Vec<AlgebraicExpression<T>>> = BTreeMap::new();
     let mut new_constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut prev_tss: Vec<AlgebraicExpression<T>> = Vec::new();
-    machine.bus_interactions.retain(|bus_int| {
-        if bus_int.id != MEMORY_BUS_ID {
-            return true;
-        }
-
-        let mem_int: MemoryBusInteraction<T> = bus_int.clone().into();
-
-        if matches!(mem_int.ty, MemoryType::Constant | MemoryType::Memory) {
-            return true;
-        }
-
-        let addr = match mem_int.try_addr_u32() {
-            None => {
-                panic!("Register memory access must have constant address");
-            }
-            Some(addr) => addr,
-        };
-
-        match mem_int.op {
-            MemoryOp::Read => match local_reg_mem.get(&addr) {
-                Some(data) => {
-                    assert_eq!(data.len(), mem_int.data.len());
-                    mem_int
-                        .data
-                        .iter()
-                        .zip(data.iter())
-                        .for_each(|(new_data, old_data)| {
-                            let eq_expr = AlgebraicExpression::new_binary(
-                                new_data.clone(),
-                                AlgebraicBinaryOperator::Sub,
-                                old_data.clone(),
-                            );
-                            new_constraints.push(eq_expr.into());
-                        });
-
-                    // If this receive's ts is a prev_ts, we can remove the constraint that
-                    // decomposes this prev_ts and range checks on the limbs.
-                    let prev_ts = mem_int.bus_interaction.args[6].clone();
-                    assert!(powdr::is_ref(&prev_ts));
-                    prev_tss.push(prev_ts);
-
-                    false
-                }
-                None => {
-                    local_reg_mem.insert(addr, mem_int.data.clone());
-                    true
-                }
-            },
-            MemoryOp::Write => {
-                local_reg_mem.insert(addr, mem_int.data.clone());
-                true
-            }
-        }
-    });
-
+    let mut to_remove: BTreeSet<usize> = Default::default();
     let mut last_store: BTreeMap<u32, usize> = BTreeMap::new();
     machine
         .bus_interactions
@@ -560,14 +546,43 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
                 Some(addr) => addr,
             };
 
-            match mem_int.op {
-                MemoryOp::Read => {}
-                MemoryOp::Write => {
-                    last_store.insert(addr, i);
+            if receive {
+                match local_reg_mem.get(&addr) {
+                    Some(data) => {
+                        assert_eq!(data.len(), mem_int.data.len());
+                        mem_int
+                            .data
+                            .iter()
+                            .zip(data.iter())
+                            .for_each(|(new_data, old_data)| {
+                                let eq_expr = AlgebraicExpression::new_binary(
+                                    new_data.clone(),
+                                    AlgebraicBinaryOperator::Sub,
+                                    old_data.clone(),
+                                );
+                                new_constraints.push(eq_expr.into());
+                            });
+
+                        // If this receive's ts is a prev_ts, we can remove the constraint that
+                        // decomposes this prev_ts and range checks on the limbs.
+                        let prev_ts = mem_int.bus_interaction.args[6].clone();
+                        assert!(powdr::is_ref(&prev_ts));
+                        prev_tss.push(prev_ts);
+                        to_remove.insert(i);
+                    }
+                    None => {
+                        local_reg_mem.insert(addr, mem_int.data.clone());
+                    }
                 }
+            } else {
+                last_store.insert(addr, i);
+                local_reg_mem.insert(addr, mem_int.data.clone());
             }
+
+            receive = !receive;
         });
 
+    let mut receive = true;
     machine.bus_interactions = machine
         .bus_interactions
         .into_iter()
@@ -590,19 +605,22 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
                 Some(addr) => addr,
             };
 
-            match mem_int.op {
-                MemoryOp::Read => Some(bus_int),
-                MemoryOp::Write => {
-                    if last_store
-                        .get(&addr)
-                        .is_some_and(|&last_index| last_index == i)
-                    {
-                        Some(bus_int)
-                    } else {
-                        None
-                    }
-                }
-            }
+            let keep = if receive && !to_remove.contains(&i) {
+                Some(bus_int)
+            } else if receive && to_remove.contains(&i) {
+                None
+            } else if last_store
+                .get(&addr)
+                .is_some_and(|&last_index| last_index == i)
+            {
+                Some(bus_int)
+            } else {
+                None
+            };
+
+            receive = !receive;
+
+            keep
         })
         .collect();
 
@@ -669,6 +687,7 @@ pub fn optimize_pc_lookup<T: FieldElement>(mut machine: SymbolicMachine<T>) -> S
 
 pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let mut first_seen = false;
+    let mut receive = true;
     let mut latest_send = None;
     let mut subs_pc: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
     let mut subs_ts: BTreeMap<AlgebraicExpression<T>, AlgebraicExpression<T>> = Default::default();
@@ -677,12 +696,15 @@ pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sy
             return true;
         }
 
+        if receive {
+            // TODO assert that mult matches -expr
+        }
+
         // Keep the first receive
-        if !first_seen {
-            assert_eq!(bus_int.kind, BusInteractionKind::Receive);
+        let keep = if !first_seen {
             first_seen = true;
             true
-        } else if bus_int.kind == BusInteractionKind::Send {
+        } else if !receive {
             // Save the latest send and remove the bus interaction
             let mut pc_expr = bus_int.args[0].clone();
             powdr::substitute_algebraic_algebraic(&mut pc_expr, &subs_pc);
@@ -709,7 +731,11 @@ pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sy
                 latest_send.clone().unwrap().args[1].clone(),
             );
             false
-        }
+        };
+
+        receive = !receive;
+
+        keep
     });
 
     // Re-add the last send
@@ -768,7 +794,7 @@ pub fn generate_precompile<T: FieldElement>(
 
                 let is_valid: AlgebraicExpression<T> = exec_receive(&machine).mult.clone();
                 let one = AlgebraicExpression::Number(1u64.into());
-                local_constraints.push((is_valid.clone() - one).into());
+                local_constraints.push((is_valid.clone() + one).into());
 
                 let mut sub_map_loadstore: BTreeMap<String, AlgebraicExpression<T>> =
                     Default::default();
