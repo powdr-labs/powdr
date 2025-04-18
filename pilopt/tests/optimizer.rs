@@ -18,7 +18,6 @@ fn replace_fixed() {
     one * Y = zero * Y + 7 * X * X;
 "#;
 
-    //TODO GZ: N::X = N::Y should have been optimized away
     let expectation = r#"namespace N(65536);
     col witness Y;
     query |i| {
