@@ -560,10 +560,10 @@ fn basic_degree_limit_substitution() {
     col witness quad;
     quad = x * x;
     quad + y = 15;   
-    
-    col witness notopt;
-    notopt = x * x * x * x;
-    notopt + y = 20;  
+
+    col witness cubic;
+    cubic = x * x * x;
+    cubic + y = 20;  
 "#;
     let expectation = r#"namespace N(65536);
     col witness x;
@@ -573,9 +573,8 @@ fn basic_degree_limit_substitution() {
     N::linear + N::y = 10;
     col quad = N::x * N::x;
     N::quad + N::y = 15;
-    col witness notopt;
-    N::notopt = N::x * N::x * N::x * N::x;
-    N::notopt + N::y = 20;
+    col cubic = N::x * N::x * N::x;
+    N::cubic + N::y = 20;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
@@ -644,45 +643,18 @@ fn inline_chain_of_substitutions() {
 }
 
 #[test]
+#[should_panic(expected = "Degree of constraint exceeds max_degree")]
 fn witness_column_degree_limitation() {
     let input = r#"namespace N(65536);
     col witness a;
-    
-    // This column can be inlined (degree 2)
-    col witness x;
-    x = a * a;
-    
-    // This column CANNOT be inlined because
-    // its definition already has degree 4 > MAX_DEGREE (3)
+
+    // This will panic! because the degree (4) is greater than
+    // the allowed max_degree (3)
     col witness high_degree;
     high_degree = a * a * a * a;
-    
-    // It CAN be inlined because high_degree has degree 1
-    // when calculating the degree of this expression
-    col witness depends_on_high;
-    depends_on_high = high_degree + x;
-    
-    // Usage of columns
-    x + a = 10;
-    high_degree + a = 20;
-    depends_on_high + a = 30;
-    depends_on_high + a = 31;
 "#;
 
-    let expectation = r#"namespace N(65536);
-    col witness a;
-    col x = N::a * N::a;
-    col witness high_degree;
-    N::high_degree = N::a * N::a * N::a * N::a;
-    col depends_on_high = N::high_degree + N::x;
-    N::x + N::a = 10;
-    N::high_degree + N::a = 20;
-    N::depends_on_high + N::a = 30;
-    N::depends_on_high + N::a = 31;
-"#;
-
-    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
-    assert_eq!(optimized, expectation);
+    optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
 }
 
 #[test]

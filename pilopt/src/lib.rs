@@ -1287,7 +1287,7 @@ fn try_to_constrained_with_max_degree<T: FieldElement>(
         let degree = right.degree_with_cache(intermediate_definitions, &mut Default::default());
 
         if degree > max_degree {
-            return None;
+            panic!("Degree of constraint exceeds max_degree");
         }
 
         // Check that the right side doesn't reference the left side variable
