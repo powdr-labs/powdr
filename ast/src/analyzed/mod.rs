@@ -1731,9 +1731,8 @@ impl<T> AlgebraicExpression<T> {
             _ => self
                 .children()
                 .map(|e| {
-                    e.degree_with_virtual_substitution(
-                        poly_id,
-                        substitution,
+                    e.degree_with_virtual_substitutions(
+                        substitutions,
                         intermediate_definitions,
                         cache,
                     )
