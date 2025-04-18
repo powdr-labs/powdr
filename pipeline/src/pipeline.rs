@@ -43,6 +43,8 @@ pub type Publics<T> = BTreeMap<String, Option<T>>;
 pub type WitgenResult<T> = Result<Arc<(Columns<T>, Publics<T>)>, Vec<String>>;
 pub type VariablySizedColumns<T> = Vec<(String, VariablySizedColumn<T>)>;
 
+const OPTIMIZER_MAX_DEGREE_ALLOWED: usize = 3;
+
 #[derive(Default)]
 pub struct Artifacts<T: FieldElement> {
     /// The path to a single .asm file.
@@ -980,7 +982,7 @@ impl<T: FieldElement> Pipeline<T> {
         let analyzed_pil = self.artifact.analyzed_pil.take().unwrap();
 
         self.log("Optimizing pil...");
-        let optimized = powdr_pilopt::optimize(analyzed_pil, 3);
+        let optimized = powdr_pilopt::optimize(analyzed_pil, OPTIMIZER_MAX_DEGREE_ALLOWED);
         self.maybe_write_pil(&optimized, "_opt")?;
         self.maybe_write_pil_object(&optimized, "_opt")?;
 
@@ -1008,7 +1010,8 @@ impl<T: FieldElement> Pipeline<T> {
         self.log("Apply backend-specific tuning to optimized pil...");
         let backend_tuned_pil = factory.specialize_pil(optimized_pil);
         self.log("Optimizing pil (post backend-specific tuning)...");
-        let reoptimized_pil = powdr_pilopt::optimize(backend_tuned_pil, 3);
+        let reoptimized_pil =
+            powdr_pilopt::optimize(backend_tuned_pil, OPTIMIZER_MAX_DEGREE_ALLOWED);
         self.maybe_write_pil(&reoptimized_pil, "_backend_tuned")?;
         self.maybe_write_pil_object(&reoptimized_pil, "_backend_tuned")?;
         self.artifact.backend_tuned_pil = Some(Arc::new(reoptimized_pil));
