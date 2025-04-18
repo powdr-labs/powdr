@@ -18,7 +18,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::parsed::types::{ArrayType, Type, TypeBounds, TypeScheme};
-use crate::parsed::visitor::{Children, ExpressionVisitable};
+use crate::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
@@ -87,6 +87,16 @@ impl<T> Analyzed<T> {
             .collect::<HashSet<_>>()
     }
 
+    /// Returns the set of all referenced challenges in this [`Analyzed<T>`].
+    pub fn challenges(&self) -> BTreeSet<&Challenge> {
+        self.all_children()
+            .filter_map(|expr| match expr {
+                AlgebraicExpression::Challenge(challenge) => Some(challenge),
+                _ => None,
+            })
+            .collect()
+    }
+
     /// Returns the number of stages based on the maximum stage number of all definitions
     pub fn stage_count(&self) -> usize {
         self.definitions
@@ -94,6 +104,30 @@ impl<T> Analyzed<T> {
             .map(|(_, (s, _))| s.stage.unwrap_or_default())
             .max()
             .unwrap_or_default() as usize
+            + 1
+    }
+
+    /// Returns the next available ID for a polynomial of the specified type.
+    pub fn next_id_for_kind(&self, poly_type: PolynomialType) -> u64 {
+        match poly_type {
+            PolynomialType::Committed => self
+                .committed_polys_in_source_order()
+                .flat_map(|(s, _)| s.array_elements())
+                .map(|(_, poly)| poly.id)
+                .max(),
+            PolynomialType::Constant => self
+                .constant_polys_in_source_order()
+                .flat_map(|(s, _)| s.array_elements())
+                .map(|(_, poly)| poly.id)
+                .max(),
+            PolynomialType::Intermediate => self
+                .intermediate_columns
+                .values()
+                .flat_map(|(s, _)| s.array_elements())
+                .map(|(_, poly_id)| poly_id.id)
+                .max(),
+        }
+        .unwrap_or(0)
             + 1
     }
 
@@ -724,6 +758,7 @@ impl DegreeRange {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Hash)]
 pub struct Symbol {
+    /// Unique ID of the symbol within the set of symbols of this kind.
     pub id: u64,
     pub source: SourceRef,
     pub absolute_name: String,

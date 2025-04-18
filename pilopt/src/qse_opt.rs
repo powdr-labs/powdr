@@ -278,7 +278,6 @@ impl<T: FieldElement> QuadraticEqualityCandidate<T> {
         // `constr = 0` is equivalent to `right * (right + offset) = 0`
         let variables = right
             .referenced_unknown_variables()
-            .into_iter()
             .cloned()
             .collect::<HashSet<_>>();
         println!("-> ({right}) * ({right} + {offset})");

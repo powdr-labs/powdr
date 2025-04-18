@@ -13,6 +13,7 @@ use powdr_constraint_solver::{
         Error, ProcessResult, QuadraticSymbolicExpression, RangeConstraintProvider,
     },
     range_constraint::RangeConstraint,
+    symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
 
@@ -157,7 +158,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         BranchResult {
             common_code,
             condition: BranchCondition {
-                variable: variable.clone(),
+                value: SymbolicExpression::from_symbol(variable.clone(), rc),
                 condition: high_condition,
             },
             branches: [self, low_branch],
