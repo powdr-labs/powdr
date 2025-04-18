@@ -1171,71 +1171,36 @@ fn is_valid_substitution<T: FieldElement>(
     intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     max_degree: usize,
 ) -> bool {
+    let substitutions = BTreeMap::from([(poly_id, expression.clone())]);
+
     for (idx, id) in pil_file.identities.iter().enumerate() {
         if idx == exclude_idx {
             continue; // Skip the constraint we're extracting from
         }
 
         if let Identity::Polynomial(identity) = id {
-            // Check if this identity uses the witness we're trying to substitute
-            let mut uses_witness = false;
-            identity.expression.pre_visit_expressions(&mut |e| {
-                if let AlgebraicExpression::Reference(AlgebraicReference {
-                    poly_id: ref_id,
-                    next: false,
-                    ..
-                }) = e
-                {
-                    if *ref_id == poly_id {
-                        uses_witness = true;
-                    }
-                }
-            });
-
             // If this identity uses the witness, check if substitution would exceed max_degree
-            if uses_witness {
-                let degree = identity.expression.degree_with_virtual_substitution(
-                    poly_id,
-                    expression,
-                    intermediate_definitions,
-                    &mut BTreeMap::new(),
-                );
+            let degree = identity.expression.degree_with_virtual_substitutions(
+                &substitutions,
+                intermediate_definitions,
+                &mut BTreeMap::new(),
+            );
 
-                if degree > max_degree {
-                    return false; // Substitution exceeds max_degree
-                }
+            if degree > max_degree {
+                return false; // Substitution exceeds max_degree
             }
         }
     }
 
     // Check if any intermediate definition that uses the witness exceeds max_degree
     for expr in intermediate_definitions.values() {
-        // First check if this intermediate definition uses the witness
-        let mut uses_witness = false;
-        expr.pre_visit_expressions(&mut |e| {
-            if let AlgebraicExpression::Reference(AlgebraicReference {
-                poly_id: ref_id,
-                next: false,
-                ..
-            }) = e
-            {
-                if *ref_id == poly_id {
-                    uses_witness = true;
-                }
-            }
-        });
-
-        // Only check degree if this definition uses the witness
-        if uses_witness {
-            let degree = expr.degree_with_virtual_substitution(
-                poly_id,
-                expression,
-                intermediate_definitions,
-                &mut BTreeMap::new(),
-            );
-            if degree > max_degree {
-                return false;
-            }
+        let degree = expr.degree_with_virtual_substitutions(
+            &substitutions,
+            intermediate_definitions,
+            &mut BTreeMap::new(),
+        );
+        if degree > max_degree {
+            return false;
         }
     }
 

@@ -1680,15 +1680,17 @@ impl<T> AlgebraicExpression<T> {
     /// This is similar to `degree_with_cache` but allows calculating the degree
     /// as if a specific polynomial reference was replaced with another expression.
     /// Recursive substitutions in the new expression are not applied.
-    pub fn degree_with_virtual_substitution(
+    pub fn degree_with_virtual_substitutions(
         &self,
-        poly_id: PolyID,
-        substitution: &AlgebraicExpression<T>,
+        substitutions: &BTreeMap<PolyID, AlgebraicExpression<T>>,
         intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
         cache: &mut BTreeMap<AlgebraicReferenceThin, usize>,
     ) -> usize {
         match self {
-            AlgebraicExpression::Reference(reference) if reference.poly_id == poly_id => {
+            AlgebraicExpression::Reference(reference)
+                if substitutions.contains_key(&reference.poly_id) =>
+            {
+                let substitution = substitutions.get(&reference.poly_id).unwrap();
                 substitution.degree_with_cache(intermediate_definitions, cache)
             }
             AlgebraicExpression::Reference(reference) => match reference.poly_id.ptype {
@@ -1699,9 +1701,8 @@ impl<T> AlgebraicExpression<T> {
                         let def = intermediate_definitions
                             .get(&reference)
                             .expect("Intermediate definition not found.");
-                        let result = def.degree_with_virtual_substitution(
-                            poly_id,
-                            substitution,
+                        let result = def.degree_with_virtual_substitutions(
+                            substitutions,
                             intermediate_definitions,
                             cache,
                         );
@@ -1716,14 +1717,12 @@ impl<T> AlgebraicExpression<T> {
                 left,
                 right,
             }) => {
-                left.degree_with_virtual_substitution(
-                    poly_id,
-                    substitution,
+                left.degree_with_virtual_substitutions(
+                    substitutions,
                     intermediate_definitions,
                     cache,
-                ) + right.degree_with_virtual_substitution(
-                    poly_id,
-                    substitution,
+                ) + right.degree_with_virtual_substitutions(
+                    substitutions,
                     intermediate_definitions,
                     cache,
                 )
