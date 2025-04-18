@@ -921,6 +921,13 @@ fn try_to_boolean_constrained<T: FieldElement>(id: &Identity<T>) -> Option<PolyI
     }
 }
 
+/// Collects polynomial IDs that are exclusively inputs or exclusively outputs in the PIL file.
+///
+/// A witness column is considered an input if it is never used as a single witness column
+/// in any side of any identity (i.e., it only appears in complex expressions).
+///
+/// A witness column is considered an output if it is only used as a single witness column
+/// in any side of any identity (i.e., it never appears in complex expressions).
 fn collect_inputs_outputs_ids<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<PolyID> {
     let mut inputs_outputs = HashSet::new();
     for (symbol, _) in pil_file.committed_polys_in_source_order() {
@@ -1099,7 +1106,7 @@ fn replace_constrained_witness_columns<T: FieldElement>(
                     max_degree,
                 );
 
-                if valid_substitution {
+                if is_valid_substitution {
                     // Remove the definition
                     if let Some((symbol, value)) = pil_file.definitions.remove(&name) {
                         // Sanity checks
@@ -1279,7 +1286,7 @@ fn try_to_constrained_with_max_degree<T: FieldElement>(
         }
 
         // Check if creating a new intermediate would create a cycle when calculating the degree
-        if new_intermediate_create_cycle(&w.poly_id, right, intermediate_definitions) {
+        if is_substitution_creating_cycle(&w.poly_id, right, intermediate_definitions) {
             return None;
         }
 
@@ -1312,7 +1319,7 @@ fn try_to_constrained_with_max_degree<T: FieldElement>(
 }
 
 /// Checks if substituting a polynomial would create a dependency cycle
-fn new_intermediate_create_cycle<T: FieldElement>(
+fn is_substitution_creating_cycle<T: FieldElement>(
     poly_id: &PolyID,
     expression: &AlgebraicExpression<T>,
     intermediate_definitions: &BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
