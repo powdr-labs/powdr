@@ -1337,9 +1337,7 @@ fn is_substitution_creating_cycle<T: FieldElement>(
             }
             _ => {
                 stack.push((expr, true));
-                for child in expr.children().collect::<Vec<_>>().into_iter().rev() {
-                    stack.push((child, false));
-                }
+                stack.extend(expr.children().map(|child| (child, false)).rev());
                 continue;
             }
         }
