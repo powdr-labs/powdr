@@ -26,6 +26,7 @@ use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
 
 pub mod powdr;
+pub mod smt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SymbolicInstructionStatement<T> {
@@ -44,6 +45,23 @@ pub struct SymbolicInstructionDefinition {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolicConstraint<T> {
     pub expr: AlgebraicExpression<T>,
+}
+
+const P: u32 = 2013265921;
+
+impl<T: FieldElement> SymbolicConstraint<T> {
+    pub fn to_smt(&self) -> String {
+        let n1 = AlgebraicExpression::Number(T::from(2005401601u32));
+        let n2 = AlgebraicExpression::Number(T::from(2013235201u32));
+
+        if powdr::has_ref(&self.expr, &n1) || powdr::has_ref(&self.expr, &n2) {
+            return String::new();
+        }
+
+        let expr = powdr::algebraic_to_smt(&self.expr);
+        format!("(assert (= (mod {expr} {P}) 0))")
+        // format!("(assert (= {expr} 0))")
+    }
 }
 
 impl<T: Display> Display for SymbolicConstraint<T> {
@@ -78,6 +96,65 @@ pub struct SymbolicBusInteraction<T> {
     pub id: u64,
     pub mult: AlgebraicExpression<T>,
     pub args: Vec<AlgebraicExpression<T>>,
+}
+
+impl<T: FieldElement> SymbolicBusInteraction<T> {
+    pub fn to_smt(&self) -> String {
+        if self.id == RANGE_CHECK_BUS_ID {
+            self.range_check_to_smt()
+        } else if self.id == BYTE_CHECK_BUS_ID {
+            self.byte_check_to_smt()
+        } else if self.id == RANGE_CHECK_BUS_ID_2 {
+            self.range_check_2_to_smt()
+        } else {
+            String::new()
+        }
+    }
+
+    fn range_check_to_smt(&self) -> String {
+        assert_eq!(self.id, RANGE_CHECK_BUS_ID);
+        assert_eq!(self.args.len(), 2);
+        let v = powdr::algebraic_to_smt(&self.args[0]);
+        let bits = powdr::try_algebraic_number(&self.args[1])
+            .unwrap()
+            .to_integer()
+            .try_into_u32()
+            .unwrap();
+        let max_range = 1 << bits;
+        range_check_to_smt(v, max_range)
+    }
+
+    fn range_check_2_to_smt(&self) -> String {
+        assert_eq!(self.id, RANGE_CHECK_BUS_ID_2);
+        assert_eq!(self.args.len(), 2);
+        let v1 = powdr::algebraic_to_smt(&self.args[0]);
+        let v2 = powdr::algebraic_to_smt(&self.args[1]);
+        byte_check_to_smt(v1) + "\n" + &byte_check_to_smt(v2)
+    }
+
+    fn byte_check_to_smt(&self) -> String {
+        assert_eq!(self.id, BYTE_CHECK_BUS_ID);
+        assert_eq!(self.args.len(), 4);
+        let v1 = powdr::algebraic_to_smt(&self.args[0]);
+        let v2 = powdr::algebraic_to_smt(&self.args[1]);
+        let v3 = powdr::algebraic_to_smt(&self.args[2]);
+        let v4 = powdr::algebraic_to_smt(&self.args[3]);
+        byte_check_to_smt(v1)
+            + "\n"
+            + &byte_check_to_smt(v2)
+            + "\n"
+            + &byte_check_to_smt(v3)
+            + "\n"
+            + &byte_check_to_smt(v4)
+    }
+}
+
+fn range_check_to_smt(v: String, max_range: u64) -> String {
+    format!("(assert (and (>= {v} 0) (< {v} {max_range})))")
+}
+
+fn byte_check_to_smt(v: String) -> String {
+    range_check_to_smt(v, 256)
 }
 
 impl<T: Display> Display for SymbolicBusInteraction<T> {
@@ -122,6 +199,35 @@ pub enum BusInteractionKind {
 pub struct SymbolicMachine<T> {
     pub constraints: Vec<SymbolicConstraint<T>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
+}
+
+impl<T: FieldElement> SymbolicMachine<T> {
+    pub fn to_smt(&self) -> String {
+        let (decls, ranges) = self
+            .columns()
+            .iter()
+            .map(|c| {
+                (
+                    format!("(declare-fun {c} () Int)"),
+                    range_check_to_smt(c.clone(), P.into()),
+                )
+            })
+            .collect::<(Vec<String>, Vec<String>)>();
+        let mut smt = decls.join("\n");
+        let type_ranges = ranges.join("\n");
+        smt.push('\n');
+        smt.push_str(&type_ranges);
+        smt.push('\n');
+        for c in &self.constraints {
+            smt.push_str(&c.to_smt());
+            smt.push('\n');
+        }
+        for b in &self.bus_interactions {
+            smt.push_str(&b.to_smt());
+            smt.push('\n');
+        }
+        smt
+    }
 }
 
 impl<T: Display> Display for SymbolicMachine<T> {
@@ -331,6 +437,8 @@ const EXECUTION_BUS_ID: u64 = 0;
 const MEMORY_BUS_ID: u64 = 1;
 const PC_LOOKUP_BUS_ID: u64 = 2;
 const RANGE_CHECK_BUS_ID: u64 = 3;
+const BYTE_CHECK_BUS_ID: u64 = 6;
+const RANGE_CHECK_BUS_ID_2: u64 = 7;
 
 impl<T: FieldElement> Autoprecompiles<T> {
     pub fn build(&self) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
@@ -340,6 +448,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
             &self.instruction_machines,
         );
 
+        println!("Generated autoprecompile: {machine}");
         let c = machine.columns();
         let i = machine.column_ids();
         assert_eq!(c.len(), i.len());
@@ -347,6 +456,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
         machine = optimize_pc_lookup(machine);
         machine = optimize_exec_bus(machine);
         machine = optimize_precompile(machine);
+        println!("Optimized autoprecompile: {machine}");
 
         let mut bus: BTreeMap<u64, Vec<&SymbolicBusInteraction<T>>> = BTreeMap::new();
         for b in &machine.bus_interactions {
@@ -363,6 +473,11 @@ impl<T: FieldElement> Autoprecompiles<T> {
         machine = powdr_optimize(machine);
         machine = remove_zero_mult(machine);
         machine = remove_zero_constraint(machine);
+
+        println!("Optimized autoprecompile before SMT: {machine}");
+        machine = optimize_smt(machine);
+        machine = powdr_optimize(machine);
+        println!("Optimized autoprecompile after SMT: {machine}");
 
         // add guards to constraints that are not satisfied by zeroes
         machine = add_guards(machine);
@@ -760,6 +875,32 @@ pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sy
     machine
 }
 
+pub fn optimize_smt<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
+    let smt_query = machine.to_smt();
+    std::fs::write("machine.smt2", &smt_query).unwrap();
+    let vars = machine.columns();
+    let vars = smt::get_unique_vars(&smt_query, &vars);
+    let subs: BTreeMap<String, AlgebraicExpression<T>> = vars
+        .iter()
+        .map(|(v, m)| {
+            let n = m.parse::<u32>().unwrap();
+            (v.clone(), AlgebraicExpression::Number(n.into()))
+        })
+        .collect();
+
+    for c in &mut machine.constraints {
+        powdr::substitute_algebraic(&mut c.expr, &subs);
+    }
+    for b in &mut machine.bus_interactions {
+        powdr::substitute_algebraic(&mut b.mult, &subs);
+        for a in &mut b.args {
+            powdr::substitute_algebraic(a, &subs);
+        }
+    }
+
+    machine
+}
+
 pub fn generate_precompile<T: FieldElement>(
     statements: &[SymbolicInstructionStatement<T>],
     instruction_kinds: &BTreeMap<String, InstructionKind>,
@@ -779,6 +920,7 @@ pub fn generate_precompile<T: FieldElement>(
             | InstructionKind::ConditionalBranch => {
                 let (_instr_def, machine) = instruction_machines.get(&instr.name).unwrap().clone();
 
+                // println!("Using instruction chip: {machine}");
                 let pc_lookup: PcLookupBusInteraction<T> = machine
                     .bus_interactions
                     .iter()
@@ -796,6 +938,11 @@ pub fn generate_precompile<T: FieldElement>(
                 let one = AlgebraicExpression::Number(1u64.into());
                 local_constraints.push((is_valid.clone() + one).into());
 
+                // println!("Added is_valid constraints");
+                // for c in &local_constraints {
+                //     println!("{c}");
+                // }
+
                 let mut sub_map_loadstore: BTreeMap<String, AlgebraicExpression<T>> =
                     Default::default();
                 if is_loadstore(instr.opcode) {
@@ -803,6 +950,10 @@ pub fn generate_precompile<T: FieldElement>(
                 }
 
                 add_opcode_constraints(&mut local_constraints, instr.opcode, &pc_lookup.op);
+                // println!("Added opcode constraints");
+                // for c in &local_constraints {
+                //     println!("{c}");
+                // }
 
                 assert_eq!(instr.args.len(), pc_lookup.args.len());
                 instr
@@ -824,6 +975,10 @@ pub fn generate_precompile<T: FieldElement>(
                             _ => {}
                         }
                     });
+                // println!("Added constraints");
+                // for c in &local_constraints {
+                //     println!("{c}");
+                // }
 
                 let mut local_subs = BTreeMap::new();
                 let local_identities = machine
@@ -923,25 +1078,33 @@ fn add_opcode_constraints<T: FieldElement>(
     expected_opcode: &AlgebraicExpression<T>,
 ) {
     let opcode_a = AlgebraicExpression::Number((opcode as u64).into());
+    // constraints.push((expected_opcode.clone() - opcode_a).into());
+    // return;
     match try_compute_opcode_map(expected_opcode) {
         Ok(opcode_to_flag) => {
             let active_flag = opcode_to_flag.get(&(opcode as u64)).unwrap();
+            // println!("Active flag = {active_flag}");
             for flag_ref in opcode_to_flag.values() {
                 let expected_value = if flag_ref == active_flag {
                     AlgebraicExpression::Number(1u32.into())
                 } else {
                     AlgebraicExpression::Number(0u32.into())
                 };
+                // println!("Expected value = {expected_value}");
                 let flag_expr = AlgebraicExpression::Reference(flag_ref.clone());
+                // println!("Flag expr = {flag_expr}");
                 let constraint = flag_expr - expected_value;
+                // println!("Constraint = {constraint}");
                 constraints.push(constraint.into());
             }
         }
         Err(_) => {
+            // println!("failed trying compute, trying loadstore");
             if try_set_loadstore_flags(constraints, opcode, expected_opcode).is_err() {
                 // We were not able to extract the flags, so we keep them as witness columns
                 // and add a constraint that the expected opcode needs to equal the compile-time opcode.
                 constraints.push((expected_opcode.clone() - opcode_a).into());
+                // println!("did not work");
             }
         }
     }

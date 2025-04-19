@@ -3,7 +3,8 @@ use std::ops::ControlFlow;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    BusInteractionIdentity, PolyID, PolynomialType,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, BusInteractionIdentity, PolyID,
+    PolynomialType,
 };
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_ast::parsed::{
@@ -327,5 +328,39 @@ pub fn powdr_interaction_to_symbolic<T: FieldElement>(
         id,
         mult: powdr_interaction.multiplicity,
         args: powdr_interaction.payload.0,
+    }
+}
+
+pub fn algebraic_to_smt<T: FieldElement>(expr: &AlgebraicExpression<T>) -> String {
+    match expr {
+        AlgebraicExpression::Number(x) => format!("{x}"),
+        AlgebraicExpression::Reference(AlgebraicReference { name, .. }) => name.clone(),
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            let left = algebraic_to_smt(left);
+            let right = algebraic_to_smt(right);
+            let op_str = match op {
+                AlgebraicBinaryOperator::Add => "+",
+                AlgebraicBinaryOperator::Sub => "-",
+                AlgebraicBinaryOperator::Mul => "*",
+                AlgebraicBinaryOperator::Pow => todo!(),
+            };
+            format!("({op_str} {left} {right})")
+        }
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+            let expr = algebraic_to_smt(expr);
+            let op_str = match op {
+                AlgebraicUnaryOperator::Minus => "-",
+            };
+            format!("({op_str} {expr})")
+        }
+
+        _ => todo!("{expr}"),
+    }
+}
+
+pub fn try_algebraic_number<T: FieldElement>(expr: &AlgebraicExpression<T>) -> Option<T> {
+    match expr {
+        AlgebraicExpression::Number(n) => Some(*n),
+        _ => None,
     }
 }
