@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::ControlFlow;
 
+use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     BusInteractionIdentity, PolyID, PolynomialType,
@@ -129,17 +130,23 @@ pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
     );
 }
 
+// @leo: This is where I'm not sure. I think after this change this function should return `Column -> Column`, which it does, but I'm not sure my implementation is correct
 pub fn append_suffix_algebraic<T: Clone>(
     expr: &mut AlgebraicExpression<T>,
     suffix: &str,
-) -> BTreeMap<Column, String> {
+) -> BTreeMap<Column, Column> {
     let mut subs = BTreeMap::new();
     expr.visit_expressions_mut(
         &mut |expr| {
             if let AlgebraicExpression::Reference(r) = expr {
                 if !["is_first_row", "is_transition", "is_last_row"].contains(&r.name.as_str()) {
                     let new_name = format!("{}_{suffix}", r.name);
-                    subs.insert(Column::from(&*r), new_name.clone());
+                    let old_column = Column::from(&*r);
+                    let new_column = Column {
+                        name: new_name.clone(),
+                        ..old_column
+                    };
+                    subs.insert(Column::from(&*r), new_column);
                     r.name = new_name;
                 }
             }
@@ -175,7 +182,7 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
     cols
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
 pub struct Column {
     pub name: String,
     pub id: PolyID,
@@ -191,48 +198,55 @@ impl From<&AlgebraicReference> for Column {
     }
 }
 
-pub trait Columns<'a, T: 'a> {
-    fn columns(&'a self) -> impl Iterator<Item = Column>;
+pub trait UniqueColumns<'a, T: 'a> {
+    /// Returns an iterator over the unique columns
+    fn unique_columns(&'a self) -> impl Iterator<Item = Column>;
 }
 
 impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpression<T>>>
-    Columns<'a, T> for E
+    UniqueColumns<'a, T> for E
 {
-    fn columns(&'a self) -> impl Iterator<Item = Column> {
-        self.all_children().filter_map(|e| {
-            if let AlgebraicExpression::Reference(r) = e {
-                Some(Column::from(r))
-            } else {
-                None
-            }
-        })
+    fn unique_columns(&'a self) -> impl Iterator<Item = Column> {
+        self.all_children()
+            .filter_map(|e| {
+                if let AlgebraicExpression::Reference(r) = e {
+                    Some(Column::from(r))
+                } else {
+                    None
+                }
+            })
+            .unique()
     }
 }
 
 pub fn reassign_ids_algebraic<T: Clone + Ord>(
     expr: &mut AlgebraicExpression<T>,
-    mut curr_id: usize,
-    subs: &mut BTreeMap<String, usize>,
-    rev_subs: &mut BTreeMap<usize, String>,
-) -> usize {
+    mut curr_id: u64,
+    subs: &mut BTreeMap<Column, u64>,
+    rev_subs: &mut BTreeMap<u64, Column>,
+) -> u64 {
     expr.visit_expressions_mut(
         &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { name, poly_id, .. }) = expr {
-                match subs.get_mut(name.as_str()) {
+            if let AlgebraicExpression::Reference(r) = expr {
+                let column = Column::from(&*r);
+                match subs.get_mut(&column) {
                     Some(id) => {
                         match rev_subs.get(id) {
-                            Some(r_name) => {
-                                assert_eq!(r_name, name, "Id {id} already assigned to {name}");
+                            Some(r_column) => {
+                                assert_eq!(
+                                    *r_column, column,
+                                    "Id {id} already assigned to {column:?}"
+                                );
                             }
                             None => {
-                                rev_subs.insert(*id, name.clone());
+                                rev_subs.insert(*id, column.clone());
                             }
                         }
-                        poly_id.id = *id as u64;
+                        r.poly_id.id = *id;
                     }
                     None => {
-                        poly_id.id = curr_id as u64;
-                        subs.insert(name.clone(), curr_id);
+                        r.poly_id.id = curr_id;
+                        subs.insert(column.clone(), curr_id);
                         curr_id += 1;
                     }
                 }
