@@ -13,6 +13,7 @@ use powdr_ast::parsed::{
     NamespacedPolynomialReference, UnaryOperator,
 };
 use powdr_number::FieldElement;
+use serde::{Deserialize, Serialize};
 
 use crate::{BusInteractionKind, SymbolicBusInteraction};
 
@@ -182,7 +183,7 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
     cols
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct Column {
     pub name: String,
     pub id: PolyID,
