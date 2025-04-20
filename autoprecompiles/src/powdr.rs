@@ -6,6 +6,7 @@ use powdr_ast::analyzed::{
     BusInteractionIdentity, PolyID, PolynomialType,
 };
 use powdr_ast::parsed::asm::SymbolPath;
+use powdr_ast::parsed::visitor::AllChildren;
 use powdr_ast::parsed::{
     visitor::{ExpressionVisitable, VisitOrder},
     NamespacedPolynomialReference, UnaryOperator,
@@ -19,12 +20,12 @@ type Expression = powdr_ast::asm_analysis::Expression<NamespacedPolynomialRefere
 // After powdr and lib are adjusted, this function can be renamed and the old substitute removed
 pub fn substitute_algebraic<T: Clone>(
     expr: &mut AlgebraicExpression<T>,
-    sub: &BTreeMap<String, AlgebraicExpression<T>>,
+    sub: &BTreeMap<Column, AlgebraicExpression<T>>,
 ) {
     expr.visit_expressions_mut(
         &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = expr {
-                if let Some(sub_expr) = sub.get(name) {
+            if let AlgebraicExpression::Reference(r) = expr {
+                if let Some(sub_expr) = sub.get(&Column::from(&*r)) {
                     *expr = sub_expr.clone();
                 }
             }
@@ -131,15 +132,15 @@ pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
 pub fn append_suffix_algebraic<T: Clone>(
     expr: &mut AlgebraicExpression<T>,
     suffix: &str,
-) -> BTreeMap<String, String> {
+) -> BTreeMap<Column, String> {
     let mut subs = BTreeMap::new();
     expr.visit_expressions_mut(
         &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = expr {
-                if !["is_first_row", "is_transition", "is_last_row"].contains(&name.as_str()) {
-                    let new_name = format!("{name}_{suffix}");
-                    subs.insert(name.clone(), new_name.clone());
-                    *name = new_name;
+            if let AlgebraicExpression::Reference(r) = expr {
+                if !["is_first_row", "is_transition", "is_last_row"].contains(&r.name.as_str()) {
+                    let new_name = format!("{}_{suffix}", r.name);
+                    subs.insert(Column::from(&*r), new_name.clone());
+                    r.name = new_name;
                 }
             }
             ControlFlow::Continue::<()>(())
@@ -174,36 +175,38 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
     cols
 }
 
-pub fn collect_cols_names_algebraic<T: Clone + Ord + std::fmt::Display>(
-    expr: &AlgebraicExpression<T>,
-) -> BTreeSet<String> {
-    let mut cols: BTreeSet<String> = Default::default();
-    expr.visit_expressions(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = expr {
-                cols.insert(name.clone());
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-    cols
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone)]
+pub struct Column {
+    pub name: String,
+    pub id: PolyID,
 }
 
-pub fn collect_cols_ids_algebraic<T: Clone + Ord + std::fmt::Display>(
-    expr: &AlgebraicExpression<T>,
-) -> BTreeSet<u64> {
-    let mut cols: BTreeSet<u64> = Default::default();
-    expr.visit_expressions(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = expr {
-                cols.insert(poly_id.id);
+impl From<&AlgebraicReference> for Column {
+    fn from(r: &AlgebraicReference) -> Self {
+        assert!(!r.next);
+        Column {
+            name: r.name.clone(),
+            id: r.poly_id,
+        }
+    }
+}
+
+pub trait Columns<'a, T: 'a> {
+    fn columns(&'a self) -> impl Iterator<Item = Column>;
+}
+
+impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpression<T>>>
+    Columns<'a, T> for E
+{
+    fn columns(&'a self) -> impl Iterator<Item = Column> {
+        self.all_children().filter_map(|e| {
+            if let AlgebraicExpression::Reference(r) = e {
+                Some(Column::from(r))
+            } else {
+                None
             }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-    cols
+        })
+    }
 }
 
 pub fn reassign_ids_algebraic<T: Clone + Ord>(
