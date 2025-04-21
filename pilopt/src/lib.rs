@@ -1039,7 +1039,7 @@ fn replace_constrained_witness_columns<T: FieldElement>(
 /// and identify columns with clear roles in the constraint system.
 fn identify_inputs_and_outputs<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<PolyID> {
     // Get all witness columns
-    let all_witness_columns: HashSet<PolyID> = pil_file
+    let all_witness_columns: BTreeSet<PolyID> = pil_file
         .committed_polys_in_source_order()
         .flat_map(|(symbol, _)| symbol.array_elements().map(|(_, id)| id))
         .collect();
@@ -1081,12 +1081,12 @@ fn identify_inputs_and_outputs<T: FieldElement>(pil_file: &Analyzed<T>) -> HashS
     }
 
     // Build a dependency graph between columns
-    let mut dependencies: HashMap<PolyID, HashSet<PolyID>> = HashMap::new();
-    let mut defined_by: HashMap<PolyID, usize> = HashMap::new(); // Maps column to constraint that defines it
+    let mut dependencies: BTreeMap<PolyID, BTreeSet<PolyID>> = BTreeMap::new();
+    let mut defined_by: BTreeMap<PolyID, usize> = BTreeMap::new(); // Maps column to constraint that defines it
 
     // Greedy algorithm to select which columns to inline
-    let mut inlined_columns = HashSet::new();
-    let mut used_constraints = HashSet::new();
+    let mut inlined_columns = BTreeSet::new();
+    let mut used_constraints = BTreeSet::new();
 
     // TODO: Maybe a big part of this can be moved to the main function?
     loop {
@@ -1109,7 +1109,7 @@ fn identify_inputs_and_outputs<T: FieldElement>(pil_file: &Analyzed<T>) -> HashS
 
                 if let Some(expr) = expr {
                     // Add dependencies for this potential substitution
-                    let mut deps = HashSet::new();
+                    let mut deps = BTreeSet::new();
                     expr.pre_visit_expressions(&mut |e| {
                         if let AlgebraicExpression::Reference(AlgebraicReference {
                             poly_id,
@@ -1460,9 +1460,9 @@ fn try_extract_from_expression<T: FieldElement>(
 }
 
 /// Checks if a dependency graph has cycles using depth-first search
-fn has_cycles<T: Eq + Hash + Copy>(graph: &HashMap<T, HashSet<T>>) -> bool {
-    let mut visited = HashSet::new();
-    let mut path = HashSet::new();
+fn has_cycles<T: Eq + Hash + Copy>(graph: &BTreeMap<T, BTreeSet<T>>) -> bool {
+    let mut visited = BTreeSet::new();
+    let mut path = BTreeSet::new();
 
     for &node in graph.keys() {
         if !visited.contains(&node) {
@@ -1478,9 +1478,9 @@ fn has_cycles<T: Eq + Hash + Copy>(graph: &HashMap<T, HashSet<T>>) -> bool {
 /// Helper function for cycle detection using DFS
 fn has_cycle_dfs<T: Eq + Hash + Copy>(
     node: T,
-    graph: &HashMap<T, HashSet<T>>,
-    visited: &mut HashSet<T>,
-    path: &mut HashSet<T>,
+    graph: &BTreeMap<T, BTreeSet<T>>,
+    visited: &mut BTreeSet<T>,
+    path: &mut BTreeSet<T>,
 ) -> bool {
     if path.contains(&node) {
         return true;
