@@ -181,7 +181,7 @@ fn referenced_namespaces_parsed_expression(
 ///
 /// Returns:
 /// - statements_by_namespace: A map from namespace to the statements in that namespace.
-fn split_by_namespace<F: FieldElement>(
+pub fn split_by_namespace<F: FieldElement>(
     pil: &Analyzed<F>,
 ) -> BTreeMap<String, Vec<StatementIdentifier>> {
     let mut current_namespace = "".to_string();

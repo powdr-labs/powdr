@@ -18,6 +18,7 @@ use powdr_ast::parsed::Number;
 use powdr_number::{BigUint, FieldElement};
 
 pub mod referenced_symbols;
+pub mod air_stacking;
 
 use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
@@ -43,6 +44,10 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         }
         pil_hash = new_hash;
     }
+
+    air_stacking::air_stacking(&mut pil_file);
+    remove_unreferenced_definitions(&mut pil_file);
+
     let col_count_post = (pil_file.commitment_count(), pil_file.constant_count());
     log::info!(
         "Removed {} witness and {} fixed columns. Total count now: {} witness and {} fixed columns.",
