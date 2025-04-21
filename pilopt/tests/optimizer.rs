@@ -14,8 +14,8 @@ fn replace_fixed() {
     query |i| {
         let _ = one;
     };
-    X * one = X * zero - zero + Y;
-    one * Y = zero * Y + 7 * X * X;
+    X = X * zero - zero + Y;
+    Y = zero * Y + 7 * X;
 "#;
 
     let expectation = r#"namespace N(65536);
@@ -23,7 +23,7 @@ fn replace_fixed() {
     query |i| {
         let _: expr = 1_expr;
     };
-    N::Y = 7 * N::Y * N::Y;
+    N::Y = 7 * N::Y;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
@@ -477,13 +477,12 @@ fn replace_witness_by_intermediate() {
 
         // Constraining to a shifted expression should not replace the witness.
         col witness linear_with_next_ref;
-        linear_with_next_ref = 2 * w + 3 * f' + 5;
+        linear_with_next_ref = 2 * can_be_replaced + 3 * f' + 5;
         linear_with_next_ref + w = 5;
 
-        // Constraining to a quadratic expression should not replace the witness.
         col witness quadratic;
         quadratic = 2 * w * w + 3 * f + 5;
-        quadratic + w = 5;
+        quadratic + linear_with_next_ref = 5;
 
         // The first constraint is removed, the second one is kept.
         col witness constrained_twice;
@@ -496,10 +495,11 @@ fn replace_witness_by_intermediate() {
     col can_be_replaced = 2 * N::w + 3 * N::f + 5;
     N::can_be_replaced + N::w = 5;
     col witness linear_with_next_ref;
-    N::linear_with_next_ref = 2 * N::w + 3 * N::f' + 5;
+    N::linear_with_next_ref = 2 * N::can_be_replaced + 3 * N::f' + 5;
     N::linear_with_next_ref + N::w = 5;
-    col quadratic = 2 * N::w * N::w + 3 * N::f + 5;
-    N::quadratic + N::w = 5;
+    col witness quadratic;
+    N::quadratic = 2 * N::w * N::w + 3 * N::f + 5;
+    N::quadratic + N::linear_with_next_ref = 5;
     col witness constrained_twice;
     N::constrained_twice = 2 * N::w + 3 * N::f + 5;
     N::constrained_twice = N::w + N::f;
@@ -548,8 +548,8 @@ fn simplify_associative_operations() {
 #[test]
 fn basic_degree_limit_substitution() {
     let input = r#"namespace N(65536);
-    col witness x;
-    col witness y;
+    col witness x; // input
+    col witness y; // input
     
     col witness linear;
     linear = x + y;
@@ -557,11 +557,11 @@ fn basic_degree_limit_substitution() {
     linear + y = 10; 
     
     col witness quad;
-    quad = x * x;
+    quad = linear * x;
     quad + y = 15;   
 
-    col witness cubic;
-    cubic = x * x * x;
+    col witness cubic; // output
+    cubic = x * quad * x;
     cubic + y = 20;  
 "#;
     let expectation = r#"namespace N(65536);
@@ -570,9 +570,11 @@ fn basic_degree_limit_substitution() {
     col linear = N::x + N::y;
     N::linear * N::x = 5;
     N::linear + N::y = 10;
-    col quad = N::x * N::x;
+    col witness quad;
+    N::quad = N::linear * N::x;
     N::quad + N::y = 15;
-    col cubic = N::x * N::x * N::x;
+    col witness cubic;
+    N::cubic = N::x * N::quad * N::x;
     N::cubic + N::y = 20;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
@@ -599,7 +601,8 @@ fn special_cases_substitution() {
     col witness b;
     col witness next_ref;
     N::next_ref = N::a' + N::b;
-    col exact_max = N::a * N::a * N::a;
+    col witness exact_max;
+    N::exact_max = N::a * N::a * N::a;
     N::next_ref * N::a = 10;
     N::exact_max + N::b = 30;
 "#;
@@ -632,7 +635,8 @@ fn inline_chain_of_substitutions() {
     col x = N::a + N::y;
     col witness y;
     N::y = N::x + N::b;
-    col m = N::x - N::y;
+    col witness m;
+    N::m = N::x - N::y;
     N::a * N::b = 10;
     N::m * N::a = 1;
 "#;
@@ -657,78 +661,85 @@ fn witness_column_degree_limitation() {
 }
 
 #[test]
-fn multi_pass_optimization_unlocks_transformations() {
-    let input = r#"namespace N(65536);
-    col witness a;
+fn preserve_inputs_and_outputs() {
+    let input = r#"
+    namespace N(65536);
     
-    col witness early;
-    early = a * a;
+    // Input columns (not computed from other columns)
+    col witness input1;
+    col witness input2;
     
-    col witness middle;
-    middle = early * a;
+    // Intermediate columns that can be inlined
+    col witness temp1;
+    col witness temp2;
+    col witness temp3;
     
-    col witness valuable;
-    valuable = middle * middle;
+    // Output columns (results that aren't used to compute other columns)
+    col witness output1;
+    col witness output2;
     
-    // Usage of columns
-    early + a = 10;
-    middle + a = 20;
-    valuable + a = 30;
-"#;
+    // Constraints that define intermediate columns
+    temp1 = input1 + input2;
+    temp2 = input1 * input2;
+    temp3 = temp1 + temp2;
+    
+    // Constraints that define output columns
+    output1 = temp1 * temp3;
+    output2 = temp2 * temp3;
+    "#;
 
     let expectation = r#"namespace N(65536);
-    col witness a;
-    col early = N::a * N::a;
-    col witness middle;
-    N::middle = N::early * N::a;
-    col valuable = N::middle * N::middle;
-    N::early + N::a = 10;
-    N::middle + N::a = 20;
-    N::valuable + N::a = 30;
+    col witness input1;
+    col witness input2;
+    col temp1 = N::input1 + N::input2;
+    col temp2 = N::input1 * N::input2;
+    col witness temp3;
+    col witness output1;
+    col witness output2;
+    N::temp3 = N::temp1 + N::temp2;
+    N::output1 = N::temp1 * N::temp3;
+    N::output2 = N::temp2 * N::temp3;
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
+    println!("Optimized: {optimized}");
     assert_eq!(optimized, expectation);
 }
 
 #[test]
-fn preserve_input_output_witnesses() {
-    let input = r#"namespace N(65536);
-    col witness input_only;
-    col witness output_only;
-    col witness both_io;
-    col witness regular;
+fn mixed_optimization_scenario() {
+    let input = r#"
+    namespace N(65536);
     
-    // input_only never appears as a standalone witness column (it's always part of an operation)
-    regular = input_only + 5;
-    output_only = input_only * 2;
+    // Input columns
+    col witness input1;
+    col witness input2;
     
-    // output_only only appears as a standalone variable on one side of constraints
-    output_only = regular + 3;
-    output_only = input_only * 2;
+    // Intermediate columns
+    col witness temp1;
+    col witness temp2;
+    col witness temp3;
     
-    // both_io appears on both sides
-    both_io = regular + 1;
-    regular = both_io + 2;
+    // Output column
+    col witness output;
     
-    // regular appears on both sides
-    regular = input_only + 5;
-    output_only = regular + 3;
-"#;
+    // Simple constraints that can be inlined
+    temp1 = input1 + 5;
+    temp2 = input2 * 3;
+    temp3 = temp1 * temp2;
+    
+    // Output definition
+    output = temp3 + input1;
+    "#;
 
-    // In the expected result:
-    // - input_only should be preserved because it's exclusively an input
-    // - output_only should be preserved because it's exclusively an output
-    // - both_io and regular can be optimized if they meet other conditions
     let expectation = r#"namespace N(65536);
-    col witness input_only;
-    col witness output_only;
-    col both_io = N::regular + 1;
-    col regular = N::input_only + 5;
-    N::output_only = N::input_only * 2;
-    N::output_only = N::regular + 3;
-    N::regular = N::both_io + 2;
-    N::regular = N::input_only + 5;
+    col witness input1;
+    col witness input2;
+    col temp1 = N::input1 + 5;
+    col temp2 = N::input2 * 3;
+    col temp3 = N::temp1 * N::temp2;
+    col witness output;
+    N::output = N::temp3 + N::input1;
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();

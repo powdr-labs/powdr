@@ -32,11 +32,11 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>, max_degree: usize) -
         simplify_identities(&mut pil_file);
         extract_constant_lookups(&mut pil_file);
         replace_constrained_witness_columns(&mut pil_file, max_degree);
-        remove_constant_witness_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
         inline_trivial_intermediate_polynomials(&mut pil_file);
         remove_trivial_identities(&mut pil_file);
         remove_duplicate_identities(&mut pil_file);
+        remove_constant_witness_columns(&mut pil_file);
 
         let new_hash = hash_pil_state(&pil_file);
         if pil_hash == new_hash {
@@ -921,133 +921,6 @@ fn try_to_boolean_constrained<T: FieldElement>(id: &Identity<T>) -> Option<PolyI
     }
 }
 
-/// Collects polynomial IDs that are exclusively inputs or exclusively outputs in the PIL file.
-///
-/// A witness column is considered an input if it is never used as a single witness column
-/// in any side of any identity (i.e., it only appears in complex expressions).
-///
-/// A witness column is considered an output if it is only used as a single witness column
-/// in any side of any identity (i.e., it never appears in complex expressions).
-fn collect_inputs_outputs_ids<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<PolyID> {
-    pil_file
-        .committed_polys_in_source_order()
-        .filter_map(|(symbol, _)| {
-            let elements: Vec<_> = symbol.array_elements().collect();
-            if elements.len() == 1 {
-                let (_, poly_id) = elements[0];
-                let is_input_poly = is_input(poly_id, &pil_file.identities);
-                let is_output_poly = is_output(poly_id, &pil_file.identities);
-
-                if is_input_poly ^ is_output_poly {
-                    return Some(poly_id);
-                }
-            }
-            None
-        })
-        .collect()
-}
-
-/// Returns `true` if the given poly_id is never used as a single witness column in any side of any identity.
-/// poly_id = other_poly1 + other_poly2 returns `true`
-/// poly_id + other_poly1 = other_poly2 returns `false`
-fn is_input<T: FieldElement>(id: PolyID, identities: &[Identity<T>]) -> bool {
-    for identity in identities {
-        if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = identity {
-            let (a, b) = match expression {
-                AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                    left: a,
-                    op: AlgebraicBinaryOperator::Sub,
-                    right: b,
-                }) => (a, b),
-                _ => continue,
-            };
-
-            match a.as_ref() {
-                AlgebraicExpression::Reference(AlgebraicReference {
-                    poly_id: ref_id,
-                    next: false,
-                    ..
-                }) if *ref_id == id => return false,
-                _ => {}
-            }
-
-            match b.as_ref() {
-                AlgebraicExpression::Reference(AlgebraicReference {
-                    poly_id: ref_id,
-                    next: false,
-                    ..
-                }) if *ref_id == id => return false,
-                _ => {}
-            }
-        } else {
-            continue;
-        };
-    }
-    true
-}
-
-/// Returns `true` if the given poly_id is only used as a single witness column in any side of any identity.
-/// poly_id = other_poly1 + other_poly2 returns `false`
-/// poly_id + other_poly1 = other_poly2 returns `true`
-fn is_output<T: FieldElement>(id: PolyID, identities: &[Identity<T>]) -> bool {
-    let mut is_output = true;
-    for identity in identities {
-        if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = identity {
-            let (a, b) = match expression {
-                AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                    left: a,
-                    op: AlgebraicBinaryOperator::Sub,
-                    right: b,
-                }) => (a, b),
-                _ => continue,
-            };
-
-            match a.as_ref() {
-                AlgebraicExpression::Reference(AlgebraicReference {
-                    poly_id: _,
-                    next: false,
-                    ..
-                }) => {}
-                a => a.pre_visit_expressions(&mut |e| {
-                    if let AlgebraicExpression::Reference(AlgebraicReference {
-                        poly_id: ref_id,
-                        next: false,
-                        ..
-                    }) = e
-                    {
-                        if *ref_id == id {
-                            is_output = false;
-                        }
-                    }
-                }),
-            };
-
-            match b.as_ref() {
-                AlgebraicExpression::Reference(AlgebraicReference {
-                    poly_id: _,
-                    next: false,
-                    ..
-                }) => {}
-                b => b.pre_visit_expressions(&mut |e| {
-                    if let AlgebraicExpression::Reference(AlgebraicReference {
-                        poly_id: ref_id,
-                        next: false,
-                        ..
-                    }) = e
-                    {
-                        if *ref_id == id {
-                            is_output = false;
-                        }
-                    }
-                }),
-            };
-        } else {
-            continue;
-        };
-    }
-    is_output
-}
-
 /// Identifies witness columns that are constrained to expressions of degree <= MAX_DEGREE, and
 /// replaces the witness column with an intermediate polynomial.
 /// max_degree: Maximum allowed polynomial degree after applying a substitution
@@ -1069,7 +942,7 @@ fn replace_constrained_witness_columns<T: FieldElement>(
         .filter_map(|id| try_to_boolean_constrained(id))
         .collect::<HashSet<_>>();
 
-    let inputs_outputs = collect_inputs_outputs_ids(pil_file);
+    let inputs_outputs = identify_inputs_and_outputs(pil_file);
 
     let keep = pil_file
         .committed_polys_in_source_order()
@@ -1159,6 +1032,319 @@ fn replace_constrained_witness_columns<T: FieldElement>(
             }
         }
     }
+}
+
+/// Identifies input and output columns that should not be transformed into intermediate polynomials.
+/// Uses a constraint propagation algorithm to build a dependency graph
+/// and identify columns with clear roles in the constraint system.
+fn identify_inputs_and_outputs<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<PolyID> {
+    // Get all witness columns
+    let all_witness_columns: HashSet<PolyID> = pil_file
+        .committed_polys_in_source_order()
+        .flat_map(|(symbol, _)| symbol.array_elements().map(|(_, id)| id))
+        .collect();
+
+    // Build a map of constraints and the variables that can be isolated from each
+    let mut constraint_options = Vec::new();
+    //let intermediate_definitions = pil_file.intermediate_definitions();
+
+    // Track which variables are solvable in each constraint
+    for (idx, identity) in pil_file.identities.iter().enumerate() {
+        if let Identity::Polynomial(identity) = identity {
+            // Extract all witness columns in this constraint
+            let mut columns_in_constraint = HashSet::new();
+            identity.expression.pre_visit_expressions(&mut |e| {
+                if let AlgebraicExpression::Reference(AlgebraicReference {
+                    poly_id,
+                    next: false,
+                    ..
+                }) = e
+                {
+                    if poly_id.ptype == PolynomialType::Committed {
+                        columns_in_constraint.insert(*poly_id);
+                    }
+                }
+            });
+
+            // For each column, check if it can be isolated in this constraint
+            let solvable_columns: Vec<_> = columns_in_constraint
+                .iter()
+                .filter(|&&poly_id| is_solvable_for(&identity.expression, poly_id))
+                .cloned()
+                .collect();
+
+            if !solvable_columns.is_empty() {
+                constraint_options.push((idx, identity, solvable_columns));
+            }
+        }
+    }
+
+    // Build a dependency graph between columns
+    let mut dependencies: HashMap<PolyID, HashSet<PolyID>> = HashMap::new();
+    let mut defined_by: HashMap<PolyID, usize> = HashMap::new(); // Maps column to constraint that defines it
+
+    // Greedy algorithm to select which columns to inline
+    let mut inlined_columns = HashSet::new();
+    let mut used_constraints = HashSet::new();
+
+    // TODO: Maybe a big part of this can be moved to the ain function?
+    loop {
+        let mut best_candidate = None;
+
+        // Find the best column to inline next
+        for &(idx, identity, ref solvable_columns) in &constraint_options {
+            if used_constraints.contains(&idx) {
+                continue; // Skip constraints we've already used
+            }
+
+            for &column in solvable_columns {
+                if inlined_columns.contains(&column) {
+                    continue; // Skip columns we've already decided to inline
+                }
+
+                // Check if this would create a dependency cycle
+                let mut simulated_deps = dependencies.clone();
+                let expr = extract_expression_for_column(&identity.expression, column);
+
+                if let Some(expr) = expr {
+                    // Add dependencies for this potential substitution
+                    let mut deps = HashSet::new();
+                    expr.pre_visit_expressions(&mut |e| {
+                        if let AlgebraicExpression::Reference(AlgebraicReference {
+                            poly_id,
+                            next: false,
+                            ..
+                        }) = e
+                        {
+                            if poly_id.ptype == PolynomialType::Committed && *poly_id != column {
+                                deps.insert(*poly_id);
+                            }
+                        }
+                    });
+
+                    // Update the dependency graph
+                    for &dep in &deps {
+                        simulated_deps.entry(dep).or_default().insert(column);
+                    }
+
+                    // Check for cycles
+                    if !has_cycles(&simulated_deps) {
+                        // This is a valid candidate
+                        // TODO: Greedy, change to select the best column
+                        best_candidate = Some((idx, column, deps));
+                        break;
+                    }
+                }
+            }
+
+            if best_candidate.is_some() {
+                break;
+            }
+        }
+
+        if let Some((idx, column, deps)) = best_candidate {
+            // Apply this substitution
+            inlined_columns.insert(column);
+            used_constraints.insert(idx);
+            defined_by.insert(column, idx);
+
+            // Update the dependency graph
+            for &dep in &deps {
+                dependencies.entry(dep).or_default().insert(column);
+            }
+        } else {
+            // No more valid substitutions found
+            break;
+        }
+    }
+
+    // Identify input columns (not inlined and not dependent on other columns)
+    let mut inputs = HashSet::new();
+    for &column in &all_witness_columns {
+        if !inlined_columns.contains(&column)
+            && !dependencies.values().any(|deps| deps.contains(&column))
+        {
+            inputs.insert(column);
+        }
+    }
+
+    // Identify output columns (inlined but not used to define other columns)
+    let mut outputs = HashSet::new();
+    for &column in &inlined_columns {
+        if !dependencies.contains_key(&column) || dependencies[&column].is_empty() {
+            outputs.insert(column);
+        }
+    }
+
+    // Combine inputs and outputs
+    // TODO: Maybe return inlined_columns directly?
+    let mut result = HashSet::new();
+    result.extend(inputs.clone());
+    result.extend(outputs.clone());
+
+    log::debug!(
+        "Identified {} inputs and {} outputs that should be preserved",
+        inputs.len(),
+        outputs.len()
+    );
+
+    result
+}
+
+/// Checks if a column can be isolated in an expression (appears exactly once and not in a product)
+fn is_solvable_for<T: FieldElement>(expr: &AlgebraicExpression<T>, target: PolyID) -> bool {
+    let mut appearances = 0;
+    let mut is_solvable = true;
+
+    expr.pre_visit_expressions(&mut |e| {
+        match e {
+            AlgebraicExpression::Reference(AlgebraicReference {
+                poly_id,
+                next: false,
+                ..
+            }) if *poly_id == target => {
+                appearances += 1;
+            }
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left,
+                op: AlgebraicBinaryOperator::Mul,
+                right,
+            }) => {
+                // Check if both sides contain the target variable
+                let mut left_contains = false;
+                let mut right_contains = false;
+
+                left.pre_visit_expressions(&mut |e| {
+                    if let AlgebraicExpression::Reference(AlgebraicReference {
+                        poly_id,
+                        next: false,
+                        ..
+                    }) = e
+                    {
+                        if *poly_id == target {
+                            left_contains = true;
+                        }
+                    }
+                });
+
+                right.pre_visit_expressions(&mut |e| {
+                    if let AlgebraicExpression::Reference(AlgebraicReference {
+                        poly_id,
+                        next: false,
+                        ..
+                    }) = e
+                    {
+                        if *poly_id == target {
+                            right_contains = true;
+                        }
+                    }
+                });
+
+                // If both sides contain the target, it's not solvable
+                if left_contains && right_contains {
+                    is_solvable = false;
+                }
+            }
+            _ => {}
+        }
+    });
+
+    // A column is solvable if it appears exactly once and is not in a product with itself
+    appearances == 1 && is_solvable
+}
+
+/// Extracts the expression that defines a column from a constraint
+fn extract_expression_for_column<T: FieldElement>(
+    expr: &AlgebraicExpression<T>,
+    target: PolyID,
+) -> Option<AlgebraicExpression<T>> {
+    // Handle the common case of "column - expression = 0" or "expression - column = 0"
+    if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+        left,
+        op: AlgebraicBinaryOperator::Sub,
+        right,
+    }) = expr
+    {
+        // Case: column - expression = 0
+        if let AlgebraicExpression::Reference(AlgebraicReference {
+            poly_id,
+            next: false,
+            ..
+        }) = left.as_ref()
+        {
+            if *poly_id == target {
+                return Some(right.as_ref().clone());
+            }
+        }
+
+        // Case: expression - column = 0
+        if let AlgebraicExpression::Reference(AlgebraicReference {
+            poly_id,
+            next: false,
+            ..
+        }) = right.as_ref()
+        {
+            if *poly_id == target {
+                // Negate the expression since we have "expression - column = 0"
+                return Some(
+                    AlgebraicUnaryOperation {
+                        op: AlgebraicUnaryOperator::Minus,
+                        expr: Box::new(left.as_ref().clone()),
+                    }
+                    .into(),
+                );
+            }
+        }
+    }
+
+    // TODO: Basic case, needs to be improved
+    None
+}
+
+/// Checks if a dependency graph has cycles using depth-first search
+fn has_cycles<T: Eq + Hash + Copy>(graph: &HashMap<T, HashSet<T>>) -> bool {
+    let mut visited = HashSet::new();
+    let mut path = HashSet::new();
+
+    for &node in graph.keys() {
+        if !visited.contains(&node) {
+            if has_cycle_dfs(node, graph, &mut visited, &mut path) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+/// Helper function for cycle detection using DFS
+fn has_cycle_dfs<T: Eq + Hash + Copy>(
+    node: T,
+    graph: &HashMap<T, HashSet<T>>,
+    visited: &mut HashSet<T>,
+    path: &mut HashSet<T>,
+) -> bool {
+    if path.contains(&node) {
+        return true;
+    }
+
+    if visited.contains(&node) {
+        return false;
+    }
+
+    visited.insert(node);
+    path.insert(node);
+
+    if let Some(neighbors) = graph.get(&node) {
+        for &neighbor in neighbors {
+            if has_cycle_dfs(neighbor, graph, visited, path) {
+                return true;
+            }
+        }
+    }
+
+    path.remove(&node);
+    false
 }
 
 /// Checks if a substitution is valid for all affected constraints.
