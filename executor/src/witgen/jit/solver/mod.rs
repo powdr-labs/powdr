@@ -29,6 +29,7 @@ struct VariableState<T: FieldElement, V> {
     symbolic_expression: Option<SymbolicExpression<T, V>>,
 }
 
+// We could derive it, but then we'd have to require that `V: Default`.
 impl<T: FieldElement, V> Default for VariableState<T, V> {
     fn default() -> Self {
         VariableState {
