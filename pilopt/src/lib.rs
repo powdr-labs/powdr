@@ -1067,13 +1067,14 @@ fn identify_inputs_and_outputs<T: FieldElement>(pil_file: &Analyzed<T>) -> HashS
             });
 
             // For each column, check if it can be isolated in this constraint
-            let solvable_columns: Vec<_> = columns_in_constraint
+            let mut solvable_columns: Vec<_> = columns_in_constraint
                 .iter()
                 .filter(|&&poly_id| is_solvable_for(&identity.expression, poly_id))
                 .cloned()
                 .collect();
 
             if !solvable_columns.is_empty() {
+                solvable_columns.sort_by_key(|poly_id| poly_id.id);
                 constraint_options.push((idx, identity, solvable_columns));
             }
         }
@@ -1087,7 +1088,7 @@ fn identify_inputs_and_outputs<T: FieldElement>(pil_file: &Analyzed<T>) -> HashS
     let mut inlined_columns = HashSet::new();
     let mut used_constraints = HashSet::new();
 
-    // TODO: Maybe a big part of this can be moved to the ain function?
+    // TODO: Maybe a big part of this can be moved to the main function?
     loop {
         let mut best_candidate = None;
 
@@ -1295,10 +1296,167 @@ fn extract_expression_for_column<T: FieldElement>(
                 );
             }
         }
+
+        // Check if target is in left side only
+        let left_contains = contains_target(left.as_ref(), target);
+        let right_contains = contains_target(right.as_ref(), target);
+
+        if left_contains && !right_contains {
+            // If target is only in left side, try to extract it
+            if try_extract_from_expression(left.as_ref(), target).is_some() {
+                // We found a way to isolate the target in the left expression
+                // If left_expr = extracted_expr, then extracted_expr = right
+                return Some(right.as_ref().clone());
+            }
+        } else if !left_contains && right_contains {
+            // If target is only in right side, try to extract it
+            if try_extract_from_expression(right.as_ref(), target).is_some() {
+                // We found a way to isolate the target in the right expression
+                // If right_expr = extracted_expr, then extracted_expr = left
+                return Some(
+                    AlgebraicUnaryOperation {
+                        op: AlgebraicUnaryOperator::Minus,
+                        expr: Box::new(left.as_ref().clone()),
+                    }
+                    .into(),
+                );
+            }
+        }
     }
 
-    // TODO: Basic case, needs to be improved
     None
+}
+
+/// Checks if an expression contains the target poly_id
+fn contains_target<T: FieldElement>(expr: &AlgebraicExpression<T>, target: PolyID) -> bool {
+    let mut found = false;
+    expr.pre_visit_expressions(&mut |e| {
+        if let AlgebraicExpression::Reference(AlgebraicReference {
+            poly_id,
+            next: false,
+            ..
+        }) = e
+        {
+            if *poly_id == target {
+                found = true;
+            }
+        }
+    });
+    found
+}
+
+/// Tries to extract the target from an expression
+/// Returns Some(expr) if the expression can be rewritten as "target = expr"
+fn try_extract_from_expression<T: FieldElement>(
+    expr: &AlgebraicExpression<T>,
+    target: PolyID,
+) -> Option<AlgebraicExpression<T>> {
+    match expr {
+        // Direct reference to target
+        AlgebraicExpression::Reference(AlgebraicReference {
+            poly_id,
+            next: false,
+            ..
+        }) if *poly_id == target => {
+            // If we have just the target, it equals itself
+            Some(AlgebraicExpression::Number(T::one()))
+        }
+
+        // Handle unary negation: -expr
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+            op: AlgebraicUnaryOperator::Minus,
+            expr: inner,
+        }) => {
+            try_extract_from_expression(inner, target).map(|extracted| {
+                // If inner = extracted, then -inner = -extracted
+                AlgebraicUnaryOperation {
+                    op: AlgebraicUnaryOperator::Minus,
+                    expr: Box::new(extracted),
+                }
+                .into()
+            })
+        }
+
+        // Handle addition: expr1 + expr2
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Add,
+            right,
+        }) => {
+            let left_contains = contains_target(left, target);
+            let right_contains = contains_target(right, target);
+
+            if left_contains && !right_contains {
+                // If target is only in left side
+                try_extract_from_expression(left, target).map(|extracted| {
+                    // If left = extracted, then left + right = extracted + right
+                    // So extracted = left + right - right = left
+                    AlgebraicBinaryOperation {
+                        left: Box::new(extracted),
+                        op: AlgebraicBinaryOperator::Sub,
+                        right: right.clone(),
+                    }
+                    .into()
+                })
+            } else if !left_contains && right_contains {
+                // If target is only in right side
+                try_extract_from_expression(right, target).map(|extracted| {
+                    // If right = extracted, then left + right = left + extracted
+                    // So extracted = left + right - left = right
+                    AlgebraicBinaryOperation {
+                        left: Box::new(extracted),
+                        op: AlgebraicBinaryOperator::Sub,
+                        right: left.clone(),
+                    }
+                    .into()
+                })
+            } else {
+                // Target is in both sides or neither - can't extract
+                None
+            }
+        }
+
+        // Handle subtraction: expr1 - expr2
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left,
+            op: AlgebraicBinaryOperator::Sub,
+            right,
+        }) => {
+            let left_contains = contains_target(left, target);
+            let right_contains = contains_target(right, target);
+
+            if left_contains && !right_contains {
+                // If target is only in left side
+                try_extract_from_expression(left, target).map(|extracted| {
+                    // If left = extracted, then left - right = extracted - right
+                    // So extracted = left - right + right = left
+                    AlgebraicBinaryOperation {
+                        left: Box::new(extracted),
+                        op: AlgebraicBinaryOperator::Add,
+                        right: right.clone(),
+                    }
+                    .into()
+                })
+            } else if !left_contains && right_contains {
+                // If target is only in right side
+                try_extract_from_expression(right, target).map(|extracted| {
+                    // If right = extracted, then left - right = left - extracted
+                    // So extracted = right = left - (left - right) = right
+                    AlgebraicBinaryOperation {
+                        left: left.clone(),
+                        op: AlgebraicBinaryOperator::Sub,
+                        right: Box::new(extracted),
+                    }
+                    .into()
+                })
+            } else {
+                // Target is in both sides or neither - can't extract
+                None
+            }
+        }
+
+        _ => None,
+    }
 }
 
 /// Checks if a dependency graph has cycles using depth-first search

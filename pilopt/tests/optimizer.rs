@@ -11,19 +11,23 @@ fn replace_fixed() {
     col fixed zero = [0]*;
     col witness X;
     col witness Y;
+    col witness Z;
     query |i| {
         let _ = one;
     };
-    X = X * zero - zero + Y;
+    Z = one * one;
+    X = X * zero - zero + Y + Z;
     Y = zero * Y + 7 * X;
 "#;
 
     let expectation = r#"namespace N(65536);
+    col witness X;
     col witness Y;
     query |i| {
         let _: expr = 1_expr;
     };
-    N::Y = 7 * N::Y;
+    N::X = N::Y + 1;
+    N::Y = 7 * N::X;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
@@ -432,16 +436,20 @@ fn equal_constrained_array_elements() {
     let input = r#"namespace N(65536);
         col witness w[20];
         col witness x;
+        col witness y;
         w[4] = w[7];
         w[3] = w[5];
         x = w[3];
-        w[7] + w[1] + x = 5;
+        y = x;
+        w[7] + w[1] + x + y = 5;
     "#;
     let expectation = r#"namespace N(65536);
     col witness w[20];
+    col witness y;
     N::w[4] = N::w[7];
     N::w[3] = N::w[5];
-    N::w[7] + N::w[1] + N::w[3] = 5;
+    N::y = N::w[3];
+    N::w[7] + N::w[1] + N::w[3] + N::y = 5;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
@@ -458,8 +466,10 @@ fn equal_constrained_transitive() {
         a + b + c = 5;
     "#;
     let expectation = r#"namespace N(65536);
+    col witness a;
     col witness c;
-    N::c + N::c + N::c = 5;
+    N::a = N::c;
+    N::a + N::c + N::c = 5;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
@@ -557,11 +567,11 @@ fn basic_degree_limit_substitution() {
     linear + y = 10; 
     
     col witness quad;
-    quad = linear * x;
+    quad = x * x;
     quad + y = 15;   
 
     col witness cubic; // output
-    cubic = x * quad * x;
+    cubic = x * quad + linear;
     cubic + y = 20;  
 "#;
     let expectation = r#"namespace N(65536);
@@ -570,11 +580,10 @@ fn basic_degree_limit_substitution() {
     col linear = N::x + N::y;
     N::linear * N::x = 5;
     N::linear + N::y = 10;
-    col witness quad;
-    N::quad = N::linear * N::x;
+    col quad = N::x * N::x;
     N::quad + N::y = 15;
     col witness cubic;
-    N::cubic = N::x * N::quad * N::x;
+    N::cubic = N::x * N::quad + N::linear;
     N::cubic + N::y = 20;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
@@ -702,7 +711,6 @@ fn preserve_inputs_and_outputs() {
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
-    println!("Optimized: {optimized}");
     assert_eq!(optimized, expectation);
 }
 
@@ -735,10 +743,11 @@ fn mixed_optimization_scenario() {
     let expectation = r#"namespace N(65536);
     col witness input1;
     col witness input2;
-    col temp1 = N::input1 + 5;
+    col witness temp1;
     col temp2 = N::input2 * 3;
     col temp3 = N::temp1 * N::temp2;
     col witness output;
+    N::temp1 = N::input1 + 5;
     N::output = N::temp3 + N::input1;
 "#;
 
