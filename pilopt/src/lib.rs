@@ -1465,10 +1465,8 @@ fn has_cycles(graph: &BTreeMap<PolyID, BTreeSet<PolyID>>) -> bool {
     let mut path = BTreeSet::new();
 
     for &node in graph.keys() {
-        if !visited.contains(&node) {
-            if has_cycle_dfs(node, graph, &mut visited, &mut path) {
-                return true;
-            }
+        if !visited.contains(&node) && has_cycle_dfs(node, graph, &mut visited, &mut path) {
+            return true;
         }
     }
 
