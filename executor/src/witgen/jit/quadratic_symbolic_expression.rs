@@ -193,6 +193,13 @@ pub trait RangeConstraintProvider<T: FieldElement, V> {
     fn get(&self, var: &V) -> RangeConstraint<T>;
 }
 
+pub struct NoRangeConstraints;
+impl<T: FieldElement, V> RangeConstraintProvider<T, V> for NoRangeConstraints {
+    fn get(&self, _var: &V) -> RangeConstraint<T> {
+        RangeConstraint::default()
+    }
+}
+
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExpression<T, V> {
     /// Solves the equation `self = 0` and returns how to compute the solution.
     /// The solution can contain assignments to multiple variables.
@@ -205,7 +212,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
         Ok(if self.is_quadratic() {
-            if let Some(r) = self.try_detect_bit_constraint() {
+            if let Some(r) = self.try_detect_range_constraint() {
                 return Ok(r);
             } else {
                 ProcessResult::empty()
@@ -411,58 +418,52 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         Some(Effect::RangeConstraint(solve_for.clone(), constraint))
     }
 
-    /// Tries to detect a bit constraint of the form `X * (X - 1) = 0`.
+    /// Tries to detect a range constraint of the form `(X - value1) * (X - value2) = 0`.
+    /// The most common example would be a bit constraint.
     /// In that case, we can return a range constraint for `X` and mark the
     /// constraint as complete.
-    // TODO: This function would not detect many equivalent constraints, like
-    // `X * X - X` or `5 * X * (3 * X - 3) = 0`.
+    // TODO: This function would not detect some equivalent constraints, like
+    // `X * X - X`.
     // This could be fixed by finding a canonical form for the quadratic
     // expression, and normalizing the constants.
-    fn try_detect_bit_constraint(&self) -> Option<ProcessResult<T, V>> {
-        // Bit range constraints can be implemented as `X * (X - 1) = 0`.
+    fn try_detect_range_constraint(&self) -> Option<ProcessResult<T, V>> {
         if !self.linear.is_empty() || !self.constant.is_known_zero() || self.quadratic.len() != 1 {
             return None;
         }
 
-        // Looking for `X * (X - 1)`
         let (factor1, factor2) = &self.quadratic[0];
+        let (var1, value1) = factor1.try_solve_constant_assignment()?;
+        let (var2, value2) = factor2.try_solve_constant_assignment()?;
 
-        // Check if factor1 is of the form `X`
-        let variable = {
-            if factor1.is_quadratic()
-                || !factor1.constant.is_known_zero()
-                || factor1.linear.len() != 1
-            {
-                return None;
-            }
-            let (var, factor) = factor1.linear.iter().next().unwrap();
-            if !factor.is_known_one() {
-                return None;
-            }
-            var.clone()
-        };
-
-        // Check if factor2 is of the form `X - 1`
-        {
-            if factor2.is_quadratic() || factor2.linear.len() != 1 {
-                return None;
-            }
-            let (var, factor) = factor2.linear.iter().next().unwrap();
-            if !factor.is_known_one() || var != &variable {
-                return None;
-            }
-            let offset = factor2.constant.try_to_number()?;
-            if offset != T::from(-1) {
-                return None;
-            }
+        if var1 == var2 {
+            let range_constraint = RangeConstraint::from_value(value1)
+                .disjunction(&RangeConstraint::from_value(value2));
+            Some(ProcessResult {
+                effects: vec![Effect::RangeConstraint(var1, range_constraint)],
+                complete: true,
+            })
+        } else {
+            None
         }
+    }
 
-        // We have a boolean range constraint, return the effect and mark the constraint as complete.
-        let range_constraint = RangeConstraint::from_mask(1);
-        Some(ProcessResult {
-            effects: vec![Effect::RangeConstraint(variable, range_constraint)],
-            complete: true,
-        })
+    /// Tries to solve a constant assignment of the form `X = a`.
+    fn try_solve_constant_assignment(&self) -> Option<(V, T)> {
+        if self.is_quadratic() || self.linear.len() != 1 {
+            return None;
+        }
+        match self.solve(&NoRangeConstraints).ok()? {
+            ProcessResult {
+                effects,
+                complete: true,
+            } if effects.len() == 1 => {
+                if let Effect::Assignment(var, expr) = &effects[0] {
+                    return Some((var.clone(), expr.try_to_number()?));
+                }
+            }
+            _ => {}
+        }
+        None
     }
 }
 
@@ -744,13 +745,6 @@ mod tests {
         assert_eq!(t.to_string(), "7 * Y");
     }
 
-    struct NoRangeConstraints;
-    impl RangeConstraintProvider<GoldilocksField, &'static str> for NoRangeConstraints {
-        fn get(&self, _var: &&'static str) -> RangeConstraint<GoldilocksField> {
-            RangeConstraint::default()
-        }
-    }
-
     impl RangeConstraintProvider<GoldilocksField, &'static str>
         for HashMap<&'static str, RangeConstraint<GoldilocksField>>
     {
@@ -966,16 +960,28 @@ Z: [10, 4294967050] & 0xffffffff;
     #[test]
     fn detect_bit_constraint() {
         let a = Qse::from_unknown_variable("a");
-        let constraint = a.clone() * (a - Qse::from(GoldilocksField::from(1)));
-        let result = constraint.solve(&NoRangeConstraints).unwrap();
-        assert!(result.complete);
-        let [effect] = &result.effects[..] else {
-            panic!();
-        };
-        let Effect::RangeConstraint(var, rc) = effect else {
-            panic!();
-        };
-        assert_eq!(var.to_string(), "a");
-        assert_eq!(rc, &RangeConstraint::from_mask(1u64));
+        let one = Qse::from(GoldilocksField::from(1));
+        let three = Qse::from(GoldilocksField::from(3));
+        let five = Qse::from(GoldilocksField::from(5));
+
+        // All these constraints should be equivalent to a bit constraint.
+        let constraints = [
+            a.clone() * (a.clone() - one.clone()),
+            (a.clone() - one.clone()) * a.clone(),
+            (three * a.clone()) * (five.clone() * a.clone() - five),
+        ];
+
+        for constraint in constraints {
+            let result = constraint.solve(&NoRangeConstraints).unwrap();
+            assert!(result.complete);
+            let [effect] = &result.effects[..] else {
+                panic!();
+            };
+            let Effect::RangeConstraint(var, rc) = effect else {
+                panic!();
+            };
+            assert_eq!(var.to_string(), "a");
+            assert_eq!(rc, &RangeConstraint::from_mask(1u64));
+        }
     }
 }
