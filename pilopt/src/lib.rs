@@ -31,12 +31,12 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>, max_degree: usize) -
         deduplicate_fixed_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
         extract_constant_lookups(&mut pil_file);
-        replace_constrained_witness_columns(&mut pil_file, max_degree);
+        remove_constant_witness_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
         inline_trivial_intermediate_polynomials(&mut pil_file);
         remove_trivial_identities(&mut pil_file);
         remove_duplicate_identities(&mut pil_file);
-        remove_constant_witness_columns(&mut pil_file);
+        replace_constrained_witness_columns(&mut pil_file, max_degree);
 
         let new_hash = hash_pil_state(&pil_file);
         if pil_hash == new_hash {
@@ -1039,7 +1039,7 @@ fn replace_constrained_witness_columns<T: FieldElement>(
 /// and identify columns with clear roles in the constraint system.
 fn identify_inputs_and_outputs<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<PolyID> {
     // Get all witness columns
-    let all_witness_columns: HashSet<PolyID> = pil_file
+    let all_witness_columns: BTreeSet<PolyID> = pil_file
         .committed_polys_in_source_order()
         .flat_map(|(symbol, _)| symbol.array_elements().map(|(_, id)| id))
         .collect();
@@ -1108,10 +1108,11 @@ fn identify_inputs_and_outputs<T: FieldElement>(pil_file: &Analyzed<T>) -> HashS
                         ..
                     }) = e
                     {
-                        if poly_id.ptype == PolynomialType::Committed && *poly_id != column {
-                            if !deps.contains(poly_id) {
-                                deps.push(*poly_id);
-                            }
+                        if poly_id.ptype == PolynomialType::Committed
+                            && *poly_id != column
+                            && !deps.contains(poly_id)
+                        {
+                            deps.push(*poly_id);
                         }
                     }
                 });
