@@ -11,23 +11,19 @@ fn replace_fixed() {
     col fixed zero = [0]*;
     col witness X;
     col witness Y;
-    col witness Z;
     query |i| {
         let _ = one;
     };
-    Z = one * one;
-    X = X * zero - zero + Y + Z;
+    X = X * zero - zero + Y;
     Y = zero * Y + 7 * X;
 "#;
 
     let expectation = r#"namespace N(65536);
-    col witness X;
     col witness Y;
     query |i| {
         let _: expr = 1_expr;
     };
-    N::X = N::Y + 1;
-    N::Y = 7 * N::X;
+    N::Y = 7 * N::Y;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
@@ -753,4 +749,42 @@ fn mixed_optimization_scenario() {
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
     assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn temp() {
+    let input = r#"
+    col witness X;
+    col witness Y;
+    col witness Z;
+    col witness R;
+    // We introduce an underconstrained column which we set to 1 at runtime.
+    // This is hacky and unsafe, but it enables blocking the max_degree constraint optimizer from removing the entire program
+
+    // Compute X = Y / Z, i.e.
+    // X * Z + R = Y, where 0 <= R < Z
+
+    Z = 3;
+    Y = 13;
+
+    X * Z + R = Y;
+    Z - R - 1 = Y_b1 + Y_b2 * 0x100;
+    X =  X_b1 + X_b2 * 0x100;
+    R =  R_b1 + R_b2 * 0x100;
+
+    col witness Y_b1;
+    col witness Y_b2;
+    col witness X_b1;
+    col witness X_b2;
+    col witness R_b1;
+    col witness R_b2;
+
+    // now the check:
+    col fixed CHECK = [0, 0, 0, 0, 0] + [1] + [0]*;
+    CHECK * (X - 4) = 0;
+    CHECK * (R - 1) = 0;
+"#;
+
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap(), 3).to_string();
+    println!("Optimized:\n{optimized}");
 }

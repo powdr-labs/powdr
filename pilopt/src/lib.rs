@@ -1039,14 +1039,13 @@ fn replace_constrained_witness_columns<T: FieldElement>(
 /// and identify columns with clear roles in the constraint system.
 fn identify_inputs_and_outputs<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<PolyID> {
     // Get all witness columns
-    let all_witness_columns: BTreeSet<PolyID> = pil_file
+    let all_witness_columns: HashSet<PolyID> = pil_file
         .committed_polys_in_source_order()
         .flat_map(|(symbol, _)| symbol.array_elements().map(|(_, id)| id))
         .collect();
 
     // Build a map of constraints and the variables that can be isolated from each
     let mut constraint_options = Vec::new();
-    //let intermediate_definitions = pil_file.intermediate_definitions();
 
     // Track which variables are solvable in each constraint
     for (idx, identity) in pil_file.identities.iter().enumerate() {
@@ -1073,89 +1072,88 @@ fn identify_inputs_and_outputs<T: FieldElement>(pil_file: &Analyzed<T>) -> HashS
                 .cloned()
                 .collect();
 
+            // Sort solvable_columns to ensure deterministic behavior
+            solvable_columns.sort_by_key(|poly_id| (poly_id.id, poly_id.ptype as u8));
+
             if !solvable_columns.is_empty() {
-                solvable_columns.sort_by_key(|poly_id| poly_id.id);
                 constraint_options.push((idx, identity, solvable_columns));
             }
         }
     }
 
+    // Sort constraint_options by idx to ensure deterministic behavior
+    constraint_options.sort_by_key(|(idx, _, _)| *idx);
+
     // Build a dependency graph between columns
     let mut dependencies: BTreeMap<PolyID, BTreeSet<PolyID>> = BTreeMap::new();
     let mut defined_by: BTreeMap<PolyID, usize> = BTreeMap::new(); // Maps column to constraint that defines it
 
-    // Greedy algorithm to select which columns to inline
+    // Collect all valid candidates for inlining
+    let mut valid_candidates = Vec::new();
+
+    // Find all valid columns to inline
+    for &(idx, identity, ref solvable_columns) in &constraint_options {
+        for &column in solvable_columns {
+            // Check if this would create a dependency cycle
+            let mut simulated_deps = dependencies.clone();
+            let expr = extract_expression_for_column(&identity.expression, column);
+
+            if let Some(expr) = expr {
+                // Add dependencies for this potential substitution
+                let mut deps = Vec::new();
+                expr.pre_visit_expressions(&mut |e| {
+                    if let AlgebraicExpression::Reference(AlgebraicReference {
+                        poly_id,
+                        next: false,
+                        ..
+                    }) = e
+                    {
+                        if poly_id.ptype == PolynomialType::Committed && *poly_id != column {
+                            if !deps.contains(poly_id) {
+                                deps.push(*poly_id);
+                            }
+                        }
+                    }
+                });
+
+                // Sort deps for deterministic behavior
+                deps.sort_by_key(|poly_id| (poly_id.id, poly_id.ptype as u8));
+
+                // Update the dependency graph
+                for &dep in &deps {
+                    simulated_deps.entry(dep).or_default().insert(column);
+                }
+
+                // Check for cycles
+                if !has_cycles(&simulated_deps) {
+                    // This is a valid candidate - add it to our list
+                    valid_candidates.push((idx, column, deps));
+                }
+            }
+        }
+    }
+
+    // Sort valid candidates for deterministic behavior
+    valid_candidates.sort_by_key(|(idx, column, _)| (*idx, column.id));
+
+    // Apply all valid candidates to build the complete dependency graph
     let mut inlined_columns = BTreeSet::new();
     let mut used_constraints = BTreeSet::new();
 
-    // TODO: Maybe a big part of this can be moved to the main function?
-    loop {
-        let mut best_candidate = None;
-
-        // Find the best column to inline next
-        for &(idx, identity, ref solvable_columns) in &constraint_options {
-            if used_constraints.contains(&idx) {
-                continue; // Skip constraints we've already used
-            }
-
-            for &column in solvable_columns {
-                if inlined_columns.contains(&column) {
-                    continue; // Skip columns we've already decided to inline
-                }
-
-                // Check if this would create a dependency cycle
-                let mut simulated_deps = dependencies.clone();
-                let expr = extract_expression_for_column(&identity.expression, column);
-
-                if let Some(expr) = expr {
-                    // Add dependencies for this potential substitution
-                    let mut deps = BTreeSet::new();
-                    expr.pre_visit_expressions(&mut |e| {
-                        if let AlgebraicExpression::Reference(AlgebraicReference {
-                            poly_id,
-                            next: false,
-                            ..
-                        }) = e
-                        {
-                            if poly_id.ptype == PolynomialType::Committed && *poly_id != column {
-                                deps.insert(*poly_id);
-                            }
-                        }
-                    });
-
-                    // Update the dependency graph
-                    for &dep in &deps {
-                        simulated_deps.entry(dep).or_default().insert(column);
-                    }
-
-                    // Check for cycles
-                    if !has_cycles(&simulated_deps) {
-                        // This is a valid candidate
-                        // TODO: Greedy, change to select the best column
-                        best_candidate = Some((idx, column, deps));
-                        break;
-                    }
-                }
-            }
-
-            if best_candidate.is_some() {
-                break;
-            }
+    for (idx, column, deps) in valid_candidates {
+        // Skip if we've already used this constraint or column
+        if used_constraints.contains(&idx) || inlined_columns.contains(&column) {
+            continue;
         }
 
-        if let Some((idx, column, deps)) = best_candidate {
-            // Apply this substitution
-            inlined_columns.insert(column);
-            used_constraints.insert(idx);
-            defined_by.insert(column, idx);
+        // Apply this substitution
+        inlined_columns.insert(column);
+        used_constraints.insert(idx);
+        defined_by.insert(column, idx);
 
-            // Update the dependency graph
-            for &dep in &deps {
-                dependencies.entry(dep).or_default().insert(column);
-            }
-        } else {
-            // No more valid substitutions found
-            break;
+        // Update the dependency graph
+        for &dep in &deps {
+            dependencies.entry(dep).or_default().insert(column);
         }
     }
 
@@ -1178,7 +1176,6 @@ fn identify_inputs_and_outputs<T: FieldElement>(pil_file: &Analyzed<T>) -> HashS
     }
 
     // Combine inputs and outputs
-    // TODO: Maybe return inlined_columns directly?
     let mut result = HashSet::new();
     result.extend(inputs.clone());
     result.extend(outputs.clone());
