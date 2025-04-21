@@ -24,7 +24,7 @@ struct VariableState<T: FieldElement, V> {
     range_constraint: RangeConstraint<T>,
     /// None if unknown, otherwise a symbolic expression that can be used to compute
     /// the variable from other variables.
-    /// Note that the expression is an instance of `SymbolicExpression::Concrete(_)`,
+    /// Note that if the expression is an instance of `SymbolicExpression::Concrete(_)`,
     /// we have found a concrete variable assignment.
     symbolic_expression: Option<SymbolicExpression<T, V>>,
 }
