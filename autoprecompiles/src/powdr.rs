@@ -1,16 +1,19 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::ops::ControlFlow;
 
+use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     BusInteractionIdentity, PolyID, PolynomialType,
 };
 use powdr_ast::parsed::asm::SymbolPath;
+use powdr_ast::parsed::visitor::AllChildren;
 use powdr_ast::parsed::{
     visitor::{ExpressionVisitable, VisitOrder},
     NamespacedPolynomialReference, UnaryOperator,
 };
 use powdr_number::FieldElement;
+use serde::{Deserialize, Serialize};
 
 use crate::{BusInteractionKind, SymbolicBusInteraction};
 
@@ -19,12 +22,12 @@ type Expression = powdr_ast::asm_analysis::Expression<NamespacedPolynomialRefere
 // After powdr and lib are adjusted, this function can be renamed and the old substitute removed
 pub fn substitute_algebraic<T: Clone>(
     expr: &mut AlgebraicExpression<T>,
-    sub: &BTreeMap<String, AlgebraicExpression<T>>,
+    sub: &BTreeMap<Column, AlgebraicExpression<T>>,
 ) {
     expr.visit_expressions_mut(
         &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = expr {
-                if let Some(sub_expr) = sub.get(name) {
+            if let AlgebraicExpression::Reference(r) = expr {
+                if let Some(sub_expr) = sub.get(&Column::from(&*r)) {
                     *expr = sub_expr.clone();
                 }
             }
@@ -131,15 +134,20 @@ pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
 pub fn append_suffix_algebraic<T: Clone>(
     expr: &mut AlgebraicExpression<T>,
     suffix: &str,
-) -> BTreeMap<String, String> {
+) -> BTreeMap<Column, Column> {
     let mut subs = BTreeMap::new();
     expr.visit_expressions_mut(
         &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = expr {
-                if !["is_first_row", "is_transition", "is_last_row"].contains(&name.as_str()) {
-                    let new_name = format!("{name}_{suffix}");
-                    subs.insert(name.clone(), new_name.clone());
-                    *name = new_name;
+            if let AlgebraicExpression::Reference(r) = expr {
+                if !["is_first_row", "is_transition", "is_last_row"].contains(&r.name.as_str()) {
+                    let new_name = format!("{}_{suffix}", r.name);
+                    let old_column = Column::from(&*r);
+                    let new_column = Column {
+                        name: new_name.clone(),
+                        ..old_column
+                    };
+                    subs.insert(old_column, new_column);
+                    r.name = new_name;
                 }
             }
             ControlFlow::Continue::<()>(())
@@ -174,62 +182,71 @@ pub fn collect_cols_algebraic<T: Clone + Ord>(
     cols
 }
 
-pub fn collect_cols_names_algebraic<T: Clone + Ord + std::fmt::Display>(
-    expr: &AlgebraicExpression<T>,
-) -> BTreeSet<String> {
-    let mut cols: BTreeSet<String> = Default::default();
-    expr.visit_expressions(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { name, .. }) = expr {
-                cols.insert(name.clone());
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-    cols
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash, Serialize, Deserialize)]
+pub struct Column {
+    pub name: String,
+    pub id: PolyID,
 }
 
-pub fn collect_cols_ids_algebraic<T: Clone + Ord + std::fmt::Display>(
-    expr: &AlgebraicExpression<T>,
-) -> BTreeSet<u64> {
-    let mut cols: BTreeSet<u64> = Default::default();
-    expr.visit_expressions(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = expr {
-                cols.insert(poly_id.id);
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-    cols
+impl From<&AlgebraicReference> for Column {
+    fn from(r: &AlgebraicReference) -> Self {
+        assert!(!r.next);
+        Column {
+            name: r.name.clone(),
+            id: r.poly_id,
+        }
+    }
+}
+
+pub trait UniqueColumns<'a, T: 'a> {
+    /// Returns an iterator over the unique columns
+    fn unique_columns(&'a self) -> impl Iterator<Item = Column>;
+}
+
+impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpression<T>>>
+    UniqueColumns<'a, T> for E
+{
+    fn unique_columns(&'a self) -> impl Iterator<Item = Column> {
+        self.all_children()
+            .filter_map(|e| {
+                if let AlgebraicExpression::Reference(r) = e {
+                    Some(Column::from(r))
+                } else {
+                    None
+                }
+            })
+            .unique()
+    }
 }
 
 pub fn reassign_ids_algebraic<T: Clone + Ord>(
     expr: &mut AlgebraicExpression<T>,
-    mut curr_id: usize,
-    subs: &mut BTreeMap<String, usize>,
-    rev_subs: &mut BTreeMap<usize, String>,
-) -> usize {
+    mut curr_id: u64,
+    subs: &mut BTreeMap<Column, u64>,
+    rev_subs: &mut BTreeMap<u64, Column>,
+) -> u64 {
     expr.visit_expressions_mut(
         &mut |expr| {
-            if let AlgebraicExpression::Reference(AlgebraicReference { name, poly_id, .. }) = expr {
-                match subs.get_mut(name.as_str()) {
+            if let AlgebraicExpression::Reference(r) = expr {
+                let column = Column::from(&*r);
+                match subs.get_mut(&column) {
                     Some(id) => {
                         match rev_subs.get(id) {
-                            Some(r_name) => {
-                                assert_eq!(r_name, name, "Id {id} already assigned to {name}");
+                            Some(r_column) => {
+                                assert_eq!(
+                                    *r_column, column,
+                                    "Id {id} already assigned to {column:?}"
+                                );
                             }
                             None => {
-                                rev_subs.insert(*id, name.clone());
+                                rev_subs.insert(*id, column.clone());
                             }
                         }
-                        poly_id.id = *id as u64;
+                        r.poly_id.id = *id;
                     }
                     None => {
-                        poly_id.id = curr_id as u64;
-                        subs.insert(name.clone(), curr_id);
+                        r.poly_id.id = curr_id;
+                        subs.insert(column.clone(), curr_id);
                         curr_id += 1;
                     }
                 }
