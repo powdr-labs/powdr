@@ -132,7 +132,6 @@ pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
     );
 }
 
-// @leo: This is where I'm not sure. I think after this change this function should return `Column -> Column`, which it does, but I'm not sure my implementation is correct
 pub fn append_suffix_algebraic<T: Clone>(
     expr: &mut AlgebraicExpression<T>,
     suffix: &str,
@@ -148,7 +147,7 @@ pub fn append_suffix_algebraic<T: Clone>(
                         name: new_name.clone(),
                         ..old_column
                     };
-                    subs.insert(Column::from(&*r), new_column);
+                    subs.insert(old_column, new_column);
                     r.name = new_name;
                 }
             }
