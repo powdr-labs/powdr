@@ -1460,7 +1460,7 @@ fn try_extract_from_expression<T: FieldElement>(
 }
 
 /// Checks if a dependency graph has cycles using depth-first search
-fn has_cycles<T: Eq + Hash + Copy>(graph: &BTreeMap<T, BTreeSet<T>>) -> bool {
+fn has_cycles(graph: &BTreeMap<PolyID, BTreeSet<PolyID>>) -> bool {
     let mut visited = BTreeSet::new();
     let mut path = BTreeSet::new();
 
@@ -1476,11 +1476,11 @@ fn has_cycles<T: Eq + Hash + Copy>(graph: &BTreeMap<T, BTreeSet<T>>) -> bool {
 }
 
 /// Helper function for cycle detection using DFS
-fn has_cycle_dfs<T: Eq + Hash + Copy>(
-    node: T,
-    graph: &BTreeMap<T, BTreeSet<T>>,
-    visited: &mut BTreeSet<T>,
-    path: &mut BTreeSet<T>,
+fn has_cycle_dfs(
+    node: PolyID,
+    graph: &BTreeMap<PolyID, BTreeSet<PolyID>>,
+    visited: &mut BTreeSet<PolyID>,
+    path: &mut BTreeSet<PolyID>,
 ) -> bool {
     if path.contains(&node) {
         return true;
