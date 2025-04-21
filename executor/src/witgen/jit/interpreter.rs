@@ -58,41 +58,53 @@ enum InterpreterAction<T: FieldElement> {
 
 #[derive(Debug)]
 enum BranchTest<T: FieldElement> {
-    Equal { var: usize, value: T },
-    Inside { var: usize, min: T, max: T },
-    Outside { var: usize, min: T, max: T },
+    Equal {
+        value: RPNExpression<T, usize>,
+        comparison: T,
+    },
+    Inside {
+        value: RPNExpression<T, usize>,
+        min: T,
+        max: T,
+    },
+    Outside {
+        value: RPNExpression<T, usize>,
+        min: T,
+        max: T,
+    },
 }
 
 impl<T: FieldElement> BranchTest<T> {
     fn new(
         var_mapper: &mut VariableMapper,
-        BranchCondition {
-            variable,
-            condition,
-        }: &BranchCondition<T, Variable>,
+        BranchCondition { value, condition }: &BranchCondition<T, Variable>,
     ) -> Self {
         let (min, max) = condition.range();
-        let var = var_mapper.map_var(variable);
+        let value = var_mapper.map_expr_to_rpn(value);
         match min.cmp(&max) {
-            Ordering::Equal => BranchTest::Equal { var, value: min },
-            Ordering::Less => BranchTest::Inside { var, min, max },
-            Ordering::Greater => BranchTest::Outside { var, min, max },
+            Ordering::Equal => BranchTest::Equal {
+                value,
+                comparison: min,
+            },
+            Ordering::Less => BranchTest::Inside { value, min, max },
+            Ordering::Greater => BranchTest::Outside { value, min, max },
         }
     }
 
-    fn var(&self) -> usize {
+    fn value(&self) -> &RPNExpression<T, usize> {
         match self {
-            BranchTest::Equal { var, .. }
-            | BranchTest::Inside { var, .. }
-            | BranchTest::Outside { var, .. } => *var,
+            BranchTest::Equal { value, .. }
+            | BranchTest::Inside { value, .. }
+            | BranchTest::Outside { value, .. } => value,
         }
     }
 
-    fn test(&self, vars: &[T]) -> bool {
+    fn test(&self, stack: &mut Vec<T>, vars: &[T]) -> bool {
+        let value = self.value().evaluate(stack, vars);
         match self {
-            BranchTest::Equal { var, value } => vars[*var] == *value,
-            BranchTest::Inside { var, min, max } => *min <= vars[*var] && vars[*var] <= *max,
-            BranchTest::Outside { var, min, max } => vars[*var] <= *min || vars[*var] >= *max,
+            BranchTest::Equal { comparison, .. } => value == *comparison,
+            BranchTest::Inside { min, max, .. } => *min <= value && value <= *max,
+            BranchTest::Outside { min, max, .. } => value <= *min || value >= *max,
         }
     }
 }
@@ -403,7 +415,7 @@ impl<'a, T: FieldElement> EffectsInterpreter<'a, T> {
                         // push the current block on the stack to continue execution once the branch is done
                         block_stack.push(iter);
                         // test the condition
-                        block_stack.push(if condition.test(&vars) {
+                        block_stack.push(if condition.test(&mut eval_stack, &vars) {
                             if_branch.iter()
                         } else {
                             else_branch.iter()
@@ -497,7 +509,10 @@ fn action_is_valid<T: FieldElement>(
     if let InterpreterAction::Branch(cond, if_actions, else_actions) = action {
         actions_are_valid(if_actions, prev_writes.clone())
             && actions_are_valid(else_actions, prev_writes.clone())
-            && prev_writes.contains(&cond.var())
+            && cond
+                .value()
+                .referenced_variables()
+                .all(|v| prev_writes.contains(&v))
     } else {
         action.writes().is_disjoint(prev_writes) && action.reads().is_subset(prev_writes)
     }
@@ -589,52 +604,38 @@ impl<T: FieldElement> InterpreterAction<T> {
 
     /// variable indexes read by the action
     fn reads(&self) -> BTreeSet<usize> {
-        let mut set = BTreeSet::new();
         match self {
             InterpreterAction::WriteCell(idx, _) | InterpreterAction::WriteParam(idx, _) => {
-                set.insert(*idx);
+                [*idx].into_iter().collect()
             }
             InterpreterAction::AssignExpression(_, expr)
-            | InterpreterAction::BitDecompose(expr, _, _) => expr.elems.iter().for_each(|e| {
-                if let RPNExpressionElem::Symbol(idx) = e {
-                    set.insert(*idx);
-                }
-            }),
-            InterpreterAction::MachineCall(_, params) => params.iter().for_each(|p| {
-                if let MachineCallArgumentIdx::Known(v) = p {
-                    set.insert(*v);
-                }
-            }),
-            InterpreterAction::ProverFunctionCall(call) => {
-                set.extend(call.inputs.iter().copied());
-            }
-            InterpreterAction::Assertion(lhs, rhs, _) => {
-                lhs.elems.iter().for_each(|e| {
-                    if let RPNExpressionElem::Symbol(idx) = e {
-                        set.insert(*idx);
-                    }
-                });
-                rhs.elems.iter().for_each(|e| {
-                    if let RPNExpressionElem::Symbol(idx) = e {
-                        set.insert(*idx);
-                    }
-                });
-            }
-            InterpreterAction::Branch(branch_test, if_actions, else_actions) => {
-                set.insert(branch_test.var());
-
-                set.extend(
+            | InterpreterAction::BitDecompose(expr, _, _) => expr.referenced_variables().collect(),
+            InterpreterAction::MachineCall(_, params) => params
+                .iter()
+                .filter_map(|p| match p {
+                    MachineCallArgumentIdx::Known(v) => Some(*v),
+                    MachineCallArgumentIdx::Unknown(_) => None,
+                })
+                .collect(),
+            InterpreterAction::ProverFunctionCall(call) => call.inputs.iter().copied().collect(),
+            InterpreterAction::Assertion(lhs, rhs, _) => lhs
+                .referenced_variables()
+                .chain(rhs.referenced_variables())
+                .collect(),
+            InterpreterAction::Branch(branch_test, if_actions, else_actions) => branch_test
+                .value()
+                .referenced_variables()
+                .chain(
                     if_actions
                         .iter()
                         .chain(else_actions)
                         .flat_map(InterpreterAction::reads),
-                );
-            }
+                )
+                .collect(),
             InterpreterAction::ReadCell(_, _)
             | InterpreterAction::ReadParam(_, _)
-            | InterpreterAction::ReadFixedColumn(_, _) => {}
+            | InterpreterAction::ReadFixedColumn(_, _) => Default::default(),
         }
-        set
     }
 }
 
@@ -711,7 +712,7 @@ impl<T: FieldElement> RPNExpression<T, usize> {
                 SymbolicExpression::BinaryOperation(lhs, op, rhs, _) => {
                     inner(lhs, elems, var_mapper);
                     inner(rhs, elems, var_mapper);
-                    elems.push(RPNExpressionElem::BinaryOperation(op.clone()));
+                    elems.push(RPNExpressionElem::BinaryOperation(*op));
                 }
                 SymbolicExpression::UnaryOperation(op, expr, _) => {
                     inner(expr, elems, var_mapper);
@@ -751,6 +752,13 @@ impl<T: FieldElement> RPNExpression<T, usize> {
             }
         });
         stack.pop().unwrap()
+    }
+
+    pub fn referenced_variables(&self) -> impl Iterator<Item = usize> + '_ {
+        self.elems.iter().filter_map(|elem| match elem {
+            RPNExpressionElem::Symbol(idx) => Some(*idx),
+            _ => None,
+        })
     }
 }
 

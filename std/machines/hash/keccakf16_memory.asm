@@ -2,13 +2,10 @@ use std::array;
 use std::utils;
 use std::utils::unchanged_until;
 use std::utils::force_bool;
+use std::prover::compute_from_multi;
 use std::convert::expr;
 use std::convert::int;
 use std::convert::fe;
-use std::prelude::set_hint;
-use std::prelude::Query;
-use std::prover::eval;
-use std::prover::provide_value;
 use std::machines::small_field::memory::Memory;
 use std::machines::small_field::add_sub::AddSub;
 
@@ -715,49 +712,20 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     //     }
     // }
 
-    let query_c: int, int, int -> int = query |x, limb, bit_in_limb|
-        utils::fold(
-            5, 
-            |y| (int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1, 
-            0, 
-            |acc, e| acc ^ e
-        );
-
-    query |row| {
-        let _ = array::map_enumerated(c, |i, c_i| {
+    query |row| compute_from_multi(
+        c, row, a,
+        |a_fe| array::new(array::len(c), |i| {
             let x = i / 64;
             let z = i % 64;
             let limb = z / 16;
             let bit_in_limb = z % 16;
-
-            provide_value(c_i, row, fe(query_c(x, limb, bit_in_limb)));
-        });
-    };
-
-    // // Populate C'[x, z] = xor(C[x, z], C[x - 1, z], C[x + 1, z - 1]).
-    // for x in 0..5 {
-    //     for z in 0..64 {
-    //         row.c_prime[x][z] = xor([
-    //             row.c[x][z],
-    //             row.c[(x + 4) % 5][z],
-    //             row.c[(x + 1) % 5][(z + 63) % 64],
-    //         ]);
-    //     }
-    // }
-
-    let query_c_prime: int, int -> int = query |x, z| 
-        int(eval(c[x * 64 + z])) ^ 
-        int(eval(c[((x + 4) % 5) * 64 + z])) ^ 
-        int(eval(c[((x + 1) % 5) * 64 + (z + 63) % 64]));
-
-    query |row| {
-        let _ = array::map_enumerated(c_prime, |i, c_i| {
-            let x = i / 64;
-            let z = i % 64;
-
-            provide_value(c_i, row, fe(query_c_prime(x, z)));
-        });
-    };
+            fe(utils::fold(
+                5,
+                |y| (int(a_fe[y * 20 + x * 4 + limb]) >> bit_in_limb) & 0x1,
+                0,
+                |acc, e| acc ^ e
+            ))
+        }));
 
     // // Populate A'. To avoid shifting indices, we rewrite
     // //     A'[x, y, z] = xor(A[x, y, z], C[x - 1, z], C[x + 1, z - 1])
@@ -775,110 +743,18 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     //     }
     // }
 
-    let query_a_prime: int, int, int, int, int -> int = query |x, y, z, limb, bit_in_limb| 
-        ((int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1) ^ 
-        int(eval(c[x * 64 + z])) ^ 
-        int(eval(c_prime[x * 64 + z]));
-
-    query |row| {
-        let _ = array::map_enumerated(a_prime, |i, a_i| {
+    query |row| compute_from_multi(
+        a_prime, row, a + c + c_prime,
+        |inputs| array::new(array::len(a_prime), |i| {
             let y = i / 320;
             let x = (i / 64) % 5;
             let z = i % 64;
             let limb = z / 16;
             let bit_in_limb = z % 16;
+            let a_elem = inputs[y * 20 + x * 4 + limb];
+            let c_elem = inputs[x * 64 + z + 5 * 5 * 4];
+            let c_prime_elem = inputs[x * 64 + z + 5 * 5 * 4 + 5 * 64];
 
-            provide_value(a_i, row, fe(query_a_prime(x, y, z, limb, bit_in_limb)));
-        });
-    };
-
-    // // Populate A''.P
-    // // A''[x, y] = xor(B[x, y], andn(B[x + 1, y], B[x + 2, y])).
-    // for y in 0..5 {
-    //     for x in 0..5 {
-    //         for limb in 0..U64_LIMBS {
-    //             row.a_prime_prime[y][x][limb] = (limb * BITS_PER_LIMB..(limb + 1) * BITS_PER_LIMB)
-    //                 .rev()
-    //                 .fold(F::zero(), |acc, z| {
-    //                     let bit = xor([
-    //                         row.b(x, y, z),
-    //                         andn(row.b((x + 1) % 5, y, z), row.b((x + 2) % 5, y, z)),
-    //                     ]);
-    //                     acc.double() + bit
-    //                 });
-    //         }
-    //     }
-    // }
-
-    let query_a_prime_prime: int, int, int -> int = query |x, y, limb| 
-        utils::fold(
-            16, 
-            |z| 
-                int(eval(b(x, y, (limb + 1) * 16 - 1 - z))) ^ 
-                int(eval(andn(b((x + 1) % 5, y, (limb + 1) * 16 - 1 - z), 
-                b((x + 2) % 5, y, (limb + 1) * 16 - 1 - z)))), 
-            0, 
-            |acc, e| acc * 2 + e
-        );
-
-    query |row| {
-        let _ = array::map_enumerated(a_prime_prime, |i, a_i| {
-            let y = i / 20;
-            let x = (i / 4) % 5;
-            let limb = i % 4;
-
-            provide_value(a_i, row, fe(query_a_prime_prime(x, y, limb)));
-        });
-    };
-
-    // // For the XOR, we split A''[0, 0] to bits.
-    // let mut val = 0; // smaller address correspond to less significant limb
-    // for limb in 0..U64_LIMBS {
-    //     let val_limb = row.a_prime_prime[0][0][limb].as_canonical_u64();
-    //     val |= val_limb << (limb * BITS_PER_LIMB);
-    // }
-    // let val_bits: Vec<bool> = (0..64) // smaller address correspond to less significant bit
-    //     .scan(val, |acc, _| {
-    //         let bit = (*acc & 1) != 0;
-    //         *acc >>= 1;
-    //         Some(bit)
-    //     })
-    //     .collect();
-    // for (i, bit) in row.a_prime_prime_0_0_bits.iter_mut().enumerate() {
-    //     *bit = F::from_bool(val_bits[i]);
-    // }
-
-    query |row| {
-        let _ = array::map_enumerated(a_prime_prime_0_0_bits, |i, a_i| {
-            let limb = i / 16;
-            let bit_in_limb = i % 16;
-
-            provide_value(
-                a_i, 
-                row, 
-                fe((int(eval(a_prime_prime[limb])) >> bit_in_limb) & 0x1)
-            );
-        });
-    };
-
-    // // A''[0, 0] is additionally xor'd with RC.
-    // for limb in 0..U64_LIMBS {
-    //     let rc_lo = rc_value_limb(round, limb);
-    //     row.a_prime_prime_prime_0_0_limbs[limb] =
-    //         F::from_canonical_u16(row.a_prime_prime[0][0][limb].as_canonical_u64() as u16 ^ rc_lo);
-    // }
-
-    let query_a_prime_prime_prime_0_0_limbs: int, int -> int = query |round, limb| 
-        int(eval(a_prime_prime[limb])) ^ 
-        ((RC[round] >> (limb * 16)) & 0xffff);
-
-    query |row| {
-        let _ = array::new(4, |limb| {
-            provide_value(
-                a_prime_prime_prime_0_0_limbs[limb], 
-                row, 
-                fe(query_a_prime_prime_prime_0_0_limbs(row % NUM_ROUNDS, limb)
-            ));
-        });
-    };
+            fe(((int(a_elem) >> bit_in_limb) & 0x1) ^ int(c_elem) ^ int(c_prime_elem))
+        }));
 }

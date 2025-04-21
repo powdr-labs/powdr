@@ -22,4 +22,4 @@ col fixed C(i) {match i {
 }};
 // ANCHOR_END: mapping
 let w;
-w = B;
+w = B * B;

@@ -140,5 +140,5 @@ machine Main with degree: 2**22 {
         Result::Ok(r) => |i| std::convert::fe(r(i)),
         Result::Err(e) => panic(e)
     };
-    w = LAST;
+    w = LAST * LAST;
 }

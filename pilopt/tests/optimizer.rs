@@ -15,14 +15,14 @@ fn replace_fixed() {
         let _ = one;
     };
     X * one = X * zero - zero + Y;
-    one * Y = zero * Y + 7 * X;
+    one * Y = zero * Y + 7 * X * X;
 "#;
     let expectation = r#"namespace N(65536);
-    col witness X;
+    col witness Y;
     query |i| {
         let _: expr = 1_expr;
     };
-    N::X = 7 * N::X;
+    N::Y = 7 * N::Y * N::Y;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -120,10 +120,8 @@ fn intermediate() {
     "#;
     let expectation = r#"namespace N(65536);
     col witness x;
-    col intermediate = N::x;
-    col int2 = N::intermediate * N::x;
-    col int3 = N::int2;
-    N::int3 = 3 * N::x + N::x;
+    col int2 = N::x * N::x;
+    N::int2 = 3 * N::x + N::x;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -235,7 +233,7 @@ fn remove_unreferenced_keep_enums() {
         // Y is not mentioned anywhere.
         let f: col = |i| if i == 0 { t([]) } else { (|x| 1)(Y::F([])) };
         let x;
-        x = f;
+        x = f * f;
     "#;
     let expectation = r#"namespace N(65536);
     enum X {
@@ -254,7 +252,7 @@ fn remove_unreferenced_keep_enums() {
     let t: N::X[] -> int = |r| 1_int;
     col fixed f(i) { if i == 0_int { N::t([]) } else { (|x| 1_int)(N::Y::F([])) } };
     col witness x;
-    N::x = N::f;
+    N::x = N::f * N::f;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -275,7 +273,7 @@ fn test_trait_impl() {
         impl Default<int> { f: || 1, g: |x| x }
         let x: col = |_| Default::f();
         let w;
-        w = x;
+        w = x * x;
     "#;
     let expectation = r#"namespace N(65536);
     trait Default<T> {
@@ -289,7 +287,7 @@ fn test_trait_impl() {
     let dep: fe -> fe = |x| x + 1_fe;
     col fixed x(_) { N::Default::f::<fe>() };
     col witness w;
-    N::w = N::x;
+    N::w = N::x * N::x;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -304,7 +302,7 @@ fn enum_ref_by_trait() {
         impl X<fe> { f: |_| O::Y(1), g: || { let r = Q::B(1_int); 1 } }
         let x: col = |i| { match X::f(1_fe) { O::Y(y) => y, _ => 0 } };
         let w;
-        w = x;
+        w = x * x;
     "#;
     let expectation = r#"namespace N(65536);
     enum O<T> {
@@ -331,7 +329,7 @@ fn enum_ref_by_trait() {
         _ => 0_fe,
     } };
     col witness w;
-    N::w = N::x;
+    N::w = N::x * N::x;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -459,12 +457,56 @@ fn equal_constrained_transitive() {
         a + b + c = 5;
     "#;
     let expectation = r#"namespace N(65536);
-    col witness a;
-    N::a + N::a + N::a = 5;
+    col witness c;
+    N::c + N::c + N::c = 5;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
+
+#[test]
+fn replace_witness_by_intermediate() {
+    let input = r#"namespace N(65536);
+        col witness w;
+        col fixed f = [1, 0]*;
+
+        col witness can_be_replaced;
+        can_be_replaced = 2 * w + 3 * f + 5;
+        can_be_replaced + w = 5;
+
+        // Constraining to a shifted expression should not replace the witness.
+        col witness linear_with_next_ref;
+        linear_with_next_ref = 2 * w + 3 * f' + 5;
+        linear_with_next_ref + w = 5;
+
+        // Constraining to a quadratic expression should not replace the witness.
+        col witness quadratic;
+        quadratic = 2 * w * w + 3 * f + 5;
+        quadratic + w = 5;
+
+        // The first constraint is removed, the second one is kept.
+        col witness constrained_twice;
+        constrained_twice = 2 * w + 3 * f + 5;
+        constrained_twice = w + f;
+    "#;
+    let expectation = r#"namespace N(65536);
+    col witness w;
+    col fixed f = [1_fe, 0_fe]*;
+    col can_be_replaced = 2 * N::w + 3 * N::f + 5;
+    N::can_be_replaced + N::w = 5;
+    col witness linear_with_next_ref;
+    N::linear_with_next_ref = 2 * N::w + 3 * N::f' + 5;
+    N::linear_with_next_ref + N::w = 5;
+    col witness quadratic;
+    N::quadratic = 2 * N::w * N::w + 3 * N::f + 5;
+    N::quadratic + N::w = 5;
+    col constrained_twice = 2 * N::w + 3 * N::f + 5;
+    N::constrained_twice = N::w + N::f;
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
 #[test]
 fn simplify_associative_operations() {
     let input = r#"namespace N(150);
@@ -475,27 +517,60 @@ fn simplify_associative_operations() {
         col fixed c2 = [2]*;
         col fixed c3 = [3]*;
         
-        (x + c2) + c1 = y;
-        (c2 + x) + c3 = y;
-        (x - c2) + c1 = y;
+        (x + c2) + c1 = y * y;
+        (c2 + x) + c3 = y * y;
+        (x - c2) + c1 = y * y;
         
-        ((x + 3) - y) - 9 = z;
-        (c3 + (x + 3)) - y = z;
-        ((-x + 3) + y) + 9 = z;
-        ((-x + 3) + c3) + 12 = z;
+        ((x + 3) - y) - 9 = z * z;
+        (c3 + (x + 3)) - y = z * z;
+        ((-x + 3) + y) + 9 = z * z;
+        ((-x + 3) + c3) + 12 = z * z;
     "#;
 
     let expectation = r#"namespace N(150);
     col witness x;
     col witness y;
     col witness z;
-    N::x + 3 = N::y;
-    N::x + 5 = N::y;
-    N::x - 2 + 1 = N::y;
-    N::x + 3 - N::y - 9 = N::z;
-    N::x + 6 - N::y = N::z;
-    -N::x + N::y + 12 = N::z;
-    -N::x + 18 = N::z;
+    N::x + 3 = N::y * N::y;
+    N::x + 5 = N::y * N::y;
+    N::x - 2 + 1 = N::y * N::y;
+    N::x + 3 - N::y - 9 = N::z * N::z;
+    N::x + 6 - N::y = N::z * N::z;
+    -N::x + N::y + 12 = N::z * N::z;
+    -N::x + 18 = N::z * N::z;
+"#;
+
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn inline_chain_of_substitutions() {
+    let input = r#"namespace N(65536);
+    col witness a;
+    col witness b;
+    
+    col witness x;
+    x = a + y;
+
+    col witness y;
+    y = x + b;
+
+    col witness m;
+    m = x - y;
+
+    a * b = 10;
+    m * a = 1;
+"#;
+
+    let expectation = r#"namespace N(65536);
+    col witness a;
+    col witness b;
+    col x = N::a + N::y;
+    col y = N::x + N::b;
+    col m = N::x - N::y;
+    N::a * N::b = 10;
+    N::m * N::a = 1;
 "#;
 
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
