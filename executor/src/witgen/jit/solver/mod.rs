@@ -142,13 +142,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             // We already know the expression
             Some(existing) if existing == &expr => None,
 
-            // The expression was updated. This should never happen.
-            Some(existing) => {
-                panic!("Expression set for {variable} set to {expr} but already was {existing}")
-            }
-
-            // An unknown variable became known.
-            None => {
+            // An unknown variable became known, or we updated the expression.
+            Some(_) | None => {
                 log::trace!("{variable} = {expr}");
                 entry.symbolic_expression = Some(expr.clone());
 
