@@ -112,6 +112,16 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         !self.quadratic.is_empty()
     }
 
+    /// Returns `(l, r)` if `self == l * r`.
+    pub fn try_as_single_product(&self) -> Option<(&Self, &Self)> {
+        if self.linear.is_empty() && self.quadratic.len() == 1 && self.constant.is_known_zero() {
+            let (l, r) = &self.quadratic[0];
+            Some((l, r))
+        } else {
+            None
+        }
+    }
+
     pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V>) {
         let VariableUpdate {
             variable,
@@ -427,11 +437,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
     // This could be fixed by finding a canonical form for the quadratic
     // expression, and normalizing the constants.
     fn try_detect_range_constraint(&self) -> Option<ProcessResult<T, V>> {
-        if !self.linear.is_empty() || !self.constant.is_known_zero() || self.quadratic.len() != 1 {
-            return None;
-        }
-
-        let (factor1, factor2) = &self.quadratic[0];
+        let (factor1, factor2) = &self.try_as_single_product()?;
         let (var1, value1) = factor1.try_solve_constant_assignment()?;
         let (var2, value2) = factor2.try_solve_constant_assignment()?;
 
