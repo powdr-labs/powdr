@@ -451,72 +451,54 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             left.solve(range_constraints),
             right.solve(range_constraints),
         ) {
-            // If one of them is always unsatisfiable, it is equivalent to just solve the other one for zero.
+            // If one of them is always unsatisfiable, it is equivalent to just solving the other one for zero.
             (Err(_), o) | (o, Err(_)) => {
                 return o;
             }
             (Ok(left), Ok(right)) => (left, right),
         };
-        println!(
-            "Found left solution: {}",
-            left_solution
-                .effects
-                .iter()
-                .map(|e| match e {
-                    Effect::Assignment(var, value) => format!("{var} = {value}"),
-                    Effect::RangeConstraint(var, rc) => format!("{var} = {rc}"),
-                    _ => "other".to_string(),
-                })
-                .join(", ")
-        );
 
-        combine_result_disjunctively(left_solution, right_solution, range_constraints)
+        if let Some(result) =
+            combine_to_conditional_assignment(left_solution, right_solution, range_constraints)
+        {
+            Ok(result)
+        } else {
+            // TODO Now at least try to combine joint range constraints
+            Ok(ProcessResult::empty())
+        }
     }
 }
 
-/// Combines two process results in a disjunctive way.
-/// This means that the results come from processing two alternative branches.
-fn combine_result_disjunctively<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+/// Combines two process results from alternative branches and tries to turn them into
+/// conditional assignments.
+fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     left: ProcessResult<T, V>,
     right: ProcessResult<T, V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
-) -> Result<ProcessResult<T, V>, Error> {
-    // TODO extend this to combine all pairs of effects, also just range constraints etc.
-    let Ok(Effect::Assignment(first_var, first_assignment)) = left
-        .effects
-        .into_iter()
-        .filter(|e| matches!(e, Effect::Assignment(..)))
-        .exactly_one()
+) -> Option<ProcessResult<T, V>> {
+    let [Effect::Assignment(first_var, first_assignment)]: [_; 1] = left.effects.try_into().ok()?
     else {
-        return Ok(ProcessResult::empty());
+        return None;
     };
-    let Ok(Effect::Assignment(second_var, second_assignment)) = right
-        .effects
-        .into_iter()
-        .filter(|e| matches!(e, Effect::Assignment(..)))
-        .exactly_one()
+    let [Effect::Assignment(second_var, second_assignment)]: [_; 1] =
+        right.effects.try_into().ok()?
     else {
-        return Ok(ProcessResult::empty());
+        return None;
     };
 
     if first_var != second_var {
-        return Ok(ProcessResult::empty());
+        return None;
     }
 
-    // TODO we should check what the other effects are.
-
     // At this point, we have two assignments to the same variable, i.e.
-    // `X = A` or `X = B`. If the two alternatives can never be satisfied at
-    // the same time, we can turn this into a conditional assignment.
+    // "`X = A` or `X = B`". If the two alternatives can never be satisfied at
+    // the same time (i.e. the "or" is exclusive), we can turn this into a
+    // conditional assignment.
 
-    let Some(diff) = symbolic_expression_to_quadratic_symbolic_expression(
+    let diff = symbolic_expression_to_quadratic_symbolic_expression(
         &(first_assignment.clone() + -&second_assignment),
-    ) else {
-        return Ok(ProcessResult::empty());
-    };
-    let Some(diff) = diff.try_to_known().and_then(|d| d.try_to_number()) else {
-        return Ok(ProcessResult::empty());
-    };
+    )?;
+    let diff = diff.try_to_known()?.try_to_number()?;
     // `diff = A - B` is a compile-time known number, i.e. `A = B + diff`.
     // Now if `rc + diff` is disjoint from `rc`, it means
     // that if the value that `A` evaluates to falls into the allowed range for `X`,
@@ -527,14 +509,14 @@ fn combine_result_disjunctively<T: FieldElement, V: Ord + Clone + Hash + Eq + Di
         .combine_sum(&RangeConstraint::from_value(diff))
         .is_disjoint(&rc)
     {
-        return Ok(ProcessResult::empty());
+        return None;
     }
 
-    Ok(ProcessResult {
+    Some(ProcessResult {
         effects: vec![Effect::ConditionalAssignment {
-            variable: first_var.clone(),
+            variable: first_var,
             condition: BranchCondition {
-                value: SymbolicExpression::from_symbol(first_var.clone(), Default::default()),
+                value: first_assignment.clone(),
                 condition: rc,
             },
             in_range_value: first_assignment,
@@ -1048,5 +1030,38 @@ Z: [10, 4294967050] & 0xffffffff;
         );
     }
 
-    // TODO test solve quadratic
+    #[test]
+    fn solve_quadratic() {
+        let rc = RangeConstraint::from_mask(0xffu32);
+        let a = Qse::from_unknown_variable("a");
+        let b = Qse::from_known_symbol("b", rc.clone());
+        let range_constraints =
+            HashMap::from([("a", rc.clone()), ("b", rc.clone()), ("c", rc.clone())]);
+        let ten = Qse::from(GoldilocksField::from(10));
+        let two56 = Qse::from(GoldilocksField::from(0x100));
+        let constr = (a.clone() - b.clone() + two56 - ten.clone()) * (a - b - ten);
+        let result = constr.solve(&range_constraints).unwrap();
+        assert!(result.complete);
+        let effects = result
+            .effects
+            .into_iter()
+            .map(|effect| match effect {
+                Effect::ConditionalAssignment {
+                    variable,
+                    condition: BranchCondition { value, condition },
+                    in_range_value,
+                    out_of_range_value,
+                } => {
+                    format!("{variable} = if {value} in {condition} {{ {in_range_value} }} else {{ {out_of_range_value} }}\n")
+                }
+                _ => panic!(),
+            })
+            .format("")
+            .to_string();
+        assert_eq!(
+            effects,
+            "a = if ((b + -256) + 10) in [0, 255] & 0xff { ((b + -256) + 10) } else { (b + 10) }
+"
+        );
+    }
 }
