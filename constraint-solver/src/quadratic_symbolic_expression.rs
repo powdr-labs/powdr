@@ -131,19 +131,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
         }
     }
 
-    /// Returns the coefficient of `variable` if this expression is
-    /// affine (i.e. does not contain any quadratic terms).
-    /// Returns zero if the variable does not occur.
-    ///
-    /// Panics if this expression is not affine.
-    pub fn coefficient_of(&self, variable: &V) -> SymbolicExpression<T, V> {
-        assert!(self.is_affine());
-        match self.linear.get(variable) {
-            Some(coeff) => coeff.clone(),
-            None => T::zero().into(),
-        }
-    }
-
     pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V>) {
         let VariableUpdate {
             variable,
@@ -469,8 +456,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
     }
 }
 
-/// Combines two process results from alternative branches and tries to turn them into
-/// conditional assignments.
+/// Tries to combine two process results from alternative branches into a
+/// conditional assignment.
 fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
     left: ProcessResult<T, V>,
     right: ProcessResult<T, V>,
