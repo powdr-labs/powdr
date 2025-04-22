@@ -456,14 +456,17 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             return None;
         }
         let ProcessResult {
-                effects,
-                complete: true,
-            } = self.solve(&NoRangeConstraints).ok()?  else { return None; };
-        if let [Effect::Assignment(var, expr)] = &effects {
+            effects,
+            complete: true,
+        } = self.solve(&NoRangeConstraints).ok()?
+        else {
+            return None;
+        };
+        if let [Effect::Assignment(var, expr)] = effects.as_slice() {
             Some((var.clone(), expr.try_to_number()?))
         } else {
             None
-         }
+        }
     }
 }
 
