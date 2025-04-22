@@ -20,22 +20,31 @@ mod utils;
 
 /// Current state of a variable in the solver.
 #[derive(Debug, PartialEq)]
-struct VariableState<T: FieldElement, V> {
-    /// Range constraint for the variable.
-    range_constraint: RangeConstraint<T>,
-    /// None if unknown, otherwise a symbolic expression that can be used to compute
-    /// the variable from other variables.
+enum VariableState<T: FieldElement, V> {
+    /// The variable is unknown (but has a range constraint).
+    Unknown(RangeConstraint<T>),
+    /// The variable is known, and can be computed from other variables using
+    /// the given expression.
     /// Note that if the expression is an instance of `SymbolicExpression::Concrete(_)`,
     /// we have found a concrete variable assignment.
-    symbolic_expression: Option<SymbolicExpression<T, V>>,
+    Known(SymbolicExpression<T, V>),
 }
 
 // We could derive it, but then we'd have to require that `V: Default`.
 impl<T: FieldElement, V> Default for VariableState<T, V> {
     fn default() -> Self {
-        VariableState {
-            range_constraint: RangeConstraint::default(),
-            symbolic_expression: None,
+        VariableState::Unknown(RangeConstraint::default())
+    }
+}
+
+impl<T: FieldElement, V> VariableState<T, V> {
+    fn range_constraint(&self) -> RangeConstraint<T> {
+        match self {
+            VariableState::Unknown(range_constraint) => range_constraint.clone(),
+            // Note that the expression's range constraint might not be as tight as it
+            // could be. But for solving, we only need range constraints of unknown variables,
+            // so this is fine.
+            VariableState::Known(expr) => expr.range_constraint(),
         }
     }
 }
@@ -61,14 +70,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             .map(|known_var| {
                 (
                     known_var.clone(),
-                    VariableState {
+                    VariableState::Known(SymbolicExpression::Symbol(
+                        known_var.clone(),
                         // TODO: We're losing the initial range constraint here!
-                        range_constraint: RangeConstraint::default(),
-                        symbolic_expression: Some(SymbolicExpression::Symbol(
-                            known_var.clone(),
-                            RangeConstraint::default(),
-                        )),
-                    },
+                        RangeConstraint::default(),
+                    )),
                 )
             })
             .collect();
@@ -93,7 +99,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         Ok(self
             .variable_states
             .into_iter()
-            .filter_map(|(v, info)| info.symbolic_expression.map(|expr| (v, expr)))
+            .filter_map(|(v, info)| match info {
+                VariableState::Known(expr) => Some((v, expr)),
+                VariableState::Unknown(_) => None,
+            })
             .filter(|(v, _)| !self.input_variables.contains(v))
             .collect())
     }
@@ -136,21 +145,27 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             self.apply_range_constraint_update(variable.clone(), expr.range_constraint());
 
         let entry = self.variable_states.entry(variable.clone()).or_default();
-        let variable_update = match &entry.symbolic_expression {
+        let variable_update = match &entry {
             // We already know the expression
-            Some(existing) if existing == &expr => None,
+            VariableState::Known(existing) if existing == &expr => None,
 
             // An unknown variable became known, or we updated the expression.
-            Some(_) | None => {
+            _ => {
                 log::trace!("{variable} = {expr}");
-                entry.symbolic_expression = Some(expr.clone());
+
+                // Use the tightest possible range constraint.
+                let range_constraint = entry
+                    .range_constraint()
+                    .conjunction(&expr.range_constraint());
+                
+                *entry = VariableState::Known(expr.clone());
 
                 // The borrow checker won't let us call `update_constraints` here, so we
                 // just return the update.
                 Some(VariableUpdate {
                     variable,
                     known: true,
-                    range_constraint: entry.range_constraint.clone(),
+                    range_constraint,
                 })
             }
         };
@@ -169,17 +184,21 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
         range_constraint: RangeConstraint<T>,
     ) -> bool {
         let entry = self.variable_states.entry(variable.clone()).or_default();
-        let updated_constraint = range_constraint.conjunction(&entry.range_constraint);
+        let existing_range_constraint = entry.range_constraint();
+        let updated_constraint = range_constraint.conjunction(&existing_range_constraint);
 
-        if entry.range_constraint == updated_constraint {
+        if existing_range_constraint == updated_constraint {
             // Already knew the constraint, no progress
             return false;
         }
 
         log::trace!("({variable}: {updated_constraint})");
 
-        entry.range_constraint = updated_constraint.clone();
-        let known = entry.symbolic_expression.is_some();
+        if let VariableState::Unknown(existing) = entry {
+            *existing = updated_constraint.clone();
+        }
+        let known = matches!(entry, VariableState::Known(_));
+
         self.update_constraints(&VariableUpdate {
             variable,
             known,
@@ -200,7 +219,7 @@ impl<T: FieldElement, V: Ord> RangeConstraintProvider<T, V> for Solver<T, V> {
     fn get(&self, var: &V) -> RangeConstraint<T> {
         self.variable_states
             .get(var)
-            .map(|state| state.range_constraint.clone())
+            .map(|state| state.range_constraint())
             .unwrap_or_default()
     }
 }
