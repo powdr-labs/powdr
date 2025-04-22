@@ -454,18 +454,15 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         if self.is_quadratic() || self.linear.len() != 1 {
             return None;
         }
-        match self.solve(&NoRangeConstraints).ok()? {
-            ProcessResult {
+        let ProcessResult {
                 effects,
                 complete: true,
-            } if effects.len() == 1 => {
-                if let Effect::Assignment(var, expr) = &effects[0] {
-                    return Some((var.clone(), expr.try_to_number()?));
-                }
-            }
-            _ => {}
-        }
-        None
+            } = self.solve(&NoRangeConstraints).ok()?  else { return None; };
+        if let [Effect::Assignment(var, expr)] = &effects {
+            Some((var.clone(), expr.try_to_number()?))
+        } else {
+            None
+         }
     }
 }
 
