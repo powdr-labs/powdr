@@ -8,10 +8,10 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicReferenceThin, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed,
-    ConnectIdentity, ContainsNextRef, Expression, FunctionValueDefinition, Identity,
-    LookupIdentity, PermutationIdentity, PhantomLookupIdentity, PhantomPermutationIdentity, PolyID,
-    PolynomialIdentity, PolynomialReference, PolynomialType, Reference, StatementIdentifier,
-    Symbol, SymbolKind,
+    BusInteractionIdentity, ConnectIdentity, ContainsNextRef, Expression, FunctionValueDefinition,
+    Identity, LookupIdentity, PermutationIdentity, PhantomBusInteractionIdentity,
+    PhantomLookupIdentity, PhantomPermutationIdentity, PolyID, PolynomialIdentity,
+    PolynomialReference, PolynomialType, Reference, StatementIdentifier, Symbol, SymbolKind,
 };
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
 use powdr_ast::parsed::Number;
@@ -33,10 +33,10 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>, max_degree: usize) -
         extract_constant_lookups(&mut pil_file);
         remove_constant_witness_columns(&mut pil_file);
         simplify_identities(&mut pil_file);
+        replace_constrained_witness_columns(&mut pil_file, max_degree);
         inline_trivial_intermediate_polynomials(&mut pil_file);
         remove_trivial_identities(&mut pil_file);
         remove_duplicate_identities(&mut pil_file);
-        replace_constrained_witness_columns(&mut pil_file, max_degree);
 
         let new_hash = hash_pil_state(&pil_file);
         if pil_hash == new_hash {
@@ -1034,471 +1034,27 @@ fn replace_constrained_witness_columns<T: FieldElement>(
     }
 }
 
-/// Identifies input and output columns that should not be transformed into intermediate polynomials.
-/// Uses a constraint propagation algorithm to build a dependency graph
-/// and identify columns with clear roles in the constraint system.
-fn identify_inputs_and_outputs<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<PolyID> {
-    // Get all witness columns
-    let all_witness_columns: BTreeSet<PolyID> = pil_file
-        .committed_polys_in_source_order()
-        .flat_map(|(symbol, _)| symbol.array_elements().map(|(_, id)| id))
-        .collect();
-
-    // Build a map of constraints and the variables that can be isolated from each
-    let mut constraint_options = Vec::new();
-
-    // Track which variables are solvable in each constraint
-    for (idx, identity) in pil_file.identities.iter().enumerate() {
-        if let Identity::Polynomial(identity) = identity {
-            // Extract all witness columns in this constraint
-            let mut columns_in_constraint = HashSet::new();
-            identity.expression.pre_visit_expressions(&mut |e| {
-                if let AlgebraicExpression::Reference(AlgebraicReference {
-                    poly_id,
-                    next: false,
-                    ..
-                }) = e
-                {
-                    if poly_id.ptype == PolynomialType::Committed {
-                        columns_in_constraint.insert(*poly_id);
-                    }
-                }
-            });
-
-            // For each column, check if it can be isolated in this constraint
-            let mut solvable_columns: Vec<_> = columns_in_constraint
-                .iter()
-                .filter(|&&poly_id| is_solvable_for(&identity.expression, poly_id))
-                .cloned()
-                .collect();
-
-            // Sort solvable_columns to ensure deterministic behavior
-            solvable_columns.sort_by_key(|poly_id| (poly_id.id, poly_id.ptype as u8));
-
-            if !solvable_columns.is_empty() {
-                constraint_options.push((idx, identity, solvable_columns));
-            }
-        }
-    }
-
-    // Sort constraint_options by idx to ensure deterministic behavior
-    constraint_options.sort_by_key(|(idx, _, _)| *idx);
-
-    // Build a dependency graph between columns
-    let mut dependencies: BTreeMap<PolyID, BTreeSet<PolyID>> = BTreeMap::new();
-    let mut defined_by: BTreeMap<PolyID, usize> = BTreeMap::new(); // Maps column to constraint that defines it
-
-    // Collect all valid candidates for inlining
-    let mut valid_candidates = Vec::new();
-
-    // Find all valid columns to inline
-    for &(idx, identity, ref solvable_columns) in &constraint_options {
-        for &column in solvable_columns {
-            // Check if this would create a dependency cycle
-            let mut simulated_deps = dependencies.clone();
-            let expr = extract_expression_for_column(&identity.expression, column);
-
-            if let Some(expr) = expr {
-                // Add dependencies for this potential substitution
-                let mut deps = Vec::new();
-                expr.pre_visit_expressions(&mut |e| {
-                    if let AlgebraicExpression::Reference(AlgebraicReference {
-                        poly_id,
-                        next: false,
-                        ..
-                    }) = e
-                    {
-                        if poly_id.ptype == PolynomialType::Committed
-                            && *poly_id != column
-                            && !deps.contains(poly_id)
-                        {
-                            deps.push(*poly_id);
+fn identify_inputs_and_outputs<T: FieldElement>(pil_file: &mut Analyzed<T>) -> BTreeSet<PolyID> {
+    let mut result = BTreeSet::new();
+    for identity in &pil_file.identities {
+        match identity {
+            Identity::BusInteraction(BusInteractionIdentity { payload, .. })
+            | Identity::PhantomBusInteraction(PhantomBusInteractionIdentity { payload, .. }) => {
+                for expr in &payload.0 {
+                    expr.pre_visit_expressions(&mut |e| {
+                        if let AlgebraicExpression::Reference(r) = e {
+                            if r.poly_id.ptype == PolynomialType::Committed {
+                                result.insert(r.poly_id);
+                            }
                         }
-                    }
-                });
-
-                // Sort deps for deterministic behavior
-                deps.sort_by_key(|poly_id| (poly_id.id, poly_id.ptype as u8));
-
-                // Update the dependency graph
-                for &dep in &deps {
-                    simulated_deps.entry(dep).or_default().insert(column);
-                }
-
-                // Check for cycles
-                if !has_cycles(&simulated_deps) {
-                    // This is a valid candidate - add it to our list
-                    valid_candidates.push((idx, column, deps));
-                }
-            }
-        }
-    }
-
-    // Sort valid candidates for deterministic behavior
-    valid_candidates.sort_by_key(|(idx, column, _)| (*idx, column.id));
-
-    // Apply all valid candidates to build the complete dependency graph
-    let mut inlined_columns = BTreeSet::new();
-    let mut used_constraints = BTreeSet::new();
-
-    for (idx, column, deps) in valid_candidates {
-        // Skip if we've already used this constraint or column
-        if used_constraints.contains(&idx) || inlined_columns.contains(&column) {
-            continue;
-        }
-
-        // Apply this substitution
-        inlined_columns.insert(column);
-        used_constraints.insert(idx);
-        defined_by.insert(column, idx);
-
-        // Update the dependency graph
-        for &dep in &deps {
-            dependencies.entry(dep).or_default().insert(column);
-        }
-    }
-
-    // Identify input columns (not inlined and not dependent on other columns)
-    let mut inputs = HashSet::new();
-    for &column in &all_witness_columns {
-        if !inlined_columns.contains(&column)
-            && !dependencies.values().any(|deps| deps.contains(&column))
-        {
-            inputs.insert(column);
-        }
-    }
-
-    // Identify output columns (inlined but not used to define other columns)
-    let mut outputs = HashSet::new();
-    for &column in &inlined_columns {
-        if !dependencies.contains_key(&column) || dependencies[&column].is_empty() {
-            outputs.insert(column);
-        }
-    }
-
-    // Combine inputs and outputs
-    let mut result = HashSet::new();
-    result.extend(inputs.clone());
-    result.extend(outputs.clone());
-
-    log::debug!(
-        "Identified {} inputs and {} outputs that should be preserved",
-        inputs.len(),
-        outputs.len()
-    );
-
-    result
-}
-
-/// Checks if a column can be isolated in an expression (appears exactly once and not in a product)
-fn is_solvable_for<T: FieldElement>(expr: &AlgebraicExpression<T>, target: PolyID) -> bool {
-    let mut appearances = 0;
-    let mut is_solvable = true;
-
-    expr.pre_visit_expressions(&mut |e| {
-        match e {
-            AlgebraicExpression::Reference(AlgebraicReference {
-                poly_id,
-                next: false,
-                ..
-            }) if *poly_id == target => {
-                appearances += 1;
-            }
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left,
-                op: AlgebraicBinaryOperator::Mul,
-                right,
-            }) => {
-                // Check if both sides contain the target variable
-                let mut left_contains = false;
-                let mut right_contains = false;
-
-                left.pre_visit_expressions(&mut |e| {
-                    if let AlgebraicExpression::Reference(AlgebraicReference {
-                        poly_id,
-                        next: false,
-                        ..
-                    }) = e
-                    {
-                        if *poly_id == target {
-                            left_contains = true;
-                        }
-                    }
-                });
-
-                right.pre_visit_expressions(&mut |e| {
-                    if let AlgebraicExpression::Reference(AlgebraicReference {
-                        poly_id,
-                        next: false,
-                        ..
-                    }) = e
-                    {
-                        if *poly_id == target {
-                            right_contains = true;
-                        }
-                    }
-                });
-
-                // If both sides contain the target, it's not solvable
-                if left_contains && right_contains {
-                    is_solvable = false;
+                    });
                 }
             }
             _ => {}
         }
-    });
-
-    // A column is solvable if it appears exactly once and is not in a product with itself
-    appearances == 1 && is_solvable
-}
-
-/// Extracts the expression that defines a column from a constraint
-fn extract_expression_for_column<T: FieldElement>(
-    expr: &AlgebraicExpression<T>,
-    target: PolyID,
-) -> Option<AlgebraicExpression<T>> {
-    // Handle the common case of "column - expression = 0" or "expression - column = 0"
-    if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-        left,
-        op: AlgebraicBinaryOperator::Sub,
-        right,
-    }) = expr
-    {
-        // Case: column - expression = 0
-        if let AlgebraicExpression::Reference(AlgebraicReference {
-            poly_id,
-            next: false,
-            ..
-        }) = left.as_ref()
-        {
-            if *poly_id == target {
-                return Some(right.as_ref().clone());
-            }
-        }
-
-        // Case: expression - column = 0
-        if let AlgebraicExpression::Reference(AlgebraicReference {
-            poly_id,
-            next: false,
-            ..
-        }) = right.as_ref()
-        {
-            if *poly_id == target {
-                // Negate the expression since we have "expression - column = 0"
-                return Some(
-                    AlgebraicUnaryOperation {
-                        op: AlgebraicUnaryOperator::Minus,
-                        expr: Box::new(left.as_ref().clone()),
-                    }
-                    .into(),
-                );
-            }
-        }
-
-        // Check if target is in left side only
-        let left_contains = contains_target(left.as_ref(), target);
-        let right_contains = contains_target(right.as_ref(), target);
-
-        if left_contains && !right_contains {
-            // If target is only in left side, try to extract it
-            if try_extract_from_expression(left.as_ref(), target).is_some() {
-                // We found a way to isolate the target in the left expression
-                // If left_expr = extracted_expr, then extracted_expr = right
-                return Some(right.as_ref().clone());
-            }
-        } else if !left_contains && right_contains {
-            // If target is only in right side, try to extract it
-            if try_extract_from_expression(right.as_ref(), target).is_some() {
-                // We found a way to isolate the target in the right expression
-                // If right_expr = extracted_expr, then extracted_expr = left
-                return Some(
-                    AlgebraicUnaryOperation {
-                        op: AlgebraicUnaryOperator::Minus,
-                        expr: Box::new(left.as_ref().clone()),
-                    }
-                    .into(),
-                );
-            }
-        }
     }
 
-    None
-}
-
-/// Checks if an expression contains the target poly_id
-fn contains_target<T: FieldElement>(expr: &AlgebraicExpression<T>, target: PolyID) -> bool {
-    let mut found = false;
-    expr.pre_visit_expressions(&mut |e| {
-        if let AlgebraicExpression::Reference(AlgebraicReference {
-            poly_id,
-            next: false,
-            ..
-        }) = e
-        {
-            if *poly_id == target {
-                found = true;
-            }
-        }
-    });
-    found
-}
-
-/// Tries to extract the target from an expression
-/// Returns Some(expr) if the expression can be rewritten as "target = expr"
-fn try_extract_from_expression<T: FieldElement>(
-    expr: &AlgebraicExpression<T>,
-    target: PolyID,
-) -> Option<AlgebraicExpression<T>> {
-    match expr {
-        // Direct reference to target
-        AlgebraicExpression::Reference(AlgebraicReference {
-            poly_id,
-            next: false,
-            ..
-        }) if *poly_id == target => {
-            // If we have just the target, it equals itself
-            Some(AlgebraicExpression::Number(T::one()))
-        }
-
-        // Handle unary negation: -expr
-        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
-            op: AlgebraicUnaryOperator::Minus,
-            expr: inner,
-        }) => {
-            try_extract_from_expression(inner, target).map(|extracted| {
-                // If inner = extracted, then -inner = -extracted
-                AlgebraicUnaryOperation {
-                    op: AlgebraicUnaryOperator::Minus,
-                    expr: Box::new(extracted),
-                }
-                .into()
-            })
-        }
-
-        // Handle addition: expr1 + expr2
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-            left,
-            op: AlgebraicBinaryOperator::Add,
-            right,
-        }) => {
-            let left_contains = contains_target(left, target);
-            let right_contains = contains_target(right, target);
-
-            if left_contains && !right_contains {
-                // If target is only in left side
-                try_extract_from_expression(left, target).map(|extracted| {
-                    // If left = extracted, then left + right = extracted + right
-                    // So extracted = left + right - right = left
-                    AlgebraicBinaryOperation {
-                        left: Box::new(extracted),
-                        op: AlgebraicBinaryOperator::Sub,
-                        right: right.clone(),
-                    }
-                    .into()
-                })
-            } else if !left_contains && right_contains {
-                // If target is only in right side
-                try_extract_from_expression(right, target).map(|extracted| {
-                    // If right = extracted, then left + right = left + extracted
-                    // So extracted = left + right - left = right
-                    AlgebraicBinaryOperation {
-                        left: Box::new(extracted),
-                        op: AlgebraicBinaryOperator::Sub,
-                        right: left.clone(),
-                    }
-                    .into()
-                })
-            } else {
-                // Target is in both sides or neither - can't extract
-                None
-            }
-        }
-
-        // Handle subtraction: expr1 - expr2
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-            left,
-            op: AlgebraicBinaryOperator::Sub,
-            right,
-        }) => {
-            let left_contains = contains_target(left, target);
-            let right_contains = contains_target(right, target);
-
-            if left_contains && !right_contains {
-                // If target is only in left side
-                try_extract_from_expression(left, target).map(|extracted| {
-                    // If left = extracted, then left - right = extracted - right
-                    // So extracted = left - right + right = left
-                    AlgebraicBinaryOperation {
-                        left: Box::new(extracted),
-                        op: AlgebraicBinaryOperator::Add,
-                        right: right.clone(),
-                    }
-                    .into()
-                })
-            } else if !left_contains && right_contains {
-                // If target is only in right side
-                try_extract_from_expression(right, target).map(|extracted| {
-                    // If right = extracted, then left - right = left - extracted
-                    // So extracted = right = left - (left - right) = right
-                    AlgebraicBinaryOperation {
-                        left: left.clone(),
-                        op: AlgebraicBinaryOperator::Sub,
-                        right: Box::new(extracted),
-                    }
-                    .into()
-                })
-            } else {
-                // Target is in both sides or neither - can't extract
-                None
-            }
-        }
-
-        _ => None,
-    }
-}
-
-/// Checks if a dependency graph has cycles using depth-first search
-fn has_cycles(graph: &BTreeMap<PolyID, BTreeSet<PolyID>>) -> bool {
-    let mut visited = BTreeSet::new();
-    let mut path = BTreeSet::new();
-
-    for &node in graph.keys() {
-        if !visited.contains(&node) && has_cycle_dfs(node, graph, &mut visited, &mut path) {
-            return true;
-        }
-    }
-
-    false
-}
-
-/// Helper function for cycle detection using DFS
-fn has_cycle_dfs(
-    node: PolyID,
-    graph: &BTreeMap<PolyID, BTreeSet<PolyID>>,
-    visited: &mut BTreeSet<PolyID>,
-    path: &mut BTreeSet<PolyID>,
-) -> bool {
-    if path.contains(&node) {
-        return true;
-    }
-
-    if visited.contains(&node) {
-        return false;
-    }
-
-    visited.insert(node);
-    path.insert(node);
-
-    if let Some(neighbors) = graph.get(&node) {
-        for &neighbor in neighbors {
-            if has_cycle_dfs(neighbor, graph, visited, path) {
-                return true;
-            }
-        }
-    }
-
-    path.remove(&node);
-    false
+    result
 }
 
 /// Checks if a substitution is valid for all affected constraints.
@@ -1686,3 +1242,469 @@ fn is_substitution_creating_cycle<T: FieldElement>(
 
     false
 }
+
+// /// Identifies input and output columns that should not be transformed into intermediate polynomials.
+// /// Uses a constraint propagation algorithm to build a dependency graph
+// /// and identify columns with clear roles in the constraint system.
+// fn identify_inputs_and_outputs<T: FieldElement>(pil_file: &Analyzed<T>) -> HashSet<PolyID> {
+//     // Get all witness columns
+//     let all_witness_columns: BTreeSet<PolyID> = pil_file
+//         .committed_polys_in_source_order()
+//         .flat_map(|(symbol, _)| symbol.array_elements().map(|(_, id)| id))
+//         .collect();
+
+//     // Build a map of constraints and the variables that can be isolated from each
+//     let mut constraint_options = Vec::new();
+
+//     // Track which variables are solvable in each constraint
+//     for (idx, identity) in pil_file.identities.iter().enumerate() {
+//         if let Identity::Polynomial(identity) = identity {
+//             // Extract all witness columns in this constraint
+//             let mut columns_in_constraint = HashSet::new();
+//             identity.expression.pre_visit_expressions(&mut |e| {
+//                 if let AlgebraicExpression::Reference(AlgebraicReference {
+//                     poly_id,
+//                     next: false,
+//                     ..
+//                 }) = e
+//                 {
+//                     if poly_id.ptype == PolynomialType::Committed {
+//                         columns_in_constraint.insert(*poly_id);
+//                     }
+//                 }
+//             });
+
+//             // For each column, check if it can be isolated in this constraint
+//             let mut solvable_columns: Vec<_> = columns_in_constraint
+//                 .iter()
+//                 .filter(|&&poly_id| is_solvable_for(&identity.expression, poly_id))
+//                 .cloned()
+//                 .collect();
+
+//             // Sort solvable_columns to ensure deterministic behavior
+//             solvable_columns.sort_by_key(|poly_id| (poly_id.id, poly_id.ptype as u8));
+
+//             if !solvable_columns.is_empty() {
+//                 constraint_options.push((idx, identity, solvable_columns));
+//             }
+//         }
+//     }
+
+//     // Sort constraint_options by idx to ensure deterministic behavior
+//     constraint_options.sort_by_key(|(idx, _, _)| *idx);
+
+//     // Build a dependency graph between columns
+//     let mut dependencies: BTreeMap<PolyID, BTreeSet<PolyID>> = BTreeMap::new();
+//     let mut defined_by: BTreeMap<PolyID, usize> = BTreeMap::new(); // Maps column to constraint that defines it
+
+//     // Collect all valid candidates for inlining
+//     let mut valid_candidates = Vec::new();
+
+//     // Find all valid columns to inline
+//     for &(idx, identity, ref solvable_columns) in &constraint_options {
+//         for &column in solvable_columns {
+//             // Check if this would create a dependency cycle
+//             let mut simulated_deps = dependencies.clone();
+//             let expr = extract_expression_for_column(&identity.expression, column);
+
+//             if let Some(expr) = expr {
+//                 // Add dependencies for this potential substitution
+//                 let mut deps = Vec::new();
+//                 expr.pre_visit_expressions(&mut |e| {
+//                     if let AlgebraicExpression::Reference(AlgebraicReference {
+//                         poly_id,
+//                         next: false,
+//                         ..
+//                     }) = e
+//                     {
+//                         if poly_id.ptype == PolynomialType::Committed
+//                             && *poly_id != column
+//                             && !deps.contains(poly_id)
+//                         {
+//                             deps.push(*poly_id);
+//                         }
+//                     }
+//                 });
+
+//                 // Sort deps for deterministic behavior
+//                 //deps.sort_by_key(|poly_id| (poly_id.id, poly_id.ptype as u8));
+
+//                 // Update the dependency graph
+//                 for &dep in &deps {
+//                     simulated_deps.entry(dep).or_default().insert(column);
+//                 }
+
+//                 // Check for cycles
+//                 if !has_cycles(&simulated_deps) {
+//                     valid_candidates.push((idx, column, deps));
+//                 }
+//             }
+//         }
+//     }
+
+//     // Sort valid candidates for deterministic behavior
+//     valid_candidates.sort_by_key(|(idx, column, _)| (*idx, column.id));
+
+//     // Apply all valid candidates to build the complete dependency graph
+//     let mut inlined_columns = BTreeSet::new();
+//     let mut used_constraints = BTreeSet::new();
+
+//     for (idx, column, deps) in valid_candidates {
+//         // Skip if we've already used this constraint or column
+//         if used_constraints.contains(&idx) || inlined_columns.contains(&column) {
+//             continue;
+//         }
+
+//         // Apply this substitution
+//         inlined_columns.insert(column);
+//         used_constraints.insert(idx);
+//         defined_by.insert(column, idx);
+
+//         // Update the dependency graph
+//         for &dep in &deps {
+//             dependencies.entry(dep).or_default().insert(column);
+//         }
+//     }
+
+//     // Identify input columns (not inlined and not dependent on other columns)
+//     let mut inputs = HashSet::new();
+//     for &column in &all_witness_columns {
+//         if !inlined_columns.contains(&column)
+//             && !dependencies.values().any(|deps| deps.contains(&column))
+//         {
+//             inputs.insert(column);
+//         }
+//     }
+
+//     // Identify output columns (inlined but not used to define other columns)
+//     let mut outputs = HashSet::new();
+//     for &column in &inlined_columns {
+//         if !dependencies.contains_key(&column) || dependencies[&column].is_empty() {
+//             outputs.insert(column);
+//         }
+//     }
+
+//     // Combine inputs and outputs
+//     let mut result = HashSet::new();
+//     result.extend(inputs.clone());
+//     result.extend(outputs.clone());
+
+//     log::debug!(
+//         "Identified {} inputs and {} outputs that should be preserved",
+//         inputs.len(),
+//         outputs.len()
+//     );
+
+//     result
+// }
+
+// /// Checks if a column can be isolated in an expression (appears exactly once and not in a product)
+// fn is_solvable_for<T: FieldElement>(expr: &AlgebraicExpression<T>, target: PolyID) -> bool {
+//     let mut appearances = 0;
+//     let mut is_solvable = true;
+
+//     expr.pre_visit_expressions(&mut |e| {
+//         match e {
+//             AlgebraicExpression::Reference(AlgebraicReference {
+//                 poly_id,
+//                 next: false,
+//                 ..
+//             }) if *poly_id == target => {
+//                 appearances += 1;
+//             }
+//             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+//                 left,
+//                 op: AlgebraicBinaryOperator::Mul,
+//                 right,
+//             }) => {
+//                 // Check if both sides contain the target variable
+//                 let mut left_contains = false;
+//                 let mut right_contains = false;
+
+//                 left.pre_visit_expressions(&mut |e| {
+//                     if let AlgebraicExpression::Reference(AlgebraicReference {
+//                         poly_id,
+//                         next: false,
+//                         ..
+//                     }) = e
+//                     {
+//                         if *poly_id == target {
+//                             left_contains = true;
+//                         }
+//                     }
+//                 });
+
+//                 right.pre_visit_expressions(&mut |e| {
+//                     if let AlgebraicExpression::Reference(AlgebraicReference {
+//                         poly_id,
+//                         next: false,
+//                         ..
+//                     }) = e
+//                     {
+//                         if *poly_id == target {
+//                             right_contains = true;
+//                         }
+//                     }
+//                 });
+
+//                 // If both sides contain the target, it's not solvable
+//                 if left_contains && right_contains {
+//                     is_solvable = false;
+//                 }
+//             }
+//             _ => {}
+//         }
+//     });
+
+//     // A column is solvable if it appears exactly once and is not in a product with itself
+//     appearances == 1 && is_solvable
+// }
+
+// /// Extracts the expression that defines a column from a constraint
+// fn extract_expression_for_column<T: FieldElement>(
+//     expr: &AlgebraicExpression<T>,
+//     target: PolyID,
+// ) -> Option<AlgebraicExpression<T>> {
+//     // Handle the common case of "column - expression = 0" or "expression - column = 0"
+//     if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+//         left,
+//         op: AlgebraicBinaryOperator::Sub,
+//         right,
+//     }) = expr
+//     {
+//         // Case: column - expression = 0
+//         if let AlgebraicExpression::Reference(AlgebraicReference {
+//             poly_id,
+//             next: false,
+//             ..
+//         }) = left.as_ref()
+//         {
+//             if *poly_id == target {
+//                 return Some(right.as_ref().clone());
+//             }
+//         }
+
+//         // Case: expression - column = 0
+//         if let AlgebraicExpression::Reference(AlgebraicReference {
+//             poly_id,
+//             next: false,
+//             ..
+//         }) = right.as_ref()
+//         {
+//             if *poly_id == target {
+//                 // Negate the expression since we have "expression - column = 0"
+//                 return Some(
+//                     AlgebraicUnaryOperation {
+//                         op: AlgebraicUnaryOperator::Minus,
+//                         expr: Box::new(left.as_ref().clone()),
+//                     }
+//                     .into(),
+//                 );
+//             }
+//         }
+
+//         // Check if target is in left side only
+//         let left_contains = contains_target(left.as_ref(), target);
+//         let right_contains = contains_target(right.as_ref(), target);
+
+//         if left_contains && !right_contains {
+//             // If target is only in left side, try to extract it
+//             if try_extract_from_expression(left.as_ref(), target).is_some() {
+//                 // We found a way to isolate the target in the left expression
+//                 // If left_expr = extracted_expr, then extracted_expr = right
+//                 return Some(right.as_ref().clone());
+//             }
+//         } else if !left_contains && right_contains {
+//             // If target is only in right side, try to extract it
+//             if try_extract_from_expression(right.as_ref(), target).is_some() {
+//                 // We found a way to isolate the target in the right expression
+//                 // If right_expr = extracted_expr, then extracted_expr = left
+//                 return Some(
+//                     AlgebraicUnaryOperation {
+//                         op: AlgebraicUnaryOperator::Minus,
+//                         expr: Box::new(left.as_ref().clone()),
+//                     }
+//                     .into(),
+//                 );
+//             }
+//         }
+//     }
+
+//     None
+// }
+
+// /// Checks if an expression contains the target poly_id
+// fn contains_target<T: FieldElement>(expr: &AlgebraicExpression<T>, target: PolyID) -> bool {
+//     let mut found = false;
+//     expr.pre_visit_expressions(&mut |e| {
+//         if let AlgebraicExpression::Reference(AlgebraicReference {
+//             poly_id,
+//             next: false,
+//             ..
+//         }) = e
+//         {
+//             if *poly_id == target {
+//                 found = true;
+//             }
+//         }
+//     });
+//     found
+// }
+
+// /// Tries to extract the target from an expression
+// /// Returns Some(expr) if the expression can be rewritten as "target = expr"
+// fn try_extract_from_expression<T: FieldElement>(
+//     expr: &AlgebraicExpression<T>,
+//     target: PolyID,
+// ) -> Option<AlgebraicExpression<T>> {
+//     match expr {
+//         // Direct reference to target
+//         AlgebraicExpression::Reference(AlgebraicReference {
+//             poly_id,
+//             next: false,
+//             ..
+//         }) if *poly_id == target => {
+//             // If we have just the target, it equals itself
+//             Some(AlgebraicExpression::Number(T::one()))
+//         }
+
+//         // Handle unary negation: -expr
+//         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation {
+//             op: AlgebraicUnaryOperator::Minus,
+//             expr: inner,
+//         }) => {
+//             try_extract_from_expression(inner, target).map(|extracted| {
+//                 // If inner = extracted, then -inner = -extracted
+//                 AlgebraicUnaryOperation {
+//                     op: AlgebraicUnaryOperator::Minus,
+//                     expr: Box::new(extracted),
+//                 }
+//                 .into()
+//             })
+//         }
+
+//         // Handle addition: expr1 + expr2
+//         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+//             left,
+//             op: AlgebraicBinaryOperator::Add,
+//             right,
+//         }) => {
+//             let left_contains = contains_target(left, target);
+//             let right_contains = contains_target(right, target);
+
+//             if left_contains && !right_contains {
+//                 // If target is only in left side
+//                 try_extract_from_expression(left, target).map(|extracted| {
+//                     // If left = extracted, then left + right = extracted + right
+//                     // So extracted = left + right - right = left
+//                     AlgebraicBinaryOperation {
+//                         left: Box::new(extracted),
+//                         op: AlgebraicBinaryOperator::Sub,
+//                         right: right.clone(),
+//                     }
+//                     .into()
+//                 })
+//             } else if !left_contains && right_contains {
+//                 // If target is only in right side
+//                 try_extract_from_expression(right, target).map(|extracted| {
+//                     // If right = extracted, then left + right = left + extracted
+//                     // So extracted = left + right - left = right
+//                     AlgebraicBinaryOperation {
+//                         left: Box::new(extracted),
+//                         op: AlgebraicBinaryOperator::Sub,
+//                         right: left.clone(),
+//                     }
+//                     .into()
+//                 })
+//             } else {
+//                 // Target is in both sides or neither - can't extract
+//                 None
+//             }
+//         }
+
+//         // Handle subtraction: expr1 - expr2
+//         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+//             left,
+//             op: AlgebraicBinaryOperator::Sub,
+//             right,
+//         }) => {
+//             let left_contains = contains_target(left, target);
+//             let right_contains = contains_target(right, target);
+
+//             if left_contains && !right_contains {
+//                 // If target is only in left side
+//                 try_extract_from_expression(left, target).map(|extracted| {
+//                     // If left = extracted, then left - right = extracted - right
+//                     // So extracted = left - right + right = left
+//                     AlgebraicBinaryOperation {
+//                         left: Box::new(extracted),
+//                         op: AlgebraicBinaryOperator::Add,
+//                         right: right.clone(),
+//                     }
+//                     .into()
+//                 })
+//             } else if !left_contains && right_contains {
+//                 // If target is only in right side
+//                 try_extract_from_expression(right, target).map(|extracted| {
+//                     // If right = extracted, then left - right = left - extracted
+//                     // So extracted = right = left - (left - right) = right
+//                     AlgebraicBinaryOperation {
+//                         left: left.clone(),
+//                         op: AlgebraicBinaryOperator::Sub,
+//                         right: Box::new(extracted),
+//                     }
+//                     .into()
+//                 })
+//             } else {
+//                 // Target is in both sides or neither - can't extract
+//                 None
+//             }
+//         }
+
+//         _ => None,
+//     }
+// }
+
+// /// Checks if a dependency graph has cycles using depth-first search
+// fn has_cycles(graph: &BTreeMap<PolyID, BTreeSet<PolyID>>) -> bool {
+//     let mut visited = BTreeSet::new();
+//     let mut path = BTreeSet::new();
+
+//     for &node in graph.keys() {
+//         if !visited.contains(&node) && has_cycle_dfs(node, graph, &mut visited, &mut path) {
+//             return true;
+//         }
+//     }
+
+//     false
+// }
+
+// /// Helper function for cycle detection using DFS
+// fn has_cycle_dfs(
+//     node: PolyID,
+//     graph: &BTreeMap<PolyID, BTreeSet<PolyID>>,
+//     visited: &mut BTreeSet<PolyID>,
+//     path: &mut BTreeSet<PolyID>,
+// ) -> bool {
+//     if path.contains(&node) {
+//         return true;
+//     }
+
+//     if visited.contains(&node) {
+//         return false;
+//     }
+
+//     visited.insert(node);
+//     path.insert(node);
+
+//     if let Some(neighbors) = graph.get(&node) {
+//         for &neighbor in neighbors {
+//             if has_cycle_dfs(neighbor, graph, visited, path) {
+//                 return true;
+//             }
+//         }
+//     }
+
+//     path.remove(&node);
+//     false
+// }
