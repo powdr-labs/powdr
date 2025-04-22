@@ -14,10 +14,9 @@ pub fn localize<F: FieldElement, E: ExpressionVisitable<AlgebraicExpression<F>>>
     local_pil: &Analyzed<F>,
 ) -> E {
     // Build a map (local ID) -> (global ID).
-    let name_to_id_local = local_pil.name_to_poly_id();
+    let name_to_id_local: BTreeMap<_, _> = local_pil.name_to_poly_id().collect();
     let id_map = global_pil
         .name_to_poly_id()
-        .into_iter()
         .filter_map(|(name, source_id)| {
             name_to_id_local
                 .get(&name)
