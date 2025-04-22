@@ -1,4 +1,4 @@
-pub(crate) mod affine_symbolic_expression;
+mod algebraic_to_quadratic;
 mod block_machine_processor;
 pub(crate) mod code_cleaner;
 mod compiler;
