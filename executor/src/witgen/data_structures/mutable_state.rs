@@ -4,12 +4,12 @@ use std::{
 };
 
 use bit_vec::BitVec;
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_number::FieldElement;
 
 use crate::witgen::{
     global_constraints::RangeConstraintSet,
     machines::{KnownMachine, LookupCell, Machine},
-    range_constraints::RangeConstraint,
     AffineExpression, AlgebraicVariable, EvalError, EvalResult, QueryCallback,
 };
 

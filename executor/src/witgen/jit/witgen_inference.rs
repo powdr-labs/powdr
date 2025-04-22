@@ -5,9 +5,15 @@ use std::{
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference};
+use powdr_constraint_solver::{
+    algebraic_to_quadratic::algebraic_expression_to_quadratic_symbolic_expression,
+    effect::BranchCondition,
+    quadratic_symbolic_expression::{
+        Error, ProcessResult, QuadraticSymbolicExpression, RangeConstraintProvider,
+    },
+    range_constraint::RangeConstraint,
+    symbolic_expression::SymbolicExpression,
 };
 use powdr_number::FieldElement;
 
@@ -17,15 +23,12 @@ use crate::witgen::{
         mutable_state::MutableState,
     },
     global_constraints::RangeConstraintSet,
-    range_constraints::RangeConstraint,
     FixedData, QueryCallback,
 };
 
 use super::{
-    affine_symbolic_expression::{AffineSymbolicExpression, Error, ProcessResult},
-    effect::{BranchCondition, Effect, ProverFunctionCall},
+    effect::{Effect, ProverFunctionCall},
     prover_function_heuristics::ProverFunction,
-    symbolic_expression::SymbolicExpression,
     variable::{Cell, MachineCallVariable, Variable},
 };
 
@@ -174,8 +177,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         bus_send: &BusSend<T>,
         row_offset: i32,
     ) -> Result<Vec<Variable>, Error> {
-        let result = self.process_call_inner(can_process_call, bus_send, row_offset);
-        self.ingest_effects(result, Some((bus_send.identity_id, row_offset)))
+        let (effects, complete) = self.process_call_inner(can_process_call, bus_send, row_offset);
+        self.ingest_effects(effects, complete, Some((bus_send.identity_id, row_offset)))
     }
 
     /// Process a prover function on a row, i.e. determine if we can execute it and if it will
@@ -218,81 +221,23 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             row_offset,
             inputs,
         });
-        self.ingest_effects(
-            ProcessResult {
-                effects: vec![effect],
-                complete: true,
-            },
-            None,
-        )
+        self.ingest_effects(vec![effect], true, None)
     }
 
     /// Set a variable to a fixed value.
     pub fn set_variable(&mut self, variable: Variable, value: T) -> Result<Vec<Variable>, Error> {
-        self.process_equation_on_row(
-            &Expression::Number(0.into()),
-            Some(variable),
-            -value,
-            // The row does not matter because the algebraic expression is empty
-            0,
+        self.process_equation(
+            &(QuadraticSymbolicExpression::from_unknown_variable(variable) - value.into()),
         )
     }
 
-    /// Processes the equality constraint `lhs = variable + offset` with row offset `row_offset`.
-    /// If `variable` is `None`, it is treated as zero.
-    /// If this returns an error, it means we have conflicting constraints.
-    pub fn process_equation_on_row(
+    pub fn process_equation(
         &mut self,
-        lhs: &Expression<T>,
-        variable: Option<Variable>,
-        offset: T,
-        row_offset: i32,
+        equation: &QuadraticSymbolicExpression<T, Variable>,
     ) -> Result<Vec<Variable>, Error> {
-        // Try to find a new assignment to a variable in the equality.
-        let mut result = self.process_equation_on_row_using_evaluator(
-            lhs,
-            variable.clone(),
-            offset,
-            row_offset,
-            false,
-        )?;
-        // Try to propagate range constraints.
-        let result_concrete =
-            self.process_equation_on_row_using_evaluator(lhs, variable, offset, row_offset, true)?;
-
-        // We only use the effects of the second evaluation,
-        // its `complete` flag is ignored.
-        result.effects.extend(result_concrete.effects);
-
-        self.ingest_effects(result, None)
-    }
-
-    /// Processes the equality constraint `lhs = variable + offset`.
-    /// If `variable` is `None`, it is treated as zero.
-    /// If `only_concrete_known` is true, then only variables that are known to have a fixed value
-    /// are considered known.
-    /// If this returns an error, it means we have conflicting constraints.
-    fn process_equation_on_row_using_evaluator(
-        &self,
-        lhs: &Expression<T>,
-        variable: Option<Variable>,
-        offset: T,
-        row_offset: i32,
-        only_concrete_known: bool,
-    ) -> Result<ProcessResult<T, Variable>, Error> {
-        let evaluator = if only_concrete_known {
-            Evaluator::new(self).only_concrete_known()
-        } else {
-            Evaluator::new(self)
-        };
-        let Some(lhs_evaluated) = evaluator.evaluate(lhs, row_offset) else {
-            return Ok(ProcessResult::empty());
-        };
-        let variable = variable
-            .map(|v| evaluator.evaluate_variable(v.clone()))
-            .unwrap_or_default();
-
-        (lhs_evaluated - variable - offset.into()).solve()
+        let ProcessResult { effects, complete } = equation.solve(self)?;
+        let effects = effects.into_iter().map(Into::into).collect();
+        self.ingest_effects(effects, complete, None)
     }
 
     fn process_call_inner(
@@ -300,19 +245,16 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         can_process_call: impl CanProcessCall<T>,
         bus_send: &BusSend<T>,
         row_offset: i32,
-    ) -> ProcessResult<T, Variable> {
+    ) -> (Vec<Effect<T, Variable>>, bool) {
         // We need to know the selector and bus ID.
         let (Some(selector), Some(bus_id)) = (
             self.try_evaluate_to_known_number(&bus_send.selected_payload.selector, row_offset),
             self.try_evaluate_to_known_number(&bus_send.bus_id, row_offset),
         ) else {
-            return ProcessResult::empty();
+            return (vec![], false);
         };
         if selector == 0.into() {
-            return ProcessResult {
-                effects: vec![],
-                complete: true,
-            };
+            return (vec![], true);
         } else {
             assert_eq!(selector, 1.into(), "Selector is non-binary");
         }
@@ -343,10 +285,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         if can_process {
             effects.push(Effect::MachineCall(bus_id, known, arguments.to_vec()));
         }
-        ProcessResult {
-            effects,
-            complete: can_process,
-        }
+        (effects, can_process)
     }
 
     /// Analyze the effects and update the internal state.
@@ -355,11 +294,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Returns the variables that have been updated.
     fn ingest_effects(
         &mut self,
-        process_result: ProcessResult<T, Variable>,
+        effects: Vec<Effect<T, Variable>>,
+        complete: bool,
         identity_id: Option<(u64, i32)>,
     ) -> Result<Vec<Variable>, Error> {
         let mut updated_variables = vec![];
-        for e in process_result.effects {
+        for e in effects {
             match &e {
                 Effect::Assignment(variable, assignment) => {
                     // If the variable was determined to be a constant, we add this
@@ -421,7 +361,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     // multiple times to get better range constraints.
                     if self.complete_calls.insert(identity_id.unwrap()) {
                         log::trace!("Machine call: {:?}", identity_id.unwrap());
-                        assert!(process_result.complete);
+                        assert!(complete);
                         for v in vars {
                             // Inputs are already known, but it does not hurt to add all of them.
                             if self.record_known(v.clone()) {
@@ -435,7 +375,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 Effect::Branch(..) => unreachable!(),
             }
         }
-        if process_result.complete {
+        if complete {
             // If a machine call is complete because its selector is zero,
             // we will not get an `Effect::MachineCall` above and need to
             // insert here.
@@ -506,116 +446,57 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         &self,
         expr: &Expression<T>,
         offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable>> {
-        Evaluator::new(self).evaluate(expr, offset)
-    }
-
-    pub fn try_evaluate_to_known_number(&self, expr: &Expression<T>, offset: i32) -> Option<T> {
-        self.evaluate(expr, offset)?.try_to_known()?.try_to_number()
-    }
-}
-
-struct Evaluator<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {
-    witgen_inference: &'a WitgenInference<'a, T, FixedEval>,
-    only_concrete_known: bool,
-}
-
-impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> Evaluator<'a, T, FixedEval> {
-    pub fn new(witgen_inference: &'a WitgenInference<'a, T, FixedEval>) -> Self {
-        Self {
-            witgen_inference,
-            only_concrete_known: false,
-        }
-    }
-
-    /// Sets this evaluator into the mode where only concrete variables are
-    /// considered "known". This means even if we know how to compute a variable,
-    /// as long as we cannot determine it to have a fixed value at compile-time,
-    /// it is considered "unknown" and we can solve for it.
-    pub fn only_concrete_known(self) -> Self {
-        Self {
-            witgen_inference: self.witgen_inference,
-            only_concrete_known: true,
-        }
-    }
-
-    pub fn evaluate(
-        &self,
-        expr: &Expression<T>,
-        offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable>> {
-        Some(match expr {
-            Expression::Reference(r) => self.evaluate_variable(Variable::from_reference(r, offset)),
-            Expression::PublicReference(_) | Expression::Challenge(_) => {
-                // TODO we need to introduce a variable type for those.
-                return None;
-            }
-            Expression::Number(n) => (*n).into(),
-            Expression::BinaryOperation(op) => self.evaluate_binary_operation(op, offset)?,
-            Expression::UnaryOperation(op) => self.evaluate_unary_operation(op, offset)?,
+        require_concretely_known: bool,
+    ) -> QuadraticSymbolicExpression<T, Variable> {
+        algebraic_expression_to_quadratic_symbolic_expression(expr, &|r| {
+            reference_to_quadratic_symbolic_expression(r, offset, require_concretely_known, self)
         })
     }
 
-    /// Turns the given variable either to a known symbolic value or an unknown symbolic value
-    /// depending on if it is known or not.
-    /// If it is known to be range-constrained to a single value, that value is used.
-    pub fn evaluate_variable(&self, variable: Variable) -> AffineSymbolicExpression<T, Variable> {
-        // If a variable is known and has a compile-time constant value,
-        // that value is stored in the range constraints.
-        let rc = self.witgen_inference.range_constraint(&variable);
-        match self.witgen_inference.value(&variable) {
-            Value::Concrete(val) => val.into(),
-            Value::Unknown => AffineSymbolicExpression::from_unknown_variable(variable, rc),
-            Value::Known if self.only_concrete_known => {
-                AffineSymbolicExpression::from_unknown_variable(variable, rc)
-            }
-            Value::Known => AffineSymbolicExpression::from_known_symbol(variable, rc),
-        }
-    }
-
-    fn evaluate_binary_operation(
-        &self,
-        op: &AlgebraicBinaryOperation<T>,
-        offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable>> {
-        let left = self.evaluate(&op.left, offset);
-        let right = self.evaluate(&op.right, offset);
-        match op.op {
-            AlgebraicBinaryOperator::Add => Some(&left? + &right?),
-            AlgebraicBinaryOperator::Sub => Some(&left? - &right?),
-            AlgebraicBinaryOperator::Mul => {
-                if is_known_zero(&left) || is_known_zero(&right) {
-                    Some(SymbolicExpression::from(T::from(0)).into())
-                } else {
-                    left?.try_mul(&right?)
-                }
-            }
-            AlgebraicBinaryOperator::Pow => {
-                let result = left?
-                    .try_to_known()?
-                    .try_to_number()?
-                    .pow(right?.try_to_known()?.try_to_number()?.to_integer());
-                Some(AffineSymbolicExpression::from(result))
-            }
-        }
-    }
-
-    fn evaluate_unary_operation(
-        &self,
-        op: &AlgebraicUnaryOperation<T>,
-        offset: i32,
-    ) -> Option<AffineSymbolicExpression<T, Variable>> {
-        let expr = self.evaluate(&op.expr, offset)?;
-        match op.op {
-            AlgebraicUnaryOperator::Minus => Some(-&expr),
-        }
+    pub fn try_evaluate_to_known_number(&self, expr: &Expression<T>, offset: i32) -> Option<T> {
+        self.evaluate(expr, offset, false)
+            .try_to_known()?
+            .try_to_number()
     }
 }
 
-fn is_known_zero<T: FieldElement>(x: &Option<AffineSymbolicExpression<T, Variable>>) -> bool {
-    x.as_ref()
-        .and_then(|x| x.try_to_known().map(|x| x.is_known_zero()))
-        .unwrap_or(false)
+fn reference_to_quadratic_symbolic_expression<T: FieldElement, Fixed: FixedEvaluator<T>>(
+    reference: &AlgebraicReference,
+    row_offset: i32,
+    require_concretely_known: bool,
+    witgen: &WitgenInference<'_, T, Fixed>,
+) -> QuadraticSymbolicExpression<T, Variable> {
+    variable_to_quadratic_symbolic_expression(
+        Variable::from_reference(reference, row_offset),
+        require_concretely_known,
+        witgen,
+    )
+}
+
+pub fn variable_to_quadratic_symbolic_expression<T: FieldElement, Fixed: FixedEvaluator<T>>(
+    variable: Variable,
+    require_concretely_known: bool,
+    witgen: &WitgenInference<'_, T, Fixed>,
+) -> QuadraticSymbolicExpression<T, Variable> {
+    let rc = witgen.range_constraint(&variable);
+    let known = if require_concretely_known {
+        rc.try_to_single_value().is_some()
+    } else {
+        witgen.is_known(&variable)
+    };
+    if known {
+        QuadraticSymbolicExpression::from_known_symbol(variable, rc)
+    } else {
+        QuadraticSymbolicExpression::from_unknown_variable(variable)
+    }
+}
+
+impl<T: FieldElement, Fixed: FixedEvaluator<T>> RangeConstraintProvider<T, Variable>
+    for WitgenInference<'_, T, Fixed>
+{
+    fn get(&self, var: &Variable) -> RangeConstraint<T> {
+        self.range_constraint(var)
+    }
 }
 
 pub trait FixedEvaluator<T: FieldElement>: Clone {
@@ -722,9 +603,17 @@ mod test {
             for row in rows {
                 for id in fixed_data.identities.iter() {
                     let updated_vars = match id {
-                        Identity::Polynomial(PolynomialIdentity { expression, .. }) => witgen
-                            .process_equation_on_row(expression, None, 0.into(), *row)
-                            .unwrap(),
+                        Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
+                            let equation = algebraic_expression_to_quadratic_symbolic_expression(
+                                expression,
+                                &|r| {
+                                    reference_to_quadratic_symbolic_expression(
+                                        r, *row, false, &witgen,
+                                    )
+                                },
+                            );
+                            witgen.process_equation(&equation).unwrap()
+                        }
                         Identity::BusSend(bus_send) => {
                             let mut updated_vars = vec![];
                             for (index, arg) in
@@ -735,11 +624,23 @@ mod test {
                                     row_offset: *row,
                                     index,
                                 });
-                                updated_vars.extend(
-                                    witgen
-                                        .process_equation_on_row(arg, Some(var), 0.into(), *row)
-                                        .unwrap(),
+                                let var = if witgen.is_known(&var) {
+                                    QuadraticSymbolicExpression::from_known_symbol(
+                                        var.clone(),
+                                        witgen.range_constraint(&var),
+                                    )
+                                } else {
+                                    QuadraticSymbolicExpression::from_unknown_variable(var.clone())
+                                };
+                                let arg = algebraic_expression_to_quadratic_symbolic_expression(
+                                    arg,
+                                    &|r| {
+                                        reference_to_quadratic_symbolic_expression(
+                                            r, *row, false, &witgen,
+                                        )
+                                    },
                                 );
+                                updated_vars.extend(witgen.process_equation(&(var - arg)).unwrap());
                             }
                             updated_vars.extend(
                                 witgen.process_call(&mutable_state, bus_send, *row).unwrap(),
