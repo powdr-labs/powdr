@@ -14,7 +14,6 @@ powdr-number.workspace = true
 itertools = "0.13"
 num-traits = "0.2.15"
 derive_more = "0.99.17"
-bit-vec = "0.6.3"
 auto_enums = "0.8.5"
 
 [dev-dependencies]
