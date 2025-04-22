@@ -4,7 +4,6 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression, PolynomialIdentity};
 use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_constraint_solver::{
-    algebraic_to_quadratic::algebraic_expression_to_quadratic_symbolic_expression,
     quadratic_symbolic_expression::{self, QuadraticSymbolicExpression},
     variable_update::VariableUpdate,
 };
@@ -21,8 +20,8 @@ use super::{
     identity_queue::{IdentityQueue, QueueItem},
     variable::{MachineCallVariable, Variable},
     witgen_inference::{
-        reference_to_quadratic_symbolic_expression, variable_to_quadratic_symbolic_expression,
-        BranchResult, CanProcessCall, FixedEvaluator, WitgenInference,
+        variable_to_quadratic_symbolic_expression, BranchResult, CanProcessCall, FixedEvaluator,
+        WitgenInference,
     },
 };
 
@@ -445,9 +444,8 @@ impl<'a, T: FieldElement> Processor<'a, T> {
         if missing_sends_in_block.iter().any(|(bus_send, row)| {
             bus_send.selected_payload.expressions.len() > 1
                 || !witgen
-                    .evaluate(&bus_send.selected_payload.selector, *row)
-                    .try_to_known()
-                    .map(|v| v.is_known_one())
+                    .try_evaluate_to_known_number(&bus_send.selected_payload.selector, *row)
+                    .map(|v| v.is_one())
                     .unwrap_or(false)
         }) {
             return false;
@@ -516,7 +514,7 @@ impl<'a, T: FieldElement> Processor<'a, T> {
                     .iter()
                     .map(move |(expression, row_offset)| {
                         witgen
-                            .evaluate(expression, *row_offset)
+                            .evaluate(expression, *row_offset, false)
                             .try_to_known()
                             .is_some()
                     })
@@ -591,14 +589,7 @@ pub fn algebraic_expression_to_queue_items<'b, T: FieldElement, Fixed: FixedEval
 ) -> [QueueItem<'b, T>; 2] {
     let rhs = rhs.into();
     [true, false].map(move |require_concretely_known| {
-        let lhs = algebraic_expression_to_quadratic_symbolic_expression(expr, &|r| {
-            reference_to_quadratic_symbolic_expression(
-                r,
-                row_offset,
-                require_concretely_known,
-                witgen,
-            )
-        });
+        let lhs = witgen.evaluate(expr, row_offset, require_concretely_known);
         QueueItem::Equation {
             expr: lhs - rhs.clone(),
             require_concretely_known,
@@ -613,14 +604,7 @@ pub fn algebraic_variable_equation_to_queue_items<'b, T: FieldElement>(
     witgen: &WitgenInference<'_, T, impl FixedEvaluator<T>>,
 ) -> [QueueItem<'b, T>; 2] {
     [true, false].map(move |require_concretely_known| {
-        let lhs = algebraic_expression_to_quadratic_symbolic_expression(expr, &|r| {
-            reference_to_quadratic_symbolic_expression(
-                r,
-                row_offset,
-                require_concretely_known,
-                witgen,
-            )
-        });
+        let lhs = witgen.evaluate(expr, row_offset, require_concretely_known);
         let rhs = variable_to_quadratic_symbolic_expression(
             var.clone(),
             require_concretely_known,
@@ -681,12 +665,11 @@ fn unknown_relevant_variables<T: FieldElement, FixedEval: FixedEvaluator<T>>(
     witgen: &WitgenInference<'_, T, FixedEval>,
     row_offset: i32,
 ) -> Vec<Variable> {
-    algebraic_expression_to_quadratic_symbolic_expression(expr, &|r| {
-        reference_to_quadratic_symbolic_expression(r, row_offset, false, witgen)
-    })
-    .referenced_unknown_variables()
-    .cloned()
-    .collect()
+    witgen
+        .evaluate(expr, row_offset, false)
+        .referenced_unknown_variables()
+        .cloned()
+        .collect()
 }
 
 pub struct Error<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> {

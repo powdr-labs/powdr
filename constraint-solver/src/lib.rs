@@ -1,4 +1,4 @@
-//! Tooling used for analysis and solivng of constraints.
+//! Tooling used for analysis and solving of constraints.
 
 pub mod algebraic_to_quadratic;
 pub mod effect;
