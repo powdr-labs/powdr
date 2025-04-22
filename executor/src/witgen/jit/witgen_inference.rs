@@ -446,18 +446,21 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         &self,
         expr: &Expression<T>,
         offset: i32,
+        require_concretely_known: bool,
     ) -> QuadraticSymbolicExpression<T, Variable> {
         algebraic_expression_to_quadratic_symbolic_expression(expr, &|r| {
-            reference_to_quadratic_symbolic_expression(r, offset, false, self)
+            reference_to_quadratic_symbolic_expression(r, offset, require_concretely_known, self)
         })
     }
 
     pub fn try_evaluate_to_known_number(&self, expr: &Expression<T>, offset: i32) -> Option<T> {
-        self.evaluate(expr, offset).try_to_known()?.try_to_number()
+        self.evaluate(expr, offset, false)
+            .try_to_known()?
+            .try_to_number()
     }
 }
 
-pub fn reference_to_quadratic_symbolic_expression<T: FieldElement, Fixed: FixedEvaluator<T>>(
+fn reference_to_quadratic_symbolic_expression<T: FieldElement, Fixed: FixedEvaluator<T>>(
     reference: &AlgebraicReference,
     row_offset: i32,
     require_concretely_known: bool,

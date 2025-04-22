@@ -45,7 +45,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
                     Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
                         let value = self
                             .witgen
-                            .evaluate(expression, *row)
+                            .evaluate(expression, *row, false)
                             .try_to_known()
                             .cloned();
                         let conflict = value
@@ -341,8 +341,7 @@ impl<T: FieldElement, FixedEval: FixedEvaluator<T>> DebugFormatter<'_, T, FixedE
     }
 
     fn try_to_known(&self, e: &Expression<T>, row_offset: i32) -> Option<T> {
-        let v = self.witgen.evaluate(e, row_offset);
-        v.try_to_known()?.try_to_number()
+        self.witgen.try_evaluate_to_known_number(e, row_offset)
     }
 }
 
