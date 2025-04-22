@@ -440,7 +440,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                 .disjunction(&RangeConstraint::from_value(value2));
             Some(ProcessResult {
                 effects: vec![Effect::RangeConstraint(var1, range_constraint)],
-                complete: true,
+                // If the range width is at most two, the range constraint is equivalent to the polynomial constraint.
+                // Otherwise, we might lose information.
+                complete: range_constraint.range_width() <= 2,
             })
         } else {
             None
