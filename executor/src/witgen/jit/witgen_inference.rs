@@ -6,6 +6,15 @@ use std::{
 use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference};
+use powdr_constraint_solver::{
+    algebraic_to_quadratic::algebraic_expression_to_quadratic_symbolic_expression,
+    effect::BranchCondition,
+    quadratic_symbolic_expression::{
+        Error, ProcessResult, QuadraticSymbolicExpression, RangeConstraintProvider,
+    },
+    range_constraint::RangeConstraint,
+    symbolic_expression::SymbolicExpression,
+};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -14,17 +23,12 @@ use crate::witgen::{
         mutable_state::MutableState,
     },
     global_constraints::RangeConstraintSet,
-    jit::symbolic_expression::SymbolicExpression,
-    range_constraints::RangeConstraint,
     FixedData, QueryCallback,
 };
 
 use super::{
-    algebraic_to_quadratic::algebraic_expression_to_quadratic_symbolic_expression,
-    effect::{BranchCondition, Effect, ProverFunctionCall},
+    effect::{Effect, ProverFunctionCall},
     prover_function_heuristics::ProverFunction,
-    quadratic_symbolic_expression::{Error, ProcessResult},
-    quadratic_symbolic_expression::{QuadraticSymbolicExpression, RangeConstraintProvider},
     variable::{Cell, MachineCallVariable, Variable},
 };
 
@@ -173,8 +177,8 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         bus_send: &BusSend<T>,
         row_offset: i32,
     ) -> Result<Vec<Variable>, Error> {
-        let result = self.process_call_inner(can_process_call, bus_send, row_offset);
-        self.ingest_effects(result, Some((bus_send.identity_id, row_offset)))
+        let (effects, complete) = self.process_call_inner(can_process_call, bus_send, row_offset);
+        self.ingest_effects(effects, complete, Some((bus_send.identity_id, row_offset)))
     }
 
     /// Process a prover function on a row, i.e. determine if we can execute it and if it will
@@ -217,13 +221,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             row_offset,
             inputs,
         });
-        self.ingest_effects(
-            ProcessResult {
-                effects: vec![effect],
-                complete: true,
-            },
-            None,
-        )
+        self.ingest_effects(vec![effect], true, None)
     }
 
     /// Set a variable to a fixed value.
@@ -237,8 +235,9 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         &mut self,
         equation: &QuadraticSymbolicExpression<T, Variable>,
     ) -> Result<Vec<Variable>, Error> {
-        let result = equation.solve(self)?;
-        self.ingest_effects(result, None)
+        let ProcessResult { effects, complete } = equation.solve(self)?;
+        let effects = effects.into_iter().map(Into::into).collect();
+        self.ingest_effects(effects, complete, None)
     }
 
     fn process_call_inner(
@@ -246,19 +245,16 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         can_process_call: impl CanProcessCall<T>,
         bus_send: &BusSend<T>,
         row_offset: i32,
-    ) -> ProcessResult<T, Variable> {
+    ) -> (Vec<Effect<T, Variable>>, bool) {
         // We need to know the selector and bus ID.
         let (Some(selector), Some(bus_id)) = (
             self.try_evaluate_to_known_number(&bus_send.selected_payload.selector, row_offset),
             self.try_evaluate_to_known_number(&bus_send.bus_id, row_offset),
         ) else {
-            return ProcessResult::empty();
+            return (vec![], false);
         };
         if selector == 0.into() {
-            return ProcessResult {
-                effects: vec![],
-                complete: true,
-            };
+            return (vec![], true);
         } else {
             assert_eq!(selector, 1.into(), "Selector is non-binary");
         }
@@ -289,10 +285,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
         if can_process {
             effects.push(Effect::MachineCall(bus_id, known, arguments.to_vec()));
         }
-        ProcessResult {
-            effects,
-            complete: can_process,
-        }
+        (effects, can_process)
     }
 
     /// Analyze the effects and update the internal state.
@@ -301,11 +294,12 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     /// Returns the variables that have been updated.
     fn ingest_effects(
         &mut self,
-        process_result: ProcessResult<T, Variable>,
+        effects: Vec<Effect<T, Variable>>,
+        complete: bool,
         identity_id: Option<(u64, i32)>,
     ) -> Result<Vec<Variable>, Error> {
         let mut updated_variables = vec![];
-        for e in process_result.effects {
+        for e in effects {
             match &e {
                 Effect::Assignment(variable, assignment) => {
                     // If the variable was determined to be a constant, we add this
@@ -367,7 +361,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                     // multiple times to get better range constraints.
                     if self.complete_calls.insert(identity_id.unwrap()) {
                         log::trace!("Machine call: {:?}", identity_id.unwrap());
-                        assert!(process_result.complete);
+                        assert!(complete);
                         for v in vars {
                             // Inputs are already known, but it does not hurt to add all of them.
                             if self.record_known(v.clone()) {
@@ -381,7 +375,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
                 Effect::Branch(..) => unreachable!(),
             }
         }
-        if process_result.complete {
+        if complete {
             // If a machine call is complete because its selector is zero,
             // we will not get an `Effect::MachineCall` above and need to
             // insert here.
@@ -550,10 +544,7 @@ mod test {
 
     use crate::witgen::{
         global_constraints,
-        jit::{
-            algebraic_to_quadratic::algebraic_expression_to_quadratic_symbolic_expression,
-            effect::format_code, test_util::read_pil, variable::Cell,
-        },
+        jit::{effect::format_code, test_util::read_pil, variable::Cell},
         machines::{FixedLookup, KnownMachine},
         FixedData,
     };

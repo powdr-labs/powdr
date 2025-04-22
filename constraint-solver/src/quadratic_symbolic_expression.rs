@@ -9,11 +9,8 @@ use itertools::Itertools;
 use num_traits::Zero;
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
-use crate::witgen::{
-    jit::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect},
-    range_constraints::RangeConstraint,
-};
-
+use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
+use super::range_constraint::RangeConstraint;
 use super::{symbolic_expression::SymbolicExpression, variable_update::VariableUpdate};
 
 #[derive(Default)]
@@ -582,7 +579,6 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::witgen::range_constraints::RangeConstraint;
     use powdr_number::GoldilocksField;
 
     use pretty_assertions::assert_eq;

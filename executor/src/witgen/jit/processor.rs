@@ -2,21 +2,23 @@ use std::fmt::{self, Display, Formatter, Write};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression, PolynomialIdentity};
+use powdr_constraint_solver::range_constraint::RangeConstraint;
+use powdr_constraint_solver::{
+    quadratic_symbolic_expression::{self, QuadraticSymbolicExpression},
+    variable_update::VariableUpdate,
+};
 use powdr_number::FieldElement;
 
 use crate::witgen::{
     data_structures::identity::{BusSend, Identity},
     jit::debug_formatter::format_polynomial_identities,
-    range_constraints::RangeConstraint,
 };
 
 use super::{
     debug_formatter::format_incomplete_bus_sends,
     effect::{format_code, Effect},
     identity_queue::{IdentityQueue, QueueItem},
-    quadratic_symbolic_expression::{self, QuadraticSymbolicExpression},
     variable::{MachineCallVariable, Variable},
-    variable_update::VariableUpdate,
     witgen_inference::{
         variable_to_quadratic_symbolic_expression, BranchResult, CanProcessCall, FixedEvaluator,
         WitgenInference,

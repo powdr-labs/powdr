@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::analyzed::{ContainsNextRef, PolyID, PolynomialType};
+use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_number::FieldElement;
 
 use crate::witgen::{
@@ -14,7 +15,6 @@ use crate::witgen::{
             Processor,
         },
         prover_function_heuristics::decode_prover_functions,
-        quadratic_symbolic_expression::QuadraticSymbolicExpression,
     },
     machines::MachineParts,
     FixedData,
@@ -394,6 +394,7 @@ impl<T: FieldElement> FixedEvaluator<T> for &BlockMachineProcessor<'_, T> {
 mod test {
     use std::fs::read_to_string;
 
+    use powdr_constraint_solver::range_constraint::RangeConstraint;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -404,7 +405,6 @@ mod test {
         global_constraints,
         jit::{effect::format_code, test_util::read_pil},
         machines::{machine_extractor::MachineExtractor, KnownMachine, Machine},
-        range_constraints::RangeConstraint,
         FixedData,
     };
 
