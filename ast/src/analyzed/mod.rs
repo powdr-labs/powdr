@@ -160,14 +160,20 @@ impl<T> Analyzed<T> {
             .count()
     }
 
-    pub fn name_to_poly_id(&self) -> BTreeMap<String, PolyID> {
+    /// Returns all symbols that represent columns, including intermediate columns.
+    ///
+    /// For arrays, only the symbol representing the array itself is returned.
+    pub fn column_symbols(&self) -> impl Iterator<Item = &Symbol> {
         self.definitions
             .values()
             .map(|(symbol, _)| symbol)
             .filter(|symbol| matches!(symbol.kind, SymbolKind::Poly(_)))
             .chain(self.intermediate_columns.values().map(|(symbol, _)| symbol))
+    }
+
+    pub fn name_to_poly_id(&self) -> impl Iterator<Item = (String, PolyID)> + '_ {
+        self.column_symbols()
             .flat_map(|symbol| symbol.array_elements())
-            .collect()
     }
 
     /// Tries to resolve a symbol by name. Does not support individual array elements,
