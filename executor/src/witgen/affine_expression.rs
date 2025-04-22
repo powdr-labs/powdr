@@ -4,10 +4,10 @@ use itertools::{Either, Itertools};
 
 use num_traits::Zero;
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
+use powdr_constraint_solver::range_constraint::RangeConstraint;
 use powdr_number::{FieldElement, LargeInt};
 
 use super::global_constraints::RangeConstraintSet;
-use super::range_constraints::RangeConstraint;
 use super::Constraint;
 use super::{EvalError::*, EvalResult, EvalValue, IncompleteCause};
 
@@ -634,7 +634,8 @@ mod test {
     use std::collections::BTreeMap;
 
     use super::*;
-    use crate::witgen::{range_constraints::RangeConstraint, EvalError};
+    use crate::witgen::EvalError;
+    use powdr_constraint_solver::range_constraint::RangeConstraint;
     use powdr_number::{FieldElement, GoldilocksField};
     use pretty_assertions::assert_eq;
     use test_log::test;

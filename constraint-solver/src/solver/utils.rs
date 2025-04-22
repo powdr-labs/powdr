@@ -4,7 +4,7 @@ use std::hash::Hash;
 
 use powdr_number::FieldElement;
 
-use crate::witgen::jit::quadratic_symbolic_expression::QuadraticSymbolicExpression;
+use crate::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 
 /// Selects the set of known variables from a list of algebraic constraints.
 /// Panics if a variable appears as both known and unknown.

@@ -6,6 +6,10 @@ use powdr_ast::{
     analyzed::{PolyID, PolynomialType},
     indent,
 };
+use powdr_constraint_solver::{
+    effect::{Assertion, BitDecomposition, BitDecompositionComponent, BranchCondition},
+    symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
+};
 use powdr_jit_compiler::{util_code::util_code, CodeGenerator, DefinitionFetcher};
 use powdr_number::FieldElement;
 
@@ -23,12 +27,8 @@ use crate::witgen::{
 };
 
 use super::{
-    effect::{
-        Assertion, BitDecomposition, BitDecompositionComponent, BranchCondition, Effect,
-        ProverFunctionCall,
-    },
+    effect::{Effect, ProverFunctionCall},
     prover_function_heuristics::ProverFunction,
-    symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
     variable::Variable,
 };
 
@@ -669,16 +669,15 @@ mod tests {
 
     use powdr_ast::analyzed::AlgebraicReference;
     use powdr_ast::analyzed::FunctionValueDefinition;
+    use powdr_constraint_solver::range_constraint::RangeConstraint;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
     use powdr_number::GoldilocksField;
 
-    use crate::witgen::jit::effect::BitDecompositionComponent;
     use crate::witgen::jit::prover_function_heuristics::QueryType;
     use crate::witgen::jit::variable::Cell;
     use crate::witgen::jit::variable::MachineCallVariable;
-    use crate::witgen::range_constraints::RangeConstraint;
 
     use super::*;
 

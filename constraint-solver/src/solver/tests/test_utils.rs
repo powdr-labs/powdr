@@ -2,13 +2,7 @@ use std::collections::BTreeMap;
 
 use powdr_number::GoldilocksField;
 
-use crate::witgen::{
-    jit::{
-        quadratic_symbolic_expression::QuadraticSymbolicExpression, solver::Solver,
-        symbolic_expression::SymbolicExpression,
-    },
-    range_constraints::RangeConstraint,
-};
+use crate::{quadratic_symbolic_expression::QuadraticSymbolicExpression, range_constraint::RangeConstraint, solver::Solver, symbolic_expression::SymbolicExpression};
 
 pub type Var = &'static str;
 pub type Qse = QuadraticSymbolicExpression<GoldilocksField, Var>;

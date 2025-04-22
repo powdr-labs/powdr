@@ -4,6 +4,7 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, ContainsNextRef, PolyID, PolynomialType,
 };
+use powdr_constraint_solver::quadratic_symbolic_expression::QuadraticSymbolicExpression;
 use powdr_number::FieldElement;
 
 use crate::witgen::{machines::MachineParts, FixedData};
@@ -11,7 +12,7 @@ use crate::witgen::{machines::MachineParts, FixedData};
 use super::{
     effect::Effect,
     identity_queue::QueueItem,
-    processor::Processor,
+    processor::{algebraic_expression_to_queue_items, Processor},
     prover_function_heuristics::decode_prover_functions,
     variable::{Cell, Variable},
     witgen_inference::{CanProcessCall, FixedEvaluator, WitgenInference},
@@ -78,10 +79,8 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
             .map(|f| QueueItem::ProverFunction(f, 1))
             .collect_vec();
 
-        // Add the intermediate definitions. It is fine to iterate over
-        // a hash type because the queue will re-sort its items.
-        #[allow(clippy::iter_over_hash_type)]
-        for (poly_id, name) in &self.machine_parts.intermediates {
+        // Add the intermediate definitions.
+        for (poly_id, name) in self.machine_parts.intermediates.iter().sorted() {
             let value = &intermediate_definitions[&(*poly_id).into()];
             let rows = if value.contains_next_ref(&intermediate_definitions) {
                 vec![0]
@@ -89,14 +88,17 @@ impl<'a, T: FieldElement> SingleStepProcessor<'a, T> {
                 vec![0, 1]
             };
             for row_offset in rows {
-                queue_items.push(QueueItem::variable_assignment(
+                queue_items.extend(algebraic_expression_to_queue_items(
                     value,
-                    Variable::IntermediateCell(Cell {
-                        column_name: name.clone(),
-                        id: poly_id.id,
-                        row_offset,
-                    }),
+                    QuadraticSymbolicExpression::from_unknown_variable(Variable::IntermediateCell(
+                        Cell {
+                            column_name: name.clone(),
+                            id: poly_id.id,
+                            row_offset,
+                        },
+                    )),
                     row_offset,
+                    &witgen,
                 ));
             }
         }
@@ -259,12 +261,12 @@ namespace M(256);
         assert_eq!(
             format_code(&code),
             "\
+VM::pc[1] = (VM::pc[0] + 1);
+call_var(1, 0, 0) = VM::pc[0];
 call_var(1, 0, 1) = VM::instr_add[0];
 call_var(1, 0, 2) = VM::instr_mul[0];
-call_var(1, 0, 0) = VM::pc[0];
-VM::pc[1] = (VM::pc[0] + 1);
-VM::B[1] = VM::B[0];
 call_var(1, 1, 0) = VM::pc[1];
+VM::B[1] = VM::B[0];
 machine_call(1, [Known(call_var(1, 1, 0)), Unknown(call_var(1, 1, 1)), Unknown(call_var(1, 1, 2))]);
 VM::instr_add[1] = call_var(1, 1, 1);
 VM::instr_mul[1] = call_var(1, 1, 2);
@@ -302,13 +304,13 @@ if (VM::instr_add[0] == 1) {
         assert_eq!(
             format_code(&code),
             "\
-call_var(2, 0, 1) = VM::instr_add[0];
-call_var(2, 0, 2) = VM::instr_mul[0];
-call_var(2, 0, 0) = VM::pc[0];
 VM::pc[1] = VM::pc[0];
 VM::instr_add[1] = 0;
-call_var(2, 1, 1) = 0;
+call_var(2, 0, 0) = VM::pc[0];
+call_var(2, 0, 1) = 0;
+call_var(2, 0, 2) = VM::instr_mul[0];
 call_var(2, 1, 0) = VM::pc[1];
+call_var(2, 1, 1) = 0;
 call_var(2, 1, 2) = 1;
 machine_call(1, [Known(call_var(2, 1, 0)), Known(call_var(2, 1, 1)), Unknown(call_var(2, 1, 2))]);
 VM::instr_mul[1] = 1;"

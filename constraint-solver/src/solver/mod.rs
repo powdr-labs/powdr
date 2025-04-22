@@ -1,14 +1,15 @@
 use powdr_number::FieldElement;
 use utils::known_variables;
 
+use crate::range_constraint::RangeConstraint;
+use crate::variable_update::VariableUpdate;
+
 use super::effect::Effect;
 use super::quadratic_symbolic_expression::{Error, RangeConstraintProvider};
 use super::{
     quadratic_symbolic_expression::QuadraticSymbolicExpression,
     symbolic_expression::SymbolicExpression,
 };
-use crate::witgen::jit::variable_update::VariableUpdate;
-use crate::witgen::range_constraints::RangeConstraint;
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
@@ -123,11 +124,8 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
             }
             // TODO: We need to introduce a new operator in `SymbolicExpression` for this.
             Effect::BitDecomposition(..) => unimplemented!(),
-            // QuadraticSymbolicExpression::solve() never returns these
-            Effect::MachineCall(..)
-            | Effect::Assertion(..)
-            | Effect::ProverFunctionCall(..)
-            | Effect::Branch(..) => unreachable!(),
+            Effect::Assertion(..) => todo!(),
+            Effect::ConditionalAssignment { .. } => todo!(),
         }
     }
 
