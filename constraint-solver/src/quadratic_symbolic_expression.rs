@@ -121,9 +121,11 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
 
     /// Returns `(l, r)` if `self == l * r`.
     pub fn try_as_single_product(&self) -> Option<(&Self, &Self)> {
-        if self.linear.is_empty() && self.quadratic.len() == 1 && self.constant.is_known_zero() {
-            let (l, r) = &self.quadratic[0];
-            Some((l, r))
+        if self.linear.is_empty() && self.constant.is_known_zero() {
+            match self.quadratic.as_slice() {
+                [(l, r)] => Some((l, r)),
+                _ => None,
+            }
         } else {
             None
         }
@@ -136,10 +138,10 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
     /// Panics if this expression is not affine.
     pub fn coefficient_of(&self, variable: &V) -> SymbolicExpression<T, V> {
         assert!(self.is_affine());
-        self.linear
-            .get(variable)
-            .cloned()
-            .unwrap_or_else(|| T::zero().into())
+        match self.linear.get(variable) {
+            Some(coeff) => coeff.clone(),
+            None => T::zero().into(),
+        }
     }
 
     pub fn apply_update(&mut self, var_update: &VariableUpdate<T, V>) {
@@ -441,19 +443,20 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         &self,
         range_constraints: &impl RangeConstraintProvider<T, V>,
     ) -> Result<ProcessResult<T, V>, Error> {
-        if !self.linear.is_empty() || !self.constant.is_known_zero() {
-            return Ok(ProcessResult::empty());
-        }
-
-        let [(left, right)] = self.quadratic.as_slice() else {
+        let Some((left, right)) = self.try_as_single_product() else {
             return Ok(ProcessResult::empty());
         };
-        if left.is_quadratic() || right.is_quadratic() {
-            return Ok(ProcessResult::empty());
-        }
-        // TODO if one of them conflicts, we can actually just use the other one.
-        let left_solution = left.solve(range_constraints).unwrap();
-        let right_solution = right.solve(range_constraints).unwrap();
+        // Now we have `left * right = 0`, i.e. one (or both) of them has to be zero.
+        let (left_solution, right_solution) = match (
+            left.solve(range_constraints),
+            right.solve(range_constraints),
+        ) {
+            // If one of them is always unsatisfiable, it is equivalent to just solve the other one for zero.
+            (Err(_), o) | (o, Err(_)) => {
+                return o;
+            }
+            (Ok(left), Ok(right)) => (left, right),
+        };
         println!(
             "Found left solution: {}",
             left_solution
@@ -466,62 +469,79 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
                 })
                 .join(", ")
         );
-        if !left_solution.complete || !right_solution.complete {
-            return Ok(ProcessResult::empty());
-        }
-        let Some(Effect::Assignment(first_var, first_assignment)) = left_solution
-            .effects
-            .into_iter()
-            .find(|e| matches!(e, Effect::Assignment(..)))
-        else {
-            return Ok(ProcessResult::empty());
-        };
-        let Some(Effect::Assignment(second_var, second_assignment)) = right_solution
-            .effects
-            .into_iter()
-            .find(|e| matches!(e, Effect::Assignment(..)))
-        else {
-            return Ok(ProcessResult::empty());
-        };
 
-        if first_var != second_var {
-            return Ok(ProcessResult::empty());
-        }
-
-        let rc = range_constraints.get(&first_var);
-        // TODO check this does not have to be ">="
-        if rc.range_width() > T::modulus() >> 1 {
-            return Ok(ProcessResult::empty());
-        }
-
-        let Some(diff) = symbolic_expression_to_quadratic_symbolic_expression(
-            &(first_assignment.clone() + -&second_assignment),
-        ) else {
-            return Ok(ProcessResult::empty());
-        };
-        let Some(diff) = diff.try_to_known().and_then(|d| d.try_to_number()) else {
-            return Ok(ProcessResult::empty());
-        };
-        // If rc + diff is disjoint from rc, the two alternatives are disjoint.
-        if !rc
-            .combine_sum(&RangeConstraint::from_value(diff))
-            .is_disjoint(&rc)
-        {
-            return Ok(ProcessResult::empty());
-        }
-
-        Ok(ProcessResult::complete(vec![
-            Effect::ConditionalAssignment {
-                variable: first_var.clone(),
-                condition: BranchCondition {
-                    value: SymbolicExpression::from_symbol(first_var.clone(), Default::default()),
-                    condition: rc,
-                },
-                in_range_value: first_assignment,
-                out_of_range_value: second_assignment,
-            },
-        ]))
+        combine_result_disjunctively(left_solution, right_solution, range_constraints)
     }
+}
+
+/// Combines two process results in a disjunctive way.
+/// This means that the results come from processing two alternative branches.
+fn combine_result_disjunctively<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+    left: ProcessResult<T, V>,
+    right: ProcessResult<T, V>,
+    range_constraints: &impl RangeConstraintProvider<T, V>,
+) -> Result<ProcessResult<T, V>, Error> {
+    // TODO extend this to combine all pairs of effects, also just range constraints etc.
+    let Ok(Effect::Assignment(first_var, first_assignment)) = left
+        .effects
+        .into_iter()
+        .filter(|e| matches!(e, Effect::Assignment(..)))
+        .exactly_one()
+    else {
+        return Ok(ProcessResult::empty());
+    };
+    let Ok(Effect::Assignment(second_var, second_assignment)) = right
+        .effects
+        .into_iter()
+        .filter(|e| matches!(e, Effect::Assignment(..)))
+        .exactly_one()
+    else {
+        return Ok(ProcessResult::empty());
+    };
+
+    if first_var != second_var {
+        return Ok(ProcessResult::empty());
+    }
+
+    // TODO we should check what the other effects are.
+
+    // At this point, we have two assignments to the same variable, i.e.
+    // `X = A` or `X = B`. If the two alternatives can never be satisfied at
+    // the same time, we can turn this into a conditional assignment.
+
+    let Some(diff) = symbolic_expression_to_quadratic_symbolic_expression(
+        &(first_assignment.clone() + -&second_assignment),
+    ) else {
+        return Ok(ProcessResult::empty());
+    };
+    let Some(diff) = diff.try_to_known().and_then(|d| d.try_to_number()) else {
+        return Ok(ProcessResult::empty());
+    };
+    // `diff = A - B` is a compile-time known number, i.e. `A = B + diff`.
+    // Now if `rc + diff` is disjoint from `rc`, it means
+    // that if the value that `A` evaluates to falls into the allowed range for `X`,
+    // then `B = A + diff` is not a possible value for `X` and vice-versa.
+    // This means the two alternatives are disjoint and we can use a conditional assignment.
+    let rc = range_constraints.get(&first_var);
+    if !rc
+        .combine_sum(&RangeConstraint::from_value(diff))
+        .is_disjoint(&rc)
+    {
+        return Ok(ProcessResult::empty());
+    }
+
+    Ok(ProcessResult {
+        effects: vec![Effect::ConditionalAssignment {
+            variable: first_var.clone(),
+            condition: BranchCondition {
+                value: SymbolicExpression::from_symbol(first_var.clone(), Default::default()),
+                condition: rc,
+            },
+            in_range_value: first_assignment,
+            out_of_range_value: second_assignment,
+        }],
+        complete: left.complete && right.complete,
+    })
 }
 
 impl<T: FieldElement, V: Clone + Ord + Hash + Eq> PartialEq for QuadraticSymbolicExpression<T, V> {
