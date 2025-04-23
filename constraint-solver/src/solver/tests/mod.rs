@@ -45,3 +45,25 @@ fn symbolically_solvable() {
         ],
     );
 }
+
+#[test]
+fn bit_decomposition() {
+    assert_solve_result(
+        vec![
+            // 4 bit-constrained variables:
+            var("b0") * (var("b0") - constant(1)),
+            var("b1") * (var("b1") - constant(1)),
+            var("b2") * (var("b2") - constant(1)),
+            var("b3") * (var("b3") - constant(1)),
+            // Bit-decomposition of a concrete value:
+            var("b0") + var("b1") * constant(2) + var("b2") * constant(4) + var("b3") * constant(8)
+                - constant(0b1110),
+        ],
+        vec![
+            ("b0", constant_expr(0)),
+            ("b1", constant_expr(1)),
+            ("b2", constant_expr(1)),
+            ("b3", constant_expr(1)),
+        ],
+    );
+}
