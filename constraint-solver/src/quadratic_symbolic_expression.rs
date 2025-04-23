@@ -212,6 +212,13 @@ pub trait RangeConstraintProvider<T: FieldElement, V> {
     fn get(&self, var: &V) -> RangeConstraint<T>;
 }
 
+pub struct NoRangeConstraints;
+impl<T: FieldElement, V> RangeConstraintProvider<T, V> for NoRangeConstraints {
+    fn get(&self, _var: &V) -> RangeConstraint<T> {
+        RangeConstraint::default()
+    }
+}
+
 impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExpression<T, V> {
     /// Solves the equation `self = 0` and returns how to compute the solution.
     /// The solution can contain assignments to multiple variables.
@@ -452,6 +459,52 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         } else {
             // TODO Now at least try to combine joint range constraints
             Ok(ProcessResult::empty())
+        }
+    }
+    /// Tries to detect a range constraint of the form `(X - value1) * (X - value2) = 0`.
+    /// The most common example would be a bit constraint.
+    /// In that case, we can return a range constraint for `X` and mark the
+    /// constraint as complete.
+    // TODO: This function would not detect some equivalent constraints, like
+    // `X * X - X`.
+    // This could be fixed by finding a canonical form for the quadratic
+    // expression, and normalizing the constants.
+    fn try_detect_range_constraint(&self) -> Option<ProcessResult<T, V>> {
+        let (factor1, factor2) = &self.try_as_single_product()?;
+        let (var1, value1) = factor1.try_solve_constant_assignment()?;
+        let (var2, value2) = factor2.try_solve_constant_assignment()?;
+
+        if var1 == var2 {
+            let range_constraint = RangeConstraint::from_value(value1)
+                .disjunction(&RangeConstraint::from_value(value2));
+
+            // If the range width is at most two, the range constraint is equivalent to the polynomial constraint.
+            // Otherwise, we might lose information.
+            let complete = range_constraint.range_width() <= 2.into();
+            let effects = vec![Effect::RangeConstraint(var1, range_constraint)];
+
+            Some(ProcessResult { effects, complete })
+        } else {
+            None
+        }
+    }
+
+    /// Tries to solve a constant assignment of the form `X = a`.
+    fn try_solve_constant_assignment(&self) -> Option<(V, T)> {
+        if self.is_quadratic() || self.linear.len() != 1 {
+            return None;
+        }
+        let ProcessResult {
+            effects,
+            complete: true,
+        } = self.solve(&NoRangeConstraints).ok()?
+        else {
+            return None;
+        };
+        if let [Effect::Assignment(var, expr)] = effects.as_slice() {
+            Some((var.clone(), expr.try_to_number()?))
+        } else {
+            None
         }
     }
 }
@@ -798,13 +851,6 @@ mod tests {
         assert_eq!(t.to_string(), "7 * Y");
     }
 
-    struct NoRangeConstraints;
-    impl RangeConstraintProvider<GoldilocksField, &'static str> for NoRangeConstraints {
-        fn get(&self, _var: &&'static str) -> RangeConstraint<GoldilocksField> {
-            RangeConstraint::default()
-        }
-    }
-
     impl RangeConstraintProvider<GoldilocksField, &'static str>
         for HashMap<&'static str, RangeConstraint<GoldilocksField>>
     {
@@ -1049,6 +1095,85 @@ Z: [10, 4294967050] & 0xffffffff;
             effects,
             "a = if ((b + -256) + 10) in [0, 255] & 0xff { ((b + -256) + 10) } else { (b + 10) }
 "
+        );
+    }
+
+    fn unpack_range_constraint(
+        process_result: &ProcessResult<GoldilocksField, &'static str>,
+    ) -> (&'static str, RangeConstraint<GoldilocksField>) {
+        let [effect] = &process_result.effects[..] else {
+            panic!();
+        };
+        let Effect::RangeConstraint(var, rc) = effect else {
+            panic!();
+        };
+        (var, rc.clone())
+    }
+
+    #[test]
+    fn detect_bit_constraint() {
+        let a = Qse::from_unknown_variable("a");
+        let one = Qse::from(GoldilocksField::from(1));
+        let three = Qse::from(GoldilocksField::from(3));
+        let five = Qse::from(GoldilocksField::from(5));
+
+        // All these constraints should be equivalent to a bit constraint.
+        let constraints = [
+            a.clone() * (a.clone() - one.clone()),
+            (a.clone() - one.clone()) * a.clone(),
+            (three * a.clone()) * (five.clone() * a.clone() - five),
+        ];
+
+        for constraint in constraints {
+            let result = constraint.solve(&NoRangeConstraints).unwrap();
+            assert!(result.complete);
+            let (var, rc) = unpack_range_constraint(&result);
+            assert_eq!(var.to_string(), "a");
+            assert_eq!(rc, RangeConstraint::from_mask(1u64));
+        }
+    }
+
+    #[test]
+    fn detect_complete_range_constraint() {
+        let a = Qse::from_unknown_variable("a");
+        let three = Qse::from(GoldilocksField::from(3));
+        let four = Qse::from(GoldilocksField::from(4));
+
+        // `a` can be 3 or 4, which is can be completely represented by
+        // RangeConstraint::from_range(3, 4), so the identity should be
+        // marked as complete.
+        let constraint = (a.clone() - three) * (a - four);
+
+        let result = constraint.solve(&NoRangeConstraints).unwrap();
+        assert!(result.complete);
+        let (var, rc) = unpack_range_constraint(&result);
+        assert_eq!(var.to_string(), "a");
+        assert_eq!(
+            rc,
+            RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(4))
+        );
+    }
+
+    #[test]
+    fn detect_incomplete_range_constraint() {
+        let a = Qse::from_unknown_variable("a");
+        let three = Qse::from(GoldilocksField::from(3));
+        let five = Qse::from(GoldilocksField::from(5));
+
+        // `a` can be 3 or 5, so there is a range constraint
+        // RangeConstraint::from_range(3, 5) on `a`.
+        // However, the identity is not complete, because the
+        // range constraint allows for a value of 4, so removing
+        // the identity would loose information.
+        let constraint = (a.clone() - three) * (a - five);
+
+        let result = constraint.solve(&NoRangeConstraints).unwrap();
+        assert!(!result.complete);
+        let (var, rc) = unpack_range_constraint(&result);
+        assert_eq!(var.to_string(), "a");
+        assert_eq!(
+            rc,
+            RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(5))
         );
     }
 }
