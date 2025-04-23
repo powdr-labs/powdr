@@ -157,7 +157,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 let range_constraint = entry
                     .range_constraint()
                     .conjunction(&expr.range_constraint());
-                
+
                 *entry = VariableState::Known(expr.clone());
 
                 // The borrow checker won't let us call `update_constraints` here, so we
