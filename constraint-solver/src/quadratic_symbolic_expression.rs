@@ -965,6 +965,18 @@ Z: [10, 4294967050] & 0xffffffff;
         );
     }
 
+    fn unpack_range_constraint(
+        process_result: &ProcessResult<GoldilocksField, &'static str>,
+    ) -> (&'static str, RangeConstraint<GoldilocksField>) {
+        let [effect] = &process_result.effects[..] else {
+            panic!();
+        };
+        let Effect::RangeConstraint(var, rc) = effect else {
+            panic!();
+        };
+        (var, rc.clone())
+    }
+
     #[test]
     fn detect_bit_constraint() {
         let a = Qse::from_unknown_variable("a");
@@ -982,14 +994,53 @@ Z: [10, 4294967050] & 0xffffffff;
         for constraint in constraints {
             let result = constraint.solve(&NoRangeConstraints).unwrap();
             assert!(result.complete);
-            let [effect] = &result.effects[..] else {
-                panic!();
-            };
-            let Effect::RangeConstraint(var, rc) = effect else {
-                panic!();
-            };
+            let (var, rc) = unpack_range_constraint(&result);
             assert_eq!(var.to_string(), "a");
-            assert_eq!(rc, &RangeConstraint::from_mask(1u64));
+            assert_eq!(rc, RangeConstraint::from_mask(1u64));
         }
+    }
+
+    #[test]
+    fn detect_complete_range_constraint() {
+        let a = Qse::from_unknown_variable("a");
+        let three = Qse::from(GoldilocksField::from(3));
+        let four = Qse::from(GoldilocksField::from(4));
+
+        // `a` can be 3 or 4, which is can be completely represented by
+        // RangeConstraint::from_range(3, 4), so the identity should be
+        // marked as complete.
+        let constraint = (a.clone() - three) * (a - four);
+
+        let result = constraint.solve(&NoRangeConstraints).unwrap();
+        assert!(result.complete);
+        let (var, rc) = unpack_range_constraint(&result);
+        assert_eq!(var.to_string(), "a");
+        assert_eq!(
+            rc,
+            RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(4))
+        );
+    }
+
+    #[test]
+    fn detect_incomplete_range_constraint() {
+        let a = Qse::from_unknown_variable("a");
+        let three = Qse::from(GoldilocksField::from(3));
+        let five = Qse::from(GoldilocksField::from(5));
+
+        // `a` can be 3 or 5, so there is a range constraint
+        // RangeConstraint::from_range(3, 5) on `a`.
+        // However, the identity is not complete, because the
+        // range constraint allows for a value of 4, so removing
+        // the identity would loose information.
+        let constraint = (a.clone() - three) * (a - five);
+
+        let result = constraint.solve(&NoRangeConstraints).unwrap();
+        assert!(!result.complete);
+        let (var, rc) = unpack_range_constraint(&result);
+        assert_eq!(var.to_string(), "a");
+        assert_eq!(
+            rc,
+            RangeConstraint::from_range(GoldilocksField::from(3), GoldilocksField::from(5))
+        );
     }
 }
