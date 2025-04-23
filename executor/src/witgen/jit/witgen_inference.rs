@@ -5,9 +5,11 @@ use std::{
 
 use bit_vec::BitVec;
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference};
+use powdr_ast::analyzed::{
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
+    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
+};
 use powdr_constraint_solver::{
-    algebraic_to_quadratic::algebraic_expression_to_quadratic_symbolic_expression,
     effect::BranchCondition,
     quadratic_symbolic_expression::{
         Error, ProcessResult, QuadraticSymbolicExpression, RangeConstraintProvider,
@@ -445,12 +447,36 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
     pub fn evaluate(
         &self,
         expr: &Expression<T>,
-        offset: i32,
+        row_offset: i32,
         require_concretely_known: bool,
     ) -> QuadraticSymbolicExpression<T, Variable> {
-        algebraic_expression_to_quadratic_symbolic_expression(expr, &|r| {
-            reference_to_quadratic_symbolic_expression(r, offset, require_concretely_known, self)
-        })
+        match expr {
+            Expression::Reference(r) => variable_to_quadratic_symbolic_expression(
+                Variable::from_reference(r, row_offset),
+                require_concretely_known,
+                self,
+            ),
+            Expression::PublicReference(_) | Expression::Challenge(_) => todo!(),
+            Expression::Number(n) => (*n).into(),
+            Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                let left = self.evaluate(left, row_offset, require_concretely_known);
+                let right = self.evaluate(right, row_offset, require_concretely_known);
+                match op {
+                    AlgebraicBinaryOperator::Add => left + right,
+                    AlgebraicBinaryOperator::Sub => left - right,
+                    AlgebraicBinaryOperator::Mul => left * right,
+                    AlgebraicBinaryOperator::Pow => {
+                        todo!()
+                    }
+                }
+            }
+            Expression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+                let expr = self.evaluate(expr, row_offset, require_concretely_known);
+                match op {
+                    AlgebraicUnaryOperator::Minus => -expr,
+                }
+            }
+        }
     }
 
     pub fn try_evaluate_to_known_number(&self, expr: &Expression<T>, offset: i32) -> Option<T> {
@@ -458,19 +484,6 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
             .try_to_known()?
             .try_to_number()
     }
-}
-
-fn reference_to_quadratic_symbolic_expression<T: FieldElement, Fixed: FixedEvaluator<T>>(
-    reference: &AlgebraicReference,
-    row_offset: i32,
-    require_concretely_known: bool,
-    witgen: &WitgenInference<'_, T, Fixed>,
-) -> QuadraticSymbolicExpression<T, Variable> {
-    variable_to_quadratic_symbolic_expression(
-        Variable::from_reference(reference, row_offset),
-        require_concretely_known,
-        witgen,
-    )
 }
 
 pub fn variable_to_quadratic_symbolic_expression<T: FieldElement, Fixed: FixedEvaluator<T>>(
@@ -604,14 +617,7 @@ mod test {
                 for id in fixed_data.identities.iter() {
                     let updated_vars = match id {
                         Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                            let equation = algebraic_expression_to_quadratic_symbolic_expression(
-                                expression,
-                                &|r| {
-                                    reference_to_quadratic_symbolic_expression(
-                                        r, *row, false, &witgen,
-                                    )
-                                },
-                            );
+                            let equation = witgen.evaluate(expression, *row, false);
                             witgen.process_equation(&equation).unwrap()
                         }
                         Identity::BusSend(bus_send) => {
@@ -632,14 +638,7 @@ mod test {
                                 } else {
                                     QuadraticSymbolicExpression::from_unknown_variable(var.clone())
                                 };
-                                let arg = algebraic_expression_to_quadratic_symbolic_expression(
-                                    arg,
-                                    &|r| {
-                                        reference_to_quadratic_symbolic_expression(
-                                            r, *row, false, &witgen,
-                                        )
-                                    },
-                                );
+                                let arg = witgen.evaluate(arg, *row, false);
                                 updated_vars.extend(witgen.process_equation(&(var - arg)).unwrap());
                             }
                             updated_vars.extend(
