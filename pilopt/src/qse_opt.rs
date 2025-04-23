@@ -41,7 +41,6 @@ pub fn optimize<'a, T: FieldElement>(
     pil_file: &Analyzed<T>,
     range_constraints: impl RangeConstraintProvider<T, AlgebraicReference>,
 ) -> Vec<OptimizationResult<T>> {
-    // TODO extract range constraints from bus interactions
     process_identities(create_identities(pil_file), range_constraints)
 }
 
