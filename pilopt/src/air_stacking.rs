@@ -246,7 +246,6 @@ fn guard_identity<T: FieldElement>(
     identity: &mut Identity<T>,
     selector: &AlgebraicExpression<T>,
 ) {
-    // TODO: guard identity if needed
     match identity {
         Identity::Polynomial(id) => if !is_guarded_by(&id.expression, selector) {
             id.expression = id.expression.clone() * selector.clone();
