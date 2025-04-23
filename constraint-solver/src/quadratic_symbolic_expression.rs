@@ -111,9 +111,12 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq> QuadraticSymbolicExpression<T,
 
     /// Returns `(l, r)` if `self == l * r`.
     pub fn try_as_single_product(&self) -> Option<(&Self, &Self)> {
-        if self.linear.is_empty() && self.quadratic.len() == 1 && self.constant.is_known_zero() {
-            let (l, r) = &self.quadratic[0];
-            Some((l, r))
+        if self.linear.is_empty() && self.constant.is_known_zero() {
+            if let [(l, r)] = &self.quadratic[..] {
+                Some((l, r))
+            } else {
+                None
+            }
         } else {
             None
         }
