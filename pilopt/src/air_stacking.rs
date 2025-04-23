@@ -2,19 +2,24 @@ use std::collections::{BTreeMap, HashMap};
 use itertools::Itertools;
 
 use powdr_number::FieldElement;
-use powdr_ast::analyzed::{
-    AlgebraicExpression, Analyzed, Identity, PolynomialType, StatementIdentifier, SymbolKind, PolyID,
-};
+use powdr_ast::{analyzed::{
+    AlgebraicBinaryOperator, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator, AlgebraicUnaryOperation, Analyzed, Expression, Identity, PolyID, PolynomialType, Reference, StatementIdentifier, SymbolKind
+}, parsed::{asm::{AbsoluteSymbolPath, SymbolPath}, visitor::ExpressionVisitable}};
 use powdr_pil_analyzer::Counters;
 
-pub fn air_stacking<T: FieldElement>(pil: &mut Analyzed<T>) {
+/// AIR stacking PIL transformation. Groups similarly sized (in terms of witness
+/// columns) submachines into a single namespace and have them share witness
+/// columns. `latch_bus_id` is the id of the bus from which to take the selector
+/// expression for each machine. Only machines with a call to this bus will be
+/// considered for stacking.
+pub fn air_stacking<T: FieldElement>(pil: &mut Analyzed<T>, latch_bus_id: u32) {
     // map statements to namespace
     let all_nss: BTreeMap<_,_> = powdr_backend_utils::split_by_namespace(pil);
 
     // map ns to selector/is_valid expression
     let ns_selector: BTreeMap<_,_> = all_nss.iter()
         .map(|(ns, stmts)| {
-            let selector = find_ns_guard_expression(pil, stmts);
+            let selector = find_ns_guard_expression(pil, stmts, latch_bus_id);
             (ns.to_string(), selector)
         })
         .collect();
@@ -94,8 +99,12 @@ pub fn air_stacking<T: FieldElement>(pil: &mut Analyzed<T>) {
         }
     });
 
-    // now add the pow2 grouped namespaces
+    // now add the pow2 stacked namespaces
     for (group, mut nss) in pow2_groups {
+        let change_namespace = |abs_name: &str| {
+            let name = abs_name.split("::").last().unwrap();
+            format!("stacked{}::{}", group, name)
+        };
         // add witness definitions from largest namespace, so we can map every
         // namespace's witness to these. nss is already sorted by witness count
         let mut group_wit = Vec::new();
@@ -106,9 +115,11 @@ pub fn air_stacking<T: FieldElement>(pil: &mut Analyzed<T>) {
                     assert!(matches!(symbol.kind, SymbolKind::Poly(PolynomialType::Committed)));
                     let mut new_symbol = symbol.clone();
                     new_symbol.id = ids.dispense_symbol_id(new_symbol.kind, new_symbol.length);
-                    group_wit.push((def.to_string(), (&new_symbol).into()));
-                    new_pil.definitions.insert(def.to_string(), (new_symbol, value.clone()));
-                    new_pil.source_order.push(StatementIdentifier::Definition(def.clone()));
+                    new_symbol.absolute_name = change_namespace(&new_symbol.absolute_name);
+                    let new_def = new_symbol.absolute_name.clone();
+                    group_wit.push((new_def.to_string(), (&new_symbol).into()));
+                    new_pil.definitions.insert(new_def.to_string(), (new_symbol, value.clone()));
+                    new_pil.source_order.push(StatementIdentifier::Definition(new_def));
                 }
             }
         }
@@ -119,24 +130,43 @@ pub fn air_stacking<T: FieldElement>(pil: &mut Analyzed<T>) {
             for stmt in ns_stmts[&ns] {
                 match stmt {
                     StatementIdentifier::Definition(def) => {
-                        if let Some((symbol, value)) = pil.definitions.get(def) {
-                            assert!(value.is_none());
-                            assert!(matches!(symbol.kind, SymbolKind::Poly(PolynomialType::Committed)));
-                            // TODO: check if this is part of the selector. If
-                            // so, keep the column. These columns can't be
-                            // shared to avoid some random constraint activating
-                            // the selector for a different machine.
+                        let Some((symbol, value)) = pil.definitions.get(def) else {
+                            unreachable!("only witness cols should be present");
+                        };
+                        assert!(value.is_none());
+                        assert!(matches!(symbol.kind, SymbolKind::Poly(PolynomialType::Committed)));
+                        // check if this column is part of the selector. If so,
+                        // keep the column. These columns can't be shared,
+                        // otherwise some random constraint could active the
+                        // selector for a different machine.
+                        let selector = ns_selector.get(ns.as_str()).unwrap().as_ref().unwrap();
+                        let symbol_id: PolyID = symbol.into();
+                        let should_keep_col = selector.expr_any(|expr| {
+                            match expr {
+                                AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) => {
+                                    poly_id == &symbol_id
+                                }
+                                _ => false,
+                            }
+                        });
+                        if should_keep_col {
+                            let mut new_symbol = symbol.clone();
+                            new_symbol.id = ids.dispense_symbol_id(new_symbol.kind, new_symbol.length);
+                            // TODO: avoid name clashes before changing namespaces
+                            // new_symbol.absolute_name = change_namespace(&new_symbol.absolute_name);
+                            let new_def = new_symbol.absolute_name.clone();
+                            symbol_replacements.insert((def.to_string(), symbol.into()), (new_def.to_string(), (&new_symbol).into()));
+                            new_pil.definitions.insert(new_def.to_string(), (new_symbol, value.clone()));
+                            new_pil.source_order.push(StatementIdentifier::Definition(new_def.clone()));
+                        } else {
                             symbol_replacements.insert((def.to_string(), symbol.into()), group_wit[wit_count].clone());
                             wit_count += 1;
-                        } else {
-                            unreachable!("only witness cols should be present");
                         }
                     },
                     StatementIdentifier::ProofItem(idx) => {
                         let mut identity = pil.identities.get(*idx).unwrap().clone();
                         identity.set_id(ids.dispense_identity_id());
-                        // TODO:
-                        // guard_identity(&ns_selector[ns.as_str()].as_ref().unwrap(), &mut identity);
+                        guard_identity(&mut identity, &ns_selector[ns.as_str()].as_ref().unwrap());
                         new_pil.identities.push(identity);
                         new_pil.source_order.push(StatementIdentifier::ProofItem(new_pil.identities.len() - 1));
                     },
@@ -146,31 +176,101 @@ pub fn air_stacking<T: FieldElement>(pil: &mut Analyzed<T>) {
         }
     }
 
+    let (subs_by_id, subs_by_name): (HashMap<_, _>, HashMap<_, _>) =
+        symbol_replacements.iter().map(|(k, v)| ((k.1, v), (&k.0, v))).unzip();
+
+    new_pil.post_visit_expressions_in_identities_mut(&mut |e: &mut AlgebraicExpression<_>| {
+        if let AlgebraicExpression::Reference(ref mut reference) = e {
+            if let Some((replacement_name, replacement_id)) = subs_by_id.get(&reference.poly_id) {
+                reference.poly_id = *replacement_id;
+                reference.name = replacement_name.clone();
+            }
+        }
+    });
+
+    new_pil.post_visit_expressions_mut(&mut |e: &mut Expression| {
+        if let Expression::Reference(_, Reference::Poly(reference)) = e {
+            if let Some((replacement_name, _)) = subs_by_name.get(&reference.name) {
+                reference.name = replacement_name.clone();
+            }
+        }
+    });
+
     println!("new_pil: \n{}", new_pil);
+    *pil = new_pil;
 }
 
-const EXECUTION_BRIDGE_ID: u32 = 0;
+/// returns true if the expression is already guarded by the selector. The
+/// selector may be a sum of expressions, and any of the summands can be used as
+/// a guard. For example:
+/// ```
+/// selector = (instr_add + instr_sub);
+/// instr_add * (a + b) = instr_add * c;
+/// instr_sub * (a - b) = instr_sub * c;
+/// ```
+fn is_guarded_by<T: FieldElement>(expr: &AlgebraicExpression<T>, selector: &AlgebraicExpression<T>) -> bool {
 
+    // selector summands
+    let mut selector_summands = vec![];
+    let mut queue = vec![selector];
+    while let Some(item) = queue.pop() {
+        if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op: AlgebraicBinaryOperator::Add, right }) = item {
+            queue.push(left);
+            queue.push(right);
+        }
+        selector_summands.push(item);
+    }
+
+    match expr {
+        // check if both sides are guarded by the selector
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left, op: AlgebraicBinaryOperator::Add | AlgebraicBinaryOperator::Sub, right
+        }) => {
+            is_guarded_by(left, selector) && is_guarded_by(right, selector)
+        },
+        // check if any side is guarded by the selector
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+            left, op: AlgebraicBinaryOperator::Mul, right
+        }) => {
+            is_guarded_by(left, selector) || is_guarded_by(right, selector)
+        },
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op: AlgebraicUnaryOperator::Minus, expr }) => {
+            is_guarded_by(expr, selector)
+        },
+        _ => selector_summands.iter().any(|s| s == &expr),
+    }
+}
+
+/// ensure the identity is guarded by the selector
 fn guard_identity<T: FieldElement>(
-    selector: &AlgebraicExpression<T>,
     identity: &mut Identity<T>,
-) -> AlgebraicExpression<T> {
-    // TODO: guard identity _if needed_
+    selector: &AlgebraicExpression<T>,
+) {
+    // TODO: guard identity if needed
     match identity {
-        Identity::Polynomial(id) => todo!(),
-        Identity::BusInteraction(id) => todo!(),
+        Identity::Polynomial(id) => if !is_guarded_by(&id.expression, selector) {
+            id.expression = id.expression.clone() * selector.clone();
+        },
+        Identity::BusInteraction(id) => {
+            if !is_guarded_by(&id.multiplicity, selector) {
+                id.multiplicity = id.multiplicity.clone() * selector.clone();
+            }
+            if !is_guarded_by(&id.latch, selector) {
+                id.latch = id.latch.clone() * selector.clone();
+            }
+        },
         _ => unreachable!(),
     }
 }
 
 /// get is_valid expression for a namespace
-fn find_ns_guard_expression<T: FieldElement>(pil: &Analyzed<T>, stmts: &[StatementIdentifier]) -> Option<AlgebraicExpression<T>> {
+fn find_ns_guard_expression<T: FieldElement>(pil: &Analyzed<T>, stmts: &[StatementIdentifier], latch_bus_id: u32) -> Option<AlgebraicExpression<T>> {
     stmts.iter()
         .find_map(|stmt| {
             if let StatementIdentifier::ProofItem(idx) = stmt {
                 if let Identity::BusInteraction(identity) = pil.identities.get(*idx).unwrap() {
                     // execution bridge latch
-                    if identity.bus_id == AlgebraicExpression::Number(EXECUTION_BRIDGE_ID.into()) {
+                    if identity.bus_id == AlgebraicExpression::Number(latch_bus_id.into()) {
                         return Some(identity.latch.clone())
                     }
                 }

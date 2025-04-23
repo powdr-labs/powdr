@@ -46,7 +46,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         pil_hash = new_hash;
     }
 
-    air_stacking::air_stacking(&mut pil_file);
+    air_stacking::air_stacking(&mut pil_file, 0);
     remove_unreferenced_definitions(&mut pil_file);
 
     let col_count_post = (pil_file.commitment_count(), pil_file.constant_count());
