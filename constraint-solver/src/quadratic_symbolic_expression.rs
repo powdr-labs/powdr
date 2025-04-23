@@ -453,76 +453,32 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
         };
 
         if let Some(result) =
-            combine_to_conditional_assignment(left_solution, right_solution, range_constraints)
+            combine_to_conditional_assignment(&left_solution, &right_solution, range_constraints)
         {
-            Ok(result)
-        } else {
-            // TODO Now at least try to combine joint range constraints
-            Ok(ProcessResult::empty())
+            return Ok(result);
         }
-    }
-    /// Tries to detect a range constraint of the form `(X - value1) * (X - value2) = 0`.
-    /// The most common example would be a bit constraint.
-    /// In that case, we can return a range constraint for `X` and mark the
-    /// constraint as complete.
-    // TODO: This function would not detect some equivalent constraints, like
-    // `X * X - X`.
-    // This could be fixed by finding a canonical form for the quadratic
-    // expression, and normalizing the constants.
-    fn try_detect_range_constraint(&self) -> Option<ProcessResult<T, V>> {
-        let (factor1, factor2) = &self.try_as_single_product()?;
-        let (var1, value1) = factor1.try_solve_constant_assignment()?;
-        let (var2, value2) = factor2.try_solve_constant_assignment()?;
 
-        if var1 == var2 {
-            let range_constraint = RangeConstraint::from_value(value1)
-                .disjunction(&RangeConstraint::from_value(value2));
-
-            // If the range width is at most two, the range constraint is equivalent to the polynomial constraint.
-            // Otherwise, we might lose information.
-            let complete = range_constraint.range_width() <= 2.into();
-            let effects = vec![Effect::RangeConstraint(var1, range_constraint)];
-
-            Some(ProcessResult { effects, complete })
-        } else {
-            None
-        }
-    }
-
-    /// Tries to solve a constant assignment of the form `X = a`.
-    fn try_solve_constant_assignment(&self) -> Option<(V, T)> {
-        if self.is_quadratic() || self.linear.len() != 1 {
-            return None;
-        }
-        let ProcessResult {
-            effects,
-            complete: true,
-        } = self.solve(&NoRangeConstraints).ok()?
-        else {
-            return None;
-        };
-        if let [Effect::Assignment(var, expr)] = effects.as_slice() {
-            Some((var.clone(), expr.try_to_number()?))
-        } else {
-            None
-        }
+        // Now at least combine new range constraints on the same variable.
+        // TODO: This will correctly find a bit range constraint on
+        // `(X - 1) * X = 0`, but it fails to detect the case of
+        // `X * X - X`.
+        // This could be fixed by finding a canonical form for the quadratic
+        // expression, and normalizing the constants.
+        Ok(combine_range_constraints(&left_solution, &right_solution))
     }
 }
 
 /// Tries to combine two process results from alternative branches into a
 /// conditional assignment.
 fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
-    left: ProcessResult<T, V>,
-    right: ProcessResult<T, V>,
+    left: &ProcessResult<T, V>,
+    right: &ProcessResult<T, V>,
     range_constraints: &impl RangeConstraintProvider<T, V>,
 ) -> Option<ProcessResult<T, V>> {
-    let [Effect::Assignment(first_var, first_assignment)]: [_; 1] = left.effects.try_into().ok()?
-    else {
+    let [Effect::Assignment(first_var, first_assignment)] = left.effects.as_slice() else {
         return None;
     };
-    let [Effect::Assignment(second_var, second_assignment)]: [_; 1] =
-        right.effects.try_into().ok()?
-    else {
+    let [Effect::Assignment(second_var, second_assignment)] = right.effects.as_slice() else {
         return None;
     };
 
@@ -536,7 +492,7 @@ fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq
     // conditional assignment.
 
     let diff = symbolic_expression_to_quadratic_symbolic_expression(
-        &(first_assignment.clone() + -&second_assignment),
+        &(first_assignment.clone() + -second_assignment.clone()),
     )?;
     let diff = diff.try_to_known()?.try_to_number()?;
     // `diff = A - B` is a compile-time known number, i.e. `A = B + diff`.
@@ -544,7 +500,7 @@ fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq
     // that if the value that `A` evaluates to falls into the allowed range for `X`,
     // then `B = A + diff` is not a possible value for `X` and vice-versa.
     // This means the two alternatives are disjoint and we can use a conditional assignment.
-    let rc = range_constraints.get(&first_var);
+    let rc = range_constraints.get(first_var);
     if !rc
         .combine_sum(&RangeConstraint::from_value(diff))
         .is_disjoint(&rc)
@@ -554,16 +510,78 @@ fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq
 
     Some(ProcessResult {
         effects: vec![Effect::ConditionalAssignment {
-            variable: first_var,
+            variable: first_var.clone(),
             condition: BranchCondition {
                 value: first_assignment.clone(),
                 condition: rc,
             },
-            in_range_value: first_assignment,
-            out_of_range_value: second_assignment,
+            in_range_value: first_assignment.clone(),
+            out_of_range_value: second_assignment.clone(),
         }],
         complete: left.complete && right.complete,
     })
+}
+
+/// Tries to combine range constraint results from two alternative branches.
+/// In some cases, if both branches produce a complete range constraint for the same variable,
+/// and those range constraints can be combined without loss, the result is complete as well.
+fn combine_range_constraints<T: FieldElement, V: Ord + Clone + Hash + Eq + Display>(
+    left: &ProcessResult<T, V>,
+    right: &ProcessResult<T, V>,
+) -> ProcessResult<T, V> {
+    let left_constraints = left
+        .effects
+        .iter()
+        .filter_map(|e| effect_to_range_constraint(e))
+        .into_grouping_map()
+        .reduce(|rc1, _, rc2| rc1.conjunction(&rc2));
+    let right_constraints = right
+        .effects
+        .iter()
+        .filter_map(|e| effect_to_range_constraint(e))
+        .into_grouping_map()
+        .reduce(|rc1, _, rc2| rc1.conjunction(&rc2));
+
+    let effects = left_constraints
+        .iter()
+        .filter_map(|(v, rc1)| {
+            let rc2 = right_constraints.get(v)?;
+            let rc = rc1.disjunction(rc2);
+            // This does not capture all cases where the disjunction does not lose information,
+            // but we want this to be an indicator of whether we can remove the original
+            // constraint, and thus we want it to only hit the "single value" case.
+            let complete = rc1.try_to_single_value().is_some()
+                && rc2.try_to_single_value().is_some()
+                && rc.range_width() <= 2.into();
+            Some((v, rc, complete))
+        })
+        .collect_vec();
+    // The completeness is tricky, but if there is just a single left effect
+    // and a single right effect and the final range constraint is complete,
+    // it means that both branches have a concrete assignment for the variable
+    // and thus the range constraint is exactly what the original constraint captures.
+    let complete = left.effects.len() == 1
+        && right.effects.len() == 1
+        && effects.len() == 1
+        && effects.iter().all(|(_, _, complete)| *complete);
+    ProcessResult {
+        effects: effects
+            .into_iter()
+            .map(|(v, rc, _)| Effect::RangeConstraint(v.clone(), rc))
+            .collect(),
+        complete,
+    }
+}
+
+/// Turns an effect into a range constraint on a variable.
+fn effect_to_range_constraint<T: FieldElement, V: Ord + Clone + Hash + Eq>(
+    effect: &Effect<T, V>,
+) -> Option<(V, RangeConstraint<T>)> {
+    match effect {
+        Effect::RangeConstraint(var, rc) => Some((var.clone(), rc.clone())),
+        Effect::Assignment(var, value) => Some((var.clone(), value.range_constraint())),
+        _ => None,
+    }
 }
 
 impl<T: FieldElement, V: Clone + Ord + Hash + Eq> PartialEq for QuadraticSymbolicExpression<T, V> {
