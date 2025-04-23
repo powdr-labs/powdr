@@ -10,7 +10,6 @@ use std::{
     sync::Arc,
 };
 
-use powdr_ast::parsed::visitor::AllChildren;
 use powdr_number::FieldElement;
 
 use super::range_constraint::RangeConstraint;
@@ -58,10 +57,10 @@ impl<T: FieldElement, S> SymbolicExpression<T, S> {
             SymbolicExpression::Concrete(_) | SymbolicExpression::Symbol(..) => iter::empty(),
         }
     }
-}
 
-impl<T: FieldElement, S> AllChildren<SymbolicExpression<T, S>> for SymbolicExpression<T, S> {
-    fn all_children(&self) -> Box<dyn Iterator<Item = &SymbolicExpression<T, S>> + '_> {
+    /// Returns an iterator over all direct and indirect children of this expression, including
+    /// the expression itself.
+    pub fn all_children(&self) -> Box<dyn Iterator<Item = &SymbolicExpression<T, S>> + '_> {
         Box::new(iter::once(self).chain(self.children().flat_map(|e| e.all_children())))
     }
 }
