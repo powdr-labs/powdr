@@ -4,6 +4,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
+use compile_time_solver::run_compile_time_solver;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
@@ -17,6 +18,7 @@ use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
 use powdr_ast::parsed::Number;
 use powdr_number::{BigUint, FieldElement};
 
+mod compile_time_solver;
 pub mod referenced_symbols;
 
 use powdr_pil_analyzer::try_algebraic_expression_to_expression;
@@ -37,6 +39,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
         inline_trivial_intermediate_polynomials(&mut pil_file);
         remove_trivial_identities(&mut pil_file);
         remove_duplicate_identities(&mut pil_file);
+        run_compile_time_solver(&mut pil_file);
 
         let new_hash = hash_pil_state(&pil_file);
         if pil_hash == new_hash {

@@ -11,6 +11,7 @@ repository = { workspace = true }
 powdr-ast.workspace = true
 powdr-number.workspace = true
 powdr-pil-analyzer.workspace = true
+powdr-constraint-solver.workspace = true
 
 log = "0.4.27"
 pretty_assertions = "1.4.0"

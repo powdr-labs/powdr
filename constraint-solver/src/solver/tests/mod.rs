@@ -58,6 +58,8 @@ fn bit_decomposition() {
             // Bit-decomposition of a concrete value:
             var("b0") + var("b1") * constant(2) + var("b2") * constant(4) + var("b3") * constant(8)
                 - constant(0b1110),
+            // x = y * (b0 + b1 + b2 + b3);
+            var("x") - (var("y") * (var("b0") + var("b1") + var("b2") + var("b3"))),
         ],
         vec![
             ("b0", constant_expr(0)),

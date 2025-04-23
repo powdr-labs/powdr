@@ -576,3 +576,29 @@ fn inline_chain_of_substitutions() {
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
+
+#[test]
+fn constant_bit_composition_solving() {
+    let input = r#"namespace N(65536);
+    col witness b0, b1, b2, b3, x;
+
+    b0 * (b0 - 1) = 0;
+    b1 * (b1 - 1) = 0;
+    b2 * (b2 - 1) = 0;
+    b3 * (b3 - 1) = 0;
+
+    // Decomposes to 0b1110
+    b0 + b1 * 2 + b2 * 4 + b3 * 8 = 14;
+
+    // Simplifies to `x * (x - 3) = 0`
+    x * (x - (b0 + b1 + b2 + b3)) = 0;
+"#;
+
+    let expectation = r#"namespace N(65536);
+    col witness x;
+    N::x * (N::x - 3) = 0;
+"#;
+
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
