@@ -354,7 +354,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
         &self,
         bus_interaction_handler: impl BusInteractionHandler<T> + 'static,
     ) -> (SymbolicMachine<T>, Vec<BTreeMap<String, String>>) {
-        let (mut machine, subs) = generate_precompile(
+        let (machine, subs) = generate_precompile(
             &self.program,
             &self.instruction_kind,
             &self.instruction_machines,
@@ -364,16 +364,16 @@ impl<T: FieldElement> Autoprecompiles<T> {
         let i = machine.column_ids();
         assert_eq!(c.len(), i.len());
         assert_eq!(machine.columns().len(), machine.column_ids().len());
-        machine = optimize_pc_lookup(machine);
-        machine = optimize_exec_bus(machine);
-        machine = optimize_precompile(machine);
-        machine = optimize(machine, bus_interaction_handler);
-        machine = powdr_optimize_legacy(machine);
-        machine = remove_zero_mult(machine);
-        machine = remove_zero_constraint(machine);
+        let machine = optimize_pc_lookup(machine);
+        let machine = optimize_exec_bus(machine);
+        let machine = optimize_precompile(machine);
+        let machine = optimize(machine, bus_interaction_handler);
+        let machine = powdr_optimize_legacy(machine);
+        let machine = remove_zero_mult(machine);
+        let machine = remove_zero_constraint(machine);
 
         // add guards to constraints that are not satisfied by zeroes
-        machine = add_guards(machine);
+        let machine = add_guards(machine);
 
         (machine, subs)
     }
