@@ -19,7 +19,7 @@ pub enum Effect<T: FieldElement, V> {
     /// A variable is assigned one of two alterantive expressions, depending on a condition.
     ConditionalAssignment {
         variable: V,
-        condition: BranchCondition<T, V>,
+        condition: Condition<T, V>,
         in_range_value: SymbolicExpression<T, V>,
         out_of_range_value: SymbolicExpression<T, V>,
     },
@@ -116,7 +116,7 @@ impl<T: FieldElement, V> Assertion<T, V> {
 }
 
 #[derive(Clone, PartialEq, Eq)]
-pub struct BranchCondition<T: FieldElement, V> {
+pub struct Condition<T: FieldElement, V> {
     pub value: SymbolicExpression<T, V>,
     pub condition: RangeConstraint<T>,
 }

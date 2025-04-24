@@ -7,6 +7,10 @@ use crate::{
     symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
 };
 
+/// Turns a SymbolicExpression to a QuadraticSymbolicExpression essentially
+/// making all variables unknown variables.
+///
+/// Fails in case a division operation is used.
 pub fn symbolic_expression_to_quadratic_symbolic_expression<
     T: FieldElement,
     V: Clone + Ord + Hash,
@@ -25,7 +29,13 @@ pub fn symbolic_expression_to_quadratic_symbolic_expression<
                 BinaryOperator::Add => left + right,
                 BinaryOperator::Sub => left - right,
                 BinaryOperator::Mul => left * right,
-                BinaryOperator::Div => return None, // TODO
+                BinaryOperator::Div => {
+                    if let Some(right) = right.try_to_known() {
+                        left * SymbolicExpression::from(T::from(1)).field_div(right)
+                    } else {
+                        return None;
+                    }
+                }
             }
         }
         SymbolicExpression::UnaryOperation(op, inner, _) => {

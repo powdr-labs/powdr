@@ -10,7 +10,7 @@ use powdr_ast::analyzed::{
     AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator,
 };
 use powdr_constraint_solver::{
-    effect::BranchCondition,
+    effect::Condition,
     quadratic_symbolic_expression::{
         Error, ProcessResult, QuadraticSymbolicExpression, RangeConstraintProvider,
     },
@@ -75,7 +75,7 @@ pub struct BranchResult<'a, T: FieldElement, FixedEval> {
     /// The code common to both branches.
     pub common_code: Vec<Effect<T, Variable>>,
     /// The condition of the branch.
-    pub condition: BranchCondition<T, Variable>,
+    pub condition: Condition<T, Variable>,
     /// The two branches.
     pub branches: [WitgenInference<'a, T, FixedEval>; 2],
 }
@@ -159,7 +159,7 @@ impl<'a, T: FieldElement, FixedEval: FixedEvaluator<T>> WitgenInference<'a, T, F
 
         BranchResult {
             common_code,
-            condition: BranchCondition {
+            condition: Condition {
                 value: SymbolicExpression::from_symbol(variable.clone(), rc),
                 condition: high_condition,
             },

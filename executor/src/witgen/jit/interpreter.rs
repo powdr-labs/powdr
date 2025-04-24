@@ -6,7 +6,7 @@ use itertools::Itertools;
 
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_constraint_solver::effect::{
-    Assertion, BitDecomposition, BitDecompositionComponent, BranchCondition,
+    Assertion, BitDecomposition, BitDecompositionComponent, Condition,
 };
 use powdr_constraint_solver::symbolic_expression::{
     BinaryOperator, SymbolicExpression, UnaryOperator,
@@ -80,7 +80,7 @@ enum BranchTest<T: FieldElement> {
 impl<T: FieldElement> BranchTest<T> {
     fn new(
         var_mapper: &mut VariableMapper,
-        BranchCondition { value, condition }: &BranchCondition<T, Variable>,
+        Condition { value, condition }: &Condition<T, Variable>,
     ) -> Self {
         let (min, max) = condition.range();
         let value = var_mapper.map_expr_to_rpn(value);
