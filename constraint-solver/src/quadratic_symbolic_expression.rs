@@ -57,7 +57,7 @@ pub enum Error {
 /// It also provides ways to quickly update the expression when the value of
 /// an unknown variable gets known and provides functions to solve
 /// (some kinds of) equations.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct QuadraticSymbolicExpression<T: FieldElement, V> {
     /// Quadratic terms of the form `a * X * Y`, where `a` is a (symbolically)
     /// known value and `X` and `Y` are quadratic symbolic expressions that
@@ -580,14 +580,6 @@ fn effect_to_range_constraint<T: FieldElement, V: Ord + Clone + Hash + Eq>(
         Effect::RangeConstraint(var, rc) => Some((var.clone(), rc.clone())),
         Effect::Assignment(var, value) => Some((var.clone(), value.range_constraint())),
         _ => None,
-    }
-}
-
-impl<T: FieldElement, V: Clone + Ord + Hash + Eq> PartialEq for QuadraticSymbolicExpression<T, V> {
-    fn eq(&self, other: &Self) -> bool {
-        self.quadratic == other.quadratic
-            && self.linear == other.linear
-            && self.constant == other.constant
     }
 }
 
