@@ -7,7 +7,7 @@ use powdr_ast::{
     indent,
 };
 use powdr_constraint_solver::{
-    effect::{Assertion, BitDecomposition, BitDecompositionComponent, BranchCondition},
+    effect::{Assertion, BitDecomposition, BitDecompositionComponent, Condition},
     symbolic_expression::{BinaryOperator, SymbolicExpression, UnaryOperator},
 };
 use powdr_jit_compiler::{util_code::util_code, CodeGenerator, DefinitionFetcher};
@@ -528,7 +528,7 @@ fn format_bit_decomposition<T: FieldElement>(
 }
 
 fn format_condition<T: FieldElement>(
-    BranchCondition { value, condition }: &BranchCondition<T, Variable>,
+    Condition { value, condition }: &Condition<T, Variable>,
 ) -> String {
     let value = format!("IntType::from({})", format_expression(value));
     let (min, max) = condition.range();
@@ -1159,7 +1159,7 @@ extern \"C\" fn witgen(
         let mut x_val: GoldilocksField = 7.into();
         let mut y_val: GoldilocksField = 9.into();
         let effects = vec![Effect::Branch(
-            BranchCondition {
+            Condition {
                 value: SymbolicExpression::from_symbol(x.clone(), Default::default()),
                 condition: RangeConstraint::from_range(7.into(), 20.into()),
             },
@@ -1188,13 +1188,13 @@ extern \"C\" fn witgen(
         let y = param(1);
         let z = param(2);
         let branch_effect = Effect::Branch(
-            BranchCondition {
+            Condition {
                 value: SymbolicExpression::from_symbol(x.clone(), Default::default()),
                 condition: RangeConstraint::from_range(7.into(), 20.into()),
             },
             vec![assignment(&y, symbol(&x) + number(1))],
             vec![Effect::Branch(
-                BranchCondition {
+                Condition {
                     value: SymbolicExpression::from_symbol(z.clone(), Default::default()),
                     condition: RangeConstraint::from_range(7.into(), 20.into()),
                 },

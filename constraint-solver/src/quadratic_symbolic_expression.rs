@@ -10,8 +10,7 @@ use num_traits::Zero;
 use powdr_number::{log2_exact, FieldElement, LargeInt};
 
 use crate::{
-    effect::BranchCondition,
-    symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
+    effect::Condition, symbolic_to_quadratic::symbolic_expression_to_quadratic_symbolic_expression,
 };
 
 use super::effect::{Assertion, BitDecomposition, BitDecompositionComponent, Effect};
@@ -511,7 +510,7 @@ fn combine_to_conditional_assignment<T: FieldElement, V: Ord + Clone + Hash + Eq
     Some(ProcessResult {
         effects: vec![Effect::ConditionalAssignment {
             variable: first_var.clone(),
-            condition: BranchCondition {
+            condition: Condition {
                 value: first_assignment.clone(),
                 condition: rc,
             },
@@ -1086,11 +1085,10 @@ Z: [10, 4294967050] & 0xffffffff;
         let rc = RangeConstraint::from_mask(0xffu32);
         let a = Qse::from_unknown_variable("a");
         let b = Qse::from_known_symbol("b", rc.clone());
-        let range_constraints =
-            HashMap::from([("a", rc.clone()), ("b", rc.clone()), ("c", rc.clone())]);
+        let range_constraints = HashMap::from([("a", rc.clone()), ("b", rc.clone())]);
         let ten = Qse::from(GoldilocksField::from(10));
-        let two56 = Qse::from(GoldilocksField::from(0x100));
-        let constr = (a.clone() - b.clone() + two56 - ten.clone()) * (a - b - ten);
+        let two_pow8 = Qse::from(GoldilocksField::from(0x100));
+        let constr = (a.clone() - b.clone() + two_pow8 - ten.clone()) * (a - b - ten);
         let result = constr.solve(&range_constraints).unwrap();
         assert!(result.complete);
         let effects = result
@@ -1099,7 +1097,7 @@ Z: [10, 4294967050] & 0xffffffff;
             .map(|effect| match effect {
                 Effect::ConditionalAssignment {
                     variable,
-                    condition: BranchCondition { value, condition },
+                    condition: Condition { value, condition },
                     in_range_value,
                     out_of_range_value,
                 } => {

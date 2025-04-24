@@ -6,7 +6,7 @@ use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::indent;
 use powdr_constraint_solver::effect::{
-    Assertion, BitDecomposition, BitDecompositionComponent, BranchCondition,
+    Assertion, BitDecomposition, BitDecompositionComponent, Condition,
 };
 use powdr_constraint_solver::symbolic_expression::SymbolicExpression;
 use powdr_number::FieldElement;
@@ -32,7 +32,7 @@ pub enum Effect<T: FieldElement, V> {
     /// Compute one variable by executing a prover function (given by index) on the value of other variables.
     ProverFunctionCall(ProverFunctionCall<V>),
     /// A branch on a variable.
-    Branch(BranchCondition<T, V>, Vec<Effect<T, V>>, Vec<Effect<T, V>>),
+    Branch(Condition<T, V>, Vec<Effect<T, V>>, Vec<Effect<T, V>>),
 }
 
 impl<T: FieldElement, V: Clone> From<ConstraintSolverEffect<T, V>> for Effect<T, V> {
@@ -200,7 +200,7 @@ pub fn format_code<T: FieldElement>(effects: &[Effect<T, Variable>]) -> String {
 }
 
 fn format_condition<T: FieldElement>(
-    BranchCondition { value, condition }: &BranchCondition<T, Variable>,
+    Condition { value, condition }: &Condition<T, Variable>,
 ) -> String {
     let (min, max) = condition.range();
     match min.cmp(&max) {
@@ -212,7 +212,7 @@ fn format_condition<T: FieldElement>(
 
 #[cfg(test)]
 mod test {
-    use powdr_constraint_solver::effect::BranchCondition;
+    use powdr_constraint_solver::effect::Condition;
     use powdr_number::GoldilocksField;
 
     use crate::witgen::jit::variable::Cell;
@@ -239,7 +239,7 @@ mod test {
         let effects = vec![
             Effect::Assignment(var(0), SymbolicExpression::from(T::from(1))),
             Effect::Branch(
-                BranchCondition {
+                Condition {
                     value: var_as_expr(0),
                     condition: RangeConstraint::from_range(T::from(1), T::from(2)),
                 },
@@ -248,12 +248,12 @@ mod test {
                     SymbolicExpression::from(T::from(2)),
                 )],
                 vec![Effect::Branch(
-                    BranchCondition {
+                    Condition {
                         value: var_as_expr(1),
                         condition: RangeConstraint::from_range(T::from(5), T::from(6)),
                     },
                     vec![Effect::Branch(
-                        BranchCondition {
+                        Condition {
                             value: var_as_expr(2),
                             condition: RangeConstraint::from_range(T::from(5), T::from(6)),
                         },
@@ -267,7 +267,7 @@ mod test {
                         )],
                     )],
                     vec![Effect::Branch(
-                        BranchCondition {
+                        Condition {
                             value: var_as_expr(3),
                             condition: RangeConstraint::from_range(T::from(5), T::from(6)),
                         },
