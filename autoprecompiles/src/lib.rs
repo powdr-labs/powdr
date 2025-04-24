@@ -331,19 +331,6 @@ impl<T: FieldElement> Autoprecompiles<T> {
         machine = optimize_pc_lookup(machine);
         machine = optimize_exec_bus(machine);
         machine = optimize_precompile(machine);
-
-        let mut bus: BTreeMap<u64, Vec<&SymbolicBusInteraction<T>>> = BTreeMap::new();
-        for b in &machine.bus_interactions {
-            match bus.get_mut(&b.id) {
-                Some(v) => {
-                    v.push(b);
-                }
-                None => {
-                    bus.insert(b.id, vec![&b]);
-                }
-            }
-        }
-
         machine = powdr_optimize(machine);
         machine = remove_zero_mult(machine);
         machine = remove_zero_constraint(machine);
