@@ -382,6 +382,10 @@ pub fn remove_zero_mult<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sym
     machine
 }
 
+/// Adds an `is_valid` guard to all constraints and bus interactions.
+/// Assumptions:
+/// - There are exactly one execution bus receive and one execution bus send, in this order.
+/// - There is exactly one program bus send.
 pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let max_id = machine
         .unique_columns()
@@ -413,27 +417,63 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
         }
     }
 
-    let mut is_valid_mults = Vec::new();
-    let mut receive_exec = true;
+    let [execution_bus_receive, execution_bus_send] = machine
+        .bus_interactions
+        .iter_mut()
+        .filter_map(|bus_int| match bus_int.id {
+            EXECUTION_BUS_ID => Some(bus_int),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+
+    assert_eq!(execution_bus_receive.kind, BusInteractionKind::Receive);
+    assert_eq!(execution_bus_send.kind, BusInteractionKind::Send);
+
+    execution_bus_receive.mult =
+        AlgebraicExpression::new_unary(AlgebraicUnaryOperator::Minus, is_valid.clone());
+    execution_bus_send.mult = is_valid.clone();
+
+    let [program_bus_send] = machine
+        .bus_interactions
+        .iter_mut()
+        .filter_map(|bus_int| match bus_int.id {
+            PC_LOOKUP_BUS_ID => Some(bus_int),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+
+    assert_eq!(program_bus_send.kind, BusInteractionKind::Send);
+    program_bus_send.mult = is_valid.clone();
+
+    let mut is_valid_mults: Vec<SymbolicConstraint<T>> = Vec::new();
     for b in &mut machine.bus_interactions {
-        if b.id == EXECUTION_BUS_ID && receive_exec {
-            b.mult =
-                AlgebraicExpression::new_unary(AlgebraicUnaryOperator::Minus, is_valid.clone());
-            receive_exec = !receive_exec;
-        } else if (b.id == EXECUTION_BUS_ID && !receive_exec) || b.id == PC_LOOKUP_BUS_ID {
-            b.mult = is_valid.clone();
-        } else {
-            let mut zeroed_expr = b.mult.clone();
-            powdr::make_refs_zero(&mut zeroed_expr);
-            let zeroed_expr = simplify_expression(zeroed_expr);
-            if !powdr::is_zero(&zeroed_expr) {
-                b.mult = is_valid.clone() * b.mult.clone();
-                // TODO this would not have to be cloned if we had *=
-                //c.expr *= guard.clone();
-            } else {
-                let one = AlgebraicExpression::Number(1u64.into());
-                let e = ((one - is_valid.clone()) * b.mult.clone()).into();
-                is_valid_mults.push(e);
+        match b.id {
+            EXECUTION_BUS_ID => {
+                // already handled
+            }
+            PC_LOOKUP_BUS_ID => {
+                // already handled
+            }
+            _ => {
+                // We check the value of the multiplicity when all variables are set to zero
+                let mut zeroed_expr = b.mult.clone();
+                powdr::make_refs_zero(&mut zeroed_expr);
+                let zeroed_expr = simplify_expression(zeroed_expr);
+                if !powdr::is_zero(&zeroed_expr) {
+                    // if it's not zero, then we guard the multiplicity by `is_valid`
+                    b.mult = is_valid.clone() * b.mult.clone();
+                    // TODO this would not have to be cloned if we had *=
+                    //c.expr *= guard.clone();
+                } else {
+                    // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
+                    let one = AlgebraicExpression::Number(1u64.into());
+                    let e = ((one - is_valid.clone()) * b.mult.clone()).into();
+                    is_valid_mults.push(e);
+                }
             }
         }
     }
