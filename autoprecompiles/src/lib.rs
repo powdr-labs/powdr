@@ -37,13 +37,6 @@ pub struct SymbolicInstructionStatement<T> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SymbolicInstructionDefinition {
-    pub name: String,
-    pub inputs: Vec<String>,
-    pub outputs: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolicConstraint<T> {
     pub expr: AlgebraicExpression<T>,
 }
@@ -174,7 +167,7 @@ pub enum InstructionKind {
 pub struct Autoprecompiles<T> {
     pub program: Vec<SymbolicInstructionStatement<T>>,
     pub instruction_kind: BTreeMap<String, InstructionKind>,
-    pub instruction_machines: BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
+    pub instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
 }
 
 #[derive(Debug, Clone)]
@@ -259,19 +252,25 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
     }
 }
 
-impl<T: FieldElement> From<SymbolicBusInteraction<T>> for MemoryBusInteraction<T> {
-    fn from(bus_interaction: SymbolicBusInteraction<T>) -> Self {
-        let ty = bus_interaction.args[0].clone().into();
-        let op = bus_interaction.kind.clone().into();
-        let addr = bus_interaction.args[1].clone();
-        let data = bus_interaction.args[2..bus_interaction.args.len() - 2].to_vec();
-        MemoryBusInteraction {
-            ty,
-            op,
-            addr,
-            data,
-            bus_interaction,
-        }
+impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for MemoryBusInteraction<T> {
+    type Error = ();
+
+    fn try_from(bus_interaction: SymbolicBusInteraction<T>) -> Result<Self, ()> {
+        (bus_interaction.id == MEMORY_BUS_ID)
+            .then(|| {
+                let ty = bus_interaction.args[0].clone().into();
+                let op = bus_interaction.kind.clone().into();
+                let addr = bus_interaction.args[1].clone();
+                let data = bus_interaction.args[2..bus_interaction.args.len() - 2].to_vec();
+                MemoryBusInteraction {
+                    ty,
+                    op,
+                    addr,
+                    data,
+                    bus_interaction,
+                }
+            })
+            .ok_or(())
     }
 }
 
@@ -283,17 +282,23 @@ pub struct PcLookupBusInteraction<T> {
     pub bus_interaction: SymbolicBusInteraction<T>,
 }
 
-impl<T: FieldElement> From<SymbolicBusInteraction<T>> for PcLookupBusInteraction<T> {
-    fn from(bus_interaction: SymbolicBusInteraction<T>) -> Self {
-        let from_pc = bus_interaction.args[0].clone();
-        let op = bus_interaction.args[1].clone();
-        let args = bus_interaction.args[2..].to_vec();
-        PcLookupBusInteraction {
-            from_pc,
-            op,
-            args,
-            bus_interaction,
-        }
+impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for PcLookupBusInteraction<T> {
+    type Error = ();
+
+    fn try_from(bus_interaction: SymbolicBusInteraction<T>) -> Result<Self, ()> {
+        (bus_interaction.id == PC_LOOKUP_BUS_ID)
+            .then(|| {
+                let from_pc = bus_interaction.args[0].clone();
+                let op = bus_interaction.args[1].clone();
+                let args = bus_interaction.args[2..].to_vec();
+                PcLookupBusInteraction {
+                    from_pc,
+                    op,
+                    args,
+                    bus_interaction,
+                }
+            })
+            .ok_or(())
     }
 }
 
@@ -308,34 +313,21 @@ const RANGE_CHECK_BUS_ID: u64 = 3;
 
 impl<T: FieldElement> Autoprecompiles<T> {
     pub fn build(&self) -> (SymbolicMachine<T>, Vec<BTreeMap<Column, Column>>) {
-        let (mut machine, subs) = generate_precompile(
+        let (machine, subs) = generate_precompile(
             &self.program,
             &self.instruction_kind,
             &self.instruction_machines,
         );
 
-        machine = optimize_pc_lookup(machine);
-        machine = optimize_exec_bus(machine);
-        machine = optimize_precompile(machine);
-
-        let mut bus: BTreeMap<u64, Vec<&SymbolicBusInteraction<T>>> = BTreeMap::new();
-        for b in &machine.bus_interactions {
-            match bus.get_mut(&b.id) {
-                Some(v) => {
-                    v.push(b);
-                }
-                None => {
-                    bus.insert(b.id, vec![&b]);
-                }
-            }
-        }
-
-        machine = powdr_optimize(machine);
-        machine = remove_zero_mult(machine);
-        machine = remove_zero_constraint(machine);
+        let machine = optimize_pc_lookup(machine);
+        let machine = optimize_exec_bus(machine);
+        let machine = optimize_precompile(machine);
+        let machine = powdr_optimize(machine);
+        let machine = remove_zero_mult(machine);
+        let machine = remove_zero_constraint(machine);
 
         // add guards to constraints that are not satisfied by zeroes
-        machine = add_guards(machine);
+        let machine = add_guards(machine);
 
         (machine, subs)
     }
@@ -372,21 +364,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
     }
 }
 
-pub fn replace_autoprecompile_basic_blocks<T: Clone>(
-    blocks: &[BasicBlock<T>],
-    selected: &BTreeMap<u64, SymbolicInstructionStatement<T>>,
-) -> Vec<SymbolicInstructionStatement<T>> {
-    let mut new_program = Vec::new();
-    for (i, block) in blocks.iter().enumerate() {
-        if let Some(instr) = selected.get(&(i as u64)) {
-            new_program.push(instr.clone());
-        } else {
-            new_program.extend(block.statements.clone());
-        }
-    }
-    new_program
-}
-
+// TODO: This should probably be done by pilopt
 pub fn remove_zero_mult<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     machine
         .bus_interactions
@@ -395,6 +373,10 @@ pub fn remove_zero_mult<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sym
     machine
 }
 
+/// Adds an `is_valid` guard to all constraints and bus interactions.
+/// Assumptions:
+/// - There are exactly one execution bus receive and one execution bus send, in this order.
+/// - There is exactly one program bus send.
 pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     let max_id = machine
         .unique_columns()
@@ -426,27 +408,58 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
         }
     }
 
-    let mut is_valid_mults = Vec::new();
-    let mut receive_exec = true;
+    let [execution_bus_receive, execution_bus_send] = machine
+        .bus_interactions
+        .iter_mut()
+        .filter_map(|bus_int| match bus_int.id {
+            EXECUTION_BUS_ID => Some(bus_int),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+
+    execution_bus_receive.mult =
+        AlgebraicExpression::new_unary(AlgebraicUnaryOperator::Minus, is_valid.clone());
+    execution_bus_send.mult = is_valid.clone();
+
+    let [program_bus_send] = machine
+        .bus_interactions
+        .iter_mut()
+        .filter_map(|bus_int| match bus_int.id {
+            PC_LOOKUP_BUS_ID => Some(bus_int),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+    program_bus_send.mult = is_valid.clone();
+
+    let mut is_valid_mults: Vec<SymbolicConstraint<T>> = Vec::new();
     for b in &mut machine.bus_interactions {
-        if b.id == EXECUTION_BUS_ID && receive_exec {
-            b.mult =
-                AlgebraicExpression::new_unary(AlgebraicUnaryOperator::Minus, is_valid.clone());
-            receive_exec = !receive_exec;
-        } else if (b.id == EXECUTION_BUS_ID && !receive_exec) || b.id == PC_LOOKUP_BUS_ID {
-            b.mult = is_valid.clone();
-        } else {
-            let mut zeroed_expr = b.mult.clone();
-            powdr::make_refs_zero(&mut zeroed_expr);
-            let zeroed_expr = simplify_expression(zeroed_expr);
-            if !powdr::is_zero(&zeroed_expr) {
-                b.mult = is_valid.clone() * b.mult.clone();
-                // TODO this would not have to be cloned if we had *=
-                //c.expr *= guard.clone();
-            } else {
-                let one = AlgebraicExpression::Number(1u64.into());
-                let e = ((one - is_valid.clone()) * b.mult.clone()).into();
-                is_valid_mults.push(e);
+        match b.id {
+            EXECUTION_BUS_ID => {
+                // already handled
+            }
+            PC_LOOKUP_BUS_ID => {
+                // already handled
+            }
+            _ => {
+                // We check the value of the multiplicity when all variables are set to zero
+                let mut zeroed_expr = b.mult.clone();
+                powdr::make_refs_zero(&mut zeroed_expr);
+                let zeroed_expr = simplify_expression(zeroed_expr);
+                if !powdr::is_zero(&zeroed_expr) {
+                    // if it's not zero, then we guard the multiplicity by `is_valid`
+                    b.mult = is_valid.clone() * b.mult.clone();
+                    // TODO this would not have to be cloned if we had *=
+                    //c.expr *= guard.clone();
+                } else {
+                    // if it's zero, then we do not have to change the multiplicity, but we need to force it to be zero on non-valid rows with a constraint
+                    let one = AlgebraicExpression::Number(1u64.into());
+                    let e = ((one - is_valid.clone()) * b.mult.clone()).into();
+                    is_valid_mults.push(e);
+                }
             }
         }
     }
@@ -456,6 +469,7 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
     machine
 }
 
+// TODO: This should probably be done by pilopt
 pub fn remove_zero_constraint<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
 ) -> SymbolicMachine<T> {
@@ -507,11 +521,12 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
         .iter()
         .enumerate()
         .for_each(|(i, bus_int)| {
-            if bus_int.id != MEMORY_BUS_ID {
-                return;
-            }
-
-            let mem_int: MemoryBusInteraction<T> = bus_int.clone().into();
+            let mem_int: MemoryBusInteraction<T> = match bus_int.clone().try_into() {
+                Ok(mem_int) => mem_int,
+                Err(_) => {
+                    return;
+                }
+            };
 
             if matches!(mem_int.ty, MemoryType::Constant | MemoryType::Memory) {
                 return;
@@ -566,11 +581,12 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
         .into_iter()
         .enumerate()
         .filter_map(|(i, bus_int)| {
-            if bus_int.id != MEMORY_BUS_ID {
-                return Some(bus_int);
-            }
-
-            let mem_int: MemoryBusInteraction<T> = bus_int.clone().into();
+            let mem_int: MemoryBusInteraction<T> = match bus_int.clone().try_into() {
+                Ok(mem_int) => mem_int,
+                Err(_) => {
+                    return Some(bus_int);
+                }
+            };
 
             if matches!(mem_int.ty, MemoryType::Constant | MemoryType::Memory) {
                 return Some(bus_int);
@@ -741,7 +757,7 @@ pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sy
 pub fn generate_precompile<T: FieldElement>(
     statements: &[SymbolicInstructionStatement<T>],
     instruction_kinds: &BTreeMap<String, InstructionKind>,
-    instruction_machines: &BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
+    instruction_machines: &BTreeMap<String, SymbolicMachine<T>>,
 ) -> (SymbolicMachine<T>, Vec<BTreeMap<Column, Column>>) {
     let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
@@ -755,15 +771,12 @@ pub fn generate_precompile<T: FieldElement>(
             InstructionKind::Normal
             | InstructionKind::UnconditionalBranch
             | InstructionKind::ConditionalBranch => {
-                let (_instr_def, machine) = instruction_machines.get(&instr.name).unwrap().clone();
+                let machine = instruction_machines.get(&instr.name).unwrap().clone();
 
                 let pc_lookup: PcLookupBusInteraction<T> = machine
                     .bus_interactions
                     .iter()
-                    .filter_map(|bus_int| match bus_int.id {
-                        PC_LOOKUP_BUS_ID => Some(bus_int.clone().into()),
-                        _ => None,
-                    })
+                    .filter_map(|bus_int| bus_int.clone().try_into().ok())
                     .exactly_one()
                     .expect("Expected single pc lookup");
 
