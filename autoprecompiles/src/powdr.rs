@@ -171,7 +171,7 @@ impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpres
 /// Return the next available ID.
 /// Assumptions:
 /// - The substitution map already contains substitutions for constant columns. Failing to do so will result in a panic.
-pub fn reassign_ids_algebraic<T: Clone + Ord>(
+pub fn local_to_global<T: Clone + Ord>(
     expr: &mut AlgebraicExpression<T>,
     mut curr_id: u64,
     subs: &mut BTreeMap<Column, Column>,

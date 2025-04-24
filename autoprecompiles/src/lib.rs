@@ -767,7 +767,7 @@ pub fn generate_precompile<T: FieldElement>(
 
     // Initialize the substitutions by mapping the constant columns to themselves, as they can be reused across instructions.
     // It could be cleaner to have one instance per instruction (`is_first_row_1`, `is_first_row_2`, etc.) and adding constraints between them
-    // This would remove this edge case but also would require fully supporting constant columns, which is not the case in `reassign_ids_algebraic`
+    // This would remove this edge case but also would require fully supporting constant columns, which is not the case in `local_to_global`
     let constant_subs: BTreeMap<Column, Column> = ["is_first_row", "is_transition", "is_last_row"]
         .iter()
         .map(|name| {
@@ -846,12 +846,8 @@ pub fn generate_precompile<T: FieldElement>(
                             powdr::substitute_algebraic(&mut expr, &sub_map);
                             powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
                             let mut expr = simplify_expression(expr);
-                            global_idx = powdr::reassign_ids_algebraic(
-                                &mut expr,
-                                global_idx,
-                                &mut local_subs,
-                                i,
-                            );
+                            global_idx =
+                                powdr::local_to_global(&mut expr, global_idx, &mut local_subs, i);
                             expr
                         };
                         ControlFlow::Continue::<()>(())
