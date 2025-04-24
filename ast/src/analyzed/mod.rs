@@ -1698,12 +1698,6 @@ impl<T> AlgebraicExpression<T> {
                 PolynomialType::Intermediate => {
                     let reference = reference.to_thin();
                     cache.get(&reference).cloned().unwrap_or_else(|| {
-                        if !intermediate_definitions.contains_key(&reference) {
-                            panic!(
-                                "Reference not found in intermediate definitions: {:?}",
-                                reference
-                            );
-                        }
                         let def = intermediate_definitions
                             .get(&reference)
                             .expect("Intermediate definition not found.");
