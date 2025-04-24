@@ -835,6 +835,7 @@ pub fn generate_precompile<T: FieldElement>(
 
                 machine.constraints.extend(local_constraints);
 
+                // Start the local substitutions with the constant columns
                 let mut local_subs = constant_subs.clone();
 
                 // Process all expressions in the machine
