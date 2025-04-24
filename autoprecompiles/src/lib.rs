@@ -39,8 +39,10 @@ pub struct SymbolicInstructionStatement<T> {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolicInstructionDefinition {
     pub name: String,
-    pub inputs: Vec<String>,
-    pub outputs: Vec<String>,
+    // TODO: This never seems to be non-empty, and is never accessed
+    pub inputs: Vec<Column>,
+    // TODO: This never seems to be non-empty, and is never accessed
+    pub outputs: Vec<Column>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -259,19 +261,25 @@ impl<T: FieldElement> MemoryBusInteraction<T> {
     }
 }
 
-impl<T: FieldElement> From<SymbolicBusInteraction<T>> for MemoryBusInteraction<T> {
-    fn from(bus_interaction: SymbolicBusInteraction<T>) -> Self {
-        let ty = bus_interaction.args[0].clone().into();
-        let op = bus_interaction.kind.clone().into();
-        let addr = bus_interaction.args[1].clone();
-        let data = bus_interaction.args[2..bus_interaction.args.len() - 2].to_vec();
-        MemoryBusInteraction {
-            ty,
-            op,
-            addr,
-            data,
-            bus_interaction,
-        }
+impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for MemoryBusInteraction<T> {
+    type Error = ();
+
+    fn try_from(bus_interaction: SymbolicBusInteraction<T>) -> Result<Self, ()> {
+        (bus_interaction.id == MEMORY_BUS_ID)
+            .then(|| {
+                let ty = bus_interaction.args[0].clone().into();
+                let op = bus_interaction.kind.clone().into();
+                let addr = bus_interaction.args[1].clone();
+                let data = bus_interaction.args[2..bus_interaction.args.len() - 2].to_vec();
+                MemoryBusInteraction {
+                    ty,
+                    op,
+                    addr,
+                    data,
+                    bus_interaction,
+                }
+            })
+            .ok_or(())
     }
 }
 
@@ -283,17 +291,23 @@ pub struct PcLookupBusInteraction<T> {
     pub bus_interaction: SymbolicBusInteraction<T>,
 }
 
-impl<T: FieldElement> From<SymbolicBusInteraction<T>> for PcLookupBusInteraction<T> {
-    fn from(bus_interaction: SymbolicBusInteraction<T>) -> Self {
-        let from_pc = bus_interaction.args[0].clone();
-        let op = bus_interaction.args[1].clone();
-        let args = bus_interaction.args[2..].to_vec();
-        PcLookupBusInteraction {
-            from_pc,
-            op,
-            args,
-            bus_interaction,
-        }
+impl<T: FieldElement> TryFrom<SymbolicBusInteraction<T>> for PcLookupBusInteraction<T> {
+    type Error = ();
+
+    fn try_from(bus_interaction: SymbolicBusInteraction<T>) -> Result<Self, ()> {
+        (bus_interaction.id == PC_LOOKUP_BUS_ID)
+            .then(|| {
+                let from_pc = bus_interaction.args[0].clone();
+                let op = bus_interaction.args[1].clone();
+                let args = bus_interaction.args[2..].to_vec();
+                PcLookupBusInteraction {
+                    from_pc,
+                    op,
+                    args,
+                    bus_interaction,
+                }
+            })
+            .ok_or(())
     }
 }
 
@@ -507,11 +521,12 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
         .iter()
         .enumerate()
         .for_each(|(i, bus_int)| {
-            if bus_int.id != MEMORY_BUS_ID {
-                return;
-            }
-
-            let mem_int: MemoryBusInteraction<T> = bus_int.clone().into();
+            let mem_int: MemoryBusInteraction<T> = match bus_int.clone().try_into() {
+                Ok(mem_int) => mem_int,
+                Err(_) => {
+                    return;
+                }
+            };
 
             if matches!(mem_int.ty, MemoryType::Constant | MemoryType::Memory) {
                 return;
@@ -566,11 +581,12 @@ pub fn optimize_precompile<T: FieldElement>(mut machine: SymbolicMachine<T>) -> 
         .into_iter()
         .enumerate()
         .filter_map(|(i, bus_int)| {
-            if bus_int.id != MEMORY_BUS_ID {
-                return Some(bus_int);
-            }
-
-            let mem_int: MemoryBusInteraction<T> = bus_int.clone().into();
+            let mem_int: MemoryBusInteraction<T> = match bus_int.clone().try_into() {
+                Ok(mem_int) => mem_int,
+                Err(_) => {
+                    return Some(bus_int);
+                }
+            };
 
             if matches!(mem_int.ty, MemoryType::Constant | MemoryType::Memory) {
                 return Some(bus_int);
@@ -760,10 +776,7 @@ pub fn generate_precompile<T: FieldElement>(
                 let pc_lookup: PcLookupBusInteraction<T> = machine
                     .bus_interactions
                     .iter()
-                    .filter_map(|bus_int| match bus_int.id {
-                        PC_LOOKUP_BUS_ID => Some(bus_int.clone().into()),
-                        _ => None,
-                    })
+                    .filter_map(|bus_int| bus_int.clone().try_into().ok())
                     .exactly_one()
                     .expect("Expected single pc lookup");
 
