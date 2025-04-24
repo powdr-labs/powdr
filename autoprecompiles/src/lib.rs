@@ -1,8 +1,8 @@
 use itertools::Itertools;
-use powdr::{collect_cols_algebraic, Column, UniqueColumns};
+use powdr::{Column, UniqueColumns};
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_ast::parsed::asm::Part;
-use powdr_ast::parsed::visitor::Children;
+use powdr_ast::parsed::visitor::{Children, ExpressionVisitable, VisitOrder};
 use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Display;
 use std::iter::once;
+use std::ops::ControlFlow;
 
 use powdr_number::{BigUint, FieldElement, LargeInt};
 use powdr_pilopt::simplify_expression;
@@ -103,7 +104,7 @@ pub enum BusInteractionKind {
     Receive,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SymbolicMachine<T> {
     pub constraints: Vec<SymbolicConstraint<T>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
@@ -759,19 +760,34 @@ pub fn generate_precompile<T: FieldElement>(
     instruction_kinds: &BTreeMap<String, InstructionKind>,
     instruction_machines: &BTreeMap<String, SymbolicMachine<T>>,
 ) -> (SymbolicMachine<T>, Vec<BTreeMap<Column, Column>>) {
-    let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
-    let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
+    let mut result = SymbolicMachine::default();
     let mut col_subs: Vec<BTreeMap<Column, Column>> = Vec::new();
-    let mut global_idx: u64 = 3;
-    let mut global_idx_subs: BTreeMap<Column, u64> = BTreeMap::new();
-    let mut global_idx_subs_rev: BTreeMap<u64, Column> = BTreeMap::new();
+    let mut global_idx: u64 = 0;
+
+    // Initialize the substitutions by mapping the constant columns to themselves, as they can be reused across instructions.
+    // It could be cleaner to have one instance per instruction (`is_first_row_1`, `is_first_row_2`, etc.) and adding constraints between them
+    // This would remove this edge case but also would require fully supporting constant columns, which is not the case in `local_to_global`
+    let constant_subs: BTreeMap<Column, Column> = ["is_first_row", "is_transition", "is_last_row"]
+        .iter()
+        .map(|name| {
+            let col = Column {
+                name: name.to_string(),
+                id: PolyID {
+                    ptype: PolynomialType::Constant,
+                    id: global_idx,
+                },
+            };
+            global_idx += 1;
+            (col.clone(), col)
+        })
+        .collect();
 
     for (i, instr) in statements.iter().enumerate() {
         match instruction_kinds.get(&instr.name).unwrap() {
             InstructionKind::Normal
             | InstructionKind::UnconditionalBranch
             | InstructionKind::ConditionalBranch => {
-                let machine = instruction_machines.get(&instr.name).unwrap().clone();
+                let mut machine = instruction_machines.get(&instr.name).unwrap().clone();
 
                 let pc_lookup: PcLookupBusInteraction<T> = machine
                     .bus_interactions
@@ -816,57 +832,36 @@ pub fn generate_precompile<T: FieldElement>(
                         }
                     });
 
-                let mut local_subs = BTreeMap::new();
-                let local_identities = machine
-                    .constraints
-                    .iter()
-                    .chain(&local_constraints)
-                    .map(|expr| {
-                        let mut expr = expr.expr.clone();
-                        powdr::substitute_algebraic(&mut expr, &sub_map);
-                        powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
-                        let subs = powdr::append_suffix_algebraic(&mut expr, &format!("{i}"));
-                        expr = simplify_expression(expr);
-                        global_idx = powdr::reassign_ids_algebraic(
-                            &mut expr,
-                            global_idx,
-                            &mut global_idx_subs,
-                            &mut global_idx_subs_rev,
-                        );
-                        local_subs.extend(subs);
-                        SymbolicConstraint { expr }
-                    })
-                    .collect::<Vec<_>>();
+                machine.constraints.extend(local_constraints);
 
-                constraints.extend(local_identities);
+                // Start the local substitutions with the constant columns
+                let mut local_subs = constant_subs.clone();
 
-                for bus_int in &machine.bus_interactions {
-                    let mut link = bus_int.clone();
-                    link.args
-                        .iter_mut()
-                        .chain(std::iter::once(&mut link.mult))
-                        .for_each(|e| {
-                            powdr::substitute_algebraic(e, &sub_map);
-                            powdr::substitute_algebraic(e, &sub_map_loadstore);
-                            *e = simplify_expression(e.clone());
-                            let subs = powdr::append_suffix_algebraic(e, &format!("{i}"));
-                            global_idx = powdr::reassign_ids_algebraic(
-                                &mut *e,
-                                global_idx,
-                                &mut global_idx_subs,
-                                &mut global_idx_subs_rev,
-                            );
-                            local_subs.extend(subs);
-                        });
-                    bus_interactions.push(link);
-                }
+                // Process all expressions in the machine
+                machine.visit_expressions_mut(
+                    &mut |expr| {
+                        *expr = {
+                            let mut expr = expr.clone();
+                            powdr::substitute_algebraic(&mut expr, &sub_map);
+                            powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
+                            let mut expr = simplify_expression(expr);
+                            global_idx =
+                                powdr::local_to_global(&mut expr, global_idx, &mut local_subs, i);
+                            expr
+                        };
+                        ControlFlow::Continue::<()>(())
+                    },
+                    VisitOrder::Pre,
+                );
 
+                result.constraints.extend(machine.constraints);
+                result.bus_interactions.extend(machine.bus_interactions);
                 col_subs.push(local_subs);
 
                 // after the first round of simplifying,
                 // we need to look for register memory bus interactions
                 // and replace the addr by the first argument of the instruction
-                for bus_int in &mut bus_interactions {
+                for bus_int in &mut result.bus_interactions {
                     if bus_int.id != MEMORY_BUS_ID {
                         continue;
                     }
@@ -899,13 +894,7 @@ pub fn generate_precompile<T: FieldElement>(
         }
     }
 
-    (
-        SymbolicMachine {
-            constraints,
-            bus_interactions,
-        },
-        col_subs,
-    )
+    (result, col_subs)
 }
 
 fn add_opcode_constraints<T: FieldElement>(
@@ -1081,50 +1070,29 @@ fn powdr_optimize<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> Symb
 fn symbolic_machine_to_pilfile<P: FieldElement>(symbolic_machine: SymbolicMachine<P>) -> PILFile {
     let mut program = Vec::new();
 
-    // Collect all unique polynomial references from constraints and bus interactions
-    let refs: BTreeSet<AlgebraicExpression<_>> = symbolic_machine
-        .constraints
-        .iter()
-        .flat_map(|constraint| collect_cols_algebraic(&constraint.expr))
-        .chain(
-            symbolic_machine
-                .bus_interactions
-                .iter()
-                .flat_map(|interaction| {
-                    interaction
-                        .args
-                        .iter()
-                        .chain(std::iter::once(&interaction.mult))
-                        .flat_map(|expr| collect_cols_algebraic(expr))
-                }),
-        )
-        .collect::<BTreeSet<_>>();
-
     // Add PolynomialCommitDeclaration for all referenced columns into the program
-    for algebraic_ref in &refs {
-        if let AlgebraicExpression::Reference(ref r) = algebraic_ref {
-            program.push(PilStatement::PolynomialCommitDeclaration(
-                SourceRef::unknown(),
-                None,
-                vec![r.name.clone().into()],
-                None,
-            ));
-        }
-    }
+    program.extend(symbolic_machine.unique_columns().map(|column| {
+        PilStatement::PolynomialCommitDeclaration(
+            SourceRef::unknown(),
+            None,
+            vec![column.name.clone().into()],
+            None,
+        )
+    }));
 
     // Add Expressions for all constraints
-    for constraint in &symbolic_machine.constraints {
+    program.extend(symbolic_machine.constraints.iter().map(|constraint| {
         let zero = BigUint::from(0u32).into();
         let constraint = Expression::new_binary(
             algebraic_to_expression::<P>(&constraint.expr),
             BinaryOperator::Identity,
             zero,
         );
-        program.push(PilStatement::Expression(SourceRef::unknown(), constraint));
-    }
+        PilStatement::Expression(SourceRef::unknown(), constraint)
+    }));
 
     // Add Expressions for all bus interactions
-    for interaction in &symbolic_machine.bus_interactions {
+    program.extend(symbolic_machine.bus_interactions.iter().map(|interaction| {
         let mult_expr = algebraic_to_expression::<P>(&interaction.mult);
         let bus_id_expr = BigUint::from(interaction.id).into();
 
@@ -1161,11 +1129,8 @@ fn symbolic_machine_to_pilfile<P: FieldElement>(symbolic_machine: SymbolicMachin
             },
         );
 
-        program.push(PilStatement::Expression(
-            SourceRef::unknown(),
-            bus_interaction_expr,
-        ));
-    }
+        PilStatement::Expression(SourceRef::unknown(), bus_interaction_expr)
+    }));
 
     PILFile(program)
 }
