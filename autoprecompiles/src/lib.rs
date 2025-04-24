@@ -37,15 +37,6 @@ pub struct SymbolicInstructionStatement<T> {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct SymbolicInstructionDefinition {
-    pub name: String,
-    // TODO: This never seems to be non-empty, and is never accessed
-    pub inputs: Vec<Column>,
-    // TODO: This never seems to be non-empty, and is never accessed
-    pub outputs: Vec<Column>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolicConstraint<T> {
     pub expr: AlgebraicExpression<T>,
 }
@@ -176,7 +167,7 @@ pub enum InstructionKind {
 pub struct Autoprecompiles<T> {
     pub program: Vec<SymbolicInstructionStatement<T>>,
     pub instruction_kind: BTreeMap<String, InstructionKind>,
-    pub instruction_machines: BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
+    pub instruction_machines: BTreeMap<String, SymbolicMachine<T>>,
 }
 
 #[derive(Debug, Clone)]
@@ -428,9 +419,6 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
         .try_into()
         .unwrap();
 
-    assert_eq!(execution_bus_receive.kind, BusInteractionKind::Receive);
-    assert_eq!(execution_bus_send.kind, BusInteractionKind::Send);
-
     execution_bus_receive.mult =
         AlgebraicExpression::new_unary(AlgebraicUnaryOperator::Minus, is_valid.clone());
     execution_bus_send.mult = is_valid.clone();
@@ -445,8 +433,6 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
         .collect::<Vec<_>>()
         .try_into()
         .unwrap();
-
-    assert_eq!(program_bus_send.kind, BusInteractionKind::Send);
     program_bus_send.mult = is_valid.clone();
 
     let mut is_valid_mults: Vec<SymbolicConstraint<T>> = Vec::new();
@@ -771,7 +757,7 @@ pub fn optimize_exec_bus<T: FieldElement>(mut machine: SymbolicMachine<T>) -> Sy
 pub fn generate_precompile<T: FieldElement>(
     statements: &[SymbolicInstructionStatement<T>],
     instruction_kinds: &BTreeMap<String, InstructionKind>,
-    instruction_machines: &BTreeMap<String, (SymbolicInstructionDefinition, SymbolicMachine<T>)>,
+    instruction_machines: &BTreeMap<String, SymbolicMachine<T>>,
 ) -> (SymbolicMachine<T>, Vec<BTreeMap<Column, Column>>) {
     let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
     let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
@@ -785,7 +771,7 @@ pub fn generate_precompile<T: FieldElement>(
             InstructionKind::Normal
             | InstructionKind::UnconditionalBranch
             | InstructionKind::ConditionalBranch => {
-                let (_instr_def, machine) = instruction_machines.get(&instr.name).unwrap().clone();
+                let machine = instruction_machines.get(&instr.name).unwrap().clone();
 
                 let pc_lookup: PcLookupBusInteraction<T> = machine
                     .bus_interactions
