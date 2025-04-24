@@ -410,6 +410,7 @@ impl<T: FieldElement> Autoprecompiles<T> {
     }
 }
 
+// TODO: This should probably be done by pilopt
 pub fn remove_zero_mult<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     machine
         .bus_interactions
@@ -471,6 +472,7 @@ pub fn add_guards<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicM
     machine
 }
 
+// TODO: This should probably be done by pilopt
 pub fn remove_zero_constraint<T: FieldElement>(
     mut machine: SymbolicMachine<T>,
 ) -> SymbolicMachine<T> {
