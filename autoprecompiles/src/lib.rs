@@ -104,7 +104,7 @@ pub enum BusInteractionKind {
     Receive,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SymbolicMachine<T> {
     pub constraints: Vec<SymbolicConstraint<T>>,
     pub bus_interactions: Vec<SymbolicBusInteraction<T>>,
@@ -760,8 +760,7 @@ pub fn generate_precompile<T: FieldElement>(
     instruction_kinds: &BTreeMap<String, InstructionKind>,
     instruction_machines: &BTreeMap<String, SymbolicMachine<T>>,
 ) -> (SymbolicMachine<T>, Vec<BTreeMap<Column, Column>>) {
-    let mut constraints: Vec<SymbolicConstraint<T>> = Vec::new();
-    let mut bus_interactions: Vec<SymbolicBusInteraction<T>> = Vec::new();
+    let mut result = SymbolicMachine::default();
     let mut col_subs: Vec<BTreeMap<Column, Column>> = Vec::new();
     let mut global_idx: u64 = 0;
 
@@ -855,14 +854,14 @@ pub fn generate_precompile<T: FieldElement>(
                     VisitOrder::Pre,
                 );
 
-                constraints.extend(machine.constraints);
-                bus_interactions.extend(machine.bus_interactions);
+                result.constraints.extend(machine.constraints);
+                result.bus_interactions.extend(machine.bus_interactions);
                 col_subs.push(local_subs);
 
                 // after the first round of simplifying,
                 // we need to look for register memory bus interactions
                 // and replace the addr by the first argument of the instruction
-                for bus_int in &mut bus_interactions {
+                for bus_int in &mut result.bus_interactions {
                     if bus_int.id != MEMORY_BUS_ID {
                         continue;
                     }
@@ -895,13 +894,7 @@ pub fn generate_precompile<T: FieldElement>(
         }
     }
 
-    (
-        SymbolicMachine {
-            constraints,
-            bus_interactions,
-        },
-        col_subs,
-    )
+    (result, col_subs)
 }
 
 fn add_opcode_constraints<T: FieldElement>(
