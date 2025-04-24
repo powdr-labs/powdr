@@ -108,7 +108,7 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
     }
 
     fn loop_until_no_progress(&mut self) -> Result<(), Error> {
-        for i in 0.. {
+        loop {
             let mut progress = false;
             for i in 0..self.algebraic_constraints.len() {
                 // TODO: Improve efficiency by only running skipping constraints that
@@ -117,10 +117,6 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display + Debug> Solver<T, V>
                 for effect in effects {
                     progress |= self.apply_effect(effect);
                 }
-            }
-            // TODO: Debug infinite loops!
-            if i > 1000 {
-                break;
             }
             if !progress {
                 break;
