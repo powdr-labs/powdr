@@ -420,6 +420,9 @@ impl<T: FieldElement, V: Ord + Clone + Hash + Eq + Display> QuadraticSymbolicExp
             .chain(std::iter::once(Some(self.constant.range_constraint())))
             .collect::<Option<Vec<_>>>()?;
         let constraint = summands.into_iter().reduce(|c1, c2| c1.combine_sum(&c2))?;
+        if constraint.is_unconstrained() {
+            return None;
+        }
         let constraint = if solve_for_coefficient.is_known_one() {
             -constraint
         } else {
