@@ -41,9 +41,9 @@ pub struct SymbolicInstructionStatement<T> {
 pub struct SymbolicInstructionDefinition {
     pub name: String,
     // TODO: This never seems to be non-empty, and is never accessed
-    pub inputs: Vec<Column>,
+    pub inputs: Vec<String>,
     // TODO: This never seems to be non-empty, and is never accessed
-    pub outputs: Vec<Column>,
+    pub outputs: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -367,19 +367,6 @@ impl<T: FieldElement> Autoprecompiles<T> {
         machine = optimize_pc_lookup(machine);
         machine = optimize_exec_bus(machine);
         machine = optimize_precompile(machine);
-
-        let mut bus: BTreeMap<u64, Vec<&SymbolicBusInteraction<T>>> = BTreeMap::new();
-        for b in &machine.bus_interactions {
-            match bus.get_mut(&b.id) {
-                Some(v) => {
-                    v.push(b);
-                }
-                None => {
-                    bus.insert(b.id, vec![&b]);
-                }
-            }
-        }
-
         machine = optimize(machine, bus_interaction_handler);
         machine = powdr_optimize_legacy(machine);
         machine = remove_zero_mult(machine);
