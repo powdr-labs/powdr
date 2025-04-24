@@ -373,21 +373,6 @@ impl<T: FieldElement> Autoprecompiles<T> {
     }
 }
 
-pub fn replace_autoprecompile_basic_blocks<T: Clone>(
-    blocks: &[BasicBlock<T>],
-    selected: &BTreeMap<u64, SymbolicInstructionStatement<T>>,
-) -> Vec<SymbolicInstructionStatement<T>> {
-    let mut new_program = Vec::new();
-    for (i, block) in blocks.iter().enumerate() {
-        if let Some(instr) = selected.get(&(i as u64)) {
-            new_program.push(instr.clone());
-        } else {
-            new_program.extend(block.statements.clone());
-        }
-    }
-    new_program
-}
-
 pub fn remove_zero_mult<T: FieldElement>(mut machine: SymbolicMachine<T>) -> SymbolicMachine<T> {
     machine
         .bus_interactions
