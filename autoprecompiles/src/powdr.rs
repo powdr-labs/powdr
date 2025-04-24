@@ -180,27 +180,21 @@ pub fn local_to_global<T: Clone + Ord>(
     expr.visit_expressions_mut(
         &mut |expr| {
             if let AlgebraicExpression::Reference(r) = expr {
-                let column = Column::from(&*r);
-                match subs.get(&column) {
-                    Some(c) => {
-                        r.poly_id = c.id;
-                        r.name = c.name.clone();
-                    }
-                    None => {
-                        assert_eq!(r.poly_id.ptype, PolynomialType::Committed);
-                        let new_column = Column {
-                            name: format!("{}_{}", column.name, suffix),
-                            id: PolyID {
-                                id: curr_id,
-                                ptype: PolynomialType::Committed,
-                            },
-                        };
-                        r.poly_id = new_column.id;
-                        r.name = new_column.name.clone();
-                        subs.insert(column.clone(), new_column.clone());
-                        curr_id += 1;
-                    }
-                }
+                let old_column = Column::from(&*r);
+                let new_column = subs.entry(old_column.clone()).or_insert_with(|| {
+                    assert_eq!(r.poly_id.ptype, PolynomialType::Committed);
+                    let new_column = Column {
+                        name: format!("{}_{}", old_column.name, suffix),
+                        id: PolyID {
+                            id: curr_id,
+                            ptype: PolynomialType::Committed,
+                        },
+                    };
+                    curr_id += 1;
+                    new_column
+                });
+                r.poly_id = new_column.id;
+                r.name = new_column.name.clone();
             }
             ControlFlow::Continue::<()>(())
         },
