@@ -322,21 +322,21 @@ const RANGE_CHECK_BUS_ID: u64 = 3;
 
 impl<T: FieldElement> Autoprecompiles<T> {
     pub fn build(&self) -> (SymbolicMachine<T>, Vec<BTreeMap<Column, Column>>) {
-        let (mut machine, subs) = generate_precompile(
+        let (machine, subs) = generate_precompile(
             &self.program,
             &self.instruction_kind,
             &self.instruction_machines,
         );
 
-        machine = optimize_pc_lookup(machine);
-        machine = optimize_exec_bus(machine);
-        machine = optimize_precompile(machine);
-        machine = powdr_optimize(machine);
-        machine = remove_zero_mult(machine);
-        machine = remove_zero_constraint(machine);
+        let machine = optimize_pc_lookup(machine);
+        let machine = optimize_exec_bus(machine);
+        let machine = optimize_precompile(machine);
+        let machine = powdr_optimize(machine);
+        let machine = remove_zero_mult(machine);
+        let machine = remove_zero_constraint(machine);
 
         // add guards to constraints that are not satisfied by zeroes
-        machine = add_guards(machine);
+        let machine = add_guards(machine);
 
         (machine, subs)
     }
