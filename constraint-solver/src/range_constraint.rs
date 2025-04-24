@@ -244,6 +244,14 @@ impl<T: FieldElement> RangeConstraint<T> {
             None
         }
     }
+
+    /// If true, any value is allowed.
+    pub fn is_unconstrained(&self) -> bool {
+        let mask_unconstrained = self.mask == !T::Integer::zero();
+        let range_unconstrained =
+            (self.min == T::zero() && self.max == -T::one()) || self.max == self.min - T::one();
+        mask_unconstrained && range_unconstrained
+    }
 }
 
 impl<T: FieldElement> Default for RangeConstraint<T> {
@@ -771,5 +779,21 @@ mod test {
     fn bisect_single() {
         let a = RangeConstraint::<GoldilocksField>::from_range(10.into(), 10.into());
         a.bisect();
+    }
+
+    #[test]
+    fn is_unconstrained() {
+        let rc = RangeConstraint::<GoldilocksField>::unconstrained();
+        assert!(rc.is_unconstrained());
+        let rc = RangeConstraint::<GoldilocksField>::from_range(1.into(), 0.into());
+        assert!(rc.is_unconstrained());
+
+        let rc =
+            RangeConstraint::<GoldilocksField>::from_range(1.into(), -GoldilocksField::from(2));
+        assert!(!rc.is_unconstrained());
+        let rc = RangeConstraint::<GoldilocksField>::from_range(1.into(), 2.into());
+        assert!(!rc.is_unconstrained());
+        let rc = RangeConstraint::<GoldilocksField>::from_mask(0xffu64);
+        assert!(!rc.is_unconstrained());
     }
 }
