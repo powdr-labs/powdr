@@ -769,8 +769,6 @@ pub fn generate_precompile<T: FieldElement>(
             InstructionKind::Normal
             | InstructionKind::UnconditionalBranch
             | InstructionKind::ConditionalBranch => {
-                let mut local_idx_subs: BTreeMap<Column, u64> = BTreeMap::new();
-
                 let mut machine = instruction_machines.get(&instr.name).unwrap().clone();
 
                 let pc_lookup: PcLookupBusInteraction<T> = machine
@@ -816,9 +814,26 @@ pub fn generate_precompile<T: FieldElement>(
                         }
                     });
 
-                let mut local_subs = BTreeMap::new();
-
                 machine.constraints.extend(local_constraints);
+
+                // Initialize the substitutions by mapping the constant columns to themselves, as they can be reused across instructions.
+                // It could be cleaner to have one instance per instruction (`is_first_row_1`, `is_first_row_2`, etc.) and adding constraints between them
+                // It would remove this edge case but also would require fully supporting constant columns, which is not the case in `reassign_ids_algebraic`
+                let mut local_subs: BTreeMap<Column, Column> =
+                    ["is_first_row", "is_transition", "is_last_row"]
+                        .iter()
+                        .enumerate()
+                        .map(|(id, name)| {
+                            let col = Column {
+                                name: name.to_string(),
+                                id: PolyID {
+                                    ptype: PolynomialType::Constant,
+                                    id: id as u64,
+                                },
+                            };
+                            (col.clone(), col)
+                        })
+                        .collect();
 
                 // Process all expressions in the machine
                 machine.visit_expressions_mut(
@@ -827,14 +842,13 @@ pub fn generate_precompile<T: FieldElement>(
                             let mut expr = expr.clone();
                             powdr::substitute_algebraic(&mut expr, &sub_map);
                             powdr::substitute_algebraic(&mut expr, &sub_map_loadstore);
-                            let subs = powdr::append_suffix_algebraic(&mut expr, &format!("{i}"));
                             let mut expr = simplify_expression(expr);
                             global_idx = powdr::reassign_ids_algebraic(
                                 &mut expr,
                                 global_idx,
-                                &mut local_idx_subs,
+                                &mut local_subs,
+                                i,
                             );
-                            local_subs.extend(subs);
                             expr
                         };
                         std::ops::ControlFlow::Continue::<()>(())

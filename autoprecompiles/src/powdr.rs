@@ -4,7 +4,7 @@ use std::ops::ControlFlow;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    BusInteractionIdentity, PolyID,
+    BusInteractionIdentity, PolyID, PolynomialType,
 };
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_ast::parsed::visitor::AllChildren;
@@ -127,35 +127,6 @@ pub fn substitute_algebraic_algebraic<T: Clone + std::cmp::Ord>(
     );
 }
 
-/// Append a suffix to all references in the algebraic expression. Return the map of all the substitutions made.
-/// Some columns are currently ignored, see the TODO in the code.
-pub fn append_suffix_algebraic<T: Clone>(
-    expr: &mut AlgebraicExpression<T>,
-    suffix: &str,
-) -> BTreeMap<Column, Column> {
-    let mut subs = BTreeMap::new();
-    expr.visit_expressions_mut(
-        &mut |expr| {
-            if let AlgebraicExpression::Reference(r) = expr {
-                // TODO: it would be cleaner not to have this edge case, and instead add equality constraints between all the versions of these columns and let pilopt eliminate all but one.
-                if !["is_first_row", "is_transition", "is_last_row"].contains(&r.name.as_str()) {
-                    let new_name = format!("{}_{suffix}", r.name);
-                    let old_column = Column::from(&*r);
-                    let new_column = Column {
-                        name: new_name.clone(),
-                        ..old_column
-                    };
-                    subs.insert(old_column, new_column);
-                    r.name = new_name;
-                }
-            }
-            ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-    subs
-}
-
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct Column {
     pub name: String,
@@ -193,24 +164,40 @@ impl<'a, T: Clone + Ord + std::fmt::Display + 'a, E: AllChildren<AlgebraicExpres
     }
 }
 
-/// Given an expression `expr`, reassign the IDs of all references in the expression to be unique and larger or equal than `curr_id`
+/// Given an expression `expr`
+/// - Reassign the IDs of all references in the expression to be unique and larger or equal than `curr_id`
+/// - Add a suffix to the name of each reference, so that `foo` becomes `foo_suffix`
+///
 /// Return the next available ID.
+/// Assumptions:
+/// - The substitution map already contains substitutions for constant columns. Failing to do so will result in a panic.
 pub fn reassign_ids_algebraic<T: Clone + Ord>(
     expr: &mut AlgebraicExpression<T>,
     mut curr_id: u64,
-    subs: &mut BTreeMap<Column, u64>,
+    subs: &mut BTreeMap<Column, Column>,
+    suffix: usize,
 ) -> u64 {
     expr.visit_expressions_mut(
         &mut |expr| {
             if let AlgebraicExpression::Reference(r) = expr {
                 let column = Column::from(&*r);
-                match subs.get_mut(&column) {
-                    Some(id) => {
-                        r.poly_id.id = *id;
+                match subs.get(&column) {
+                    Some(c) => {
+                        r.poly_id = c.id;
+                        r.name = c.name.clone();
                     }
                     None => {
-                        r.poly_id.id = curr_id;
-                        subs.insert(column.clone(), curr_id);
+                        assert_eq!(r.poly_id.ptype, PolynomialType::Committed);
+                        let new_column = Column {
+                            name: format!("{}_{}", column.name, suffix),
+                            id: PolyID {
+                                id: curr_id,
+                                ptype: PolynomialType::Committed,
+                            },
+                        };
+                        r.poly_id = new_column.id;
+                        r.name = new_column.name.clone();
+                        subs.insert(column.clone(), new_column.clone());
                         curr_id += 1;
                     }
                 }
@@ -250,29 +237,6 @@ pub fn substitute(expr: &mut Expression, sub: &BTreeMap<String, Expression>) {
                 _ => (),
             }
             ControlFlow::Continue::<()>(())
-        },
-        VisitOrder::Pre,
-    );
-}
-
-pub fn append_suffix_mut(expr: &mut Expression, suffix: &str) {
-    expr.visit_expressions_mut(
-        &mut |expr| match expr {
-            Expression::FunctionCall(_, ref mut fun_call) => {
-                for arg in &mut fun_call.arguments {
-                    append_suffix_mut(arg, suffix);
-                }
-                ControlFlow::Break::<()>(())
-            }
-            Expression::Reference(_, ref mut r) => {
-                let name = r.path.try_last_part().unwrap();
-                if name != "pc" && name != "pc_next" && name != "dest" {
-                    let name = format!("{name}_{suffix}");
-                    *r.path.try_last_part_mut().unwrap() = name;
-                }
-                ControlFlow::Continue::<()>(())
-            }
-            _ => ControlFlow::Continue::<()>(()),
         },
         VisitOrder::Pre,
     );
